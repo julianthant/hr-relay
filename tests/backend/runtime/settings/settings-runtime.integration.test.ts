@@ -1,3 +1,4 @@
+import { withOfflineMaintenanceSync, createBoundProfileFixture, readAuthenticatedCredentialFixture, rewriteAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -7,15 +8,10 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { resolveConfigWithProvenance, type ResolvedConfig } from "../../../../src/backend/app/config/resolve.js";
-
 import { executeSettingsCommand, type CommandAuthority } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { buildSettingsEditor } from "../../../../src/backend/runs/queries/settings-editor.js";
 import { activeSettingsConfig, activeSettingsRuntimeIdentity, createCredentialSecretSource, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader, readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
-
-
-
-
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, ProtectedSettingsReadbackSchema } from "../../../../src/models/config/protected-settings.js";
 import { requireSecret } from "../../../../src/models/config/secrets.js";
@@ -23,16 +19,12 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, settingsRuntimeId
 import { ProtectedSettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { manualClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { AuthorityDatabase as AuthorityDatabase_m0, createCredentialStore as createCredentialStore_m0 } from "../../../support/helpers/synthetic-storage-admission.js";
-
 import { selectActiveRunSettings } from "../../../../src/backend/runs/settings/run-settings.js";
-
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS } from "../../../../src/models/config/catalog.js";
-
-
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
 import { credentialTrap, storageTree, storageRecoveryFixture } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { createBoundProfileFixture, readAuthenticatedCredentialFixture, rewriteAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
+
 
 {
 
@@ -104,7 +96,9 @@ afterEach(_afterEachFixture0);
       runtimeStoragePair: pair, active: activeSettingsRuntimeIdentity });
     assert.deepEqual(reader.read().runtimeStatus, { state: "current", identity: settingsRuntimeIdentity(f.initial, resolved.fingerprint) });
     assert.equal(readSettings(f.database.authority).revision, f.initial.revision);
-    assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig).paths, { ...prior.paths, ...pair, browserProfileRoot: join_m0(pair.stateRoot, "browsers"), duoCredential: join_m0(pair.stateRoot, "credentials", "duo-webauthn.json") });
+    assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig).paths, { ...prior.paths, ...pair, browserProfileRoot: join_m0(pair.stateRoot, "browsers"), duoCredential: join_m0(pair.stateRoot, "credentials", "duo-webauthn.json"),
+      downloadsDir: join_m0(pair.stateRoot, "files", "downloads"), reportsDir: join_m0(pair.stateRoot, "files", "reports"),
+      onboardingDocsDir: join_m0(pair.stateRoot, "files", "onboarding"), i9CheckTrackerPath: join_m0(pair.stateRoot, "files", "reports", "i9-check-tracker.xlsx") });
     assert.notDeepEqual(prior.paths, pair);
   });
   it("builds a current editor with exactly one authoritative read and no file authority", async () => {
@@ -431,7 +425,7 @@ async function fixture(body: string) {
   const profile = await storageRecoveryFixture(0); profiles.push(profile);
   const root = profile.root;
   const environmentFile = join_m0(root, ".env"); writeFileSync(environmentFile, body, { mode: 0o600 });
-  return { root, environmentFile, profile, input: { stateRoot: root, processLockRoot: join_m0(root, "locks"), environmentFile, plan: false } };
+  return { root, environmentFile, profile, input: { stateRoot: root, processLockRoot: profile.input.processLockRoot, environmentFile, plan: false } };
 }
 describe("expired environment import refuses before access", () => {
 afterEach(_afterEachFixture0);
@@ -446,7 +440,7 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(storageTree(f.root), before);
     const applied = await f.profile.run();
     assert.equal(applied.credentials, "unchanged");
-    NativeAuthorityDatabase.inspectStoppedUpgrade(f.profile.admission, f.profile.path, f.input.processLockRoot, clock);
+    withOfflineMaintenanceSync(f.profile.admission, () => NativeAuthorityDatabase.inspectStoppedUpgrade(f.profile.admission, f.profile.path, f.input.processLockRoot, clock));
     const database = new DatabaseSync(f.profile.path, { readOnly: true });
     try { assert.deepEqual(database.prepare("SELECT * FROM settings").all(), []); } finally { database.close(); }
     assert.equal(readFileSync(f.environmentFile, "utf8"), body);

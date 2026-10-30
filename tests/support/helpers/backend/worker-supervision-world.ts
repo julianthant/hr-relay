@@ -94,6 +94,7 @@ export function createWorkerSupervisionTestWorld() {
     launchCommand?: string;
     /** `true` (default) publishes the child's lease synchronously at spawn. */
     publishLeaseOnSpawn?: boolean;
+    onExit?: Parameters<typeof createDashboardWorkerProcessSupervisor>[0]["onExit"];
   }>): Harness {
     const clock = manualClock(new Date(NOW));
     const scheduler = new ManualScheduler(clock, 0);
@@ -126,6 +127,7 @@ export function createWorkerSupervisionTestWorld() {
       nextGracefulStop: (_target, directive): WorkerDurableStopReceipt =>
         stopReceipt(directive.requestedAt),
       supervisor: createDashboardWorkerProcessSupervisor({
+        onExit: overrides?.onExit ?? (() => undefined),
         launch: {
           environment: {},
           command: overrides?.launchCommand ?? LAUNCH.command,

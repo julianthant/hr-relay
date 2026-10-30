@@ -141,7 +141,7 @@ export const FEATURE_RUNTIME_SPECS = deepFreeze(FeatureRuntimeSpecSchema.array()
 
 export const RuntimeDependencySpecSchema = z.strictObject({
   id: RuntimeDependencyIdSchema,
-  kind: z.enum(["runtime", "browser", "config", "path", "storage", "port", "endpoint", "secret", "provider", "feature", "process"]),
+  kind: z.enum(["runtime", "browser", "config", "path", "storage", "port", "endpoint", "secret", "provider", "feature"]),
   requirement: z.enum(["blocking", "optional"]),
   capabilities: z.array(RuntimeCapabilitySchema).min(1),
   check: PreflightCheckIdSchema,
@@ -208,7 +208,6 @@ export const RUNTIME_DEPENDENCIES = deepFreeze(RuntimeDependencySpecSchema.array
   { id: "secret.ucpath-sso", kind: "secret", requirement: "blocking", capabilities: ["system.ucpath.prod", "system.crm.prod", "system.onbase.prod", "system.kuali.prod", "system.servicenow.prod", "system.i9.prod", "system.new-kronos.prod", "system.old-kronos.prod"], check: "secrets.ucpath-sso", consumer: "workflow-enqueue", scenario: "preflight/workflow-secret-missing", justification: "selected SSO-backed system instances require both UCPath SSO credential fields", secretNames: ["ucpathUserId", "ucpathPassword"] },
   { id: "secret.timekeeper", kind: "secret", requirement: "blocking", capabilities: ["workflow.kuali-fill"], check: "secrets.timekeeper", consumer: "workflow-enqueue", scenario: "preflight/workflow-secret-missing", justification: "Kuali fill descriptors require an operator timekeeper identity", secretNames: ["timekeeperName"] },
   { id: "secret.sharepoint-roster", kind: "secret", requirement: "blocking", capabilities: ["workflow.sharepoint-download", "system.sharepoint.prod"], check: "secrets.sharepoint-roster", consumer: "workflow-enqueue", scenario: "preflight/workflow-secret-missing", justification: "the selected roster download requires its registered SharePoint source URL", secretNames: ["sharepointOnboardingRosterUrl"] },
-  { id: "process.orphans", kind: "process", requirement: "optional", capabilities: ["dashboard.serve"], check: "process.orphans", consumer: "cli-doctor", scenario: "preflight/orphan-process", justification: "stale processes are operator-visible health debt but do not make authority unreadable" },
   ...featureDependencies(),
   ...endpointDependencies(),
   ...providerDependencies(),
@@ -293,7 +292,6 @@ export const PREFLIGHT_CHECKS = deepFreeze(PreflightCheckSpecSchema.array().pars
   { id: "secrets.ucpath-sso", scope: "system", severity: "error", runner: "pure", dependencies: ["secret.ucpath-sso"], capabilities: ["system.ucpath.prod", "system.crm.prod", "system.onbase.prod", "system.kuali.prod", "system.servicenow.prod", "system.i9.prod", "system.new-kronos.prod", "system.old-kronos.prod"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure ucpathUserId and ucpathPassword in protected Settings" },
   { id: "secrets.timekeeper", scope: "workflow", severity: "error", runner: "pure", dependencies: ["secret.timekeeper"], capabilities: ["workflow.kuali-fill"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure timekeeperName in protected Settings" },
   { id: "secrets.sharepoint-roster", scope: "workflow", severity: "error", runner: "pure", dependencies: ["secret.sharepoint-roster"], capabilities: ["workflow.sharepoint-download", "system.sharepoint.prod"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure sharepointOnboardingRosterUrl in protected Settings" },
-  { id: "process.orphans", scope: "dashboard", severity: "warning", runner: "io", dependencies: ["process.orphans"], capabilities: ["dashboard.serve"], consumer: "cli-doctor", scenarios: ["preflight/orphan-process"], timeoutMs: 2_000, redaction: "safe-summary", remediation: "review and explicitly clear stale rebuild processes or leases" },
   ...featureChecks(),
   ...endpointChecks(),
   ...providerChecks(),

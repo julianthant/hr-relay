@@ -1,12 +1,15 @@
+import type { ProfilePublicationRead } from "../storage/admission/installation.js";
 import { deleteOwnedBrowserProfile } from "../runtime/browser/browser-session-factory.js";
-import { proveProfileRootsUnused } from "../storage/maintenance/process-closure.js";
+import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
+import { resolveConfigWithProvenance } from "../app/config/resolve.js";
+import { NativeBrowserClosureUnprovedError, onboardingProfileDirectory, probeClosedBrowserProfile, assertPrivateProfilePath } from "../runtime/browser/native-profile-probe.js";
 import { ProfileOnboardingDuoProviderError } from "./onboarding-duo-provider.js";
 import { ProfileSessionRefusedError } from "./profile-errors.js";
 import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
 import { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, constants, fstatSync, openSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import {
   createCredentialStore,
@@ -167,7 +170,7 @@ export function createProfileSession(input: {
   readonly loginDataPaths?: (profileId: string) => readonly string[];
   readonly credentialHooks?: CredentialStoreHooks;
   readonly repairInventory?: (admission: RuntimeAdmission, ...args: Parameters<NonNullable<CredentialStoreOptions["repairInventory"]>>) => ReturnType<NonNullable<CredentialStoreOptions["repairInventory"]>>;
-  readonly initializationInventory?: (admission: RuntimeAdmission, operation: SignUpOperation, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(operation: SignUpOperation): () => void; revalidateBeforeKeyIntent(): void }>;
+  readonly initializationInventory?: (admission: RuntimeAdmission, operation: SignUpOperation, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) => Readonly<{ revalidate(operation: SignUpOperation): (scope?: ProfilePublicationRead) => void; revalidateBeforeKeyIntent(scope?: ProfilePublicationRead): void }>;
   readonly credentialsFor?: (admission: RuntimeAdmission, purpose: "ordinary" | "settlement") => CredentialStore;
   readonly prepareLogout?: (profileId: string, admission: RuntimeAdmission) => void;
   readonly preparePendingLogout?: (operation: LogoutOperation, admission: RuntimeAdmission, credentials: CredentialStore) => void;
@@ -773,11 +776,42 @@ export function createProfileSession(input: {
       const operations = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.onboarding !== undefined);
       if (operations.length === 0) return;
       const browserRoot = join(machineRoot, "browsers", "onboarding");
-      proveProfileRootsUnused([browserRoot]);
-      if (existsSync(browserRoot)) for (const name of readdirSync(browserRoot)) {
-        if (!/^onboarding-[a-zA-Z0-9]{6}$/u.test(name)) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-        deleteOwnedBrowserProfile(browserRoot, join(browserRoot, name));
+      const bound=operations.map(operation=>{
+        const draft=operation.onboarding;
+        if(draft===undefined)throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+        return {operation,profileDirectory:onboardingProfileDirectory(browserRoot,{...operation,accountId:draft.accountId,generation:draft.generation})};
+      });
+      assertPrivateProfilePath(machineRoot,browserRoot);
+      const rootInfo=lstatSync(browserRoot,{throwIfNoEntry:false});
+      if(rootInfo!==undefined&&(!rootInfo.isDirectory()||rootInfo.isSymbolicLink()
+        ||readdirSync(browserRoot).some(name=>!bound.some(entry=>basename(entry.profileDirectory)===name)))) {
+        throw new NativeBrowserClosureUnprovedError([new Error("abandoned-onboarding-browser-membership-unavailable")]);
       }
+      const clock=input.clock??systemClock;
+      const config=resolveConfigWithProvenance({},{primaryDisplay:null},clock,{stateRoot:machineRoot,artifactRoot:admission.artifactRoot}).config;
+      const present=bound.filter(entry=>{
+        if(lstatSync(entry.profileDirectory,{throwIfNoEntry:false})!==undefined)return true;
+        if(entry.operation.onboarding?.finish===undefined&&entry.operation.onboarding?.abort===undefined) {
+          throw new NativeBrowserClosureUnprovedError([new Error("abandoned-onboarding-browser-missing-without-owned-cleanup")]);
+        }
+        return false;
+      });
+      const assertBound=()=>{
+        admission.assertLive();
+        for(const entry of bound){
+          const current=readOperations().find(operation=>operation.operationId===entry.operation.operationId);
+          if(current===undefined||canonicalJsonStringify(current)!==canonicalJsonStringify(entry.operation))throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+        }
+      };
+      assertBound();
+      for(const entry of present){
+        await probeClosedBrowserProfile({profileRoot:browserRoot,
+          launch:{profileDirectory:entry.profileDirectory,extensionDirectory:"",downloadsPath:entry.profileDirectory,viewport:{width:1100,height:800},timeoutMs:config.timeouts.sessionAcquireMs},
+          clock,scheduler:createTimeoutDeadlineScheduler(clock),closeProofMs:config.browser.closeProofMs,signal:new AbortController().signal});
+        assertBound();
+      }
+      assertBound();
+      for(const entry of present)deleteOwnedBrowserProfile(browserRoot,entry.profileDirectory);
       for (const operation of operations) {
         if (operation.onboarding?.finish !== undefined) {
           if (operation.phase !== "publishing") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");

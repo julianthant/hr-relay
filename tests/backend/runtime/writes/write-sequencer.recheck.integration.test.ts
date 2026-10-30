@@ -1,4 +1,5 @@
-import { RunRecordService, lifecycleCommandId, runContinuationPort, workerRunLifecyclePort, sweepWorkerClaims } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { reconcileStartupCrash } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { RunRecordService, lifecycleCommandId, runContinuationPort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import assert from "node:assert/strict";
@@ -78,8 +79,8 @@ describe("parked write read-only recheck", () => {
     assert.equal(h.database.getMeta().authorityGeneration, generation);
   });
 
-  for (const mode of ["canonical", "repository"] as const) {
-    it.each(["claimed", "validating", "running"] as const)(`${mode} sweep re-parks a lost %s recheck`, async state => {
+  for (const mode of ["canonical", "startup"] as const) {
+    it.each(["claimed", "validating", "running"] as const)(`${mode} crash recovery parks a lost %s recheck without changing its intent or attempt`, async state => {
       const { h, intent, run, command } = await parked();
       assert.equal(h.kernel.execute(command).state, "applied");
       const worker = testWorkerLifetime(h.database, run.envelope.workflow, 1);
@@ -95,13 +96,18 @@ describe("parked write read-only recheck", () => {
         current = next.run;
       }
       const attempt = h.database.authority.writeAttempts.get(intent.currentAttemptId);
-      const request = { workerId: worker.workerId, now: h.clock.now().toISOString() };
+      const interruptedIntent = h.database.authority.writeIntents.get(intent.writeIntentId);
+      assert.ok(interruptedIntent?.status === "parked" && interruptedIntent.recheck?.commandId === command.commandId);
+      const lock = h.profile.lifetime;
       const service = new RunRecordService({ database: h.database, clock: h.clock, ids: sequentialIdFactory("f"), publishQueued: () => {} });
-      const swept = mode === "canonical" ? sweepWorkerClaims(h.database, workerRunLifecyclePort(service), request)
-        : h.database.authority.runs.sweepExpiredClaims(request);
-      assert.ok(swept[0]?.state === "recovery-required" && swept[0].parked);
-      const after = h.database.authority.writeIntents.get(intent.writeIntentId);
-      assert.ok(after?.status === "parked" && after.recheck === undefined);
+      if (mode === "canonical") {
+        const outcome = service.recoverCrash({ commandId: lifecycleCommandId("lost-recheck", { runId: run.envelope.runId, version: current.version }),
+          runId: run.envelope.runId, expectedVersion: current.version, claim,
+          ...h.database.crashRunRecoveryIdentity(run.envelope.runId), now: h.clock.now().toISOString() }, lock);
+        assert.equal(outcome.state, "applied");
+      } else reconcileStartupCrash({ machine: h.profile.machine, admission: h.profile.admission, database: h.database,
+        clock: h.clock, lifecycle: service, lock });
+      assert.deepEqual(h.database.authority.writeIntents.get(intent.writeIntentId), interruptedIntent);
       assert.deepEqual(h.database.authority.writeAttempts.get(intent.currentAttemptId), attempt);
       assert.equal(h.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "parked-write");
     });

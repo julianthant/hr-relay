@@ -192,7 +192,7 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.equal(w.projection.buildDashboardDayWire(DAY).workerCards[0]?.directive, "pause");
   });
 
-  it("publishes a crash or expiry another process settled, keeping the card while its spans are retained", async () => {
+  it("publishes a crash the controller settled, keeping the card while its spans are retained", async () => {
     const w = await world();
     declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({ workerId }));
@@ -204,7 +204,7 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     declareProjectionWorker(w.authority, workerId, 1);
     w.authority.putWorkerLease(workerLeaseOf({
       workerId,
-      lifecycle: { state: "stopped", startedAt, stoppedAt: instantOffsetOf(0, 60_000), reason: "lease-expired" },
+      lifecycle: { state: "stopped", startedAt, stoppedAt: instantOffsetOf(0, 60_000), reason: "crashed" },
       directive: "stop",
       version: 5,
     }));
@@ -212,7 +212,7 @@ describe("lease-only transitions reach the Session Panel without a span", () => 
     assert.equal(snapshots(w), before + 1);
     const [card] = w.projection.buildDashboardDayWire(DAY).workerCards;
     assert.equal(card?.state, "failed");
-    assert.equal(card?.stopReason, "lease-expired");
+    assert.equal(card?.stopReason, "crashed");
     assert.deepEqual(card?.browsers, []);
   });
 

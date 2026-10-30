@@ -75,7 +75,7 @@ for (const repeat of [false, true]) it(`prepares production settings initializat
     try { initialize(database, repeat); } finally { database.close(); }
     drift(f);
     const before = [f.databasePath, f.registryPath, f.keyPath, f.protectedPath].map(path => readFileSync(path));
-    const held = await RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(f.workspace);
+    const held = await RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(f.workspace, f.lifetime);
     try { assert.match(held.capture.digest, /^[0-9a-f]{64}$/u); }
     finally { held.release(); }
     assert.deepEqual([f.databasePath, f.registryPath, f.keyPath, f.protectedPath].map(path => readFileSync(path)), before);
@@ -88,7 +88,7 @@ it("keeps initialization counts visible and uses the same eligibility for stoppe
     const database = new DatabaseSync(f.databasePath);
     try { initialize(database); } finally { database.close(); }
     const before = readFileSync(f.databasePath);
-    const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace);
+    const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
     try {
       const child = machine.forStoppedIncompleteProfileInventory(f.profileId);
       try {
@@ -162,7 +162,7 @@ for (const problem of ["operator-command", "operator-audit", "extra-audit", "com
       drift(f); const before = readFileSync(f.databasePath), continuity = readFileSync(f.controlPath);
       let unexpected: Awaited<ReturnType<typeof RuntimeAdmission.prepareStoppedDeviceContinuityRecertification>> | undefined;
       try {
-        await assert.rejects(async () => { unexpected = await RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(f.workspace); },
+        await assert.rejects(async () => { unexpected = await RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(f.workspace, f.lifetime); },
           (error: unknown) => error instanceof Error && (!(problem === "unbound-snapshot" || problem === "intermediate-startup") || /profile-incomplete-inventory-snapshot-unbound/u.test(error.message)));
       } finally { unexpected?.release(); }
       assert.deepEqual(readFileSync(f.databasePath), before); assert.deepEqual(readFileSync(f.controlPath), continuity);
@@ -232,7 +232,7 @@ for (const activity of ["business", "deleted-history", "artifact-reference", "wo
         inspectNativeAuthority(database);
       } finally { database.close(); }
       drift(f); const before = readFileSync(f.databasePath);
-      await assert.rejects(RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(f.workspace), /profile-incomplete-activity-present/u);
+      await assert.rejects(RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(f.workspace, f.lifetime), /profile-incomplete-activity-present/u);
       assert.deepEqual(readFileSync(f.databasePath), before);
     } finally { await f.close(); }
   });

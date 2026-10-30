@@ -58,14 +58,14 @@ describe("same-lifetime durable reset settlement", () => {
         pendingReset: observer, activeWorkReset: () => observer() !== undefined,
         browserObservation: observation => { database.authority.workerControls.observe({ ...observation, leaseGeneration: lease.leaseGeneration }); },
         resetControl: createWorkerResetControl({ database, workerId, leaseGeneration: lease.leaseGeneration, clock: h.authority.clock, lifecycle }),
-        claimNext: request => {
+        claimNext: (request, sessions) => {
           if (resetCommandId !== undefined) {
             expect(database.authority.workerControls.get(resetCommandId)?.phase.state).toBe("succeeded");
             expect(database.authority.workerLeases.get(workerId)?.lifecycle.state).toBe("idle");
             expect(h.stop.signal.aborted).toBe(false);
             claimedAfterReset = true;
           }
-          return h.deps.claimNext(request);
+          return h.deps.claimNext(request, sessions);
         },
       });
       try {
@@ -134,12 +134,12 @@ describe("same-lifetime durable reset settlement", () => {
         resetOwner: record.reset === undefined ? undefined : { member: record.reset.member, lifetime: record.reset.lifetime },
         pendingReset: () => database.authority.workerControls.resetForWorker(workerId)?.reset,
         resetControl: createWorkerResetControl({ database, workerId, leaseGeneration: lease.leaseGeneration, clock: h.authority.clock, lifecycle }),
-        claimNext: request => {
+        claimNext: (request, sessions) => {
           expect(database.authority.workerControls.get(record.commandId)).toMatchObject({ phase: { state: "succeeded", acknowledgement: { kind: "reset" } } });
           expect(database.authority.commandAudits.findByCommand(record.commandId)?.result.state).toBe("applied");
           expect(database.authority.workerLeases.get(workerId)).toMatchObject({ leaseGeneration: lease.leaseGeneration, lifecycle: { state: "idle" }, control: { directive: "run" } });
           observedMilestone = true;
-          return h.deps.claimNext(request);
+          return h.deps.claimNext(request, sessions);
         },
       });
       expect(observedMilestone).toBe(true);
@@ -223,7 +223,7 @@ describe("reset owns active and late callbacks through browser closure", () => {
       const base = sessionFactoryHarness({ ucpath: () => stage === "read" ? { ...driver,
         searchPersonOrg: async () => { started(); await held; throw new Error("actual read callback rejected after reset"); },
       } : driver, crm: () => healthyCrmDriver() });
-      const h = await world.loopHarness({ sessions: { ...base, factory: { open: async input => {
+      const h = await world.loopHarness({ sessions: { ...base, factory: { probeProfile: async () => undefined, open: async input => {
         signal = input.signal;
         if (stage === "acquisition") { signal = input.signal; started(); await held; }
         const resource = await base.factory.open(input);
@@ -376,7 +376,7 @@ it("marks held actual browser close uncertain at its scheduled expiry without re
   const starting = new Promise<void>(resolve => { started = resolve; });
   const factory = h.deps.sessionFactory;
   const manager = new WorkerSessionManager({ workerId, workflowId: h.deps.workflowId, stores: h.deps.stores,
-    factory: { open: async input => { const resource = await factory.open(input); return { ...resource, close: async input => { started(); await held; return resource.close(input); } }; } },
+    factory: { probeProfile: async () => undefined, open: async input => { const resource = await factory.open(input); return { ...resource, close: async input => { started(); await held; return resource.close(input); } }; } },
     clock: h.authority.clock, scheduler: h.scheduler, acquireDeadlineMs: h.deps.sessionAcquireMs, duoCeremony: h.deps.duoCeremony,
     resetOwner: { member: workerPoolMember(slot), lifetime: { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt } },
     onObservation: observation => { database.authority.workerControls.observe({ ...observation, leaseGeneration: lease.leaseGeneration }); },
@@ -571,7 +571,7 @@ it("ends failed close activity while exact Stop retains and then closes the reso
   let closes = 0;
   const factory = h.deps.sessionFactory;
   const manager = new WorkerSessionManager({ workerId, workflowId: h.deps.workflowId, stores: h.deps.stores,
-    factory: { open: async input => { const resource = await factory.open(input); return { ...resource, close: async input => {
+    factory: { probeProfile: async () => undefined, open: async input => { const resource = await factory.open(input); return { ...resource, close: async input => {
       closes += 1;
       if (closes === 1) throw new Error("injected first close failure");
       return resource.close(input);

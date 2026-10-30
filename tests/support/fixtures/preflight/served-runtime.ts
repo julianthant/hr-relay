@@ -22,7 +22,7 @@ import { FIXTURE_DESCRIPTOR_HASH, FIXTURE_NOW } from "../dashboard/fixture-ident
 export type SetupScene = "healthy" | "browser-missing" | "secret-missing" | "optional-warning" | "unavailable" | "stale";
 /** Production admission/report services and detector inputs; synthetic workflow, assets and credentials. */
 export async function servedPreflightRuntime(scene: SetupScene) {
-  const f=await runtimeFixture(["dashboard.serve"]);f.clock.setWall(new Date(FIXTURE_NOW));
+  const f=await runtimeFixture(scene==="optional-warning"?["dashboard.serve","provider.nominatim"]:["dashboard.serve"]);f.clock.setWall(new Date(FIXTURE_NOW));
   const database=AuthorityDatabase.open({path:f.databasePath,busyTimeoutMs:250,migrationOwner:"setup-ui"},f.clock);
   const fingerprint=FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(f.input.config)));
   const resolved={...resolveConfigWithProvenance({},hostConfigFacts({}),f.clock),config:f.input.config,fingerprint};
@@ -31,11 +31,11 @@ export async function servedPreflightRuntime(scene: SetupScene) {
   database.authority.runtimeConfig.initialize({configSnapshotId:identity.configSnapshotId,fingerprint,config:resolved.config,provenance:resolved.provenance,revision:1,capturedAt:f.clock.now().toISOString(),capturedBy:"local-operator"});
   if(scene==="browser-missing")renameSync(f.executable,`${f.executable}.parked`);
   if(scene==="secret-missing")f.setProtected(populatedProtectedRecord("ucpathPassword"));
-  if(scene==="optional-warning") {Reflect.set(f.input.dashboard,"listLiveWorkerProcesses",()=>[{workerId:"synthetic-worker",processId:987654321}]);Reflect.set(f.input.dashboard,"observeProcess",()=>({state:"gone"}));}
+  if(scene==="optional-warning")Reflect.set(f.input.providerAvailability,"nominatim/geocode.nominatim",false);
   const runtime=composeRuntimePreflight({admission:f.admission,credentials:f.credentials,database,clock:f.clock,repoRoot:f.root,isolation:rebuildRuntimeIsolation,
     descriptors:{resolve:id=>id===personLookupDescriptor.id?personLookupDescriptor:undefined},descriptorSetHash:FIXTURE_DESCRIPTOR_HASH,protectedSecrets:f.input.protectedSecrets,environment:{},
     runnerFactory:input=>createRuntimePreflightRunners({...input,dashboard:f.input.dashboard,browserExecutablePath:()=>f.executable})});
-  const scope={...identity,descriptorFingerprint:FIXTURE_DESCRIPTOR_HASH,requestedCapabilities:["dashboard.serve"] as const};
+  const scope={...identity,descriptorFingerprint:FIXTURE_DESCRIPTOR_HASH,requestedCapabilities:f.input.scope.requestedCapabilities};
   const dashboard=createPreflightAuthority({...scope,clock:f.clock,scheduler:createTimeoutDeadlineScheduler(f.clock),runners:createRuntimePreflightRunners({...f.input,scope:{...scope,requestedCapabilities:[...scope.requestedCapabilities]}})});
   const service=createPreflightReportService({dashboard,runtime,clock:f.clock});
   await dashboard.refresh(new AbortController().signal);

@@ -55,7 +55,7 @@ describe("settings apply during a production worker claim", () => {
     const gate = Promise.withResolvers<void>();
     const arrived = Promise.withResolvers<void>();
     const sessions = happySessionHarness();
-    const heldSessions = { ...sessions, factory: { open: async (...args: Parameters<typeof sessions.factory.open>) => {
+    const heldSessions = { ...sessions, factory: { probeProfile: async () => undefined, open: async (...args: Parameters<typeof sessions.factory.open>) => {
       arrived.resolve(); await gate.promise; return sessions.factory.open(...args);
     } } };
     const worker = composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: heldSessions, poolIndex: POOL_INDEX_1 }));

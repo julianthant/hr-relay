@@ -277,8 +277,7 @@ const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?
  const clock = manualClock(new Date(NOW));
  for (const name of ["package.json", "package-lock.json"])
   writeFileSync(join(repoRoot, name), readFileSync(join(process.cwd(), name)));
- const profile = composeProfileRuntime({ admission: owner.machine, clock, hostFacts: { primaryDisplay: null },
-   processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot) });
+ const profile = composeProfileRuntime({ admission: owner.machine, clock, hostFacts: { primaryDisplay: null } });
  acquired.profile = profile;
  const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
  assert.equal(active.state, 'active');
@@ -288,7 +287,7 @@ const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?
  const credentials = createOwnedCredentialStore({ admission: currentAdmission, stateRoot,
    erasureJournalAdmission: owner.machine,
    erasureJournalPath: join(owner.machine.stateRoot, 'machine', 'erasures', `${active.profileId}.json`) });
- const dashboard = await composeDashboardRuntime({ admission: owner.machine, profile: { runtime: profile, token: active.token },
+ const dashboard = await composeDashboardRuntime({ lifetimeLock: owner.lifetime, admission: owner.machine, profile: { runtime: profile, token: active.token },
    isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 });
  try {
   const database = reopen(currentAdmission, credentials, clock);

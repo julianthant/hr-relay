@@ -1,3 +1,4 @@
+import { withOfflineMaintenanceSync, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, linkSync, lstatSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -13,7 +14,7 @@ import { assertLiveProfileDatabaseBinding, readProfileDatabaseBinding } from "..
 import * as readonlySnapshots from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+
 
 const actualSpawn = childProcesses.spawnSync;
 
@@ -24,7 +25,7 @@ it("preserves the exact stopped-backup source witness after pending profile init
     const input = (args: readonly string[]) => composeStorageCommand(rebuildRuntimeIsolation, args, clock, f.workspace, f.admission);
     assert.equal((await input(["upgrade", "--plan", "--json"])).exitCode, 0);
     assert.equal((await input(["upgrade", "--json"])).exitCode, 0);
-    AuthorityDatabase.inspectStoppedUpgrade(f.admission, f.path, join(f.workspace, rebuildRuntimeIsolation.processLockRoot), clock);
+    withOfflineMaintenanceSync(f.admission, () => AuthorityDatabase.inspectStoppedUpgrade(f.admission, f.path, join(f.workspace, rebuildRuntimeIsolation.processLockRoot), clock));
     const database = new DatabaseSync(f.path, { readOnly: true });
     try { assert.deepEqual(database.prepare("SELECT * FROM settings").all(), []); }
     finally { database.close(); }

@@ -1,8 +1,9 @@
-import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import type { Clock } from "../../../../src/rules/time/clock.js";
-import { backupStoppedAuthority } from "../../../../src/backend/storage/maintenance/upgrade.js";
+import { runtimeLifetimeLock } from "../backend/runtime-lifetime.js";
+import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { once } from "node:events";
+import { z } from "zod";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -39,8 +40,9 @@ export async function installation() {
   mkdirSync(workspace, { mode: 0o700 });
   const source = { stateRoot: join(workspace, rebuildRuntimeIsolation.stateRoot),
     artifactRoot: join(workspace, rebuildRuntimeIsolation.artifactRoot) };
+  const lifetime = await runtimeLifetimeLock();
   const authorityPath = join(source.stateRoot, "state.db");
-  const admission = acquireInitialRuntimeAdmission(workspace,
+  const admission = acquireInitialRuntimeAdmission(workspace, lifetime,
     (pair, inspection) => ({ kind: "verified-existing", pair,
       authorityGeneration: AuthorityDatabase.inspectExistingReadOnly(inspection, authorityPath).authorityGeneration,
       databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(authorityPath) }),
@@ -76,27 +78,27 @@ export async function installation() {
   const artifact = await artifacts.put(Buffer.from("synthetic-artifact-bytes"), { mediaType: "application/octet-stream" });
   database.close();
   admission.release();
-  return { root, workspace, source, authorityPath,
+  return { root, workspace, lifetime, source, authorityPath,
     credentialFile: join(source.stateRoot, "credentials", "protected.json"),
     artifactFile: join(source.artifactRoot, `${artifact.sha256}.artifact`), artifact };
 }
 
-export async function relocate(workspace: string, requestId: string) {
-  const admission = acquireExclusiveRuntimeAdmission(workspace);
+export async function relocate(workspace: string, lifetime: RuntimeLifetimeLock, requestId: string) {
+  const admission = acquireExclusiveRuntimeAdmission(workspace, lifetime);
   try {
-    return await runOfflineStorageRelocation({ workspace,
+    return await runOfflineStorageRelocation({ workspace, lifetime,
       command: { kind: "plan", id: requestId, json: false }, admission, clock, hostFacts: hostConfigFacts({}) });
   } finally { admission.release(); }
 }
 
-export async function interruptedRelocation(workspace: string, requestId: string,
+export async function interruptedRelocation(workspace: string, lifetime: RuntimeLifetimeLock, requestId: string,
   fault: "afterNativePublish" | "afterActivationIntent" | "beforeActivationTransaction" | "afterActivationWrite"
     | "afterFinalBackup" | "afterVerifiedStage"
     | "afterFence" | "afterRetention" | "afterSwitch") {
-  const admission = acquireExclusiveRuntimeAdmission(workspace);
+  const admission = acquireExclusiveRuntimeAdmission(workspace, lifetime);
   let operationId: string | undefined;
   try {
-    await assert.rejects(runOfflineStorageRelocation({ workspace,
+    await assert.rejects(runOfflineStorageRelocation({ workspace, lifetime,
       command: { kind: "plan", id: requestId, json: false }, admission, clock, hostFacts: hostConfigFacts({}),
       faults: { [fault]: () => { throw new Error(`synthetic-interruption-${fault}`); } } }), error => {
       assert.ok(error instanceof StorageRelocationIncompleteError);
@@ -106,12 +108,12 @@ export async function interruptedRelocation(workspace: string, requestId: string
     });
   } finally { admission.release(); }
   assert.ok(operationId);
-  return runOfflineStorageRelocation({ workspace,
+  return runOfflineStorageRelocation({ workspace, lifetime,
     command: { kind: "resume", id: operationId, json: false }, clock, hostFacts: hostConfigFacts({}) });
 }
 
-export function plan(workspace: string, desiredPair: Readonly<{ stateRoot: string; artifactRoot: string }>) {
-  const admission = acquireSharedRuntimeAdmission(workspace);
+export function plan(workspace: string, lifetime: RuntimeLifetimeLock, desiredPair: Readonly<{ stateRoot: string; artifactRoot: string }>) {
+  const admission = acquireSharedRuntimeAdmission(workspace, lifetime);
   try {
     const authority = AuthorityDatabase.open(admission, { path: join(admission.stateRoot, "state.db"),
       busyTimeoutMs: 250, migrationOwner: "offline-relocation-fixture" }, clock);
@@ -137,13 +139,15 @@ export function plan(workspace: string, desiredPair: Readonly<{ stateRoot: strin
   } finally { admission.release(); }
 }
 
-export function leaveStoppedWal(workspace: string, authorityPath: string): string {
+export async function leaveStoppedWal(workspace: string, lifetime: RuntimeLifetimeLock, authorityPath: string): Promise<string> {
   const notificationId = randomUUID();
   const script = `const { AuthorityDatabase } = await import("./src/backend/storage/sqlite/authority-database.ts");
     const { acquireSharedRuntimeAdmission } = await import("./src/backend/storage/admission/admission.ts");
     const { NotificationRecordSchema } = await import("./src/models/notifications/notifications.ts");
     const { manualClock } = await import("./src/rules/time/clock.ts");
-    const admission = acquireSharedRuntimeAdmission(process.argv[1]);
+    const { WorkerRuntimeLifetimeLock } = await import("./src/backend/storage/admission/lifetime-lock.ts");
+    const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[4]), () => process.exit(1));
+    const admission = acquireSharedRuntimeAdmission(process.argv[1], lifetime);
     const database = AuthorityDatabase.open(admission,
       { path: process.argv[2], busyTimeoutMs: 250, migrationOwner: "offline-relocation-wal-child" },
       manualClock(new Date("2026-09-26T12:01:00.000Z")));
@@ -155,9 +159,20 @@ export function leaveStoppedWal(workspace: string, authorityPath: string): strin
       updatedAt: "2026-09-26T12:01:00.000Z" });
     database.withAuthorityTransaction(({ notifications }) => notifications.create(record));
     process.exit(0);`;
-  const result = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script,
-    workspace, authorityPath, notificationId], { encoding: "utf8", cwd: process.cwd() });
-  assert.equal(result.status, 0, result.stderr);
+  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script,
+    workspace, authorityPath, notificationId, String(lifetime.port)], { stdio: ["ignore", "pipe", "pipe", "ipc"], cwd: process.cwd() });
+  assert.ok(child.stdout && child.stderr);
+  let stderr = "";
+  child.stdout.resume(); child.stderr.setEncoding("utf8"); child.stderr.on("data", (chunk: string) => { stderr += chunk; });
+  const closed = once(child, "close");
+  try { await lifetime.share(child); }
+  catch (error) {
+    child.kill("SIGTERM");
+    try { await closed; } catch (cleanup) { throw new AggregateError([error, cleanup], "WAL fixture transfer and owned child closure failed", { cause: cleanup }); }
+    throw error;
+  }
+  const [code, signal] = z.tuple([z.number().int().nullable(), z.string().nullable()]).parse(await closed);
+  assert.equal(signal, null, stderr); assert.equal(code, 0, stderr);
   assert.equal(existsSync(`${authorityPath}-wal`), true);
   return notificationId;
 }
@@ -174,37 +189,4 @@ export function durableSnapshot(authorityPath: string, credentialFile: string, a
       credentialDigest: createHash("sha256").update(readFileSync(credentialFile)).digest("hex"),
       artifactDigest: createHash("sha256").update(readFileSync(artifactFile)).digest("hex") };
   } finally { database.close(); }
-}
-
-export function createStorageBackupLocationFixtures(workspaces: string[], clock: Clock) {
-async function movedFixture(artifactOnly = false) {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "backup-location-")); workspaces.push(root);
-  const workspace = join(root, "workspace"); mkdirSync(workspace, {mode: 0o700});
-  const initial = acquireEntrypointAdmission(workspace, "exclusive");
-  let source = { stateRoot: initial.stateRoot, artifactRoot: initial.artifactRoot };
-  try {
-    const database = AuthorityDatabase.open(initial, { path: join(initial.stateRoot, "state.db"),
-      busyTimeoutMs: 250, migrationOwner: "backup-location-fixture" }, clock);
-    try {
-      const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, initial);
-      database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1,
-        fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(), capturedBy: "local-operator",
-        config: resolved.config, provenance: resolved.provenance });
-    } finally { database.close(); }
-    await backupStoppedAuthority(initial, initial.stateRoot, clock, join(initial.stateRoot, "locks"));
-  } finally { initial.release(); }
-  if (artifactOnly) {
-    const exterior = { stateRoot: join(root, "exterior-state"), artifactRoot: join(root, "exterior-artifacts") };
-    const first = plan(workspace, exterior); await relocate(workspace, first.commandId);
-    source = exterior;
-  }
-  const destination = artifactOnly ? { stateRoot: source.stateRoot, artifactRoot: join(root,"moved-artifacts") }
-    : { stateRoot: join(root,"moved-state"), artifactRoot: join(root,"moved-artifacts") };
-  const request = plan(workspace, destination); await relocate(workspace, request.commandId);
-  const admission = acquireExclusiveRuntimeAdmission(workspace);
-  const options = { stateRootTrustAnchor: root, stateRoot: destination.stateRoot,
-    authorityPath: join(destination.stateRoot,"state.db"), backupDirectory: join(destination.stateRoot,"backups","authority"), busyTimeoutMs:250 };
-  return { workspace, source, destination, admission, options };
-}
-return { movedFixture };
 }

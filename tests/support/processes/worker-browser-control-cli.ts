@@ -2,7 +2,7 @@ import { duoCeremonyGatesOver } from '../helpers/duo-ceremony-fixtures.js';
 import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 import assert from "node:assert/strict";
 import type { BrowserProfileAuthority } from "../../../src/backend/app/composition/worker/run-resources.js";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 /** Real worker loop and Chromium; every network request is fulfilled with synthetic HTML. */
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
@@ -22,24 +22,24 @@ import { captureSelectedProfileStorage } from "../../../src/backend/app/composit
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { receiveRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createCredentialSecretSource, readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 
-const [root, marker, ...args] = process.argv.slice(2);
+const [root, marker, ...workerArgs] = process.argv.slice(2);
+assert.equal(workerArgs.at(-2), "--fixture-lock-port");
+const port = Number(workerArgs.at(-1));
+const args = workerArgs.slice(0, -2);
+const controller = new AbortController();
+const lifetimeLock = await receiveRuntimeLifetimeLock(port, () => controller.abort(new Error("fixture-parent-disconnected")));
 if (root === undefined || marker !== "worker") throw new Error("fixture-worker-arguments");
-const machine = acquireEntrypointAdmission(root, "shared");
+const machine = acquireSharedRuntimeAdmission(root, lifetimeLock);
 const contexts = new Set<BrowserContext>();
 let admission: ReturnType<typeof machine.admitProfile> | undefined;
-let custody: ReturnType<typeof acquireRuntimeProcessLock> | undefined;
-let custodyTransferred = false;
 let database: AuthorityDatabase | undefined;
 let runtimeEntered = false, runtimeClosureProved = false;
 const failures: unknown[] = [];
 try {
   const selected = captureSelectedProfileStorage(machine);
-  const initialCustody = acquireRuntimeProcessLock({ processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot), name: "workers",
-    pid: process.pid, admission: { kind: "unbound-worker", authorityPath: selected.authorityPath } }, systemClock);
-  custody = initialCustody;
   const child = machine.admitProfile(createProfileRegistry(machine).storageClaim(selected.profileId));
   admission = child;
   const credentials = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalAdmission: machine,
@@ -123,8 +123,8 @@ try {
   const scheduler = createTimeoutDeadlineScheduler(systemClock);
   const duoCeremony = duoCeremonyGatesOver(database, systemClock, scheduler);
   runtimeEntered = true;
-  const report = await composeWorkerRuntime({ admission: machine, preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, args, env: {},
-    createSessionFactory, duoCeremony, takeInitialCustody: () => { custodyTransferred = true; return initialCustody; }, heartbeatIntervalMs: 100, sweepIntervalMs: 60_000 });
+  const report = await composeWorkerRuntime({ lifetimeLock, stopSignal: controller.signal, admission: machine, preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, args, env: {},
+    createSessionFactory, duoCeremony, heartbeatIntervalMs: 100, });
   assert.equal(report.closure, 'proved');
   runtimeClosureProved = true;
   writeFileSync(join(root,`report-${String(process.pid)}.json`),JSON.stringify(report));
@@ -137,14 +137,15 @@ try {
     cleanupFailures.push(...results.flatMap(value => value.status === 'rejected' ? [value.reason as unknown] : []));
     if (cleanupFailures.length === 0 && database !== undefined) {
       try { database.close(); database = undefined; }
-      catch (error) { cleanupFailures.push(retainAuthoritySourceClosure([...failures, error], { database, admission: machine, processLock: custody })); }
+      catch (error) { cleanupFailures.push(retainAuthoritySourceClosure([...failures, error], { database, admission: machine, directory: { lifetimeLock } })); }
     }
     if (cleanupFailures.length === 0) {
-      for (const close of [() => { if (!custodyTransferred) custody?.release(); }, () => admission?.release(), () => machine.release()]) {
+      for (const close of [() => admission?.release(), () => machine.release()]) {
         try { close(); } catch (error) { cleanupFailures.push(error); break; }
       }
     }
   }
+  if (cleanupFailures.length === 0 && (!runtimeEntered || runtimeClosureProved)) await lifetimeLock.close();
   try { writeFileSync(join(root,`cleanup-${String(process.pid)}.json`), JSON.stringify({ openContexts: contexts.size, failures: cleanupFailures.length + (runtimeEntered && !runtimeClosureProved ? 1 : 0) })); } catch (error) { cleanupFailures.push(error); }
   failures.push(...cleanupFailures);
 }

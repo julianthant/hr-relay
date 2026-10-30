@@ -226,7 +226,7 @@ function depsOf(
     preflightReport: () => PreflightReportSchema.parse({
       configFingerprint: "a".repeat(64),
       checkedAt: AT.toISOString(),
-      requestedCapabilities: ["dashboard.serve"],
+      requestedCapabilities: ["dashboard.serve", "provider.nominatim"],
       results: [
         { status: "pass", check: "runtime.compatibility", summary: "runtime compatible" },
         { status: "pass", check: "config.valid", summary: "config valid" },
@@ -235,10 +235,10 @@ function depsOf(
         { status: "pass", check: "ports.available", summary: "ports available" },
         {
           status: "warning",
-          check: "process.orphans",
-          summary: "one stale process record",
+          check: "provider.nominatim",
+          summary: "Nominatim provider unavailable",
           impact: "operator review required",
-          remediation: "review and explicitly clear stale rebuild processes or leases",
+          remediation: "configure a registered provider cell or leave the optional capability unavailable",
         },
       ],
     }),
@@ -308,12 +308,12 @@ describe("bootstrap storage summary", () => {
           checkedAt: AT.toISOString(),
         },
         {
-          id: "process.orphans",
-          label: "process.orphans",
+          id: "provider.nominatim",
+          label: "provider.nominatim",
           verdict: "warning",
-          detail: "one stale process record — operator review required",
+          detail: "Nominatim provider unavailable — operator review required",
           blocks: [],
-          remediation: "review and explicitly clear stale rebuild processes or leases",
+          remediation: "configure a registered provider cell or leave the optional capability unavailable",
           checkedAt: AT.toISOString(),
         },
       ]);

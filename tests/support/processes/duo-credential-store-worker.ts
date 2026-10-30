@@ -1,14 +1,48 @@
 import { z } from "zod";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { WorkerRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createDuoCredentialStore, DuoCredentialCommitUncertainError } from "../../../src/backend/storage/configuration/duo-credential-store.js";
+import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 
 import { manualClock } from "../../../src/rules/time/clock.js";
 
-const [workspace, profileId, credentialId, at] = z.tuple([z.string().min(1), z.uuid(), z.string().min(1), z.iso.datetime()]).parse(process.argv.slice(2));
-const machine = acquireEntrypointAdmission(workspace, "shared");
+function reservationCauses(error: unknown) {
+  const names = new Set(["Error", "TypeError", "RangeError", "AggregateError", "ZodError", "DuoCredentialCommitUncertainError",
+    "CredentialKeyCustodyError", "PrivateFileLockUnavailableError", "RuntimeLifetimeLockReleasedError", "AuthoritySourceClosureUnprovedError"]);
+  const reasons = ["directory-integrity: credential lock is unavailable", "directory-integrity: credential lock permissions or identity are invalid",
+    "directory-integrity: credential lock moved while it was read", "directory-integrity: private lock is malformed",
+    "directory-integrity: private lock parent changed", "directory-integrity: private lock changed",
+    "directory-integrity: credential lock differs after creation", "directory-integrity: credential lock identity changed after creation",
+    "duo-publication-pending", "duo-transaction-unissued", "duo-transaction-not-committed", "duo-document-membership-mismatch",
+    "duo-document-custody-changed", "duo-publication-file-changed", "duo-publication-prior-changed", "duo-profile-authority-changed",
+    "duo-machine-authority-changed", "duo-document-required", "duo-ready-credential-required", "duo-counter-exhausted",
+    "profile-registry-publication-busy", "profile-registry-observation-changed", "profile-registry-continuity-mismatch", "directory-integrity"];
+  const frames = ["readPrivateFile", "withPrivateFileLock", "assertPrivateLockBytes", "profileObservation", "readProfileEvidence",
+    "readMachineRegistry", "assertDuoMembership", "assertProfileRuntime", "publishIssuedDuo", "prepareIssuedDuoTransaction", "settleDuoPublication"];
+  const causes: { name: string; code: string; reason: string; frames: string[] }[] = [];
+  let current = error;
+  for (let depth = 0; depth < 6; depth++) {
+    const message = current instanceof Error ? current.message : undefined;
+    const stack = current instanceof Error ? current.stack ?? "" : "";
+    causes.push({ name: current instanceof Error && names.has(current.name) ? current.name : "unclassified",
+      code: current instanceof Error && "code" in current && typeof current.code === "string" && Object.hasOwn(ERROR_CATALOG, current.code) ? current.code : "unclassified",
+      reason: message === undefined ? "unclassified" : reasons.find(reason => message.includes(reason)) ?? "unclassified",
+      frames: frames.filter(frame => stack.includes(frame)) });
+    if (!(current instanceof Error) || current.cause === undefined) break;
+    current = current.cause;
+  }
+  return causes;
+}
+
+const [workspace, profileId, credentialId, at, port] = z.tuple([z.string().min(1), z.uuid(), z.string().min(1), z.iso.datetime(), z.coerce.number().int().positive()]).parse(process.argv.slice(2));
+const parentStop = new AbortController();
+const lifetime = await WorkerRuntimeLifetimeLock.receive(port, () => parentStop.abort(new Error("fixture-parent-disconnected")));
+parentStop.signal.throwIfAborted();
+const machine = acquireSharedRuntimeAdmission(workspace, lifetime);
 const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(profileId));
 const store = createDuoCredentialStore(admission, machine, manualClock(new Date(at)));
-process.on("message", (input: unknown) => {
+process.on("message", (input: unknown) => { void command(input).catch(error => { process.stderr.write(`${String(error)}\n`); process.exitCode = 1; }); });
+async function command(input: unknown): Promise<void> {
   const command = z.enum(["reserve", "reserve-then-crash", "interrupt-publication", "close"]).parse(input);
   if (command === "interrupt-publication") {
     try { store.interruptReserve(credentialId); }
@@ -26,16 +60,21 @@ process.on("message", (input: unknown) => {
   if (command === "close") {
     admission.release(); machine.release();
     if (process.disconnect === undefined) throw new Error('duo-worker-ipc-required');
-    process.disconnect();
+    await lifetime.close();
+    if (process.connected) process.disconnect();
     return;
   }
   try {
     const result = store.reserve(credentialId);
     if (command === "reserve-then-crash") process.exit(23);
     process.send?.({ type: "reserved", ...result });
-  } catch {
-    process.send?.({ type: "failed", code: "DUO_FIXTURE_RESERVATION_FAILED" });
+  } catch (error) {
+    process.send?.({ type: "failed", code: "DUO_FIXTURE_RESERVATION_FAILED", phase: command, causes: reservationCauses(error) });
     process.exitCode = 1;
   }
-});
+}
+parentStop.signal.addEventListener("abort", () => {
+  process.exitCode = 1;
+  void command("close").catch(error => { setImmediate(() => { throw error; }); });
+}, { once: true });
 process.send?.({ type: "ready", pid: process.pid });

@@ -21,7 +21,7 @@ import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../.
 it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s authority at the genuine supervisor after awaited preflight and never redispatches a failed effect", async change => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
-  const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
+  const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null } });
   const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("active profile required");
   let release!: () => void, entered!: () => void;
@@ -50,7 +50,7 @@ it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s aut
   let execution: Promise<unknown> | undefined;
   const failures: unknown[] = [];
   try {
-    dashboard = await composeDashboardRuntime({ admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace,
+    dashboard = await composeDashboardRuntime({ lifetimeLock: f.lifetime, admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace,
       clock, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
       workerProcess: { spawn: () => { spawns++; throw new Error("unexpected child effect"); } } });
     context = runtime.selectedContext(active.token);

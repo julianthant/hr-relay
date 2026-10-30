@@ -1,4 +1,6 @@
-import { reconcileStartupCrash } from "../../runs/lifecycle/startup-crash-recovery.js";
+import { createNominatimGeocodeAdapter } from "../../processing/providers/geocode-adapters.js";
+import { RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
+import { AuthoritySourceClosureUnprovedError } from "../../storage/source-closure.js";
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
 import { createChatGptOcrAdapter, CHATGPT_OCR_MODEL } from "../../processing/providers/chatgpt-ocr-adapter.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
@@ -30,7 +32,7 @@ import { type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import { hostConfigFacts } from "../../../models/config/host-display.js";
 
-import { RunRecordService, workerRunLifecyclePort, requireLifecycleApplied, sweepWorkerClaims, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
+import { RunRecordService, workerRunLifecyclePort, requireLifecycleApplied } from "../../runs/lifecycle/run-record-service.js";
 import { dirname, join } from "node:path";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
 import { descriptorRuntimeNodes, workflowProjections, workflowTerminalResultExecution, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -66,26 +68,23 @@ import { createNoteTimelineWriter } from "../../storage/events/note-timeline-wri
 
 import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { AuthorityDatabase } from "../../storage/sqlite/index.js";
-import { WorkerProcessCustodyUncertainError, retireWorkerStartupCustody, assertWorkerProcessCustody, acquireRuntimeProcessLock, bindWorkerProcessAdmission, type ProcessIdentityObserver, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../registries/task-registry.js";
 
 // Cadences are composition choices; the contracts constrain renewal and recovery ordering, not numeric defaults.
 export const WORKER_HEARTBEAT_INTERVAL_MS = 5_000;
-export const WORKER_CLAIM_STALE_AFTER_MS = 60_000;
-export const WORKER_SWEEP_INTERVAL_MS = 30_000;
 
 export { createTimeoutDeadlineScheduler };
 
 export async function initializeFailedWorkerReset(input: Readonly<{
   database: AuthorityDatabase; commandId: string; leaseGeneration: number; descriptor: AnyWorkflowDescriptor;
-  handle: RuntimeProcessLockHandle; signal: AbortSignal; clock: Clock; scheduler: MonotonicDeadlineScheduler;
+  signal: AbortSignal; clock: Clock; scheduler: MonotonicDeadlineScheduler;
 }>): Promise<void> {
-  const { database, commandId, leaseGeneration, descriptor, handle, signal, clock, scheduler } = input;
+  const { database, commandId, leaseGeneration, descriptor, signal, clock, scheduler } = input;
   while (database.authority.workerControls.get(commandId)?.effect === undefined) {
     const record = database.authority.workerControls.get(commandId);
     if (record?.lifecycle?.operation.kind !== "retry" || record.lifecycle.operation.mode !== "browserless"
       || record.lifecycle.lifetime.leaseGeneration + 1 !== leaseGeneration || signal.aborted
-      || Date.parse(record.expiresAt) <= clock.nowMs()) throw new Error("worker-reset-replacement-birth-milestone-unavailable");
+      || Date.parse(record.expiresAt) <= clock.nowMs()) throw new Error("worker-reset-replacement-start-milestone-unavailable");
     await new Promise<void>((resolve, reject) => {
       const onAbort = () => { timer.cancel(); reject(new Error("worker-reset-replacement-initialization-aborted", { cause: signal.reason })); };
       const timer = scheduler.schedule(clock.monotonicMs() + 50, () => { signal.removeEventListener("abort", onAbort); resolve(); });
@@ -93,7 +92,7 @@ export async function initializeFailedWorkerReset(input: Readonly<{
     });
   }
   if (signal.aborted) throw new Error("worker-reset-replacement-initialization-aborted", { cause: signal.reason });
-  database.completeFailedWorkerReset(commandId, handle, descriptor, clock.now().toISOString());
+  database.completeFailedWorkerReset(commandId, descriptor, clock.now().toISOString());
 }
 
 export async function initializeRetryWorker(input: Readonly<{
@@ -214,7 +213,7 @@ export function parseWorkerArguments(args: readonly string[]): WorkerCliArgument
 }
 
 export interface WorkerComposeInput {
-  readonly takeInitialCustody?: () => RuntimeProcessLockHandle | undefined;
+  readonly lifetimeLock: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock;
   readonly admission?: RuntimeAdmission;
   readonly preflightRunnerFactory?: RuntimePreflightRunnerFactory;
   readonly isolation: RuntimeIsolation;
@@ -230,17 +229,13 @@ export interface WorkerComposeInput {
   readonly ids?: IdFactory;
   /** Where the isolation state root resolves from; defaults to `process.cwd()`. */
   readonly repoRoot?: string;
-  readonly processId?: number;
-  /** Test seam for synthetic process ids; production always observes the OS. */
-  readonly processIdentityObserver?: ProcessIdentityObserver;
-  /** Test seam for proving process-record cleanup when authority open fails. */
+  /** Injects authority-open failure for cleanup checks. */
   readonly openDatabase?: (
     options: Readonly<{ path: string; busyTimeoutMs: number; migrationOwner: string }>,
     clock: Clock,
   ) => AuthorityDatabase;
-  /** Test seam for proving process-record cleanup when database close fails. */
+  /** Injects authority-close failure for cleanup checks. */
   readonly closeDatabase?: (database: AuthorityDatabase) => void;
-  /** Test-only observation/crash hooks for the settings exclusion boundary. */
   /** Test seam over the concrete Playwright factory; production omits it. */
   readonly sessionFactory?: WorkerBrowserSessionFactory;
   readonly createSessionFactory?: (profiles: BrowserProfileAuthority) => WorkerBrowserSessionFactory;
@@ -252,8 +247,6 @@ export interface WorkerComposeInput {
   readonly stopSignal?: AbortSignal;
   readonly log?: TaskLogger;
   readonly heartbeatIntervalMs?: number;
-  readonly sweepIntervalMs?: number;
-  readonly claimStaleAfterMs?: number;
   // Runs inside the authority transaction after lease inspection and before claim admission.
   readonly afterClaimAdmissionCheck?: () => void;
   /** Structured line sink for the default logger; defaults to stdout. */
@@ -269,22 +262,17 @@ interface WorkerMaintenance {
 
 function startWorkerMaintenance(input: Readonly<{
   database: AuthorityDatabase;
-  lifecycle: WorkerRunLifecyclePort;
   scheduler: MonotonicDeadlineScheduler;
   clock: Clock;
   workerId: WorkerId;
   leaseGeneration: number;
   heartbeatIntervalMs: number;
-  sweepIntervalMs: number;
-  claimStaleAfterMs: number;
-  log: TaskLogger;
   onFailure: (error: Error) => void;
 }>): WorkerMaintenance {
-  const { database, clock, log } = input;
+  const { database, clock } = input;
   let stopped = false;
   let failure: unknown;
   let handle: MonotonicDeadlineHandle = { cancel: (): void => undefined };
-  let nextSweepAtMonotonicMs = clock.monotonicMs();
 
   const requireOwnLiveLease = (): WorkerLeaseRecord => {
     const lease = database.authority.workerLeases.get(input.workerId);
@@ -304,40 +292,6 @@ function startWorkerMaintenance(input: Readonly<{
       );
     }
     return lease;
-  };
-
-  const sweep = (now: string): void => {
-    const staleBefore = new Date(clock.nowMs() - input.claimStaleAfterMs).toISOString();
-    // Recovery is not workflow-scoped by nature (ref execution-and-sessions ): sweep every
-    // workflow's expired claims, not just this worker's.
-    const outcomes = sweepWorkerClaims(database, input.lifecycle, { staleBefore, now });
-    for (const outcome of outcomes) {
-      if (outcome.state === "recovery-required") {
-        log.warn(
-          "expired claim owns an unfinished attempting write intent; routed to ref write-safety recovery, "
-          + "unclaimable until a typed resolution",
-          {
-            runId: outcome.run.envelope.runId,
-            writeIntentId: outcome.writeIntentId,
-            intentGeneration: outcome.intentGeneration,
-            parked: outcome.parked,
-          },
-        );
-        continue;
-      }
-      const run = requireLifecycleApplied(outcome);
-      log.info("expired claim settled", {
-        runId: run.envelope.runId,
-        workflow: run.envelope.workflow,
-        state: run.lifecycle.state,
-      });
-    }
-    for (const expired of database.authority.workerLeases.sweepExpired({ staleBefore, now })) {
-      log.warn("worker lease expired and was stopped by the sweep", {
-        workerId: expired.workerId,
-        workflow: expired.workflow,
-      });
-    }
   };
 
   const tick = (): void => {
@@ -376,10 +330,6 @@ function startWorkerMaintenance(input: Readonly<{
       if (reported.state !== "applied") {
         throw new Error(`worker ${input.workerId} lease heartbeat reported ${reported.state}: ${reported.message}`);
       }
-      if (clock.monotonicMs() >= nextSweepAtMonotonicMs) {
-        sweep(now);
-        nextSweepAtMonotonicMs = clock.monotonicMs() + input.sweepIntervalMs;
-      }
     } catch (error) {
 
       failure = error;
@@ -388,8 +338,6 @@ function startWorkerMaintenance(input: Readonly<{
     }
     handle = input.scheduler.schedule(clock.monotonicMs() + input.heartbeatIntervalMs, tick);
   };
-  // The first beat runs SYNCHRONOUSLY: recovery has scheduling priority over
-  // claim expiry (ref write-safety ), so the boot sweep must precede the first claim.
   tick();
 
   return Object.freeze({
@@ -402,6 +350,8 @@ function startWorkerMaintenance(input: Readonly<{
 }
 
 export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<WorkerLoopReport> {
+  if (!(input.lifetimeLock instanceof RuntimeLifetimeLock) && !(input.lifetimeLock instanceof WorkerRuntimeLifetimeLock)) throw new Error("worker-runtime-lifetime-lock-required");
+  input.lifetimeLock.assertHeld();
   let failedClosure: unknown;
   let closureFailed = false;
   try {
@@ -470,6 +420,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   qualify(module, []);
   const resolveDescriptor = (id: string) => resolveModule(id)?.descriptor;
   const machine = requireRuntimeAdmission(input.admission);
+  if (machine.lifetime !== input.lifetimeLock) throw new Error("runtime-lifetime-admission-mismatch");
   const selected = captureSelectedProfileStorage(machine);
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
@@ -479,18 +430,12 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   });
   const log = input.log ?? lineTaskLogger(write, clock);
   const heartbeatIntervalMs = input.heartbeatIntervalMs ?? WORKER_HEARTBEAT_INTERVAL_MS;
-  const sweepIntervalMs = input.sweepIntervalMs ?? WORKER_SWEEP_INTERVAL_MS;
-  const claimStaleAfterMs = input.claimStaleAfterMs ?? WORKER_CLAIM_STALE_AFTER_MS;
 
 
 
   const hostFacts = hostConfigFacts(env);
   const stateRoot = dirname(selected.authorityPath);
-  const processLockRoot = join(repoRoot, input.isolation.processLockRoot);
   const authorityPath = selected.authorityPath;
-  const initialCustody = input.takeInitialCustody?.() ?? acquireRuntimeProcessLock({ processLockRoot, name: "workers",
-    pid: input.processId ?? process.pid, admission: { kind: "unbound-worker", authorityPath } }, clock,
-  { observeProcessIdentity: input.processIdentityObserver });
   let issued: RuntimeAdmission | undefined;
   let protectedAuthority: ReturnType<typeof createCredentialStore>;
   try {
@@ -499,51 +444,50 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     protectedAuthority = createCredentialStore({ admission: issued, stateRoot, erasureJournalAdmission: machine,
       erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
   } catch (error) {
-    try { issued?.release(); initialCustody.release(); }
+    try { issued?.release(); }
     catch (closeError) { throw new RuntimeCustodyUncertainError([error, closeError]); }
     throw error;
   }
   const admission = issued;
   const assertCurrent = (): void => { selected.assertCurrent(); admission.assertProfileRuntime(); };
   const assertBrowserRoot = (root: string): void => { assertCurrent(); assertProfileBrowserRoot(admission, root); };
+  let opened: AuthorityDatabase | undefined;
   const bound = (() => {
-    try { return bindWorkerProcessAdmission({ processLockRoot, authorityPath, pid: input.processId ?? process.pid,
-    initialCustody,
-    ...(launch === undefined ? {} : { workerId: launch.workerId }), clock,
-    hooks: { observeProcessIdentity: input.processIdentityObserver },
-    open: () => {
+    try {
       assertCurrent();
       admission.assertAuthorityDatabase(authorityPath);
       try {
-        return (input.openDatabase ?? ((options, openClock) => AuthorityDatabase.open(admission, options, openClock,
+        opened = (input.openDatabase ?? ((options, openClock) => AuthorityDatabase.open(admission, options, openClock,
           undefined, undefined, undefined, protectedAuthority)))(
-        { path: authorityPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" }, clock);
+          { path: authorityPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" }, clock);
       } catch (error) {
-        appendEmergencyFault({ stateRoot, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version, code: "DATABASE_WRITER_UNAVAILABLE", error: error instanceof Error ? error : new Error("Database writer unavailable"), now: clock.now() });
+        appendEmergencyFault({ stateRoot, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version,
+          code: "DATABASE_WRITER_UNAVAILABLE", error: error instanceof Error ? error : new Error("Database writer unavailable"), now: clock.now() });
         throw error;
       }
-    },
-    close: closeDatabase,
-    releaseStorageCustody: () => admission.release(),
-    admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => {
-      assertCurrent();
-      readSettings(repositories);
-      reconcileStartupCrash({ machine, admission, database, lifecycle: new RunRecordService({ database, clock, ids, buildManifest, publishQueued: () => { throw new Error("startup-recovery-cannot-enqueue"); } }), processLockRoot, clock });
-      if (launch === undefined) {
-        const before = repositories.workerPools.get(workflowId);
-        return admitDirectWorker(repositories, { commandId: ids.uuid(), workflow: workflowId, poolIndex,
-          expectedPoolVersion: before?.version ?? 0, processId: input.processId ?? process.pid,
-          processAcquisitionId: acquisitionId, authorityPath, processLockRoot, now: clock.now().toISOString() }, ids.uuid()).workerId;
-      }
-      return admitSupervisedWorker(repositories, { member: { workflowId, poolIndex, workerId: launch.workerId,
-        ordinal: launch.ordinal, membershipRevision: launch.membershipRevision }, commandId: launch.commandId, now: clock.now().toISOString() });
-    }),
-  }); } catch (error) {
-      if (error instanceof WorkerProcessCustodyUncertainError) throw new RuntimeCustodyUncertainError([error]);
+      const database = opened;
+      const workerId = database.withAuthorityTransaction(repositories => {
+        assertCurrent();
+        readSettings(repositories);
+        if (launch === undefined) {
+          const before = repositories.workerPools.get(workflowId);
+          return admitDirectWorker(repositories, { commandId: ids.uuid(), workflow: workflowId, poolIndex,
+            expectedPoolVersion: before?.version ?? 0, processId: process.pid, now: clock.now().toISOString() }, ids.uuid()).workerId;
+        }
+        return admitSupervisedWorker(repositories, { member: { workflowId, poolIndex, workerId: launch.workerId,
+          ordinal: launch.ordinal, membershipRevision: launch.membershipRevision }, commandId: launch.commandId, now: clock.now().toISOString() });
+      });
+      return { database, workerId };
+    } catch (error) {
+      if (error instanceof AuthoritySourceClosureUnprovedError) throw new RuntimeCustodyUncertainError([error]);
+      try { if (opened !== undefined) closeDatabase(opened); }
+      catch (closeError) { throw new RuntimeCustodyUncertainError([error, closeError]); }
+      try { admission.release(); }
+      catch (releaseError) { throw new RuntimeCustodyUncertainError([error, releaseError]); }
       throw error;
     }
   })();
-  const { value: database, workerId, processLock } = bound;
+  const { database, workerId } = bound;
   let runtimeError: unknown;
   const cleanupErrors: unknown[] = [];
   let runtimeReport: WorkerLoopReport | undefined;
@@ -629,7 +573,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   ocrAccount = createChatGptAccountService({ admission, stateRoot, clock });
   accountClosureProven = false;
   const ocr = createChatGptOcrAdapter({ account: ocrAccount, artifacts, clock, model: CHATGPT_OCR_MODEL, assertCurrent });
-  resources = createRunResourcesFactory({ocr,processLockRoot:join(repoRoot,input.isolation.processLockRoot),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+  resources = createRunResourcesFactory({ocr,...(input.lifetimeLock instanceof RuntimeLifetimeLock ? {nominatim:createNominatimGeocodeAdapter({clock})} : {}),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
     assertBrowserRoot,
     onDebug: (category, debugWorkerId, event) => {
       debugEvents.emit({ category, ...event }, { kind: "worker", workerId: debugWorkerId });
@@ -637,8 +581,11 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     assertProfileOwner: requestedWorkerId => {
       assertCurrent();
       if (requestedWorkerId !== workerId) throw new Error("browser-profile-worker-owner-mismatch");
-      assertWorkerProcessCustody({ processLockRoot, acquisitionId: z.uuid().parse(processLock.acquisitionId),
-        pid: input.processId ?? process.pid, workerId, authorityPath }, { observeProcessIdentity: input.processIdentityObserver });
+      input.lifetimeLock.assertHeld();
+      const lease = database.authority.workerLeases.get(workerId), member = database.authority.workerSlots.get(workerId);
+      if (lease?.processId !== process.pid || lease.leaseGeneration !== workerLifetime.leaseGeneration
+        || member?.membershipRevision !== workerLifetime.membershipRevision || member.retiredAt !== null
+        || !isLiveWorker(lease)) throw new Error("browser-profile-worker-owner-mismatch");
     },
     ...(input.sessionFactory === undefined ? {} : {sessionFactory:input.sessionFactory}),
     ...(input.createSessionFactory === undefined ? {} : {createSessionFactory:input.createSessionFactory}),
@@ -661,10 +608,9 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   if (externalStop !== undefined) {
     if (externalStop.aborted) onExternalStop();
     else externalStop.addEventListener("abort", onExternalStop, { once: true });
-  } else {
-    process.once("SIGINT", onSigint);
-    process.once("SIGTERM", onSigterm);
   }
+  process.once("SIGINT", onSigint);
+  process.once("SIGTERM", onSigterm);
 
   removeStopListeners = () => {
     if (externalStop !== undefined) externalStop.removeEventListener("abort", onExternalStop);
@@ -672,25 +618,15 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     process.removeListener("SIGTERM", onSigterm);
   };
     const now = clock.now().toISOString();
-    // Sweep expired leases before acquiring; a dead worker cannot run its maintenance ticker.
-    for (const expired of database.authority.workerLeases.sweepExpired({
-      staleBefore: new Date(clock.nowMs() - claimStaleAfterMs).toISOString(),
-      now,
-    })) {
-      log.warn("stale worker lease reclaimed before start; its process never settled", {
-        workerId: expired.workerId,
-        workflow: expired.workflow,
-      });
-    }
-    const started = database.startOwnedWorker({
+    const started = database.authority.workerLeases.start({
       workerId,
       workflow: workflowId,
       browserSystems: [...systems],
-      processId: input.processId ?? process.pid,
+      processId: process.pid,
       requestedBy: LOCAL_OPERATOR_ACTOR_ID,
       ...(launch === undefined ? {} : { commandId: launch.commandId }),
       now,
-    }, processLock);
+    });
     if (started.state !== "started") {
       throw new Error(
         `worker ${workerId} cannot start: ${started.message}; a second process may not answer to the same worker id`,
@@ -700,29 +636,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     const currentMember = database.authority.workerSlots.get(workerId);
     if (currentMember === undefined || currentMember.retiredAt !== null) throw new Error("worker-claim-membership-unavailable");
     const workerLifetime = { leaseGeneration, membershipRevision: currentMember.membershipRevision };
-
-
-    for (const outcome of sweepWorkerClaims(database, lifecycle, { workerId, now })) {
-      if (outcome.state !== "recovery-required") {
-        const run = requireLifecycleApplied(outcome);
-        log.warn("orphaned claim released before the first poll; its worker never settled", {
-          workerId,
-          runId: run.envelope.runId,
-          workflow: run.envelope.workflow,
-        });
-        continue;
-      }
-      log.warn("orphaned claim routed to ref write-safety recovery before the first poll", {
-        workerId,
-        runId: outcome.run.envelope.runId,
-        writeIntentId: outcome.writeIntentId,
-        parked: outcome.parked,
-        // NOT `message`: `lineTaskLogger` spreads fields over the log line, so a
-        // field named `message` silently replaces the line's own text.
-        reason: outcome.message,
-      });
-    }
-    // An attempting intent under a claimed or validating run requires typed operator recovery.
     const stillHeld = database.authority.runs.listByWorker(workerId)
       .filter(({ lifecycle }) => lifecycle.state === "claimed"
         || lifecycle.state === "validating"
@@ -730,11 +643,9 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     const wedged = stillHeld[0];
     if (wedged !== undefined) {
       throw new Error(
-        `worker ${workerId} cannot start: the startup sweep could not release run `
+        `worker ${workerId} cannot start: the controller has not reconciled run `
         + `${wedged.envelope.runId} (${wedged.envelope.workflow}), which is still ${wedged.lifecycle.state} `
-        + "under this worker id. A run holding an unfinished `attempting` write intent has no legal "
-        + "release edge from that state — ref write-safety §4.1's typed operator resolutions "
-        + "(recheck-write / resolve-write-absent) are the only paths out",
+        + "under this worker id",
       );
     }
 
@@ -767,15 +678,11 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     };
     const maintenance = startWorkerMaintenance({
       database,
-      lifecycle,
       scheduler,
       clock,
       workerId,
       leaseGeneration,
       heartbeatIntervalMs,
-      sweepIntervalMs,
-      claimStaleAfterMs,
-      log,
       onFailure: (error) => stopController.abort(error),
     });
 
@@ -815,10 +722,10 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
           const standing = database.authority.workerSlots.recovery(workerId);
           if (standing !== undefined) {
             if (launch?.commandId !== standing.command.commandId || signal.aborted) throw new Error("worker-standing-recovery-initialization-unavailable");
-            database.completeStandingWorkerRecovery(standing.command.commandId, processLock, descriptor, clock.now().toISOString());
+            database.completeStandingWorkerRecovery(standing.command.commandId, descriptor, clock.now().toISOString());
           } else if (launch !== undefined && database.authority.workerControls.get(launch.commandId)?.request.type === "stop-worker") {
             await initializeFailedWorkerReset({ database, commandId: launch.commandId, leaseGeneration,
-              descriptor, handle: processLock, signal, clock, scheduler });
+              descriptor, signal, clock, scheduler });
           } else if (launch !== undefined) await initializeRetryWorker({ database, commandId: launch.commandId, leaseGeneration,
             descriptor, stores, configFingerprint: resolved.fingerprint, sessions, signal, clock, scheduler });
         },
@@ -880,7 +787,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
             } finally { deadline.cancel(); stopController.signal.removeEventListener("abort", stop); }
           } }),
         browserActivity: activity => {
-          retireWorkerStartupCustody(processLock);
           const key = Symbol(activity);
           browserActivities.set(key, activity);
           reportBrowserActivity();
@@ -889,10 +795,28 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         browserObservation: observation => { database.authority.workerControls.observe({ ...observation, leaseGeneration }); },
         configFingerprint: resolved.fingerprint,
         // The SQLite claim transaction fences settings and runtime tokens; the filesystem check fences its inode.
-        claimNext: (request) => {
+        claimNext: (request, sessions) => {
           assertCurrent();
-          retireWorkerStartupCustody(processLock);
           return claimWithPreflight({ preflight: runtimePreflight, signal: stopController.signal,
+          prepareRun: async (run, signal) => {
+            const target = executionDescriptor(run.envelope.workflow);
+            if (target === undefined) throw new Error("worker-execution-descriptor-unavailable");
+            sessions.configureExecution(run.envelope.workflow, stores);
+            sessions.configureRunResources(ownedResources.forRun(run));
+            const contracts = new Set(workflowProjections(target).contracts.map(contract => contract.id));
+            const needs = stores.stores.flatMap(store => Object.values(store.tasks).filter(task => contracts.has(task.contract.id))
+              .flatMap(task => task.impl.sessions));
+            await withBoundRunConfigFingerprint(sessions, run.envelope.configFingerprint, async () => {
+              const prepared = new Set<string>();
+              for (const need of needs) {
+                if (prepared.has(need.system)) continue;
+                prepared.add(need.system);
+                const instance = run.envelope.resolvedInstance?.[need.system];
+                if (instance === undefined) throw new Error("preclaim-browser-instance-unavailable");
+                await sessions.prepareProfile(need, instance, signal);
+              }
+            }, run.envelope.browserMode);
+          },
           claim: admit => database.withAuthorityTransaction((repositories) => {
           assertCurrent();
           const directive = controlPoll();
@@ -977,12 +901,10 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   } catch (error) {
     cleanupErrors.push(error);
   }
-  // Release the process record only after proven database closure; a throwing close is no stop proof.
   const browserClosureUnproved = runtimeReport?.closure === "unproved" || runtimeError instanceof WorkerSessionClosureUnprovedError;
   if (databaseClosureProven && !browserClosureUnproved && cleanupErrors.length === 0) {
     try {
       admission.release();
-      processLock.release();
     } catch (error) {
       cleanupErrors.push(error);
     }

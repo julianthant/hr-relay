@@ -39,8 +39,8 @@ async function historicalPrematureFixture() {
     keyBytes: readFileSync(fixture.keyPath), protectedBytes: readFileSync(fixture.protectedPath), databaseBytes: readFileSync(fixture.databasePath) };
 }
 
-it("withdraws only the historical incomplete publication into a same-key private draft and removes it at startup", async () => {
-  const f = await historicalPrematureFixture(), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root);
+it("withdraws historical publication but retains the draft when browser cleanup is unbound", async () => {
+  const f = await historicalPrematureFixture(), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
   const readonly = machine.forStoppedIncompleteProfileInventory(f.profileId);
   const inventory = AuthorityDatabase.readIncompleteOnboardingInventory(readonly);
   assert.equal(inventory.empty, true);
@@ -55,21 +55,22 @@ it("withdraws only the historical incomplete publication into a same-key private
   assert.equal(operation.operationId, f.operation.operationId); assert.equal(operation.commandId, f.operation.commandId); assert.equal(operation.writeId, f.operation.writeId);
   assert.equal(operation.onboarding?.duo.state, "never-initialized"); assert.equal(operation.onboarding?.finish, undefined);
   machine.release();
-  const resumedMachine = acquireEntrypointAdmission(f.root, "exclusive"), profile = composeProfileRuntime({ admission: resumedMachine,
-    processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
-  await profile.session.recoverOnboarding();
-  assert.equal(existsSync(f.profileRoot), false);
-  assert.equal(existsSync(f.operationPath), false);
-  const fresh = profile.session.signUp({ ...f.fields, createdAt: new Date().toISOString() });
-  assert.equal(fresh.state, "onboarding"); if (fresh.state !== "onboarding") throw new Error("fixture fresh draft required");
-  assert.notEqual(fresh.operationId, operation.operationId); assert.notEqual(fresh.profileId, f.profileId);
+  const resumedMachine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime), profile = composeProfileRuntime({ admission: resumedMachine,
+     hostFacts: { primaryDisplay: null }, clock: systemClock });
+  const operationBytes = readFileSync(f.operationPath);
+  await assert.rejects(profile.session.recoverOnboarding(), error => error instanceof Error && error.name === "NativeBrowserClosureUnprovedError");
+  assert.equal(existsSync(f.profileRoot), true);
+  assert.deepEqual(readFileSync(f.operationPath), operationBytes);
+  assert.deepEqual(readFileSync(f.keyPath), f.keyBytes);
+  assert.deepEqual(readFileSync(f.protectedPath), f.protectedBytes);
+  assert.deepEqual(readFileSync(f.databasePath), f.databaseBytes);
   assert.equal(resumedMachine.readProfileRegistry().profiles.length, 0);
   await profile.close(); resumedMachine.release(); await f.close();
 });
 
 for (const boundary of ["intent", "operation", "verifier", "registry", "continuity", "unlink"] as const) {
   it(`recovers exact historical withdrawal across ${boundary} without replacing the database or key`, async () => {
-    const f = await historicalPrematureFixture(), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root);
+    const f = await historicalPrematureFixture(), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
     const intentPath = join(f.root, ".tracker", "control", "profile-publication.json"), rename = nativeFs.renameSync, unlink = nativeFs.unlinkSync;
     let fired = false;
     const renameSpy = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
@@ -86,7 +87,7 @@ for (const boundary of ["intent", "operation", "verifier", "registry", "continui
     try { await assert.rejects(machine.reclassifyIncompleteProfileAsDraft(f.profileId)); }
     finally { renameSpy.mockRestore(); unlinkSpy.mockRestore(); syncBuiltinESMExports(); }
     assert.equal(fired, true); machine.release();
-    const recovered = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root);
+    const recovered = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
     assert.equal(recovered.readProfileRegistry().profiles.length, 0); assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(f.verifierPath, "utf8"))).profiles.length, 0);
     assert.equal(SignUpOperationSchema.parse(JSON.parse(readFileSync(f.operationPath, "utf8"))).profileId, f.profileId);
     assert.equal(readFileSync(f.keyPath).equals(f.keyBytes), true); assert.equal(readFileSync(f.databasePath).equals(f.databaseBytes), true); assert.equal(readFileSync(f.protectedPath).equals(f.protectedBytes), true);
@@ -97,7 +98,7 @@ for (const boundary of ["intent", "operation", "verifier", "registry", "continui
 it("refuses an unowned credential copy before historical publication changes", async () => {
   const f = await historicalPrematureFixture(), scratch = join(f.profileRoot, "scratch"); mkdirSync(scratch, { mode: 0o700 });
   copyFileSync(f.protectedPath, join(scratch, "foreign-protected-copy.json"));
-  const registry = readFileSync(f.registryPath), verifiers = readFileSync(f.verifierPath), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root);
+  const registry = readFileSync(f.registryPath), verifiers = readFileSync(f.verifierPath), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
   await assert.rejects(machine.reclassifyIncompleteProfileAsDraft(f.profileId), /profile-incomplete-copy-membership-unproved/u);
   assert.equal(readFileSync(f.registryPath).equals(registry), true); assert.equal(readFileSync(f.verifierPath).equals(verifiers), true);
   assert.equal(readFileSync(f.keyPath).equals(f.keyBytes), true); assert.equal(existsSync(f.operationPath), false);
@@ -112,7 +113,7 @@ it("refuses a foreign physical database binding without withdrawing publication"
     else if (existsSync(target)) unlinkSync(target);
   }
   const registry = readFileSync(f.registryPath), verifiers = readFileSync(f.verifierPath), database = readFileSync(f.databasePath);
-  const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root);
+  const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
   await assert.rejects(machine.reclassifyIncompleteProfileAsDraft(f.profileId), /profile-database-binding-mismatch/u);
   assert.equal(readFileSync(f.registryPath).equals(registry), true); assert.equal(readFileSync(f.verifierPath).equals(verifiers), true);
   assert.equal(readFileSync(f.databasePath).equals(database), true); assert.equal(readFileSync(f.keyPath).equals(f.keyBytes), true);
@@ -121,7 +122,7 @@ it("refuses a foreign physical database binding without withdrawing publication"
 });
 
 it("holds a tampered withdrawal intent and recovers only its exact sealed original", async () => {
-  const f = await historicalPrematureFixture(), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root);
+  const f = await historicalPrematureFixture(), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
   const intentPath = join(f.root, ".tracker", "control", "profile-publication.json"), registry = readFileSync(f.registryPath), verifiers = readFileSync(f.verifierPath);
   const rename = nativeFs.renameSync; let fired = false;
   const fault = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
@@ -209,7 +210,7 @@ for (const history of ["deleted", "unknown"] as const) {
   it(`refuses valid same-profile ${history} historical activity before withdrawal without retrying a write`, async () => {
     const f = await historicalPrematureFixture(); seedClosedHistoricalActivity(f, history);
     const registry = readFileSync(f.registryPath), verifiers = readFileSync(f.verifierPath), database = readFileSync(f.databasePath);
-    const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root), readonly = machine.forStoppedIncompleteProfileInventory(f.profileId);
+    const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime), readonly = machine.forStoppedIncompleteProfileInventory(f.profileId);
     const inventory = AuthorityDatabase.readIncompleteOnboardingInventory(readonly); assert.equal(inventory.empty, false);
     if (history === "deleted") { assert.equal(inventory.counts.find(row => row.table === "runs")?.count, 0); assert.equal(inventory.counts.find(row => row.table === "deleted_runs")?.count, 1); }
     else { assert.equal(inventory.counts.find(row => row.table === "write_attempts")?.count, 1); assert.equal(inventory.counts.find(row => row.table === "write_intents")?.count, 1); }
@@ -231,7 +232,7 @@ for (const history of ["deleted", "unknown"] as const) {
       const key = prior.erasures[0]?.credentialKey; assert.ok(key); prior.device += 4; key.file.device += 4;
       writeFileSync(f.controlPath, JSON.stringify(prior));
       const control = readFileSync(f.controlPath), database = readFileSync(f.databasePath), credentials = readFileSync(f.protectedPath);
-      await assert.rejects(RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(f.root), /profile-incomplete-activity-present/);
+      await assert.rejects(RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(f.root, f.lifetime), /profile-incomplete-activity-present/);
       assert.equal(readFileSync(f.controlPath).equals(control), true); assert.equal(readFileSync(f.databasePath).equals(database), true);
       assert.equal(readFileSync(f.protectedPath).equals(credentials), true); assert.equal(existsSync(join(f.root, ".tracker/control/device-recertification.json")), false);
     } finally { await f.close(); }

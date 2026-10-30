@@ -4,7 +4,7 @@ import type { createDashboardPreflightRunners, DashboardPreflightRunnerInput } f
 import type { Clock } from "../../../../src/rules/time/clock.js";
 
 export function preflightPortRunner(root: string, frontendPort: number, OWNER_NONCE: string, FINGERPRINT: string, CLOCK: Clock,
-  compose: (input: Omit<DashboardPreflightRunnerInput, "config" | "authorityHealth" | "listLiveWorkerProcesses">
+  compose: (input: Omit<DashboardPreflightRunnerInput, "config" | "authorityHealth">
     & { configFingerprint: string; authorityDoctorOptions: unknown; backendOwned: () => boolean }) => ReturnType<typeof createDashboardPreflightRunners>["runners"],
 ) {
   const stateRoot = join(root, ".tracker");
@@ -14,7 +14,6 @@ export function preflightPortRunner(root: string, frontendPort: number, OWNER_NO
           repoRoot: process.cwd(),
           stateRoot,
           artifactRoot,
-          processLockRoot: join(stateRoot, "locks"),
           backendPort: 0,
           frontendPort: frontendPort,
           frontendOwnerNonce: OWNER_NONCE,

@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import * as workerLoops from "../../../../src/backend/runtime/workers/worker-loop.js";
 import type { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
-import * as processLocks from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { once } from "node:events";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -16,7 +16,7 @@ import { createBoundProfileFixture, boundProfileCredentials } from "../admission
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityDatabase as FixtureDatabase } from "../synthetic-database-admission.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
-import { bindWorkerProcessAdmission, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+
 import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -25,7 +25,7 @@ import { join } from "node:path";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { systemClock, type Clock, type TestClock } from "../../../../src/rules/time/clock.js";
+import { type Clock, type TestClock } from "../../../../src/rules/time/clock.js";
 import { WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { ManualScheduler, type SessionFactoryHarness } from "../phase1f-executor-harness.js";
@@ -64,7 +64,6 @@ export function createWorkerCompositionTestWorld() {
       { stateRoot, artifactRoot: fixture.admission.artifactRoot }); }
     finally { database.close(); }
   }
-  function processLockRoot(stateRoot: string) { return join(owner(stateRoot).workspace, rebuildRuntimeIsolation.processLockRoot); }
   function stateRootFor(repoRoot: string) { return owner(repoRoot).stateRoot; }
   function profileAdmission(repoRoot: string) { return owner(repoRoot).admission; }
   function databaseDescriptors(stateRoot: string) {
@@ -149,13 +148,14 @@ export function createWorkerCompositionTestWorld() {
     clock: TestClock;
     sessions: SessionFactoryHarness;
     poolIndex: PositiveInt;
-    processId?: number;
     args?: readonly string[];
     stopSignal?: AbortSignal;
     lines?: string[];
   }>) {
     ensureBaselineRuntimeConfig(options.repoRoot, options.clock);
+    const lifetimeLock = owner(options.repoRoot).lifetime;
     return {
+      lifetimeLock,
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       args: options.args ?? [WORKFLOW_ID, "--pool-index", String(options.poolIndex), "--drain"],
@@ -164,14 +164,10 @@ export function createWorkerCompositionTestWorld() {
       ids: { uuid: randomUUID },
       admission: owner(options.repoRoot).machine,
       repoRoot: options.repoRoot,
-      processId: options.processId ?? process.pid,
       sessionFactory: options.sessions.factory,
       duoCeremony: duoCeremonyGatesOver(reopen(owner(options.repoRoot).stateRoot, options.clock), options.clock, new ManualScheduler(options.clock)),
       stopSignal: options.stopSignal ?? new AbortController().signal,
-      // Long enough that no scheduled beat fires during a test; the boot beat is
-      // synchronous, so the lease/sweep path is still exercised.
       heartbeatIntervalMs: 600_000,
-      sweepIntervalMs: 600_000,
       write: (line: string): void => {
         options.lines?.push(line);
       },
@@ -179,23 +175,15 @@ export function createWorkerCompositionTestWorld() {
   }
   function captureSyntheticClosure(repoRoot: string, clock: TestClock, createStore: typeof createCredentialStore) {
     const fixture = owner(repoRoot);
-    const before = observeRuntimeLockSnapshot({ processLockRoot: processLockRoot(fixture.stateRoot),
-      sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(fixture.path) }, clock);
-    assert.equal(before.processLocks.workers.state, "stopped");
+    const lifetimeLock = fixture.lifetime;
     let issued: RuntimeAdmission | undefined, store: ReturnType<typeof createCredentialStore> | undefined;
-    let processLock: processLocks.RuntimeProcessLockHandle | undefined, database: AuthorityDatabase | undefined;
+    let database: AuthorityDatabase | undefined;
     let report: workerLoops.WorkerLoopReport | undefined;
     let descriptorsObserved = false;
-    const bind = processLocks.bindWorkerProcessAdmission, loop = workerLoops.runWorkerLoop;
-    const bindSpy = vi.spyOn(processLocks, "bindWorkerProcessAdmission").mockImplementation(<T>(input: Parameters<typeof bind<T>>[0]) => {
-      assert.equal(input.authorityPath, fixture.path);
-      const value = bind(input); processLock = value.processLock; return value;
-    });
+    const loop = workerLoops.runWorkerLoop;
     const loopSpy = vi.spyOn(workerLoops, "runWorkerLoop").mockImplementation(async (...args) => {
       report = await loop(...args); return report;
     });
-    const snapshot = () => observeRuntimeLockSnapshot({ processLockRoot: processLockRoot(fixture.stateRoot),
-      sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(fixture.path) }, clock);
     return {
       createStore(options: Parameters<typeof createCredentialStore>[0]) {
         assert.equal(options.stateRoot, fixture.stateRoot);
@@ -210,10 +198,8 @@ export function createWorkerCompositionTestWorld() {
       },
       get report() { return report; },
       assertHeld() {
-        assert.ok(issued); issued.assertLive(); assert.ok(processLock); assert.ok(database);
+        assert.ok(issued); issued.assertLive(); lifetimeLock.assertHeld(); assert.ok(database);
         assert.equal(descriptorsObserved, true);
-        assert.deepEqual(snapshot().processLocks.workers, { state: "active",
-          generation: before.processLocks.workers.generation + 2, pid: process.pid });
         fixture.machine.assertLive();
       },
       async closeAfterSyntheticFailure(resourceCloses: readonly (() => Promise<unknown>)[]) {
@@ -223,11 +209,11 @@ export function createWorkerCompositionTestWorld() {
         if (failures.length > 0) throw new AggregateError(failures, "fixture resource closure remained unproved");
         assert.ok(database); database.close(); closeDatabases();
         assert.equal(databaseDescriptors(fixture.stateRoot).length, 0);
-        assert.ok(issued); issued.release(); assert.ok(processLock); processLock.release();
-        assert.deepEqual(snapshot().processLocks.workers, { state: "stopped",
-          generation: before.processLocks.workers.generation + 2 });
+        assert.ok(issued); issued.release();
+        assert.throws(() => issued?.assertLive());
+        lifetimeLock.assertHeld();
       },
-      restore() { loopSpy.mockRestore(); bindSpy.mockRestore(); },
+      restore() { loopSpy.mockRestore(); },
     };
   }
   async function workerLifetime(stateRoot: string, clock: TestClock, workerIdInput: string) {
@@ -240,13 +226,9 @@ export function createWorkerCompositionTestWorld() {
       if (child.exitCode === null && child.signalCode === null) { child.kill("SIGTERM"); await exited; }
       assert.ok(child.exitCode !== null || child.signalCode !== null);
     };
-    let processLock: processLocks.RuntimeProcessLockHandle | undefined;
     try {
-      const bound = bindWorkerProcessAdmission({ processLockRoot: processLockRoot(stateRoot), authorityPath: owner(stateRoot).path,
-        workerId, pid: child.pid, clock, open: () => database, admit: () => workerId, close: value => value.close() });
-      processLock = bound.processLock;
-      const started = database.startOwnedWorker({ workerId, workflow: WORKFLOW_ID, browserSystems: ["crm", "ucpath"],
-        processId: child.pid, requestedBy: "local-operator", now: clock.now().toISOString() }, bound.processLock);
+      const started = database.authority.workerLeases.start({ workerId, workflow: WORKFLOW_ID, browserSystems: ["crm", "ucpath"],
+        processId: child.pid, requestedBy: "local-operator", now: clock.now().toISOString() });
       assert.equal(started.state, "started");
       if (started.state !== "started") throw new Error("worker-fixture-birth-refused");
       const close = async () => {
@@ -261,17 +243,17 @@ export function createWorkerCompositionTestWorld() {
                 : { state, startedAt: lease.lifecycle.startedAt, heartbeatAt: now }, now }).state, "applied");
           }
         }
-        await crash(); bound.processLock.release();
+        await crash();
       };
       return { pid: child.pid, lease: started.lease, crash, close };
     } catch (error) {
-      try { await crash(); processLock?.release(); }
+      try { await crash(); }
       catch (closeError) { throw new AggregateError([error, closeError], "worker lifetime startup cleanup failed", { cause: closeError }); }
       throw error;
     }
   }
   async function concurrentWorkers(repoRoot: string, clock: TestClock) {
-    const children: ChildProcess[] = [], exits: Promise<unknown[]>[] = [];
+    const children: ChildProcess[] = [], exits: Promise<unknown[]>[] = [], closes: Promise<unknown[]>[] = [];
     const replies: Promise<unknown[]>[] = [];
     const message = z.strictObject({ state: z.enum(["ready", "report", "failed"]), detail: z.string() });
     const fixture = owner(repoRoot), expected = statSync(fixture.path), database = open(repoRoot, clock);
@@ -283,12 +265,16 @@ export function createWorkerCompositionTestWorld() {
     let failure: unknown;
     let reports: z.infer<typeof report>[] = [];
     try {
+      const lifetimeLock = fixture.lifetime;
       for (const index of [1, 2, 3]) {
         const child = spawn(process.execPath, ["--import", "tsx", join(process.cwd(), "tests/support/processes/worker-composition-child.ts"),
-          repoRoot, String(index), clock.now().toISOString()], { cwd: process.cwd(), stdio: ["ignore", "ignore", "ignore", "ipc"] });
+          repoRoot, String(index), clock.now().toISOString(), String(lifetimeLock.port)], { cwd: process.cwd(), stdio: ["ignore", "ignore", "ignore", "ipc"] });
         children.push(child);
+        closes.push(once(child, "close"));
         const exited = once(child, "exit"); exits.push(exited);
-        const ready = message.parse((await Promise.race([once(child, "message"), exited.then(() => { throw new Error("worker fixture exited before ready"); })]))[0]);
+        const awaitingReady = Promise.race([once(child, "message"), exited.then(() => { throw new Error("worker fixture exited before ready"); })]);
+        await lifetimeLock.share(child);
+        const ready = message.parse((await awaitingReady)[0]);
         assert.equal(ready.state, "ready");
         assert.equal(z.strictObject({ pid: z.number().int().positive() }).parse(JSON.parse(ready.detail)).pid, child.pid);
         replies.push(Promise.race([once(child, "message"), exited.then(() => { throw new Error("worker fixture exited before report"); })]));
@@ -305,25 +291,22 @@ export function createWorkerCompositionTestWorld() {
       }));
       assert.equal(new Set(reports.map(value => value.pid)).size, 3);
       for (const exit of exits) assert.deepEqual(await exit, [0, null]);
+      for (const close of closes) assert.deepEqual(await close, [0, null]);
     } catch (error) { failure = error; }
     const cleanupFailures: unknown[] = [];
     for (const [index, child] of children.entries()) {
       try {
         if (child.exitCode === null && child.signalCode === null) { child.kill("SIGTERM"); await exits[index]; }
+        await closes[index];
       } catch (error) { cleanupFailures.push(error); }
     }
     if (failure !== undefined || cleanupFailures.length > 0) throw new AggregateError([...(failure === undefined ? [] : [failure]), ...cleanupFailures], "worker fixture children failed");
     return reports;
   }
   const cleanup = async () => {
-    for (const fixture of profiles.values()) {
-      const snapshot = observeRuntimeLockSnapshot({ processLockRoot: processLockRoot(fixture.stateRoot),
-        sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(fixture.path) }, systemClock);
-      assert.equal(snapshot.processLocks.workers.state, "stopped", "unproved fixture worker custody must be retained");
-    }
     closeDatabases();
     for (const [root, fixture] of profiles) { await fixture.close(); profiles.delete(root); }
   };
   return { openDatabases, NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, ensureBaselineRuntimeConfig,
-    resolvedSettings, processLockRoot, profileAdmission, stateRootFor, captureSyntheticClosure, workerLifetime, concurrentWorkers, databaseDescriptors, closeDatabases, composeInput, cleanup };
+    resolvedSettings, profileAdmission, stateRootFor, captureSyntheticClosure, workerLifetime, concurrentWorkers, databaseDescriptors, closeDatabases, composeInput, cleanup };
 }

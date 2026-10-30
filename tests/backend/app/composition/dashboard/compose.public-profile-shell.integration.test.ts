@@ -1,23 +1,19 @@
+import { assertRuntimeLifetimeHeld, runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 import { request as httpRequest } from "node:http";
 import { randomBytes, createHash, generateKeyPairSync, randomUUID } from "node:crypto";
-import { createServer } from "node:net";
-import { runSecureEnvironmentBootstrap } from "../../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
 import { DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { RunLogsStreamHub } from "../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import * as httpServer from "../../../../../src/backend/transports/http/http-server.js";
 import * as storageCompose from "../../../../../src/backend/app/composition/storage-compose.js";
-import * as processLocks from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { runtimeProcessLockIsActive } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
 vi.mock("../../../../../src/backend/transports/http/http-server.js", { spy: true });
 vi.mock("../../../../../src/backend/app/composition/storage-compose.js", { spy: true });
-vi.mock("../../../../../src/backend/storage/sqlite/runtime-process-locks.js", { spy: true });
 import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
@@ -53,94 +49,19 @@ async function finishPublicSignUp(base: string): Promise<Response> {
   return post("/api/v1/profile/onboarding/complete", { operationId: draft.operationId }, cookie);
 }
 
-function fixture() {
+async function fixture(lifetime?: Parameters<typeof acquireEntrypointAdmission>[2]) {
+  const controller = lifetime ?? await runtimeLifetimeLock();
   const root = realpathSync(mkdtempSync(join(tmpdir(), "public-profile-shell-")));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
-  const machine = acquireEntrypointAdmission(root, "exclusive");
+  const machine = acquireEntrypointAdmission(root, "exclusive", controller);
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
-  return { root, machine };
+  return { root, lifetime: controller, machine };
 }
 
-for (const boundary of ["profile-construction", "listener-start"] as const) it(`retains genuine machine and server custody when ${boundary} startup cleanup cannot release its role claim`, async () => {
-  const f = fixture(), argv = [...process.argv];
-  const processLockRoot = join(f.root, rebuildRuntimeIsolation.processLockRoot);
-  const injected = new Error("fixture profile construction failed");
-  const occupied = createServer();
-  let port = 0, primary: unknown;
-  let held: processLocks.RuntimeProcessLockHandle | undefined;
-  let claimPath: string | undefined, originalClaim: Buffer | undefined;
-  let profileCloses = 0;
-  const actualLocks = await vi.importActual<typeof processLocks>("../../../../../src/backend/storage/sqlite/runtime-process-locks.js");
-  const actualHttp = await vi.importActual<typeof httpServer>("../../../../../src/backend/transports/http/http-server.js");
-  const actualStorage = await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js");
-  const locks = vi.spyOn(processLocks, "acquireRuntimeProcessLock").mockImplementation((input, clock, hooks) => {
-    const owner = actualLocks.acquireRuntimeProcessLock(input, clock, hooks);
-    assert.equal(owner.name, "server"); held = owner;
-    return owner;
-  });
-  const start = vi.spyOn(httpServer, "startDashboardHttpServer").mockImplementation(async input => {
-    try { return await actualHttp.startDashboardHttpServer({ ...input, port }); }
-    catch (error) { primary = error; throw error; }
-  });
-  const compose = vi.spyOn(storageCompose, "composeProfileRuntime").mockImplementation(input => {
-    const profile = actualStorage.composeProfileRuntime(input);
-    return { ...profile, async close() { profileCloses++; await profile.close(); } };
-  });
-  const env: NodeJS.ProcessEnv = { get HRAUTO_HOST_PRIMARY_DISPLAY() {
-    assert.ok(held);
-    claimPath = join(processLockRoot, "server-claims", `${String(held.generation)}.claim.json`);
-    originalClaim = readFileSync(claimPath);
-    const record = actualLocks.RuntimeProcessLockFileSchema.parse(JSON.parse(originalClaim.toString("utf8")));
-    writeFileSync(claimPath, JSON.stringify({ ...record, acquiredAt: new Date(Date.parse(record.acquiredAt) - 1).toISOString() }), { mode: 0o600 });
-    if (boundary === "profile-construction") { primary = injected; throw injected; }
-    return "none";
-  } };
-  try {
-    if (boundary === "listener-start") {
-      await new Promise<void>((resolve, reject) => { occupied.once("error", reject); occupied.listen(0, "127.0.0.1", resolve); });
-      const address = occupied.address(); assert.ok(address !== null && typeof address !== "string"); port = address.port;
-    }
-    await assert.rejects(runSecureEnvironmentBootstrap(["cli", "dashboard"], {
-      acquireAdmission: () => f.machine,
-      assertEnvironment: () => undefined,
-      runCli: async admission => { await composeDashboardApplication({ admission, isolation: rebuildRuntimeIsolation,
-        repoRoot: f.root, backendPortOverride: 0, frontendPortOverride: 0, env }); },
-    }), error => {
-      assert.ok(error instanceof storageCompose.RuntimeCustodyUncertainError);
-      assert.equal(error.errors.length, 2);
-      assert.equal(error.errors[0], primary);
-      assert.equal(error.cause, primary);
-      const releaseFailure: unknown = error.errors[1]; assert.ok(releaseFailure instanceof Error);
-      assert.equal(releaseFailure.message, "server-claim-custody-lost");
-      if (boundary === "listener-start") assert.ok(primary instanceof Error && "code" in primary && primary.code === "EADDRINUSE");
-      else assert.equal(primary, injected);
-      return true;
-    });
-    assert.equal(profileCloses, boundary === "listener-start" ? 1 : 0);
-    f.machine.assertLive();
-    assert.equal(actualLocks.runtimeProcessLockIsActive(processLockRoot, "server"), true);
-    assert.ok(claimPath);
-    assert.equal(existsSync(join(processLockRoot, "server-claims", `${String(held?.generation)}-${held?.acquisitionId}.release.json`)), false);
-  } finally {
-    process.argv.splice(0, process.argv.length, ...argv);
-    if (claimPath !== undefined && originalClaim !== undefined) writeFileSync(claimPath, originalClaim, { mode: 0o600 });
-    held?.release();
-    if (occupied.listening) await new Promise<void>((resolve, reject) => occupied.close(error => error === undefined ? resolve() : reject(error)));
-    locks.mockRestore(); start.mockRestore(); compose.mockRestore();
-    vi.restoreAllMocks();
-    f.machine.release(); rmSync(f.root, { recursive: true, force: true });
-  }
-});
-
-for (const closeFails of [false, true]) it(`preserves startup recovery failure and ${closeFails ? "retains" : "releases"} server custody after profile close`, async () => {
-  const f = fixture(), primary = new Error("fixture recovery failed"), cleanup = new Error("fixture profile close failed");
-  const processLockRoot = join(f.root, rebuildRuntimeIsolation.processLockRoot);
+for (const closeFails of [false, true]) it(`preserves startup recovery failure and ${closeFails ? "unproved" : "proved"} profile closure under the held controller`, async () => {
+  const controllerLock=await runtimeLifetimeLock();
+  const f = await fixture(controllerLock), primary = new Error("fixture recovery failed"), cleanup = new Error("fixture profile close failed");
   const actual = await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js");
-  const actualLocks = await vi.importActual<typeof processLocks>("../../../../../src/backend/storage/sqlite/runtime-process-locks.js");
-  let held: processLocks.RuntimeProcessLockHandle | undefined;
-  const locks = vi.spyOn(processLocks, "acquireRuntimeProcessLock").mockImplementation((...args) => {
-    held = actualLocks.acquireRuntimeProcessLock(...args); return held;
-  });
   let profile: ReturnType<typeof storageCompose.composeProfileRuntime> | undefined;
   const spy = vi.spyOn(storageCompose, "composeProfileRuntime").mockImplementation(input => {
     const current = actual.composeProfileRuntime(input); profile = current;
@@ -148,25 +69,25 @@ for (const closeFails of [false, true]) it(`preserves startup recovery failure a
       async close() { if (closeFails) throw cleanup; await current.close(); } };
   });
   try {
-    await assert.rejects(composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation,
+    await assert.rejects(composeDashboardApplication({ lifetimeLock: controllerLock, admission: f.machine, isolation: rebuildRuntimeIsolation,
       repoRoot: f.root, backendPortOverride: 0, frontendPortOverride: 0, env: {} }), error => {
       if (!closeFails) { assert.equal(error, primary); return true; }
       assert.ok(error instanceof storageCompose.RuntimeCustodyUncertainError);
       assert.deepEqual(error.errors, [primary, cleanup]); return true;
     });
-    assert.equal(runtimeProcessLockIsActive(processLockRoot, "server"), closeFails);
+    await assertRuntimeLifetimeHeld(controllerLock);
   } finally {
-    spy.mockRestore(); locks.mockRestore(); await profile?.close(); held?.release();
+    spy.mockRestore(); await profile?.close();
     f.machine.release(); rmSync(f.root, { recursive: true });
   }
 });
 
 it("serves public profile state without minting a selected profile, actor or authority database", async () => {
-  const f = fixture();
+  const f = await fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
 
-    runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const response = await fetch(`${base}/api/v1/profile/state`);
@@ -218,7 +139,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
   mkdirSync(physicalTemp, { mode: 0o700 });
   symlinkSync(physicalTemp, aliasedTemp, "dir");
   for (const key of ["TMPDIR", "TMP", "TEMP"] as const) process.env[key] = aliasedTemp;
-  const f = fixture();
+  const f = await fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
     const keyCapture: { capability?: DraftDuoCapability } = {};
@@ -246,7 +167,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
       },
       async cancel() { providerActive = false; closedAttempts += 1; return { state: "closed" }; },
     };
-    runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     assert.ok(runtime.port > 0);
     const base = `http://127.0.0.1:${String(runtime.port)}`;
@@ -323,10 +244,10 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
 });
 
 it("aborts an unpublished pre-enrollment draft through erasure before accepting changed Details", async () => {
-  const f = fixture();
+  const f = await fixture();
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
-    runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const post = (path: string, body: unknown, cookie?: string) => fetch(`${base}${path}`, { method: "POST",
@@ -355,7 +276,8 @@ it("aborts an unpublished pre-enrollment draft through erasure before accepting 
 });
 
 for (const fault of ["prior-request", "profile-close"] as const) it(`fences and drains real public transfers before retaining ${fault} shutdown failure`, async () => {
-  const f = fixture(), primary = new Error("fixture custody failure");
+  const controllerLock=await runtimeLifetimeLock();
+  const f = await fixture(controllerLock), primary = new Error("fixture custody failure");
   const entered = Promise.withResolvers<void>(), aborted = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   const actualStart = (await vi.importActual<typeof httpServer>("../../../../../src/backend/transports/http/http-server.js")).startDashboardHttpServer;
   const actualProfile = (await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js")).composeProfileRuntime;
@@ -377,7 +299,7 @@ for (const fault of ["prior-request", "profile-close"] as const) it(`fences and 
     return fault === "profile-close" ? { ...profile, async close() { injectedCloseCalls++; throw primary; } } : profile;
   });
   try {
-    runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: controllerLock, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     if (fault === "prior-request") {
@@ -396,7 +318,7 @@ for (const fault of ["prior-request", "profile-close"] as const) it(`fences and 
     await aborted.promise;
     assert.equal(terminal, false, "profile/lock release cannot precede the admitted public task");
     f.machine.assertLive();
-    assert.equal(runtimeProcessLockIsActive(join(f.root, rebuildRuntimeIsolation.processLockRoot), "server"), true);
+    await assertRuntimeLifetimeHeld(controllerLock);
     release.resolve(); await result; await outcome;
     assert.ok(observedFailure instanceof storageCompose.RuntimeCustodyUncertainError);
     if (fault === "profile-close") {
@@ -420,7 +342,7 @@ for (const fault of ["prior-request", "profile-close"] as const) it(`fences and 
     assert.equal(retainsPrimary(observedFailure), true, "original closure failure must survive nested custody aggregation");
     await assert.rejects(fetch(`${base}/api/v1/profile/state`));
     f.machine.assertLive();
-    assert.equal(runtimeProcessLockIsActive(join(f.root, rebuildRuntimeIsolation.processLockRoot), "server"), true);
+    await assertRuntimeLifetimeHeld(controllerLock);
     await assert.rejects(runtime.stop(), error => error === observedFailure);
   } finally {
     release.resolve(); await outcome;
@@ -431,7 +353,8 @@ for (const fault of ["prior-request", "profile-close"] as const) it(`fences and 
 });
 
 for (const fault of ["prior-request", "transport-cancellation"] as const) it(`drains genuine selected producers despite ${fault} while retaining profile custody`, async () => {
-  const f = fixture(), primary = new Error("fixture selected custody failure");
+  const controllerLock=await runtimeLifetimeLock();
+  const f = await fixture(controllerLock), primary = new Error("fixture selected custody failure");
   const entered = Promise.withResolvers<void>(), aborted = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   const actualStart = (await vi.importActual<typeof httpServer>("../../../../../src/backend/transports/http/http-server.js")).startDashboardHttpServer;
   const actualProfile = (await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js")).composeProfileRuntime;
@@ -461,7 +384,7 @@ for (const fault of ["prior-request", "transport-cancellation"] as const) it(`dr
   });
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, held: Promise<unknown> | undefined;
   try {
-    runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: controllerLock, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu"), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const signup = await finishPublicSignUp(base);
@@ -492,7 +415,7 @@ for (const fault of ["prior-request", "transport-cancellation"] as const) it(`dr
     context.database.getMeta();
     assert.throws(() => profile.assertCurrent(token!), error => error instanceof ProfileSessionRefusedError && error.code === "PROFILE_SESSION_STALE");
     f.machine.assertLive();
-    assert.equal(runtimeProcessLockIsActive(join(f.root, rebuildRuntimeIsolation.processLockRoot), "server"), true);
+    await assertRuntimeLifetimeHeld(controllerLock);
     await assert.rejects(runtime.stop(), current => current === error);
     await assert.rejects(fetch(`${base}/api/v1/profile/state`));
   } finally {
@@ -504,7 +427,7 @@ for (const fault of ["prior-request", "transport-cancellation"] as const) it(`dr
 
 
 it("revokes retained selected producers before a genuine in-flight public transport drains", async () => {
-  const f = fixture(), entered = Promise.withResolvers<void>(), aborted = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const f = await fixture(), entered = Promise.withResolvers<void>(), aborted = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
   const crossed = Promise.withResolvers<unknown>();
   const actualProfile = (await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js")).composeProfileRuntime;
   const actualStart = (await vi.importActual<typeof httpServer>("../../../../../src/backend/transports/http/http-server.js")).startDashboardHttpServer;
@@ -526,7 +449,7 @@ it("revokes retained selected producers before a genuine in-flight public transp
   });
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, held: Promise<unknown> | undefined, stopping: Promise<void> | undefined;
   try {
-    runtime = await composeDashboardApplication({ admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+    runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu"), env: {} });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const signup = await finishPublicSignUp(base);

@@ -429,7 +429,7 @@ function lifecycleRefusal(request: CommandRequest, refusal: RunRecordRefusal): n
     case "runtime-stale": return reject(request, "schema-mismatch", "runtime configuration changed");
     case "workflow-unregistered": return reject(request, "target-not-found", "workflow is not registered");
     case "illegal-transition": return reject(request, "invalid-state", refusal.message);
-    case "owned-by-worker": case "heartbeat-live": case "invalid-state": case "not-terminal":
+    case "owned-by-worker": case "invalid-state": case "not-terminal":
     case "already-archived": case "is-member": case "tree-non-terminal": case "use-archive-door":
       return reject(request, "invalid-state", `run lifecycle refused: ${refusal.reason}`);
     case "parent-missing": case "retry-of-missing": case "identity-conflict": case "cursor-stale":

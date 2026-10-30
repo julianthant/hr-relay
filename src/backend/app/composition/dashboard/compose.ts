@@ -1,4 +1,6 @@
-import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
+import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
+import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
+import { reconcileStartupCrash, reconcileExitedWorker } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
@@ -30,7 +32,6 @@ import { createWorkbookLibraryService } from "../../../workbooks/workbook-librar
 import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
 import { withEmergencyTimelineWriter, importEmergencyFaults } from "../../../logs/emergency-faults.js";
-import { assertWorkerProcessStopped } from "../../../storage/sqlite/runtime-process-locks.js";
 import { WorkerRetirementProofSchema, workerPoolMember } from "../../../../models/run/worker-slot.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { deleteOwnedBrowserProfile, workerProfileDirectory } from "../../../runtime/browser/browser-session-factory.js";
@@ -65,6 +66,7 @@ import { ActorIdSchema } from "../../../../rules/identity/ids.js";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
 
 import { spawn as spawnChildProcess } from "node:child_process";
+import type { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { openStaticBundle } from "../../../transports/http/static-bundle.js";
@@ -76,7 +78,7 @@ import { createCommandKernel, type WorkerPoolRuntimeAdoption, type WriteResoluti
 import { createWorkerPoolRuntimeExecutor } from "../../../runtime/workers/worker-loop.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
 import { isLiveWorker } from "../../../../models/run/worker.js";
-import { createDashboardWorkerProcessSupervisor, type DashboardWorkerProcessSupervisor, type WorkerCliLaunchSpec, type WorkerProcessSpawner } from "../../../runtime/workers/worker-supervisor.js";
+import { createDashboardWorkerProcessSupervisor, type DashboardWorkerProcessSupervisor, type DashboardWorkerSupervisorDependencies, type WorkerCliLaunchSpec, type WorkerProcessSpawner } from "../../../runtime/workers/worker-supervisor.js";
 import { RunRecordService, runContinuationPort } from "../../../runs/lifecycle/run-record-service.js";
 import { createStorageRelocationPlanReader } from "../../../storage/maintenance/storage-relocation-plans.js";
 import { createWriteResolutionExecutor } from "../../../runtime/writes/write-recovery.js";
@@ -90,7 +92,6 @@ import { probePrimaryDisplay } from "../../host/primary-display.js";
 import { createPreflightAuthority } from "../../../../models/preflight/preflight.js";
 import { BackupServiceStateWireSchema, type BackupServiceStateWire } from "../../../../models/dashboard/storage.js";
 import { AuthorityDatabase, AuthorityHealthPreflightRunner, summarizeBackupHealth } from "../../../storage/sqlite/index.js";
-import { acquireRuntimeProcessLock } from "../../../storage/sqlite/runtime-process-locks.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
 import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
@@ -127,6 +128,7 @@ export const DashboardFrontendModeSchema = z.enum(["vite-dev", "built-bundle"]);
 export type DashboardFrontendMode = z.infer<typeof DashboardFrontendModeSchema>;
 
 export interface DashboardComposeInput {
+  readonly lifetimeLock: RuntimeLifetimeLock;
   readonly onboardingDuo?: ProfileOnboardingDuoProvider;
   readonly admission?: RuntimeAdmission;
   readonly profile?: Readonly<{ runtime: ReturnType<typeof composeProfileRuntime>; token: string }>;
@@ -190,8 +192,8 @@ export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.Pr
 const WORKER_BIRTH_TIMEOUT_MS = 60_000;
 
 export interface WorkerProcessControlInput {
+  readonly onExit: DashboardWorkerSupervisorDependencies["onExit"];
   readonly profileRoot: string;
-  readonly processLockRoot: string;
   readonly database: AuthorityDatabase;
   readonly clock: Clock;
   readonly scheduler: MonotonicDeadlineScheduler;
@@ -210,6 +212,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
 }> {
   const browserChannel = createWorkerBrowserChannel(input);
   const supervisor = createDashboardWorkerProcessSupervisor({
+    onExit: input.onExit,
     launch: input.launch,
     spawn: input.spawn,
     browserControl: browserChannel,
@@ -238,7 +241,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
           || lease.leaseGeneration !== binding.lifetime.leaseGeneration || lease.controlRevision !== binding.reservedControlRevision
           || lease.controlCommandId !== request.commandId || binding.operation.kind !== "retry"
           || active?.configSnapshotId !== binding.operation.configSnapshotId || active.configFingerprint !== binding.operation.configFingerprint) throw new WorkerControlRefusal("worker-standing-recovery-admission-changed");
-        input.database.assertRetainedWorkerDeath(binding.member, binding.lifetime, binding.birthCommandId);
+        input.database.assertStoppedWorkerLifetime(binding.member, binding.lifetime);
         return;
       }
       const record = repositories.workerControls.get(request.commandId);
@@ -253,8 +256,8 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       }
       if (request.command === "spawn-worker") {
         const lease = repositories.workerLeases.get(request.member.workerId);
-        if (lease !== undefined) input.database.assertRetainedWorkerDeath(request.member,
-          { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt }, lease.birthCommandId);
+        if (lease !== undefined) input.database.assertStoppedWorkerLifetime(request.member,
+          { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt });
       }
       if (input.clock.nowMs() >= Date.parse(record.expiresAt)) throw new WorkerControlRefusal("worker-control-expired-before-effect");
       if ("workerId" in record.request.target) {
@@ -325,9 +328,8 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       const audit = input.database.authority.lifecycleJournal.findAuditByCommand(commandId);
       return audit !== undefined && "kind" in audit && audit.kind === "run-lifecycle" && audit.result.kind === "worker-recovery";
     },
-    assertRetainedOwnerDeath: (member, lifetime, birthCommandId) => { input.database.assertRetainedWorkerDeath(member, lifetime, birthCommandId); },
+    assertStoppedLifetime: (member, lifetime) => { input.database.assertStoppedWorkerLifetime(member, lifetime); },
     proveRetirement: member => {
-      assertWorkerProcessStopped(input.processLockRoot, member.workerId);
       return input.database.withAuthorityTransaction(repositories => {
         const slot = repositories.workerSlots.get(member.workerId);
         const lease = repositories.workerLeases.get(member.workerId);
@@ -361,20 +363,22 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
   });
 }
 
-export function reconcileDeadWorkerLifetimes(database: AuthorityDatabase, clock: Clock, onUnavailable: (error: Error) => void): void {
-  for (const member of database.authority.workerSlots.list().filter(slot => slot.retiredAt === null)) {
-    try { database.settleDeadWorkerLifetime(member.workerId, clock.now().toISOString()); }
-    catch (error) { onUnavailable(error instanceof Error ? error : new Error(String(error))); }
-  }
-}
-
 // Spawn absolute argv without a shell; inherited stderr keeps bootstrap failures visible.
-function realWorkerProcessSpawner(): WorkerProcessSpawner {
+function realWorkerProcessSpawner(lock: RuntimeLifetimeLock, nominatim: ReturnType<typeof createNominatimGeocodeAdapter>): WorkerProcessSpawner {
   return (request) => {
+    lock.assertHeld();
     const child = spawnChildProcess(request.command, [...request.args], {
       cwd: request.cwd,
       env: request.environment,
-      stdio: "inherit",
+      stdio: ["inherit", "inherit", "inherit", "ipc"],
+    });
+    nominatim.attach(child);
+    let transfer: Promise<void>;
+    try { transfer = lock.share(child); }
+    catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }
+    void transfer.catch(error => {
+      child.kill("SIGKILL");
+      child.emit("error", error);
     });
     return Object.freeze({
       pid: child.pid,
@@ -418,6 +422,7 @@ async function unwindDashboardStartup(
 }
 
 export async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
+  input.lifetimeLock.assertHeld();
   const startupCleanups: StartupCleanup[] = [];
   const custody: StartupCustody = { failedClosures: [] };
   try {
@@ -449,10 +454,9 @@ async function composeDashboardRuntimeStartup(
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
   const machineAdmission = requireRuntimeAdmission(input.admission);
+  if (machineAdmission.lifetime !== input.lifetimeLock) throw new Error("runtime-lifetime-admission-mismatch");
   const installation = machineAdmission.readInstallationContext();
   if (installation === undefined) throw new Error("profile-application-installation-required");
-  const processLockRoot = join(installation.workspace, input.isolation.processLockRoot);
-  machineAdmission.assertFixedProcessLockRoot(installation.workspace, processLockRoot);
   const profile = input.profile;
   if (profile === undefined) throw new Error("PROFILE_AUTHORITY_UNAVAILABLE");
   profile.runtime.assertMachineOwner(machineAdmission);
@@ -474,18 +478,12 @@ async function composeDashboardRuntimeStartup(
 
 
   const hostFacts = hostConfigFacts(env);
-  // Take the server role lock before opening authority; it fences competing dashboard handles.
-  const processLock = input.applicationTransport === undefined ? acquireRuntimeProcessLock(
-    { processLockRoot, name: "server", pid: process.pid },
-    clock,
-  ) : undefined;
   let databaseClosed = true, transportClosed = true;
   startupCleanups.push(() => {
     requireProducerClosure();
     if (!databaseClosed || !transportClosed) {
       throw new RuntimeCustodyUncertainError([new Error("dashboard authority closure is unproved")]);
     }
-    try { processLock?.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
   });
   const context = (() => {
     try { return profile.runtime.selectedContext(profile.token); }
@@ -619,7 +617,10 @@ async function composeDashboardRuntimeStartup(
       spanWriter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
     },
   });
-  try { reconcileStartupCrash({ machine: machineAdmission, admission, database, lifecycle, processLockRoot, clock }); }
+  try {
+    reconcileStartupCrash({ machine: machineAdmission, admission, database, lifecycle, lock: input.lifetimeLock,
+      clock });
+  }
   catch (error) {
     if (error instanceof AuthoritySourceClosureUnprovedError) custody.failedClosures.push(error);
     throw error;
@@ -642,7 +643,6 @@ async function composeDashboardRuntimeStartup(
       ? {}
       : { frontendOwnerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] }),
     clock,
-    processLockRoot,
     authorityHealth: new AuthorityHealthPreflightRunner(admission, {
       stateRootTrustAnchor: resolve(stateRoot, ".."),
       stateRoot,
@@ -650,10 +650,6 @@ async function composeDashboardRuntimeStartup(
       backupDirectory,
       busyTimeoutMs: 5000,
     }, clock, context.credentials),
-    listLiveWorkerProcesses: () => database.authority.workerLeases.listLive().map((lease) => ({
-      workerId: lease.workerId,
-      processId: lease.processId,
-    })),
   });
   if (input.applicationTransport !== undefined) dashboardPreflightRunners.markBackendOwned(input.applicationTransport.listener.port);
   const preflightAuthority = createPreflightAuthority({
@@ -703,7 +699,6 @@ async function composeDashboardRuntimeStartup(
     runLogsHub.poll();
     // Lease transitions need authority polling because they need not emit spans.
     database.reconcileWorkerControlMilestones(clock.now().toISOString());
-    reconcileDeadWorkerLifetimes(database, clock, reportSupervisorFault);
     projection.reconcileWorkerAuthority();
   }, TIMELINE_POLL_MS);
   timelineTimer.unref();
@@ -734,29 +729,40 @@ async function composeDashboardRuntimeStartup(
     assistantAuthorization.assertEffect(commandId);
   };
   profile.runtime.beginSupervisorConstruction(profile.token);
+  const nominatim = createNominatimGeocodeAdapter({clock});
   const workerControl = composeWorkerProcessControl({
+    onExit: (member, pid, valid) => {
+      const lease = database.authority.workerLeases.get(member.workerId);
+      if (lease === undefined) return;
+      const slot = database.authority.workerSlots.get(member.workerId);
+      if (lease.processId !== pid || slot?.membershipRevision !== member.membershipRevision) throw new Error("worker-exit-lifetime-changed");
+      input.lifetimeLock.assertHeld();
+      if (!valid()) throw new Error("worker-exit-record-changed");
+      reconcileExitedWorker({ machine: machineAdmission, admission, database, lifecycle, clock,
+        workerId: member.workerId, leaseGeneration: lease.leaseGeneration, lock: input.lifetimeLock });
+    },
     profileRoot: resolved.config.paths.browserProfileRoot,
-    processLockRoot,
     database,
     clock,
     scheduler: input.workerProcess?.scheduler ?? createTimeoutDeadlineScheduler(clock),
     launch: input.workerProcess?.launch ?? productionWorkerLaunch(repoRoot, env),
-    spawn: input.workerProcess?.spawn ?? realWorkerProcessSpawner(),
+    spawn: input.workerProcess?.spawn ?? realWorkerProcessSpawner(input.lifetimeLock, nominatim),
     birth: input.workerProcess?.birth ?? { pollMs: WORKER_BIRTH_POLL_MS, timeoutMs: WORKER_BIRTH_TIMEOUT_MS },
     onFault: reportSupervisorFault,
     preflight: runtimePreflight,
     assertAssistantEffect,
   });
   profile.runtime.bindSupervisor(profile.token, workerControl.supervisor);
-  closeWorkerControl = requiredClosure(() => {
+  const stopWorkerControl = requiredClosure(async () => {
     const evidence = workerControl.supervisor.close();
     if (evidence.length > 0) {
       throw new RuntimeCustodyUncertainError([new Error("dashboard worker closure is unproved")]);
     }
+    await nominatim.stop();
   });
+  closeWorkerControl = stopWorkerControl;
   ownsWorker = lease => workerControl.supervisor.ownsWorker(lease.workerId, lease.processId, lease.lifecycle.startedAt);
   database.reconcileWorkerControlMilestones(clock.now().toISOString());
-  reconcileDeadWorkerLifetimes(database, clock, reportSupervisorFault);
   // Ref write-safety's typed operator resolutions, over the SAME AuthorityDatabase
   // instance as the kernel transaction (the executor's documented requirement).
 
@@ -857,8 +863,9 @@ async function composeDashboardRuntimeStartup(
     projection,
     startWorkerCapacity: createRunWorkerCapacity({ kernel, authority: database.authority,
       reconcileWorker: workerId => {
-        const lease = database.settleDeadWorkerLifetime(workerId, clock.now().toISOString());
-        return lease !== undefined && isLiveWorker(lease);
+        const lease = database.authority.workerLeases.get(workerId);
+        return lease !== undefined && isLiveWorker(lease)
+          && workerControl.supervisor.ownsWorker(lease.workerId, lease.processId, lease.lifecycle.startedAt);
       } }),
   });
 
@@ -993,7 +1000,7 @@ async function composeDashboardRuntimeStartup(
       if (failures.length === 0) {
         try { requireProducerClosure(); await profile.runtime.awaitClosurePreparation(selected); } catch (error) { failures.push(error); }
       }
-      try { if (workerControl.supervisor.close().length > 0) throw new Error("dashboard worker closure is unproved"); }
+      try { await stopWorkerControl(); }
       catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
     })();
@@ -1011,8 +1018,6 @@ async function composeDashboardRuntimeStartup(
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       try { await profile.runtime.close(); }
       catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
-      try { processLock?.release(); }
-      catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
       if (input.applicationTransport === undefined) {
         try { machineAdmission.release(); }
         catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
@@ -1023,9 +1028,11 @@ async function composeDashboardRuntimeStartup(
 
 
 export async function composeDashboardApplication(input: DashboardComposeInput): Promise<Readonly<{ port: number; failure: Promise<never>; stop(): Promise<void> }>> {
+  input.lifetimeLock.assertHeld();
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const initial = requireRuntimeAdmission(input.admission);
+  if (initial.lifetime !== input.lifetimeLock) throw new Error("runtime-lifetime-admission-mismatch");
   const context = initial.readInstallationContext();
   if (context === undefined) throw new ProfileSessionRefusedError("PROFILE_UPGRADE_UNAVAILABLE");
   const clock = input.clock ?? systemClock;
@@ -1046,11 +1053,11 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       const port = current.port, facts = current.hostFacts;
       await current.stop();
       if (shutdownRequested) return;
-      const exclusive = acquireExclusiveRuntimeAdmission(context.workspace);
+      const exclusive = acquireExclusiveRuntimeAdmission(context.workspace, input.lifetimeLock);
       exclusiveOwner = exclusive;
       try {
         const claim = consumeAuthenticatedProfileUpgrade(authorization, exclusive);
-        const report = await upgradeReadyProfileStorage(exclusive, claim, { plan: false, hostFacts: facts }, clock);
+        const report = await upgradeReadyProfileStorage(profileBrowserClosure, exclusive, claim, { plan: false, hostFacts: facts }, clock);
         if (report.state !== "upgraded" || report.fromSchemaVersion !== 8 || report.toSchemaVersion !== 9) throw new Error("profile-upgrade-readback-unproved");
       } catch (error) {
         if (!(error instanceof AuthoritySourceClosureUnprovedError)) {
@@ -1062,7 +1069,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       exclusive.release();
       exclusiveOwner = undefined;
       if (shutdownRequested) return;
-      const shared = acquireSharedRuntimeAdmission(context.workspace);
+      const shared = acquireSharedRuntimeAdmission(context.workspace, input.lifetimeLock);
       try { current = await composeDashboardApplicationInstance({ ...input, admission: shared, env }, schedule, port); }
       catch (error) {
         if (error instanceof RuntimeCustodyUncertainError) throw error;
@@ -1109,36 +1116,27 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   const machine = requireRuntimeAdmission(input.admission), clock = input.clock ?? systemClock;
   const installation = machine.readInstallationContext();
   if (installation === undefined) throw new Error("profile-application-installation-required");
-  const processLockRoot = join(installation.workspace, input.isolation.processLockRoot);
-  machine.assertFixedProcessLockRoot(installation.workspace, processLockRoot);
   const repoRoot = input.repoRoot ?? process.cwd();
   const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
   const bundle = frontend === "built-bundle" ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot, input.frontendBuildScript) : undefined;
-  const processLock = acquireRuntimeProcessLock({ processLockRoot, name: "server", pid: process.pid }, clock);
   const { profile: profileRuntime, facts } = await (async () => {
-    try {
-      const facts = hostConfigFacts(env);
-      let onboardingDuo = input.onboardingDuo;
-      if (onboardingDuo === undefined) {
-        const browsers = join(machine.stateRoot, "browsers"), browserRoot = join(browsers, "onboarding");
-        ensureChildDirectory(machine.stateRoot, browsers, "onboarding browsers", 0o700, 0o700);
-        ensureChildDirectory(browsers, browserRoot, "onboarding browsers", 0o700, 0o700);
-        onboardingDuo = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: join(realpathSync(repoRoot), "fast-duo"),
-          clock, closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs });
-      }
-      const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: facts, processLockRoot, onboardingDuo });
-      try { await profile.session.recoverOnboarding(); }
-      catch (error) {
-        try { await profile.close(); }
-        catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
-        throw error;
-      }
-      return { profile, facts };
-    } catch (error) {
-      if (error instanceof RuntimeCustodyUncertainError || error instanceof AuthoritySourceClosureUnprovedError) throw error;
-      try { processLock.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
+    const facts = hostConfigFacts(env);
+    let onboardingDuo = input.onboardingDuo;
+    if (onboardingDuo === undefined) {
+      const browsers = join(machine.stateRoot, "browsers"), browserRoot = join(browsers, "onboarding");
+      ensureChildDirectory(machine.stateRoot, browsers, "onboarding browsers", 0o700, 0o700);
+      ensureChildDirectory(browsers, browserRoot, "onboarding browsers", 0o700, 0o700);
+      onboardingDuo = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: join(realpathSync(repoRoot), "fast-duo"),
+        clock, closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs });
+    }
+    const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: facts,  onboardingDuo });
+    try { await profile.session.recoverOnboarding(); }
+    catch (error) {
+      try { await profile.close(); }
+      catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
       throw error;
     }
+    return { profile, facts };
   })();
   const app = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
   type Selection = { sessionId: string; token: string; profileId: string; epoch: number; runtime: DashboardRuntime };
@@ -1355,7 +1353,6 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
     try { return await startDashboardHttpServer({ app, port: bindPort ?? input.backendPortOverride ?? input.isolation.backendPort }); }
     catch (error) {
       try { await profileRuntime?.close(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
-      try { processLock.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
       throw error;
     }
   })();
@@ -1377,7 +1374,6 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       try { await profileRuntime?.session.closeOnboarding(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       try { await profileRuntime?.close(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
-      try { processLock.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
       try { machine.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
     })();
     return stopping;

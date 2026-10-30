@@ -1,13 +1,13 @@
-import { join, resolve } from "node:path";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { derivePersistedSettingsFingerprint } from "../../../models/config/settings.js";
-import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
-import { EditableSettingsOverrideSchema } from "../../../models/config/schema.js";
-import { RecoveryRuntimeLockSnapshotSchema } from "./recovery-contracts.js";
+import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
+
+
+
+
+
+
+
 import { WorkerLifecycleBindingSchema } from "../../../models/run/worker-control.js";
-import { WorkerPoolMemberSchema, WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../models/run/worker-slot.js";
-import { RuntimeProcessLockFileSchema, WorkerProcessLockFileSchema, ProcessCustodyFileSchema } from "./runtime-process-locks.js";
+
 import { ParkedWriteResolutionBindingSchema } from "../../../rules/write-safety/write-safety.js";
 
 import { z } from "zod";
@@ -178,41 +178,6 @@ export const RunUpdateOutcomeSchema = z.discriminatedUnion("state", [
 export type RunUpdateOutcome = z.infer<typeof RunUpdateOutcomeSchema>;
 
 
-export const RunClaimSweepRequestSchema = z.strictObject({
-  /** All workflows when absent — recovery is not workflow-scoped by nature. */
-  workflow: WorkflowIdSchema.optional(),
-
-  workerId: WorkerIdSchema.optional(),
-  /** A claim whose heartbeat predates this instant is treated as dead. */
-  staleBefore: IsoInstantSchema.optional(),
-  now: IsoInstantSchema,
-}).superRefine((request, context) => {
-  if ((request.staleBefore === undefined) === (request.workerId === undefined)) {
-    context.addIssue({
-      code: "custom",
-      message: "a claim sweep names exactly one proof that the claim is dead: `staleBefore` (the "
-        + "heartbeat expired) or `workerId` (the caller holds that id's lease, so every row still "
-        + "under it is orphaned)",
-    });
-  }
-});
-
-
-export const RunClaimSweepOutcomeSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("requeued"), run: RunRecordSchema }),
-  z.strictObject({
-    state: z.literal("recovery-required"),
-    run: RunRecordSchema,
-    writeIntentId: WriteIntentIdSchema,
-    intentGeneration: PositiveIntSchema,
-    // False retains the expired claim when its lifecycle has no legal parked-write edge.
-    parked: z.boolean(),
-    message: z.string().min(1),
-  }),
-]);
-export type RunClaimSweepOutcome = z.infer<typeof RunClaimSweepOutcomeSchema>;
-
-
 
 export const CanonicalCreateRunRequestSchema = z.strictObject({
   commandId: CommandIdSchema,
@@ -351,7 +316,6 @@ export const CanonicalRequeueRequestSchema = z.strictObject({
   claim: RunClaimTokenSchema.optional(),
   cause: RequeueCauseSchema,
   notBefore: IsoInstantSchema.optional(),
-  staleBefore: IsoInstantSchema.optional(),
 });
 
 export const CanonicalRetrySourceRequestSchema = z.strictObject({
@@ -449,21 +413,12 @@ export const WorkerStandingRecoveryRequestSchema = z.strictObject({
   commandId: CommandIdSchema, binding: WorkerLifecycleBindingSchema,
   previous: z.strictObject({ state: z.enum(["idle", "paused"]), directive: z.enum(["run", "pause"]), observedAt: IsoInstantSchema }),
   now: IsoInstantSchema,
-}).refine(value => value.commandId === value.binding.commandId && value.binding.birthCommandId !== undefined
+}).refine(value => value.commandId === value.binding.commandId
   && value.binding.operation.kind === "retry" && value.binding.operation.mode === "browserless", "worker-standing-recovery-binding-invalid");
-
-export const WorkerLifetimeBirthSchema = z.strictObject({
-  commandId: CommandIdSchema,
-  admissionCommandId: CommandIdSchema.optional(),
-  member: WorkerPoolMemberSchema, leaseGeneration: PositiveIntSchema, processId: PositiveIntSchema,
-  startedAt: IsoInstantSchema, authorityPath: z.string().min(1), processLockRoot: z.string().min(1),
-  owner: WorkerProcessLockFileSchema,
-}).refine(value => "workerId" in value.owner && value.owner.workerId === value.member.workerId
-  && value.owner.pid === value.processId && value.owner.releasedAt === null, "worker-birth-custody-binding-mismatch");
 
 export const CanonicalCrashRecoveryRequestSchema = z.strictObject({
   commandId: CommandIdSchema, runId: RunIdSchema, expectedVersion: PositiveIntSchema, claim: RunClaimTokenSchema,
-  birth: WorkerLifetimeBirthSchema, originalFile: ProcessCustodyFileSchema, closureDigest: FingerprintSchema,
+  workerLifetime: WorkerClaimLifetimeSchema,
   now: IsoInstantSchema,
 });
 
@@ -509,11 +464,6 @@ export const WorkerUpdateOutcomeSchema = z.discriminatedUnion("state", [
 ]);
 export type WorkerUpdateOutcome = z.infer<typeof WorkerUpdateOutcomeSchema>;
 
-export const WorkerSweepRequestSchema = z.strictObject({
-  staleBefore: IsoInstantSchema,
-  now: IsoInstantSchema,
-});
-
 
 
 // Pool version 0 means no declaration row; it is a legitimate CAS basis, not a missing version.
@@ -543,84 +493,20 @@ export type RunTransitionRequest = z.infer<typeof RunTransitionRequestSchema>;
 export type RunRequeueRequest = z.infer<typeof RunRequeueRequestSchema>;
 export type RunResumeRequest = z.infer<typeof RunResumeRequestSchema>;
 export type RunPresentationRequest = z.infer<typeof RunPresentationRequestSchema>;
-export type RunClaimSweepRequest = z.infer<typeof RunClaimSweepRequestSchema>;
 
 export const CanonicalWorkerAdmissionRequestSchema = z.strictObject({
   commandId: CommandIdSchema, workflow: WorkflowIdSchema, poolIndex: z.number().int().min(1),
-  expectedPoolVersion: NonNegativeIntSchema, processId: PositiveIntSchema, processAcquisitionId: z.uuid(),
-  authorityPath: z.string().min(1), processLockRoot: z.string().min(1), now: IsoInstantSchema,
+  expectedPoolVersion: NonNegativeIntSchema, processId: PositiveIntSchema, now: IsoInstantSchema,
 });
 
-export const WorkerVerificationAdmissionRequestSchema = z.strictObject({
+export const WorkerVerificationAdmissionRequestSchema = ProfileDatabaseBindingSchema.extend({
   commandId: CommandIdSchema, workflow: WorkflowIdSchema, expectedPoolVersion: NonNegativeIntSchema,
-  processLockRoot: z.string().min(1), stateRoot: z.string().min(1), owner: RuntimeProcessLockFileSchema, now: IsoInstantSchema,
-}).refine(request => request.owner.name === "live-smoke" && request.owner.releasedAt === null,
-  "worker-verification-owner-unavailable");
-export const WorkerVerificationClaimSchema = z.strictObject({
-  source: z.literal("live-smoke"), slot: WorkerSlotRecordSchema, process: RuntimeProcessLockFileSchema,
-  profileRunId: z.uuid(), system: BrowserSystemIdSchema, credentialKey: FingerprintSchema,
-}).refine(claim => claim.process.name === "live-smoke" && claim.process.releasedAt === null
-  && claim.slot.retiredAt === null && claim.slot.reservationCommandId !== null, "worker-verification-claim-invalid");
-export const WorkerVerificationClosureProofSchema = z.strictObject({ acquisitionId: z.uuid(), workerId: WorkerIdSchema,
-  membershipRevision: PositiveIntSchema, browsersClosed: z.literal(true), checkedAt: IsoInstantSchema });
-
-export const WorkerVerificationRecoveryProofSchema = z.strictObject({ acquisitionId: z.uuid(),
-  recoveryOwner: RuntimeProcessLockFileSchema, workerId: WorkerIdSchema, membershipRevision: PositiveIntSchema,
-  claimFingerprint: FingerprintSchema, profileDirectory: z.string().min(1),
-  processAbsent: z.literal(true), openFilesAbsent: z.literal(true), profileRemoved: z.literal(true), checkedAt: IsoInstantSchema,
-}).refine(proof => proof.recoveryOwner.name === "live-smoke" && proof.recoveryOwner.releasedAt === null
-  && proof.recoveryOwner.acquisitionId !== proof.acquisitionId);
-
-export const WorkerVerificationOrphanProofSchema = z.strictObject({
-  admission: WorkerVerificationAdmissionRequestSchema, slot: WorkerSlotRecordSchema,
-  ownerRelease: z.strictObject({ generation: PositiveIntSchema, acquisitionId: z.uuid(), releasedAt: IsoInstantSchema }).nullable(),
-  claim: WorkerVerificationClaimSchema,
-  claimCustody: z.strictObject({ dev: z.number().int().nonnegative(), ino: z.number().int().nonnegative(),
-    size: z.number().int().nonnegative(), mtimeMs: z.number().nonnegative() }),
-  claimFingerprint: FingerprintSchema,
-  profileConfiguration: z.strictObject({ settings: EditableSettingsOverrideSchema, settingsFingerprint: FingerprintSchema,
-    activeSnapshot: ConfigSnapshotRecordSchema.nullable() }),
-  profileRoots: z.tuple([z.string().min(1), z.string().min(1)]),
-  runtime: RecoveryRuntimeLockSnapshotSchema,
-  exclusiveAdmission: z.literal(true), ownerGone: z.literal(true), processesAbsent: z.literal(true), openFilesAbsent: z.literal(true),
-  workingDirectoriesAbsent: z.literal(true), duoReleased: z.literal(true), checkedAt: IsoInstantSchema,
+  lockPort: z.number().int().positive().max(65535), profileRunId: z.uuid(), system: BrowserSystemIdSchema, credentialKey: FingerprintSchema,
+  leaseGeneration: z.literal(1), now: IsoInstantSchema,
 });
-export const WorkerVerificationRetirementRequestSchema = z.strictObject({
+
+export const WorkerVerificationRetirementRequestSchema = ProfileDatabaseBindingSchema.extend({
   commandId: CommandIdSchema, grantCommandId: CommandIdSchema, workerId: WorkerIdSchema,
   expectedRevision: PositiveIntSchema, expectedPoolVersion: NonNegativeIntSchema, now: IsoInstantSchema,
-  cleanup: z.union([
-    z.strictObject({ acquisitionId: z.uuid(), browsersClosed: z.literal(true),
-      profilesReleased: z.literal(true), duoReleased: z.literal(true), mode: z.enum(["live", "recovery"]),
-      evidence: z.enum(["browserless", "closed", "recovered"]), recoveryAcquisitionId: z.uuid().optional() })
-      .refine(cleanup => cleanup.evidence === "recovered" ? cleanup.mode === "recovery" && cleanup.recoveryAcquisitionId !== undefined : cleanup.recoveryAcquisitionId === undefined),
-    z.strictObject({ acquisitionId: z.uuid(), mode: z.literal("offline"), evidence: z.literal("orphan-retired"),
-      proof: WorkerVerificationOrphanProofSchema }),
-  ]),
+  cleanup: z.enum(["closed", "interrupted"]),
 });
-
-export function validateOrphanRetirementProof(request: z.infer<typeof WorkerVerificationRetirementRequestSchema>, grant: z.infer<typeof WorkerVerificationAdmissionRequestSchema>, slot: WorkerSlotRecord): void {
-  const same = (left: unknown, right: unknown) => canonicalJsonStringify(left) === canonicalJsonStringify(right);
-  if (request.cleanup.evidence !== "orphan-retired") return;
-  const proof = request.cleanup.proof;
-  if (!same(proof.admission, grant) || !same(proof.slot, slot)
-    || grant.commandId !== request.grantCommandId || grant.owner.acquisitionId !== request.cleanup.acquisitionId
-    || proof.ownerRelease !== null && (proof.ownerRelease.generation !== grant.owner.generation
-      || proof.ownerRelease.acquisitionId !== grant.owner.acquisitionId
-      || Date.parse(proof.ownerRelease.releasedAt) < Date.parse(grant.owner.acquiredAt)
-      || Date.parse(proof.ownerRelease.releasedAt) > Date.parse(request.now))
-    || proof.claim.process.acquisitionId !== grant.owner.acquisitionId || !same(proof.claim.process, grant.owner)
-    || !same(proof.claim.slot, slot) || request.workerId !== slot.workerId || request.expectedRevision !== slot.membershipRevision
-    || slot.reservationCommandId !== grant.commandId || slot.workflow !== grant.workflow
-    || proof.claimFingerprint !== sha256Hex(canonicalJsonStringify(proof.claim))
-    || !same(proof.profileRoots, [join(grant.stateRoot, "scratch", "live-smoke"), join(grant.stateRoot, "browsers")])
-    || proof.profileRoots.some(root => resolve(root) !== root)
-    || proof.profileConfiguration.settingsFingerprint !== derivePersistedSettingsFingerprint(proof.profileConfiguration.settings)
-    || proof.profileConfiguration.settings.paths?.browserProfileRoot !== undefined
-      && proof.profileConfiguration.settings.paths.browserProfileRoot !== proof.profileRoots[1]
-    || proof.profileConfiguration.activeSnapshot !== null
-      && proof.profileConfiguration.activeSnapshot.config.paths.browserProfileRoot !== proof.profileRoots[1]
-    || proof.runtime.sourceDatabaseIdentity !== sha256Hex(canonicalJsonStringify(grant))
-    || proof.checkedAt !== request.now || proof.runtime.recordedAt !== request.now
-    || Date.parse(proof.checkedAt) < Date.parse(grant.now)
-    || Object.values(proof.runtime.processLocks).some(lock => lock.state !== "stopped")) throw new Error("orphan-verification-retirement-unproved");
-}

@@ -6,7 +6,8 @@ import { systemClock } from "../../../src/rules/time/clock.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { WorkerRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { join, resolve } from "node:path";
 import { captureSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
@@ -14,7 +15,7 @@ import { createProfileRegistry } from "../../../src/backend/profiles/registry.js
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { bindWorkerProcessAdmission } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
-const [dbPath, lockRoot, fixtureKind, subcommand, workflowRaw, poolIndexFlag, poolIndexRaw, ...launchArgs] = process.argv.slice(2);
+const [runtimePortRaw, dbPath, lockRoot, fixtureKind, subcommand, workflowRaw, poolIndexFlag, poolIndexRaw, ...launchArgs] = process.argv.slice(2);
 if (
   dbPath === undefined
   || lockRoot === undefined
@@ -26,7 +27,7 @@ if (
 ) {
   throw new Error(
     `worker-stub-cli refused argv ${JSON.stringify(process.argv.slice(2))}; expected `
-    + "<db-path> <lock-root> worker <workflow-id> --pool-index <n>",
+    + "<runtime-port> <db-path> <lock-root> <installed|synthetic> worker <workflow-id> --pool-index <n>",
   );
 }
 
@@ -42,9 +43,13 @@ const launch = launchArgs.length === 0 ? undefined : (() => {
     ordinal: Number(ordinal), membershipRevision: Number(revision) }), commandId };
 })();
 
+const parentStop = new AbortController();
+const lifetimeLock = await WorkerRuntimeLifetimeLock.receive(PositiveIntSchema.parse(Number(runtimePortRaw)),
+  () => parentStop.abort(new Error("fixture-parent-disconnected")));
+parentStop.signal.throwIfAborted();
 const installed = fixtureKind === "installed";
 const repoRoot = resolve(lockRoot, ...rebuildRuntimeIsolation.processLockRoot.split("/").map(() => ".."));
-const machine = installed ? acquireEntrypointAdmission(repoRoot, "shared") : undefined;
+const machine = installed ? acquireSharedRuntimeAdmission(repoRoot, lifetimeLock) : undefined;
 let admission: RuntimeAdmission;
 let credentials: ReturnType<typeof createCredentialStore> | undefined;
 if (machine === undefined) admission = RuntimeAdmission.syntheticFixture(dbPath);
@@ -66,18 +71,19 @@ const bound = bindWorkerProcessAdmission({
   open: () => AuthorityDatabase.open(admission, { path: dbPath, busyTimeoutMs: 5_000,
     migrationOwner: "worker-stub-cli" }, systemClock, undefined, undefined, undefined, credentials),
   close: database => database.close(),
-  admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => {
+  admit: (database) => database.withAuthorityTransaction(repositories => {
     const now = systemClock.now().toISOString();
-    if (launch !== undefined) return admitSupervisedWorker(repositories, { ...launch, now });
+    if (launch !== undefined)
+        return admitSupervisedWorker(repositories, { ...launch, now });
     return admitDirectWorker(repositories, { commandId: randomUUID(), workflow: workflowId, poolIndex,
-      expectedPoolVersion: repositories.workerPools.get(workflowId)?.version ?? 0,
-      processId: process.pid, processAcquisitionId: acquisitionId, authorityPath: dbPath,
-      processLockRoot: lockRoot, now }, randomUUID()).workerId;
-  }),
+        expectedPoolVersion: repositories.workerPools.get(workflowId)?.version ?? 0,
+        processId: process.pid,
+        now }, randomUUID()).workerId;
+}),
 });
 const { value: database, workerId, processLock: lock } = bound;
 
-const started = database.startOwnedWorker({
+const started = database.authority.workerLeases.start({
   workerId,
   workflow: workflowId,
   // This supervision-only stub loads no workflow descriptor and opens no browser.
@@ -85,7 +91,7 @@ const started = database.startOwnedWorker({
   processId: process.pid,
   requestedBy: "local-operator",
   now: systemClock.now().toISOString(),
-}, lock);
+});
 if (started.state !== "started") {
   throw new Error(`worker-stub-cli ${workerId} could not start its lease: ${JSON.stringify(started)}`);
 }
@@ -117,7 +123,10 @@ const shutdown = (reason: "operator" | "shutdown"): void => {
   database.close();
   admission.release();
   if (machine !== admission) machine?.release();
-  // Clearing listeners, timers and the database lets the child exit naturally.
+  void lifetimeLock.close().then(() => {
+    if (process.disconnect === undefined) throw new Error("worker stub parent channel disappeared");
+    process.disconnect();
+  }).catch(error => { setImmediate(() => { throw error; }); });
 };
 
 const directivePoll = setInterval(() => {
@@ -128,6 +137,8 @@ const directivePoll = setInterval(() => {
   }
   if (lease.control.directive === "stop") shutdown("operator");
 }, 25);
+
+parentStop.signal.addEventListener("abort", () => shutdown("shutdown"), { once: true });
 
 process.on("SIGTERM", () => {
   shutdown("shutdown");

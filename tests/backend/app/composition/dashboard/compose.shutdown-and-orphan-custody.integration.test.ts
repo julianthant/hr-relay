@@ -39,21 +39,21 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
       const childOutput = (): string => records.map((record) =>
         `${record.member.workerId}: ${record.output.join("")}`).join("\n");
 
-      const profileRuntime = composeProfileRuntime({ admission: profile.machine, clock: systemClock, hostFacts: { primaryDisplay: null }, processLockRoot: lockRoot });
+      const profileRuntime = composeProfileRuntime({ admission: profile.machine, clock: systemClock, hostFacts: { primaryDisplay: null } });
       cleanups.push(async () => { await profileRuntime.close(); await profile.close(); });
       const active = profileRuntime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() });
       assert.equal(active.state, "active");
       if (active.state !== "active") throw new Error("fixture-profile-sign-in-refused");
       const context = profileRuntime.selectedContext(active.token);
-      const runtime: DashboardRuntime = await composeDashboardRuntime({ admission: profile.machine, profile: { runtime: profileRuntime, token: active.token }, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      const runtime: DashboardRuntime = await composeDashboardRuntime({ lifetimeLock: profile.lifetime, admission: profile.machine, profile: { runtime: profileRuntime, token: active.token }, preflightRunnerFactory: healthyRuntimePreflightRunners,
         isolation: rebuildRuntimeIsolation,
         backendPortOverride: 0,
         frontendPortOverride: 0,
         env: {},
         repoRoot,
         workerProcess: {
-          launch: stubLaunch(dbPath, lockRoot, "installed", process.execPath),
-          spawn: realStubSpawner(records),
+          launch: stubLaunch(dbPath, lockRoot, "installed", process.execPath, profile.lifetime),
+          spawn: realStubSpawner(records, profile.lifetime),
           birth: { pollMs: 50, timeoutMs: 30_000 },
           faultSink: (line) => {
             faultLines.push(line);

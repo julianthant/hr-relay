@@ -1,3 +1,9 @@
+import ts from "typescript";
+import { mkdtempSync, realpathSync, appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { OldBuildRuntimeArtifactsError } from "../../../src/backend/storage/admission/installation.js";
+import { RuntimeLifetimeLock, RuntimeAlreadyRunningError, isOfflineMaintenanceOperationActive } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { profileBrowserClosure } from "../../../src/backend/runtime/browser/native-profile-probe.js";
 import * as readonlySnapshots from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase as FixtureAuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";
@@ -5,28 +11,15 @@ import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../../support/helpers/run-integration-world.js";
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
-import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
-
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
+import { initialSettingsFileRecord } from "../../../src/models/config/settings.js";
+import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
+import { CONFIG_SNAPSHOT, ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, COMMAND_FIXTURES, HASH_A, HASH_B, NOTIFICATION, NOW, UUID_1, UUID_2, UUID_3, UUID_7, UUID_8, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { completionFromAuthorization } from "../../../src/models/run/completion.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import {
-  appendFileSync,
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  statSync,
-  symlinkSync,
-  truncateSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
@@ -47,39 +40,8 @@ import { SpanEventWireSchema } from "../../../src/models/events/types.js";
 import { TimelineEventRecordSchema } from "../../../src/models/events/timeline.js";
 import { RUN_RECORD_JSON_SQL } from "../../../src/backend/storage/sqlite/run-record-row.js";
 import { AuthorityDatabase as RealAuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import {
-  AuthorityBackupService,
-  AuthorityBootStore,
-  AuthorityDatabase,
-  AuthorityHealthPreflightRunner,
-  AuthorityMutationUnavailableError,
-  OfflineAuthorityRestoreService,
-  OfflineRestoreFailure,
-  RecoveryStopProofStore,
-  SpanAuthorityRunRootSchema,
-  doctorAuthorityStorage,
-  verifyBackupManifestAtPath,
-} from "../../../src/backend/storage/sqlite/index.js";
-import {
-  acquireRuntimeProcessLock,
-  acquireRuntimeRestoreAdmission,
-  observeRuntimeLockSnapshot,
-} from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import {
-  ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,
-  COMMAND_FIXTURES,
-  HASH_A,
-  HASH_B,
-  NOTIFICATION,
-  NOW,
-  UUID_1,
-  UUID_2,
-  UUID_3,
-  UUID_7,
-  UUID_8,
-  WRITE_ATTEMPT,
-  WRITE_INTENT_ATTEMPTING,
-} from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { AuthorityBackupService, AuthorityBootStore, AuthorityDatabase, AuthorityHealthPreflightRunner, AuthorityMutationUnavailableError, OfflineAuthorityRestoreService, OfflineRestoreFailure, SpanAuthorityRunRootSchema, doctorAuthorityStorage, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/index.js";
+import { acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import {
   QUEUED_RUN,
 } from "../../support/fixtures/phase1f-run-fixtures.js";
@@ -136,10 +98,14 @@ function runningTerminalFixture(
   const workerId = member.workerId;
   const lease = database.authority.workerLeases.get(workerId);
   assert.ok(lease);
+  const activeConfig = database.authority.runtimeConfig.get();
+  assert.ok(activeConfig);
   database.authority.runs.enqueue({
     ...QUEUED_RUN,
     envelope: {
       ...QUEUED_RUN.envelope,
+      configSnapshotId: activeConfig.configSnapshotId,
+      configFingerprint: activeConfig.configFingerprint,
       runId,
       itemId,
       traceId,
@@ -294,14 +260,19 @@ function seedTerminalAuthority(database: AuthorityDatabase) {
   return { failure, failureAuthorization, result: built.record, successAuthorization };
 }
 
-async function testRoot(): Promise<string> {
+async function testRoot(configScope: "global" | "profile" = "global"): Promise<string> {
   const profile = await createBoundProfileFixture();
   profiles.set(profile.stateRoot, profile);
   roots.push(profile.workspace);
   admissions.set(profile.stateRoot, profile.admission);
   const database = FixtureAuthorityDatabase.open(databaseOptions(profile.path), CLOCK);
   try {
-    if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    const resolved = configScope === "profile" ? resolveConfigWithProvenance(initialSettingsFileRecord().settings,
+      { primaryDisplay: null }, CLOCK, { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot }) : undefined;
+    const snapshot = resolved === undefined ? CONFIG_SNAPSHOT : ConfigSnapshotRecordSchema.parse({
+      ...CONFIG_SNAPSHOT, config: resolved.config, fingerprint: resolved.fingerprint, provenance: resolved.provenance,
+    });
+    if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(snapshot);
     initialGenerations.set(profile.stateRoot, database.getMeta().authorityGeneration);
   } finally { database.close(); }
   return profile.stateRoot;
@@ -502,21 +473,11 @@ function restoreOptions(root: string, authorityPath: string, suspects = join(roo
     suspectDirectory: suspects,
     busyTimeoutMs: 100,
     processLockRoot: processLockRoot(root),
-    stoppedProofMaxAgeMs: 60_000,
-  };
+    };
 }
 
-function stoppedProof(root: string, authorityPath: string, clock = CLOCK) {
-  const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
-  const store = new RecoveryStopProofStore({
-    processLockRoot: processLockRoot(root),
-    maxProofAgeMs: 60_000,
-  }, clock);
-  store.recordRuntimeState(observeRuntimeLockSnapshot({
-    processLockRoot: processLockRoot(root),
-    sourceDatabaseIdentity,
-  }, clock));
-  return store.issue({ observedBy: "local-operator", sourceDatabaseIdentity });
+function maintenanceOperation(root: string) {
+  return admissionFor(root).acquireOfflineMaintenance();
 }
 
 async function createBackup(database: AuthorityDatabase, directory: string) {
@@ -1671,74 +1632,76 @@ describe("fail-closed degraded boot and read-only doctor", () => {
   });
 
   it("opens corrupt, truncated, newer, foreign-key-invalid, invariant-invalid, and record-invalid files degraded", async () => {
-    const root = await testRoot();
-    const paths: Array<readonly [string, string]> = [];
-
-    const corruptPath = join(await testRoot(), "state.db");
-    writeFileSync(corruptPath, "not a sqlite database");
-    paths.push([corruptPath, "authority-not-sqlite"]);
-
-    const truncatedPath = join(await testRoot(), "state.db");
-    openDatabase(truncatedPath).close();
-    truncateSync(truncatedPath, 128);
-    paths.push([truncatedPath, "authority-corrupt"]);
-
-    const newerPath = join(await testRoot(), "state.db");
-    openDatabase(newerPath).close();
-    const newer = new DatabaseSync(newerPath);
-    newer.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`);
-    newer.close();
-    paths.push([newerPath, "authority-schema-mismatch"]);
-
-    const foreignKeyPath = join(await testRoot(), "state.db");
-    openDatabase(foreignKeyPath).close();
-    const badForeignKey = new DatabaseSync(foreignKeyPath, { enableForeignKeyConstraints: false });
-    badForeignKey.prepare(`
-      INSERT INTO command_audits (id, command_id, payload_json, created_at)
-      VALUES (?, ?, ?, ?)
-    `).run(UUID_2, UUID_8, JSON.stringify({ invalid: "but valid JSON" }), NOW);
-    badForeignKey.close();
-    paths.push([foreignKeyPath, "authority-foreign-key"]);
-
-    const invariantPath = join(await testRoot(), "state.db");
-    const invariantDatabase = openDatabase(invariantPath);
-    invariantDatabase.authority.commands.insert(COMMAND_FIXTURES[0]);
-    invariantDatabase.close();
-    const badInvariant = new DatabaseSync(invariantPath);
-    badInvariant.prepare("UPDATE commands SET family = ? WHERE id = ?").run("run", UUID_1);
-    badInvariant.close();
-    paths.push([invariantPath, "authority-record-invalid"]);
-
-    const recordSchemaPath = join(await testRoot(), "state.db");
-    const recordSchemaDatabase = openDatabase(recordSchemaPath);
-    fenceWriteFixture(recordSchemaDatabase, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }, recordSchemaPath);
-    releaseSeededWriteOwners(recordSchemaDatabase, CLOCK.now().toISOString());
-    recordSchemaDatabase.close();
-    const badRecordSchema = new DatabaseSync(recordSchemaPath);
-    badRecordSchema.prepare("UPDATE write_intents SET payload_json = ? WHERE id = ?")
-      .run(JSON.stringify({ status: "attempting" }), WRITE_INTENT_ATTEMPTING.writeIntentId);
-    badRecordSchema.close();
-    paths.push([recordSchemaPath, "authority-record-invalid"]);
-
-    for (const [path, expectedCode] of paths) {
-      const before = readFileSync(path);
-      const store = openBootStore(path);
-      const report = store.report();
-      assert.equal(report.state, "degraded-read-only", path);
-      if (report.state !== "degraded-read-only") throw new Error("expected degraded report");
-      assert.equal(report.cause.code, expectedCode, path);
-      for (const operation of ["enqueue", "claim", "commit", "control"] as const) {
-        assert.throws(
-          () => store.requireWritable(operation),
-          (error: unknown) => error instanceof AuthorityMutationUnavailableError
-            && error.operation === operation
-            && error.health.code === expectedCode,
-        );
-      }
-      assert.deepEqual(readFileSync(path), before, `${path} was modified during degraded boot`);
+    const root = await testRoot(), path = join(root, "state.db");
+    openDatabase(path).close();
+    const baseline = readFileSync(path);
+    const assertClosedCompanions = () => {
+      for (const suffix of ["-wal", "-shm", "-journal"]) assert.equal(existsSync(path + suffix), false);
+    };
+    assertClosedCompanions();
+    const corruptions: ReadonlyArray<readonly [string, () => void]> = [
+      ["authority-not-sqlite", () => { writeFileSync(path, "not a sqlite database"); }],
+      ["authority-corrupt", () => { truncateSync(path, 128); }],
+      ["authority-schema-mismatch", () => {
+        const newer = new DatabaseSync(path);
+        try { newer.exec(`PRAGMA user_version = ${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}`); }
+        finally { newer.close(); }
+      }],
+      ["authority-foreign-key", () => {
+        const badForeignKey = new DatabaseSync(path, { enableForeignKeyConstraints: false });
+        try {
+          badForeignKey.prepare(`
+            INSERT INTO command_audits (id, command_id, payload_json, created_at)
+            VALUES (?, ?, ?, ?)
+          `).run(UUID_2, UUID_8, JSON.stringify({ invalid: "but valid JSON" }), NOW);
+        } finally { badForeignKey.close(); }
+      }],
+      ["authority-record-invalid", () => {
+        const invariantDatabase = openDatabase(path);
+        try { invariantDatabase.authority.commands.insert(COMMAND_FIXTURES[0]); }
+        finally { invariantDatabase.close(); }
+        const badInvariant = new DatabaseSync(path);
+        try { badInvariant.prepare("UPDATE commands SET family = ? WHERE id = ?").run("run", UUID_1); }
+        finally { badInvariant.close(); }
+      }],
+      ["authority-record-invalid", () => {
+        const recordSchemaDatabase = openDatabase(path);
+        try {
+          fenceWriteFixture(recordSchemaDatabase, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }, path);
+          releaseSeededWriteOwners(recordSchemaDatabase, CLOCK.now().toISOString());
+        } finally { recordSchemaDatabase.close(); }
+        const badRecordSchema = new DatabaseSync(path);
+        try {
+          badRecordSchema.prepare("UPDATE write_intents SET payload_json = ? WHERE id = ?")
+            .run(JSON.stringify({ status: "attempting" }), WRITE_INTENT_ATTEMPTING.writeIntentId);
+        } finally { badRecordSchema.close(); }
+      }],
+    ];
+    for (const [expectedCode, corrupt] of corruptions) {
+      assertClosedCompanions();
+      writeFileSync(path, baseline);
+      assert.deepEqual(readFileSync(path), baseline);
+      corrupt();
+      assertClosedCompanions();
+      const before = readFileSync(path), store = openBootStore(path);
+      try {
+        const report = store.report();
+        assert.equal(report.state, "degraded-read-only", path);
+        if (report.state !== "degraded-read-only") throw new Error("expected degraded report");
+        assert.equal(report.cause.code, expectedCode, path);
+        for (const operation of ["enqueue", "claim", "commit", "control"] as const) {
+          assert.throws(
+            () => store.requireWritable(operation),
+            (error: unknown) => error instanceof AuthorityMutationUnavailableError
+              && error.operation === operation
+              && error.health.code === expectedCode,
+          );
+        }
+        assert.deepEqual(readFileSync(path), before, `${path} was modified during degraded boot`);
+      } finally { store.close(); }
+      assertClosedCompanions();
     }
-    const doctorPath = join(root, "state.db");
-    copyFileSync(recordSchemaPath, doctorPath);
+    const doctorPath = path;
     const beforeDoctor = readFileSync(doctorPath);
     const doctor = await doctorAuthorityStorage(admissionFor(root), {
       stateRootTrustAnchor: root,
@@ -1830,22 +1793,22 @@ describe("fail-closed degraded boot and read-only doctor", () => {
 
 describe("offline exact-backup restore", () => {
   it("consumes the exact issued proof when the wall clock advances before exclusive verification", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     const advancingClock = manualClock(new Date(NOW));
-    const proof = stoppedProof(root, authorityPath, advancingClock);
+    const proof = maintenanceOperation(root);
     advancingClock.advanceWall(1);
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, advancingClock, undefined, undefined, boundProfileCredentials(admissionFor(root)));
-    await assert.doesNotReject(restore.restore({ manifestPath, stoppedSystemProof: proof }));
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, advancingClock, undefined, boundProfileCredentials(admissionFor(root)));
+    await assert.doesNotReject(restore.restore({ manifestPath }, proof));
     renewAfterRestore(root);
   });
 
   it("preserves nonempty failure, result and immutable same-row completion authority", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -1854,11 +1817,8 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.close();
 
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
-    const report = await restore.restore({
-      manifestPath,
-      stoppedSystemProof: stoppedProof(root, authorityPath),
-    });
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
+    const report = await restore.restore({ manifestPath }, maintenanceOperation(root));
     renewAfterRestore(root);
     assert.equal(report.authorityGeneration, generation);
     const restored = openDatabase(authorityPath);
@@ -1875,7 +1835,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("preserves the suspect DB and restores authority without resurrecting retired projections", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1887,15 +1847,15 @@ describe("offline exact-backup restore", () => {
     writeFileSync(`${authorityPath}-wal`, "suspect wal bytes");
     writeFileSync(`${authorityPath}-shm`, "suspect shm bytes");
 
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async (stagedPath, restoreAdmission) => {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async (stagedPath, restoreAdmission) => {
       const stagedAdmission = admissionFor(stagedPath).stoppedRestoreProjection(stagedPath, restoreAdmission);
       const staged = AuthorityDatabase.openStoppedRestoreProjection(stagedAdmission, databaseOptions(stagedPath), CLOCK);
       assert.equal("projections" in staged,false);
       assert.deepEqual(staged.authority.commands.get(UUID_1),COMMAND_FIXTURES[0]);
       staged.close();
       stagedAdmission.release();
-    }, CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
-    const report = await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+    }, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
+    const report = await restore.restore({ manifestPath }, maintenanceOperation(root));
     assert.equal(report.state, "restored");
     assert.equal(report.authorityGeneration, baselineGeneration(root) + 1);
     assert.equal(existsSync(join(suspects, report.suspectFileName)), true);
@@ -1910,8 +1870,8 @@ describe("offline exact-backup restore", () => {
     assert.equal("projections" in restored,false);
   });
 
-  it("refuses restore without the explicit stopped-system proof before preserving or swapping", async () => {
-    const root = await testRoot();
+  it("refuses a copied unissued operation before preserving or swapping", async () => {
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1919,25 +1879,23 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     const before = readFileSync(authorityPath);
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
-    const proof = stoppedProof(root, authorityPath);
-    await assert.rejects(restore.restore({
-      manifestPath,
-      stoppedSystemProof: { ...proof, runtimeGeneration: proof.runtimeGeneration + 1 },
-    }), /does not match its issued one-time record/);
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
+    const proof = maintenanceOperation(root);
+    try { await assert.rejects(restore.restore({ manifestPath }, { ...proof }), /offline-maintenance-unissued/u); }
+    finally { proof.release(); }
     assert.deepEqual(readFileSync(authorityPath), before);
     assert.equal(existsSync(suspects), false);
   });
 
-  it("refuses when a worker starts after the stopped proof was issued", async () => {
-    const root = await testRoot();
+  it("refuses old-build worker evidence during a held operation", async () => {
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
     const database = openDatabase(authorityPath);
     const { manifestPath } = await createBackup(database, directory);
     database.close();
-    const proof = stoppedProof(root, authorityPath);
+    const proof = maintenanceOperation(root);
     const worker = acquireRuntimeProcessLock({
       processLockRoot: processLockRoot(root),
       name: "workers",
@@ -1945,10 +1903,10 @@ describe("offline exact-backup restore", () => {
       pid: process.pid,
     }, CLOCK);
     try {
-      const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
+      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
       await assert.rejects(
-        restore.restore({ manifestPath, stoppedSystemProof: proof }),
-        /workers process lock generation .* is active for pid/u,
+        restore.restore({ manifestPath }, proof),
+        OldBuildRuntimeArtifactsError,
       );
       assert.equal(existsSync(suspects), false);
       assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, baselineGeneration(root) + 0);
@@ -1957,8 +1915,8 @@ describe("offline exact-backup restore", () => {
     }
   });
 
-  it("refuses a never-run proof after the first singleton starts and releases", async () => {
-    const root = await testRoot();
+  it("refuses released old-build singleton evidence without interpreting its generations", async () => {
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -1966,7 +1924,7 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     const authorityBytes = readFileSync(authorityPath);
-    const proof = stoppedProof(root, authorityPath);
+    const proof = maintenanceOperation(root);
     const server = acquireRuntimeProcessLock({
       processLockRoot: processLockRoot(root),
       name: "server",
@@ -1975,42 +1933,41 @@ describe("offline exact-backup restore", () => {
     assert.equal(server.generation, 2);
     server.release();
 
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: proof }),
-      /does not match current runtime and process-lock generations/u,
+      restore.restore({ manifestPath }, proof),
+      OldBuildRuntimeArtifactsError,
     );
     assert.deepEqual(readFileSync(authorityPath), authorityBytes);
     assert.equal(existsSync(suspects), false);
   });
 
   it("holds exclusive admission through verification and authority replacement", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
     const database = openDatabase(authorityPath);
     const { manifestPath } = await createBackup(database, directory);
     database.close();
-    const proof = stoppedProof(root, authorityPath);
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => {
-        const worker = acquireRuntimeProcessLock({
-          processLockRoot: processLockRoot(root),
-          name: "workers",
-          workerId: "person-lookup-worker-2",
-          pid: process.pid,
-        }, CLOCK);
-        worker.release();
-      }, CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
-    await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: proof }),
-      /restore admission .* is held by live pid/u,
-    );
+    const proof = maintenanceOperation(root);
+    const lifetime = admissionFor(root).lifetime;
+    assert.ok(lifetime instanceof RuntimeLifetimeLock);
+    let exclusions = 0;
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => {
+      proof.assertHeld();
+      assert.throws(() => admissionFor(root).beginOfflineMaintenance(), /offline-maintenance-busy/u);
+      await assert.rejects(RuntimeLifetimeLock.acquire(lifetime.port), RuntimeAlreadyRunningError);
+      exclusions++;
+      throw new Error("synthetic-root-exclusion-confirmed");
+    }, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
+    await assert.rejects(restore.restore({ manifestPath }, proof), /synthetic-root-exclusion-confirmed/u);
+    assert.equal(exclusions, 1);
     assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, baselineGeneration(root) + 0);
   });
 
   it("does not fall back when the exact newest manifest is bad", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2019,9 +1976,9 @@ describe("offline exact-backup restore", () => {
     database.close();
     const badManifestPath = join(directory, "newest-bad.manifest.json");
     writeFileSync(badManifestPath, "{ invalid");
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath: badManifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      restore.restore({ manifestPath: badManifestPath }, maintenanceOperation(root)),
     );
     assert.equal(manifestPaths(directory).length, 2);
     assert.equal(existsSync(suspects), false);
@@ -2029,7 +1986,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("keeps live and suspect recoverable when projection rebuild fails", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2041,9 +1998,9 @@ describe("offline exact-backup restore", () => {
     const liveGeneration = AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration;
     writeFileSync(`${authorityPath}-wal`, "live wal bytes");
     writeFileSync(`${authorityPath}-shm`, "live shm bytes");
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), () => Promise.reject(new Error("injected projection rebuild failure")), CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), () => Promise.reject(new Error("injected projection rebuild failure")), CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      restore.restore({ manifestPath }, maintenanceOperation(root)),
       /injected projection rebuild failure/,
     );
     assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, liveGeneration);
@@ -2052,7 +2009,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("leaves live authority untouched on an injected atomic-swap failure", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2064,12 +2021,12 @@ describe("offline exact-backup restore", () => {
     const liveGeneration = AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration;
     writeFileSync(`${authorityPath}-wal`, "live wal bytes");
     writeFileSync(`${authorityPath}-shm`, "live shm bytes");
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: () => { throw new Error("injected atomic swap failure"); },
-      }, undefined, boundProfileCredentials(admissionFor(root)));
+      }, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      restore.restore({ manifestPath }, maintenanceOperation(root)),
       /injected atomic swap failure/,
     );
     assert.equal(readFileSync(`${authorityPath}-wal`, "utf8"), "live wal bytes");
@@ -2079,7 +2036,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("restores a companion when its displacement rename throws after moving it", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2087,7 +2044,7 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     writeFileSync(`${authorityPath}-wal`, "live wal bytes");
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: renameSync,
         renamePath: (source, destination) => {
@@ -2096,11 +2053,11 @@ describe("offline exact-backup restore", () => {
             throw new Error("injected displacement error after rename");
           }
         },
-      }, undefined, boundProfileCredentials(admissionFor(root)));
+      }, boundProfileCredentials(admissionFor(root)));
 
     let failure: unknown;
     try {
-      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+      await restore.restore({ manifestPath }, maintenanceOperation(root));
     } catch (error) {
       failure = error;
     }
@@ -2115,7 +2072,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("reports authority replaced when atomic swap throws after replacing it", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2124,17 +2081,17 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.authority.notifications.create(NOTIFICATION);
     database.close();
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: (source, destination) => {
           renameSync(source, destination);
           throw new Error("injected atomic swap error after rename");
         },
-      }, undefined, boundProfileCredentials(admissionFor(root)));
+      }, boundProfileCredentials(admissionFor(root)));
 
     let failure: unknown;
     try {
-      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+      await restore.restore({ manifestPath }, maintenanceOperation(root));
     } catch (error) {
       failure = error;
     }
@@ -2151,14 +2108,14 @@ describe("offline exact-backup restore", () => {
   });
 
   it("reports cleanup-only failure after authority replacement and names the staged path", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     let cleanupPath = "";
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: (source, destination) => {
           renameSync(source, destination);
@@ -2169,11 +2126,11 @@ describe("offline exact-backup restore", () => {
           if (path === cleanupPath) throw new Error("injected staged cleanup failure");
           rmSync(path);
         },
-      }, undefined, boundProfileCredentials(admissionFor(root)));
+      }, boundProfileCredentials(admissionFor(root)));
 
     let failure: unknown;
     try {
-      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+      await restore.restore({ manifestPath }, maintenanceOperation(root));
     } catch (error) {
       failure = error;
     }
@@ -2186,7 +2143,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("preserves primary failure before staged cleanup failure", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2194,7 +2151,7 @@ describe("offline exact-backup restore", () => {
     database.close();
     let stagedPath = "";
     const primaryError = new Error("injected primary projection failure");
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath), async (path) => {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async (path) => {
         stagedPath = path;
         throw primaryError;
       }, CLOCK, {
@@ -2204,11 +2161,11 @@ describe("offline exact-backup restore", () => {
           if (path === stagedPath) throw new Error("injected cleanup after primary failure");
           rmSync(path);
         },
-      }, undefined, boundProfileCredentials(admissionFor(root)));
+      }, boundProfileCredentials(admissionFor(root)));
 
     let failure: unknown;
     try {
-      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+      await restore.restore({ manifestPath }, maintenanceOperation(root));
     } catch (error) {
       failure = error;
     }
@@ -2231,7 +2188,7 @@ describe("offline exact-backup restore", () => {
     operation,
     expectedLiveCompanion,
   }) => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2244,7 +2201,7 @@ describe("offline exact-backup restore", () => {
     writeFileSync(`${authorityPath}-wal`, "live wal bytes");
     let swapAttempted = false;
     const rollbackMessage = `injected rollback ${operation} failure`;
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: () => {
           swapAttempted = true;
@@ -2264,11 +2221,11 @@ describe("offline exact-backup restore", () => {
             throw new Error(rollbackMessage);
           }
         },
-      }, undefined, boundProfileCredentials(admissionFor(root)));
+      }, boundProfileCredentials(admissionFor(root)));
 
     let failure: unknown;
     try {
-      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+      await restore.restore({ manifestPath }, maintenanceOperation(root));
     } catch (error) {
       failure = error;
     }
@@ -2294,7 +2251,7 @@ describe("offline exact-backup restore", () => {
   });
 
   it("refuses when verified backup bytes mutate during the staged copy", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2305,7 +2262,7 @@ describe("offline exact-backup restore", () => {
     const liveBytes = readFileSync(authorityPath);
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { backupFileName: string };
     const backupPath = join(directory, manifest.backupFileName);
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
         copyFile: (source, destination) => {
           if (source === backupPath) {
             const bytes = readFileSync(source);
@@ -2315,16 +2272,16 @@ describe("offline exact-backup restore", () => {
           copyFileSync(source, destination);
         },
         atomicReplace: renameSync,
-      }, undefined, boundProfileCredentials(admissionFor(root)));
+      }, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      restore.restore({ manifestPath }, maintenanceOperation(root)),
       /staged restore .* checksum does not match verified manifest/u,
     );
     assert.deepEqual(readFileSync(authorityPath), liveBytes);
   });
 
   it("classifies post-swap directory fsync failure as authority replaced", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2333,7 +2290,7 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     let swapped = false;
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, {
         copyFile: copyFileSync,
         atomicReplace: (source, destination) => {
           renameSync(source, destination);
@@ -2342,16 +2299,16 @@ describe("offline exact-backup restore", () => {
         syncPath: () => {
           if (swapped) throw new Error("injected post-swap directory fsync failure");
         },
-      }, undefined, boundProfileCredentials(admissionFor(root)));
+      }, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      restore.restore({ manifestPath }, maintenanceOperation(root)),
       replacedFailure(/post-swap directory fsync failure/u),
     );
     assert.equal(inspectReplacedAuthority(authorityPath).authorityGeneration, generation);
   });
 
   it("classifies post-swap report validation failure as authority replaced", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const database = openDatabase(authorityPath);
@@ -2362,116 +2319,83 @@ describe("offline exact-backup restore", () => {
       ...CLOCK,
       now: (): Date => swapped ? new Date(Number.NaN) : CLOCK.now(),
     };
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, reportClock, {
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, reportClock, {
         copyFile: copyFileSync,
         atomicReplace: (source, destination) => {
           renameSync(source, destination);
           swapped = true;
         },
-      }, undefined, boundProfileCredentials(admissionFor(root)));
+      }, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath, reportClock) }),
+      restore.restore({ manifestPath }, maintenanceOperation(root)),
       replacedFailure(/Invalid time value/u),
     );
   });
 
-  it("classifies exclusive-admission release failure after swap as authority replaced", async () => {
-    const root = await testRoot();
-    const authorityPath = join(root, "state.db");
-    const directory = backupDirectory(root);
-    const database = openDatabase(authorityPath);
-    const { manifestPath } = await createBackup(database, directory);
-    database.close();
-    let held: ReturnType<typeof acquireRuntimeRestoreAdmission> | undefined;
-    let collision: string | undefined;
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath), async () => undefined, CLOCK, undefined, (input, clock) => {
-      held = acquireRuntimeRestoreAdmission(input, clock);
-      const history = join(processLockRoot(root), "restore-admission-history");
-      mkdirSync(history, { recursive: true, mode: 0o700 });
-      collision = join(history, `${held.admissionId}.lock.json`);
-      mkdirSync(collision, { mode: 0o700 });
-      return held;
-    }, boundProfileCredentials(admissionFor(root)));
+  it("classifies exact operation release failure after swap as authority replaced", async () => {
+    const root = await testRoot("profile"), authorityPath = join(root, "state.db"), directory = backupDirectory(root);
+    const owner = admissionFor(root), lifetime = owner.lifetime;
+    assert.ok(lifetime instanceof RuntimeLifetimeLock);
+    const context = owner.readInstallationContext(); assert.ok(context);
+    const journal = join(context.workspace, ".tracker", "control", "journal.json");
+    const database = openDatabase(authorityPath), { manifestPath } = await createBackup(database, directory); database.close();
+    const operation = maintenanceOperation(root), assertHeld = lifetime.assertOfflineMaintenance.bind(lifetime);
+    let replaced = false;
+    const failedRelease = vi.spyOn(lifetime, "assertOfflineMaintenance").mockImplementation((owned, workspace) => {
+      assertHeld(owned, workspace);
+      if (replaced && !existsSync(journal)) throw new Error("synthetic-exact-operation-release-failure");
+    });
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, owner, restoreOptions(root, authorityPath), async () => undefined,
+      CLOCK, { copyFile: copyFileSync, atomicReplace(source, target) { renameSync(source, target); replaced = true; } }, boundProfileCredentials(owner));
     try {
-      await assert.rejects(restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }), replacedFailure(/release failed/u));
-      assert.ok(existsSync(join(processLockRoot(root), "restore-admission.lock.json")));
-      assert.throws(() => acquireRuntimeProcessLock({ processLockRoot: processLockRoot(root), name: "workers", workerId: "release-unproved", pid: process.pid }, CLOCK));
-      assert.throws(() => admissionFor(root).assertProfileRuntime(), /profile-restore-context-expired/u);
-    } finally {
-      if (collision !== undefined) rmSync(collision, { recursive: true });
-      held?.release();
-    }
+      await assert.rejects(restore.restore({ manifestPath }, operation), replacedFailure(/release failed/u));
+      assert.equal(isOfflineMaintenanceOperationActive(operation), true);
+      await assert.rejects(RuntimeLifetimeLock.acquire(lifetime.port), RuntimeAlreadyRunningError);
+      assert.throws(() => lifetime.beginOfflineMaintenance(context.workspace), /offline-maintenance-busy/u);
+      assert.throws(() => owner.beginOfflineMaintenance(), /profile-restore-context-expired/u);
+      assert.throws(() => owner.assertProfileRuntime());
+    } finally { failedRelease.mockRestore(); operation.release(); }
   });
 
-  it("rejects stale, replayed, generation-mismatched, and currently-active process-lock proofs", async () => {
-    const root = await testRoot();
-    const authorityPath = join(root, "state.db");
-    const directory = backupDirectory(root);
-    const suspects = join(root, "backups", "suspects");
-    const database = openDatabase(authorityPath);
-    const { manifestPath } = await createBackup(database, directory);
-    database.close();
+  it("rejects expired, copied, foreign and replayed operations before restore effects", async () => {
+    const root = await testRoot("profile"), authorityPath = join(root, "state.db"), directory = backupDirectory(root);
+    const suspects = join(root, "backups", "suspects"), owner = admissionFor(root), lifetime = owner.lifetime;
+    assert.ok(lifetime instanceof RuntimeLifetimeLock);
+    const context = owner.readInstallationContext(); assert.ok(context);
+    const database = openDatabase(authorityPath), { manifestPath } = await createBackup(database, directory); database.close();
+    const before = readFileSync(authorityPath);
+    const service = () => new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects),
+      async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
+    const expired = maintenanceOperation(root); expired.release();
+    await assert.rejects(service().restore({ manifestPath }, expired), /offline-maintenance-unissued/u);
+    assert.equal(existsSync(suspects), false); assert.deepEqual(readFileSync(authorityPath), before);
 
-    const staleClock = manualClock(new Date(NOW));
-    const staleProof = stoppedProof(root, authorityPath, staleClock);
-    staleClock.advanceWall(60_001);
-    const staleRestore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, staleClock, undefined, undefined, boundProfileCredentials(admissionFor(root)));
-    await assert.rejects(
-      staleRestore.restore({ manifestPath, stoppedSystemProof: staleProof }),
-      /proof .* is stale/,
-    );
-    assert.equal(existsSync(suspects), false);
+    const current = maintenanceOperation(root);
+    await assert.rejects(service().restore({ manifestPath }, { ...current }), /offline-maintenance-unissued/u);
+    assert.throws(() => RuntimeAdmission.acquireMachine(context.workspace, "shared", lifetime), /offline-maintenance-unissued/u);
+    await assert.rejects(RuntimeLifetimeLock.acquire(lifetime.port), RuntimeAlreadyRunningError);
+    assert.equal(existsSync(suspects), false); assert.deepEqual(readFileSync(authorityPath), before);
+    current.release();
 
-    const currentProof = stoppedProof(root, authorityPath);
-    const startedAndStopped = acquireRuntimeProcessLock({
-      processLockRoot: processLockRoot(root),
-      name: "workers",
-      workerId: "person-lookup-worker-1",
-      pid: process.pid,
-    }, CLOCK);
-    startedAndStopped.release();
-    const mismatchedRestore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
-    await assert.rejects(
-      mismatchedRestore.restore({ manifestPath, stoppedSystemProof: currentProof }),
-      /does not match current runtime and process-lock generations/,
-    );
-    assert.equal(existsSync(suspects), false);
-
-    const activeProof = stoppedProof(root, authorityPath);
-    const activeServer = acquireRuntimeProcessLock({
-      processLockRoot: processLockRoot(root),
-      name: "server",
-      pid: process.pid,
-    }, CLOCK);
-    const activeRestore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
+    const foreignWorkspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-foreign-operation-")));
+    const foreignRoot = await RuntimeLifetimeLock.acquire(0), foreign = foreignRoot.beginOfflineMaintenance(foreignWorkspace);
     try {
-      await assert.rejects(
-        activeRestore.restore({ manifestPath, stoppedSystemProof: activeProof }),
-        /server process lock generation .* is active for pid/,
-      );
-    } finally {
-      activeServer.release();
-    }
-    assert.equal(existsSync(suspects), false);
+      await assert.rejects(service().restore({ manifestPath }, foreign), /offline-maintenance-unissued/u);
+      assert.equal(existsSync(suspects), false); assert.deepEqual(readFileSync(authorityPath), before);
+    } finally { foreign.release(); await foreignRoot.close(); rmSync(foreignWorkspace, { recursive: true }); }
 
-    const replayProof = stoppedProof(root, authorityPath);
-    const replayRestore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
-    const old = admissionFor(root);
-    await replayRestore.restore({ manifestPath, stoppedSystemProof: replayProof });
+    const once = maintenanceOperation(root), firstService = service(), old = admissionFor(root);
+    await firstService.restore({ manifestPath }, once);
     renewAfterRestore(root);
     assert.throws(() => old.assertProfileRuntime(), /released admission/u);
-    await assert.rejects(replayRestore.restore({ manifestPath, stoppedSystemProof: replayProof }), /released admission/u);
-    const currentRestore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
-    const suspectsAfterFirstRestore = readdirSync(suspects).length;
-    await assert.rejects(
-      currentRestore.restore({ manifestPath, stoppedSystemProof: replayProof }),
-      /was already consumed/,
-    );
-    assert.equal(readdirSync(suspects).length, suspectsAfterFirstRestore);
+    await assert.rejects(firstService.restore({ manifestPath }, once), /released admission/u);
+    const after = readdirSync(suspects).length;
+    await assert.rejects(service().restore({ manifestPath }, once), /offline-maintenance-unissued/u);
+    assert.equal(readdirSync(suspects).length, after);
   });
 
   it("rejects a checksum-valid restore copy whose authority record is schema-invalid", async () => {
-    const root = await testRoot();
+    const root = await testRoot("profile");
     const authorityPath = join(root, "state.db");
     const directory = backupDirectory(root);
     const suspects = join(root, "backups", "suspects");
@@ -2497,9 +2421,9 @@ describe("offline exact-backup restore", () => {
       sha256,
     }));
 
-    const restore = new OfflineAuthorityRestoreService(admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, undefined, boundProfileCredentials(admissionFor(root)));
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(
-      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      restore.restore({ manifestPath }, maintenanceOperation(root)),
       /settings_snapshots.*native record validation|strict|schema/,
     );
     assert.equal(existsSync(suspects), false);
@@ -2559,6 +2483,38 @@ describe("authority.health preflight and static recovery boundary", () => {
     assert.match(withoutBackup.summary, /backup missing/);
   });
 
+  it("keeps native browser preparation outside stopped backup IO", () => {
+    const sourceFile = (path: string) => ts.createSourceFile(path, readFileSync(join(REPO_ROOT, path), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const nativeCalls = (node: ts.Node) => {
+      const calls: string[] = [];
+      const visit = (child: ts.Node): void => {
+        if (ts.isCallExpression(child)) {
+          const target = child.expression;
+          const name = ts.isIdentifier(target) ? target.text : ts.isPropertyAccessExpression(target) ? target.name.text : "";
+          if (["prepareStoppedBackupClosure", "probeClosed", "assertClosed", "probeStoppedProfileBrowsersClosed",
+            "probeRestoreProfileBrowsersClosed", "probeClosedBrowserProfile", "assertNativeBrowserProfilesClosed", "runNativeProfileProbeChild", "launch", "launchPersistentContext"].includes(name)) calls.push(name);
+        }
+        ts.forEachChild(child, visit);
+      };
+      visit(node); return calls;
+    };
+    for (const [path, names] of [
+      ["src/backend/storage/maintenance/upgrade.ts", ["backupStoppedAuthority"]],
+      ["src/backend/storage/maintenance/existing-data-backup.ts", ["inspectCoupledBackupSource", "writeCoupledBackup", "backupFlatStorage"]],
+    ] as const) {
+      const source = sourceFile(path);
+      for (const name of names) {
+        const owner = source.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === name);
+        assert.ok(owner && ts.isFunctionDeclaration(owner) && owner.body);
+        assert.deepEqual(nativeCalls(owner.body), [], name);
+      }
+    }
+    for (const method of ["probeClosed", "assertClosed", "prepareStoppedBackupClosure", "assertNativeBrowserProfilesClosed"]) {
+      const control = ts.createSourceFile("bad-backup.ts", `function backup() { browser.${method}(); }`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      assert.deepEqual(nativeCalls(control), [method]);
+    }
+  });
+
   it("keeps native SQLite use in the reviewed recovery boundaries and bans copy or VACUUM fallbacks", () => {
     const adapterPath = "src/backend/storage/sqlite/authority-database.ts";
     const sqliteBoundaryPaths = [
@@ -2573,9 +2529,9 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/backend/storage/sqlite/imported-artifacts.ts",
       "src/backend/storage/sqlite/native-run-deletion.ts",
       "src/backend/storage/sqlite/notification-publications.ts",
-      "src/backend/storage/sqlite/orphan-verification-proof.ts",
       "src/backend/storage/sqlite/profile-local-databases.ts",
       "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
+      "src/backend/storage/sqlite/run-record-row.ts",
       "src/backend/storage/sqlite/run-search-index.ts",
       "src/backend/storage/sqlite/run-summaries.ts",
       "src/backend/storage/sqlite/settings-activation.ts",

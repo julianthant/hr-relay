@@ -1,3 +1,8 @@
+import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
+import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../../storage/source-closure.js";
+import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
+import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
+import { prepareStoppedBackupClosure, type StoppedBackupClosure } from "../../../storage/maintenance/profile-inventory.js";
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, constants, copyFileSync, fsyncSync, linkSync, lstatSync, openSync, readFileSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
@@ -15,7 +20,6 @@ import { inspectAuthorityBackupReadOnly } from "../../../storage/sqlite/backup-i
 import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { verifyBackupManifestAtPath } from "../../../storage/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../storage/sqlite/migrations.js";
-import { acquireRuntimeRestoreAdmission } from "../../../storage/sqlite/runtime-process-locks.js";
 import { acquireRecoveryRuntimeRelocation, type RuntimeAdmission, type RuntimeRelocationOperation } from "../../../storage/admission/admission.js";
 import { inspectPendingRelocationRecovery, type RelocationPlanBinding, type VerifiedRelocationActivationIntent,
   type VerifiedRelocationEvidence, type VerifiedRelocationPreparation } from "../../../storage/admission/installation.js";
@@ -256,24 +260,35 @@ async function verifyStageEvidence(operation: RuntimeRelocationOperation, destin
   return evidence;
 }
 
-export async function runOfflineStorageRelocation(input: Readonly<{ workspace: string; command: RelocationCommand;
+export async function runOfflineStorageRelocation(input: Readonly<{ workspace: string; lifetime: RuntimeLifetimeLock; command: RelocationCommand;
   admission?: RuntimeAdmission; clock?: Clock; hostFacts?: HostConfigFacts;
   faults?: Readonly<{ afterNativePublish?(): void; afterActivationIntent?(): void; beforeActivationTransaction?(): void;
     afterActivationWrite?(): void; afterFinalBackup?(): void;
     afterVerifiedStage?(): void; afterFence?(): void; afterRetention?(): void; afterSwitch?(): void }> }>): Promise<Readonly<{ operationId: string; generation: number }>> {
+  if (!(input.lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
+  input.lifetime.assertHeld();
   const workspace = resolve(input.workspace);
+  input.lifetime.assertExclusiveWorkspaceTarget(workspace);
+  if (input.admission !== undefined) {
+    if (input.admission.lifetime !== input.lifetime) throw new Error("storage-relocation: runtime lifetime mismatch");
+    input.admission.assertExclusive();
+  }
   const clock = input.clock ?? systemClock;
   input.admission?.assertStorageRelocationSupported();
   const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
   let admission = input.admission;
   let ownedAdmission = false;
   let operationId: string | undefined;
-  const restore = acquireRuntimeRestoreAdmission({ processLockRoot, pid: process.pid }, clock);
+  let sourceClosure: StoppedBackupClosure | undefined;
+  const restore = input.command.kind === "resume" ? input.lifetime.beginOfflineMaintenance(workspace)
+    : requireRuntimeAdmission(admission).beginOfflineMaintenance();
+  restore.consume();
+  let outcome: { result: Readonly<{ operationId: string; generation: number }> } | { error: unknown };
   try {
     let operation: RuntimeRelocationOperation;
     if (input.command.kind === "resume") {
       const binding = inspectPendingRelocationRecovery(workspace, input.command.id, restore);
-      const recovered = acquireRecoveryRuntimeRelocation(workspace, binding, restore);
+      const recovered = acquireRecoveryRuntimeRelocation(workspace, input.lifetime, binding, restore);
       admission = recovered.admission;
       ownedAdmission = true;
       operation = recovered.operation;
@@ -294,6 +309,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
       }
       finally { source.close(); }
       if (view.pending?.commandId !== input.command.id) throw new Error("storage-relocation: requested plan is not current pending intent");
+      sourceClosure = await prepareStoppedBackupClosure(profileBrowserClosure, activeAdmission, restore, clock, processLockRoot);
       operation = activeAdmission.beginRelocation(view.pending.desiredPair, bindingFromPlan(view), restore);
     }
     operationId = operation.operationId;
@@ -309,7 +325,8 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
       if (inventory.phase === "preparing") {
         const inspected = inspectAuthorityBackupReadOnly(admission, sourcePath);
         if (inspected.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("storage-relocation: unsupported source schema");
-        const report = await backupStoppedAuthority(admission, inventory.source.stateRoot, clock,processLockRoot,restore);
+        sourceClosure ??= await prepareStoppedBackupClosure(profileBrowserClosure, admission, restore, clock, processLockRoot);
+        const report = await backupStoppedAuthority(sourceClosure, admission, inventory.source.stateRoot, clock,processLockRoot,restore);
         const manifest = report.manifests.at(-1);
         if (manifest === undefined) throw new Error("storage-relocation: preparation backup missing manifest");
         inspectRelocationFiles({ admission, source: inventory.source, destination: inventory.destination,
@@ -340,7 +357,8 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
       await verifyPreparation(admission, prepared);
       operation.prepareDestinationRoots();
       const nativeSource = inspectAuthorityBackupReadOnly(admission, sourcePath, CURRENT_AUTHORITY_SCHEMA_VERSION);
-      const stageBackup = await backupStoppedAuthority(admission, inventory.source.stateRoot, clock,processLockRoot,restore);
+      sourceClosure ??= await prepareStoppedBackupClosure(profileBrowserClosure, admission, restore, clock, processLockRoot);
+      const stageBackup = await backupStoppedAuthority(sourceClosure, admission, inventory.source.stateRoot, clock,processLockRoot,restore);
       const stageManifest = stageBackup.manifests.at(-1);
       if (stageManifest === undefined || stageManifest.authorityGeneration !== nativeSource.authorityGeneration
         || stageManifest.authorityContentFingerprint !== nativeSource.authorityContentFingerprint) {
@@ -404,7 +422,8 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
         applyActivationIntent(destination, intent, intent.stageAuthority.backupPath,
           input.faults?.beforeActivationTransaction);
         input.faults?.afterActivationWrite?.();
-        const finalBackup = await backupStoppedAuthority(destination, pending.destination.stateRoot, clock,processLockRoot,restore);
+        const destinationClosure = await prepareStoppedBackupClosure(profileBrowserClosure, destination, restore, clock, processLockRoot);
+        const finalBackup = await backupStoppedAuthority(destinationClosure, destination, pending.destination.stateRoot, clock,processLockRoot,restore);
         const finalManifest = finalBackup.manifests.at(-1);
         if (finalManifest === undefined) throw new Error("storage-relocation: final backup missing");
         const finalManifestPath = join(pending.destination.stateRoot, "backups", "authority",
@@ -480,9 +499,16 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
         operation.settleRelocation(() => evidence);
       } finally { source.release(); destination.release(); }
     }
-    return { operationId: operation.operationId, generation: inventory.fromGeneration + 1 };
-  } catch (error) {
-    if (operationId !== undefined) throw new StorageRelocationIncompleteError(operationId, error);
-    throw error;
-  } finally { if (ownedAdmission) admission?.release(); restore.release(); }
+    outcome = { result: { operationId: operation.operationId, generation: inventory.fromGeneration + 1 } };
+  } catch (error) { outcome = { error }; }
+  if (!("error" in outcome) || !hasUnprovedSourceClosure(outcome.error)) {
+    try { restore.release(); if (ownedAdmission) admission?.release(); }
+    catch (error) { throw retainAuthoritySourceClosure("error" in outcome ? [outcome.error, error] : [error], { restore, admission }); }
+  }
+  if ("error" in outcome) {
+    if (operationId !== undefined) throw new StorageRelocationIncompleteError(operationId, outcome.error);
+    if (outcome.error instanceof Error) throw outcome.error;
+    throw new Error("storage-relocation: command failed", { cause: outcome.error });
+  }
+  return outcome.result;
 }

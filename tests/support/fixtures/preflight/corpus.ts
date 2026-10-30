@@ -81,11 +81,6 @@ async function inject(f: Awaited<ReturnType<typeof runtimeFixture>>, entry: Case
   }
   if (id === "fiscal.current") {const previous=f.input.config.annualDates;f.input.config.annualDates={};return()=>{f.input.config.annualDates=previous;};}
   if (id.startsWith("secret.")) {f.setProtected(populatedProtectedRecord(entry.variant));return()=>{f.setProtected(populatedProtectedRecord());};}
-  if (id === "process.orphans") {
-    Reflect.set(f.input.dashboard,"listLiveWorkerProcesses",()=>[{workerId:"synthetic-worker",processId:987654321}]);
-    Reflect.set(f.input.dashboard,"observeProcess",()=>({state:"gone"}));
-    return()=>{Reflect.set(f.input.dashboard,"listLiveWorkerProcesses",()=>[]);Reflect.deleteProperty(f.input.dashboard,"observeProcess");};
-  }
   const system=SYSTEM_RUNTIME_SPECS.find(candidate=>id.startsWith(`endpoint.${candidate.system}.`));
   if(system!==undefined) {
     const routes=f.input.config.urls[system.configKey].prod;assert.ok(routes);

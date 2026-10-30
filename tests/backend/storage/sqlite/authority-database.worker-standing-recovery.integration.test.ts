@@ -34,6 +34,7 @@ function actualReplacement(f: Awaited<ReturnType<typeof fixture>>, commandId: st
   let spawns = 0;
   const faults: Error[] = [];
   const supervisor = createDashboardWorkerProcessSupervisor({
+    onExit: () => undefined,
     launch: { command: process.execPath, environment: {}, prefixArgs: [], cwd: f.root }, clock: f.clock, scheduler,
     birth: { pollMs: 50, timeoutMs: 1000 },
     spawn: () => {
@@ -42,9 +43,9 @@ function actualReplacement(f: Awaited<ReturnType<typeof fixture>>, commandId: st
       if (binding?.operation.kind !== "retry") throw new Error("missing original browserless binding");
       let child: ChildProcess | undefined;
       birth = (f.owner(undefined, actual => { child = actual; })).then(owner => {
-        const result = f.database.startOwnedWorker({ workerId: f.slot.workerId, workflow: f.slot.workflow,
+        const result = f.database.authority.workerLeases.start({ workerId: f.slot.workerId, workflow: f.slot.workflow,
           browserSystems: binding.operation.kind === "retry" ? binding.operation.systems : [], processId: owner.pid,
-          requestedBy: "local-operator", commandId, now: f.now }, owner.handle);
+          requestedBy: "local-operator", commandId, now: f.now });
         if (result.state !== "started") throw new Error("replacement birth refused");
         return owner;
       });
@@ -53,7 +54,7 @@ function actualReplacement(f: Awaited<ReturnType<typeof fixture>>, commandId: st
       return { pid: actual.pid, kill: signal => actual.kill(signal),
         onExit: listener => { actual.on("exit", listener); }, onError: listener => { actual.on("error", listener); } };
     },
-    assertRetainedOwnerDeath: (member, lifetime, command) => { beforeDeath?.(); f.database.assertRetainedWorkerDeath(member, lifetime, command); },
+    assertStoppedLifetime: (member, lifetime) => { beforeDeath?.(); f.database.assertStoppedWorkerLifetime(member, lifetime); },
     proveRetirement: member => { f.database.assertWorkerLifecycleRelease(member.workerId); return WorkerRetirementProofSchema.parse({
       workerId: member.workerId, membershipRevision: member.membershipRevision, checkedAt: f.now,
       processStopped: true, browsersClosed: true, exclusive: true,
@@ -139,18 +140,18 @@ describe("native standing lifetime recovery", () => {
       const grant = f.database.reserveStandingWorkerRecovery(f.slot.workerId, personLookupDescriptor, f.now);
       if (grant.binding.operation.kind !== "retry") throw new Error("missing native replacement");
       const replacement = await f.owner();
-      const born = f.database.startOwnedWorker({ workerId: f.slot.workerId, workflow: f.slot.workflow,
+      const born = f.database.authority.workerLeases.start({ workerId: f.slot.workerId, workflow: f.slot.workflow,
         browserSystems: grant.binding.operation.systems, processId: replacement.pid, requestedBy: "local-operator",
-        commandId: grant.commandId, now: f.now }, replacement.handle);
+        commandId: grant.commandId, now: f.now });
       if (born.state !== "started") throw new Error("missing actual new birth");
-      const exited = once(replacement.child, "exit"); replacement.child.kill("SIGTERM"); await exited; replacement.handle.release();
+      const exited = once(replacement.child, "exit"); replacement.child.kill("SIGTERM"); await exited;
       f.database.authority.workerLeases.reportLifecycle({ workerId: f.slot.workerId, leaseGeneration: born.lease.leaseGeneration, now: f.now,
         lifecycle: { state: "stopped", startedAt: born.lease.lifecycle.startedAt, stoppedAt: f.now, reason: "crashed" } });
-      expect(() => f.database.completeStandingWorkerRecovery(grant.commandId, replacement.handle, personLookupDescriptor, f.now)).toThrow();
+      expect(() => f.database.completeStandingWorkerRecovery(grant.commandId, personLookupDescriptor, f.now)).toThrow();
       f.clock.advanceWall(86_400_000);
       expect(f.database.authority.workerSlots.recovery(f.slot.workerId)?.command.commandId).toBe(grant.commandId);
       expect(f.database.authority.lifecycleJournal.findAuditByCommand(grant.commandId)).toBeUndefined();
-      expect(f.database.authority.workerLeases.get(f.slot.workerId)?.birthCommandId).toBe(born.lease.birthCommandId);
+      expect(f.database.authority.workerLeases.get(f.slot.workerId)?.startCommandId).toBe(born.lease.startCommandId);
       expect(f.database.authority.workerLeases.get(f.slot.workerId)?.leaseGeneration).toBe(born.lease.leaseGeneration);
     } finally { await f.dispose(); }
   });
@@ -189,26 +190,20 @@ describe("native standing lifetime recovery", () => {
         expectedVersion: originalPool?.version, requestedBy: "local-operator", now: f.now })).toThrow("standing-recovery-reserved");
       expect(() => f.database.authority.workerSlots.allocate({ workflow: f.slot.workflow, poolIndex: 2, commandId: randomUUID(), now: f.now })).toThrow("standing-recovery-reserved");
       expect(() => f.database.authority.workerSlots.retire({ workerId: f.slot.workerId, expectedRevision: f.slot.membershipRevision, commandId: randomUUID(), now: f.now })).toThrow("standing-recovery-reserved");
-      expect(() => f.database.authority.workerLeases.start({ workerId: f.slot.workerId, workflow: f.slot.workflow,
-        browserSystems: ["ucpath", "crm"], processId: process.pid, requestedBy: "local-operator", commandId: grant.commandId, now: f.now })).toThrow("standing-recovery-reserved");
       const replacement = await f.owner();
       if (grant.binding.operation.kind !== "retry") throw new Error("missing recovery operation");
-      const born = f.database.startOwnedWorker({ workerId: f.slot.workerId, workflow: f.slot.workflow,
-        browserSystems: grant.binding.operation.systems, processId: replacement.pid, requestedBy: "local-operator", commandId: grant.commandId, now: f.now }, replacement.handle);
+      const born = f.database.authority.workerLeases.start({ workerId: f.slot.workerId, workflow: f.slot.workflow,
+        browserSystems: grant.binding.operation.systems, processId: replacement.pid, requestedBy: "local-operator", commandId: grant.commandId, now: f.now });
       expect(born.state).toBe("started");
       if (born.state !== "started") throw new Error("replacement not born");
-      const before = f.database.getMeta().authorityGeneration;
-      expect(() => f.database.completeStandingWorkerRecovery(grant.commandId, { ...replacement.handle }, personLookupDescriptor, f.now)).toThrow("birth-custody-unavailable");
-      expect(() => f.database.completeStandingWorkerRecovery(grant.commandId, f.old.handle, personLookupDescriptor, f.now)).toThrow("birth-custody-unavailable");
-      expect(f.database.getMeta().authorityGeneration).toBe(before);
       expect(() => f.database.withAuthorityTransaction(() => {
-        f.database.completeStandingWorkerRecovery(grant.commandId, replacement.handle, personLookupDescriptor, f.now);
+        f.database.completeStandingWorkerRecovery(grant.commandId, personLookupDescriptor, f.now);
         throw new Error("controlled-outer-rollback");
       })).toThrow("controlled-outer-rollback");
       expect(f.database.authority.workerSlots.recovery(f.slot.workerId)?.command.commandId).toBe(grant.commandId);
       expect(f.database.authority.lifecycleJournal.findAuditByCommand(grant.commandId)).toBeUndefined();
       expect(f.database.authority.workerLeases.get(f.slot.workerId)?.lifecycle.state).toBe("starting");
-      f.database.completeStandingWorkerRecovery(grant.commandId, replacement.handle, personLookupDescriptor, f.now);
+      f.database.completeStandingWorkerRecovery(grant.commandId, personLookupDescriptor, f.now);
       expect(f.database.authority.workerLeases.get(f.slot.workerId)).toMatchObject({ leaseGeneration: f.started.leaseGeneration + 1,
         lifecycle: { state: phase }, control: { directive: phase === "paused" ? "pause" : "run" } });
       expect(workerPoolMember(f.database.authority.workerSlots.get(f.slot.workerId) ?? f.slot)).toEqual(workerPoolMember(f.slot));
@@ -227,9 +222,9 @@ describe("native standing lifetime recovery", () => {
       const f = await fixture();
       try {
         f.observe(phase); await f.shutdown();
-        f.database.assertRetainedWorkerDeath(workerPoolMember(f.slot), {
+        f.database.assertStoppedWorkerLifetime(workerPoolMember(f.slot), {
           leaseGeneration: f.started.leaseGeneration, processId: f.started.processId, startedAt: f.started.lifecycle.startedAt,
-        }, f.started.birthCommandId);
+        });
         const lease = f.database.authority.workerLeases.get(f.slot.workerId);
         if (lease === undefined) throw new Error("missing stopped lifetime");
         const pool = f.database.authority.workerPools.get(f.slot.workflow);
@@ -297,13 +292,13 @@ it.each(["absent", "current"] as const)("dispatches one public failed Stop with 
     const record = f.database.authority.workerControls.get(command.commandId);
     if (record?.reset === undefined || record.lifecycle?.operation.kind !== "retry") throw new Error("missing admitted original Stop");
     await new Promise<void>(resolve => { setImmediate(resolve); });
-    const replacement = await actual.birth();
+    await actual.birth();
     expect(() => f.database.authority.runs.claimNext({ workerId: f.slot.workerId, workflow: f.slot.workflow,
       workerLifetime: { membershipRevision: f.slot.membershipRevision, leaseGeneration: old.leaseGeneration + 1 }, now: f.now })).toThrow();
-    expect(() => f.database.completeFailedWorkerReset(record.commandId, replacement.handle, personLookupDescriptor, f.now)).toThrow();
+    expect(() => f.database.completeFailedWorkerReset(record.commandId, personLookupDescriptor, f.now)).toThrow();
     let initialized = false;
     const initialize = initializeFailedWorkerReset({ database: f.database, commandId: record.commandId,
-      leaseGeneration: old.leaseGeneration + 1, descriptor: personLookupDescriptor, handle: replacement.handle,
+      leaseGeneration: old.leaseGeneration + 1, descriptor: personLookupDescriptor,
       signal: new AbortController().signal, clock: f.clock, scheduler }).then(() => { initialized = true; });
     expect(initialized).toBe(false);
     expect(f.database.authority.commandAudits.findByCommand(record.commandId)).toBeUndefined();
@@ -318,12 +313,11 @@ it.each(["absent", "current"] as const)("dispatches one public failed Stop with 
     expect(initialized).toBe(false);
     const stopping = new AbortController(); stopping.abort(new Error("new owner lifetime is shutting down"));
     await expect(initializeFailedWorkerReset({ database: f.database, commandId: record.commandId,
-      leaseGeneration: old.leaseGeneration + 1, descriptor: personLookupDescriptor, handle: replacement.handle,
+      leaseGeneration: old.leaseGeneration + 1, descriptor: personLookupDescriptor,
       signal: stopping.signal, clock: f.clock, scheduler })).rejects.toThrow("initialization-aborted");
     expect(f.database.authority.commandAudits.findByCommand(record.commandId)).toBeUndefined();
-    expect(() => f.database.completeFailedWorkerReset(record.commandId, { ...replacement.handle }, personLookupDescriptor, f.now)).toThrow();
     expect(() => f.database.withAuthorityTransaction(() => {
-      f.database.completeFailedWorkerReset(record.commandId, replacement.handle, personLookupDescriptor, f.now);
+      f.database.completeFailedWorkerReset(record.commandId, personLookupDescriptor, f.now);
       throw new Error("controlled-final-rollback");
     })).toThrow("controlled-final-rollback");
     expect(f.database.authority.commandAudits.findByCommand(record.commandId)).toBeUndefined();
@@ -345,7 +339,7 @@ it.each(["absent", "current"] as const)("dispatches one public failed Stop with 
     expect(f.database.authority.workerControls.browsers(f.slot.workerId)).toEqual([]);
     expect(f.database.authority.runs.listByWorkflow(f.slot.workflow).filter(run => run.envelope.runId !== oldRunId)).toEqual([]);
     if (oldRunId !== undefined) expect(f.database.authority.runs.get(oldRunId)?.lifecycle).toMatchObject({ state: "terminal", outcome: "cancelled" });
-    expect(() => f.database.completeFailedWorkerReset(record.commandId, replacement.handle, personLookupDescriptor, f.now)).toThrow();
+    expect(() => f.database.completeFailedWorkerReset(record.commandId, personLookupDescriptor, f.now)).toThrow();
     const confirmation = f.database.authority.workerControls.get(record.commandId);
     f.database.authority.runs.enqueue(personLookupQueuedRun());
     const claimed = f.database.authority.runs.claimNext({ workerId: f.slot.workerId, workflow: f.slot.workflow,
@@ -359,7 +353,7 @@ it.each(["absent", "current"] as const)("dispatches one public failed Stop with 
     expect(f.database.authority.workerControls.get(record.commandId)).toEqual(confirmation);
     const running = f.database.authority.workerLeases.get(f.slot.workerId);
     if (running === undefined || confirmation === undefined) throw new Error("missing confirmed running authority");
-    const card = workerCardOf({ lease: running, member: f.slot, ownerAlive: f.database.workerLifetimeCustody(f.slot.workerId).state === "alive",
+    const card = workerCardOf({ lease: running, member: f.slot, ownerAlive: f.old.child.exitCode === null && f.old.child.signalCode === null,
       owned: true, fold: undefined, operations: [confirmation], observations: [], resolveRun: id => f.database.authority.runs.get(id) });
     expect(card.state).toBe("running");
     expect(card.controls?.operation).toMatchObject({ commandId: record.commandId, type: "stop-worker", state: "succeeded", unresolved: false });
@@ -502,11 +496,11 @@ it.each(["attempting", "unknown"] as const)("preserves exact %s write authority 
     } else {
       expect(result).toMatchObject({ state: "pending" });
       await new Promise<void>(resolve => { setImmediate(resolve); });
-      const replacement = await actual.birth();
+      await actual.birth();
       for (const entry of actual.scheduler.pending()) entry.fire();
       await new Promise<void>(resolve => { setImmediate(resolve); });
       await initializeFailedWorkerReset({ database: f.database, commandId: command.commandId,
-        leaseGeneration: old.leaseGeneration + 1, descriptor: personLookupDescriptor, handle: replacement.handle,
+        leaseGeneration: old.leaseGeneration + 1, descriptor: personLookupDescriptor,
         signal: new AbortController().signal, clock: f.clock, scheduler: actual.scheduler });
       expect(f.database.authority.workerLeases.get(f.slot.workerId)?.lifecycle.state).toBe("idle");
       expect(f.database.authority.workerControls.get(command.commandId)?.phase.state).toBe("succeeded");

@@ -1,3 +1,5 @@
+import { withOfflineMaintenance, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -8,7 +10,6 @@ import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { createChatGptAccountService } from "../../../../src/backend/accounts/chatgpt-account-service.js";
 import { createChatGptCredentialRepository, verifyChatGptCredentialStore, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { verifyRelocationLiveReferences } from "../../../../src/backend/storage/maintenance/relocation-inventory.js";
-import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
@@ -66,7 +67,7 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     const originalSession = original.session; assert.ok(originalSession);
     await repository.withLock(async tx => { tx.replace({ ...original, revision: 2, session: { ...originalSession, accessToken: "synthetic-current-access", refreshToken: "synthetic-current-refresh" } }, 1); });
     const credentialPath = join(stateRoot, "credentials", "chatgpt-account.json"), currentBytes = readFileSync(credentialPath);
-    const report = await upgradeStorage(profile.admission, { stateRoot, processLockRoot, plan: false }, clock);
+    const report = await withOfflineMaintenance(profile.admission, operation => upgradeStorage(profileBrowserClosure, profile.admission, { stateRoot, processLockRoot, plan: false }, clock, operation));
     assert.equal(report.credentials, "unchanged"); assert.equal(readFileSync(credentialPath).equals(currentBytes), true);
     const damaged = readFileSync(profile.path);
     damaged.fill(0x5a, 4096, Math.min(damaged.length, 40_960)); writeFileSync(profile.path, damaged);
@@ -77,7 +78,7 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     const detached = RuntimeAdmission.syntheticRoots(detachedRoot, detachedArtifacts);
     try {
       await assert.rejects(composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", manifest], clock,
-        process.cwd(), detached, boundProfileCredentials(previous)), { message: "profile-restore-context-required" });
+        process.cwd(), detached, boundProfileCredentials(previous)), { message: "runtime-admission: exclusive installation authority required" });
     } finally { detached.release(); rmSync(detachedRoot, { recursive: true, force: true }); }
     assert.equal(readFileSync(profile.path).equals(damagedBytes), true);
     assert.equal(readFileSync(credentialPath).equals(currentBytes), true);

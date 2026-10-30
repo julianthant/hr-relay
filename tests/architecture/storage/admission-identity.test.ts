@@ -33,7 +33,7 @@ function audit(file: string, text: string): string[] {
           if (imported === "registerRuntimeAdmission") {
             registrations.add(binding.name.text);
             if (file !== owner || binding.name.text !== imported || binding.isTypeOnly) findings.push(`${file}: foreign identity issuer`);
-          } else if (imported !== "requireRuntimeAdmission") findings.push(`${file}: unknown identity import`);
+          } else if (!["requireRuntimeAdmission", "ProfileBrowserRootRefusalError", "ProfileStorageRelocationUnsupportedError"].includes(imported)) findings.push(`${file}: unknown identity import`);
         }
       }
     }
@@ -58,7 +58,12 @@ function audit(file: string, text: string): string[] {
   if (file === owner && (registrations.size !== 1 || calls !== 1)) findings.push(`${file}: constructor registration membership`);
   if (file === identity) {
     const imports = source.statements.filter(ts.isImportDeclaration);
-    if (imports.length !== 1 || imports[0]?.importClause?.isTypeOnly !== true) findings.push(`${file}: runtime identity dependency`);
+    const admissionImports = imports.filter(node => ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === "./admission.js");
+    const catalogImports = imports.filter(node => ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === "../../../models/failures/error-catalog.js");
+    const catalog = catalogImports[0]?.importClause?.namedBindings;
+    if (imports.length !== 2 || admissionImports.length !== 1 || admissionImports[0]?.importClause?.isTypeOnly !== true
+      || catalogImports.length !== 1 || catalog === undefined || !ts.isNamedImports(catalog) || catalog.elements.length !== 1
+      || catalog.elements[0]?.name.text !== "ERROR_CATALOG" || catalog.elements[0].propertyName !== undefined) findings.push(`${file}: runtime identity dependency`);
   }
   return findings;
 }
@@ -80,6 +85,8 @@ it("rejects foreign, escaped, aliased, dynamic and nonconstructor registration m
     ["src/forged.ts", 'export * from "./admission-identity.js";'],
     ["src/forged.ts", 'import("./admission-identity.js");'],
     [identity, 'import { RuntimeAdmission } from "./admission.js";'],
+    ["src/forged.ts", 'import { unknownIssuer } from "./admission-identity.js";'],
+    [identity, 'import type { RuntimeAdmission } from "./admission.js"; import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js"; import "./installation.js";'],
   ]) assert.ok(audit(file, text).length > 0, file);
 });
 

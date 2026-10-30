@@ -1,3 +1,4 @@
+import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createBoundProfileFixture } from '../../support/helpers/admission-fixture.js';
 import { composeProfileRuntime } from '../../../src/backend/app/composition/storage-compose.js';
 import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
@@ -20,7 +21,7 @@ export async function startSettingsActivationServer() {
   const fixture = await createBoundProfileFixture({ sharedMachine: true });
   const root = fixture.workspace;
   const held: { fixture: typeof fixture; machine?: RuntimeAdmission; profile?: ReturnType<typeof composeProfileRuntime>;
-    runtime?: Awaited<ReturnType<typeof composeDashboardRuntime>>; primary?: unknown } = { fixture };
+    runtime?: Awaited<ReturnType<typeof composeDashboardRuntime>>; lock?: RuntimeLifetimeLock; primary?: unknown } = { fixture };
   retainedSettingsParityOwners.add(held);
   try {
     for (const name of ["package.json", "package-lock.json", "vite.dashboard.config.ts", "vite.parity.config.ts", "tsconfig.json"])
@@ -32,15 +33,16 @@ export async function startSettingsActivationServer() {
     }
     mkdirSync(join(root, "dist"));
     cpSync(PARITY_DIST_DIR, join(root, "dist", "dashboard"), { recursive: true });
-    const machine = acquireEntrypointAdmission(root, "shared");
+    const machine = acquireEntrypointAdmission(root, "shared", fixture.lifetime);
     held.machine = machine;
-    const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null },
-      processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot) });
+    const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
     held.profile = profile;
     const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
     if (active.state !== 'active') throw new Error('parity-profile-sign-in-refused');
     if (active.profileId !== fixture.admission.profileBinding.profileId) throw new Error('parity-profile-binding-mismatch');
-    const runtime = await composeDashboardRuntime({ admission: machine, profile: { runtime: profile, token: active.token }, clock,
+    const lock = fixture.lifetime;
+    held.lock = lock;
+    const runtime = await composeDashboardRuntime({ lifetimeLock: lock, admission: machine, profile: { runtime: profile, token: active.token }, clock,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
       env: { HRAUTO_HOST_PRIMARY_DISPLAY: "2560x1440" },

@@ -1,3 +1,4 @@
+import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthorityDatabase } from "../admission-fixture.js";
 import assert from "node:assert/strict";
 import { spawn as spawnChildProcess, type ChildProcess } from "node:child_process";
@@ -70,11 +71,11 @@ export function createDashboardChildTestWorld(releaseAdmissionFixtures: () => vo
     } as const;
   }
 
-  function realStubSpawner(records: RealChildRecord[]): WorkerProcessSpawner {
+  function realStubSpawner(records: RealChildRecord[], lifetime: RuntimeLifetimeLock): WorkerProcessSpawner {
     return (request) => {
       const child = spawnChildProcess(request.command, [...request.args], {
         cwd: request.cwd,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["ignore", "pipe", "pipe", "ipc"],
       });
       liveRealChildren.push(child);
       const output: string[] = [];
@@ -92,6 +93,10 @@ export function createDashboardChildTestWorld(releaseAdmissionFixtures: () => vo
         exited: false,
       };
       records.push(record);
+      let transfer: Promise<void>;
+      try { transfer = lifetime.share(child); }
+      catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }
+      void transfer.catch(error => { child.kill("SIGKILL"); child.emit("error", error); });
       return Object.freeze({
         pid: child.pid,
         kill: (signal: "SIGTERM" | "SIGKILL"): boolean => child.kill(signal),
@@ -158,11 +163,11 @@ export function createDashboardChildTestWorld(releaseAdmissionFixtures: () => vo
   ): void {
     process.stdout.write(`[r3b:w5:${proof}] ${phase}:${state}\n`);
   }
-  function stubLaunch(dbPath: string, lockRoot: string, mode: "installed" | "synthetic", command: string) {
+  function stubLaunch(dbPath: string, lockRoot: string, mode: "installed" | "synthetic", command: string, lifetime: RuntimeLifetimeLock) {
     return {
       environment: {},
       command,
-      prefixArgs: Object.freeze(["--import", "tsx", STUB_CLI_PATH, dbPath, lockRoot, mode]),
+      prefixArgs: Object.freeze(["--import", "tsx", STUB_CLI_PATH, String(lifetime.port), dbPath, lockRoot, mode]),
       cwd: REPO_ROOT,
     };
   }

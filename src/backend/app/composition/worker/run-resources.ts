@@ -15,7 +15,8 @@ import { type BrowserSessionFactoryOptions, BrowserProfileAdmissionSchema, Playw
 import { lstatSync } from "node:fs";
 import type { WorkerId } from "../../../../rules/identity/ids.js";
 import type { DebugEvent } from "../../../../models/events/timeline.js";
-import { createCensusGeocodeAdapter, createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
+import { createNominatimWorkerAdapter } from "../../../processing/providers/nominatim-owner.js";
+import { createCensusGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import type { AuthorityRepositories } from "../../../storage/sqlite/authority-database.js";
 import { composeDuoCeremonyGateFactory, type DuoCeremonyGateFactory } from "../../../runtime/gates/duo-ceremony-gate.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
@@ -25,7 +26,7 @@ import { selectRunSettings } from "../../../runs/settings/run-settings.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
- processLockRoot:string;
+ nominatim?:ReturnType<typeof createNominatimWorkerAdapter>;
  ocr:NonNullable<NonNullable<WorkerRunResources["providers"]>["adapters"]["ocr.extract"]>;
  authority:AuthorityRepositories;artifacts:ContentAddressedArtifactWriter;clock:Clock;ids:IdFactory;
  isolation:RuntimeIsolation;protectedSecrets:Pick<CredentialStore,"read">;scheduler:MonotonicDeadlineScheduler;
@@ -37,7 +38,7 @@ export function createRunResourcesFactory(input:Readonly<{
 }>) {
  if(input.sessionFactory!==undefined&&input.createSessionFactory!==undefined)throw new Error("browser-session-factory-owner-conflict");
  const profiles=createBrowserProfileAuthority(input);
- const nominatim=createNominatimGeocodeAdapter({clock:input.clock,processLockRoot:input.processLockRoot});
+ const nominatim=input.nominatim??createNominatimWorkerAdapter(input.clock);
  const compose=(config:Config):WorkerRunResources=>{
   input.assertBrowserRoot(config.paths.browserProfileRoot);
   return Object.freeze({
@@ -86,9 +87,9 @@ export function createBrowserProfileAuthority(input: Readonly<{authority:Authori
      const observations=input.authority.workerControls.browsers(profile.workerId).filter(value=>value.system===profile.system);
      if(observations.some(value=>value.health!=="closed"))throw new ProfileCustodyUnavailableError();
      const previous=observations.at(-1);
-     if(previous===undefined&&lstatSync(profile.profileDirectory,{throwIfNoEntry:false})!==undefined)throw new ProfileCustodyUnavailableError();
+     const unobservedProfile=previous===undefined&&lstatSync(profile.profileDirectory,{throwIfNoEntry:false})!==undefined;
      if(previous!==undefined&&previous.profileDirectory!==profile.profileDirectory)throw new ProfileCustodyUnavailableError();
-     const resetRequired=previous!==undefined&&(previous.instance!==profile.instance||previous.signInFingerprint!==profile.signInFingerprint);
+     const resetRequired=unobservedProfile||previous!==undefined&&(previous.instance!==profile.instance||previous.signInFingerprint!==profile.signInFingerprint);
      return Promise.resolve(BrowserProfileAdmissionSchema.parse({...profile,profileRevision:previous===undefined?1:previous.profileRevision+(resetRequired?1:0),resetRequired}));
     },
  };

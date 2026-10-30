@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import assert from "node:assert/strict";
 import nativeFs, { existsSync, readFileSync, readdirSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -10,9 +11,9 @@ import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
 
 it("backs up a flat store without credentials, starts empty, and accepts an ordinary fresh sign-up", async () => {
-  const f = createHistoricalFlatProfileFixture();
+  const f = await createHistoricalFlatProfileFixture();
   try {
-    const machine = await acquireDashboardEntrypointAdmission(f.workspace, "shared");
+    const machine = await acquireDashboardEntrypointAdmission(profileBrowserClosure, f.workspace, "shared", f.lifetime);
     try {
       assert.equal(machine.requiresFlatStoreMigration(), false);
       assert.deepEqual(machine.readProfileRegistry().profiles, []);
@@ -23,7 +24,7 @@ it("backs up a flat store without credentials, starts empty, and accepts an ordi
       assert.equal(record.files.some(entry => entry.path.startsWith("profile/credentials/")), false);
       assert.ok(record.files.some(entry => entry.path.startsWith("profile/backups/authority/") && entry.path.endsWith(".sqlite")));
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "flat-start-clean.json")), false);
-      const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+      const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
       try {
         const draft = profile.session.signUp({ firstName: "Fresh", lastName: "Fixture", email: "fresh-fixture@ucsd.edu", password: "disposable-new-password", createdAt: systemClock.now().toISOString() });
         assert.equal(draft.state, "onboarding");
@@ -33,14 +34,14 @@ it("backs up a flat store without credentials, starts empty, and accepts an ordi
         assert.equal(existsSync(join(machine.stateRoot, "profiles", draft.profileId)), false);
       } finally { await profile.close(); }
     } finally { machine.release(); }
-    const restarted = await acquireDashboardEntrypointAdmission(f.workspace, "shared");
+    const restarted = await acquireDashboardEntrypointAdmission(profileBrowserClosure, f.workspace, "shared", f.lifetime);
     assert.deepEqual(restarted.readProfileRegistry().profiles, []); restarted.release();
-  } finally { f.close(); }
+  } finally { await f.close(); }
 });
 
 for (const fault of ["write", "verification"] as const) {
   it(`refuses startup on backup ${fault} failure and retains non-credential source data`, async () => {
-    const f = createHistoricalFlatProfileFixture(), before = readFileSync(f.databasePath), artifact = readFileSync(f.artifact);
+    const f = await createHistoricalFlatProfileFixture(), before = readFileSync(f.databasePath), artifact = readFileSync(f.artifact);
     const write = nativeFs.writeFileSync, rename = nativeFs.renameSync;
     const writeSpy = vi.spyOn(nativeFs, "writeFileSync").mockImplementation((path, data, options) => {
       if (fault === "write" && String(path).includes("storage-backups") && String(path).endsWith("source.json")) throw new Error("fixture backup write failure");
@@ -54,20 +55,20 @@ for (const fault of ["write", "verification"] as const) {
     });
     syncBuiltinESMExports();
     try {
-      await assert.rejects(acquireDashboardEntrypointAdmission(f.workspace, "shared"), error => error instanceof Error && "code" in error && error.code === "PROFILE_FLAT_STORE_MIGRATION_FAILED");
+      await assert.rejects(acquireDashboardEntrypointAdmission(profileBrowserClosure, f.workspace, "shared", f.lifetime), error => error instanceof Error && "code" in error && error.code === "PROFILE_FLAT_STORE_MIGRATION_FAILED");
       assert.deepEqual(readFileSync(f.databasePath), before);
       assert.deepEqual(readFileSync(f.artifact), artifact);
       assert.equal(existsSync(join(f.stateRoot, "credentials")), false);
       assert.equal(existsSync(join(f.stateRoot, "machine")), false);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "profile-registry.json")), false);
       assert.equal(readdirSync(join(f.stateRoot, "artifacts")).length > 0, true);
-    } finally { writeSpy.mockRestore(); renameSpy.mockRestore(); syncBuiltinESMExports(); f.close(); }
+    } finally { writeSpy.mockRestore(); renameSpy.mockRestore(); syncBuiltinESMExports(); await f.close(); }
   });
 }
 
 for (const boundary of ["database", "registry"] as const) {
   it(`resumes the verified migration after interrupted ${boundary} removal or publication`, async () => {
-    const f = createHistoricalFlatProfileFixture(), unlink = nativeFs.unlinkSync, rename = nativeFs.renameSync;
+    const f = await createHistoricalFlatProfileFixture(), unlink = nativeFs.unlinkSync, rename = nativeFs.renameSync;
     let interrupted = false;
     const unlinkSpy = vi.spyOn(nativeFs, "unlinkSync").mockImplementation(path => {
       unlink(path);
@@ -78,17 +79,17 @@ for (const boundary of ["database", "registry"] as const) {
       if (!interrupted && boundary === "registry" && String(destination) === join(f.stateRoot, "machine", "profiles.json")) { interrupted = true; throw new Error("fixture migration interrupted"); }
     });
     syncBuiltinESMExports();
-    try { await assert.rejects(acquireDashboardEntrypointAdmission(f.workspace, "shared")); }
+    try { await assert.rejects(acquireDashboardEntrypointAdmission(profileBrowserClosure, f.workspace, "shared", f.lifetime)); }
     finally { unlinkSpy.mockRestore(); renameSpy.mockRestore(); syncBuiltinESMExports(); }
     try {
       assert.equal(interrupted, true);
-      const machine = await acquireDashboardEntrypointAdmission(f.workspace, "shared");
+      const machine = await acquireDashboardEntrypointAdmission(profileBrowserClosure, f.workspace, "shared", f.lifetime);
       try {
         assert.deepEqual(machine.readProfileRegistry().profiles, []);
         assert.ok(retainedStorageBackup(f.workspace, machine.locator.installationId));
         assert.equal(existsSync(f.databasePath), false);
         assert.equal(existsSync(join(f.workspace, ".tracker", "control", "flat-start-clean.json")), false);
       } finally { machine.release(); }
-    } finally { f.close(); }
+    } finally { await f.close(); }
   });
 }

@@ -8,7 +8,7 @@ import { gitVisibleFiles, REPO_ROOT, repoRelative } from "../support/helpers/gua
 
 const ALLOWLIST = ["src/backend/storage/sqlite/authority-database.ts", "src/backend/runs/lifecycle/run-record-service.ts"];
 const RUN_MUTATORS = new Set(["enqueue", "claimNext", "claimEligible", "renewClaim", "transition", "resume", "requeue",
-  "sweepExpiredClaims", "requestCancellation", "advanceRevision", "bumpPriority", "updatePresentation", "injectCheckpointPatches",
+  "requestCancellation", "advanceRevision", "bumpPriority", "updatePresentation", "injectCheckpointPatches",
   "delete", "terminalizeFailure", "terminalizeSuccess"]);
 function owner(node: ts.Node, name: string): boolean {
   for (let current: ts.Node | undefined = node; current !== undefined; current = current.parent) {

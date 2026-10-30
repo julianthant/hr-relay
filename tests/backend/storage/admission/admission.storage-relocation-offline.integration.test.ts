@@ -43,10 +43,10 @@ function assertActivation(before: ReturnType<typeof durableSnapshot>, after: Ret
 it("moves artifacts first, then state under the prior receipt without changing settings history", async () => {
   const f = await installation();
   const artifactDestination = join(f.root, "artifact-first");
-  const first = plan(f.workspace, { stateRoot: f.source.stateRoot, artifactRoot: artifactDestination });
-  const firstOutcome = await relocate(f.workspace, first.commandId);
+  const first = plan(f.workspace, f.lifetime, { stateRoot: f.source.stateRoot, artifactRoot: artifactDestination });
+  const firstOutcome = await relocate(f.workspace, f.lifetime, first.commandId);
   assert.equal(firstOutcome.generation, 1);
-  const afterArtifact = acquireSharedRuntimeAdmission(f.workspace);
+  const afterArtifact = acquireSharedRuntimeAdmission(f.workspace, f.lifetime);
   try {
     assert.equal(afterArtifact.stateRoot, f.source.stateRoot);
     assert.equal(afterArtifact.artifactRoot, artifactDestination);
@@ -54,12 +54,12 @@ it("moves artifacts first, then state under the prior receipt without changing s
   } finally { afterArtifact.release(); }
 
   const stateDestination = join(f.root, "state-second");
-  const second = plan(f.workspace, { stateRoot: stateDestination, artifactRoot: artifactDestination });
+  const second = plan(f.workspace, f.lifetime, { stateRoot: stateDestination, artifactRoot: artifactDestination });
   const before = durableSnapshot(f.authorityPath, f.credentialFile,
     join(artifactDestination, `${f.artifact.sha256}.artifact`));
-  const secondOutcome = await relocate(f.workspace, second.commandId);
+  const secondOutcome = await relocate(f.workspace, f.lifetime, second.commandId);
   assert.equal(secondOutcome.generation, 2);
-  const afterState = acquireSharedRuntimeAdmission(f.workspace);
+  const afterState = acquireSharedRuntimeAdmission(f.workspace, f.lifetime);
   try {
     assert.equal(afterState.stateRoot, stateDestination);
     assert.equal(afterState.artifactRoot, artifactDestination);
@@ -84,10 +84,10 @@ it.each(["afterNativePublish", "afterActivationIntent", "beforeActivationTransac
   const f = await installation();
   const destination = { stateRoot: join(f.root, `resumed-state-${fault}`),
     artifactRoot: join(f.root, `resumed-artifacts-${fault}`) };
-  const request = plan(f.workspace, destination);
-  const outcome = await interruptedRelocation(f.workspace, request.commandId, fault);
+  const request = plan(f.workspace, f.lifetime, destination);
+  const outcome = await interruptedRelocation(f.workspace, f.lifetime, request.commandId, fault);
   assert.equal(outcome.generation, 1);
-  const admission = acquireSharedRuntimeAdmission(f.workspace);
+  const admission = acquireSharedRuntimeAdmission(f.workspace, f.lifetime);
   try {
     assert.equal(admission.stateRoot, destination.stateRoot);
     assert.equal(admission.artifactRoot, destination.artifactRoot);
@@ -98,10 +98,10 @@ it.each(["afterNativePublish", "afterActivationIntent", "beforeActivationTransac
 it("resumes artifact-only relocation after verified final backup, preserving one exact plan", async () => {
   const f = await installation();
   const destination = { stateRoot: f.source.stateRoot, artifactRoot: join(f.root, "artifact-resumed") };
-  const request = plan(f.workspace, destination);
-  const outcome = await interruptedRelocation(f.workspace, request.commandId, "afterFinalBackup");
+  const request = plan(f.workspace, f.lifetime, destination);
+  const outcome = await interruptedRelocation(f.workspace, f.lifetime, request.commandId, "afterFinalBackup");
   assert.equal(outcome.generation, 1);
-  const admission = acquireSharedRuntimeAdmission(f.workspace);
+  const admission = acquireSharedRuntimeAdmission(f.workspace, f.lifetime);
   try {
     assert.equal(admission.stateRoot, f.source.stateRoot);
     assert.equal(admission.artifactRoot, destination.artifactRoot);

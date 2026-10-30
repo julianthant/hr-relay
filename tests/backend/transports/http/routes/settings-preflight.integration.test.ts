@@ -31,7 +31,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       "filesystem.health",
       "authority.health",
       "ports.available",
-      "process.orphans",
     ]);
     assert.equal(JSON.stringify(h.preflight.authority.readLatest()), JSON.stringify(result.report));
 

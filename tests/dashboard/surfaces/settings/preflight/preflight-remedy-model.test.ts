@@ -9,7 +9,6 @@ it('maps known checks to available Settings sections and preserves a general des
     ['secrets.sharepoint-roster', 'routes', 'Configure SharePoint route'],
     ['authority.health', 'storage', 'Open Storage'],
     ['filesystem.health', 'storage', 'Open Storage'],
-    ['process.orphans', 'sessions', 'Open Sessions'],
     ['fiscal.current', 'settings', 'Open Settings'],
     ['new.check', 'settings', 'Open Settings'],
   ] as const) {

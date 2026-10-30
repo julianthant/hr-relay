@@ -67,8 +67,8 @@ function applied(
 describe("independent credential store", () => {
   it.each(["directory permissions", "key permissions", "unexpected companion"] as const)(
     "revalidates command ownership after %s change with an unchanged credential file",
-    (change) => {
-      const f = fixture();
+    async (change) => {
+      const f = await fixture();
       applied(f.store, request({
         commandId: COMMAND_1,
         writeId: WRITE_1,
@@ -96,8 +96,8 @@ describe("independent credential store", () => {
     },
   );
 
-  it("keeps admitted initialized read/replay read-only, then atomically advances one 0700/0600 authority", () => {
-    const f = fixture();
+  it("keeps admitted initialized read/replay read-only, then atomically advances one 0700/0600 authority", async () => {
+    const f = await fixture();
     const initialBytes = readFileSync(f.path);
     const baseline = f.store.read();
 
@@ -127,8 +127,8 @@ describe("independent credential store", () => {
     assert.deepEqual(readdirSync(f.directory), ["protected.json"]);
   });
 
-  it("enforces CAS, exact direct replay, and divergent last-command or write identities", () => {
-    const f = fixture();
+  it("enforces CAS, exact direct replay, and divergent last-command or write identities", async () => {
+    const f = await fixture();
     const first = request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
@@ -183,8 +183,8 @@ describe("independent credential store", () => {
     assert.deepEqual(readFileSync(f.path), settledBytes);
   });
 
-  it("retains every command/write identity while refusing success for an older exact request", () => {
-    const f = fixture();
+  it("retains every command/write identity while refusing success for an older exact request", async () => {
+    const f = await fixture();
     const first = request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
@@ -235,8 +235,8 @@ describe("independent credential store", () => {
     assert.equal(f.store.read().revision, 3);
   });
 
-  it("rejects an insecure credential directory and a symlink anywhere at the state-root boundary", () => {
-    const f = fixture();
+  it("rejects an insecure credential directory and a symlink anywhere at the state-root boundary", async () => {
+    const f = await fixture();
     applied(f.store, request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
@@ -261,8 +261,8 @@ describe("independent credential store", () => {
     assert.equal(readFileSync(join(physicalTracker, "credentials", "protected.json")).equals(beforeSymlink), true);
   });
 
-  it.each((["mode", "uid", "nlink"] as const).flatMap((field) => [{ field, lock: false }, { field, lock: true }]))("refuses changed post-read $field metadata (lock=$lock)", ({ field, lock }) => {
-    const f = fixture();
+  it.each((["mode", "uid", "nlink"] as const).flatMap((field) => [{ field, lock: false }, { field, lock: true }]))("refuses changed post-read $field metadata (lock=$lock)", async ({ field, lock }) => {
+    const f = await fixture();
     applied(f.store, request({ commandId: COMMAND_1, writeId: WRITE_1, expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } }));
     const path = lock ? f.lockPath : f.path;
     if (lock) writeFileSync(path, `${JSON.stringify(deadLockRecord("writer", "55555555-5555-4555-8555-555555555555"))}\n`, { mode: 0o600 });
@@ -287,8 +287,8 @@ describe("independent credential store", () => {
     assert.deepEqual(readFileSync(path), before);
   });
 
-  it("refuses unsafe ancestor mutations without rewriting established credential authority", () => {
-    const f = fixture();
+  it("refuses unsafe ancestor mutations without rewriting established credential authority", async () => {
+    const f = await fixture();
     chmodSync(f.stateRoot, 0o777);
     try {
       assert.throws(() => f.store.read(), /group\/world-writable/u);
@@ -305,8 +305,8 @@ describe("independent credential store", () => {
     assert.equal(existsSync(f.directory), true);
   });
 
-  it("refuses foreign-owned ancestors and raw dot-dot aliases without changing files", () => {
-    const f = fixture();
+  it("refuses foreign-owned ancestors and raw dot-dot aliases without changing files", async () => {
+    const f = await fixture();
     const realLstat = fs.lstatSync;
     vi.spyOn(fs, "lstatSync").mockImplementation((path, options) => {
       const status = realLstat(path, options);
@@ -320,8 +320,8 @@ describe("independent credential store", () => {
     assert.equal(existsSync(f.directory), true);
   });
 
-  it("pins ancestor identity across reads even when the credential directory itself is unchanged", () => {
-    const f = fixture();
+  it("pins ancestor identity across reads even when the credential directory itself is unchanged", async () => {
+    const f = await fixture();
     applied(f.store, request({ commandId: COMMAND_1, writeId: WRITE_1,
       expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } }));
     const bytes = readFileSync(f.path);
@@ -332,9 +332,9 @@ describe("independent credential store", () => {
     assert.deepEqual(readFileSync(f.path), bytes);
   });
 
-  it("rechecks ancestors after staging and refuses a replacement before rename", () => {
+  it("rechecks ancestors after staging and refuses a replacement before rename", async () => {
     let replace = false;
-    const f = fixture({ beforeRename() {
+    const f = await fixture({ beforeRename() {
       if (!replace) return;
       const moved = `${f.tracker}-moved`; roots.push(moved);
       renameSync(f.tracker, moved); mkdirSync(f.tracker, { mode: 0o700 });
@@ -348,9 +348,9 @@ describe("independent credential store", () => {
     assert.deepEqual(readFileSync(f.path), bytes);
   });
 
-  it("keeps a post-rename credential commit and settles its exact retry without rewriting", () => {
+  it("keeps a post-rename credential commit and settles its exact retry without rewriting", async () => {
     let failAfterRename = true;
-    const f = fixture({
+    const f = await fixture({
       afterRename() {
         if (failAfterRename) {
           failAfterRename = false;
@@ -390,9 +390,9 @@ describe("independent credential store", () => {
     assert.deepEqual(readFileSync(f.path), committedBytes);
   });
 
-  it("reports a post-commit lock-release failure as commit-uncertain and exactly retries", () => {
+  it("reports a post-commit lock-release failure as commit-uncertain and exactly retries", async () => {
     let ownedLockPath = "";
-    const f = fixture({
+    const f = await fixture({
       afterRename() {
         unlinkSync(ownedLockPath);
       },
@@ -416,15 +416,15 @@ describe("independent credential store", () => {
     assert.deepEqual(readFileSync(f.path), committedBytes);
   });
 
-  it("recovers only the authenticated next document left by its dead pre-rename writer", () => {
-    const f = fixture();
+  it("recovers only the authenticated next document left by its dead pre-rename writer", async () => {
+    const f = await fixture();
     const first = request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
       expectedRevision: 1,
       entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } },
     });
-    const child = crashBeforeCredentialRename(f.tracker, first);
+    const child = await crashBeforeCredentialRename(f.tracker, first);
 
     assert.equal(child.signal, "SIGKILL", child.stderr);
     assert.equal(existsSync(f.lockPath), true);
@@ -439,8 +439,8 @@ describe("independent credential store", () => {
     assert.deepEqual(readdirSync(f.directory), ["protected.json"]);
   });
 
-  it("recovers a dead pre-rename writer without retaining replaced secrets", () => {
-    const f = fixture();
+  it("recovers a dead pre-rename writer without retaining replaced secrets", async () => {
+    const f = await fixture();
     const historyUuid = (prefix: "8" | "9", sequence: number): string => (
       `${prefix}0000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`
     );
@@ -469,7 +469,7 @@ describe("independent credential store", () => {
       expectedRevision: historyLength + 1,
       entries: { ucpathPassword: { set: historyValue(historyLength + 1) } },
     });
-    const child = crashBeforeCredentialRename(f.tracker, interrupted);
+    const child = await crashBeforeCredentialRename(f.tracker, interrupted);
     assert.equal(child.signal, "SIGKILL", child.stderr);
     assert.equal(existsSync(f.lockPath), true);
     assert.equal(readdirSync(f.directory).filter((name) => name.endsWith(".tmp")).length, 1);
@@ -526,15 +526,15 @@ describe("independent credential store", () => {
     assert.deepEqual(readFileSync(f.path), settledBytes);
   });
 
-  it("preserves and refuses a dead writer staged document with another acquisition identity", () => {
-    const f = fixture();
+  it("preserves and refuses a dead writer staged document with another acquisition identity", async () => {
+    const f = await fixture();
     const first = request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
       expectedRevision: 1,
       entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } },
     });
-    const child = crashBeforeCredentialRename(f.tracker, first);
+    const child = await crashBeforeCredentialRename(f.tracker, first);
     assert.equal(child.signal, "SIGKILL", child.stderr);
     const temporaryName = readdirSync(f.directory).find((name) => name.endsWith(".tmp"));
     assert.ok(temporaryName);
@@ -552,8 +552,8 @@ describe("independent credential store", () => {
     assert.equal(existsSync(f.lockPath), true);
   });
 
-  it("fails closed on an interrupted same-inode stale-reaper claim", () => {
-    const f = fixture();
+  it("fails closed on an interrupted same-inode stale-reaper claim", async () => {
+    const f = await fixture();
     applied(f.store, request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
@@ -589,8 +589,8 @@ describe("independent credential store", () => {
     assert.equal(f.store.read().revision, 2);
   });
 
-  it("claims and reaps an unclaimed dead reaper without touching the credential commit", () => {
-    const f = fixture();
+  it("claims and reaps an unclaimed dead reaper without touching the credential commit", async () => {
+    const f = await fixture();
     applied(f.store, request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
@@ -618,8 +618,8 @@ describe("independent credential store", () => {
     assert.equal(f.store.read().revision, 3);
   });
 
-  it("preserves a replacement reaper when an interrupted stale-inode claim disagrees", () => {
-    const f = fixture();
+  it("preserves a replacement reaper when an interrupted stale-inode claim disagrees", async () => {
+    const f = await fixture();
     applied(f.store, request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
@@ -658,15 +658,15 @@ describe("independent credential store", () => {
     assert.equal(f.store.read().revision, 2);
   });
 
-  it("reaps a SIGKILL-left PID/start-identity lock and exactly retries the renamed commit", () => {
-    const f = fixture();
+  it("reaps a SIGKILL-left PID/start-identity lock and exactly retries the renamed commit", async () => {
+    const f = await fixture();
     const first = request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
       expectedRevision: 1,
       entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } },
     });
-    const child = crashAfterCredentialRename(f.tracker, first);
+    const child = await crashAfterCredentialRename(f.tracker, first);
 
     assert.equal(child.signal, "SIGKILL", child.stderr);
     assert.equal(existsSync(f.lockPath), true);

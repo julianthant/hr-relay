@@ -37,7 +37,6 @@ import {
 } from "../../../rules/identity/ids.js";
 import type { RecoveryRuntimeLockSnapshot } from "./recovery-contracts.js";
 import { RecoveryRuntimeLockSnapshotSchema } from "./recovery-contracts.js";
-import { AUTHORITY_APPLICATION_ID } from "./migrations.js";
 
 
 
@@ -991,10 +990,6 @@ export function acquireRuntimeProcessLock(
 }
 
 
-
-export function authoritySourceDatabaseIdentity(path: string): string {
-  return createHash("sha256").update(`${String(AUTHORITY_APPLICATION_ID)}:${resolve(z.string().min(1).parse(path))}`).digest("hex");
-}
 
 export function observeRuntimeLockSnapshot(
   input: unknown,

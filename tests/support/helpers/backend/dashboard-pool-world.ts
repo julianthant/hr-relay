@@ -1,11 +1,12 @@
 import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
+import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { vi } from "vitest";
+
 import type { AuthorityDatabase as PoolAuthorityDatabase } from "../admission-fixture.js";
 import { type CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { type Clock } from "../../../../src/rules/time/clock.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import assert from "node:assert/strict";
@@ -28,6 +29,7 @@ import { createRunWorkerCapacity } from "../../../../src/backend/runs/commands/r
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 
 export interface ControlHarness {
+  readonly lifetime: RuntimeLifetimeLock;
   readonly root: string;
   readonly authorityPath: string;
   readonly processLockRoot: string;
@@ -122,25 +124,14 @@ export function createDashboardPoolTestWorld() {
     profiles.set(database, profile);
     seedSyntheticRuntimeConfig(database);
     openDatabases.push(database);
-    const nativeDeath = database.assertRetainedWorkerDeath.bind(database);
-    const death = vi.spyOn(database, "assertRetainedWorkerDeath").mockImplementation((member, lifetime, birth) => {
-      const lease = database.authority.workerLeases.get(member.workerId);
-      if (lease?.birthCommandId !== undefined) return nativeDeath(member, lifetime, birth);
-      assert.equal(lease?.lifecycle.state, "stopped");
-      assert.equal(lease?.leaseGeneration, lifetime.leaseGeneration);
-      assert.equal(lease?.processId, lifetime.processId);
-      assert.equal(lease?.lifecycle.startedAt, lifetime.startedAt);
-      database.assertWorkerLifecycleRelease(member.workerId);
-      assert.ok(database.authority.workerControls.browsers(member.workerId).every(browser => browser.health === "closed"));
-    });
-    cleanups.push(() => death.mockRestore());
     const scheduler = new ManualScheduler(clock, 0);
     const children: FakeWorkerChild[] = [];
     const spawnRequests: WorkerProcessSpawnRequest[] = [];
     const faults: Error[] = [];
     let nextPid = 6000;
     const control = composeWorkerProcessControl({
-      profileRoot: join(root, "browsers"), processLockRoot,
+    onExit: () => undefined,
+      profileRoot: join(root, "browsers"),
       database,
       clock,
       scheduler,
@@ -222,7 +213,7 @@ export function createDashboardPoolTestWorld() {
         }),
       },
     });
-    return { root, authorityPath: profile.path, processLockRoot, database, clock, scheduler, kernel, control, children, spawnRequests, faults, auditFault };
+    return { root, lifetime: profile.lifetime, authorityPath: profile.path, processLockRoot, database, clock, scheduler, kernel, control, children, spawnRequests, faults, auditFault };
   }
 
   let commandSequence = 0;
@@ -296,17 +287,10 @@ export function createDashboardPoolTestWorld() {
   }
 
   function admitExternalSlot(harness: ControlHarness, poolIndex = 1) {
-    const held = bindWorkerProcessAdmission({ processLockRoot: harness.processLockRoot,
-      authorityPath: harness.authorityPath, pid: process.pid, clock: harness.clock,
-      open: () => harness.database, close: () => {},
-      admit: (database, acquisitionId) => database.withAuthorityTransaction(repositories => admitDirectWorker(repositories,
-        { commandId: nextCommandId(), workflow: WORKFLOW, poolIndex,
-          expectedPoolVersion: repositories.workerPools.get(WORKFLOW)?.version ?? 0,
-          processId: process.pid, processAcquisitionId: acquisitionId, authorityPath: harness.authorityPath,
-          processLockRoot: harness.processLockRoot, now: harness.clock.now().toISOString() }, nextCommandId()).workerId),
-    });
-    cleanups.push(() => held.processLock.release());
-    return held.workerId;
+    return harness.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories,
+      { commandId: nextCommandId(), workflow: WORKFLOW, poolIndex,
+        expectedPoolVersion: repositories.workerPools.get(WORKFLOW)?.version ?? 0,
+        processId: process.pid, now: harness.clock.now().toISOString() }, nextCommandId()).workerId);
   }
 
   function dashboardLaunch(harness: ControlHarness, eid = "10873698", options: { items?: number } = {}) {

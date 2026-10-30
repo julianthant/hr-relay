@@ -10,6 +10,21 @@ import {
 import { AssistantRefusalCodeSchema } from "../../../src/models/profiles/assistant-permissions.js";
 
 describe("error catalog", () => {
+  it("keeps stopped backup closure and changed-source refusals fixed and private", () => {
+    const expected = {
+      STORAGE_BACKUP_CLOSURE_UNPROVED: "Relay could not verify a completed browser closure step for this backup. The backup is refused; preserve the current installation for recovery.",
+      STORAGE_BACKUP_SOURCE_CHANGED: "The source no longer matches the retained backup. The first backup is preserved; keep this installation for recovery.",
+    };
+    for (const code of ["STORAGE_BACKUP_CLOSURE_UNPROVED", "STORAGE_BACKUP_SOURCE_CHANGED"] as const) {
+      assert.equal(ErrorCatalogCodeSchema.parse(code), code);
+      const resolved = resolveErrorCatalogFailure({ code, parameters: {}, summary: "private native source path" }, "http-response");
+      assert.equal(resolved.state, "resolved");
+      if (resolved.state !== "resolved") throw new Error("backup refusal catalog unresolved");
+      assert.equal(resolved.text, expected[code]);
+      assert.equal(resolved.text.includes("private native source path"), false);
+    }
+  });
+
   it("maps the HTTP internal failure code without exposing its native cause", () => {
     const failure = { code: "INTERNAL_FAILURE", parameters: {}, summary: "private native path" };
     const resolved = resolveErrorCatalogFailure(failure, "http-response");
@@ -263,7 +278,6 @@ it("owns Sessions availability and actual worker failure labels with strict empt
   const entries = {
     SESSIONS_UNAVAILABLE: "Session information is unavailable.",
     WORKER_CRASHED: "crashed",
-    WORKER_LEASE_EXPIRED: "The worker stopped responding. Run it again.",
   } as const;
   for (const code of Object.keys(entries) as (keyof typeof entries)[]) {
     assert.equal(formatErrorCatalogFailure(createErrorCatalogFailure(code, {})).text, entries[code]);

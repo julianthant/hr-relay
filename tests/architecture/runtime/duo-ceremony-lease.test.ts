@@ -129,20 +129,6 @@ describe("worker lifecycle supervisor provenance", () => {
   });
 });
 
-describe("native worker birth custody provenance", () => {
-  const owner = "src/backend/app/composition/worker-compose.ts";
-  const homes = new Set([owner, "src/backend/storage/sqlite/runtime-process-locks.ts", "src/backend/storage/sqlite/authority-database.ts"]);
-  const audit = (path: string, content: string) => homes.has(path) ? []
-    : /\b(?:bindWorkerProcessAdmission|startOwnedWorker)\b/u.test(content) ? [`${path}: only actual worker composition may bind authority custody and start an owned lifetime`] : [];
-  it("keeps native birth outside ordinary command and API callers", () => {
-    assert.deepEqual(sourceFiles().flatMap(path => audit(path, read(path))), []);
-    assert.match(read(owner), /database\.startOwnedWorker\(/u);
-    assert.match(read(owner), /bindWorkerProcessAdmission\(/u);
-    assert.equal(audit("src/forged.ts", "database.startOwnedWorker(request, handle)").length, 1);
-    assert.equal(audit("src/forged.ts", "bindWorkerProcessAdmission(input)").length, 1);
-  });
-});
-
 describe("the Duo ceremony lease is structural", () => {
   it("lets only the lease store mint or retire a token, anywhere in src/ and scripts/", () => {
     const files = sourceFiles();

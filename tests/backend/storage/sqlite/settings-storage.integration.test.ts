@@ -1,3 +1,4 @@
+import { runInheritedRuntimeChild } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import assert from "node:assert/strict";
@@ -85,11 +86,12 @@ describe("SQLite settings authority", () => {
     const path = join(f.root, "credentials", "protected.json");
     const bytes = readFileSync(path);
     const foreign = { ...ordinary(), commandId: pending.commandId };
-    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+    const child = await runInheritedRuntimeChild(f.lifetime, `
       import assert from 'node:assert/strict';
       import { randomUUID } from 'node:crypto';
       import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
-      import { acquireEntrypointAdmission } from './src/backend/storage/admission/bootstrap-admission.ts';
+      import { acquireSharedRuntimeAdmission } from './src/backend/storage/admission/admission.ts';
+      import { WorkerRuntimeLifetimeLock } from './src/backend/storage/admission/lifetime-lock.ts';
       import { createProfileRegistry } from './src/backend/profiles/registry.ts';
       import { basename, dirname, join } from 'node:path';
       import { manualClock } from './src/rules/time/clock.ts';
@@ -99,7 +101,8 @@ describe("SQLite settings authority", () => {
       import { createSettingsApplicationExecutor } from './src/backend/runs/commands/settings-service.ts';
       const clock = manualClock(new Date('2026-09-06T12:00:00Z'));
       const path = ${JSON.stringify(f.path)};
-      const machine = acquireEntrypointAdmission(${JSON.stringify(f.repoRoot)}, 'shared');
+      const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
+      const machine = acquireSharedRuntimeAdmission(${JSON.stringify(f.repoRoot)}, lifetime);
       const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(basename(dirname(path))));
       const store = createCredentialStore({ admission, stateRoot: ${JSON.stringify(f.root)}, erasureJournalAdmission: machine,
         erasureJournalPath: join(machine.stateRoot, 'machine', 'erasures', admission.profileBinding.profileId + '.json') });
@@ -108,8 +111,8 @@ describe("SQLite settings authority", () => {
         const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), store);
         const result = executeSettingsCommand({ authority: db, clock, ids: { uuid: randomUUID }, settings }, ${JSON.stringify(foreign)});
         assert.equal(result.state, 'rejected'); assert.equal(result.code, 'command-divergent');
-      } finally { db.close(); admission.release(); machine.release(); }
-    `], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), encoding: "utf8" });
+      } finally { db.close(); admission.release(); machine.release(); await lifetime.close(); process.disconnect(); }
+    `, [], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)) });
     assert.equal(child.status, 0, child.stderr);
     assert.deepEqual(readFileSync(path), bytes);
     assert.equal(f.database.getMeta().authorityGeneration, generation);

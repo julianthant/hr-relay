@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+
 import { createRunQueueProjection } from "../../../../../src/backend/runs/projections/run-queue-projection.js";
 import { createTransactionHistory } from "../../../../../src/backend/storage/sqlite/transaction-history.js";
 import { admitDirectWorker } from "../../../../../src/backend/storage/sqlite/worker-slots.js";
-import { bindWorkerProcessAdmission, type RuntimeProcessLockHandle } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
@@ -27,7 +27,7 @@ type DashboardWorld,
 
 const worlds: DashboardWorld[] = [];
 const hubs: DashboardStreamHub[] = [];
-const workerHandles: RuntimeProcessLockHandle[] = [];
+const workers = new Map<DashboardWorld["database"], Set<string>>();
 
 const VALIDATING_BACKFILL_GAPS = {
   detected: (input: unknown) => Promise.resolve({
@@ -45,7 +45,7 @@ async function harness(nativeWorkers = false): Promise<{ w: DashboardWorld; hub:
     authority: { ...original.authority,
       listWorkerSlots: () => original.database.authority.workerSlots.list(),
       listWorkerRuns: workerId => original.database.authority.runs.listByWorker(workerId),
-      workerOwnerAlive: lease => original.database.workerLifetimeCustody(lease.workerId).state === "alive",
+      workerOwnerAlive: lease => workers.get(original.database)?.has(lease.workerId) === true && lease.processId === process.pid && lease.lifecycle.state !== "stopped",
       workerControls: () => original.database.authority.workerControls.list(),
       workerBrowsers: workerId => original.database.authority.workerControls.browsers(workerId),
       getWorkerLease: workerId => original.database.authority.workerLeases.get(workerId),
@@ -68,26 +68,22 @@ async function harness(nativeWorkers = false): Promise<{ w: DashboardWorld; hub:
 
 afterEach(async () => {
   for (const hub of hubs.splice(0)) hub.close();
-  for (const handle of workerHandles.splice(0)) handle.release();
+  workers.clear();
   for (const w of worlds.splice(0)) await w.dispose();
 });
 
 function admitOwnedWorker(w: DashboardWorld) {
-  const authorityPath = join(w.stateRoot, "state.db"), processLockRoot = join(w.stateRoot, "locks");
-  const bound = bindWorkerProcessAdmission({ authorityPath, processLockRoot, clock: w.clock, pid: process.pid,
-    open: () => w.database, close: () => {},
-    admit: (database, processAcquisitionId) => database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-      commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1,
-      expectedPoolVersion: repositories.workerPools.get(personLookupDescriptor.id)?.version ?? 0,
-      processId: process.pid, processAcquisitionId, authorityPath, processLockRoot, now: w.clock.now().toISOString(),
-    }, randomUUID()).workerId),
-  });
-  workerHandles.push(bound.processLock);
-  const started = w.database.startOwnedWorker({ workerId: bound.workerId, workflow: personLookupDescriptor.id,
-    browserSystems: ["crm", "ucpath"], processId: process.pid, requestedBy: "local-operator", now: w.clock.now().toISOString() }, bound.processLock);
+  const slot = w.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
+    commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1,
+    expectedPoolVersion: repositories.workerPools.get(personLookupDescriptor.id)?.version ?? 0,
+    processId: process.pid, now: w.clock.now().toISOString(),
+  }, randomUUID()));
+  const owned = workers.get(w.database) ?? new Set<string>();
+  owned.add(slot.workerId); workers.set(w.database, owned);
+  const started = w.database.authority.workerLeases.start({ workerId: slot.workerId, workflow: personLookupDescriptor.id,
+    browserSystems: ["crm", "ucpath"], processId: process.pid, requestedBy: "local-operator", now: w.clock.now().toISOString() });
   assert.equal(started.state, "started");
   if (started.state !== "started") throw new Error("worker fixture did not start");
-  assert.equal(w.database.workerLifetimeCustody(bound.workerId).state, "alive");
   return started.lease;
 }
 

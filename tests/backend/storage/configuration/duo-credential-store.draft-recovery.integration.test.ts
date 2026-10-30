@@ -1,3 +1,5 @@
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { readyProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
 import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
@@ -28,21 +30,22 @@ import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.j
 import { issueDraftDuoCredentialPurpose, openDuoCredentialDocument } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 
-function privateDraftFixture(onboardingDuo?: ProfileOnboardingDuoProvider) {
+async function privateDraftFixture(onboardingDuo?: ProfileOnboardingDuoProvider) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "draft-duo-recovery-")));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
-  const machine = acquireEntrypointAdmission(root, "exclusive"), processLockRoot = join(root, rebuildRuntimeIsolation.processLockRoot);
+  const lifetime = await runtimeLifetimeLock();
+  const machine = acquireEntrypointAdmission(root, "exclusive", lifetime), processLockRoot = join(root, rebuildRuntimeIsolation.processLockRoot);
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
-  const profile = composeProfileRuntime({ admission: machine, processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock,
+  const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock,
     ...(onboardingDuo === undefined ? {} : { onboardingDuo }) });
   const draft = profile.session.signUp({ firstName: "Recovery", lastName: "Fixture", email: "draft-recovery@ucsd.edu",
     password: "disposable-draft-recovery", createdAt: new Date().toISOString() });
   if (draft.state !== "onboarding") throw new Error("fixture genuine draft required");
-  return { root, machine, profile, draft, processLockRoot };
+  return { root, lifetime, machine, profile, draft, processLockRoot };
 }
 
-function draftFixture() {
-  const base = privateDraftFixture(), { root, machine, profile, draft } = base;
+async function draftFixture() {
+  const base = await privateDraftFixture(), { root, machine, profile, draft } = base;
   const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(draft.profileId));
   const store = createDraftDuoCredentialStore(admission, machine, draft.operationId, 1, systemClock), pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const armedAt = systemClock.nowMs();
@@ -55,7 +58,7 @@ function draftFixture() {
 }
 
 it("opens draft Duo documents with two fresh isolated binding observations per independent read", async () => {
-  const f = draftFixture();
+  const f = await draftFixture();
   try {
     const purpose = issueDraftDuoCredentialPurpose(f.admission, f.machine, f.draft.operationId, 1);
     const bytes = readFileSync(join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`));
@@ -84,7 +87,7 @@ it("opens draft Duo documents with two fresh isolated binding observations per i
 
 for (const boundary of ["binding-child-before", "binding-child-after", "key-read", "current-document-read", "final-document-read", "decrypt", "between-reads"] as const) {
   it(`refuses draft stable identity drift at ${boundary} while opening Duo material`, async () => {
-    const f = draftFixture();
+    const f = await draftFixture();
     const operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
     const original = readFileSync(operationPath);
     try {
@@ -141,7 +144,7 @@ for (const boundary of ["binding-child-before", "binding-child-after", "key-read
 }
 
 it("rejects database schema drift introduced by the final canonical Duo document read", async () => {
-  const f = draftFixture();
+  const f = await draftFixture();
   const db = new DatabaseSync(join(f.admission.stateRoot, "state.db"));
   const version = db.prepare("PRAGMA user_version").get()?.user_version;
   assert.equal(typeof version, "number");
@@ -169,7 +172,7 @@ it("rejects database schema drift introduced by the final canonical Duo document
 
 it("viewing an actual draft creates no attempt and unknown enrollment cannot be rearmed by viewing or opening its browser", async () => {
   let browser: DraftDuoBrowserOwner | undefined, starts = 0;
-  const f = privateDraftFixture({
+  const f = await privateDraftFixture({
     async showBrowser(owner) { owner.assertCurrent(); browser = owner; },
     async openPortal(owner) { owner.assertCurrent(); },
     async closeBrowser() { return { state: "closed" }; },
@@ -194,7 +197,7 @@ it("viewing an actual draft creates no attempt and unknown enrollment cannot be 
 
 for (const boundary of ["intent", "rename", "operation", "continuity", "unlink"] as const) {
   it(`recovers the exact draft Duo transaction after ${boundary} without publishing a profile`, async () => {
-    const f = draftFixture(), control = join(f.root, ".tracker", "control"), intent = join(control, "profile-publication.json");
+    const f = await draftFixture(), control = join(f.root, ".tracker", "control"), intent = join(control, "profile-publication.json");
     const canonical = join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`);
     const operation = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
     const registry = readFileSync(join(f.machine.stateRoot, "machine", "profiles.json")), injected = new Error("fixture publication boundary");
@@ -226,10 +229,10 @@ for (const boundary of ["intent", "rename", "operation", "continuity", "unlink"]
 }
 
 it("recovers a draft's durable counter intent through stopped authenticated maintenance", async () => {
-  const f = draftFixture(), profileId = f.draft.profileId;
+  const f = await draftFixture(), profileId = f.draft.profileId;
   assert.throws(() => f.store.interruptReserve(f.input.credentialId), /Duo credential commit|uncertain/u);
   f.admission.release(); await f.profile.close(); f.machine.release();
-  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root);
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
   const recovered = maintenance.recoverInterruptedDuoPublication();
   assert.equal(recovered.revision, 3);
   assert.equal(maintenance.readProfileRegistry().profiles.length, 0);
@@ -242,7 +245,7 @@ it("recovers a draft's durable counter intent through stopped authenticated main
 
 for (const boundary of ["source", "journal", "erase", "intent", "source-unlink", "key-unlink", "keychain-before-delete", "keychain-after-delete", "operation-unlink", "root-removal"] as const) {
   it(`resumes actual unpublished cancellation across ${boundary} with original encrypted custody retained`, async () => {
-    const f = privateDraftFixture(), operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
+    const f = await privateDraftFixture(), operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
     const keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${f.draft.profileId}.json`);
     const keyMetadata: unknown = JSON.parse(readFileSync(keyPath, "utf8"));
     const protectedPath = join(f.machine.stateRoot, "profiles", f.draft.profileId, "credentials", "protected.json");
@@ -283,8 +286,8 @@ for (const boundary of ["source", "journal", "erase", "intent", "source-unlink",
     finally { renameSpy.mockRestore(); writeSpy.mockRestore(); unlinkSpy.mockRestore(); removeSpy.mockRestore(); keychainSpy.mockRestore(); syncBuiltinESMExports(); }
     assert.equal(fired, true);
     await f.profile.close(); f.machine.release();
-    const machine = acquireEntrypointAdmission(f.root, "exclusive");
-    const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+    const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime);
+    const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
     const registry = machine.readProfileRegistry(); assert.equal(registry.profiles.length, 0); assert.equal(registry.activeProfileId, null);
     await profile.session.recoverOnboarding();
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(keyPath), false); assert.equal(existsSync(intentPath), false);
@@ -297,7 +300,7 @@ for (const boundary of ["source", "journal", "erase", "intent", "source-unlink",
 
 for (const changed of ["registry", "continuity"] as const) {
   it(`refuses changed ${changed} after interrupted draft operation removal`, async () => {
-    const f = privateDraftFixture(), root = join(f.machine.stateRoot, "profiles", f.draft.profileId);
+    const f = await privateDraftFixture(), root = join(f.machine.stateRoot, "profiles", f.draft.profileId);
     const operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
     const controlPath = join(f.root, ".tracker", "control", "profile-registry.json");
     const registryPath = join(f.machine.stateRoot, "machine", "profiles.json");
@@ -320,7 +323,7 @@ for (const changed of ["registry", "continuity"] as const) {
     writeFileSync(path, JSON.stringify(document), { mode: 0o600 });
     const control = readFileSync(controlPath), intent = readFileSync(intentPath);
     try {
-      assert.throws(() => acquireEntrypointAdmission(f.root, "exclusive"), /profile-draft-abort-control-changed/);
+      assert.throws(() => acquireEntrypointAdmission(f.root, "exclusive", f.lifetime), /profile-draft-abort-control-changed/);
       assert.equal(existsSync(root), true);
       assert.deepEqual(readFileSync(controlPath), control);
       assert.deepEqual(readFileSync(intentPath), intent);
@@ -351,7 +354,7 @@ async function readyFixture() {
     },
     async cancel() { active = false; return { state: "closed" }; },
   };
-  const f = privateDraftFixture(provider);
+  const f = await privateDraftFixture(provider);
   for (const method of ["key", "touch"] as const) {
     const pending = await f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, method);
     const attemptId = pending.methods[method].attemptId; assert.ok(attemptId);
@@ -391,8 +394,8 @@ for (const boundary of ["phase", "intent", "verifier", "registry", "continuity",
     finally { renameSpy.mockRestore(); unlinkSpy.mockRestore(); syncBuiltinESMExports(); }
     assert.equal(fired, true); assert.ok(finishId);
     await f.profile.close(); f.machine.release();
-    const machine = acquireEntrypointAdmission(f.root, "exclusive"), profile = composeProfileRuntime({ admission: machine,
-      processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+    const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime), profile = composeProfileRuntime({ admission: machine,
+       hostFacts: { primaryDisplay: null }, clock: systemClock });
     const published = machine.readProfileRegistry().profiles.find(row => row.profileId === f.draft.profileId);
     if (published === undefined) {
       assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, 0);
@@ -409,7 +412,7 @@ for (const boundary of ["phase", "intent", "verifier", "registry", "continuity",
 }
 
 it("holds tampered abort source and preserves exact key/operation until authenticated source is restored", async () => {
-  const f = privateDraftFixture(), intentPath = join(f.root, ".tracker", "control", "profile-publication.json");
+  const f = await privateDraftFixture(), intentPath = join(f.root, ".tracker", "control", "profile-publication.json");
   const credentials = join(f.machine.stateRoot, "profiles", f.draft.profileId, "credentials");
   const operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`), keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${f.draft.profileId}.json`);
   const rename = nativeFs.renameSync; let fired = false;
@@ -470,10 +473,11 @@ it("limits finished publishing to value-free metadata and refuses key provisioni
 const retainedProcessLossFixtures = new Set<unknown>();
 for (const boundary of ["source-fsync", "protected-stage"] as const) {
   it(`recovers actual dead-writer process loss after ${boundary} without treating owned abort source as a writer stage`, async () => {
-    const f = privateDraftFixture(); await f.profile.close(); f.machine.release();
-    const child = fork(fileURLToPath(new URL("../../../support/processes/profile-onboarding-abort-worker.ts", import.meta.url)), [f.root, boundary],
+    const f = await privateDraftFixture(); await f.profile.close(); f.machine.release();
+    const port = f.lifetime.port; await f.lifetime.close();
+    const child = fork(fileURLToPath(new URL("../../../support/processes/profile-onboarding-abort-worker.ts", import.meta.url)), [f.root, boundary, String(port)],
       { execArgv: ["--disable-warning=ExperimentalWarning", "--import", "tsx"], detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
-    const retained = { root: f.root, child }; retainedProcessLossFixtures.add(retained);
+    const retained: { root: string; child: typeof child; recoveryLifetime?: RuntimeLifetimeLock } = { root: f.root, child }; retainedProcessLossFixtures.add(retained);
     const closed = once(child, "close"); let stderrBytes = 0; child.stderr?.on("data", (bytes: Buffer) => { stderrBytes += bytes.length; });
     const ready = z.object({ type: z.literal("ready"), pid: z.number().int().positive(), keychain: z.array(z.tuple([z.string(), z.string()])) }).parse((await once(child, "message"))[0]);
     FakeKeyringEntry.import(ready.keychain);
@@ -490,13 +494,14 @@ for (const boundary of ["source-fsync", "protected-stage"] as const) {
     assert.equal(groups.includes(String(ready.pid)), false);
     const fds = spawnSync("/usr/sbin/lsof", ["-nP", "-a", "-p", String(ready.pid)], { encoding: "utf8" });
     assert.equal(fds.error, undefined); assert.equal(fds.signal, null); assert.equal(fds.status, 1); assert.equal(fds.stdout.trim(), "");
-    const machine = acquireEntrypointAdmission(f.root, "exclusive"), profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot,
+    const recoveryLifetime = await RuntimeLifetimeLock.acquire(port); retained.recoveryLifetime = recoveryLifetime;
+    const machine = acquireEntrypointAdmission(f.root, "exclusive", recoveryLifetime), profile = composeProfileRuntime({ admission: machine,
       hostFacts: { primaryDisplay: null }, clock: systemClock });
     await profile.session.recoverOnboarding();
     const credentials = join(machine.stateRoot, "profiles", f.draft.profileId, "credentials");
     assert.equal(existsSync(credentials), false);
     assert.equal(machine.readProfileRegistry().profiles.length, 0);
-    await profile.close(); machine.release(); rmSync(f.root, { recursive: true }); retainedProcessLossFixtures.delete(retained);
+    await profile.close(); machine.release(); await recoveryLifetime.close(); rmSync(f.root, { recursive: true }); retainedProcessLossFixtures.delete(retained);
   });
 }
 
@@ -532,9 +537,9 @@ for (const change of ["same-length", "replacement"] as const) {
 }
 
 it("removes an unfinished sign-up at startup through the existing cancellation path", async () => {
-  const f = privateDraftFixture(); await f.profile.close(); f.machine.release();
-  const machine = acquireEntrypointAdmission(f.root, "exclusive");
-  const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+  const f = await privateDraftFixture(); await f.profile.close(); f.machine.release();
+  const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime);
+  const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
   try {
     await profile.session.recoverOnboarding();
     assert.equal(existsSync(join(machine.stateRoot, "profiles", f.draft.profileId)), false);
@@ -544,15 +549,15 @@ it("removes an unfinished sign-up at startup through the existing cancellation p
 });
 
 it("removes a sign-up interrupted before its profile or credentials were initialized", async () => {
-  const f = privateDraftFixture();
+  const f = await privateDraftFixture();
   const original = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`), "utf8")));
   await f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId);
   const draft = f.machine.beginProfileSignUp({ emailKey: original.emailKey, firstName: original.firstName, lastName: original.lastName,
     createdAt: original.createdAt, commandFingerprint: original.commandFingerprint });
   assert.equal(existsSync(join(f.machine.stateRoot, "profiles", draft.profileId)), false);
   await f.profile.close(); f.machine.release();
-  const machine = acquireEntrypointAdmission(f.root, "exclusive");
-  const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+  const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime);
+  const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
   try {
     await profile.session.recoverOnboarding();
     assert.equal(existsSync(join(machine.stateRoot, "profiles", draft.profileId)), false);
@@ -563,7 +568,7 @@ it("removes a sign-up interrupted before its profile or credentials were initial
 });
 
 it("cancels a ready sign-up, deleting local Duo material while preserving the remote enrollment", async () => {
-  const f = privateDraftFixture(syntheticOnboardingDuo(() => "draft-recovery@ucsd.edu"));
+  const f = await privateDraftFixture(syntheticOnboardingDuo(() => "draft-recovery@ucsd.edu"));
   try {
     await readyProfileOnboarding(f.profile.session, f.draft);
     assert.deepEqual(await f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId), { state: "signed-out" });
@@ -574,7 +579,7 @@ it("cancels a ready sign-up, deleting local Duo material while preserving the re
 });
 
 it("completes a recorded Finish at startup without reopening its draft", async () => {
-  const f = privateDraftFixture(syntheticOnboardingDuo(() => "draft-recovery@ucsd.edu"));
+  const f = await privateDraftFixture(syntheticOnboardingDuo(() => "draft-recovery@ucsd.edu"));
   await readyProfileOnboarding(f.profile.session, f.draft);
   const rename = nativeFs.renameSync, operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
   let interrupted = false;
@@ -592,8 +597,8 @@ it("completes a recorded Finish at startup without reopening its draft", async (
   await assert.rejects(f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId));
   assert.deepEqual(readFileSync(duoPath), duoBytes);
   await f.profile.close(); f.machine.release();
-  const machine = acquireEntrypointAdmission(f.root, "exclusive");
-  const profile = composeProfileRuntime({ admission: machine, processLockRoot: f.processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+  const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime);
+  const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
   try {
     await profile.session.recoverOnboarding();
     const row = machine.readProfileRegistry().profiles.find(row => row.profileId === f.draft.profileId); assert.ok(row?.registration.onboardingCompletion);

@@ -11,7 +11,7 @@ it("keeps registry entry lease freshness and scope refusal precedence", async ()
   try {
     const directory = join(profile.workspace, ".tracker", "control", "leases");
     const before = new Set(readdirSync(directory));
-    const lease = acquireInstallation(profile.workspace, "shared");
+    const lease = acquireInstallation(profile.workspace, "shared", profile.lifetime);
     const admission = RuntimeAdmission.fromInstallationLease(lease);
     try {
       assert.equal(admission.readProfileRegistry().profiles[0]?.profileId, profile.admission.profileBinding.profileId);

@@ -147,6 +147,7 @@ export interface WorkerLoopDependencies {
   /** Production claim gate comparing the exact boot/current epochs inside one SQLite transaction. */
   readonly claimNext: (
     input: WorkerClaimRequest,
+    sessions: WorkerSessionManager,
   ) => RunMutationOutcome | Promise<RunMutationOutcome>;
 }
 
@@ -375,7 +376,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         now: instant(),
         ...(configFingerprint === undefined ? {} : { configFingerprint }),
       };
-      const claimed = await deps.claimNext(claimRequest);
+      const claimed = await deps.claimNext(claimRequest, sessions);
       if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible") {
         const notBefore = claimed.refusal.notBefore;
         const decision = deps.exitWhenIdle

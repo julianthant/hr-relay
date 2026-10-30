@@ -23,7 +23,7 @@ async function settleOwnedReset(harness: ControlHarness, commandId: string) {
   const reset = harness.database.authority.workerControls.get(commandId)?.reset;
   assert.ok(reset, "the command must retain its exact reset binding");
   const sessions = new WorkerSessionManager({ workerId: reset.member.workerId, workflowId: reset.member.workflowId,
-    resetOwner: { member: reset.member, lifetime: reset.lifetime }, stores: taskStoreRegistry, factory: { open: async () => { throw new Error("browserless reset must not acquire"); } },
+    resetOwner: { member: reset.member, lifetime: reset.lifetime }, stores: taskStoreRegistry, factory: { probeProfile: async () => undefined, open: async () => { throw new Error("browserless reset must not acquire"); } },
     clock: harness.clock, scheduler: harness.scheduler, acquireDeadlineMs: 1000, duoCeremony: await fixtureDuoCeremonyGates(harness.clock) });
   const lifecycle = new RunRecordService({ database: harness.database, clock: harness.clock,
     ids: sequentialIdFactory("e"), publishQueued: () => { throw new Error("reset must not queue work"); } });

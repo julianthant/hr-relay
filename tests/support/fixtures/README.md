@@ -161,7 +161,8 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/duo-ceremony-fixtures.ts` | duo ceremony fixtures |
 | `helpers/failure-resolution/fixtures.ts` | fixtures |
 | `helpers/geocode/nominatim-client.ts` | nominatim client |
-| `helpers/geocode/nominatim-election.ts` | nominatim election |
+| `processes/onboarding-native-orphan-owner.ts` | canonical Chromium orphan after owner SIGKILL; child PID from owned IPC is a bounded test-only exit observation; unproved exit retains the contained run |
+| `helpers/geocode/nominatim-parent.ts` | parent-owned geocode queue and IPC disconnect |
 | `helpers/integration/journaled-protected-settings.ts` | journaled protected settings |
 | `helpers/integration/storage-recovery-fixture.ts` | storage recovery fixture |
 | `helpers/kuali-finalization-fixtures.ts` | kuali finalization fixtures |
@@ -192,6 +193,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `processes/runtime-lock-contender.ts` | runtime lock contender |
 | `processes/worker-browser-control-cli.ts` | worker browser control cli |
 | `processes/worker-composition-child.ts` | real worker composition concurrency fixture |
+| `processes/verification-reservation-owner.ts` | standalone verification reservation crash fixture |
 | `processes/worker-stub-cli.ts` | worker stub cli |
 | `helpers/browser/session-factory-fixtures.ts` | fresh browser factory and worker session runtime |
 | `helpers/workflow/flow-task-fixtures.ts` | flow, graph and scenario task contracts |

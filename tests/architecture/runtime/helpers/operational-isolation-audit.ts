@@ -22,6 +22,7 @@ export interface RuntimeSideContract {
   readonly archiveDatabaseFile?: string;
   readonly artifactRoot: string;
   readonly backendPort: number;
+  readonly lockPort?: number;
   readonly frontendPort: number;
   readonly processLockRoot: string;
   readonly browserProfileRoot: string;
@@ -154,22 +155,20 @@ function exactBindingArgument(
 function hasExactAdmissionParameter(source: ts.SourceFile, runner: ts.FunctionDeclaration,
   importerFile: string, admissionFile: string): boolean {
   if (runner.parameters.length === 0) return true;
-  if (![1, 2, 3].includes(runner.parameters.length) || runner.body === undefined) return false;
-  if (runner.parameters.length >= 2) {
-    const custody = runner.parameters[1];
-    const compact = ts.createPrinter({ removeComments: true }).printNode(ts.EmitHint.Unspecified, custody, source).replace(/\s+/gu, "");
-    if (compact !== "takeInitialCustody?:()=>RuntimeProcessLockHandle|undefined") return false;
-    const custodyImport = source.statements.some(statement => ts.isImportDeclaration(statement)
-      && statement.importClause?.isTypeOnly === true && ts.isStringLiteral(statement.moduleSpecifier)
-      && moduleResolvesTo(importerFile, statement.moduleSpecifier.text, resolve(admissionFile, "..", "..", "sqlite", "runtime-process-locks.ts"))
-      && statement.importClause.namedBindings !== undefined && ts.isNamedImports(statement.importClause.namedBindings)
-      && statement.importClause.namedBindings.elements.some(element => element.name.text === "RuntimeProcessLockHandle" && element.propertyName === undefined));
-    if (!custodyImport) return false;
-  }
+  if (![1, 3].includes(runner.parameters.length) || runner.body === undefined) return false;
   if (runner.parameters.length === 3) {
-    const dashboard = runner.parameters[2];
-    const compact = ts.createPrinter({ removeComments: true }).printNode(ts.EmitHint.Unspecified, dashboard, source).replace(/\s+/gu, "");
-    if (compact !== "acceptDashboardAdmission?:()=>void") return false;
+    const printer = ts.createPrinter({ removeComments: true });
+    const compact = (parameter: ts.ParameterDeclaration) => printer.printNode(ts.EmitHint.Unspecified, parameter, source).replace(/\s+/gu, "");
+    const dashboard = runner.parameters[1], lifetime = runner.parameters[2];
+    if (dashboard === undefined || lifetime === undefined
+      || compact(dashboard) !== "acceptDashboardAdmission:(()=>void)|undefined"
+      || compact(lifetime) !== "lifetime:RuntimeLifetime") return false;
+    const imported = source.statements.some(statement => ts.isImportDeclaration(statement)
+      && statement.importClause?.isTypeOnly === true && ts.isStringLiteral(statement.moduleSpecifier)
+      && moduleResolvesTo(importerFile, statement.moduleSpecifier.text, resolve(admissionFile, "..", "..", "..", "app", "bootstrap", "secure-env-bootstrap.ts"))
+      && statement.importClause.namedBindings !== undefined && ts.isNamedImports(statement.importClause.namedBindings)
+      && statement.importClause.namedBindings.elements.some(element => element.name.text === "RuntimeLifetime" && element.propertyName === undefined));
+    if (!imported) return false;
   }
   const parameter = runner.parameters[0];
   if (parameter === undefined || !ts.isIdentifier(parameter.name) || parameter.name.text !== "admission"
@@ -288,6 +287,7 @@ function executableRuntimeBinding(
     ...(side.archiveDatabaseFile === undefined ? {} : { archiveDatabaseFile: side.archiveDatabaseFile }),
     artifactRoot: side.artifactRoot,
     backendPort: side.backendPort,
+    ...(side.lockPort === undefined ? {} : { lockPort: side.lockPort }),
     frontendPort: side.frontendPort,
     processLockRoot: side.processLockRoot,
     browserProfileRoot: side.browserProfileRoot,
@@ -383,6 +383,10 @@ function validateDistinctResources(
   }
   if (contract.legacy.frontendPort === contract.rebuild.frontendPort) {
     addViolation(output, "runtime-binding", repoRoot, contractFile, "frontendPort must differ between the two runtimes");
+  }
+  if (contract.rebuild.lockPort === undefined || [contract.rebuild.backendPort, contract.rebuild.frontendPort,
+    contract.legacy.backendPort, contract.legacy.frontendPort].includes(contract.rebuild.lockPort)) {
+    addViolation(output, "runtime-binding", repoRoot, contractFile, "lockPort must be a dedicated port distinct from both runtimes' HTTP ports");
   }
   // Command names may coincide; each checkout must retain its own exact launch scripts.
   return output;

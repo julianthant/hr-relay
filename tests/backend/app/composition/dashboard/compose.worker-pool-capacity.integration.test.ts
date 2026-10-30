@@ -337,7 +337,7 @@ describe("dashboard launch creates bounded worker capacity", () => {
       lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: h.clock.now().toISOString() }, now: h.clock.now().toISOString() });
     h.children[0]?.emitExit(1, null);
     h.clock.advanceWall(1000);
-    h.database.authority.workerLeases.sweepExpired({ now: h.clock.now().toISOString(), staleBefore: h.clock.now().toISOString() });
+    h.database.settleInterruptedWorker(h.lifetime, WORKER_1, 1, h.clock.now().toISOString());
     assert.equal(h.database.authority.workerLeases.get(WORKER_1)?.lifecycle.state, "stopped");
     assert.equal((await launchCommands(h).submit(request)).state, "already-applied");
     assert.equal(h.children.length, 1);
@@ -546,8 +546,8 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
     for (const poolIndex of [1, 2, 3]) {
       const seed = spawn(process.execPath, ['--import', 'tsx', join(process.cwd(), 'tests/support/processes/worker-stub-cli.ts'),
-        profile.path, processLockRoot, 'installed', "worker", WORKFLOW, '--pool-index', String(poolIndex)],
-        { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+        String(profile.lifetime.port), profile.path, processLockRoot, 'installed', "worker", WORKFLOW, '--pool-index', String(poolIndex)],
+        { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe', 'ipc'], detached: true });
       const seedClosed = new Promise<void>(resolve => { seed.once('close', () => resolve()); });
       const seedExit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
         seed.once('exit', (code, signal) => resolve({ code, signal })); seed.once('error', reject);
@@ -565,7 +565,9 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
       let seedStderr = '';
       seed.stderr?.setEncoding('utf8');
       seed.stderr?.on('data', (chunk: string) => { seedStderr = (seedStderr + chunk).slice(-65_536); });
-      await Promise.race([once(seed.stdout, 'data'), seedExit.then(exited => {
+      const born = once(seed.stdout, 'data');
+      await profile.lifetime.share(seed);
+      await Promise.race([born, seedExit.then(exited => {
         const frameOwners = [
           'tests/support/processes/worker-stub-cli.ts',
           'src/backend/storage/admission/admission.ts',
@@ -599,7 +601,8 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
         if (poolIndex === 1) assert.equal(seededWorkerId, WORKER_1);
         const lease = started.authority.workerLeases.get(seededWorkerId); assert.ok(lease);
         assert.equal(lease.lifecycle.state, 'starting');
-        assert.equal(started.workerLifetimeCustody(seededWorkerId).state, 'alive');
+        assert.equal(lease.processId, seed.pid);
+        assert.equal(seed.exitCode, null); assert.equal(seed.signalCode, null);
         const readyAt = new Date().toISOString();
         assert.equal(started.authority.workerLeases.reportLifecycle({ workerId: seededWorkerId, leaseGeneration: lease.leaseGeneration,
           lifecycle: { state: 'idle', startedAt: lease.lifecycle.startedAt, heartbeatAt: readyAt }, now: readyAt }).state, 'applied');
@@ -614,7 +617,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
         clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
       try {
         assert.equal(stopped.authority.workerLeases.get(seededWorkerId)?.lifecycle.state, 'stopped');
-        assert.equal(stopped.workerLifetimeCustody(seededWorkerId).state, 'released');
+        assert.equal(seed.exitCode, 0); assert.equal(seed.signalCode, null);
         stopped.assertWorkerLifecycleRelease(seededWorkerId);
         assert.equal(stopped.authority.workerPools.get(WORKFLOW)?.desiredWorkers, poolIndex);
         assert.equal(stopped.authority.workerSlots.list(WORKFLOW).filter(slot => slot.retiredAt === null).length, poolIndex);
@@ -627,7 +630,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     const children: FakeWorkerChild[] = [];
     let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
     try {
-      runtime = await composeDashboardApplication({ admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      runtime = await composeDashboardApplication({ lifetimeLock: profile.lifetime, admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
         isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, clock, repoRoot,
         workerProcess: { scheduler: new ManualScheduler(clock, 0), spawn: () => {
           const child = new FakeWorkerChild(7002); children.push(child); return child;
@@ -668,7 +671,7 @@ const retainedCapacityCustody: {
       assert.ok(record); return record;
     };
     // Port 0 asks the OS for an ephemeral port, isolating this proof from a running dashboard.
-    const runtime = await composeDashboardApplication({ admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
+    const runtime = await composeDashboardApplication({ lifetimeLock: profile.lifetime, admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       frontendPortOverride: 0,
@@ -776,14 +779,6 @@ const retainedCapacityCustody: {
             control: { directive: "pause", requestedAt: NOW, requestedBy: "local-operator" }, now: NOW });
         }
       } finally { blocked.close(); }
-      const descriptor = Object.getOwnPropertyDescriptor(AdmittedAuthorityDatabase.prototype, "settleDeadWorkerLifetime") as TypedPropertyDescriptor<AdmittedAuthorityDatabase["settleDeadWorkerLifetime"]>;
-      const nativeReconcile = descriptor.value; assert.ok(nativeReconcile);
-      const reconcile = vi.spyOn(AdmittedAuthorityDatabase.prototype, "settleDeadWorkerLifetime").mockImplementation(function (this: AdmittedAuthorityDatabase, workerId, now) {
-        const lease = this.authority.workerLeases.get(workerId);
-        if (lease?.birthCommandId === undefined && lease?.lifecycle.state === "starting" && lease.control.directive === "pause") return lease;
-        return nativeReconcile.call(this, workerId, now);
-      });
-      cleanups.push(() => reconcile.mockRestore());
       const nextPlanResponse = await fetch(`${origin}/api/v1/start-plans`, { method: "POST",
         headers: { "content-type": "application/json", origin, cookie },
         body: JSON.stringify({ workflowId: WORKFLOW, submissions: [{ emplId: "10203373" }], dryRun: false }) });

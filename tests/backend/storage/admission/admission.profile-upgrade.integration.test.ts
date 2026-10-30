@@ -1,3 +1,6 @@
+import { withOfflineMaintenance } from "../../../support/helpers/admission-fixture.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { composeProfileCredentialInitializationInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { storageRecoveryFixture, credentialTrap } from "../../../support/helpers/integration/storage-recovery-fixture.js";
@@ -18,7 +21,8 @@ import { systemClock } from "../../../../src/rules/time/clock.js";
 
 it.each([6, 7])("keeps pending setup database-only until canonical binding, then upgrades disposable schema%s and scans its retained backup before explicit v4 initialization", async version => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "profile-stopped-upgrade-")));
-  const machine = acquireEntrypointAdmission(workspace, "exclusive");
+  const lifetime = await runtimeLifetimeLock();
+  const machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
   mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   try {
     const operation = machine.beginProfileSignUp({ emailKey: "a".repeat(64), firstName: "Alex", lastName: "Rivera",
@@ -52,7 +56,7 @@ it.each([6, 7])("keeps pending setup database-only until canonical binding, then
     assert.deepEqual(readFileSync(path), before);
     assert.throws(() => AuthorityDatabase.open(setup, { path, busyTimeoutMs: 250, migrationOwner: "test" }), /profile-bound-authority-required/u);
     const input = { stateRoot: setup.stateRoot, processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot), plan: false };
-    const upgraded = await upgradeStorage(setup, input, systemClock);
+    const upgraded = await withOfflineMaintenance(setup, operation => upgradeStorage(profileBrowserClosure, setup, input, systemClock, operation));
     assert.equal(upgraded.state, "upgraded");
     assert.equal(upgraded.fromSchemaVersion, version);
     assert.equal(upgraded.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);

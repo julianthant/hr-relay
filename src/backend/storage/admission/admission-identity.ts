@@ -17,3 +17,8 @@ export class ProfileBrowserRootRefusalError extends Error {
   readonly code = "PROFILE_BROWSER_ROOT_REFUSED";
   constructor() { super(ERROR_CATALOG.PROFILE_BROWSER_ROOT_REFUSED.text); this.name = "ProfileBrowserRootRefusalError"; }
 }
+
+export class ProfileStorageRelocationUnsupportedError extends Error {
+  readonly code = "PROFILE_STORAGE_RELOCATION_UNSUPPORTED";
+  constructor() { super(ERROR_CATALOG.PROFILE_STORAGE_RELOCATION_UNSUPPORTED.text); this.name = "ProfileStorageRelocationUnsupportedError"; }
+}

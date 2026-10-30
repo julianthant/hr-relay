@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { composeProfileRuntime, composeSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
 import { ManualScheduler } from "../../support/helpers/phase1f-executor-harness.js";
@@ -57,8 +58,7 @@ describe("composition-reads-no-environment-leaf", () => {
     for (const noisy of [false, true]) for (const role of ["dashboard", "worker"] as const) {
       const f = await createBoundProfileFixture(), root = f.workspace;
       const profileClock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
-      const profile = role === "dashboard" ? composeProfileRuntime({ admission: f.machine, clock: profileClock, hostFacts: { primaryDisplay: null },
-        processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot) }) : undefined;
+      const profile = role === "dashboard" ? composeProfileRuntime({ admission: f.machine, clock: profileClock, hostFacts: { primaryDisplay: null } }) : undefined;
       let context: ReturnType<typeof composeSelectedProfileStorage> | undefined;
       let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
       try {
@@ -72,7 +72,7 @@ describe("composition-reads-no-environment-leaf", () => {
       const hostile = environment("UNRELATED_HOSTILE_NOISE");
       const env = noisy ? hostile.env : {};
       const common = { isolation: rebuildRuntimeIsolation, repoRoot: root, env, clock: profileClock };
-      if (profile !== undefined && active?.state === "active") dashboard = await composeDashboardRuntime({ ...common, admission: f.machine, profile: { runtime: profile, token: active.token }, preflightRunnerFactory: healthyRuntimePreflightRunners, backendPortOverride: 0, frontendPortOverride: 0 });
+      if (profile !== undefined && active?.state === "active") dashboard = await composeDashboardRuntime({ lifetimeLock: f.lifetime, ...common, admission: f.machine, profile: { runtime: profile, token: active.token }, preflightRunnerFactory: healthyRuntimePreflightRunners, backendPortOverride: 0, frontendPortOverride: 0 });
       const selectedContext = context;
       const path = join(f.stateRoot, "state.db");
       const readConfig = () => {
@@ -94,9 +94,9 @@ describe("composition-reads-no-environment-leaf", () => {
         assert.deepEqual(before, clean);
       } finally { database.close(); }
       if (role === "worker") {
-      const worker = await composeWorkerRuntime({ ...common, admission: f.machine, preflightRunnerFactory: healthyRuntimePreflightRunners, args: ["person-lookup", "--pool-index", "1", "--drain"],
+      const worker = await composeWorkerRuntime({ lifetimeLock: f.lifetime, ...common, admission: f.machine, preflightRunnerFactory: healthyRuntimePreflightRunners, args: ["person-lookup", "--pool-index", "1", "--drain"],
         duoCeremony: duoCeremonyGatesOver(selectedContext.database, profileClock, new ManualScheduler(profileClock)),
-        sessionFactory: { open: () => { throw new Error("no browser may open for idle proof"); } }, write: () => undefined });
+        sessionFactory: { probeProfile: async () => undefined, open: () => { throw new Error("no browser may open for idle proof"); } }, write: () => undefined });
       assert.deepEqual(worker.outcomes, []);
       assert.equal(worker.stopped, "idle");
       }
@@ -127,8 +127,8 @@ describe("composition-reads-no-environment-leaf", () => {
       ? `retired test-target environment key ${key} is refused; test-target inputs live in config/test-data.local.json, so remove it`
       : `migrated environment key ${key} is refused; set it in Settings, then remove it`;
     const refuse = (error: unknown): boolean => error instanceof Error && error.message === expected;
-    await assert.rejects(composeDashboardRuntime({ ...common, backendPortOverride: 0, frontendPortOverride: 0 }), refuse);
-    await assert.rejects(composeWorkerRuntime({ ...common, args: ["person-lookup", "--pool-index", "1", "--drain"] }), refuse);
+    await assert.rejects(composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), ...common, backendPortOverride: 0, frontendPortOverride: 0 }), refuse);
+    await assert.rejects(composeWorkerRuntime({ lifetimeLock: await runtimeLifetimeLock(), ...common, args: ["person-lookup", "--pool-index", "1", "--drain"] }), refuse);
     assert.equal(hostile.reads(), 0);
     assert.deepEqual(readdirSync(root), ["package.json"]);
   });

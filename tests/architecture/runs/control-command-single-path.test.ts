@@ -939,8 +939,8 @@ describe("control-command-single-path", () => {
     const runId = singleAppliedRunId(harness.kernel.execute(startCommandFor(plan)));
     const slot = harness.database.withAuthorityTransaction(repositories => {
       const member = admitDirectWorker(repositories, { commandId: randomUUID(), workflow: "fixture-graph", poolIndex: 1,
-        expectedPoolVersion: 0, processId: process.pid, processAcquisitionId: randomUUID(), authorityPath: harness.path,
-        processLockRoot: harness.processLockRoot, now: NOW }, randomUUID());
+    expectedPoolVersion: 0, processId: process.pid,
+    now: NOW }, randomUUID());
       assert.equal(repositories.workerLeases.start({ workerId: member.workerId, workflow: "fixture-graph", browserSystems: [],
         processId: process.pid, requestedBy: "local-operator", now: NOW }).state, "started");
       return member;

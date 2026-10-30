@@ -35,9 +35,9 @@ export function proveProfileRootsUnused(roots: readonly string[]): void {
   let fileType = "";
   for (const field of fields) {
     if (/^p[1-9]\d*$/u.test(field) && (state === "process" || state === "complete")) state = "file";
-    else if (field.startsWith("f") && field.length > 1 && (state === "file" || state === "complete")) state = "type";
+    else if (field.startsWith("f") && field.length > 1 && (state === "file" || state === "complete")) { fileType = ""; state = "type"; }
     else if (field.startsWith("t") && field.length > 1 && state === "type") { fileType = field.slice(1); state = "name"; }
-    else if (field.startsWith("n") && state === "name" && (field.length > 1 || ["NPOLICY", "NEXUS", "PIPE"].includes(fileType))) {
+    else if (field.startsWith("n") && (state === "name" || state === "type") && (field.length > 1 || ["NPOLICY", "NEXUS", "PIPE"].includes(fileType))) {
       const name = field.slice(1);
       if (roots.some(root => name === root || name.startsWith(`${root}${sep}`))) refuse();
       state = "complete";

@@ -140,7 +140,7 @@ describe("held-only parked write checks", () => {
     let closeFails = scenario === "closure", closeCount = 0, closedCount = 0, readCount = 0;
     const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse(h.input.target.workerId), workflowId: descriptor.id,
       stores: taskStoreRegistry, clock: h.clock, scheduler, acquireDeadlineMs: 10_000, duoCeremony: await fixtureDuoCeremonyGates(h.clock),
-      factory: { open: async request => ({ ...request, sessionId, signInFingerprint: request.configFingerprint, profileRevision: 1,
+      factory: { probeProfile: async () => undefined, open: async request => ({ ...request, sessionId, signInFingerprint: request.configFingerprint, profileRevision: 1,
         profileDirectory: "/synthetic/parked-probe", driver: { ...h.driver, scanTerminationTransactions: async () => {
           readCount++; started(); return h.driver.scanTerminationTransactions();
         } }, authentication: { authenticate: async () => "already-authenticated" }, reset: async () => undefined,
@@ -233,7 +233,7 @@ describe("held-only parked write checks", () => {
     const sessionId = BrowserSessionIdSchema.parse(UUID_6);
     const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse(workerId), workflowId: descriptor.id, stores: taskStoreRegistry,
       clock: h.clock, scheduler, acquireDeadlineMs: 10_000, duoCeremony: await fixtureDuoCeremonyGates(h.clock),
-      factory: { open: async input => ({ ...input, sessionId, signInFingerprint: input.configFingerprint, profileRevision: 1,
+      factory: { probeProfile: async () => undefined, open: async input => ({ ...input, sessionId, signInFingerprint: input.configFingerprint, profileRevision: 1,
         profileDirectory: "/synthetic/parked-kernel", driver: h.driver, authentication: { authenticate: async () => "already-authenticated" },
         reset: async () => undefined, close: async () => ({ sessionId, system: "ucpath", pagesClosed: true, contextClosed: true }) }) } });
     disposers.push(() => sessions.closeAll("worker-stop"));

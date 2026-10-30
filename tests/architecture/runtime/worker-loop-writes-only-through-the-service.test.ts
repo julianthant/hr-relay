@@ -8,7 +8,7 @@ import { gitVisibleFiles, REPO_ROOT, repoRelative } from "../support/helpers/gua
 
 const MUTATORS = new Set([
   "enqueue", "claimNext", "claimEligible", "renewClaim", "transition", "resume", "requeue",
-  "sweepExpiredClaims", "requestCancellation", "advanceRevision", "bumpPriority", "updatePresentation",
+  "requestCancellation", "advanceRevision", "bumpPriority", "updatePresentation",
   "injectCheckpointPatches", "delete", "terminalizeFailure", "terminalizeSuccess",
 ]);
 

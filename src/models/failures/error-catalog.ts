@@ -13,7 +13,14 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
-  STARTUP_CRASH_RECOVERY_REFUSED: catalogEntry("Crash cleanup could not prove ownership or resource closure. Preserve the held resources and resolve custody before starting work.", EmptyParametersSchema),
+  RUNTIME_LIFETIME_LOCK_RELEASED: catalogEntry("Relay runtime authority has closed. Restart Relay before continuing.", EmptyParametersSchema),
+  RUNTIME_ALREADY_RUNNING: catalogEntry("Relay is already running. Close it before starting another runtime or storage command.", EmptyParametersSchema),
+  PRIVATE_FILE_LOCK_UNAVAILABLE: catalogEntry("Local storage is busy with another operation. Wait for that operation to finish before trying again.", EmptyParametersSchema),
+  RUN_CRASH_RESOURCES_RELEASED: catalogEntry("Resources held by an interrupted worker were released.", EmptyParametersSchema),
+  BROWSER_CLOSURE_UNPROVED: catalogEntry("Browser closure could not be verified. No file replacement or credential erasure has started.", EmptyParametersSchema),
+  BROWSER_PROFILE_STILL_CLOSING: catalogEntry("The browser profile is still in use or closing. Wait for it to close before continuing.", EmptyParametersSchema),
+  LIVE_SMOKE_VERIFICATION_REFUSED: catalogEntry("Browser verification could not finish safely. Preserve its saved state and resolve the refusal before trying again.", EmptyParametersSchema),
+  STARTUP_CRASH_RECOVERY_REFUSED: catalogEntry("Saved runs and writes could not be reconciled after interruption. Preserve their state and resolve the refusal before starting work.", EmptyParametersSchema),
   RUN_INTERRUPTED_BY_CRASH: catalogEntry("The run was interrupted by a crash and ended as failed. Review the result before starting another run.", EmptyParametersSchema),
   RUN_CRASH_WRITE_UNRESOLVED: catalogEntry("The run was interrupted by a crash with an unresolved write. The write remains held for operator resolution and will not be retried.", EmptyParametersSchema),
   RUN_STALE_QUEUE_CANCELLED: catalogEntry("The never-claimed run was queued on a previous local day and was cancelled during startup.", EmptyParametersSchema),
@@ -29,6 +36,7 @@ export const ERROR_CATALOG = Object.freeze({
   CREDENTIAL_KEYCHAIN_MISMATCH: catalogEntry("The OS encryption key does not match this profile's binding. Preserve the current installation for recovery.", EmptyParametersSchema),
   CREDENTIAL_KEYCHAIN_UNCERTAIN: catalogEntry("Encryption key custody could not be confirmed. Preserve the installation and OS credential entry before continuing.", EmptyParametersSchema),
   CREDENTIAL_CONTEXT_REQUIRED: catalogEntry("The selected profile credential authority is unavailable. Restart the runtime before continuing.", EmptyParametersSchema),
+  CREDENTIAL_INITIALIZATION_RETAINED_DUO_KEY_MISMATCH: catalogEntry("A retained Duo credential copy uses a different encryption key. Preserve the profile and its original key before continuing credential conversion.", EmptyParametersSchema),
   RUNTIME_CUSTODY_UNCERTAIN: catalogEntry("Runtime resource closure is unproved. Preserve the current installation and process custody before restarting.", EmptyParametersSchema),
   PROFILE_BROWSER_ROOT_REFUSED: catalogEntry("Browser storage must stay inside the selected profile in an owned directory without links.", EmptyParametersSchema),
   PROFILE_STORAGE_RELOCATION_UNSUPPORTED: catalogEntry("Storage relocation is unavailable for profile installations. Keep the current installation roots.", EmptyParametersSchema),
@@ -212,18 +220,6 @@ export const ERROR_CATALOG = Object.freeze({
     "The UCSD training reminder appeared again after Continue Log In.",
     EmptyParametersSchema,
   ),
-  WORKER_PROCESS_RECOVERY_REFUSED: catalogEntry(
-    "Relay couldn't prove that the abandoned worker's resources are closed. Its original custody and HR records remain held.",
-    EmptyParametersSchema,
-  ),
-  ORPHAN_VERIFICATION_RETIREMENT_REFUSED: catalogEntry(
-    "Relay couldn't safely retire an abandoned sign-in check, so close other Relay windows and try again.",
-    EmptyParametersSchema,
-  ),
-  LIVE_SMOKE_RECOVERY_REFUSED: catalogEntry(
-    "Relay couldn't safely clean up an abandoned sign-in check, so close other Relay windows and try again.",
-    EmptyParametersSchema,
-  ),
   DUO_TERMINAL_REFUSAL: catalogEntry(
     "Duo refused the sign-in. Run it again; if it repeats, check Duo Autopilot.",
     EmptyParametersSchema,
@@ -358,10 +354,6 @@ export const ERROR_CATALOG = Object.freeze({
     "crashed",
     EmptyParametersSchema,
   ),
-  WORKER_LEASE_EXPIRED: catalogEntry(
-    "The worker stopped responding. Run it again.",
-    EmptyParametersSchema,
-  ),
   COMMAND_OUTCOME_UNCERTAIN: catalogEntry(
     "The command outcome is uncertain. Check its result before taking further action.",
     EmptyParametersSchema,
@@ -487,6 +479,26 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   PROFILE_TRANSITION_BLOCKED: catalogEntry(
     "Sign in waits until the other profile is logged out.",
+    EmptyParametersSchema,
+  ),
+  RUNTIME_OFFLINE_OPERATION_UNAVAILABLE: catalogEntry(
+    "This offline operation is busy, expired, already used, or belongs to a different runtime. Existing storage is preserved; start a new explicit command after the current owner closes.",
+    EmptyParametersSchema,
+  ),
+  RUNTIME_OLD_BUILD_ARTIFACTS: catalogEntry(
+    "This installation contains runtime lock evidence from an older build. Offline maintenance is stopped and the evidence is preserved. Use the approved start-clean procedure.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_BACKUP_SOURCE_CHANGED: catalogEntry(
+    "The source no longer matches the retained backup. The first backup is preserved; keep this installation for recovery.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_BACKUP_CLOSURE_UNPROVED: catalogEntry(
+    "Relay could not verify a completed browser closure step for this backup. The backup is refused; preserve the current installation for recovery.",
+    EmptyParametersSchema,
+  ),
+  PROFILE_RESTORE_BROWSER_CUSTODY_UNPROVED: catalogEntry(
+    "Browser closure for damaged profile storage could not be proved. This restore requires macOS and a complete unchanged browser-directory census. Existing storage is preserved.",
     EmptyParametersSchema,
   ),
   PROFILE_RESTORE_ADMISSION_REQUIRED: catalogEntry(

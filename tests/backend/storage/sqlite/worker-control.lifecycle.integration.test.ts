@@ -10,8 +10,8 @@ import { seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fi
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { CONFIG_SNAPSHOT, ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
-import { dirname, join } from "node:path";
-import { realpathSync } from "node:fs";
+
+
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -32,7 +32,6 @@ import { admitWorkerReset, admitWorkerLifecycle } from "../../../../src/backend/
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
-import { boundFixtureProcessLock } from "../../../support/helpers/synthetic-database-admission.js";
 
 const world = createWorkerDirectiveTestWorld();
 afterEach(world.cleanup);
@@ -81,6 +80,7 @@ async function owned(h: Awaited<ReturnType<typeof fixture>>, workerId: string, e
   const gates: { beforeBirth: () => Promise<void>; beforeClose: () => Promise<void>; close?: (commandId: string) => Promise<void> } = { beforeBirth: async () => undefined, beforeClose: async () => undefined };
   const faults: Error[] = [];
   const supervisor = createDashboardWorkerProcessSupervisor({
+    onExit: () => undefined,
     launch: { command: "/node", environment: {}, prefixArgs: [], cwd: "/test-owned-worker" },
     clock: h.authority.clock, scheduler: h.scheduler, birth: { pollMs: 50, timeoutMs: 1000 },
     spawn: () => {
@@ -88,9 +88,7 @@ async function owned(h: Awaited<ReturnType<typeof fixture>>, workerId: string, e
       const command = h.database.authority.workerControls.lifecycleForWorker(workerId);
       const request = { workerId, workflow: member.workflowId, commandId: command?.commandId,
         browserSystems: command?.lifecycle?.operation.kind === "retry" ? command.lifecycle.operation.systems : ["ucpath", "crm"], processId: child.pid, requestedBy: "local-operator" as const, now: h.authority.clock.now().toISOString() };
-      const started = executeInProcess
-        ? h.database.startOwnedWorker(request, boundFixtureProcessLock(h.database, h.authority.path, workerId))
-        : h.database.authority.workerLeases.start(request);
+      const started = h.database.authority.workerLeases.start(request);
       if (started.state !== "started") throw new Error("controlled child birth refused");
       return child;
     },
@@ -260,7 +258,7 @@ describe("exact lifecycle reservation", () => {
     const authenticating = new Promise<void>(resolve => { entered = resolve; });
     let authSignal: AbortSignal | undefined;
     let calls = 0;
-    const sessionFactory = { open: async (input: Parameters<typeof h.deps.sessionFactory.open>[0]) => {
+    const sessionFactory = { probeProfile: async () => undefined, open: async (input: Parameters<typeof h.deps.sessionFactory.open>[0]) => {
       const resource = await h.deps.sessionFactory.open(input);
       return { ...resource, authentication: { authenticate: async (...args: Parameters<typeof resource.authentication.authenticate>) => {
         calls += 1;
@@ -285,11 +283,11 @@ describe("exact lifecycle reservation", () => {
       resetControl: createWorkerResetControl({ database: h.database, workerId: h.deps.workerId, leaseGeneration: f.lease.leaseGeneration, clock: h.authority.clock, lifecycle }),
       initialize: (sessions, signal) => initializeRetryWorker({ database: h.database, commandId: f.record.commandId, leaseGeneration: f.lease.leaseGeneration,
         descriptor: personLookupDescriptor, configFingerprint, sessions, signal, clock: h.authority.clock, scheduler: h.scheduler }),
-      claimNext: request => {
+      claimNext: (request, sessions) => {
         expect(h.database.authority.workerControls.get(f.record.commandId)?.readiness).toMatchObject({ state: "cancelled", leaseGeneration: f.lease.leaseGeneration });
         expect(h.database.authority.workerControls.get(resetId)?.phase.state).toBe("succeeded");
         claimedAfterReset = true;
-        return h.deps.claimNext(request);
+        return h.deps.claimNext(request, sessions);
       },
     });
     await authenticating;
@@ -346,6 +344,7 @@ describe("exact lifecycle reservation", () => {
   it("refuses unowned or wrong-phase lifecycle requests before command or control mutation", async () => {
     const h = await fixture();
     const unowned = createDashboardWorkerProcessSupervisor({
+    onExit: () => undefined,
       birth: { pollMs: 50, timeoutMs: 1000 }, launch: { command: "/node", environment: {}, prefixArgs: [], cwd: "/test" }, clock: h.authority.clock, scheduler: h.scheduler,
       spawn: () => { throw new Error("must not spawn"); }, leases: { observe: () => undefined },
       gracefulStop: { request: () => { throw new Error("must not stop"); } }, proveRetirement: () => { throw new Error("must not retire"); }, onFault: error => { throw error; },
@@ -366,11 +365,11 @@ describe("exact lifecycle reservation", () => {
     seedAtomicWriteOwner(database, ATOMIC_WRITE_COMMIT, h.authority.path, 2);
     fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     const slot = database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-      commandId: randomUUID(), workflow: WRITE_INTENT_ATTEMPTING.workflowId, poolIndex: 1,
-      expectedPoolVersion: repositories.workerPools.get(WRITE_INTENT_ATTEMPTING.workflowId)?.version ?? 0,
-      processId: process.pid, processAcquisitionId: randomUUID(), authorityPath: realpathSync(h.authority.path),
-      processLockRoot: join(dirname(realpathSync(h.authority.path)), "locks"), now: h.authority.clock.now().toISOString(),
-    }, randomUUID()));
+    commandId: randomUUID(), workflow: WRITE_INTENT_ATTEMPTING.workflowId, poolIndex: 1,
+    expectedPoolVersion: repositories.workerPools.get(WRITE_INTENT_ATTEMPTING.workflowId)?.version ?? 0,
+    processId: process.pid,
+    now: h.authority.clock.now().toISOString()
+}, randomUUID()));
     const run = database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId), before = database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId);
     if (run === undefined) throw new Error("missing write owner");
     const claim = runClaim(run); if (claim === undefined) throw new Error("missing current claim");
@@ -489,7 +488,7 @@ describe("exact lifecycle reservation", () => {
     const h = await fixture(), f = await retryStarting(h);
     if (f.binding.operation.kind !== "retry") throw new Error("missing retry binding");
     const sessions = new WorkerSessionManager({ workerId: h.deps.workerId, workflowId: h.deps.workflowId, stores: h.deps.stores,
-      factory: { open: async input => {
+      factory: { probeProfile: async () => undefined, open: async input => {
         const resource = await h.deps.sessionFactory.open(input);
         return { ...resource, authentication: { authenticate: async () => { throw new Error("controlled-initialization-auth-failed"); } } };
       } }, clock: h.authority.clock, scheduler: h.scheduler, acquireDeadlineMs: h.deps.sessionAcquireMs, duoCeremony: h.deps.duoCeremony,
@@ -549,7 +548,7 @@ describe("exact lifecycle reservation", () => {
     let closing!: () => void, release!: () => void;
     const entered = new Promise<void>(resolve => { closing = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
     const manager = new WorkerSessionManager({ workerId: h.deps.workerId, workflowId: h.deps.workflowId, stores: h.deps.stores,
-      factory: { open: async input => {
+      factory: { probeProfile: async () => undefined, open: async input => {
         const resource = await h.deps.sessionFactory.open(input);
         return { ...resource, close: async options => { closing(); await held; return resource.close(options); } };
       } }, clock: h.authority.clock, scheduler: h.scheduler, acquireDeadlineMs: h.deps.sessionAcquireMs, duoCeremony: h.deps.duoCeremony,
@@ -661,7 +660,7 @@ describe("exact lifecycle reservation", () => {
     let entered!: () => void, release!: () => void;
     const authenticating = new Promise<void>(resolve => { entered = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
     const manager = new WorkerSessionManager({ workerId: h.deps.workerId, workflowId: h.deps.workflowId, stores: h.deps.stores,
-      factory: { open: async input => {
+      factory: { probeProfile: async () => undefined, open: async input => {
         const resource = await h.deps.sessionFactory.open(input);
         return { ...resource, authentication: { authenticate: async (...args: Parameters<typeof resource.authentication.authenticate>) => {
           entered(); await held; return resource.authentication.authenticate(...args);

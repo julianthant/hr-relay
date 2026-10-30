@@ -1,3 +1,5 @@
+import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySourceClosure } from "../../../src/backend/storage/source-closure.js";
 import { credentialKeyCustody } from "../../../src/backend/storage/configuration/credential-key-custody.js";
 import type { ProfileOnboardingDuoProvider } from "../../../src/backend/profiles/onboarding-duo.js";
 import { registerBoundProfile, unregisterBoundProfile, assertBoundFixtureWorkersReleased, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission } from "./synthetic-database-admission.js";
@@ -20,13 +22,13 @@ import { AuthorityDatabase as ProductionAuthorityDatabase, AuthorityDatabaseOpti
 import { createCredentialStore as productionCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 
 const admissions = new Map<string, RuntimeAdmission>();
-export function initializeAdmissionFixture(root: string): void {
+export function initializeAdmissionFixture(root: string, lifetime: RuntimeLifetimeLock): void {
   const canonical = resolve(root);
   if (admissions.has(canonical)) throw new Error("fixture installation already initialized");
   mkdirSync(join(canonical, rebuildRuntimeIsolation.artifactRoot), { recursive: true, mode: 0o700 });
-  const initial = acquireEntrypointAdmission(canonical, "exclusive");
+  const initial = acquireEntrypointAdmission(canonical, "exclusive", lifetime);
   initial.release();
-  admissions.set(canonical, acquireEntrypointAdmission(canonical, "shared"));
+  admissions.set(canonical, acquireEntrypointAdmission(canonical, "shared", lifetime));
 }
 export function fixtureAdmission(root: string): RuntimeAdmission {
   const canonical = resolve(root);
@@ -35,15 +37,17 @@ export function fixtureAdmission(root: string): RuntimeAdmission {
     try { existing.assertLive(); return existing; }
     catch (error) {
       if (!(error instanceof Error) || error.message !== "runtime-admission: missing or released admission") throw error;
-      const renewed = acquireEntrypointAdmission(canonical, "shared");
+      const lifetime = existing.lifetime;
+      if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("fixture-root-lifetime-required", { cause: error });
+      const renewed = acquireEntrypointAdmission(canonical, "shared", lifetime);
       admissions.set(canonical, renewed);
       return renewed;
     }
   }
   return RuntimeAdmission.syntheticRoots(join(canonical, rebuildRuntimeIsolation.stateRoot), join(canonical, rebuildRuntimeIsolation.artifactRoot));
 }
-export function installationAdmission(root: string): RuntimeAdmission {
-  if (!admissions.has(resolve(root))) initializeAdmissionFixture(root);
+export function installationAdmission(root: string, lifetime: RuntimeLifetimeLock): RuntimeAdmission {
+  if (!admissions.has(resolve(root))) initializeAdmissionFixture(root, lifetime);
   return fixtureAdmission(root);
 }
 export function releaseAdmissionFixture(root: string): void {
@@ -120,6 +124,7 @@ const failedBoundProfileFixtures = new Set<Readonly<{
   workspace: string;
   admissions: readonly RuntimeAdmission[];
   primary: unknown;
+  lifetime: RuntimeLifetimeLock;
 }>>();
 
 export function syntheticOnboardingDuo(accountName: () => string): ProfileOnboardingDuoProvider {
@@ -179,14 +184,16 @@ export async function finishProfileOnboarding(session: Pick<ReturnType<typeof cr
   return session.completeOnboarding(draft.token, draft.operationId);
 }
 
-export async function createBoundProfileFixture(options: { pending?: "storage" | "onboarding"; sharedMachine?: true; workspace?: string } = {}) {
+export async function createBoundProfileFixture(options: { pending?: "storage" | "onboarding"; sharedMachine?: true; workspace?: string; lifetime?: RuntimeLifetimeLock } = {}) {
   if (options.pending !== undefined && options.sharedMachine === true) throw new Error("pending profile fixture requires exclusive machine");
   const workspace = options.workspace === undefined
     ? realpathSync(mkdtempSync(join(tmpdir(), "relay-bound-profile-")))
     : realpathSync(options.workspace);
+  const ownsLifetime = options.lifetime === undefined;
+  const lifetime = options.lifetime ?? await RuntimeLifetimeLock.acquire(0);
   const ownedAdmissions: RuntimeAdmission[] = [];
   try {
-    let machine = acquireEntrypointAdmission(workspace, "exclusive");
+    let machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
     ownedAdmissions.push(machine);
     mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
     const fields = { firstName: "Fixture", lastName: "Example", email: "fixture@ucsd.edu",
@@ -221,7 +228,7 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
       await session.close();
       admission.release();
       machine.release();
-      machine = acquireEntrypointAdmission(workspace, "shared");
+      machine = acquireEntrypointAdmission(workspace, "shared", lifetime);
       ownedAdmissions.push(machine);
       admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
       ownedAdmissions.push(admission);
@@ -235,10 +242,15 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
       registerBoundProfile(admission, machine);
       return { admission, credentials: boundProfileCredentials(admission) };
     };
-    return { workspace, get machine() { return machine; }, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish, renewAfterRestore,
-      async close() { await session.close(); unregisterBoundProfile(admission); admission.release(); machine.release(); rmSync(workspace, { recursive: true, force: true }); } };
+    let controllerClosure: Promise<void> | undefined;
+    const closeController = (): Promise<void> => controllerClosure ??= (async () => {
+      await session.close(); unregisterBoundProfile(admission); admission.release(); machine.release();
+      if (ownsLifetime) await lifetime.close();
+    })();
+    return { workspace, lifetime, get machine() { return machine; }, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish, renewAfterRestore, closeController,
+      async close() { await closeController(); rmSync(workspace, { recursive: true, force: true }); } };
   } catch (error) {
-    failedBoundProfileFixtures.add({ workspace, admissions: ownedAdmissions, primary: error });
+    failedBoundProfileFixtures.add({ workspace, admissions: ownedAdmissions, lifetime, primary: error });
     throw error;
   }
 }
@@ -255,4 +267,32 @@ export async function openBoundDatabaseFixture(migrationOwner: string, clock: Cl
     await profile.close();
     throw error;
   }
+}
+
+export async function withOfflineMaintenance<Result>(admission: RuntimeAdmission,
+  run: (operation: OfflineMaintenanceOperation) => Promise<Result>): Promise<Result> {
+  const operation = admission.acquireOfflineMaintenance();
+  let result: Result;
+  try { result = await run(operation); }
+  catch (error) {
+    if (hasUnprovedSourceClosure(error)) { retainUnprovedSourceOwners(error, { admission, restore: operation }); throw error; }
+    try { operation.release(); } catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission, restore: operation }); }
+    throw error;
+  }
+  try { operation.release(); } catch (error) { throw retainAuthoritySourceClosure([error], { admission, restore: operation }); }
+  return result;
+}
+
+export function withOfflineMaintenanceSync<Result>(admission: RuntimeAdmission,
+  run: (operation: OfflineMaintenanceOperation) => Result): Result {
+  const operation = admission.acquireOfflineMaintenance();
+  let result: Result;
+  try { result = run(operation); }
+  catch (error) {
+    if (hasUnprovedSourceClosure(error)) { retainUnprovedSourceOwners(error, { admission, restore: operation }); throw error; }
+    try { operation.release(); } catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission, restore: operation }); }
+    throw error;
+  }
+  try { operation.release(); } catch (error) { throw retainAuthoritySourceClosure([error], { admission, restore: operation }); }
+  return result;
 }

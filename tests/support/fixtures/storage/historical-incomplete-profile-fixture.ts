@@ -1,3 +1,4 @@
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -31,9 +32,10 @@ function fixtureJson(path: string, value: unknown): void {
 export async function createHistoricalIncompleteProfileFixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "incomplete-publication-")));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
-  const machine = acquireEntrypointAdmission(root, "exclusive"), processLockRoot = join(root, rebuildRuntimeIsolation.processLockRoot);
+  const lifetime = await RuntimeLifetimeLock.acquire(0);
+  const machine = acquireEntrypointAdmission(root, "exclusive", lifetime), processLockRoot = join(root, rebuildRuntimeIsolation.processLockRoot);
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
-  const profile = composeProfileRuntime({ admission: machine, processLockRoot, hostFacts: { primaryDisplay: null }, clock: systemClock });
+  const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
   const fields = { ...historicalIncompleteProfileFields, createdAt: new Date().toISOString() };
   const draft = profile.session.signUp(fields); if (draft.state !== "onboarding") throw new Error("fixture genuine Details required");
   const stateRoot = machine.stateRoot, profileRoot = join(stateRoot, "profiles", draft.profileId), machineRoot = join(stateRoot, "machine");
@@ -67,9 +69,9 @@ export async function createHistoricalIncompleteProfileFixture() {
         file: { device: keyStat.dev, inode: keyStat.ino, digest: createHash("sha256").update(keyBytes).digest("hex") } } }],
     duo: [{ profileId: draft.profileId, state: "never-initialized", revision: 0 }] });
   const protectedPath = join(profileRoot, "credentials", "protected.json"), databasePath = join(profileRoot, "state.db");
-  return { workspace: root, stateRoot, machineRoot, profileRoot, profileId: draft.profileId, processLockRoot,
+  return { workspace: root, lifetime, stateRoot, machineRoot, profileRoot, profileId: draft.profileId, processLockRoot,
     operation: { operationId: operation.operationId, commandId: operation.commandId, writeId: operation.writeId },
     operationPath, registryPath, verifierPath, controlPath, markerPath: join(machineRoot, "profile-registry-version.json"),
-    keyPath, protectedPath, databasePath, schema: { control: 2, marker: 3 } as const,
-    async close(): Promise<void> { assertClosedWorkspace(root); rmSync(root, { recursive: true }); } };
+    keyPath, protectedPath, databasePath, schema: { control: 3, marker: 4 } as const,
+    async close(): Promise<void> { assertClosedWorkspace(root); await lifetime.close(); rmSync(root, { recursive: true }); } };
 }

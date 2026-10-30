@@ -1,7 +1,5 @@
-import { createStorageBackupLocationFixtures } from "../../../support/helpers/storage/storage-relocation-fixture.js";
 import { createCredentialDoctorFixtures } from "../../../support/helpers/credential-doctor-fixtures.js";
 import { default as assert } from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 import fs, { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
@@ -11,12 +9,13 @@ import { isDeepStrictEqual } from "node:util";
 import { afterEach, describe, it, vi } from "vitest";
 
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { runOfflineStorageRelocation } from "../../../../src/backend/app/composition/storage/relocate.js";
+import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
 
 
 
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { backupStoppedAuthority } from "../../../../src/backend/storage/maintenance/upgrade.js";
 
 import { doctorAuthorityStorage, summarizeBackupHealth } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 
@@ -34,57 +33,39 @@ import { AuthorityBackupService, summarizeBackupHealth as summarizeBackupHealth_
 {
 
 const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));
-const workspaces: string[] = [];
-const _afterEachFixture0 = () => { for (const workspace of workspaces.splice(0)) rmSync(workspace, { recursive: true, force: true }); };
-
-const { movedFixture } = createStorageBackupLocationFixtures(workspaces, clock);
-
-it("verifies copied native backups as previous-location evidence without current restore eligibility", async () => {
-try {
-
-  const f = await movedFixture();
+it("refuses profile relocation without changing current backup selection or source bytes", async () => {
+  const f = await createBoundProfileFixture();
   try {
-    const before = await doctorAuthorityStorage(f.admission, f.options, clock);
+    const directory = join(f.stateRoot, "backups", "authority");
+    const database = AuthorityDatabase_m2.open({path:f.path,busyTimeoutMs:250,migrationOwner:"backup-location-doctor"},clock);
+    try {
+      await new AuthorityBackupService(database,{directory},clock).request({trigger:"operator",requiredGeneration:database.getMeta().authorityGeneration});
+    } finally { database.close(); }
+    const options = {stateRootTrustAnchor:f.workspace,stateRoot:f.stateRoot,authorityPath:f.path,backupDirectory:directory,busyTimeoutMs:250};
+    const before = await doctorAuthorityStorage(f.admission, options, clock);
     assert.equal(before.backup.state, "current");
     assert.ok(before.restoreCandidates.some(candidate => candidate.state === "verified-compatible"));
-    assert.ok((before.previousLocationBackups?.length ?? 0) > 0);
-    assert.ok(before.previousLocationBackups?.every((backup) => backup.restoreEligibility === "not-admitted"));
-    assert.equal(summarizeBackupHealth({ backupDirectory: f.options.backupDirectory }, 0, clock), "current");
-
-    await backupStoppedAuthority(f.admission, f.destination.stateRoot, clock, join(f.destination.stateRoot, "locks"));
-    const oldManifest = before.previousLocationBackups?.find((entry) => entry.selection === "single-database");
-    assert.ok(oldManifest);
-    const nextMtime = new Date(clock.nowMs() + 30_000);
-    utimesSync(join(f.options.backupDirectory, oldManifest.manifestFileName), nextMtime, nextMtime);
-    const after = await doctorAuthorityStorage(f.admission, f.options, clock);
-    assert.equal(after.backup.state, "current");
-    assert.deepEqual(after.previousLocationBackups?.map(entry => JSON.stringify(entry)).sort(),
-      before.previousLocationBackups?.map(entry => JSON.stringify(entry)).sort());
-    assert.ok(after.restoreCandidates.some((candidate) => candidate.state === "verified-compatible"));
-    assert.equal(summarizeBackupHealth({ backupDirectory: f.options.backupDirectory }, 0, clock), "current");
-
-    const unrelated = join(f.options.backupDirectory, "unrelated.manifest.json");
-    const sourceManifest = JSON.parse(readFileSync(join(f.options.backupDirectory, oldManifest.manifestFileName), "utf8")) as Record<string, unknown>;
-    writeFileSync(unrelated, JSON.stringify({ ...sourceManifest, sourceDatabaseIdentity: "f".repeat(64) }));
-    const unrelatedReport = await doctorAuthorityStorage(f.admission, f.options, clock);
-    assert.equal(unrelatedReport.backup.state, "invalid");
-    assert.equal(unrelatedReport.restoreCandidates.find((candidate) => candidate.manifestFileName === "unrelated.manifest.json")?.state, "invalid");
-
-    const receiptsDirectory = join(f.workspace, ".tracker/control", "relocation-receipts");
-    const receiptName = readdirSync(receiptsDirectory)[0];
-    assert.ok(receiptName);
-    const receiptPath = join(receiptsDirectory, receiptName);
-    const receipt = JSON.parse(readFileSync(receiptPath, "utf8")) as Record<string, unknown>;
-    writeFileSync(receiptPath, JSON.stringify({ ...receipt, installationId: randomUUID() }));
-    const tampered = await doctorAuthorityStorage(f.admission, f.options, clock);
-    assert.equal(tampered.backup.state, "invalid");
-    assert.equal(tampered.previousLocationBackups, undefined);
-    assert.equal(tampered.restoreCandidates.find((candidate) => candidate.manifestFileName === oldManifest.manifestFileName)?.state, "invalid");
-  } finally { f.admission.release(); }
-
-} finally {
-_afterEachFixture0();
-}
+    assert.equal(before.previousLocationBackups, undefined);
+    assert.equal(summarizeBackupHealth({backupDirectory:directory},0,clock),"current");
+    const original = storageTree(f.workspace);
+    await assert.rejects(runOfflineStorageRelocation({workspace:f.workspace,lifetime:f.lifetime,admission:f.admission,
+      command:{kind:"plan",id:UUID_7,json:false},clock}),{code:"PROFILE_STORAGE_RELOCATION_UNSUPPORTED"});
+    assert.deepEqual(storageTree(f.workspace), original);
+    const manifest = before.restoreCandidates.find(candidate => candidate.state === "verified-compatible");
+    assert.ok(manifest);
+    utimesSync(join(directory,manifest.manifestFileName),new Date(clock.nowMs()+30_000),new Date(clock.nowMs()+30_000));
+    const after = await doctorAuthorityStorage(f.admission, options, clock);
+    assert.equal(after.backup.state,"current");
+    assert.deepEqual(after.restoreCandidates,before.restoreCandidates);
+    assert.equal(summarizeBackupHealth({backupDirectory:directory},0,clock),"current");
+    const unrelated = join(directory,"unrelated.manifest.json");
+    const sourceManifest = JSON.parse(readFileSync(join(directory,manifest.manifestFileName),"utf8")) as Record<string,unknown>;
+    writeFileSync(unrelated,JSON.stringify({...sourceManifest,sourceDatabaseIdentity:"f".repeat(64)}));
+    const invalid = await doctorAuthorityStorage(f.admission, options, clock);
+    assert.equal(invalid.backup.state,"invalid");
+    assert.equal(invalid.restoreCandidates.find(candidate => candidate.manifestFileName === "unrelated.manifest.json")?.state,"invalid");
+    assert.equal(invalid.previousLocationBackups,undefined);
+  } finally { await f.close(); }
 });
 }
 

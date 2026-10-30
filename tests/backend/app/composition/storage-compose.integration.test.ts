@@ -1,3 +1,9 @@
+import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
+import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
+import { withOfflineMaintenanceSync, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import { WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_IMPL_FINGERPRINT, WriteFixtureProofSchema, writeFixtureDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
@@ -7,36 +13,29 @@ import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/f
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 import { testAdmittedWorker, testRunContinuation } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { DatabaseSync } from "node:sqlite";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync, copyFileSync, existsSync, symlinkSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as join_m0 } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { composeStorageCommand as composeStorageCommand_m0 } from "../../../../src/backend/app/composition/storage-compose.js";
 import { createChatGptCredentialRepository, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { observeProcessIdentity } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-
-
 import { createCredentialSecretSource } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { type RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-
+import { AuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { requireSecret } from "../../../../src/models/config/secrets.js";
-import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { AuthorityDatabase as AuthorityDatabase_m0 } from "../../../support/helpers/synthetic-storage-admission.js";
-
+import { AuthorityDatabase as AuthorityDatabase_m0, composeStorageCommand as syntheticComposeStorageCommand_m1 } from "../../../support/helpers/synthetic-storage-admission.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
-import { RunRecordService, sweepWorkerClaims, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { RunRecordService, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { buildCommittedSettlement, executeSequencedWriteCommit } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
@@ -49,19 +48,15 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { checkpointLookupKey } from "../../../../src/models/workflow/checkpoint.js";
 import { ActorIdSchema, LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
-
 import { ATOMIC_WRITE_COMMIT, CONFIG_SNAPSHOT, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
-
-import { copyFileSync, existsSync, symlinkSync, truncateSync } from "node:fs";
-
 import { z } from "zod";
 
 
-import { composeStorageCommand as syntheticComposeStorageCommand_m1 } from "../../../support/helpers/synthetic-storage-admission.js";
 
-import { AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/sqlite/authority-database.js";
+
+
 
 {
 
@@ -83,16 +78,18 @@ afterEach(_afterEachFixture0);
 
   it("after uncertain audit, real CLI restore preserves credentials and exact retry repairs the missing audit", async () => {
     const f = await fixture(undefined, true); const revision = f.store.read().revision; const request = protectedCommand(revision); assert.ok(f.admission);
+    f.database.close();
     const backup = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["backup"], f.clock, f.repoRoot, f.admission, f.store);
     assert.equal(backup.exitCode, 0, backup.output);
     const directory = join_m0(f.root, "backups", "authority");
     const name = readdirSync(directory).find((entry) => entry.endsWith(".manifest.json")); assert.ok(name);
     const backupFiles = Object.fromEntries(readdirSync(directory).map((entry) => [entry, readFileSync(join_m0(directory, entry))]));
-    assert.throws(() => f.execute(request, failAudit(f.database)), /credential-audit-uncertain/u);
+    const reopened = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "uncertain-audit" }, f.clock, undefined, undefined, undefined, f.store); databases.push(reopened);
+    assert.throws(() => f.execute(request, failAudit(reopened)), /credential-audit-uncertain/u);
     const credentialPath = join_m0(f.root, "credentials", "protected.json");
     const credentialBytes = readFileSync(credentialPath);
     assert.equal(f.store.read().revision, revision + 1);
-    f.database.close();
+    reopened.close();
     const restore = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["restore", "--from", join_m0(directory, name), "--json"], f.clock, f.repoRoot, f.admission, f.store);
     assert.equal(restore.exitCode, 0, restore.output);
     const renewed = f.renewAfterRestore();
@@ -183,6 +180,19 @@ async function paths(mode: "ready" | "pending" | "uninitialized" = "uninitialize
   };
 }
 
+function authoritySnapshot(p: Paths) {
+  const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, hostConfigFacts({}), CLOCK,
+    { stateRoot: p.stateRoot, artifactRoot: join_m0(p.stateRoot, "artifacts") });
+  return ConfigSnapshotRecordSchema.parse({ ...CONFIG_SNAPSHOT, config: resolved.config,
+    fingerprint: resolved.fingerprint, provenance: resolved.provenance });
+}
+
+function queuedRun(p: Paths) {
+  const snapshot = authoritySnapshot(p);
+  return RunRecordSchema.parse({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope,
+    configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint } });
+}
+
 function createAuthority(p: Paths): number {
   assert.ok(admissions.has(p.repoRoot), "authority fixture requires an issued profile");
   const database = openAuthority(
@@ -190,7 +200,7 @@ function createAuthority(p: Paths): number {
     CLOCK,
   );
   try {
-    database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    database.authority.runtimeConfig.initialize(authoritySnapshot(p));
     return database.getMeta().authorityGeneration;
   } finally {
     database.close();
@@ -206,8 +216,8 @@ afterEach(_afterEachFixture0);
     assert.equal(backup.exitCode, 0, backup.output);
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
     const database = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "fenced-restore-proof" }, CLOCK);
-    const e = QUEUED_RUN.envelope;
-    database.authority.runs.enqueue(QUEUED_RUN);
+    const queued = queuedRun(p), e = queued.envelope;
+    database.authority.runs.enqueue(queued);
     const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock: CLOCK, pid: 4242 });
     emitter.emit({ t: "run.queued", kind: "run", ts: CLOCK.now().toISOString(), workflow: e.workflow, runId: e.runId, attempt: e.attempt,
       traceId: e.traceId, spanPath: e.traceId, itemId: e.itemId, shape: e.shape, priority: e.priority, dryRun: false,
@@ -240,15 +250,17 @@ afterEach(_afterEachFixture0);
     }
     const next = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "new-identity-after-restore" }, CLOCK);
     try {
-      const nextId = randomUUID(); next.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...e, runId: nextId } });
+      const nextId = randomUUID(); next.authority.runs.enqueue({ ...queued, envelope: { ...e, runId: nextId } });
       assert.equal(next.authority.runs.get(e.runId), undefined); assert.ok(next.authority.runs.get(nextId));
     } finally { next.close(); }
   });
   it("reports a lost write attempt even when the restored run still exists at the same version", async () => {
     const p = await paths("ready"); createAuthority(p);
+    const snapshot = authoritySnapshot(p);
+    const commit = { ...ATOMIC_WRITE_COMMIT, transaction: { ...ATOMIC_WRITE_COMMIT.transaction, configFingerprint: snapshot.fingerprint } };
     const initial = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "retained-restore-owner" }, CLOCK);
     try {
-      seedAtomicWriteOwner(initial, ATOMIC_WRITE_COMMIT, p.authorityPath);
+      seedAtomicWriteOwner(initial, commit, p.authorityPath, undefined, snapshot);
       const run = initial.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);
       if (run === undefined) throw new Error("missing owner");
       createTimelineEmitter({ repository: initial.authority.timelineEvents, clock: CLOCK }).emit(
@@ -360,12 +372,13 @@ afterEach(_afterEachFixture0);
 
   it("accounts a preserved run after explicit deletion without reviving it", async () => {
     const p = await paths("ready"); createAuthority(p);
+    const queued = queuedRun(p);
     const initial = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "deleted-preserved-owner" }, CLOCK);
     try {
-      initial.authority.runs.enqueue(QUEUED_RUN);
+      initial.authority.runs.enqueue(queued);
       createTimelineEmitter({ repository: initial.authority.timelineEvents, clock: CLOCK }).emit(
-        runQueuedSpanEvent({ run: RunRecordSchema.parse(QUEUED_RUN), actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Deleted restore owner" }));
-      new RunRecordService({ database: initial, clock: CLOCK, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("fixture must not enqueue"); } }).transition({ commandId: randomUUID(), runId: QUEUED_RUN.envelope.runId, expectedVersion: QUEUED_RUN.version,
+        runQueuedSpanEvent({ run: queued, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Deleted restore owner" }));
+      new RunRecordService({ database: initial, clock: CLOCK, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("fixture must not enqueue"); } }).transition({ commandId: randomUUID(), runId: queued.envelope.runId, expectedVersion: queued.version,
         lifecycle: { state: "terminal", outcome: "cancelled", endedAt: CLOCK.now().toISOString() } });
     } finally { initial.close(); }
     const directory = join_m0(p.stateRoot, "backups", "suspects"); mkdirSync(directory, { recursive: true });
@@ -373,7 +386,7 @@ afterEach(_afterEachFixture0);
     const current = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "delete-preserved-owner" }, CLOCK);
     try {
       const service = new RunRecordService({ database: current, clock: CLOCK, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("fixture must not enqueue"); } });
-      const run = current.authority.runs.get(QUEUED_RUN.envelope.runId); assert.ok(run);
+      const run = current.authority.runs.get(queued.envelope.runId); assert.ok(run);
       assert.equal(service.delete({ runId: run.envelope.runId, expectedVersion: run.version, commandId: randomUUID() }).state, "deleted");
     }
     finally { current.close(); }
@@ -400,7 +413,7 @@ afterEach(_afterEachFixture0);
     assert.equal(applied.exitCode, 0, applied.output);
     assert.deepEqual(JSON.parse(applied.output), { ...JSON.parse(plan.output), state: "initialized" });
     const admission = admissions.get(p.repoRoot); assert.ok(admission);
-    AuthorityDatabase.inspectStoppedUpgrade(admission, p.authorityPath, join_m0(p.repoRoot, rebuildRuntimeIsolation.processLockRoot), CLOCK);
+    withOfflineMaintenanceSync(admission, () => AuthorityDatabase.inspectStoppedUpgrade(admission, p.authorityPath, join_m0(p.repoRoot, rebuildRuntimeIsolation.processLockRoot), CLOCK));
     const database = new DatabaseSync(p.authorityPath, { readOnly: true });
     try { assert.deepEqual(database.prepare("SELECT * FROM settings").all(), []); }
     finally { database.close(); }
@@ -437,12 +450,14 @@ afterEach(_afterEachFixture0);
   });
 
   it("ignores invalid retired migration values without reading or echoing them", async () => {
-    const p = await paths(); const source = "HRAUTO_DEFAULT_WORKERS=synthetic-invalid-private-input\n";
+    const p = await paths("pending"); const source = "HRAUTO_DEFAULT_WORKERS=synthetic-invalid-private-input\n";
+    const before = storageTree(p.stateRoot);
     writeFileSync(join_m0(p.repoRoot, ".env"), source, { mode: 0o600 });
     const result = await composeStorageCommand(rebuildRuntimeIsolation, ["upgrade", "--plan", "--json"], CLOCK, p.repoRoot);
     assert.equal(result.exitCode, 0);
     assert.deepEqual(z.object({state:z.literal("planned"),credentials:z.literal("unchanged")}).parse(JSON.parse(result.output)),{state:"planned",credentials:"unchanged"});
-    assert.equal(result.output.includes("synthetic-invalid-private-input"), false); assert.equal(existsSync(p.stateRoot), false);
+    assert.equal(result.output.includes("synthetic-invalid-private-input"), false);
+    assert.equal(existsSync(p.authorityPath), false); assert.deepEqual(storageTree(p.stateRoot), before);
     assert.equal(readFileSync(join_m0(p.repoRoot, ".env"), "utf8"), source);
   });
   it.each(["--force", "--skip-backup", "--allow-mixed"])("refuses unsupported upgrade flag %s before touching the root", async (flag) => {
@@ -475,12 +490,14 @@ afterEach(_afterEachFixture0);
   });
 
   it("refuses when no authority database exists and creates nothing", async () => {
-    const p = await paths();
+    const p = await paths("pending");
+    const before = storageTree(p.stateRoot);
     const outcome = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(outcome.exitCode, 1);
     assert.match(outcome.output, /storage backup REFUSED — no authority database exists/u);
     assert.equal(existsSync(p.authorityPath), false, "a refused backup must not mint an authority");
     assert.equal(existsSync(p.backupDirectory), false);
+    assert.deepEqual(storageTree(p.stateRoot), before);
   });
 
   it("lets the doctor exit 0 on a healthy reconciled authority with no backup, reporting it missing", async () => {
@@ -691,17 +708,10 @@ try {
     assert.deepEqual(inspect(p.authorityPath), committed);
     return;
   }
-  clock.advanceWall(60 * 60 * 1000);
-  const mutationDb = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restored-unknown-sweep" }, clock);
-  try {
-    const service = new RunRecordService({ database: mutationDb, clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("test must not enqueue"); } });
-    const outcomes = sweepWorkerClaims(mutationDb, workerRunLifecyclePort(service), { staleBefore: clock.now().toISOString(), now: clock.now().toISOString() });
-    assert.equal(outcomes.length, 0);
-  } finally { mutationDb.close(); }
-  const afterSweep = inspect(p.authorityPath);
-  assert.equal(afterSweep.version, before.version);
-  assert.equal(afterSweep.lifecycle, "parked-write");
-  assert.equal(afterSweep.outcome, "parked"); assert.equal(afterSweep.outcomeCode, "unknown"); assert.equal(afterSweep.checkpoint, false);
+  const retainedUnknown = inspect(p.authorityPath);
+  assert.equal(retainedUnknown.version, before.version);
+  assert.equal(retainedUnknown.lifecycle, "parked-write");
+  assert.equal(retainedUnknown.outcome, "parked"); assert.equal(retainedUnknown.outcomeCode, "unknown"); assert.equal(retainedUnknown.checkpoint, false);
   const doctorAfter = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, p.repoRoot);
   assert.equal(doctorAfter.exitCode, 1, doctorAfter.output);
   const afterReport = z.object({ spanAuthority: SpanAuthorityReconciliationWireSchema }).parse(JSON.parse(doctorAfter.output));
@@ -721,7 +731,7 @@ describe("storage recover-chatgpt-lock", () => {
     const root = realpathSync(mkdtempSync(join_m0(tmpdir(), "storage-chatgpt-lock-")));
     try {
       mkdirSync(join_m0(root, rebuildRuntimeIsolation.artifactRoot), { recursive: true, mode: 0o700 });
-      const admission = acquireEntrypointAdmission(root, "exclusive");
+      const admission = acquireEntrypointAdmission(root, "exclusive", await runtimeLifetimeLock());
       try {
         const stateRoot = admission.stateRoot, repository = createChatGptCredentialRepository({ admission, stateRoot });
         const run = () => composeStorageCommand_m0(rebuildRuntimeIsolation, ["recover-chatgpt-lock"], manualClock(new Date("2026-10-15T12:00:00.000Z")), root, admission);

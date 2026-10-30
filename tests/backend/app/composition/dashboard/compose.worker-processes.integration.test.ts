@@ -151,11 +151,12 @@ describe("real processes: two children supervised concurrently through the compo
       assert.equal(active.configFingerprint, resolved.fingerprint);
       const faults: Error[] = [];
       const events: PoolEffectEvent[] = [];
-      const spawn = realStubSpawner(owner.records);
+      const spawn = realStubSpawner(owner.records, profile.lifetime);
       const control = composeWorkerProcessControl({
-        profileRoot: resolved.config.paths.browserProfileRoot, processLockRoot: lockRoot,
+    onExit: () => undefined,
+        profileRoot: resolved.config.paths.browserProfileRoot,
         database, clock: systemClock, scheduler: createTimeoutDeadlineScheduler(systemClock),
-        launch: stubLaunch(dbPath, lockRoot, 'installed', launchCommandOverride ?? process.execPath),
+        launch: stubLaunch(dbPath, lockRoot, 'installed', launchCommandOverride ?? process.execPath, profile.lifetime),
         spawn: request => {
           const child = spawn(request);
           const record = required(owner.records.at(-1), 'spawned-child');

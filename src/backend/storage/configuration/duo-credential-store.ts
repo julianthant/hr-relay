@@ -110,6 +110,7 @@ export function readDuoPublicationEnvelope(bytes: Uint8Array): Readonly<{ profil
 
 export function resumeIssuedDuoTransaction(transaction: IssuedDuoTransaction, capture: DuoPublicationCapture): void {
   const issued = transactions.get(transaction);
+  if (issued !== undefined && !issued.used && !issued.publicationStarted && issued.capture === undefined) throw new Error("duo-publication-pending");
   if (issued === undefined || !issued.used || !issued.publicationStarted || issued.capture === undefined) throw new Error("duo-transaction-unissued");
   if (canonicalJsonStringify(issued.capture) !== canonicalJsonStringify(capture)) throw new Error("duo-publication-prior-changed");
   const { binding } = issued.draftOperationId === undefined ? duoCredentialPurposeBinding(issued.purpose) : duoDraftPublicationRecoveryBinding(issued.purpose);
@@ -178,11 +179,11 @@ function createDuoStore(profile: RuntimeAdmission, machine: RuntimeAdmission, pu
   noSymlinkAncestry(join(machineRoot, "machine", "duo-credentials"), ancestry);
   let uncertain: IssuedDuoTransaction | undefined;
   function transact<Result>(mutation: (document: DuoCredentialDocument | undefined) => Readonly<{ document?: DuoCredentialDocument; result: Result }>, phase: "settle" | "durable-intent" = "settle", access: "metadata" | "mutation" = "mutation"): Result {
-    if (draftOperationId === undefined) profile.assertProfileRuntime();
-    else profile.assertProfileInitialization();
     const transaction = Object.freeze({ profileId: binding.profileId });
     let outcome: Readonly<{ result: Result }> | undefined;
     const issued = { purpose, access, ...(draftOperationId === undefined ? {} : { draftOperationId }), machineRoot, mutation: (document: DuoCredentialDocument | undefined) => {
+      if (draftOperationId === undefined) profile.assertProfileRuntime();
+      else profile.assertProfileInitialization();
       const result = mutation(document); outcome = result; return result;
     }, used: false, publicationStarted: false, ancestry };
     transactions.set(transaction, issued);

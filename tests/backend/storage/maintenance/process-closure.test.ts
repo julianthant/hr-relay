@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { profileProcessQuery, proveProfileRootsUnused } from "../../../../src/backend/storage/maintenance/process-closure.js";
 
@@ -20,6 +23,53 @@ describe("complete process and descriptor closure observations", () => {
       const query = vi.spyOn(profileProcessQuery, "spawnSync");
       query.mockReturnValueOnce(result(" 123 synthetic-worker\n")).mockReturnValueOnce(result(stdout));
       assert.throws(() => proveProfileRootsUnused([]), /closure-unproved/u); query.mockRestore();
+    }
+  });
+
+  it("accepts nonempty descriptor names with and without a type in each file set", () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "relay-process-closure-"));
+    try {
+      const query = vi.spyOn(profileProcessQuery, "spawnSync");
+      query.mockReturnValueOnce(result(" 123 synthetic-worker\n"))
+        .mockReturnValueOnce(result("p123\nf1\ntREG\nn/synthetic-other\nf2\nn/synthetic-second\nf3\ntDIR\nn/synthetic-third\np124\nf4\nn/synthetic-fourth\n"));
+      proveProfileRootsUnused([root]);
+      assert.equal(query.mock.calls.length, 2);
+    } finally { rmSync(root, { recursive: true }); }
+  });
+
+  for (const typed of [false, true]) it(`refuses a ${typed ? "typed" : "type-absent"} descriptor under the supplied root`, () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "relay-process-closure-"));
+    try {
+      const query = vi.spyOn(profileProcessQuery, "spawnSync");
+      query.mockReturnValueOnce(result(" 123 synthetic-worker\n"))
+        .mockReturnValueOnce(result(`p123\nf1\ntREG\nn/synthetic-other\nf2\n${typed ? "tREG\n" : ""}n${join(root, "state.db")}\n`));
+      assert.throws(() => proveProfileRootsUnused([root]), /closure-unproved/u);
+      assert.equal(query.mock.calls.length, 2);
+    } finally { rmSync(root, { recursive: true }); }
+  });
+
+  it("does not inherit an empty-name type allowance from a preceding descriptor", () => {
+    for (const type of ["NPOLICY", "NEXUS", "PIPE"]) {
+      const accepted = vi.spyOn(profileProcessQuery, "spawnSync");
+      accepted.mockReturnValueOnce(result(" 123 synthetic-worker\n"))
+        .mockReturnValueOnce(result(`p123\nf1\nt${type}\nn\n`));
+      proveProfileRootsUnused([]);
+      assert.equal(accepted.mock.calls.length, 2); accepted.mockRestore();
+      const refused = vi.spyOn(profileProcessQuery, "spawnSync");
+      refused.mockReturnValueOnce(result(" 123 synthetic-worker\n"))
+        .mockReturnValueOnce(result(`p123\nf1\nt${type}\nn\nf2\nn\n`));
+      assert.throws(() => proveProfileRootsUnused([]), /closure-unproved/u);
+      assert.equal(refused.mock.calls.length, 2); refused.mockRestore();
+    }
+  });
+
+  it("refuses empty, missing, malformed or unframed untyped descriptor names", () => {
+    for (const stdout of ["p123\nf1\nn\n", "p123\nf1\n", "p123\nf1\nn/other", "p123\nf1\nxunknown\nn/other\n",
+      "p123\nf1\nn/other\ntREG\n", "p123\nf1\ntREG\ntDIR\nn/other\n"]) {
+      const query = vi.spyOn(profileProcessQuery, "spawnSync");
+      query.mockReturnValueOnce(result(" 123 synthetic-worker\n")).mockReturnValueOnce(result(stdout));
+      assert.throws(() => proveProfileRootsUnused([]), /closure-unproved/u);
+      assert.equal(query.mock.calls.length, 2); query.mockRestore();
     }
   });
 });

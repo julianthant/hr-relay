@@ -42,8 +42,8 @@ function applied(
 
 describe("independent credential store", () => {
 
-  it("refuses insecure permissions, malformed identity history, foreign entries, and lock contention", () => {
-    const f = fixture();
+  it("refuses insecure permissions, malformed identity history, foreign entries, and lock contention", async () => {
+    const f = await fixture();
     const first = request({
       commandId: COMMAND_1,
       writeId: WRITE_1,

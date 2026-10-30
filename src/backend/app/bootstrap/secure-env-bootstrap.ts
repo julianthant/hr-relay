@@ -1,10 +1,11 @@
+import { profileBrowserClosure } from "../../runtime/browser/native-profile-probe.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
+import { acquireRuntimeLifetimeLock, receiveRuntimeLifetimeLock, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { fileURLToPath } from "node:url";
-import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+
 import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
 import { acquireStorageBackupEntrypointAdmission, acquireDashboardEntrypointAdmission, acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
-import { inspectPendingRelocationStatus, recoverAbandonedAdmissionMutex } from "../../storage/admission/installation.js";
-import { acquireRuntimeRestoreAdmission, acquireRuntimeProcessLock, type RuntimeProcessLockHandle } from "../../storage/sqlite/runtime-process-locks.js";
+import { inspectPendingRelocationStatus } from "../../storage/admission/installation.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { join } from "node:path";
@@ -14,16 +15,21 @@ import { RuntimeCustodyUncertainError } from "../composition/storage-compose.js"
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
+export interface RuntimeLifetime {
+  readonly lock: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock;
+  readonly parentSignal: AbortSignal;
+}
+
 export interface SecureEnvironmentBootstrapDependencies {
   readonly assertEnvironment?: () => void;
-  readonly runCli?: (admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined, acceptDashboardAdmission?: () => void) => Promise<void>;
+  readonly runCli?: (admission: RuntimeAdmission, acceptDashboardAdmission: (() => void) | undefined, lifetime: RuntimeLifetime) => Promise<void>;
+  readonly acquireLifetimeLock?: (port: number) => Promise<RuntimeLifetimeLock>;
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
-  readonly acquireAdmission?: (mode: "shared" | "exclusive") => RuntimeAdmission;
+  readonly acquireAdmission?: (mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock) => RuntimeAdmission;
   readonly validateDashboardBundle?: (workspace: string) => void;
   readonly runRelocation?: (input: Readonly<{ workspace: string; args: readonly string[];
     admission?: RuntimeAdmission }>) => Promise<Readonly<{ operationId: string; generation: number }>>;
   readonly inspectRelocationStatus?: (workspace: string) => ReturnType<typeof inspectPendingRelocationStatus>;
-  readonly runAdmissionRecovery?: (workspace: string, expectedPid: number | "empty") => ReturnType<typeof recoverAbandonedAdmissionMutex>;
 }
 
 export function secureEnvironmentEntrypoint(
@@ -35,56 +41,58 @@ export function secureEnvironmentEntrypoint(
   );
 }
 
-function releaseUnboundWorkerCustody(custody: RuntimeProcessLockHandle | undefined, failure: unknown): void {
-  try { custody?.release(); }
-  catch (error) { throw new RuntimeCustodyUncertainError(failure === undefined ? [error] : [failure, error]); }
-}
-
 export async function runSecureEnvironmentBootstrap(
   args: readonly string[] = process.argv.slice(2),
   dependencies: SecureEnvironmentBootstrapDependencies = {},
 ): Promise<void> {
   const [selector, ...entrypointArgs] = args;
+  secureEnvironmentEntrypoint(selector);
+  if (selector === "cli" && entrypointArgs.length === 2 && entrypointArgs[0] === "dashboard" && entrypointArgs[1] === "--prod") {
+    const workspace = fileURLToPath(new URL("../../../..", import.meta.url));
+    (dependencies.validateDashboardBundle ?? ((root: string) => {
+      assertDashboardBuildCurrent({ distDir: join(root, "dist", "dashboard"), repoRoot: root });
+    }))(workspace);
+  }
+  const controller = new AbortController();
+  const lock = selector === "cli" && entrypointArgs[0] === "worker"
+    ? await receiveRuntimeLifetimeLock(rebuildRuntimeIsolation.lockPort, () => controller.abort(new Error("runtime-parent-disconnected")))
+    : await (dependencies.acquireLifetimeLock ?? acquireRuntimeLifetimeLock)(rebuildRuntimeIsolation.lockPort);
+  let retain = false;
+  try { await runAdmittedEnvironmentBootstrap(args, dependencies, { lock, parentSignal: controller.signal }); }
+  catch (error) {
+    retain = error instanceof RuntimeCustodyUncertainError || error instanceof AuthoritySourceClosureUnprovedError;
+    throw error;
+  } finally {
+    if (!retain) await lock.close();
+  }
+}
+
+async function runAdmittedEnvironmentBootstrap(
+  args: readonly string[], dependencies: SecureEnvironmentBootstrapDependencies, lifetime: RuntimeLifetime,
+): Promise<void> {
+  lifetime.parentSignal.throwIfAborted();
+  const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
   const workspace = fileURLToPath(new URL("../../../..", import.meta.url));
+  const workerLifetime = (): WorkerRuntimeLifetimeLock => {
+    if (!(lifetime.lock instanceof WorkerRuntimeLifetimeLock)) throw new Error("inherited-worker-lifetime-required");
+    lifetime.lock.assertHeld();
+    return lifetime.lock;
+  };
+  const rootLifetime = (): RuntimeLifetimeLock => {
+    if (!(lifetime.lock instanceof RuntimeLifetimeLock)) throw new Error("exclusive-root-lifetime-required");
+    lifetime.lock.assertHeld();
+    return lifetime.lock;
+  };
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "cancel-queued-runs") {
     const { runOfflineQueuedRunCancellation } = await import("../../storage/maintenance/cancel-queued-runs.js");
-    const { report, json } = await runOfflineQueuedRunCancellation(workspace, entrypointArgs.slice(2));
+    const { report, json } = await runOfflineQueuedRunCancellation(profileBrowserClosure, workspace, entrypointArgs.slice(2), rootLifetime());
     process.stdout.write(json ? `${JSON.stringify(report)}\n` : `storage queued runs: ${report.state}; ${String(report.runIds.length)} runs\n`);
     return;
   }
-  if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-worker-process") {
-    const { runOfflineWorkerProcessRecovery } = await import("../../storage/maintenance/worker-process-recovery.js");
-    try {
-      const { report, json } = runOfflineWorkerProcessRecovery(workspace, entrypointArgs.slice(2));
-      process.stdout.write(json ? `${JSON.stringify(report)}\n` : `storage worker process: ${report.state}; acquisition ${report.acquisitionId}\n`);
-    } catch (error) {
-      process.stderr.write(`WORKER_PROCESS_RECOVERY_REFUSED: ${ERROR_CATALOG.WORKER_PROCESS_RECOVERY_REFUSED.text}\n`);
-      throw error;
-    }
-    return;
-  }
-  if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-admission") {
-    const empty = entrypointArgs.length === 3 && entrypointArgs[2] === "--empty";
-    if (!empty && (entrypointArgs.length !== 4 || entrypointArgs[2] !== "--pid"
-      || !/^[1-9]\d*$/u.test(entrypointArgs[3] ?? ""))) throw new Error("storage recover-admission usage: --pid <abandoned-owner-pid> | --empty");
-    const recover = dependencies.runAdmissionRecovery ?? ((root: string, expectedPid: number | "empty") => {
-      const restore = acquireRuntimeRestoreAdmission({ processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot), pid: process.pid });
-      let retain = false;
-      try { return recoverAbandonedAdmissionMutex(root, restore, expectedPid); }
-      catch (error) {
-        if (error instanceof AuthoritySourceClosureUnprovedError) { retain = true; throw retainAuthoritySourceClosure([error], { restore }); }
-        throw error;
-      } finally { if (!retain) restore.release(); }
-    });
-    const result = recover(workspace, empty ? "empty" : Number(entrypointArgs[3]));
-    process.stdout.write(`storage admission recovered: ${result.acquisitionId}; receipt ${result.receiptPath}\n`);
-    return;
-  }
-
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-restore") {
     const { runOfflineAuthorityRestoreRecovery } = await import("../composition/storage-compose.js");
-    const { report, json } = await runOfflineAuthorityRestoreRecovery(workspace, entrypointArgs.slice(2));
+    const { report, json } = await runOfflineAuthorityRestoreRecovery(workspace, entrypointArgs.slice(2), rootLifetime());
     process.stdout.write(json ? `${JSON.stringify(report)}\n`
       : `storage restore: verified ${report.outcome} operation ${report.operationId} settled\n`);
     return;
@@ -101,12 +109,12 @@ export async function runSecureEnvironmentBootstrap(
       return;
     }
     const admission = command.kind === "plan"
-      ? (dependencies.acquireAdmission ?? ((requested) => acquireEntrypointAdmission(workspace, requested)))("exclusive")
+      ? (dependencies.acquireAdmission ?? ((requested) => acquireEntrypointAdmission(workspace, requested, rootLifetime())))("exclusive", lifetime.lock)
       : undefined;
     try {
       try {
         const result = dependencies.runRelocation === undefined
-          ? await runOfflineStorageRelocation({ workspace, command, ...(admission === undefined ? {} : { admission }) })
+          ? await runOfflineStorageRelocation({ workspace, lifetime: rootLifetime(), command, ...(admission === undefined ? {} : { admission }) })
           : await dependencies.runRelocation({ workspace, args: entrypointArgs.slice(2),
             ...(admission === undefined ? {} : { admission }) });
         process.stdout.write(command.json ? `${JSON.stringify(result)}\n`
@@ -121,13 +129,6 @@ export async function runSecureEnvironmentBootstrap(
     } finally { admission?.release(); }
     return;
   }
-  if (entrypoint === "cli" && entrypointArgs.length === 2
-    && entrypointArgs[0] === "dashboard" && entrypointArgs[1] === "--prod") {
-    // A missing or stale bundle must refuse before installation admission can create authority.
-    (dependencies.validateDashboardBundle ?? ((root: string) => {
-      assertDashboardBuildCurrent({ distDir: join(root, "dist", "dashboard"), repoRoot: root });
-    }))(workspace);
-  }
   const bootDiagnostics = entrypoint === "cli" && entrypointArgs[0] === "explain" && entrypointArgs[1] === "diagnostics" && entrypointArgs.includes("--boot");
   if (bootDiagnostics) {
     const { parseDiagnosticArgs } = await import("../composition/explain-compose.js");
@@ -138,7 +139,7 @@ export async function runSecureEnvironmentBootstrap(
   const duoPublicationRecovery = storageCommand === "recover-duo-publication";
   if (machineControlMaintenance || duoPublicationRecovery) {
     if (duoPublicationRecovery && entrypointArgs.length !== 2) throw new Error("unsupported storage recover-duo-publication argument");
-    const admission = RuntimeAdmission.acquireStoppedMachineControlMaintenance(workspace);
+    const admission = RuntimeAdmission.acquireStoppedMachineControlMaintenance(workspace, rootLifetime());
     let retainCustody = false;
     try {
       if (duoPublicationRecovery) {
@@ -164,22 +165,14 @@ export async function runSecureEnvironmentBootstrap(
   const mode = bootDiagnostics || entrypoint === "cli" && entrypointArgs[0] === "storage"
     && !["doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
     ? "exclusive" : "shared";
-  let initialWorkerCustody: RuntimeProcessLockHandle | undefined;
-  const admission = await (dependencies.acquireAdmission ?? ((requested) => bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)
-    : entrypoint === "cli" && entrypointArgs[0] === "dashboard" ? acquireDashboardEntrypointAdmission(workspace, requested)
-    : storageCommand === "backup" ? acquireStorageBackupEntrypointAdmission(workspace)
-    : acquireEntrypointAdmission(workspace, requested)))(mode);
+  const admission = await (dependencies.acquireAdmission ?? ((requested) => entrypoint === "cli" && entrypointArgs[0] === "worker"
+    ? RuntimeAdmission.acquireWorker(workspace, workerLifetime()) : bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace, rootLifetime())
+    : entrypoint === "cli" && entrypointArgs[0] === "dashboard" ? acquireDashboardEntrypointAdmission(profileBrowserClosure, workspace, requested, rootLifetime())
+    : storageCommand === "backup" ? acquireStorageBackupEntrypointAdmission(workspace, rootLifetime())
+    : acquireEntrypointAdmission(workspace, requested, rootLifetime())))(mode, lifetime.lock);
   let shutdown: "release" | "retain" = "release";
-  let runtimeFailure: unknown;
   let dashboardOwnsAdmission = false;
   try {
-  if (entrypoint === "cli" && entrypointArgs[0] === "worker") {
-    const { captureSelectedProfileStorage } = await import("../composition/storage-compose.js");
-    const selected = captureSelectedProfileStorage(admission);
-    initialWorkerCustody = acquireRuntimeProcessLock({ processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot),
-      name: "workers", pid: process.pid, admission: { kind: "unbound-worker", authorityPath: selected.authorityPath } });
-    selected.assertCurrent();
-  }
   if (!bootDiagnostics && !(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
     (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();
 
@@ -195,13 +188,9 @@ export async function runSecureEnvironmentBootstrap(
     const runCli = dependencies.runCli ?? (await import("../../../cli.js")).runCli;
     // Await shutdown so a rejection reaches the process exit.
     await runCli(admission, () => {
-      const custody = initialWorkerCustody;
-      initialWorkerCustody = undefined;
-      return custody;
-    }, () => {
       if (entrypointArgs[0] !== "dashboard" || dashboardOwnsAdmission) throw new Error("dashboard admission ownership unavailable");
       dashboardOwnsAdmission = true;
-    });
+    }, lifetime);
     return;
   }
 
@@ -217,17 +206,13 @@ export async function runSecureEnvironmentBootstrap(
   } catch (error) {
     if (error instanceof AuthoritySourceClosureUnprovedError) {
       shutdown = "retain";
-      const failure = retainAuthoritySourceClosure([error], { admission,
-        ...(initialWorkerCustody === undefined ? {} : { processLock: initialWorkerCustody }) });
-      runtimeFailure = failure;
+      const failure = retainAuthoritySourceClosure([error], { admission });
       throw failure;
     }
-    runtimeFailure = error;
     if (error instanceof RuntimeCustodyUncertainError) shutdown = "retain";
     throw error;
   } finally {
     if (shutdown === "release" && !dashboardOwnsAdmission) {
-    releaseUnboundWorkerCustody(initialWorkerCustody, runtimeFailure);
     if (entrypoint === "cli" && entrypointArgs[0] === "dashboard") {
       // Retain signal ownership through the next turn; a queued Ctrl+C must not interrupt admission release.
       const absorb = (): void => undefined;

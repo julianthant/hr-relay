@@ -12,6 +12,7 @@ import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-va
 import { AtomicWriteCommitInputSchema } from "../../../src/backend/storage/sqlite/write-commit-contracts.js";
 import type { AuthorityDatabase } from "./synthetic-storage-admission.js";
 import { HASH_A, HASH_B, CONFIG_SNAPSHOT } from "../fixtures/phase1c-contract-fixtures.js";
+import { ConfigSnapshotRecordSchema, type ConfigSnapshotRecord } from "../../../src/models/config/snapshot.js";
 
 /** Populate the immutable output that real sequencer settlement always supplies. */
 export function atomicWriteCheckpoint(input: unknown) {
@@ -25,7 +26,8 @@ export function atomicWriteCheckpoint(input: unknown) {
 }
 
 /** Unit fixtures retain an actual owner; timeline history may never manufacture it. */
-export function seedAtomicWriteOwner(database: AuthorityDatabase, input: unknown, path: string, preferredPoolIndex?: number): void {
+export function seedAtomicWriteOwner(database: AuthorityDatabase, input: unknown, path: string, preferredPoolIndex?: number,
+  snapshot: ConfigSnapshotRecord = ConfigSnapshotRecordSchema.parse(CONFIG_SNAPSHOT)): void {
   const commit = currentAtomicWriteFixture(input);
   const ledger = commit.transaction;
   const existing = database.authority.runs.get(ledger.runId);
@@ -35,15 +37,15 @@ export function seedAtomicWriteOwner(database: AuthorityDatabase, input: unknown
     assert.equal(existing.envelope.attempt, ledger.attempt);
     return;
   }
-  if (ledger.configFingerprint !== CONFIG_SNAPSHOT.fingerprint) throw new Error("fixture config fingerprint differs from current snapshot");
-  const active = database.authority.runtimeConfig.get() ?? database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  assert.equal(active.configSnapshotId, CONFIG_SNAPSHOT.configSnapshotId);
+  if (ledger.configFingerprint !== snapshot.fingerprint) throw new Error("fixture config fingerprint differs from current snapshot");
+  const active = database.authority.runtimeConfig.get() ?? database.authority.runtimeConfig.initialize(snapshot);
+  assert.equal(active.configSnapshotId, snapshot.configSnapshotId);
   assert.equal(active.configFingerprint, ledger.configFingerprint);
   if (existing === undefined) database.authority.runs.enqueue(RunRecordSchema.parse({
     envelope: { runId: ledger.runId, workflow: ledger.workflowId, itemId: ledger.itemId,
       traceId: ledger.traceId, descriptorVersion: 1, contractFingerprint: HASH_A,
       resolvedInstance: { [ledger.system]: ledger.instance }, configFingerprint: ledger.configFingerprint,
-      configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, shape: "single", priority: "interactive", dryRun: false,
+      configSnapshotId: snapshot.configSnapshotId, shape: "single", priority: "interactive", dryRun: false,
       attempt: ledger.attempt, enqueuedAt: ledger.fencedAt },
     input: { raw: {}, parsed: { schemaHash: HASH_A, value: {}, protectedBindings: [] }, ingressSchemaHash: HASH_A },
     lifecycle: { state: "queued" }, claimGeneration: 0, version: 1,

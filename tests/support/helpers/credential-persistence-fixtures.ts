@@ -1,7 +1,11 @@
+import { z } from "zod";
+import assert from "node:assert/strict";
+import { once } from "node:events";
+import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs";
 
 import { tmpdir } from "node:os";
@@ -23,23 +27,24 @@ import { systemClock } from "../../../src/rules/time/clock.js";
 
 export function createCredentialPersistenceFixtures(roots: string[], COMMAND_1: string, NOW_1: string) {
 const cleanups: (() => void | Promise<void>)[] = [];
-function fixture(hooks?: CredentialStoreHooks) {
+async function fixture(hooks?: CredentialStoreHooks) {
   const stateRoot = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), "hr-credential-store-")));
   roots.push(stateRoot);
-  const machine = acquireEntrypointAdmission(stateRoot, "shared");
+  const lifetime = await RuntimeLifetimeLock.acquire(0);
+  const machine = acquireEntrypointAdmission(stateRoot, "shared", lifetime);
   mkdirSync(join(stateRoot, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   const operation = machine.beginProfileSignUp({ firstName: "Synthetic", lastName: "Persistence", emailKey: "a".repeat(64),
     createdAt: IsoInstantSchema.parse(NOW_1), commandFingerprint: "a".repeat(64) });
   const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
   AuthorityDatabase.initializeProfile(admission);
   registerBoundProfile(admission, machine);
-  cleanups.push(() => { unregisterBoundProfile(admission); admission.release(); machine.release(); });
+  cleanups.push(async () => { unregisterBoundProfile(admission); admission.release(); machine.release(); await lifetime.close(); });
   const tracker = admission.stateRoot, journalPath = join(machine.stateRoot, "machine", "erasures", `${operation.profileId}.json`);
   const options = { admission, stateRoot: tracker, erasureJournalAdmission: machine, erasureJournalPath: journalPath,
     initializationInventory: composeProfileCredentialInitializationInventory({ machine, admission, clock: systemClock, hostFacts: { primaryDisplay: null } }) };
   createCredentialStore(options).migrateHistory({ operation });
   const store = createCredentialStore({ ...options, hooks });
-  return { stateRoot, tracker, admission, machine, operation, journalPath,
+  return { stateRoot, lifetime, tracker, admission, machine, operation, journalPath,
     directory: join(tracker, "credentials"), path: join(tracker, "credentials", "protected.json"),
     lockPath: join(tracker, "credentials", ".protected.lock"), store };
 }
@@ -107,18 +112,22 @@ function request(input: {
   });
 }
 
-function crashAtCredentialRename(stateRoot: string, input: ProtectedSettingsApplyInput, boundary: "before" | "after") {
-  const workspace = findProfileFixtureAdmission(stateRoot)?.readInstallationContext()?.workspace;
-  if (workspace === undefined) throw new Error("fixture-issued-profile-workspace-required");
+async function crashAtCredentialRename(stateRoot: string, input: ProtectedSettingsApplyInput, boundary: "before" | "after") {
+  const owner = findProfileFixtureAdmission(stateRoot);
+  const workspace = owner?.readInstallationContext()?.workspace;
+  const lifetime = owner?.lifetime;
+  if (workspace === undefined || !(lifetime instanceof RuntimeLifetimeLock)) throw new Error("fixture-issued-profile-workspace-required");
   const rootUrl = pathToFileURL(join(process.cwd(), "src", "backend")).href;
-  return spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
+  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
     import { readFileSync } from "node:fs";
     import { join } from "node:path";
-    import { acquireEntrypointAdmission } from ${JSON.stringify(rootUrl + "/storage/admission/bootstrap-admission.ts")};
+    import { acquireSharedRuntimeAdmission } from ${JSON.stringify(rootUrl + "/storage/admission/admission.ts")};
+    import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(rootUrl + "/storage/admission/lifetime-lock.ts")};
     import { createProfileRegistry } from ${JSON.stringify(rootUrl + "/profiles/registry.ts")};
     import { createCredentialStore } from ${JSON.stringify(rootUrl + "/storage/configuration/credential-store.ts")};
+    const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
     const input = JSON.parse(readFileSync(0, "utf8"));
-    const machine = acquireEntrypointAdmission(input.workspace, "shared");
+    const machine = acquireSharedRuntimeAdmission(input.workspace, lifetime);
     const profileId = input.stateRoot.split("/").at(-1);
     const child = machine.admitProfile(createProfileRegistry(machine).storageClaim(profileId));
     try {
@@ -126,8 +135,26 @@ function crashAtCredentialRename(stateRoot: string, input: ProtectedSettingsAppl
         erasureJournalPath: join(machine.stateRoot, "machine", "erasures", profileId + ".json"),
         hooks: { [input.boundary === "before" ? "beforeRename" : "afterRename"]: () => process.kill(process.pid, "SIGKILL") }
       }).apply(input.request);
-    } finally { child.release(); machine.release(); }
-  `], { encoding: "utf8", input: JSON.stringify({ stateRoot, workspace, request: input, boundary }) });
+    } finally { child.release(); machine.release(); await lifetime.close(); process.disconnect(); }
+  `, String(lifetime.port)], { stdio: ["pipe", "pipe", "pipe", "ipc"] });
+  assert.ok(child.stdin && child.stdout && child.stderr);
+  let stdout = "", stderr = "", inputFailure: Error | undefined;
+  child.stdin.on("error", (error: Error) => { inputFailure ??= error; });
+  child.stdout.setEncoding("utf8"); child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk: string) => { stdout += chunk; });
+  child.stderr.on("data", (chunk: string) => { stderr += chunk; });
+  const closed = once(child, "close");
+  try {
+    child.stdin.end(JSON.stringify({ stateRoot, workspace, request: input, boundary }));
+    await lifetime.share(child);
+    const [status, signal] = z.tuple([z.number().int().nullable(), z.string().nullable()]).parse(await closed);
+    if (inputFailure !== undefined) throw inputFailure;
+    return { status, signal, stdout, stderr, error: undefined };
+  } catch (error) {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    try { await closed; } catch (cleanup) { throw new AggregateError([error, cleanup], "credential crash fixture and owned child closure failed", { cause: cleanup }); }
+    throw error;
+  }
 }
 function crashAfterCredentialRename(stateRoot: string, input: ProtectedSettingsApplyInput) { return crashAtCredentialRename(stateRoot, input, "after"); }
 function crashBeforeCredentialRename(stateRoot: string, input: ProtectedSettingsApplyInput) { return crashAtCredentialRename(stateRoot, input, "before"); }

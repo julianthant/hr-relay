@@ -126,10 +126,10 @@ describe("D resolution command authority", () => {
 import { resolutionPeer } from "../../../support/helpers/failure-resolution/fixtures.js";
 it("two independent OS processes compete for one annotation version and exactly one commits", async () => {
   const f = await resolutionFixture(undefined, undefined, { sharedMachine: true });
-  const peers: ReturnType<typeof resolutionPeer>[] = [];
+  const peers: Awaited<ReturnType<typeof resolutionPeer>>[] = [];
   try {
     for (let index = 0; index < 2; index++) {
-      const peer = resolutionPeer(f.path); peers.push(peer);
+      const peer = await resolutionPeer(f.path, f.profile.lifetime); peers.push(peer);
       await peer.ready;
     }
     const outcomes = await Promise.all(peers.map(peer => peer.send(resolutionCommand())));

@@ -1,10 +1,11 @@
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
-import { chmodSync, existsSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join,resolve as resolvePath } from "node:path";
 import { runInNewContext } from "node:vm";
@@ -16,11 +17,13 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import {
 assertDuoAutopilotReady,
 BrowserProfileAdmissionSchema,
+BrowserProfileStillClosingError,
 browserSignInFingerprint,
 DuoProvisioningError,
 PlaywrightWorkerSessionFactory,
 ProfileCustodyUnavailableError,
 workerProfileDirectory,
+probeClosedBrowserProfile,
 type BrowserDeadlineScheduler
 } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 
@@ -73,6 +76,63 @@ beforeEach(async () => {
 });
 
 describe("worker browser session factory", () => {
+  it("probes native availability without profile reset, credential reads, provisioning or login", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const native = fakeLauncher(); let profileAdmissions = 0, secretReads = 0, logins = 0;
+      const binding = recordingBindings().ucpath; assert.ok(binding);
+      const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
+        scheduler: NEVER_SCHEDULER, slotOrdinal: () => 1, newSessionId: () => SESSION_ID,
+        protectedSecrets: { read: () => { secretReads++; throw new Error("probe must not read credentials"); } },
+        admitProfile: async input => { profileAdmissions++; return BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 1, resetRequired: true }); },
+        bindings: { ucpath: { ...binding, login: async () => { logins++; throw new Error("probe must not log in"); } } }, launcher: native.launcher });
+      await factory.probeProfile({ workerId: WORKER_ID, system: "ucpath", signal: new AbortController().signal });
+      assert.equal(native.launches().length, 1); assert.equal(native.contextClosed(), true);
+      assert.equal(profileAdmissions, 0); assert.equal(secretReads, 0); assert.equal(logins, 0);
+      assert.equal(existsSync(workerProfileDirectory({ profileRoot: config.paths.browserProfileRoot, slotOrdinal: 1, system: "ucpath" })), true);
+    });
+  });
+  it("refuses missing retained profile directories without launching or creating them", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const native = fakeLauncher(), directory = workerProfileDirectory({profileRoot:config.paths.browserProfileRoot,slotOrdinal:1,system:"crm"});
+      await assert.rejects(probeClosedBrowserProfile({profileRoot:config.paths.browserProfileRoot,
+        launch:{profileDirectory:directory,extensionDirectory:config.paths.duoExtensionDir,downloadsPath:config.paths.downloadsDir,viewport:{width:800,height:600},timeoutMs:1000},
+        clock:CLOCK,scheduler:NEVER_SCHEDULER,closeProofMs:1000,signal:new AbortController().signal,launcher:native.launcher}), ProfileCustodyUnavailableError);
+      assert.equal(native.launches().length,0);assert.equal(existsSync(config.paths.browserProfileRoot),false);
+    });
+  });
+  for (const closure of ["busy","missing-event","timeout"] as const) it(`refuses native ${closure} before an offline effect`, async () => {
+    await withTempRuntime(async ({config})=>{
+      const directory=workerProfileDirectory({profileRoot:config.paths.browserProfileRoot,slotOrdinal:1,system:"crm"});
+      mkdirSync(directory,{recursive:true,mode:0o700});
+      const native=fakeLauncher({emitCloseEvent:closure!=="missing-event",hangOnClose:closure==="timeout"});
+      let effects=0;
+      const operation=async()=>{
+        await probeClosedBrowserProfile({profileRoot:config.paths.browserProfileRoot,
+          launch:{profileDirectory:directory,extensionDirectory:config.paths.duoExtensionDir,downloadsPath:config.paths.downloadsDir,viewport:{width:800,height:600},timeoutMs:1000},
+          clock:CLOCK,scheduler:IMMEDIATE_SCHEDULER,closeProofMs:1000,signal:new AbortController().signal,
+          launcher:closure==="busy"?{launch:async()=>{throw new Error("Failed to create a ProcessSingleton for your profile directory.");}}:native.launcher});
+        effects++;
+      };
+      await assert.rejects(operation(),closure==="busy"?BrowserProfileStillClosingError:AuthoritySourceClosureUnprovedError);
+      assert.equal(effects,0);
+      if(closure!=="busy") await assert.rejects(operation(),ProfileCustodyUnavailableError);
+    });
+  });
+  it("maps Chromium profile-in-use refusal without reserving the queued run's next acquisition", async () => {
+    await withTempRuntime(async ({ config }) => {
+      const harness = fakeLauncher(); let launches = 0;
+      const factory = factoryFor(config, { ...harness, launcher: { launch: async input => {
+        launches++;
+        if (launches === 1) throw new Error("Failed to create a ProcessSingleton for your profile directory.");
+        return harness.launcher.launch(input);
+      } } }, recordingBindings());
+      await assert.rejects(factory.open(OPEN_INPUT), BrowserProfileStillClosingError);
+      const resource = await factory.open(OPEN_INPUT);
+      assert.equal(launches, 2);
+      await resource.close({ reason: "worker-stop" });
+      assert.equal(harness.contextClosed(), true);
+    });
+  });
   it("refuses a second launch of the stable profile after an uncertain launcher rejection", async () => {
     await withTempRuntime(async ({config}) => {
       let launches = 0;

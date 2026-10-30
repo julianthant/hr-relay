@@ -14,7 +14,7 @@ import { atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner }
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
-import { dirname, join } from "node:path";
+
 import { buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { OPERATOR_XLSX_MEDIA_TYPE } from "../../../../src/models/dashboard/xlsx-export.js";
@@ -223,11 +223,11 @@ export function createAuthorityAccountingTestWorld() {
     const path = databasePaths.get(database);
     if (path === undefined) throw new Error("fixture-authority-path-missing");
     const slot = database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-      commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex: 1,
-      expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0,
-      processId: process.pid, processAcquisitionId: randomUUID(), authorityPath: path,
-      processLockRoot: join(dirname(path), "locks"), now: NOW,
-    }, randomUUID()));
+    commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex: 1,
+    expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0,
+    processId: process.pid,
+    now: NOW
+}, randomUUID()));
     return slot;
   }
 
@@ -586,10 +586,10 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
       const path = databasePaths.get(db);
       if (path === undefined) throw new Error("fixture-authority-path-missing");
       db.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-        commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex: 1, expectedPoolVersion: 0,
-        processId: process.pid, processAcquisitionId: randomUUID(), authorityPath: path,
-        processLockRoot: join(dirname(path), "locks"), now: NOW,
-      }, randomUUID()));
+    commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex: 1, expectedPoolVersion: 0,
+    processId: process.pid,
+    now: NOW
+}, randomUUID()));
     } },
     { table: "worker_controls", mutate: db => {
       const request = CommandRequestSchema.parse({ commandId: UUID_1, family: "worker-browser", type: "plan-worker-count",

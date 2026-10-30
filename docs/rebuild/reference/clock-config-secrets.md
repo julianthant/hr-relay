@@ -25,6 +25,9 @@ Installation admission owns the active storage roots. None of these authorities 
 | Entrypoint admission and secure bootstrap | `src/backend/storage/admission/bootstrap-admission.ts`, `src/backend/app/bootstrap/secure-env-bootstrap.ts` |
 
 [Execution and sessions](execution-and-sessions.md) owns browser leases, Duo ceremonies, and shutdown.
+The strict `native-profile-probe` entry dispatches to the credential-free browser leaf before ordinary
+bootstrap import. It accepts only bounded stdin profile/deadline data and performs no credential
+GET/SET/DELETE, controller admission, provider initialization or authentication.
 [Operator trust](operator-trust.md) owns capture, classified local evidence, and outbound data.
 [Stores](stores.md) owns the table catalog. [Guards and tests](guards-and-tests.md) owns verification.
 
@@ -315,6 +318,17 @@ Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 
 0600 files, no-follow reads, fsync, atomic replacement, and lock-file safety.
 Each record retains its own transaction and recovery contract.
 
+The same private-file primitive serializes installation mutation at
+`<workspace>/.tracker/control/.installation-mutation.lock` and profile operations and registry
+publication at their distinct machine-root `.profile-ops.lock` and `.profile-registry.lock` paths.
+Each file contains only a private nonce; parent identity, file inode, bytes and fsync bind exact
+release. Callbacks are synchronous, with a ten-second wait budget and 25ms polling.
+The first genuine root workspace initialization authenticates and clears only these exact prior
+fixed locks before children or reservations exist. Malformed or unproved evidence remains held;
+the same lifetime never reaps a current lock. Pending publication validation runs without settlement
+effects during that startup inspection. Key-stage and credential-anchor publication reuse the
+held installation mutation through an operation-bound read scope, which expires on callback exit.
+
 Credential envelopes, keys, locks, and other private documents require mode `0600`. SQLite file
 witnesses follow the canonical database policy: an owned, one-link, regular non-symlink file with no
 group or world write permission beneath validated private profile ancestry. A safe `0644` database
@@ -350,11 +364,22 @@ backups. A missing or corrupt current witness refuses instead of supplying an em
 Same-enrollment backups remain readable, and restore still refuses a backup that would lower a burned
 counter. Decrypt refuses during pending publication; that check does not change the separate
 same-issued or stopped publication settlement. Erase does not delete or import `duo-webauthn.json`.
-`storage upgrade --machine-control` acquires the same stopped maintenance admission, which does not
-require marker 3, and converts only continuity schema 1 plus registry marker 2 into continuity schema
-2 plus marker 3. It backs up those two control files before mutation and reads them back. A failed
-snapshot close keeps that restore admission. The control backup is not a profile SQLite backup or a
-Duo-key backup. Marker or continuity versions outside that pair fail as an unsupported hold.
+`storage upgrade --machine-control` acquires the same stopped maintenance admission and converts
+continuity schema 1/marker 2 or schema 2/marker 3 into strict continuity schema 3/marker 4. Ordinary
+startup reads only the current pair. Conversion preserves existing Duo continuity and requires
+authenticated empty suspect membership before publishing an empty completed-restore history. An
+unbound suspect or an existing prior upgrade directory remains a hold. The operation backs up both
+control files before mutation and reads them back; these are not profile SQLite or Duo-key backups.
+A failed snapshot close retains its maintenance admission.
+
+Completed restores append exact profile, operation, source generation, outcome and retained suspect
+file identities to `control/profile-registry.json` before removing the restore journal. Recovery
+accepts the identical append once and refuses divergent custody. Credential inventory validates the
+recorded paths, inode, bytes and complete companions, then scans the authenticated SQLite copies
+through the existing read-only owner. Missing, substituted or extra files remain unknown. Registry
+mutations preserve this history. Profile relocation is unsupported; the raw lease also refuses
+completed history before destination or journal effects because its file identities cannot be
+carried through an unverified copy.
 
 The selected ChatGPT account owner fetches its current model catalog in server order and returns only
 list-visible slugs and display names. Assistant requests use that catalog, explicit trusted model
@@ -506,7 +531,7 @@ Application settings, credentials, and environment files are not test-input fall
 ## Installation roots, boot, and maintenance
 
 `config/runtime-isolation.json` and `rebuildRuntimeIsolation` pin the default state root
-`.tracker/data`, artifact root `.tracker/data/artifacts`, backend port `3938`, frontend port `5174`,
+`.tracker/data`, artifact root `.tracker/data/artifacts`, backend port `3938`, lifetime lock port `3939`, frontend port `5174`,
 process-lock root `.tracker/data/locks`, browser root `.tracker/data/browsers`, and browser session
 namespace `hrauto-rebuild`. The default paths are checkout-relative.
 The installation locator becomes the active authority for the state and artifact pair;
@@ -514,35 +539,26 @@ process locks remain at the fixed checkout location. A root pair must be canonic
 and the artifact root cannot contain the state root.
 
 `installation.ts` stores checkout control under `.tracker/control` with `installation.json`,
-`locator.json`, lifetime leases, journals, and relocation receipts. Root ownership uses
+`locator.json`, journals, and relocation receipts. Root ownership uses
 `.runtime-owner.json`; `.runtime-source-fence.json` is a negative witness. An established missing or
 malformed locator refuses. Source markers and retained data never select a fallback installation.
 `RuntimeAdmission` rechecks held custody and exact permitted storage paths throughout use.
-Shared admission supports runtime openers; exclusive admission excludes them for offline operations.
-The installation owner retains its executing process's immutable birth identity after one successful
-OS observation. Own-PID lease rows still compare their stored birth token against that witness on
-every use; peer process observations remain fresh. Unknown initial identity refuses. Lease files,
-control witnesses, profile claims and generations continue to be checked throughout use.
+Shared and exclusive admission handles retain in-process mode exclusion and revocation. The kernel-held
+lifetime listener owns process exclusion: bootstrap binds the dedicated configured loopback `lockPort`
+before installation admission and holds it through shutdown. A busy port refuses with
+`RUNTIME_ALREADY_RUNNING`. Workers receive the listening handle over IPC before storage admission;
+each worker retains its copy through parent disconnect and its write-safe drain. The port stays held
+while any parent or worker copy remains open. Standalone and offline commands acquire the same port.
 
 `acquireEntrypointAdmission` adopts or initializes the genuinely empty default installation before
 serving it. It verifies an existing native database read-only; initial authority creation uses a
 path-bound initialization capability while adoption remains pending. An established installation
 with a missing database does not become fresh merely because owner markers survive.
 
-The admission mutex publishes a complete `owner.json` in a private temporary directory and renames
-the directory to `admission-mutex`. Release renames it away before deletion. It waits at most five
-monotonic seconds for occupied complete custody. An empty mutex raises `AdmissionMutexEmptyError`,
-a subtype of `AdmissionMutexBusyError`, with the explicit `storage recover-admission --empty` remedy.
-Startup may recover and retry once only when exact process birth identity proves the owner gone or
-reused. Recovery rechecks a settled locator, ownership witnesses, leases, process locks, and absent
-pending journal under fixed restore admission. Live, unknown, unsafe, or divergent custody refuses.
-Recovery writes a durable receipt under `.tracker/control/admission-mutex-recovery/`.
-
-Healthy profile reads create no mutex. An observed generic mutex may coexist with the read only
-when its private directory, sole canonical owner record and freshly observed OS birth identity prove
-a live holder. Unknown, dead, malformed or unsafe custody refuses. Registry publication intent retains
-its recovery path; locator, registry continuity, operations and erasure evidence must remain exact
-across the read. An unrelated lease mutex disappearing does not revoke an otherwise unchanged profile.
+The controller publishes machine registry and profile-operation changes synchronously through their
+atomic files and journals. Worker machine-control admission is read-only: it checks current locator,
+registry continuity, operations and erasure evidence, and refuses pending publication that needs
+controller repair. Releasing a parent admission revokes its derived profile children.
 
 `secure-env-bootstrap.ts` accepts only `cli` and `test-target-document-number` runners and awaits
 the selected runner. Production dashboard bundle validation precedes installation admission.
@@ -650,10 +666,7 @@ and divergent evidence refuse. Restore candidate validation in `relocation-resto
 checks current receipt-compatible relocation history and destination snapshot identities before
 replacement. Copied older-location backup evidence is not a current recovery candidate.
 
-The explicit commands `storage recover-admission --pid <owner-pid>` and
-`storage recover-admission --empty` hold fixed restore admission and preserve installation identity.
-They quarantine proven abandoned mutex custody rather than repairing a relocation journal.
-`storage recover-restore` owns interrupted restore settlement.
+`storage recover-restore` owns interrupted restore settlement under the lifetime listener.
 
 ## Settings and readiness readback
 
@@ -737,7 +750,7 @@ verification or recovery holds continue to block closure.
 
 Profile erasure publishes its canonical journal transition through the existing installation control publication intent. Control retains a typed head and verified registration origin for every registered profile; missing, substituted or rolled-back journal/anchor evidence blocks protected availability. Only the actual credential owner can issue the value-free capture and exact erase-intent witness. Interrupted erasure retains its original command/write/receipt and permits only authenticated settlement; ordinary reads and writes cannot treat the pending transition as available.
 
-Offline profile restore delegates to the same exclusive parent installation lease, stopped proof and process restore admission. It binds canonical profile SQLite, verified backup physical origin, current control and external erasure head. Replacement invalidates selected sessions idempotently through the existing restore journal; recovery acknowledges the exact observed outcome without repeating replacement. Current credentials and machine evidence are outside the SQLite payload. Whole-machine rollback without an independent retained witness and profile restore after unsupported whole-machine relocation refuse before staging.
+Offline profile restore requires the exact workspace-bound `OfflineMaintenanceOperation` issued by the genuine root lifetime. Recovery can issue that operation before admission and passes the same object into the exclusive installation lease. Each explicit command consumes it once and retains it through validation, source IO, and owned closure. Copies, foreign roots, expired operations, and replay refuse before effects. Runtime lock artifacts from an older build produce `RUNTIME_OLD_BUILD_ARTIFACTS` without interpretation or deletion. Restore binds canonical profile SQLite, verified backup physical origin, current control, and the external erasure head. Replacement invalidates selected sessions idempotently through the existing restore journal. Recovery acknowledges the exact observed outcome without repeating replacement. Current credentials and machine evidence remain outside the SQLite payload. Whole-machine rollback without an independent retained witness and profile restore after unsupported whole-machine relocation refuse before staging.
 
 Source snapshot removal, isolated binding/login-copy database close, authenticated source/control descriptors, stopped backup descriptors and actual restore/process-custody close paths are owned closure boundaries. Failed closure raises `AuthoritySourceClosureUnprovedError` from the pure `storage/source-closure.ts` and retains the exact failed resource privately for the failure lifetime. Validation failures remain ordinary when actual database and snapshot cleanup succeeds; an uncertain close never authorizes exclusive-admission release or automatic retry.
 
@@ -804,7 +817,17 @@ profile using the ordinary onboarding path.
 
 `npm run cli -- storage backup [--json]` still backs up a selected READY profile through its
 registered child, or a stopped native6 flat source through its finite backup admission. The command
-neither signs in nor creates a profile. Coupled copies complement the verified SQLite backup.
+neither signs in nor creates a profile. Its owner holds the same root-issued offline operation through
+an explicit native browser closure step, then captures source bytes and runs the backup. The real
+probe can update browser state; the backup copies that post-probe state and never launches a browser.
+A private in-memory closure observation binds the exact operation, admitted source, browser census
+and directory identities. Backup revalidates that observation and read-only OS closure at its IO
+boundaries; copied, foreign, expired or changed observations refuse. Unproved closure retains owners.
+Coupled copies complement the verified SQLite backup. Every existing source file keeps its bytes,
+inode and mode throughout backup IO, including browser Preferences; the probe finishes before that
+interval. The flat backup is a one-time pre-migration source snapshot. A fresh command probes again;
+changed post-probe source refuses with STORAGE_BACKUP_SOURCE_CHANGED and preserves the first
+verified backup and source.json. It never overwrites that receipt or creates a versioned substitute.
 An exact interrupted copy prefix may resume; missing, extra or corrupt completed copies refuse.
 A genuinely abandoned admission mutex requires current closed process custody and exact backup,
 source-record, allocation and recovery-history evidence. Unproved source closure retains custody.

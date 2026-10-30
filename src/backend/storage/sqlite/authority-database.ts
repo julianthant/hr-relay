@@ -1,31 +1,32 @@
-import { deriveWriteAuthorityReason } from "../../../rules/write-safety/write-safety.js";
-import { CanonicalCrashRecoveryRequestSchema } from "./run-store-contracts.js";
+import { assertOfflineMaintenanceForProcessRoot, type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
+import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
+import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
+import { authoritySourceDatabaseIdentity } from "./database-identity.js";
+import { CanonicalCrashRecoveryRequestSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalClaimNextRequestSchema, WorkerStandingRecoveryRequestSchema, RunClaimOutcomeSchema, RunClaimRequestSchema, RunClaimTokenSchema, RunHeartbeatOutcomeSchema, RunHeartbeatRequestSchema, RunItemQuerySchema, RunPresentationRequestSchema, RunInjectPatchesRequestSchema, RunPriorityBumpRequestSchema, RunRequeueRequestSchema, RunResumeRequestSchema, RunTransitionRequestSchema, RunUpdateOutcomeSchema, StartPlanConsumeOutcomeSchema, StartPlanConsumeRequestSchema, WorkerControlRequestSchema, WorkerLifecycleRequestSchema, WorkerPoolPlanOutcomeSchema, WorkerPoolPlanRequestSchema, WorkerStartOutcomeSchema, WorkerStartRequestSchema, WorkerUpdateOutcomeSchema, type RunClaimOutcome, type RunHeartbeatOutcome, type RunUpdateOutcome, type StartPlanConsumeOutcome, type WorkerPoolPlanOutcome, type WorkerStartOutcome, type WorkerUpdateOutcome } from "./run-store-contracts.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
 import { retainAuthoritySourceClosure } from "../source-closure.js";
-import { notificationCollectionTarget, type NotificationCollectionOperation, type NotificationCollectionTarget } from "../../../models/notifications/notifications.js";
+import { notificationCollectionTarget, type NotificationCollectionOperation, type NotificationCollectionTarget, NotificationFoldRequestSchema, NotificationRecordOutcomeSchema, NotificationRecordSchema, NotificationStateRequestSchema, requireMutableNotification, type NotificationRecord, type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
 import { AssistantActionRecordSchema, AssistantChatRecordSchema, AssistantGrantRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
 import { createWorkbookLibraryRepository, validateWorkbookLibrary } from "./workbook-library-repository.js";
 import { WorkerControlRefusal, WorkerControlRecordSchema, type WorkerResetBinding } from "../../../models/run/worker-control.js";
-import { terminalDelegationDependencyRecord } from "../../../models/run/result.js";
-import { delegationJoinDisposition } from "../../../rules/workflow/dependencies.js";
+import { terminalDelegationDependencyRecord, RunResultRecordSchema, createRunTerminalEvidenceResult, deriveTerminalFailureDigest, terminalEvidenceResult, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, type RunResultRecord } from "../../../models/run/result.js";
+import { delegationJoinDisposition, DelegationManifestSchema, DependencyRecordSchema, type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
 import { WorkerSlotRecordSchema, workerPoolMember } from "../../../models/run/worker-slot.js";
-import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
-import { readStartupProcessClosure, readProcessCustodyFile, WorkerProcessLockFileSchema, authenticateWorkerBirthCustody, authenticateRetainedWorkerCustody, type RuntimeProcessLockHandle, type RestoreAdmissionHandle, assertRuntimeRestoreAdmission, observeRuntimeLockSnapshot, authoritySourceDatabaseIdentity } from "./runtime-process-locks.js";
+import { createReadonlyAuthoritySnapshot, withReadonlyAuthoritySnapshot, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
-import { DiagnosticAttachmentSchema } from "../../../models/trust/diagnostic.js";
+import { DiagnosticAttachmentSchema, DiagnosticBundleSchema, type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
 import { authenticateParkedWriteRecheck, authenticateAuditedParkedWriteResolution, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { prepareNativeRunDeletion, executeNativeRunDeletion, containsDeletionArtifactReference } from "./native-run-deletion.js";
 import { inspectArtifactDeletionFile, removeArtifactDeletionFile, pendingDiagnosticArtifacts, reclaimDiagnosticStages } from "../artifacts/content-addressed-artifact-writer.js";
 import { deletedRunFromRow } from "./deleted-run-row.js";
-import { importedArtifactFromRow } from "./imported-artifacts.js";
-import { generatedArtifactFromRow } from "./generated-artifacts.js";
+import { importedArtifactFromRow, createImportedArtifactRepositories } from "./imported-artifacts.js";
+import { generatedArtifactFromRow, createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { extractedArtifactFromRow } from "./extracted-artifact-row.js";
-import { workerSlotFromRow } from "./worker-slots.js";
-import { authenticateWorkerSupervisorEffect, consumeWorkerSupervisorEffect, type WorkerSupervisorEffect, authenticateWorkerControlClosure, consumeWorkerControlClosure, type WorkerControlClosure, assertWorkerResetParkedWrite, workerControlFromRow, workerBrowserFromRow } from "./worker-control.js";
+import { workerSlotFromRow, requireWorkerPoolRoster, createWorkerSlotRepository, readWorkerReservationCustody, readWorkerVerificationProfiles, admitWorkerVerification, retireWorkerVerification } from "./worker-slots.js";
+import { authenticateWorkerSupervisorEffect, consumeWorkerSupervisorEffect, type WorkerSupervisorEffect, authenticateWorkerControlClosure, consumeWorkerControlClosure, type WorkerControlClosure, assertWorkerResetParkedWrite, workerControlFromRow, workerBrowserFromRow, createWorkerControlRepository, readWorkerControl, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
 import { readAppSettings } from "./settings-storage.js";
 import { isNativeOrdinaryTable, nativeOrdinaryRecordFromRow, type NativeOrdinaryTable } from "./native-record-row.js";
-import { requireWorkerPoolRoster, createWorkerSlotRepository, readWorkerReservationCustody } from "./worker-slots.js";
 import { NativeCommandAuditSchema, commandFromRow, insertNativeCommand, settleNativeCommand } from "./command-record-row.js";
 import { runRecordColumns, runRecordFromRow, updateRunRecord, transitionRunRecord } from "./run-record-row.js";
 import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
@@ -33,20 +34,16 @@ import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflo
 import { selectTransactions } from "./transaction-selection.js";
 import { createRunSearchIndex, runSearchIndexFromRow } from "./run-search-index.js";
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
-import { createWorkerControlRepository, readWorkerControl, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
-import { WorkerControlBasisSchema } from "../../../models/run/worker.js";
+import { WorkerControlBasisSchema, LIVE_WORKER_STATES, WorkerLeaseRecordSchema, isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
 import { createNotificationMetadataRepositories, validateNotificationMetadata } from "./notification-publications.js";
 import { createExplorerOverrideRepository, validateExplorerOverrides } from "./explorer-overrides.js";
 import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-provenance.js";
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
-import type { InstallationLease, VerifiedRelocationActivationIntent } from "../admission/installation.js";
 import { createRunSummaries } from "./run-summaries.js";
-import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
-import { createImportedArtifactRepositories } from "./imported-artifacts.js";
 import { ArtifactRefSchema, type ArtifactRef } from "../../../models/artifacts/artifacts.js";
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
@@ -54,14 +51,11 @@ import { completionFromAuthorization } from "../../../models/run/completion.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import { ConfirmationPublicationSchema, confirmationPublicationFromRow, type ConfirmationPublication, confirmedOperationTimeline, reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
-import { timelineAppendContent, timelineCheckpointReference } from "../../../models/events/timeline.js";
+import { timelineAppendContent, timelineCheckpointReference, TimelinePageRequestSchema, type TimelineRepository, type TimelineAppend } from "../../../models/events/timeline.js";
 import { deriveStableUuid, lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { createTimelineRepository, timelineEventFromRow, TimelineRecordError } from "./timeline-repository.js";
-import { withReadonlyAuthoritySnapshot, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
-import { TimelinePageRequestSchema } from "../../../models/events/timeline.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
-import type { TimelineRepository, TimelineAppend } from "../../../models/events/timeline.js";
-import { CommandIdentityConflictError } from "../../../rules/commands/commands.js";
+import { CommandIdentityConflictError, AuthorityCommandAuditRecordSchema, AuthorityCommandRecordSchema, StoredAuthorityCommandRecordSchema, BulkParentCommandRecordSchema, BulkRunCommandAcceptanceRecordSchema, CommandAuditRecordSchema, CommandRequestSchema, StorageRelocationCommandRequestSchema, RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -69,57 +63,38 @@ import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, statSync, lstatSync, openSync, closeSync, fsyncSync, unlinkSync, constants } from "node:fs";
-import { dirname, resolve, join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { assertWorkflowRunResultAuthorization, descriptorRuntimeNodes, workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityUpgradeRecordSchema, AuthorityTableNameSchema, ProjectionTableNameSchema, type AuthorityTableName, type TableName, type RunRecordRefusal } from "../../../models/config/authority.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { Clock } from "../../../rules/time/clock.js";
-import { systemClock, localDatePart } from "../../../rules/time/clock.js";
-import { AuthorityCommandAuditRecordSchema, AuthorityCommandRecordSchema, StoredAuthorityCommandRecordSchema, BulkParentCommandRecordSchema, BulkRunCommandAcceptanceRecordSchema, CommandAuditRecordSchema, CommandRequestSchema, StorageRelocationCommandRequestSchema, RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
+import { type Clock, systemClock, localDatePart } from "../../../rules/time/clock.js";
 import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
 import { type ActiveRuntimeConfigRecord, type RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
-import { DelegationManifestSchema, DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
-import type { DelegationReadiness } from "../../../rules/workflow/dependencies.js";
 import { DelegationSettlementRequestSchema, DelegationRetryRequestSchema } from "./delegation-contracts.js";
 import { authenticateDescendantHome, authenticateDelegationGroup, authenticateDelegationDependency, assertDelegationReplacement, authenticateCancellationSource, delegationEdgeForChild, resetDependencySnapshot, readDelegationCancellation, prepareDelegationRetry, childTerminalSettlement, readDelegationReadiness, retainedDelegationManifests, lifecycleChildEdge, readDelegationEvidence } from "./delegation-authority.js";
 import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
 import { ActorIdSchema, ArtifactIdSchema, BrowserSystemIdSchema, CommandAuditIdSchema, CommandIdSchema, DiagnosticBundleIdSchema, FailureFingerprintSchema, FingerprintSchema, IsoInstantSchema, ItemIdSchema, LOCAL_OPERATOR_ACTOR_ID, RunIdSchema, RunSessionIdSchema, TraceIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema } from "../../../rules/identity/ids.js";
-
-
-
-
 import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } from "../../../models/run/record.js";
 import { DeletedRunRecordSchema, RunDeleteInputSchema, type DeletedRunRecord } from "../../../models/run/deleted-run.js";
-import { RunResultRecordSchema, createRunTerminalEvidenceResult, deriveTerminalFailureDigest, terminalEvidenceResult, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, type RunResultRecord } from "../../../models/run/result.js";
 import { FailureTerminalAuthorizationRecordSchema, TerminalAuthorizationRecordSchema, type TerminalAuthorizationRecord } from "../../../models/run/terminal-authorization.js";
 import { StartPlanRecordSchema, isStartPlanExpired, type StartPlanRecord } from "../../../models/run/start-plan.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
 import { IntakeSessionSchema } from "../../../models/intake/session.js";
 import { AdmittedExtractionSchema } from "../../../models/ocr/extraction.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
-import { LIVE_WORKER_STATES, WorkerLeaseRecordSchema, isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
 import { DuoCeremonyLeaseAcquireRequestSchema, DuoCeremonyLeaseRecordSchema, DuoCeremonyLeaseReleaseOutcomeSchema, DuoCeremonyLeaseTakeoverSchema, isDuoCeremonyLeaseLive, type DuoCeremonyLeaseAcquireRequest, type DuoCeremonyLeaseRecord, type DuoCeremonyLeaseReleaseOutcome } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { RunSessionRecordSchema, type RunSessionRecord } from "../../../models/run/session.js";
 import { WorkerPoolRecordSchema, workerPoolVersion, type WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { isDuoCeremonyLeaseToken, mintDuoCeremonyLeaseToken, retireDuoCeremonyLeaseToken, type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
-import { CanonicalClaimNextRequestSchema, WorkerStandingRecoveryRequestSchema, WorkerLifetimeBirthSchema, RunClaimOutcomeSchema, RunClaimRequestSchema, RunClaimSweepOutcomeSchema, RunClaimSweepRequestSchema, RunClaimTokenSchema, RunHeartbeatOutcomeSchema, RunHeartbeatRequestSchema, RunItemQuerySchema, RunPresentationRequestSchema, RunInjectPatchesRequestSchema, RunPriorityBumpRequestSchema, RunRequeueRequestSchema, RunResumeRequestSchema, RunTransitionRequestSchema, RunUpdateOutcomeSchema, StartPlanConsumeOutcomeSchema, StartPlanConsumeRequestSchema, WorkerControlRequestSchema, WorkerLifecycleRequestSchema, WorkerPoolPlanOutcomeSchema, WorkerPoolPlanRequestSchema, WorkerStartOutcomeSchema, WorkerStartRequestSchema, WorkerSweepRequestSchema, WorkerUpdateOutcomeSchema, type RunClaimOutcome, type RunHeartbeatOutcome, type RunUpdateOutcome, type StartPlanConsumeOutcome, type WorkerPoolPlanOutcome, type WorkerStartOutcome, type WorkerUpdateOutcome } from "./run-store-contracts.js";
 import { FailureTerminalizationReportSchema, FailureTerminalizationRequestSchema, SuccessTerminalizationReportSchema, SuccessTerminalizationRequestSchema, type FailureTerminalizationReport, type FailureTerminalizationStorageStep, type SuccessTerminalizationReport, type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { RunCheckpointRecordSchema, checkpointLookupKey, checkpointRecordKey, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
-import { NotificationFoldRequestSchema, NotificationRecordOutcomeSchema, NotificationRecordSchema, NotificationStateRequestSchema, requireMutableNotification, type NotificationRecord, type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
-
-
-import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../models/trust/evidence.js";
 import { DryRunScenarioResultSchema, type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
-
-
-
-
 import { IdempotencyKeySchema, WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteAttemptRecord, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isCurrentAuthoritySchemaVersion, isSupportedStoppedAuthoritySchemaVersion, SQLITE_MIGRATIONS, deriveAuthorityUpgradePlanDigest, auditMigrationTableCoverage, migrationTableNames, tableClassification } from "./migrations.js";
@@ -352,8 +327,6 @@ type RunRepository = Readonly<{
   nextWorkflowRunNumber(workflow: string): number;
   listByWorker(workerId: string): readonly RunRecord[];
 
-  listClaimRecoveryCandidates(input: unknown): readonly RunRecord[];
-
   listBySession(sessionId: string): readonly RunRecord[];
 
   listParkedAtGate(): readonly RunRecord[];
@@ -382,8 +355,6 @@ type RunRepository = Readonly<{
   bumpPriority(input: unknown): RunUpdateOutcome;
 
   injectCheckpointPatches(input: unknown): RunUpdateOutcome;
-
-  sweepExpiredClaims(input: unknown): readonly z.infer<typeof RunClaimSweepOutcomeSchema>[];
 }>;
 
 // Failure fingerprint is a class join key, never inferred message text.
@@ -478,7 +449,6 @@ type WorkerLeaseRepository = Readonly<{
   reportLifecycle(input: unknown): WorkerUpdateOutcome;
   control(input: unknown): WorkerUpdateOutcome;
   reserveControl(workerId: string, basis: unknown, commandId: string, now: string): WorkerLeaseRecord;
-  sweepExpired(input: unknown): readonly WorkerLeaseRecord[];
 }>;
 
 
@@ -1409,7 +1379,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
   }
 }
 
-function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typeof inspectNativeAuthority>) {
+function browserProfileInventory(database: DatabaseSync) {
   const settings = readAppSettings(database);
   const settingsAuthority = settings === undefined
     ? Object.freeze({ state: "never-initialized" as const })
@@ -1418,18 +1388,23 @@ function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typ
     .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", row)));
   const slots = database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all().map(workerSlotFromRow);
   const browsers = database.prepare("SELECT * FROM browser_sessions ORDER BY id").all().map(workerBrowserFromRow);
-  const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
   const controls = database.prepare("SELECT * FROM worker_controls ORDER BY command_id").all().map(row => {
     const record = workerControlFromRow(row), authenticated = readWorkerControl(database, record.commandId);
     if (authenticated === undefined) throw new Error("worker-control-command-binding-mismatch");
     return authenticated;
   });
-  const reservations = readWorkerReservationCustody(database, slots, controls);
+  return { settingsAuthority, configSnapshots, slots, browsers, controls, verificationProfiles: readWorkerVerificationProfiles(database, slots) };
+}
+
+function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typeof inspectNativeAuthority>) {
+  const browserProfiles = browserProfileInventory(database);
+  const reservations = readWorkerReservationCustody(database, browserProfiles.slots, browserProfiles.controls);
+  const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
   const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow);
   const writeIntents = database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row)));
   const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
   const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
-  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, settingsAuthority, configSnapshots, slots, reservations, browsers, leases, controls, runs, writeIntents, duoLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
+  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, ...browserProfiles, reservations, leases, runs, writeIntents, duoLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
 }
 
 function flatQueuedRunCancellationInventory(database: DatabaseSync, assertResourcesClosed: (facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) => void) {
@@ -1451,13 +1426,13 @@ function flatQueuedRunCancellationInventory(database: DatabaseSync, assertResour
   return { digest: sha256Hex(canonicalJsonStringify({ inspection: nativeInspection, facts })), candidates };
 }
 
-function requireStoppedUpgradeSource(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, backup = false): void {
+function requireStoppedUpgradeSource(admission: RuntimeAdmission, path: string, processLockRoot: string, _clock: Clock, backup = false): void {
   if (backup) requireRuntimeAdmission(admission).assertStoppedAuthorityBackup(path, processLockRoot);
   else requireRuntimeAdmission(admission).assertStoppedProfileUpgrade(path, processLockRoot);
   requireDatabaseSourcePath(path);
-  const locks = observeRuntimeLockSnapshot({ processLockRoot,
-    sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) }, clock);
-  if (Object.values(locks.processLocks).some(lock => lock.state === "active")) throw new Error("runtime-active: stop server, workers and geocode before storage upgrade");
+  const operation = admission.maintenanceOperation();
+  admission.assertOfflineMaintenance(operation);
+  assertOfflineMaintenanceForProcessRoot(operation, processLockRoot);
 }
 
 function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): AuthorityCopyInspection {
@@ -1922,25 +1897,59 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  static readProfileRestoreBrowserInventory(admission: RuntimeAdmission, processLockRoot: string, restore: OfflineMaintenanceOperation) {
+    const owner = requireRuntimeAdmission(admission), path = join(owner.stateRoot, "state.db");
+    const assertHeld = () => {
+      owner.assertExclusive(); owner.assertProfileRuntime();
+      const context = owner.readInstallationContext();
+      if (context === undefined) throw new Error("profile-restore-context-required");
+      owner.assertFixedProcessLockRoot(context.workspace, processLockRoot);
+      assertOfflineMaintenanceForProcessRoot(restore, processLockRoot);
+    };
+    assertHeld();
+    return withAuthorityDatabaseReadOnly(owner, path, database => {
+      const version = readIntPragma(database, "user_version"), meta = readMetaRow(database), binding = owner.profileBinding;
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID
+        || version !== owner.profileMaintenanceSchemaVersion() || meta.schema_version !== version
+        || meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) {
+        throw new Error("profile-maintenance-binding-mismatch");
+      }
+      const custody = Object.freeze(browserProfileInventory(database));
+      assertHeld();
+      return custody;
+    });
+  }
+
+  static readStoppedBrowserInventory(admission: RuntimeAdmission, processLockRoot: string, clock: Clock) {
+    const owner=requireRuntimeAdmission(admission),path=join(owner.stateRoot,"state.db");
+    owner.assertStoppedAuthorityBackup(path,processLockRoot);
+    const expected=AuthorityDatabase.inspectStoppedUpgrade(owner,path,processLockRoot,clock);
+    return withAuthorityDatabaseReadOnly(owner,path,database=>{
+      const inspection=inspectNativeAuthority(database,expected.schemaVersion);
+      if(inspection.authorityGeneration!==expected.authorityGeneration||inspection.authorityContentFingerprint!==expected.authorityContentFingerprint)throw new Error("stopped-browser-source-changed");
+      if(inspection.installationId!==undefined&&(inspection.installationId!==owner.profileBinding.installationId||inspection.profileId!==owner.profileBinding.profileId))throw new Error("profile-maintenance-binding-mismatch");
+      return Object.freeze(browserProfileInventory(database));
+    });
+  }
+
   static async readFlatQueuedRunCancellation(path: string) {
     const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
     return withReadonlyAuthoritySnapshot(path, database => flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed));
   }
 
   // This finite native6 command cannot grant ordinary profile runtime authority.
-  static async cancelQueuedRunsNative6(lease: InstallationLease, restore: RestoreAdmissionHandle, expectedDigest: string, clock: Clock) {
-    const { assertInstallationLease, inspectFlatOfflineRunMaintenance } = await import("../admission/installation.js");
-    const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
+  static async cancelQueuedRunsNative6(browserClosure: ProfileBrowserClosure, lease: InstallationLease, restore: OfflineMaintenanceOperation, expectedDigest: string, clock: Clock) {
+    const { assertInstallationLease: assertLease, inspectFlatOfflineRunMaintenance } = await import("../admission/installation.js");
+    const assertInstallationLease: typeof import("../admission/installation.js").assertInstallationLease = assertLease;
+    const { assertCredentialCopyResourcesClosed, probeFlatBrowserInventoryClosed } = await import("../maintenance/profile-inventory.js");
     assertInstallationLease(lease);
     if (lease.mode !== "exclusive") throw new Error("queued-run-cancellation-exclusive-required");
     const workspace = lease.readInstallationContext().workspace;
     const installation = inspectFlatOfflineRunMaintenance(workspace);
     const stateRoot = lease.locator.stateRoot, path = join(stateRoot, "state.db");
     const assertHeld = () => {
-      lease.assertHeld(); assertRuntimeRestoreAdmission(restore, installation.processLockRoot);
-      const locks = observeRuntimeLockSnapshot({ processLockRoot: installation.processLockRoot,
-        sourceDatabaseIdentity: authoritySourceDatabaseIdentity(path) }, clock);
-      if (Object.values(locks.processLocks).some(lock => lock.state !== "stopped")) throw new Error("queued-run-cancellation-runtime-active");
+      lease.assertHeld(); assertOfflineMaintenanceForProcessRoot(restore, installation.processLockRoot);
+      lease.assertOfflineMaintenance(restore);
       if (canonicalJsonStringify(inspectFlatOfflineRunMaintenance(workspace)) !== canonicalJsonStringify(installation)
         || lease.locator.installationId !== installation.installationId) throw new Error("queued-run-cancellation-installation-changed");
     };
@@ -1949,6 +1958,10 @@ export class AuthorityDatabase implements Disposable {
     let runIds: string[] | undefined;
     let failure: { error: unknown } | undefined;
     try {
+      const initial=flatQueuedRunCancellationInventory(database,assertCredentialCopyResourcesClosed);
+      if(initial.digest!==expectedDigest)throw new Error("queued-run-cancellation-capture-changed");
+      await probeFlatBrowserInventoryClosed(stateRoot,maintenanceInventory(database,inspectNativeAuthority(database,6)),clock,browserClosure);
+      assertHeld();
       database.exec("BEGIN IMMEDIATE");
       try {
         const inventory = flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed);
@@ -1999,13 +2012,13 @@ export class AuthorityDatabase implements Disposable {
     return runIds;
   }
 
-  static readFlatBackupRecoveryInventory(path: string, restore: RestoreAdmissionHandle) {
-    assertRuntimeRestoreAdmission(restore, join(dirname(path), "locks"));
+  static readFlatBackupRecoveryInventory(path: string, restore: OfflineMaintenanceOperation) {
+    assertOfflineMaintenanceForProcessRoot(restore, join(dirname(path), "locks"));
     return withReadonlyAuthoritySnapshot(path, database => {
       const inspection = inspectNativeAuthority(database, 6);
       if (inspection.installationId !== undefined || inspection.profileId !== undefined) throw new Error("flat-backup-recovery-binding-refused");
       const facts = maintenanceInventory(database, inspection);
-      assertRuntimeRestoreAdmission(restore, join(dirname(path), "locks"));
+      assertOfflineMaintenanceForProcessRoot(restore, join(dirname(path), "locks"));
       return { inspection, facts };
     });
   }
@@ -2241,6 +2254,7 @@ export class AuthorityDatabase implements Disposable {
         upgrades: readAuthorityUpgradeRecords(this.#database),
         slots,
         reservations: readWorkerReservationCustody(this.#database, slots, controls),
+        verificationProfiles: readWorkerVerificationProfiles(this.#database, slots),
         leases: this.#database.prepare("SELECT * FROM worker_leases ORDER BY id").all()
           .map(row => this.#parseNativeRow("worker_leases", row, WorkerLeaseRecordSchema)),
         controls,
@@ -2519,38 +2533,119 @@ export class AuthorityDatabase implements Disposable {
       || this.#database.prepare("SELECT 1 FROM run_checkpoints WHERE run_id=? LIMIT 1").get(runId) !== undefined) throw new Error("startup-stale-queue-custody-unproved");
   }
 
-  crashRunRecoveryProof(runId: string) {
+  crashRunRecoveryIdentity(runId: string) {
     return this.withAuthorityReadSnapshot(() => {
       const run = this.#readRunRow(RunIdSchema.parse(runId));
       const claim = run === undefined ? undefined : runClaim(run);
-      if (run === undefined || claim === undefined || !("workerLifetime" in run.lifecycle) || run.lifecycle.workerLifetime === undefined) throw new Error("crash-recovery-claim-unproved");
-      const custody = this.workerLifetimeCustody(claim.workerId);
-      if (custody.state !== "dead" && custody.state !== "released") throw new Error("crash-recovery-owner-unproved");
-      if (run.lifecycle.workerLifetime.leaseGeneration !== custody.birth.leaseGeneration
-        || run.lifecycle.workerLifetime.membershipRevision !== custody.birth.member.membershipRevision) throw new Error("crash-recovery-lifetime-changed");
-      const originalFile = readProcessCustodyFile(join(custody.birth.processLockRoot, "workers", `${custody.birth.owner.acquisitionId}.lock.json`));
-      const original = WorkerProcessLockFileSchema.parse(JSON.parse(originalFile.bytes.toString("utf8")));
-      if (canonicalJsonStringify({ ...original, releasedAt: null }) !== canonicalJsonStringify(custody.birth.owner)) throw new Error("crash-recovery-original-changed");
-      const receipt = readStartupProcessClosure(custody.birth.processLockRoot, original);
-      const meta = this.getMeta();
-      if (receipt === undefined || receipt.authorityPath !== resolve(this.#path) || receipt.installationId !== meta.installationId
-        || receipt.profileId !== meta.profileId || !receipt.browserRoots.includes(join(dirname(this.#path), "browsers"))) throw new Error("crash-recovery-process-closure-unproved");
-      return { birth: custody.birth, originalFile: originalFile.witness, closureDigest: receipt.digest };
+      const lifetime = run !== undefined && "workerLifetime" in run.lifecycle ? run.lifecycle.workerLifetime : undefined;
+      if (run === undefined || claim === undefined || lifetime === undefined) throw new Error("crash-recovery-claim-unproved");
+      const slot = this.authority.workerSlots.get(claim.workerId), lease = this.authority.workerLeases.get(claim.workerId);
+      if (slot === undefined || slot.retiredAt !== null || lease === undefined
+        || lifetime.leaseGeneration !== lease.leaseGeneration || lifetime.membershipRevision !== slot.membershipRevision
+        || lease.workflow !== slot.workflow || !authenticateDescendantHome(this.authority, run, slot.workflow)) throw new Error("crash-recovery-lifetime-changed");
+      return { workerLifetime: lifetime };
     });
   }
 
-  recoverCrashedRun(input: unknown): RunRecord {
+  admitVerificationWorker(input: unknown, lock: RuntimeLifetimeLock) {
+    const request = WorkerVerificationAdmissionRequestSchema.parse(input);
+    if (!(lock instanceof RuntimeLifetimeLock)) throw new Error("verification-controller-required");
+    lock.assertHeld();
+    if (request.lockPort !== lock.port) throw new Error("verification-controller-mismatch");
+    const binding = this.#admission.profileBinding;
+    if (request.installationId !== binding.installationId || request.profileId !== binding.profileId) throw new Error("worker-verification-profile-mismatch");
+    return this.withAuthorityTransaction(repositories => admitWorkerVerification(repositories, request, randomUUID()));
+  }
+
+  retireVerificationWorker(input: unknown, lock: RuntimeLifetimeLock) {
+    const request = WorkerVerificationRetirementRequestSchema.parse(input);
+    if (!(lock instanceof RuntimeLifetimeLock)) throw new Error("verification-controller-required");
+    lock.assertHeld();
+    const binding = this.#admission.profileBinding;
+    if (request.installationId !== binding.installationId || request.profileId !== binding.profileId) throw new Error("worker-verification-profile-mismatch");
+    return this.withAuthorityTransaction(repositories => {
+      const hold = repositories.workerSlots.verification(request.workerId);
+      if (hold === undefined || hold.request.lockPort !== lock.port || hold.command.commandId !== request.grantCommandId || hold.slot.membershipRevision !== request.expectedRevision
+        || hold.request.installationId !== request.installationId || hold.request.profileId !== request.profileId
+        || workerPoolVersion(repositories.workerPools.get(hold.slot.workflow)) !== request.expectedPoolVersion) throw new Error("worker-verification-authority-unavailable");
+      if (repositories.workerLeases.get(request.workerId) !== undefined || repositories.runs.listByWorker(request.workerId).length !== 0
+        || this.#database.prepare("SELECT 1 FROM commands WHERE family='run-lifecycle' AND json_extract(request_json,'$.operation')='claim-next' AND json_extract(request_json,'$.request.workerId')=? LIMIT 1").get(request.workerId) !== undefined) throw new Error("worker-verification-unexpected-run-owner");
+      const facts = this.readProfileResourceCustody();
+      for (const runId of new Set(facts.writeIntents.filter(intent => intent.status !== "committed" && intent.status !== "observed-present").map(intent => intent.runId))) {
+        const run = repositories.runs.get(runId);
+        if (run === undefined || this.#workerOwnsUnsettledDescendantWrite(request.workerId, run)) throw new Error("worker-verification-unexpected-write-owner");
+      }
+      const browsers = repositories.workerControls.browsers(request.workerId);
+      const directory = join(this.#admission.stateRoot, "scratch", "live-smoke", hold.request.profileRunId, "browsers", `w${String(hold.slot.ordinal)}`, hold.request.system);
+      if (browsers.some(browser => browser.leaseGeneration !== hold.request.leaseGeneration || browser.system !== hold.request.system
+        || browser.profileDirectory !== directory || Date.parse(browser.openedAt) < Date.parse(hold.request.now))) throw new Error("worker-verification-browser-binding-conflict");
+      const duo = this.#database.prepare("SELECT * FROM auth_leases WHERE holder_worker_id=? AND state='held'").all(request.workerId)
+        .map(row => this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema));
+      if (duo.some(lease => lease.credentialKey !== hold.request.credentialKey || lease.holder.system !== hold.request.system
+        || Date.parse(lease.acquiredAt) < Date.parse(hold.request.now))) throw new Error("worker-verification-duo-binding-conflict");
+      const released: { kind: "browser" | "duo" | "verification"; id: string; generation: number }[] = [];
+      if (request.cleanup === "interrupted") {
+        for (const browser of browsers) {
+          if (browser.health === "closed") continue;
+          repositories.workerControls.observe({ ...browser, health: "closed", observedAt: request.now });
+          released.push({ kind: "browser", id: browser.sessionId, generation: browser.leaseGeneration });
+        }
+        for (const lease of duo) {
+          this.#writeDuoCeremonyLease(DuoCeremonyLeaseRecordSchema.parse({ ...lease, state: "released", releasedAt: request.now,
+            version: lease.version + 1, updatedAt: request.now }), "update");
+          released.push({ kind: "duo", id: lease.credentialKey, generation: lease.generation });
+        }
+      } else if (duo.length !== 0 || browsers.some(browser => browser.health !== "closed")) throw new Error("worker-verification-cleanup-unproved");
+      const slot = retireWorkerVerification(repositories, request, randomUUID());
+      released.push({ kind: "verification", id: request.workerId, generation: request.expectedRevision });
+      return { slot, released };
+    });
+  }
+
+  settleInterruptedWorker(lock: RuntimeLifetimeLock, workerId: string, leaseGeneration: number, now: string) {
+    return this.withAuthorityTransaction(repositories => {
+      const lease = repositories.workerLeases.get(workerId);
+      if (lease === undefined || lease.leaseGeneration !== leaseGeneration) throw new Error("crash-recovery-lifetime-changed");
+      if (!(lock instanceof RuntimeLifetimeLock)) throw new Error("crash-recovery-lock-required");
+      lock.assertHeld();
+      const released: { kind: "lease" | "browser" | "duo"; id: string; generation: number }[] = [];
+      for (const browser of repositories.workerControls.browsers(workerId)) {
+        if (browser.health === "closed") continue;
+        if (browser.leaseGeneration > leaseGeneration) throw new Error("crash-recovery-browser-generation-changed");
+        repositories.workerControls.observe({ ...browser, health: "closed", observedAt: now });
+        released.push({ kind: "browser", id: browser.sessionId, generation: browser.leaseGeneration });
+      }
+      for (const row of this.#database.prepare("SELECT * FROM auth_leases WHERE holder_worker_id=? AND state='held'").all(workerId)) {
+        const current = this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema);
+        this.#writeDuoCeremonyLease(DuoCeremonyLeaseRecordSchema.parse({ ...current, state: "released", releasedAt: now,
+          version: current.version + 1, updatedAt: now }), "update");
+        released.push({ kind: "duo", id: current.credentialKey, generation: current.generation });
+      }
+      if (lease.lifecycle.state !== "stopped") {
+        const result = repositories.workerLeases.reportLifecycle({ workerId, leaseGeneration,
+          lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt, stoppedAt: now, reason: "crashed" }, now });
+        if (result.state !== "applied") throw new Error("crash-recovery-lifetime-changed");
+        released.push({ kind: "lease", id: workerId, generation: leaseGeneration });
+      }
+      return released;
+    });
+  }
+
+  recoverCrashedRun(input: unknown, lock: RuntimeLifetimeLock): RunRecord {
     const request = CanonicalCrashRecoveryRequestSchema.parse(input);
     return this.withAuthorityTransaction(repositories => {
       const current = this.#readRunRow(request.runId), claim = current === undefined ? undefined : runClaim(current);
       if (current === undefined || current.version !== request.expectedVersion || claim?.workerId !== request.claim.workerId
         || claim.claimGeneration !== request.claim.claimGeneration || Date.parse(request.now) < Date.parse(current.envelope.enqueuedAt)) throw new Error("crash-recovery-claim-changed");
-      const proof = this.crashRunRecoveryProof(request.runId);
-      if (canonicalJsonStringify(proof) !== canonicalJsonStringify({ birth: request.birth, originalFile: request.originalFile, closureDigest: request.closureDigest })) throw new Error("crash-recovery-proof-changed");
+      if (!(lock instanceof RuntimeLifetimeLock)) throw new Error("crash-recovery-lock-required");
+      lock.assertHeld();
+      const identity = this.crashRunRecoveryIdentity(request.runId);
+      if (canonicalJsonStringify(identity.workerLifetime) !== canonicalJsonStringify(request.workerLifetime)) throw new Error("crash-recovery-lifetime-changed");
       const intents = repositories.writeIntents.listByRun(request.runId);
-      const unfinished = intents.find(intent => intent.status !== "committed" && intent.status !== "observed-present");
+      const unfinishedIntents = intents.filter(intent => intent.status !== "committed" && intent.status !== "observed-present");
+      const unfinished = unfinishedIntents[0];
       if (unfinished !== undefined) {
-        if (unfinished.status !== "attempting" && unfinished.status !== "parked") throw new Error("crash-recovery-write-outcome-unproved");
+        if (unfinishedIntents.length !== 1 || unfinished.status !== "attempting" && unfinished.status !== "parked") throw new Error("crash-recovery-write-outcome-unproved");
         const parked = RunRecordSchema.parse({ ...current, version: current.version + 1, updatedAt: request.now,
           lifecycle: { state: "parked-write", writeIntentId: unfinished.writeIntentId, intentGeneration: unfinished.generation,
             parkedAt: request.now, code: "unknown", message: `RUN_CRASH_WRITE_UNRESOLVED: ${ERROR_CATALOG.RUN_CRASH_WRITE_UNRESOLVED.text}` } });
@@ -2975,7 +3070,7 @@ export class AuthorityDatabase implements Disposable {
     if (run === undefined || held?.workerId !== claim.workerId || held.claimGeneration !== claim.claimGeneration
       || lifetime === undefined || slot === undefined || slot.retiredAt !== null || lease === undefined
       || lifetime.membershipRevision !== slot.membershipRevision || lifetime.leaseGeneration !== lease.leaseGeneration
-      || lease.workflow !== slot.workflow || lease.processId !== process.pid || lease.birthCommandId === undefined
+      || lease.workflow !== slot.workflow || lease.processId !== process.pid
       || !isLiveWorker(lease) || lease.lifecycle.state === "stopping"
       || (!allowAdmittedReset && this.authority.workerControls.resetForWorker(claim.workerId) !== undefined)
       || this.authority.workerControls.lifecycleForWorker(claim.workerId) !== undefined
@@ -2983,8 +3078,7 @@ export class AuthorityDatabase implements Disposable {
       || this.authority.workerSlots.recovery(claim.workerId) !== undefined
       || this.authority.workerSlots.verification(claim.workerId) !== undefined
       || !authenticateDescendantHome(this.authority, run, slot.workflow)) throw new WorkerControlRefusal("worker-execution-lost");
-    const custody = this.workerLifetimeCustody(claim.workerId);
-    if (custody.state !== "alive" || custody.birth.owner.pid !== process.pid) throw new WorkerControlRefusal("worker-execution-lost");
+
     const visited = new Set<string>();
     let current = run;
     for (;;) {
@@ -5056,40 +5150,6 @@ export class AuthorityDatabase implements Disposable {
         return this.#nextItemAttempt(query.workflow, query.itemId);
       },
       nextWorkflowRunNumber: (workflow: string) => this.#nextWorkflowRunNumber(workflow),
-      listClaimRecoveryCandidates: (input: unknown) => {
-        const request = RunClaimSweepRequestSchema.parse(input);
-        const clauses: string[] = [];
-        const bindings: string[] = [];
-        if (request.staleBefore !== undefined) {
-          clauses.push("heartbeat_at < ?");
-          bindings.push(request.staleBefore);
-        }
-        if (request.workerId !== undefined) {
-          clauses.push("owner_worker_id = ?");
-          bindings.push(request.workerId);
-        }
-        if (request.workflow !== undefined) {
-          clauses.push("workflow = ?");
-          bindings.push(request.workflow);
-        }
-        const rows = this.#database.prepare(`
-          SELECT * FROM runs
-          WHERE state IN ('claimed', 'validating', 'running')
-            ${clauses.map((clause) => `AND ${clause}`).join(" ")}
-          ORDER BY heartbeat_at, id
-        `).all(...bindings);
-        return Object.freeze(rows.map((row) => {
-          const run = runRecordFromRow(row);
-          const claim = runClaim(run);
-          if (claim === undefined
-            || (request.workerId !== undefined && claim.workerId !== request.workerId)
-            || (request.workflow !== undefined && run.envelope.workflow !== request.workflow)
-            || (request.staleBefore !== undefined && Date.parse(claim.heartbeatAt) >= Date.parse(request.staleBefore))) {
-            throw new Error("claim recovery index disagrees with its run record");
-          }
-          return run;
-        }));
-      },
       listByWorker: (workerId: string) => {
         const rows = this.#database.prepare(`
           SELECT * FROM runs WHERE owner_worker_id = ? ORDER BY created_at, id
@@ -5298,113 +5358,6 @@ export class AuthorityDatabase implements Disposable {
           },
         );
       },
-      sweepExpiredClaims: (input: unknown) => {
-        const request = RunClaimSweepRequestSchema.parse(input);
-        return this.withAuthorityTransaction(() => {
-
-          const clauses: string[] = [];
-          const bindings: string[] = [];
-          if (request.staleBefore !== undefined) {
-            clauses.push("heartbeat_at < ?");
-            bindings.push(request.staleBefore);
-          }
-          if (request.workerId !== undefined) {
-            clauses.push("owner_worker_id = ?");
-            bindings.push(request.workerId);
-          }
-          if (request.workflow !== undefined) {
-            clauses.push("workflow = ?");
-            bindings.push(request.workflow);
-          }
-          const rows = this.#database.prepare(`
-            SELECT * FROM runs
-            WHERE state IN ('claimed', 'validating', 'running')
-              ${clauses.map((clause) => `AND ${clause}`).join(" ")}
-            ORDER BY heartbeat_at, id
-          `).all(...bindings);
-          const outcomes: z.infer<typeof RunClaimSweepOutcomeSchema>[] = [];
-          for (const row of rows) {
-            const current = runRecordFromRow(row);
-
-            const intents = this.#database.prepare(`
-              SELECT * FROM write_intents
-              WHERE (status = 'attempting' OR (status = 'parked' AND run_id = ?))
-                AND json_extract(payload_json, '$.workflowId') = ?
-                AND json_extract(payload_json, '$.itemId') = ?
-              ORDER BY id
-            `).all(current.envelope.runId, current.envelope.workflow, current.envelope.itemId);
-            const attempting = intents.map((intentRow) =>
-              this.#parseNativeRow("write_intents",intentRow,WriteIntentRecordSchema));
-            let unfinished = attempting[0];
-            if (unfinished !== undefined) {
-              if (unfinished.status !== "attempting" && unfinished.status !== "parked") {
-                throw new Error(
-                  `write intent ${unfinished.writeIntentId} matched the attempting scan as ${unfinished.status}; `
-                  + "the intent index is inconsistent and the sweep refuses to requeue over it",
-                );
-              }
-              if (unfinished.status === "parked" && unfinished.recheck !== undefined) {
-                unfinished = this.authority.writeIntents.parkRecheck({ writeIntentId: unfinished.writeIntentId,
-                  generation: unfinished.generation, expectedVersion: unfinished.version, commandId: unfinished.recheck.commandId,
-                  code: "unknown", message: "The write check lost its worker claim; check again to read the target system.",
-                  authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "authority-row", "recheck-claim-lost"), now: request.now });
-              }
-              const message = unfinished.status === "parked" ? unfinished.message : `run ${current.envelope.runId} (${current.envelope.workflow}) has an unfinished `
-                + `attempting write intent ${unfinished.writeIntentId} (generation `
-                + `${String(unfinished.generation)}, task ${unfinished.taskId}); ref write-safety recovery must settle it `
-                + "before this run can be released";
-              if (current.lifecycle.state === "running" || unfinished.status === "parked") {
-                const parked = RunRecordSchema.parse({
-                  ...current,
-                  lifecycle: {
-                    state: "parked-write",
-                    writeIntentId: unfinished.writeIntentId,
-                    intentGeneration: unfinished.generation,
-                    parkedAt: request.now,
-                    code: unfinished.status === "parked" ? unfinished.parkedCode : "unknown",
-                    message,
-                  },
-                  version: current.version + 1,
-                  updatedAt: request.now,
-                });
-                const violation = runTransitionViolation(current.lifecycle, parked.lifecycle);
-                if (violation !== undefined) {
-                  throw new Error(`run ${current.envelope.runId}: ${violation}`);
-                }
-                this.#writeRunRow(parked, "update");
-                outcomes.push(RunClaimSweepOutcomeSchema.parse({
-                  state: "recovery-required",
-                  run: parked,
-                  writeIntentId: unfinished.writeIntentId,
-                  intentGeneration: unfinished.generation,
-                  parked: true,
-                  message,
-                }));
-                continue;
-              }
-
-              outcomes.push(RunClaimSweepOutcomeSchema.parse({
-                state: "recovery-required",
-                run: current,
-                writeIntentId: unfinished.writeIntentId,
-                intentGeneration: unfinished.generation,
-                parked: false,
-                message,
-              }));
-              continue;
-            }
-            const requeued = RunRecordSchema.parse({
-              ...current,
-              lifecycle: { state: "queued", requeuedFrom: "recovery" },
-              version: current.version + 1,
-              updatedAt: request.now,
-            });
-            this.#writeRunRow(requeued, "update");
-            outcomes.push(RunClaimSweepOutcomeSchema.parse({ state: "requeued", run: requeued }));
-          }
-          return Object.freeze(outcomes);
-        });
-      },
     });
   }
 
@@ -5512,7 +5465,7 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  completeFailedWorkerReset(commandId: string, handle: RuntimeProcessLockHandle, descriptor: AnyWorkflowDescriptor, now: string) {
+  completeFailedWorkerReset(commandId: string, descriptor: AnyWorkflowDescriptor, now: string) {
     return this.withAuthorityTransaction(repositories => {
       const record = repositories.workerControls.get(commandId), binding = record?.lifecycle, reset = record?.reset;
       if (record?.request.type !== "stop-worker" || reset === undefined || binding?.operation.kind !== "retry"
@@ -5529,9 +5482,7 @@ export class AuthorityDatabase implements Disposable {
         || active?.configSnapshotId !== binding.operation.configSnapshotId || active.configFingerprint !== binding.operation.configFingerprint
         || descriptor.id !== binding.member.workflowId || descriptor.version !== binding.operation.descriptorVersion
         || descriptor.contractFingerprint !== binding.operation.contractFingerprint) throw new Error("worker-reset-replacement-birth-conflict");
-      const owner = authenticateWorkerBirthCustody(handle, lease.workerId, lease.processId, this.#path, true), birth = this.workerLifetimeCustody(lease.workerId);
-      if (birth.state !== "alive" || birth.birth.admissionCommandId !== commandId
-        || canonicalJsonStringify(owner.owner) !== canonicalJsonStringify(birth.birth.owner)) throw new Error("worker-reset-replacement-owner-unavailable");
+      if (lease.startCommandId !== commandId) throw new Error("worker-reset-replacement-owner-unavailable");
       const members = reset.work.kind === "absent" ? [] : [reset.work.current, ...reset.work.cascade];
       for (const member of members) {
         const run = repositories.runs.get(member.runId);
@@ -5657,17 +5608,14 @@ export class AuthorityDatabase implements Disposable {
 
   #assertRetainedWorkerLifecycleEffect(record: z.infer<typeof WorkerControlRecordSchema>): void {
     const binding = record.lifecycle, effect = record.effect;
-    if (binding === undefined || effect === undefined || effect.oldBirthCommandId === undefined) throw new Error("worker-lifecycle-recovery-custody-unavailable");
-    const old = this.#retainedWorkerBirth(effect.oldBirthCommandId, binding.member, binding.lifetime);
-    if (old.state !== "dead" && old.state !== "released") throw new Error("worker-lifecycle-recovery-death-unproved");
+    if (binding === undefined || effect === undefined) throw new Error("worker-lifecycle-recovery-effect-unavailable");
     const browsers = this.authority.workerControls.browsers(binding.member.workerId).filter(value => value.leaseGeneration === binding.lifetime.leaseGeneration);
     if (browsers.some(value => value.health !== "closed")
       || record.closure?.closedSessionIds.some(id => !browsers.some(value => value.sessionId === id && value.health === "closed"))) throw new Error("worker-lifecycle-recovery-closure-unproved");
     if (effect.observation.kind === "retry") {
       const lease = this.#readWorkerLease(binding.member.workerId);
-      if (effect.newBirthCommandId === undefined || lease?.birthCommandId !== effect.newBirthCommandId) throw new Error("worker-lifecycle-recovery-birth-unproved");
-      const born = this.#retainedWorkerBirth(effect.newBirthCommandId, binding.member, effect.observation);
-      if (born.state !== "alive" || born.birth.admissionCommandId !== record.commandId) throw new Error("worker-lifecycle-recovery-birth-unproved");
+      if (lease?.leaseGeneration !== effect.observation.leaseGeneration || lease.processId !== effect.observation.processId
+        || lease.lifecycle.startedAt !== effect.observation.startedAt || lease.startCommandId !== record.commandId) throw new Error("worker-lifecycle-recovery-start-conflict");
     }
   }
 
@@ -5686,9 +5634,7 @@ export class AuthorityDatabase implements Disposable {
         || current.closure === undefined : lease.lifecycle.state !== "starting" || lease.leaseGeneration !== binding.lifetime.leaseGeneration + 1
           || lease.leaseGeneration !== observation.leaseGeneration || lease.processId !== observation.processId
           || lease.lifecycle.startedAt !== observation.startedAt) throw new Error("worker-lifecycle-effect-lifetime-conflict");
-      this.#writeWorkerControl(WorkerControlRecordSchema.parse({ ...current, effect: { observedAt: now, observation,
-        ...(binding.birthCommandId === undefined ? {} : { oldBirthCommandId: binding.birthCommandId }),
-        ...(observation.kind !== "retry" || lease.birthCommandId === undefined ? {} : { newBirthCommandId: lease.birthCommandId }) } }), current);
+      this.#writeWorkerControl(WorkerControlRecordSchema.parse({ ...current, effect: { observedAt: now, observation } }), current);
       this.afterAuthorityCommit(() => { consumeWorkerSupervisorEffect(proof); });
     });
   }
@@ -5869,9 +5815,8 @@ export class AuthorityDatabase implements Disposable {
       if (slot === undefined || lease === undefined || slot.retiredAt !== null) throw unavailable();
       if (request.workerLifetime.membershipRevision !== slot.membershipRevision
         || request.workerLifetime.leaseGeneration !== lease.leaseGeneration) return false;
-      const custody = this.workerLifetimeCustody(workerId);
       if (request.workflow !== slot.workflow || lease.workflow !== slot.workflow
-        || custody.birth.owner.pid !== claimed.pid || lease.processId !== claimed.pid
+        || lease.processId !== claimed.pid
         || !authenticateDescendantHome(this.authority, run, slot.workflow)) throw unavailable();
       const intents = this.authority.writeIntents.listByRun(run.envelope.runId)
         .filter(intent => intent.status === "attempting" || intent.status === "parked");
@@ -6146,20 +6091,16 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  startOwnedWorker(input: unknown, custody: RuntimeProcessLockHandle): WorkerStartOutcome {
-    return this.#startWorkerLease(input, custody);
-  }
-
   reserveStandingWorkerRecovery(workerId: string, descriptor: AnyWorkflowDescriptor, now: string) {
     return this.withAuthorityTransaction(repositories => {
       const slot = repositories.workerSlots.get(workerId), lease = this.#readWorkerLease(workerId);
       const active = repositories.runtimeConfig.get();
       if (slot === undefined || slot.retiredAt !== null || lease?.lifecycle.state !== "stopped"
-        || lease.birthCommandId === undefined || lease.recoveryBasis === undefined
+        || lease.recoveryBasis === undefined
         || !["idle", "paused"].includes(lease.recoveryBasis.state) || descriptor.id !== slot.workflow
         || active === undefined) throw new Error("worker-standing-recovery-ineligible");
       const member = workerPoolMember(slot);
-      this.assertRetainedWorkerDeath(member, { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt }, lease.birthCommandId);
+      this.assertStoppedWorkerLifetime(member, { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt });
       requireWorkerPoolRoster(repositories, slot.workflow);
       const pool = repositories.workerPools.get(slot.workflow);
       if (pool === undefined) throw new Error("worker-standing-recovery-pool-unavailable");
@@ -6167,7 +6108,7 @@ export class AuthorityDatabase implements Disposable {
         || repositories.workerSlots.verifications(slot.workflow).length !== 0 || repositories.workerSlots.recoveries(slot.workflow).length !== 0) throw new Error("worker-standing-recovery-reserved");
       const commandId = randomUUID();
       const request = WorkerStandingRecoveryRequestSchema.parse({ commandId, now, previous: lease.recoveryBasis,
-        binding: { commandId, birthCommandId: lease.birthCommandId, member,
+        binding: { commandId, member,
           lifetime: { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt },
           basis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision }, reservedControlRevision: lease.controlRevision + 1,
           poolVersion: pool.version, desiredWorkers: pool.desiredWorkers, operation: { kind: "retry", mode: "browserless",
@@ -6184,7 +6125,7 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  completeStandingWorkerRecovery(commandId: string, handle: RuntimeProcessLockHandle, descriptor: AnyWorkflowDescriptor, now: string) {
+  completeStandingWorkerRecovery(commandId: string, descriptor: AnyWorkflowDescriptor, now: string) {
     return this.withAuthorityTransaction(repositories => {
       const command = repositories.lifecycleJournal.getCommand(commandId);
       if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "worker-standing-recovery") throw new Error("worker-standing-recovery-authority-unavailable");
@@ -6196,19 +6137,13 @@ export class AuthorityDatabase implements Disposable {
       if (slot === undefined || slot.reservationCommandId !== commandId || slot.retiredAt !== null
         || canonicalJsonStringify(workerPoolMember(slot)) !== canonicalJsonStringify(binding.member)
         || lease?.lifecycle.state !== "starting" || lease.leaseGeneration !== binding.lifetime.leaseGeneration + 1
-        || lease.birthCommandId === undefined || lease.controlRevision !== 1 || lease.controlCommandId !== undefined
+        || lease.controlRevision !== 1 || lease.controlCommandId !== undefined
         || pool?.version !== binding.poolVersion || pool.desiredWorkers !== binding.desiredWorkers
         || binding.operation.kind !== "retry" || binding.operation.mode !== "browserless"
         || descriptor.id !== binding.member.workflowId || descriptor.version !== binding.operation.descriptorVersion
         || descriptor.contractFingerprint !== binding.operation.contractFingerprint
         || active?.configSnapshotId !== binding.operation.configSnapshotId || active.configFingerprint !== binding.operation.configFingerprint) throw new Error("worker-standing-recovery-birth-conflict");
-      const actual = authenticateWorkerBirthCustody(handle, lease.workerId, lease.processId, this.#path, true);
-      const birth = this.workerLifetimeCustody(lease.workerId);
-      if (birth.state !== "alive" || birth.birth.admissionCommandId !== commandId
-        || canonicalJsonStringify(actual.owner) !== canonicalJsonStringify(birth.birth.owner)
-        || binding.birthCommandId === undefined) throw new Error("worker-standing-recovery-owner-unavailable");
-      const old = this.#retainedWorkerBirth(binding.birthCommandId, binding.member, binding.lifetime);
-      if (old.state !== "dead" && old.state !== "released") throw new Error("worker-standing-recovery-death-unproved");
+      if (lease.startCommandId !== commandId) throw new Error("worker-standing-recovery-owner-unavailable");
       this.assertWorkerLifecycleRelease(lease.workerId);
       if (repositories.workerControls.browsers(lease.workerId).some(browser => browser.health !== "closed")) throw new Error("worker-standing-recovery-browser-unproved");
       const paused = request.previous.state === "paused" || request.previous.directive === "pause";
@@ -6236,79 +6171,36 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  assertRetainedWorkerDeath(member: ReturnType<typeof workerPoolMember>,
-    lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>, birthCommandId?: string): void {
+  assertStoppedWorkerLifetime(member: ReturnType<typeof workerPoolMember>,
+    lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void {
     const slot = this.authority.workerSlots.get(member.workerId), lease = this.#readWorkerLease(member.workerId);
     if (slot === undefined || slot.retiredAt !== null || canonicalJsonStringify(workerPoolMember(slot)) !== canonicalJsonStringify(member)
       || lease?.lifecycle.state !== "stopped" || lease.leaseGeneration !== lifetime.leaseGeneration
-      || lease.processId !== lifetime.processId || lease.lifecycle.startedAt !== lifetime.startedAt
-      || lease.birthCommandId === undefined || birthCommandId !== undefined && lease.birthCommandId !== birthCommandId) throw new Error("worker-recovery-lifetime-unavailable");
-    const custody = this.#retainedWorkerBirth(lease.birthCommandId, member, lifetime);
-    if (custody.state !== "dead" && custody.state !== "released") throw new Error("worker-recovery-death-unproved");
+      || lease.processId !== lifetime.processId || lease.lifecycle.startedAt !== lifetime.startedAt) throw new Error("worker-recovery-lifetime-unavailable");
     this.assertWorkerLifecycleRelease(member.workerId);
     if (this.authority.workerControls.browsers(member.workerId).some(value => value.health !== "closed")) throw new Error("worker-recovery-browser-closure-unproved");
   }
 
-  settleDeadWorkerLifetime(workerId: string, now: string): WorkerLeaseRecord | undefined {
-    return this.withAuthorityTransaction(() => {
-      const lease = this.#readWorkerLease(workerId);
-      if (lease === undefined || lease.lifecycle.state === "stopped") return lease;
-      const custody = this.workerLifetimeCustody(workerId);
-      if (custody.state === "alive") return lease;
-      if (custody.state !== "dead" && custody.state !== "released") throw new Error("worker-recovery-death-unproved");
-      this.assertWorkerLifecycleRelease(workerId);
-      if (this.authority.workerControls.browsers(workerId).some(browser => browser.health !== "closed")) throw new Error("worker-recovery-browser-closure-unproved");
-      const stopped = WorkerLeaseRecordSchema.parse({ ...lease, lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt,
-        stoppedAt: now, reason: "crashed" }, control: { ...lease.control, directive: "stop", requestedAt: now },
-        version: lease.version + 1, updatedAt: now });
-      this.#writeWorkerLease(stopped, "update");
-      return stopped;
-    });
-  }
-
-  workerLifetimeCustody(workerId: string) {
-    const lease = this.authority.workerLeases.get(workerId);
-    const slot = this.authority.workerSlots.get(workerId);
-    if (lease?.birthCommandId === undefined || slot === undefined || slot.retiredAt !== null) throw new Error("worker-birth-authority-unavailable");
-    return this.#retainedWorkerBirth(lease.birthCommandId, workerPoolMember(slot), { leaseGeneration: lease.leaseGeneration,
-      processId: lease.processId, startedAt: lease.lifecycle.startedAt });
-  }
-
-  #retainedWorkerBirth(commandId: string, member: ReturnType<typeof workerPoolMember>,
-    lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>) {
-    const audit = this.authority.lifecycleJournal.findAuditByCommand(commandId);
-    if (audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
-      || audit.request.operation !== "worker-lifetime-birth" || audit.result.kind !== "worker-birth") throw new Error("worker-birth-authority-unavailable");
-    const command = this.authority.lifecycleJournal.getCommand(commandId);
-    if (canonicalJsonStringify(command) !== canonicalJsonStringify(audit.request)) throw new Error("worker-birth-authority-mismatch");
-    const birth = WorkerLifetimeBirthSchema.parse(audit.request.request);
-    if (birth.commandId !== commandId || audit.result.workerId !== member.workerId || audit.result.leaseGeneration !== lifetime.leaseGeneration
-      || birth.leaseGeneration !== lifetime.leaseGeneration || birth.processId !== lifetime.processId
-      || birth.startedAt !== lifetime.startedAt || birth.authorityPath !== resolve(this.#path)
-      || canonicalJsonStringify(birth.member) !== canonicalJsonStringify(member)) throw new Error("worker-birth-authority-mismatch");
-    return Object.freeze({ birth, state: authenticateRetainedWorkerCustody(birth) });
-  }
-
-  #startWorkerLease(input: unknown, custody?: RuntimeProcessLockHandle): WorkerStartOutcome {
+  #startWorkerLease(input: unknown): WorkerStartOutcome {
   const request = WorkerStartRequestSchema.parse(input);
   return this.withAuthorityTransaction(() => {
     const member = this.authority.workerSlots.get(request.workerId);
     if (member === undefined || member.retiredAt !== null || member.workflow !== request.workflow) throw new Error("worker-lease-membership-unavailable");
     const standing = this.authority.workerSlots.recovery(request.workerId);
-    if (standing !== undefined && (standing.command.commandId !== request.commandId || custody === undefined)) throw new Error("worker-standing-recovery-reserved");
+    if (standing !== undefined && (standing.command.commandId !== request.commandId)) throw new Error("worker-standing-recovery-reserved");
     const replacement = this.authority.workerControls.lifecycleForWorker(request.workerId);
     if (replacement !== undefined && (request.commandId !== replacement.commandId || replacement.lifecycle?.operation.kind !== "retry"
       || replacement.phase.state !== "executing")) throw new Error("worker-lifecycle-reserved");
     if (this.authority.workerControls.resetForWorker(request.workerId) !== undefined
       && (replacement?.request.type !== "stop-worker" || replacement.lifecycle?.operation.kind !== "retry"
-        || replacement.lifecycle.operation.mode !== "browserless" || request.commandId !== replacement.commandId || custody === undefined)) throw new Error("worker-reset-reserved");
+        || replacement.lifecycle.operation.mode !== "browserless" || request.commandId !== replacement.commandId)) throw new Error("worker-reset-reserved");
     if (this.authority.workerSlots.verification(request.workerId) !== undefined) throw new Error("worker-verification-reserved");
     const existing = this.#readWorkerLease(request.workerId);
     if (replacement?.lifecycle !== undefined || standing !== undefined) {
       const binding = replacement?.lifecycle ?? standing?.request.binding;
       if (binding === undefined) throw new Error("worker-replacement-authority-unavailable");
       const config = this.authority.runtimeConfig.get();
-      if (standing !== undefined) this.assertRetainedWorkerDeath(binding.member, binding.lifetime, binding.birthCommandId);
+      if (standing !== undefined) this.assertStoppedWorkerLifetime(binding.member, binding.lifetime);
       this.assertWorkerLifecycleRelease(request.workerId);
       if (binding.operation.kind !== "retry" || existing?.lifecycle.state !== "stopped"
         || existing.leaseGeneration !== binding.lifetime.leaseGeneration || existing.processId !== binding.lifetime.processId
@@ -6324,22 +6216,8 @@ export class AuthorityDatabase implements Disposable {
         message: `worker ${request.workerId} already holds a live lease in state ${existing.lifecycle.state}`,
       });
     }
-    let birthCommandId: string | undefined;
-    if (custody !== undefined) {
-      const held = authenticateWorkerBirthCustody(custody, request.workerId, request.processId, this.#path);
-      birthCommandId = randomUUID();
-      const birth = WorkerLifetimeBirthSchema.parse({ commandId: birthCommandId, ...(request.commandId === undefined ? {} : { admissionCommandId: request.commandId }), member: workerPoolMember(member),
-        leaseGeneration: (existing?.leaseGeneration ?? 0) + 1, processId: request.processId,
-        startedAt: request.now, authorityPath: resolve(this.#path), ...held });
-      const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", commandId: birthCommandId,
-        operation: "worker-lifetime-birth", request: birth, fence: { kind: "none" }, recordedAt: request.now,
-        requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0worker-lifetime-birth\0${canonicalJsonStringify(birth)}`) });
-      this.authority.lifecycleJournal.insertCommand(command);
-      this.authority.lifecycleJournal.insertAudit({ kind: "run-lifecycle", auditId: randomUUID(), request: command,
-        result: { kind: "worker-birth", workerId: request.workerId, leaseGeneration: birth.leaseGeneration }, completedAt: request.now });
-    }
     const lease = WorkerLeaseRecordSchema.parse({
-      ...(birthCommandId === undefined ? {} : { birthCommandId }),
+      ...(request.commandId === undefined ? {} : { startCommandId: request.commandId }),
       workerId: request.workerId,
       workflow: request.workflow,
       browserSystems: request.browserSystems,
@@ -6359,9 +6237,7 @@ export class AuthorityDatabase implements Disposable {
 
   #buildWorkerLeaseRepository(): WorkerLeaseRepository {
     return Object.freeze({
-      start: (input: unknown) => {
-        return this.#startWorkerLease(input);
-      },
+      start: (input: unknown) => this.#startWorkerLease(input),
       get: (workerId: string) => this.#readWorkerLease(workerId),
       listLive: (workflow?: string) => {
         const states = LIVE_WORKER_STATES.map(() => "?").join(", ");
@@ -6449,36 +6325,6 @@ export class AuthorityDatabase implements Disposable {
           });
           this.#writeWorkerLease(updated, "update");
           return WorkerUpdateOutcomeSchema.parse({ state: "applied", lease: updated });
-        });
-      },
-      sweepExpired: (input: unknown) => {
-        const request = WorkerSweepRequestSchema.parse(input);
-        return this.withAuthorityTransaction(() => {
-          const states = LIVE_WORKER_STATES.map(() => "?").join(", ");
-          const rows = this.#database.prepare(`
-            SELECT * FROM worker_leases
-            WHERE state IN (${states}) AND heartbeat_at IS NOT NULL AND heartbeat_at < ?
-            ORDER BY id
-          `).all(...LIVE_WORKER_STATES, request.staleBefore);
-          const expired: WorkerLeaseRecord[] = [];
-          for (const row of rows) {
-            const current = this.#parseNativeRow("worker_leases",row,WorkerLeaseRecordSchema);
-            const stopped = WorkerLeaseRecordSchema.parse({
-              ...current,
-              lifecycle: {
-                state: "stopped",
-                startedAt: current.lifecycle.startedAt,
-                stoppedAt: request.now,
-                reason: "lease-expired",
-              },
-              control: { ...current.control, directive: "stop", requestedAt: request.now },
-              version: current.version + 1,
-              updatedAt: request.now,
-            });
-            this.#writeWorkerLease(stopped, "update");
-            expired.push(stopped);
-          }
-          return Object.freeze(expired);
         });
       },
     });

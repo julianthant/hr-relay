@@ -80,7 +80,7 @@ export function createWriteRecoveryTestWorld() {
     const opened: string[] = [];
     const spied: SessionFactoryHarness = {
       ...inner,
-      factory: {
+      factory: { probeProfile: async () => undefined,
         open: (input) => {
           opened.push(String(input.configFingerprint));
           return inner.factory.open(input);

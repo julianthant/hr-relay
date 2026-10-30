@@ -40,6 +40,7 @@ function seedValidRuntime(root: string): void {
     ...(side.archiveDatabaseFile === undefined ? [] : [`  archiveDatabaseFile: ${JSON.stringify(side.archiveDatabaseFile)},`]),
     `  artifactRoot: ${JSON.stringify(side.artifactRoot)},`,
     `  backendPort: ${String(side.backendPort)},`,
+    ...(side.lockPort === undefined ? [] : [`  lockPort: ${String(side.lockPort)},`]),
     `  frontendPort: ${String(side.frontendPort)},`,
     `  processLockRoot: ${JSON.stringify(side.processLockRoot)},`,
     `  browserProfileRoot: ${JSON.stringify(side.browserProfileRoot)},`,
@@ -174,26 +175,22 @@ describe("operational isolation", () => {
       write(root, "src/backend/storage/admission/admission.ts", "export interface RuntimeAdmission { assertLive(): void; }\n");
       write(root, "src/cli.ts", admitted);
       assert.deepEqual(fixtureViolations(root), []);
-      const custody = 'import type { RuntimeProcessLockHandle } from "./backend/storage/sqlite/runtime-process-locks.js";\n'
-        + admitted.replace('admission: RuntimeAdmission', 'admission: RuntimeAdmission, takeInitialCustody?: () => RuntimeProcessLockHandle | undefined');
-      write(root, "src/backend/storage/sqlite/runtime-process-locks.ts", "export interface RuntimeProcessLockHandle { release(): void; }\n");
-      write(root, "src/cli.ts", custody);
-      assert.deepEqual(fixtureViolations(root), []);
-      const dashboard = custody.replace('RuntimeProcessLockHandle | undefined', 'RuntimeProcessLockHandle | undefined, acceptDashboardAdmission?: () => void');
-      write(root, "src/cli.ts", dashboard);
+      const lifetime = 'import type { RuntimeLifetime } from "./backend/app/bootstrap/secure-env-bootstrap.js";\n'
+        + admitted.replace('admission: RuntimeAdmission', 'admission: RuntimeAdmission, acceptDashboardAdmission: (() => void) | undefined, lifetime: RuntimeLifetime');
+      write(root, "src/cli.ts", lifetime);
       assert.deepEqual(fixtureViolations(root), []);
       for (const invalid of [
-        dashboard.replace('acceptDashboardAdmission?', 'otherAdmission?'),
-        dashboard.replace('acceptDashboardAdmission?:', 'acceptDashboardAdmission:'),
-        dashboard.replace('acceptDashboardAdmission?: () => void', 'acceptDashboardAdmission?: (value: unknown) => void'),
-        dashboard.replace('acceptDashboardAdmission?: () => void', 'acceptDashboardAdmission?: () => unknown'),
-        dashboard.replace('takeInitialCustody?', 'otherCustody?'),
-        dashboard.replace('acceptDashboardAdmission?: () => void', 'acceptDashboardAdmission?: () => void, extra?: unknown'),
-        custody.replace('takeInitialCustody?', 'otherCustody?'),
-        custody.replace('RuntimeProcessLockHandle | undefined', 'unknown'),
-        custody.replace('./backend/storage/sqlite/runtime-process-locks.js', './wrong-locks.js'),
-        custody.replace('takeInitialCustody?:', 'takeInitialCustody:'),
-        custody.replace('import type { RuntimeProcessLockHandle }', 'import type { Other as RuntimeProcessLockHandle }'),
+        lifetime.replace('lifetime: RuntimeLifetime', 'otherLifetime: RuntimeLifetime'),
+        lifetime.replace('lifetime: RuntimeLifetime', 'lifetime?: RuntimeLifetime'),
+        lifetime.replace('lifetime: RuntimeLifetime', 'lifetime: unknown'),
+        lifetime.replace('./backend/app/bootstrap/secure-env-bootstrap.js', './wrong-bootstrap.js'),
+        lifetime.replace('import type { RuntimeLifetime }', 'import type { Other as RuntimeLifetime }'),
+        lifetime.replace('acceptDashboardAdmission:', 'otherAdmission:'),
+        lifetime.replace('acceptDashboardAdmission:', 'acceptDashboardAdmission?:'),
+        lifetime.replace('(() => void) | undefined', '((value: unknown) => void) | undefined'),
+        lifetime.replace('(() => void) | undefined', '(() => unknown) | undefined'),
+        lifetime.replace('(() => void) | undefined', '() => void'),
+        lifetime.replace('lifetime: RuntimeLifetime', 'lifetime: RuntimeLifetime, extra?: unknown'),
         admitted.replace('admission: RuntimeAdmission', 'arbitrary: RuntimeAdmission'),
         admitted.replace('admission: RuntimeAdmission', 'admission: unknown'),
         admitted.replace('admission: RuntimeAdmission', 'admission: RuntimeAdmission, extra: unknown'),

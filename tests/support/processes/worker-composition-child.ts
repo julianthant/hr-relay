@@ -5,13 +5,13 @@ import { statSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { z } from "zod";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { captureSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
 import { composeWorkerRuntime } from "../../../src/backend/app/composition/worker-compose.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { receiveRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -21,14 +21,13 @@ import { duoCeremonyGatesOver } from "../helpers/duo-ceremony-fixtures.js";
 
 const root = z.string().min(1).parse(process.argv[2]), poolIndex = z.coerce.number().int().min(1).max(3).parse(process.argv[3]);
 const clock = manualClock(new Date(z.string().datetime().parse(process.argv[4])));
-const machine = acquireEntrypointAdmission(root, "shared");
+const controller = new AbortController();
+const lifetimeLock = await receiveRuntimeLifetimeLock(z.coerce.number().int().positive().parse(process.argv[5]), () => controller.abort(new Error("fixture-parent-disconnected")));
+const machine = acquireSharedRuntimeAdmission(root, lifetimeLock);
 let child: ReturnType<typeof machine.admitProfile> | undefined, database: AuthorityDatabase | undefined;
-let initial: ReturnType<typeof acquireRuntimeProcessLock> | undefined;
-let transferred = false, proved = false;
+let entered = false, proved = false;
 try {
   const selected = captureSelectedProfileStorage(machine);
-  initial = acquireRuntimeProcessLock({ processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot), name: "workers", pid: process.pid,
-    admission: { kind: "unbound-worker", authorityPath: selected.authorityPath } }, clock);
   child = machine.admitProfile(createProfileRegistry(machine).storageClaim(selected.profileId));
   const credentials = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalAdmission: machine,
     erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
@@ -39,11 +38,12 @@ try {
   const run = once(process, "message");
   process.send?.({ state: "ready", detail: JSON.stringify({ pid: process.pid }) });
   assert.equal((await run)[0], "run");
-  const report = await composeWorkerRuntime({ admission: machine, repoRoot: root, isolation: rebuildRuntimeIsolation, env: {}, clock,
+  entered = true;
+  const report = await composeWorkerRuntime({ lifetimeLock, stopSignal: controller.signal, admission: machine, repoRoot: root, isolation: rebuildRuntimeIsolation, env: {}, clock,
     args: ["person-lookup", "--pool-index", String(poolIndex), "--drain"], ids: { uuid: randomUUID },
     preflightRunnerFactory: healthyRuntimePreflightRunners, sessionFactory: happySessionHarness().factory,
     duoCeremony: duoCeremonyGatesOver(database, clock, new ManualScheduler(clock)),
-    takeInitialCustody: () => { transferred = true; return initial; }, heartbeatIntervalMs: 600_000, sweepIntervalMs: 600_000,
+    heartbeatIntervalMs: 600_000,
     write: () => undefined });
   assert.equal(report.closure, "proved");
   database.close(); database = undefined;
@@ -62,8 +62,7 @@ try {
   process.send?.({ state: "failed", detail: JSON.stringify({ code: "worker-composition-child-failed", failureHash }) });
   process.exitCode = 1;
 } finally {
-  if (!transferred) {
-    database?.close(); child?.release(); initial?.release(); machine.release();
-  }
+  if (!entered) { database?.close(); child?.release(); machine.release(); }
+  if (proved || !entered) await lifetimeLock.close();
   if (proved || process.exitCode === 1) process.disconnect?.();
 }

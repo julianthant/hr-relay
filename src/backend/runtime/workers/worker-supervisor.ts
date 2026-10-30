@@ -101,9 +101,10 @@ export interface DashboardWorkerSupervisorDependencies {
   readonly birth: Readonly<{ pollMs: number; timeoutMs: number }>;
 
   readonly standingRecoverySettled?: (commandId: string) => boolean;
-  readonly assertRetainedOwnerDeath?: (member: WorkerPoolMember, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>, birthCommandId?: string) => void;
+  readonly assertStoppedLifetime?: (member: WorkerPoolMember, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>) => void;
   readonly proveRetirement: (member: WorkerPoolMember) => WorkerRetirementProof;
   readonly onFault: (error: Error) => void;
+  readonly onExit: (member: WorkerPoolMember, pid: number | undefined, valid: () => boolean) => void;
 }
 
 /* ── the argv contract ───────────────────────────────────────────────────── */
@@ -149,6 +150,7 @@ interface MemberRecord {
   drainExitTimer?: MonotonicDeadlineHandle;
   exitObserved: Promise<void>;
   resolveExitObserved: () => void;
+  recoveryFailure?: Error;
   drainFailure?: { promise: Promise<void>; reject: (error: Error) => void };
   exit?: {
     exitCode: number | null;
@@ -249,7 +251,13 @@ export function createDashboardWorkerProcessSupervisor(
     const outcome: "stopped" | "crashed" = record.state === "stopping" ? "stopped" : "crashed";
     record.exit = { exitCode, signal, at: instant(), outcome, reportedBy: "os" };
     record.state = "exited";
-    record.resolveExitObserved();
+    try {
+      deps.onExit(record.member, record.pid, () => records.get(record.member.workerId) === record
+        && record.state === "exited" && record.exit?.reportedBy === "os");
+    } catch (error) {
+      record.recoveryFailure = error instanceof Error ? error : new Error(String(error));
+      deps.onFault(record.recoveryFailure);
+    } finally { record.resolveExitObserved(); }
   };
 
   /** The channel-throw cause of a stop-uncertain record; a missing one is registry corruption, never defaulted. */
@@ -265,6 +273,7 @@ export function createDashboardWorkerProcessSupervisor(
 
   const spawnWorker = async (member: WorkerPoolMember, commandId: string): Promise<WorkerSupervisorAcknowledgement> => {
     const existing = records.get(member.workerId);
+    if (existing?.recoveryFailure !== undefined) throw existing.recoveryFailure;
     if (existing !== undefined && existing.state !== "exited") {
       if (existing.state === "kill-undelivered") {
         throw new Error(
@@ -779,6 +788,7 @@ export function createDashboardWorkerProcessSupervisor(
     }
     for (const member of roster) {
       const record = records.get(member.workerId);
+      if (record?.recoveryFailure !== undefined) throw record.recoveryFailure;
       if (record === undefined) {
         if (deps.leases.observe(member.workerId) !== undefined) throw new WorkerControlRefusal(`plan-worker-count refused: ${member.workerId} is externally owned; no worker was adopted`);
         continue;
@@ -817,6 +827,7 @@ export function createDashboardWorkerProcessSupervisor(
     for (const member of excess) {
       await planMemberFact(member, true, directive);
       const record = records.get(member.workerId);
+      if (record?.recoveryFailure !== undefined) throw record.recoveryFailure;
       if (record !== undefined && record.state !== "exited") {
         await new Promise<void>((resolve, reject) => {
           const timeout = deps.scheduler.schedule(deps.clock.monotonicMs()
@@ -938,9 +949,10 @@ export function createDashboardWorkerProcessSupervisor(
       if (binding.operation.kind !== "retry") throw new WorkerControlRefusal("worker-retry-binding-required");
       const { member, commandId } = binding;
       const record = records.get(member.workerId);
+      if (record?.recoveryFailure !== undefined) throw record.recoveryFailure;
       if (record === undefined) {
-        if (deps.assertRetainedOwnerDeath === undefined) throw new WorkerControlRefusal("worker-retry-death-unproved");
-        deps.assertRetainedOwnerDeath(member, binding.lifetime, binding.birthCommandId);
+        if (deps.assertStoppedLifetime === undefined) throw new WorkerControlRefusal("worker-retry-death-unproved");
+        deps.assertStoppedLifetime(member, binding.lifetime);
       } else if (record.state !== "exited" || record.exit?.reportedBy !== "os"
         || record.pid !== binding.lifetime.processId || record.leaseStartedAt !== binding.lifetime.startedAt
         || canonicalJsonStringify(record.member) !== canonicalJsonStringify(member) || deps.leases.observe(member.workerId) !== undefined) throw new WorkerControlRefusal("worker-retry-death-unproved");
@@ -949,7 +961,7 @@ export function createDashboardWorkerProcessSupervisor(
       await deps.prepareAdmission?.(request);
       if (closed || draining !== undefined) throw new WorkerControlRefusal("worker-lifecycle-supervisor-unavailable");
       if (records.get(member.workerId) !== record || record !== undefined && (record.state !== "exited" || record.exit?.reportedBy !== "os")) throw new WorkerControlRefusal("worker-retry-owner-changed");
-      if (record === undefined) deps.assertRetainedOwnerDeath?.(member, binding.lifetime, binding.birthCommandId);
+      if (record === undefined) deps.assertStoppedLifetime?.(member, binding.lifetime);
       deps.admission?.(request);
       await spawnWorker(member, commandId);
       const born = requireLiveOwnedChild("spawn-worker", member);
@@ -961,12 +973,13 @@ export function createDashboardWorkerProcessSupervisor(
     assertLifecycleOwner(operation: "remove" | "retry", member: WorkerPoolMember, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void {
       if (closed || draining !== undefined) throw new WorkerControlRefusal("worker-lifecycle-supervisor-unavailable");
       const record = records.get(member.workerId);
+      if (record?.recoveryFailure !== undefined) throw record.recoveryFailure;
       if (operation === "remove") {
         const current = requireLiveOwnedChild("stop-worker", member);
         if (current.state !== "running" || current.stopInFlight || current.pid !== lifetime.processId || current.leaseStartedAt !== lifetime.startedAt) throw new WorkerControlRefusal("worker-removal-owner-unavailable");
       } else if (record === undefined) {
-        if (deps.assertRetainedOwnerDeath === undefined) throw new WorkerControlRefusal("worker-retry-death-unproved");
-        deps.assertRetainedOwnerDeath(member, lifetime);
+        if (deps.assertStoppedLifetime === undefined) throw new WorkerControlRefusal("worker-retry-death-unproved");
+        deps.assertStoppedLifetime(member, lifetime);
       } else if (record.state !== "exited" || record.exit?.reportedBy !== "os"
         || record.pid !== lifetime.processId || record.leaseStartedAt !== lifetime.startedAt
         || canonicalJsonStringify(record.member) !== canonicalJsonStringify(member) || deps.leases.observe(member.workerId) !== undefined) throw new WorkerControlRefusal("worker-retry-death-unproved");
@@ -995,6 +1008,7 @@ export function createDashboardWorkerProcessSupervisor(
           () => { reject(new Error("worker-removal-exit-unproved")); });
         void owned.exitObserved.then(() => { timer.cancel(); resolve(); });
       });
+      if (owned.recoveryFailure !== undefined) throw owned.recoveryFailure;
       if (owned.exit?.reportedBy !== "os") throw new WorkerControlRefusal("worker-removal-death-unproved");
       const retirement = WorkerRetirementProofSchema.parse(deps.proveRetirement(member));
       return mintWorkerSupervisorEffect(binding, { kind: "remove", retirement }, () => records.get(member.workerId) === owned && owned.state === "exited" && owned.exit?.reportedBy === "os");
@@ -1130,6 +1144,9 @@ export function createDashboardWorkerProcessSupervisor(
             const failure = outcome.reason instanceof Error ? outcome.reason : new Error(String(outcome.reason));
             if (!failures.includes(failure)) failures.push(failure);
           }
+        }
+        for (const record of records.values()) {
+          if (record.recoveryFailure !== undefined && !failures.includes(record.recoveryFailure)) failures.push(record.recoveryFailure);
         }
         if (failures.length > 0) {
           throw new AggregateError(failures, "dashboard could not observe every owned worker exit", { cause: failures[0] });

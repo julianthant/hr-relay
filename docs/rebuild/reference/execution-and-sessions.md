@@ -71,7 +71,7 @@ between complete runs. Pause claims nothing and keeps the process alive. Stop en
 the current run settles. An unreadable or malformed directive fails the loop.
 
 SIGINT, SIGTERM, or an injected stop aborts the active run. The executor abandons interrupted
-ownership rather than inventing a terminal result. The claim sweeper owns subsequent recovery.
+ownership rather than inventing a terminal result. The controller recovers that claim on child exit or the next startup.
 
 One heartbeat renews the exact worker and `claimGeneration`; lost renewal aborts execution.
 `RunRecordService` re-reads authority versions before lifecycle mutation.
@@ -82,9 +82,9 @@ current item; exact-worker reset, lifecycle and recovery reservations still fenc
 delegation edge stops ancestor cancellation propagation, without bypassing the child's own home-worker
 or profile lifetime.
 
-Worker composition uses `WORKER_HEARTBEAT_INTERVAL_MS = 5_000`,
-`WORKER_CLAIM_STALE_AFTER_MS = 60_000`, and `WORKER_SWEEP_INTERVAL_MS = 30_000`.
-Maintenance renews the worker lease and runs claim, write, and expired-worker recovery.
+Worker composition renews its own lease every `WORKER_HEARTBEAT_INTERVAL_MS = 5_000`.
+Heartbeat age never proves death or transfers a claim. Recovery follows actual child exit or
+exclusive startup; workers do not reclaim each other's runs or leases.
 `runWorkerLoop` creates one confirmed-action publisher with a fresh stream id and capacity 256.
 It assigns sequence numbers within that incarnation. On exit it closes the publisher before
 browser teardown and warns about pending events. Publication health does not settle a run or an
@@ -92,33 +92,30 @@ external write.
 
 ### 3.0 Startup claim recovery
 
-Before supervisor construction or worker admission, `startup-crash-recovery.ts` reconciles the
-selected profile. It proves dead ownership from retained process birth and the exact original file,
-and uses the offline recovery's strict OS process, open-file and working-directory absence proof
-across installation browser roots. Live owners are left alone; uncertain identity or closure refuses
-with `STARTUP_CRASH_RECOVERY_REFUSED` before claiming work.
-A singleton claim whose PID now has a different start identity has a gone original owner. Worker
-records require the PID itself to be gone; a reused identity still refuses.
+The controller holds the exclusive runtime lifetime listener before selecting a profile. Workers
+hold duplicated handles until exit, so a successor cannot acquire the listener while an earlier
+worker survives. Before supervisor construction, `startup-crash-recovery.ts` reconciles every
+claimed run in the selected profile. Workers never perform startup reconciliation themselves.
+The controller also reconciles one exact worker generation synchronously on its child's OS exit.
+A failed exit reconciliation blocks replacement and successful shutdown.
 
-Immutable receipts in `startup-process-closure/` settle process custody only; original claims and
-worker files stay untouched. Receipts bind installation witnesses, physical roots, original file
-identity and digest, authority/profile identity, and the recovering process. Unresolved writes are
-recorded as `HELD`; a process receipt never authorizes resubmission or proves native resource closure.
+The explicit `recover-crash` lifecycle door requires the held controller and fences the exact run
+version, claim generation, worker membership and lease generation. A run with no unfinished write
+ends failed with `RUN_INTERRUPTED_BY_CRASH`, a structured failure and terminal result. One attempting
+or parked write keeps its original intent and attempt and surfaces as `parked-write` with
+`RUN_CRASH_WRITE_UNRESOLVED`. Other unproved write states refuse with
+`STARTUP_CRASH_RECOVERY_REFUSED` before any cleanup commits. Normal worker terminalization continues
+to require current execution authority.
 
-The explicit `recover-crash` lifecycle door fences the exact version, claim and retained worker birth,
-and journals the process-closure receipt digest. A run with no unfinished write ends failed with
-`RUN_INTERRUPTED_BY_CRASH`, a structured failure and terminal result. An attempting or parked write
-keeps its original intent and attempt and surfaces as `parked-write` with
-`RUN_CRASH_WRITE_UNRESOLVED`. Other unproved write states refuse. Normal worker terminalization
-continues to require current live execution authority. Proved-dead leases are stopped as crashed.
+Interrupted worker leases stop as crashed, their browser observations close, and held Duo leases
+release in the same transaction. Never-claimed, ownerless queues from a previous local calendar day
+are cancelled through the normal lifecycle transition after checking that no intent or checkpoint
+exists. The cancellation records `RUN_STALE_QUEUE_CANCELLED`; today's queues and previously claimed
+queues are preserved. Each cleanup publishes a durable notification; lifecycle events and
+failure/park messages feed Logs and Queue. Repeated reconciliation preserves settled runs, writes
+and notification identities.
 
-Never-claimed, ownerless queues from a previous local calendar day are cancelled through the normal
-lifecycle transition after checking that no intent or checkpoint exists. The cancellation records
-`RUN_STALE_QUEUE_CANCELLED`; today's queues and previously claimed queues are preserved. Each cleanup
-action publishes a durable notification; lifecycle events and failure/park messages feed Logs and Queue.
-Repeated reconciliation preserves existing receipts, settled runs and notification identities.
 
-Periodic claim maintenance still uses `sweepWorkerClaims` with `staleBefore`, preserving write checks.
 
 ### 3.1 Dispatch and fairness
 
@@ -260,9 +257,12 @@ when `features.duoWebAuthn` is enabled.
 
 The factory's `#closeWithProof` bounds page and context closure by `browser.closeProofMs`, whose
 default is 15,000 ms. It checks that every captured page is closed, no open replacement page
-remains, and the context emitted its close event. `#releaseProfile` then observes the owned
-Chromium process as gone within another close-proof bound before releasing the profile reservation.
-A resolved Playwright `close()` promise alone proves neither step.
+remains, and the context emitted its close event before releasing the in-process profile reservation.
+It does not inspect browser PIDs or Chromium markers. Before claim, the manager retains a matching
+owned context or probes native profile availability through the same launcher and verifies closure.
+The probe reads no HR credentials, provisions no Duo state and performs no authentication or task
+callback. Chromium profile-in-use refusal reports `BROWSER_PROFILE_STILL_CLOSING`; the selected run
+remains unclaimed. Selection and version are checked again after asynchronous preparation.
 
 `WorkerSessionManager.closeAll` throws `WorkerSessionClosureUnprovedError`, an `AggregateError`
 retaining cleanup failures, when closure cannot be proved. `runWorkerLoop` returns accumulated
@@ -537,13 +537,67 @@ closure report `waiting`; failed closure remains unavailable until actual closur
 retains exact native command outcomes, including retired members and confirmations preceding later
 work, without exposing native lock custody snapshots.
 
-Production lease birth atomically records a native `worker-lifetime-birth` journal reference from the
-actual bound process-lock handle. It binds authority path, lock root, acquisition, OS process-start
-identity, member and generation. Generic lease start cannot supply this proof. Missing, changed or
-reused identity never proves death; an exact recorded release still requires the old OS owner to be
-dead. Historical leases without proof remain unavailable for restart recovery.
+Dashboard composition borrows the held controller lifetime. Bootstrap retains it through HTTP,
+worker and account drains; unproved resource closure retains custody. Composition and crash
+reconciliation require the same capability retained by the installation and profile admission.
+Restore writers bind the canonical target and exclude retained children before creating restore records;
+that binding does not replace authenticated workspace startup.
+Production entrypoints use the configured singleton port; fixture-chosen ports do not bind distinct roots to one workspace.
 
-Native `worker-standing-recovery` reserves an existing idle or paused member after exact old-owner,
+Workers receive the controller's listening handle, port and canonical workspace over IPC before
+authority admission. The controller retains each transferred child until its actual `close` event.
+Exclusive installation admission refuses while a transferred child remains unclosed; handle transfer
+refuses while an exclusive installation admission is held. Lease start
+records the admitted command as `startCommandId` for replacement and standing recovery. It retains
+exact member, lease-generation, control, settings and reservation fences. The actual supervisor's
+child exit event triggers interrupted-run recovery; heartbeat age does not authorize reassignment.
+
+Profile quiescence authenticates current reservation and retirement lineage, exact member and lease
+state, and actual supervisor exit evidence. Runs, unfinished writes, browser observations, Duo leases,
+pending controls and pending artifacts all keep the profile busy. Cancellation awaits the owned-child
+drain and refuses incomplete resource closure. PID files and OS process census do not decide quiescence.
+
+Dashboard preflight reports runtime/configuration, filesystem, authority and reserved-port readiness.
+Worker liveness comes from owned supervisor child events; preflight does not inspect PID records.
+Optional provider warnings report registered provider availability.
+
+The dashboard owns one serial Nominatim service. It accepts requests only over each spawned
+worker's existing IPC channel; workers have no direct Nominatim fetch path. The queue spaces actual
+fetch starts by at least one second, preserves deadlines and cancellation, and never replays a
+request after disconnect. Standalone execution composes its own service while holding the exclusive
+root listener. Shutdown retains the controller until active geocode work drains; failed closure
+refuses release. There are no geocode election, endpoint or PID files.
+
+`runtime/browser/native-profile-probe.ts` owns the native launcher and verified page/context close
+used by preclaim and maintenance. Taking the root listener excludes Node owners; a surviving
+Chromium still requires a native profile probe before file replacement or credential erasure.
+Async closure paths await the probe directly. Synchronous inventory callbacks await a finite child
+through `native-profile-probe`; no controller, credential, provider or login is initialized in that
+selector. The request names existing private directories and deadlines. Its nonce and request digest
+bind one strict result to the full closed-directory list, followed by actual child completion.
+Busy profiles refuse with `BROWSER_PROFILE_STILL_CLOSING`; missing, malformed, failed or unproved
+closure refuses with `BROWSER_CLOSURE_UNPROVED`. Neither refusal permits erasure or replacement.
+
+Retained settings roots and authenticated verification scratch paths have distinct membership.
+An absent directory is released only when the exact completed cleanup already proves owned context
+closure and profile deletion. Startup `cleanup: interrupted` does not supply that evidence.
+
+Duo onboarding derives its canonical directory from the authenticated operation, profile, account
+and generation through `onboardingProfileDirectory`. Existing exact paths must pass native closure
+before reuse or deletion, followed by a fresh exact owner check. Random or stale-owner directories
+remain unknown and untouched. Recovery accepts missing paths only after the persisted finish or
+abort step that follows actual owned drain. Failed retention or closure stays uncertain; startup
+and extension message pumps settle before replacement. No Chromium PID or marker proves closure.
+
+Standalone browser verification holds the exclusive runtime listener throughout its admitted lifetime.
+Its reservation binds the installation/profile, lock port, fresh scratch profile, browser system and
+Duo credential. Startup retires an interrupted verification-only reservation before new admission,
+including reservations without a worker lease. One transaction checks exact reservation/member/pool
+revisions, refuses unexpected run or write ownership, closes bound browser observations, releases
+exact held Duo versions, and records retirement and durable cleanup notifications. It inspects no
+PID or Chromium marker and deletes no browser root.
+
+Native `worker-standing-recovery` reserves an existing idle or paused member after its exact stopped lifetime,
 browser, Duo, write and profile release. The lease retains its last observed healthy phase and pause
 intent through internal shutdown. A fresh replacement completes the original grant before any
 acquisition, authentication or claim, atomically recording browserless idle or paused and the audit.

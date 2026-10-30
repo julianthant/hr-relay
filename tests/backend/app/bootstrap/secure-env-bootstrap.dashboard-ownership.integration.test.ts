@@ -10,7 +10,7 @@ for (const accepted of [false, true]) it(`honors the dashboard admission-ownersh
     await runSecureEnvironmentBootstrap(["cli", "dashboard"], {
       acquireAdmission: () => profile.machine,
       assertEnvironment: () => undefined,
-      runCli: async (_admission, _worker, accept) => { if (accepted) { assert.ok(accept); accept(); } },
+      runCli: async (_admission, accept) => { if (accepted) { assert.ok(accept); accept(); } },
     });
     if (accepted) profile.machine.assertLive();
     else assert.throws(() => profile.machine.assertLive(), { message: "runtime-admission: missing or released admission" });

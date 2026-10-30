@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { composeDashboardRuntime as composeProductionDashboardRuntime, type DashboardComposeInput, type DashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
@@ -21,7 +21,7 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
   async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
     return composeProductionDashboardRuntime({
       ...input,
-      admission: input.admission ?? installationAdmission(input.repoRoot ?? process.cwd()),
+      admission: input.admission ?? installationAdmission(input.repoRoot ?? process.cwd(), input.lifetimeLock),
       backendPortOverride: 0,
       frontendPortOverride: 0,
     });
@@ -36,7 +36,7 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
     });
     copyRuntimePackageFixture(fixture.workspace);
     function selectProfile() {
-      const machine = acquireEntrypointAdmission(fixture.workspace, "shared");
+      const machine = acquireEntrypointAdmission(fixture.workspace, "shared", fixture.lifetime);
       const storage: { admission?: RuntimeAdmission } = {};
       let runtime: ReturnType<typeof composeProfileRuntime> | undefined = undefined;
       let closed = false;
@@ -48,8 +48,7 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
         closed = true;
       };
       profileClosures.push(close);
-      runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null },
-        processLockRoot: join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot) });
+      runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
       const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
       assert.equal(active.state, "active");
       if (active.state !== "active") throw new Error("fixture-profile-sign-in-required");
@@ -62,6 +61,7 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
     let selected = selectProfile();
     return {
       workspace: fixture.workspace,
+      lifetime: fixture.lifetime,
       stateRoot: fixture.stateRoot,
       get artifactRoot() { return selected.admission.artifactRoot; },
       get dashboardInput() {

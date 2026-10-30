@@ -8,18 +8,18 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/profiles/onboarding-duo-provider.ts",
-    "sha256": "9af03823e468c469cd4298c9636ce27f8b0f7e46ca7614ce0f3e2777017106ce",
+    "sha256": "cde74a9139ec54d0d02b1c497b26cb4887fadd5c028510d76dd528b6b9cad959",
     "reason": "A failed UNKNOWN-retention or failure-report callback marks closure unproved and retains the original and retention errors. Closure propagates that stored failure with both causes, keeps the active attempt and browser uncertain, and refuses replacement or relaunch; it never reports successful cleanup. Worker stop failure remains uncertain while pump/report settlement is awaited, and the enclosing browser close retains both causes."
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "a605e2f02d4d9d049f217d3e28b3b559a4a0e4b0f8ce778a506b300663fc8d32",
-    "reason": "Startup proof source-closure uncertainty marks producer closure unproved before unwind, retaining dependent database and process custody. A failed selected-context open marks database closure unproved for typed custody uncertainty and rethrows. Upgrade cleanup clears exclusiveOwner only after release; source-closure uncertainty retains it. Rejection observers leave the original lifetime failure and immediate stop promises intact: the CLI races failure, stop awaits closure, and both retain failures before dependent storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately."
+    "sha256": "0f53bc7657bfa560716292328812bd261e761bb5ea42fa9d2454f04254abbf31",
+    "reason": "Startup source-closure uncertainty records failed producer closure before unwind, retaining dependent database and admission custody. Selected-context open failure retains typed custody uncertainty and rethrows. Upgrade cleanup clears exclusiveOwner only after release. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and immediate stop promises, whose callers await and propagate failures before storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately. Required native browser closure failures follow the same upgrade rejection and custody-retention path."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "45f030b422ace6c57625843d92449fee85f2b7154f345caa66a32772e42faed9",
-    "reason": "A throwing actual database close records failed closure and preserves the original error; the wrapper throws typed custody uncertainty before parent release. Startup and runtime cleanup release child and process custody only after proven resource and database closure. The maintenance tick retains its first error, stops rescheduling, signals the worker stop controller, and compose surfaces it as a failed report."
+    "sha256": "13dd9078cedbb64af7add7cac7bde4763df07e43894a17c71db29266ec01b5fd",
+    "reason": "A throwing actual database close records failed closure and preserves the original error. Open failure retains source-closure uncertainty; otherwise it closes the opened database before admission release and aggregates close or release failure with the original error. Runtime cleanup releases admission only after proven database and browser closure. The maintenance tick retains its first error, stops rescheduling, signals the worker stop controller, and compose surfaces a failed report. The exact root or inherited lifetime remains held through shutdown."
   },
   {
     "path": "src/backend/accounts/chatgpt-account-service.ts",
@@ -68,8 +68,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "b1a287723636fc099524581ddb0b902ba95f189b36295b3a9782a86d25823495",
-    "reason": "Only ENOENT denotes path absence; healthy registry observation permits direct or private-reader wrapped ENOENT only when the whole generic mutex is absent and final canonical profile evidence revalidates; all other errors propagate. Descriptor and directory close failures retain source custody and original failures; publication cleanup aggregates failures. Abandoned-mutex recovery retains restore custody on unproved closure, and inventory disposal refuses release on failed closure."
+      "sha256": "0882df6a3d64970f26bd68fd5fcd142e82fa9e2775247e70414c59d12b187017",
+    "reason": "Only ENOENT returns explicit path absence; callers check it before creation or refusal, and other filesystem failures rethrow. Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
   },
   {
     "path": "src/backend/runs/commands/ordinary-path-validator.ts",
@@ -88,8 +88,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/workers/worker-supervisor.ts",
-    "sha256": "876f9298455edeb9962c23b5d99a1003e9aa5929070adb5e447163c819acd4b2",
-    "reason": "The rejection observer does not replace the original drain promise; shutdown races that promise and throws aggregate failure."
+    "sha256": "b9e315489db5889974f9d5ea07190a4d12c6cfd6cac678db75ad1851f50b4159",
+    "reason": "The rejection observer preserves the original drain promise, which shutdown races and propagates as aggregate failure. A failed owned-child exit reconciliation is retained as recoveryFailure, reported through onFault, blocks spawn and lifecycle reuse, and is included in the final drain failure rather than becoming successful exit settlement."
   },
   {
     "path": "src/backend/logs/browser-action-drain.ts",
@@ -113,8 +113,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "73028be2a839bdd4b8f638bbb040ef3fe826449ac7184035cd97274d1ec5da62",
-    "reason": "The empty rollback-failure accumulator cannot settle migration success: rollback failure retains database custody with the original error, and successful rollback rethrows that error. Failed external validation clears only its admission cache and throws the mutation error or run-search-index-rebuild-required. Malformed diagnostics remain explicit; stopped inspection and upgrade retain failed source closure and original causes. Finite native6 queued cancellation rolls back on failure and retains original plus rollback or database-close failures before installation or restore custody can release."
+    "sha256": "d19a900137515e657f2d68de478284a702e035d951918239d2136a0c2b0ce60f",
+    "reason": "The rollback failure array only accumulates errors: failed rollback retains database custody with the original failure, and successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or run-search-index-rebuild-required with its cause; it never returns validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody can release; required native browser closure precedes the cancellation transaction."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
@@ -123,7 +123,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
-    "sha256": "b8e0e0fd46bcee4c550d33ecb598f3e662b24a86d702bb7b994969cfb693644f",
+    "sha256": "61467990efe4e97ded7b4f8af942880a1c93da793bc96e098e8daf404b4e26da",
     "reason": "Unproved startup proof source closure retains the original opened resource, admission and process handles before any dependent cleanup. Failed admission releases custody only after the opened resource closes successfully; close and release failures retain custody and original errors. Descriptor-bound worker/recovery reads aggregate any read and close failures, then rethrow; receipt absence alone preserves ordinary stale-owner refusal. Restore-publication cleanup preserves primary failures and refuses uncertain closure; failed worker handoff marks custody uncertain before any replacement release."
   },
   {
@@ -148,12 +148,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/bootstrap/secure-env-bootstrap.ts",
-    "sha256": "91d161a61ca16b7cc7e26090fa741b22dc884b424cbe9258bbaa04d59268b333",
-    "reason": "An unproved source closure keeps stopped maintenance custody and rethrows; release runs only when custody was not retained. Offline process-recovery failure prints the catalogued refusal and rethrows the same error, including retained-resource identity."
+    "sha256": "5c842a5699e7d1cc055d523ac3b8486c8701f93cc418d0dc0ac7e8991c8b069c",
+    "reason": "The root listener or inherited lifetime is acquired before admission. Unproved source closure retains admission and rethrows; typed runtime or source-closure uncertainty retains the outer lifetime, while settled paths await its close. Stopped maintenance releases admission only when custody was not retained. No failed bootstrap becomes successful runtime admission. The real browser closure port is supplied to dashboard admission and offline cancellation without changing the failure-retention path."
   },
   {
     "path": "src/backend/storage/configuration/duo-credential-store.ts",
-    "sha256": "cb38c1ffaf96d9e4537c61d87a7b1ea2d63226da4792858ab6668f73adb31f99",
+    "sha256": "78357e8df2b393ec9bdff85ddea7ac1f765ec82e0ef7fc36644a71debdd1c6e0",
     "reason": "The census clears only parsed envelope metadata when arbitrary file bytes fail UTF-8, JSON or envelope validation; filesystem failures propagate. Matching canonical bytes or digest still classify the file unauthorized, and valid same-profile envelopes distinguish managed backups. Restore and erase refuse unauthorized copies; no canonical credential read or publication failure becomes success."
   },
   {

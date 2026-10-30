@@ -1,33 +1,35 @@
+import { withOfflineMaintenance, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { tmpdir } from 'node:os';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { syncBuiltinESMExports } from 'node:module';
 import { AuthorityDatabase } from '../../../../src/backend/storage/sqlite/authority-database.js';
 import { AuthoritySourceClosureUnprovedError } from '../../../../src/backend/storage/source-closure.js';
-import { acquireRuntimeRestoreAdmission, assertRuntimeRestoreAdmission } from '../../../../src/backend/storage/sqlite/runtime-process-locks.js';
+import { type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { composeStorageCommand } from '../../../../src/backend/app/composition/storage-compose.js';
 import { rebuildRuntimeIsolation } from '../../../../src/backend/app/config/runtime-isolation.js';
-import { systemClock } from '../../../../src/rules/time/clock.js';
+import { systemClock, capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { mkdirSync,readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach,describe,expect,it,vi } from "vitest";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
-import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
 describe("native authority backup", () => {
   it("plans a fresh native root without creating authority and initializes only behind stopped admission",async()=>{
     const fixture=await createBoundProfileFixture({pending:"storage"}),root=fixture.stateRoot,path=fixture.path;
-    cleanups.push(async ()=>await fixture.close());const admission=fixture.admission,processLockRoot=join(root,"locks"),clock=capturedInstantClock(NOW);
-    mkdirSync(processLockRoot,{mode:0o700});
-    await expect(upgradeStorage(admission,{stateRoot:root,processLockRoot,plan:true},clock)).resolves.toMatchObject({state:"planned",fromSchemaVersion:0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION});
+    cleanups.push(async ()=>await fixture.close());const admission=fixture.admission,processLockRoot=join(fixture.workspace,rebuildRuntimeIsolation.processLockRoot),clock=capturedInstantClock(NOW);
+    mkdirSync(processLockRoot,{recursive:true,mode:0o700});
+    await expect(withOfflineMaintenance(admission, operation => upgradeStorage(profileBrowserClosure, admission, {stateRoot:root,processLockRoot,plan:true}, clock, operation))).resolves.toMatchObject({state:"planned",fromSchemaVersion:0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION});
     expect(()=>readFileSync(path)).toThrow();
-    await expect(upgradeStorage(admission,{stateRoot:root,processLockRoot,plan:false},clock)).resolves.toMatchObject({state:"initialized"});
-    expect(inspectAuthorityBackupReadOnly(admission,path).tables).toHaveLength(39);
+    await expect(withOfflineMaintenance(admission, operation => upgradeStorage(profileBrowserClosure, admission, {stateRoot:root,processLockRoot,plan:false}, clock, operation))).resolves.toMatchObject({state:"initialized"});
+    expect(inspectAuthorityBackupReadOnly(admission,path).tables).toEqual(AUTHORITY_TABLE_REGISTRY
+      .map(({name,classification})=>({name,classification})).sort((left,right)=>left.name.localeCompare(right.name)));
   });
 
 });
@@ -39,11 +41,11 @@ for (const entry of ['service', 'command'] as const) it(`retains actual stopped 
   const actualRemove = fs.rmSync, actualCreate = fs.mkdtempSync;
   const snapshotPrefix = join(tmpdir(), "relay-readonly-authority-");
   const injected = new Error('upgrade-snapshot-remove-refused');
-  let armed = entry === 'command', directory: string | undefined, removals = 0;
-  let restore: ReturnType<typeof acquireRuntimeRestoreAdmission> | undefined, proved = false;
+  let snapshots = 0, directory: string | undefined, removals = 0;
+  let restore: OfflineMaintenanceOperation | undefined = entry === "service" ? f.admission.acquireOfflineMaintenance() : undefined, proved = false;
   const created = vi.spyOn(fs, 'mkdtempSync').mockImplementation((...args) => {
     const value = actualCreate(...args);
-    if (armed && args[0] === snapshotPrefix) { assert.equal(directory, undefined); assert.ok(typeof value === 'string'); directory = value; }
+    if (args[0] === snapshotPrefix && ++snapshots === (entry === 'service' ? 2 : 1)) { assert.equal(directory, undefined); assert.ok(typeof value === 'string'); directory = value; }
     return value;
   });
   const removed = vi.spyOn(fs, 'rmSync').mockImplementation((...args) => {
@@ -55,20 +57,25 @@ for (const entry of ['service', 'command'] as const) it(`retains actual stopped 
     let failure: unknown;
     try {
       if (entry === 'command') await composeStorageCommand(rebuildRuntimeIsolation, ['upgrade', '--json'], systemClock, f.workspace, f.admission);
-      else await upgradeStorage(f.admission, { stateRoot: f.stateRoot, processLockRoot: root, plan: false }, systemClock, (input, clock) => {
-        const owner = acquireRuntimeRestoreAdmission(input, clock); restore = owner; armed = true; return owner;
-      });
+      else { assert.ok(restore); await upgradeStorage(profileBrowserClosure, f.admission, { stateRoot: f.stateRoot, processLockRoot: root, plan: false }, systemClock, restore); }
     } catch (error) { failure = error; }
     assert.ok(failure instanceof AuthoritySourceClosureUnprovedError);
     const inspected = entry === 'service' ? failure.cause : failure;
     assert.ok(inspected instanceof AuthoritySourceClosureUnprovedError);
     assert.equal(inspected.errors.length, 1); assert.equal(inspected.errors[0], inspected.cause);
     assert.ok(inspected.cause instanceof AuthoritySourceClosureUnprovedError);
-    assert.deepEqual(inspected.cause.errors, [injected]); assert.equal(inspected.cause.cause, injected);
+    let sourceFailure: unknown = inspected.cause;
+    for (let depth = 0; depth < (entry === "command" ? 2 : 0); depth++) {
+      assert.ok(sourceFailure instanceof AuthoritySourceClosureUnprovedError);
+      assert.deepEqual(sourceFailure.errors, [sourceFailure.cause]);
+      sourceFailure = sourceFailure.cause;
+    }
+    assert.ok(sourceFailure instanceof AuthoritySourceClosureUnprovedError);
+    assert.deepEqual(sourceFailure.errors, [injected]); assert.equal(sourceFailure.cause, injected);
     if (entry === 'service') {
       assert.equal(failure.errors.length, 1); assert.equal(failure.errors[0], inspected);
-      assert.ok(restore); assertRuntimeRestoreAdmission(restore, root);
-    } else assert.equal(restore, undefined);
+      assert.ok(restore); f.admission.assertOfflineMaintenance(restore);
+    } else { restore = f.admission.maintenanceOperation(); restore.assertHeld(); }
     assert.ok(directory); assert.equal(removals, 1); assert.equal(fs.existsSync(directory), true);
     assert.deepEqual(fs.readFileSync(f.path), before); f.admission.assertLive(); f.machine.assertLive();
     created.mockRestore(); removed.mockRestore(); syncBuiltinESMExports();
@@ -86,20 +93,20 @@ for (const entry of ['service', 'command'] as const) it(`releases proved upgrade
   const root = join(f.workspace, rebuildRuntimeIsolation.processLockRoot), before = fs.readFileSync(f.path);
   const actualCreate = fs.mkdtempSync, injected = new Error('upgrade-source-create-unavailable');
   const snapshotPrefix = join(tmpdir(), "relay-readonly-authority-");
-  let armed = entry === 'command', refused = 0, restore: ReturnType<typeof acquireRuntimeRestoreAdmission> | undefined;
+  let snapshots = 0, refused = 0;
+  const restore = entry === 'service' ? f.admission.acquireOfflineMaintenance() : undefined;
   const creation = vi.spyOn(fs, 'mkdtempSync').mockImplementation((...args) => {
-    if (armed && args[0] === snapshotPrefix) { refused++; throw injected; }
+    if (args[0] === snapshotPrefix && ++snapshots === (entry === 'service' ? 2 : 1)) { refused++; throw injected; }
     return actualCreate(...args);
   });
   syncBuiltinESMExports();
   let proved = false;
   try {
     if (entry === 'service') {
-      await assert.rejects(upgradeStorage(f.admission, { stateRoot: f.stateRoot, processLockRoot: root, plan: false }, systemClock, (input, clock) => {
-        const owner = acquireRuntimeRestoreAdmission(input, clock); restore = owner; armed = true; return owner;
-      }), error => error === injected);
-      const releasedRestore = restore; assert.ok(releasedRestore);
-      assert.throws(() => assertRuntimeRestoreAdmission(releasedRestore, root));
+      assert.ok(restore);
+      await assert.rejects(upgradeStorage(profileBrowserClosure, f.admission, { stateRoot: f.stateRoot, processLockRoot: root, plan: false }, systemClock, restore), error => error === injected);
+      restore.assertHeld(); restore.release();
+      assert.throws(() => restore.assertHeld(), /offline-maintenance-unissued/u);
     } else {
       const result = await composeStorageCommand(rebuildRuntimeIsolation, ['upgrade', '--json'], systemClock, f.workspace, f.admission);
       assert.equal(result.exitCode, 1);

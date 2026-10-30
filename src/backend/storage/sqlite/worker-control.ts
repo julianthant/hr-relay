@@ -120,11 +120,8 @@ export function createWorkerControlRepository(deps: {
           && leaseGeneration === reset.reset.lifetime.leaseGeneration + 1) {
           const row = database.prepare("SELECT payload_json FROM worker_leases WHERE id=?").get(workerId);
           const lease = WorkerLeaseRecordSchema.parse(JSON.parse(z.object({ payload_json: z.string() }).parse(row).payload_json));
-          const birth = lease.birthCommandId === undefined ? undefined : database.prepare("SELECT * FROM commands WHERE id=?").get(lease.birthCommandId);
-          const command = birth === undefined ? undefined : commandFromRow(birth);
-          if (lease.leaseGeneration === leaseGeneration && lease.lifecycle.state === "starting" && command !== undefined && "kind" in command
-            && command.kind === "run-lifecycle" && command.operation === "worker-lifetime-birth"
-            && z.object({ admissionCommandId: CommandIdSchema }).parse(command.request).admissionCommandId === reset.commandId) return undefined;
+          if (lease.leaseGeneration === leaseGeneration && lease.lifecycle.state === "starting"
+            && lease.startCommandId === reset.commandId) return undefined;
         }
         throw new Error("worker-reset-lifetime-conflict");
       }
@@ -376,8 +373,8 @@ export function admitWorkerReset(repositories: AuthorityRepositories, input: unk
   let lifecycle: WorkerLifecycleBinding | undefined;
   if (lease.lifecycle.state === "stopped") {
     const active = repositories.runtimeConfig.get(), pool = repositories.workerPools.get(slot.workflow);
-    if (replacementDescriptor?.id !== slot.workflow || lease.birthCommandId === undefined || active === undefined || pool === undefined) throw new Error("worker-reset-replacement-authority-unavailable");
-    lifecycle = WorkerLifecycleBindingSchema.parse({ commandId: request.commandId, birthCommandId: lease.birthCommandId,
+    if (replacementDescriptor?.id !== slot.workflow || active === undefined || pool === undefined) throw new Error("worker-reset-replacement-authority-unavailable");
+    lifecycle = WorkerLifecycleBindingSchema.parse({ commandId: request.commandId,
       member: reset.member, lifetime: reset.lifetime, basis: reset.basis, reservedControlRevision: reset.reservedControlRevision,
       poolVersion: pool.version, desiredWorkers: pool.desiredWorkers, operation: { kind: "retry", mode: "browserless",
         systems: workflowProjections(replacementDescriptor).systems, descriptorVersion: replacementDescriptor.version,
@@ -410,7 +407,7 @@ export function admitWorkerLifecycle(repositories: AuthorityRepositories, input:
   const operation = request.type === "remove-worker" ? { kind: "remove" } : initialization === undefined || active === undefined ? undefined : {
     kind: "retry", mode: initialization.mode, systems: workflowProjections(initialization.descriptor).systems, descriptorVersion: initialization.descriptor.version,
     contractFingerprint: initialization.descriptor.contractFingerprint, configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint };
-  const binding = WorkerLifecycleBindingSchema.parse({ ...(lease.birthCommandId === undefined ? {} : { birthCommandId: lease.birthCommandId }), commandId: request.commandId, member: workerPoolMember(member), lifetime: { leaseGeneration: lease.leaseGeneration,
+  const binding = WorkerLifecycleBindingSchema.parse({ commandId: request.commandId, member: workerPoolMember(member), lifetime: { leaseGeneration: lease.leaseGeneration,
     processId: lease.processId, startedAt: lease.lifecycle.startedAt }, basis: request.target.controlBasis,
     reservedControlRevision: lease.controlRevision + 1, poolVersion: pool.version, desiredWorkers: pool.desiredWorkers,
     operation });

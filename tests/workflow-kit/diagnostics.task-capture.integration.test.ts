@@ -18,7 +18,7 @@ async function world(enabled: boolean, failure?: "unavailable" | "missing" | "pe
   const warnings: unknown[] = [];
   const captures: Parameters<RunBrowserScreenshotCapture["capture"]>[0][] = [];
   const sessionId = BrowserSessionIdSchema.parse("00000000-0000-4000-8000-000000000001");
-  const factory: WorkerBrowserSessionFactory = { async open(input) {
+  const factory: WorkerBrowserSessionFactory = { probeProfile: async () => undefined, async open(input) {
     return { sessionId, system: input.system, instance: input.instance, configFingerprint: input.configFingerprint,
       signInFingerprint: input.configFingerprint, browserMode: input.browserMode, profileRevision: 1,
       acceptDownloads: false, exclusive: false, driver: { system: input.system },

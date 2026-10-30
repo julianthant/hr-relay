@@ -111,24 +111,24 @@ describe("secrets single source", () => {
     for (const candidate of [
       content.replace("assertNoMigratedEnvironmentKeys()))", "(() => undefined)()))"),
       content.replace('entrypointArgs[0] === "test-data"', 'entrypointArgs[0] === "dashboard"'),
-      content.replace("acquireEntrypointAdmission(workspace, requested)))(mode)", "undefined)))(mode)"),
+      content.replace("acquireEntrypointAdmission(workspace, requested, rootLifetime())))(mode, lifetime.lock)", "undefined)))(mode, lifetime.lock)"),
       content.replace('if (selector === "cli" || selector === "test-target-document-number") return selector;', 'return "cli";'),
       content.replace('from "../../../models/config/secrets.js"', 'from "../../../models/config/forged-secrets.js"'),
       content.replace("const runCli =", "assertNoMigratedEnvironmentKeys = () => undefined; const runCli ="),
       content.replace('import { assertNoMigratedEnvironmentKeys }', 'import { assertNoMigratedEnvironmentKeys as forged }'),
       content.replace('await runCli(admission, () => {', 'await runCli(admission); await runCli(admission, () => {'),
-      content.replace('bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace)', 'bootDiagnostics ? acquireEntrypointAdmission(workspace, requested)'),
-      content.replace('const custody = initialWorkerCustody;', 'const custody = undefined;'),
-      content.replace('initialWorkerCustody = undefined;', 'initialWorkerCustody = custody;'),
-      content.replace('authorityPath: selected.authorityPath', 'authorityPath: join(admission.stateRoot, "state.db")'),
-      content.replace('initialWorkerCustody = acquireRuntimeProcessLock', 'AuthorityDatabase.open(admission, { path: selected.authorityPath }); initialWorkerCustody = acquireRuntimeProcessLock'),
+      content.replace('bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace, rootLifetime())', 'bootDiagnostics ? acquireEntrypointAdmission(workspace, requested, rootLifetime())'),
+      content.replace('}, lifetime);', '}, undefined);'),
+      content.replace('dashboardOwnsAdmission = true;', 'dashboardOwnsAdmission = false;'),
+      content.replace('await runCli(admission,', 'await runCli(undefined,'),
+      content.replace('}, lifetime);', '}, lifetime, undefined);'),
       content.replace('!bootDiagnostics &&', ''),
       content.replace('{ acquireExclusiveRuntimeAdmission, RuntimeAdmission }', '{ forgedAdmission, RuntimeAdmission }'),
     ]) assert.ok(audit(candidate).length > 0, candidate);
     const wrapperPath = "scripts/dev/secure-env-bootstrap.ts";
     const wrapper = readFileSync(join(REPO_ROOT, wrapperPath), "utf8");
     assert.deepEqual(auditSoleRunnerInvocation([{ path, content }, { path: wrapperPath, content: wrapper }]), []);
-    for (const candidate of [wrapper + '\nawait runSecureEnvironmentBootstrap();', wrapper.replace('entryPath !== undefined &&', ''), wrapper.replace('bootstrap/secure-env-bootstrap.js', 'bootstrap/forged.js')]) {
+    for (const candidate of [wrapper + '\nawait runSecureEnvironmentBootstrap();', wrapper.replace('entryPath !== undefined &&', ''), wrapper.replace('bootstrap/secure-env-bootstrap.js', 'bootstrap/forged.js'), wrapper.replace('if (args.length !== 1)', 'if (false)'), wrapper.replace('browser/native-profile-probe.js', 'browser/forged.js')]) {
       assert.ok(auditSoleRunnerInvocation([{ path, content }, { path: wrapperPath, content: candidate }]).length > 0);
     }
   });

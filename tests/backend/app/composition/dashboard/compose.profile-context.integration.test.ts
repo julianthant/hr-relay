@@ -10,12 +10,12 @@ import * as streams from "../../../../../src/backend/transports/http/subscriptio
 import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { readRuntimeProcessLock } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import * as accounts from "../../../../../src/backend/accounts/chatgpt-account-service.js";
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
 import * as kernel from "../../../../../src/backend/runs/commands/command-kernel.js";
-import { ProfileStorageRelocationUnsupportedError } from "../../../../../src/backend/storage/admission/admission.js";
+import { ProfileStorageRelocationUnsupportedError } from "../../../../../src/backend/storage/admission/admission-identity.js";
 import { failureStatus } from "../../../../../src/backend/transports/http/routes/failure-status.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest, storageRelocationRequestFingerprint } from "../../../../../src/rules/commands/commands.js";
@@ -29,16 +29,30 @@ vi.mock("node:fs/promises", async importOriginal => ({ ...await importOriginal<t
 async function fixture() {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
-  const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null },
-    processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
+  const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null } });
   const signIn = () => runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   const active = signIn(); assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("synthetic active profile required");
-  const input = { admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace, clock,
+  const input = { lifetimeLock: f.lifetime, admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace, clock,
     isolation: rebuildRuntimeIsolation, backendPortOverride: 0 as const, frontendPortOverride: 0 as const, env: {},
     preflightRunnerFactory: healthyRuntimePreflightRunners };
   return { ...f, clock, runtime, active, signIn, input };
 }
+
+it("refuses another profile controller before opening dashboard storage or changing its current context", async () => {
+  const f = await fixture(), other = await fixture();
+  const context = f.runtime.selectedContext(f.active.token), generation = context.database.getMeta().authorityGeneration;
+  const before = context.database.readProfileResourceCustody();
+  const open = vi.spyOn(AuthorityDatabase, "open");
+  try {
+    await assert.rejects(composeDashboardRuntime({ ...f.input, lifetimeLock: other.lifetime }), /runtime-lifetime-admission-mismatch/u);
+    assert.equal(open.mock.calls.length, 0);
+    context.assertCurrent();
+    assert.equal(context.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(context.database.readProfileResourceCustody(), before);
+    f.lifetime.assertHeld(); other.lifetime.assertHeld();
+  } finally { open.mockRestore(); await f.runtime.close(); await other.runtime.close(); await f.close(); await other.close(); }
+});
 
 it("starts the actual dashboard from the same token-owned context and proves resource/child/process/parent shutdown", async () => {
   const f = await fixture();
@@ -161,7 +175,8 @@ for (const failure of ["account", "database"] as const) it(`retains exact dashbo
     assert.throws(() => f.runtime.selectedContext(f.active.token), ProfileSessionRefusedError);
     assert.throws(() => context?.protectedSecrets.read(), ProfileSessionRefusedError);
     assert.equal(f.signIn().state, "refused");
-    assert.ok(readRuntimeProcessLock(join(f.workspace, rebuildRuntimeIsolation.processLockRoot), "server"));
+    f.lifetime.assertHeld();
+    await assert.rejects(RuntimeLifetimeLock.acquire(f.lifetime.port), RuntimeAlreadyRunningError);
   } finally {
     vi.restoreAllMocks();
     if (context !== undefined) { await context.account.close(); context.database.close(); context.admission.release(); }
@@ -195,13 +210,12 @@ for (const failure of ["http", "http-and-feed"] as const) it(`unwinds actual sta
     });
     assert.ok(closeFeed);
     assert.throws(() => f.runtime.selectedContext(f.active.token), ProfileSessionRefusedError);
-    const process = readRuntimeProcessLock(join(f.workspace, rebuildRuntimeIsolation.processLockRoot), "server"); assert.ok(process);
+    f.lifetime.assertHeld();
+    await assert.rejects(RuntimeLifetimeLock.acquire(f.lifetime.port), RuntimeAlreadyRunningError);
     if (failure === "http-and-feed") {
-      assert.equal(process.releasedAt, null);
       context.admission.assertLive(); f.machine.assertLive();
       assert.equal(context.database.getMeta().profileId, f.active.profileId);
     } else {
-      assert.equal(typeof process.releasedAt, "string");
       assert.throws(() => context.admission.assertLive());
       assert.throws(() => context.database.getMeta(), /closed/u);
     }

@@ -158,7 +158,6 @@ export function createBrowserSessionFactoryFixtures(
     };
     return {
       launcher: {
-        observeProcess: (_directory, pid = 123) => ({ pid, observation: closed ? { state: "gone" } : { state: "alive", identity: { platform: "darwin", startToken: "fixture-process" } } }),
         async launch(input) {
           mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 });
           await page.setViewportSize(input.viewport);

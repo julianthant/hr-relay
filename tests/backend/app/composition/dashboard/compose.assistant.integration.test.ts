@@ -67,7 +67,7 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
   });
     owner.fetchProbe = fetchProbe;
     const clock = transport.clock;
-    const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null }, processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) });
+    const runtime = composeProfileRuntime({ admission: f.machine, clock, hostFacts: { primaryDisplay: null } });
     owner.runtime = runtime;
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
     const sources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredSources);
@@ -80,7 +80,7 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
     assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("selected fixture required");
     const context = runtime.selectedContext(active.token);
     const authorization = await context.account.signIn({ usePlan: true }); await transport.callback(authorization); await authorization.completion;
-    const dashboard = await composeDashboardRuntime({ admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace,
+    const dashboard = await composeDashboardRuntime({ lifetimeLock: f.lifetime, admission: f.machine, profile: { runtime, token: active.token }, repoRoot: f.workspace,
       clock, isolation: rebuildRuntimeIsolation, env: {}, backendPortOverride: 0, frontendPortOverride: 0, preflightRunnerFactory: healthyRuntimePreflightRunners,
        });
     owner.dashboard = dashboard;

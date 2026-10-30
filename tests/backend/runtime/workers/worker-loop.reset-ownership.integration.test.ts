@@ -79,7 +79,7 @@ describe("reset retains actual callback ownership", () => {
       let started: () => void = () => undefined;
       const starting = new Promise<void>(resolve => { started = resolve; });
       let activeSignal: AbortSignal | undefined;
-      const sessions = { ...base, factory: { open: async (input: Parameters<typeof base.factory.open>[0]) => {
+      const sessions = { ...base, factory: { probeProfile: async () => undefined, open: async (input: Parameters<typeof base.factory.open>[0]) => {
         if (stage === "acquisition") { activeSignal = input.signal; started(); await held; }
         const resource = await base.factory.open(input);
         return stage === "sign-in" ? { ...resource, authentication: { authenticate: async (_system: Parameters<BrowserAuthenticationHandle["authenticate"]>[0], options: Parameters<BrowserAuthenticationHandle["authenticate"]>[1]) => { activeSignal = options.signal; started(); await held; return "logged-in" as const; } } } : resource;

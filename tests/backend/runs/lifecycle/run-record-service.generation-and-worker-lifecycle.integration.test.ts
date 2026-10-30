@@ -50,7 +50,7 @@ describe("canonical run-record service", () => {
   });
 
   it("table-class coverage drives every public service method and generation class", async () => {
-    const { service, request, runtimeConfig, database } = await fixture();
+    const { service, request, runtimeConfig, database, lifetime } = await fixture();
     const covered = new Set<string>();
     let commandSequence = 100;
     const commandId = () => `99000000-0000-4000-8000-${String(commandSequence++).padStart(12, "0")}`;
@@ -191,6 +191,14 @@ describe("canonical run-record service", () => {
 
     const slot = database.authority.workerSlots.get(WORKER_ID), lease = database.authority.workerLeases.get(WORKER_ID);
     assert.ok(slot !== undefined && lease !== undefined);
+    const recoveryCommandId = commandId();
+    assert.deepEqual(service.read(UUID_6), { state: "absent", runId: UUID_6 });
+    assert.deepEqual(measure("recoverCrash", 0, () => service.recoverCrash({
+      commandId: recoveryCommandId, runId: UUID_6, expectedVersion: 1,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 },
+      workerLifetime: { membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration }, now: NOW,
+    }, lifetime)), { state: "refused", refusal: { reason: "lost" } });
+    assert.equal(database.authority.lifecycleJournal.getCommand(recoveryCommandId), undefined);
     const reset = database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
       commandId: commandId(), family: "worker-browser", type: "stop-worker", source: "dashboard", requestedBy: "local-operator", requestedAt: NOW,
       target: { workerId: WORKER_ID, membershipRevision: slot.membershipRevision, controlBasis: { leaseGeneration: lease.leaseGeneration, controlRevision: lease.controlRevision } },
@@ -279,7 +287,7 @@ describe("worker lifecycle service capability", () => {
     assert.throws(() => database.authority.writeIntents.listAttemptingByItem({
       workflowId: run.envelope.workflow, itemId: run.envelope.itemId, extra: true }));
     const result = service.requeue({ commandId: lifecycleCommandId("recovery", run.envelope.runId),
-      runId: run.envelope.runId, expectedVersion: requested.version, cause: "recovery", staleBefore: LATER });
+      runId: run.envelope.runId, expectedVersion: requested.version, cause: "recovery", claim: { workerId: WORKER_ID, claimGeneration: requested.claimGeneration } });
     assert.equal(result.state, "recovery-required");
     if (result.state !== "recovery-required") throw new Error("Unfinished write intent did not refuse release");
     assert.equal(result.parked, false);
@@ -353,8 +361,9 @@ for (const finishingGeneration of [2, 3]) {
     let running = runningRun(f.service, f.request, f.runtimeConfig);
     const stale = failureTerminalRequest(running, id());
     for (let generation = 2; generation <= finishingGeneration; generation++) {
+      const held = runClaim(running); assert.ok(held);
       assert.equal(f.service.requeue({ commandId: id(), runId: running.envelope.runId,
-        expectedVersion: running.version, cause: "recovery", staleBefore: LATER }).state, "applied");
+        expectedVersion: running.version, cause: "recovery", claim: { workerId: held.workerId, claimGeneration: held.claimGeneration } }).state, "applied");
       const workerId = generation === 2 ? "person-lookup-worker-2" : WORKER_ID;
       const claimed = requireLifecycleApplied(f.service.claimNext({ commandId: id(), workflow: WORKFLOW_ID, workerId, runtimeConfig: f.runtimeConfig,
         workerLifetime: testWorkerLifetime(f.database, WORKFLOW_ID, generation === 2 ? 2 : 1).workerLifetime }));
@@ -370,7 +379,7 @@ for (const finishingGeneration of [2, 3]) {
       assert.equal(f.database.authority.runs.get(running.envelope.runId)?.completion, undefined);
     }
     const current = failureTerminalRequest(running, id());
-    current.terminal.authorization.claim = { workerId: finishingGeneration === 2 ? "person-lookup-worker-2" : WORKER_ID, claimGeneration: finishingGeneration };
+    assert.deepEqual(current.terminal.authorization.claim, { workerId: finishingGeneration === 2 ? "person-lookup-worker-2" : WORKER_ID, claimGeneration: finishingGeneration });
     const terminal = requireLifecycleApplied(f.service.terminalize(current, personLookupDescriptor));
     assert.equal(terminal.completion?.claim.claimGeneration, finishingGeneration);
     const retry = requireLifecycleApplied(f.service.retry({ commandId: id(), runId: terminal.envelope.runId,
@@ -390,38 +399,46 @@ for (const finishingGeneration of [2, 3]) {
 }
 
 it("competing connections cannot accept conflicting failure settlements", async () => {
-  const f = await fixture(); const running = runningRun(f.service, f.request, f.runtimeConfig);
-  const firstRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000051");
-  const secondRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000052");
-  secondRequest.terminal.failure.failureId = UUID_5;
-  secondRequest.terminal.authorization.failureId = UUID_5;
-  const releases = [new SharedArrayBuffer(4), new SharedArrayBuffer(4)];
+  const f = await fixture(), queued = created(f.service, { ...f.request,
+    descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint });
   const connections: Awaited<ReturnType<typeof raceConnection>>[] = [];
   try {
-    for (const [index, request] of [firstRequest, secondRequest].entries()) {
-      connections.push(await raceConnection({
-        path: join(f.root, "state.db"), now: NOW, release: releases[index], runId: running.envelope.runId,
-        operation: { kind: "terminal-failure", request: { commandId: request.commandId, terminal: request.terminal } },
-      }));
-    }
-    const [first, second] = connections; assert.ok(first && second && releases[0] && releases[1]);
+    connections.push(await raceConnection({ path: join(f.root, "state.db"), now: NOW, runId: queued.envelope.runId,
+      operation: { kind: "own-terminal-failure", runtimeConfig: f.runtimeConfig } }, f.lifetime));
+    const running = f.database.authority.runs.get(queued.envelope.runId); assert.ok(running);
+    assert.equal(running.lifecycle.state, "running");
+    const claim = runClaim(running); assert.ok(claim);
+    const firstOwner = connections[0]; assert.ok(firstOwner?.pid !== undefined);
+    const member = f.database.authority.workerSlots.get(claim.workerId), lease = f.database.authority.workerLeases.get(claim.workerId);
+    assert.ok(member && lease && "workerLifetime" in running.lifecycle && running.lifecycle.workerLifetime);
+    assert.equal(lease.processId, firstOwner.pid);
+    assert.equal(running.lifecycle.workerLifetime.membershipRevision, member.membershipRevision);
+    assert.equal(running.lifecycle.workerLifetime.leaseGeneration, lease.leaseGeneration);
+    const firstRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000051");
+    const secondRequest = failureTerminalRequest(running, "99000000-0000-4000-8000-000000000052");
+    secondRequest.terminal.failure.failureId = UUID_5;
+    secondRequest.terminal.authorization.failureId = UUID_5;
+    firstOwner.terminalFailure(firstRequest);
+    connections.push(await raceConnection({ path: join(f.root, "state.db"), now: NOW, runId: running.envelope.runId,
+      operation: { kind: "terminal-failure", request: { commandId: secondRequest.commandId, terminal: secondRequest.terminal } } }, f.lifetime));
+    const [first, second] = connections; assert.ok(first && second && typeof first.release === "function" && typeof second.release === "function");
     assert.deepEqual(first.ready, { type: "ready" }); assert.deepEqual(second.ready, { type: "ready" });
-    first.worker.postMessage("run"); assert.deepEqual(await first.next(), { type: "reserved" });
-    second.worker.postMessage("run"); const busy = await second.next(); assert.equal(busy.type, "error");
+    first.run(); assert.deepEqual(await first.next(), { type: "reserved" });
+    second.run(); const busy = await second.next(); assert.equal(busy.type, "error");
     if (busy.type !== "error") throw new Error("competing settlement did not encounter held transaction");
     assert.match(busy.message, /locked|busy/);
     assert.deepEqual(f.database.authority.runs.get(running.envelope.runId), running);
-    Atomics.store(new Int32Array(releases[0]), 0, 1); Atomics.notify(new Int32Array(releases[0]), 0);
+    await first.release();
     const accepted = await first.next(); assert.equal(accepted.type, "result");
     if (accepted.type !== "result") throw new Error("winning settlement missing");
     assert.equal(accepted.outcome.state, "applied");
-    Atomics.store(new Int32Array(releases[1]), 0, 1); second.worker.postMessage("run");
+    await second.release(); second.run();
     assert.deepEqual(await second.next(), { type: "result", outcome: { state: "refused", refusal: { reason: "lost" } } });
     assert.equal(f.database.authority.failures.listByRun(running.envelope.runId).length, 1);
     assert.equal(f.database.authority.failures.get(UUID_5), undefined);
     assert.equal(f.database.authority.lifecycleJournal.getCommand(secondRequest.commandId), undefined);
   } finally {
-    await closeRaceConnections(connections, releases);
+    await closeRaceConnections(connections);
   }
 });
 

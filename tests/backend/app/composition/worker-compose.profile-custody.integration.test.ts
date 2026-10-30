@@ -10,7 +10,7 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import * as credentialStores from "../../../../src/backend/storage/configuration/credential-store.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
@@ -44,12 +44,11 @@ for (const failure of ["none", "artifact", "artifact-and-close"] as const) it(`o
       throw error;
     }) };
   });
-  const lockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
-  const snapshot = () => observeRuntimeLockSnapshot({ processLockRoot: lockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, clock);
+  const lifetimeLock = f.lifetime;
   let opened: AuthorityDatabase | undefined;
   try {
-    const running = composeWorkerRuntime({ admission: f.machine, repoRoot: f.workspace, isolation: rebuildRuntimeIsolation,
-      args: ["person-lookup", "--pool-index", "1", "--drain"], clock, env: {}, processId: process.pid,
+    const running = composeWorkerRuntime({ lifetimeLock, admission: f.machine, repoRoot: f.workspace, isolation: rebuildRuntimeIsolation,
+      args: ["person-lookup", "--pool-index", "1", "--drain"], clock, env: {},
       preflightRunnerFactory: healthyRuntimePreflightRunners, duoCeremony: await fixtureDuoCeremonyGates(clock), sessionFactory: happySessionHarness().factory,
       stopSignal: new AbortController().signal, write: () => undefined,
       openDatabase: (options, openClock) => {
@@ -59,7 +58,7 @@ for (const failure of ["none", "artifact", "artifact-and-close"] as const) it(`o
       },
       closeDatabase: database => {
         opened = database;
-        assert.equal(snapshot().processLocks.workers.state, "active");
+        lifetimeLock.assertHeld();
         if (failure === "artifact-and-close") throw closeFailure;
         database.close();
       } });
@@ -80,10 +79,10 @@ for (const failure of ["none", "artifact", "artifact-and-close"] as const) it(`o
     f.machine.assertLive();
     if (failure === "artifact-and-close") {
       issued.assertLive(); assert.equal(database.getMeta().profileId, f.admission.profileBinding.profileId);
-      assert.equal(snapshot().processLocks.workers.state, "active");
+      lifetimeLock.assertHeld();
     } else {
       assert.throws(() => actualDatabase.getMeta(), /closed/u); assert.throws(() => actualChild.assertLive());
-      assert.equal(snapshot().processLocks.workers.state, "stopped");
+      lifetimeLock.assertHeld();
     }
   } finally { vi.restoreAllMocks(); opened?.close(); await f.close(); }
 });

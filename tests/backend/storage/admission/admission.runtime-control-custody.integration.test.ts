@@ -1,3 +1,4 @@
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { DatabaseSync } from "node:sqlite";
@@ -81,14 +82,15 @@ it("rechecks root shape after a capability was issued", () => {
   expect(() => admission.assertArtifactRoot("relative")).toThrow(/released admission/u);
 });
 
-it("limits first-adoption verification to read-only inspection", () => {
+it("limits first-adoption verification to read-only inspection", async () => {
   const workspace = fixture();
+  const lifetime = await runtimeLifetimeLock();
   const stateRoot = join(workspace, ".tracker/data");
   mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
   mkdirSync(join(stateRoot, "artifacts"), { mode: 0o700 });
   writeFileSync(join(stateRoot, "sentinel.txt"), "synthetic");
   const path = join(stateRoot, "state.db");
-  expect(() => acquireInitialRuntimeAdmission(workspace, (_pair, inspection) => {
+  expect(() => acquireInitialRuntimeAdmission(workspace, lifetime, (_pair, inspection) => {
     expect(() => inspection.assertWritable()).toThrow(/adoption inspection is read-only/u);
     expect(() => AuthorityDatabase.open(inspection, { path, busyTimeoutMs: 250, migrationOwner: "unit-test" }))
       .toThrow(/profile-bound-authority-required/u);
@@ -147,14 +149,15 @@ it("publishes the held onboarding draft and replaces setup with issued runtime c
   } finally { await ready.close(); }
 });
 
-it("keeps an adopting journal after an empty fresh initializer", () => {
+it("keeps an adopting journal after an empty fresh initializer", async () => {
   const workspace = fixture();
-  expect(() => acquireInitialRuntimeAdmission(workspace, () => {
+  const lifetime = await runtimeLifetimeLock();
+  expect(() => acquireInitialRuntimeAdmission(workspace, lifetime, () => {
     throw new Error("verifier must not see missing database");
   }, () => {})).toThrow(/fresh authority database missing/u);
   expect(existsSync(join(workspace, ".tracker/control", "journal.json"))).toBe(true);
   expect(existsSync(join(workspace, ".tracker/control", "locator.json"))).toBe(false);
-  expect(() => acquireInitialRuntimeAdmission(workspace, () => {
+  expect(() => acquireInitialRuntimeAdmission(workspace, lifetime, () => {
     throw new Error("not reached");
   }, () => {})).toThrow(/locator missing; offline recovery required/u);
 });

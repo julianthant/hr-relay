@@ -1,3 +1,4 @@
+
 import * as credentialStores from "../../../../src/backend/storage/configuration/credential-store.js";
 import { RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
@@ -7,7 +8,7 @@ import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
-import { join } from "node:path";
+
 import { afterEach, describe, it, vi } from "vitest";
 import { WorkerSessionManager, WorkerSessionClosureUnprovedError } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { composeWorkerRuntime } from "../../../../src/backend/app/composition/worker-compose.js";
@@ -18,7 +19,7 @@ import { WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixture
 import { ITEM_ID, RUN_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { happySessionHarness, healthyCrmDriver, personLookupQueuedRun, sessionFactoryHarness, type SessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, captureSyntheticClosure, workerLifetime, processLockRoot, composeInput, cleanup } = createWorkerCompositionTestWorld();
+const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, captureSyntheticClosure, workerLifetime, composeInput, cleanup } = createWorkerCompositionTestWorld();
 
 
 afterEach(cleanup);
@@ -32,10 +33,9 @@ function admittedWorkerId(stateRoot: string, clock: TestClock, poolIndex = 1) {
   return database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
     commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex,
     expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0,
-    processId: process.pid, processAcquisitionId: randomUUID(),
-    authorityPath: join(stateRoot, "state.db"),
-    processLockRoot: processLockRoot(stateRoot), now: clock.now().toISOString(),
-  }, randomUUID())).workerId;
+    processId: process.pid,
+    now: clock.now().toISOString()
+}, randomUUID())).workerId;
 }
 
 describe("composed worker runtime", () => {
@@ -314,7 +314,7 @@ describe("composed worker runtime", () => {
     const closeFailure = new Error("synthetic fixture context closure failure");
     const unprovable: SessionFactoryHarness = {
       ...sessions,
-      factory: { open: async input => {
+      factory: { probeProfile: async () => undefined, open: async input => {
         const resource = await sessions.factory.open(input);
         closes.push(async () => {
           const proof = await resource.close({ reason: "worker-stop" });

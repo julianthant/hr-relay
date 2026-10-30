@@ -1,3 +1,4 @@
+import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
@@ -131,12 +132,12 @@ assert.ok(poolIndex!==undefined,"fixture exceeds genuine worker pool capacity");
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
-export function resolutionPeer(path: string) {
-  const child = fork(fileURLToPath(new URL("../backend/failure-resolution-peer.ts", import.meta.url)), [path], { execArgv: ["--import", "tsx"], silent: true });
+export async function resolutionPeer(path: string, lifetime: RuntimeLifetimeLock) {
+  const child = fork(fileURLToPath(new URL("../backend/failure-resolution-peer.ts", import.meta.url)), [path, String(lifetime.port)], { execArgv: ["--import", "tsx"], silent: true });
   let failure = "";
   child.stderr?.on("data", chunk => { failure += String(chunk); });
   const exited = new Promise<void>((resolve, reject) => {
-    child.once("exit", code => code === 0 ? resolve() : reject(new Error(`diagnostic peer exit ${String(code)}: ${failure}`)));
+    child.once("close", (code, signal) => code === 0 && signal === null ? resolve() : reject(new Error(`diagnostic peer exit ${String(code)}: ${failure}`)));
     child.once("error", reject);
   });
   const ready = new Promise<void>((resolve, reject) => {
@@ -146,6 +147,13 @@ export function resolutionPeer(path: string) {
     });
     child.once("error", reject);
   });
+  try { await lifetime.share(child); await ready; }
+  catch (error) {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    try { await exited; }
+    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: { child, lifetime } }); }
+    throw error;
+  }
   return { ready, exited, send: async (command: unknown) => {
     await ready;
     const result = new Promise<ReturnType<typeof CommandResultSchema.parse>>((resolve, reject) => {

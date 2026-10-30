@@ -17,7 +17,7 @@ import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER 
 const retainedExplorerAuthorityOwners = new Set<object>();
 
 export async function explorerAuthorityFixture(owned?: Readonly<{
-  root: string; path: string; open: () => AuthorityDatabase; dispose: () => void;
+  root: string; path: string; open: () => AuthorityDatabase; dispose: () => void | Promise<void>;
 }>) {
   const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; owned?: typeof owned; primary?: { error: unknown }; failure?: Error } = { owned };
   retainedExplorerAuthorityOwners.add(held);
@@ -99,7 +99,7 @@ export async function explorerAuthorityFixture(owned?: Readonly<{
       if (held.failure !== undefined) throw held.failure;
       if (closeAttempted) return;
       closeAttempted = true;
-      try { database.close(); if (owned === undefined) await profile?.close(); else owned.dispose(); retainedExplorerAuthorityOwners.delete(held); }
+      try { database.close(); if (owned === undefined) await profile?.close(); else await owned.dispose(); retainedExplorerAuthorityOwners.delete(held); }
       catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
     },
   };

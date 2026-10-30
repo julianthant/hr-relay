@@ -23,8 +23,8 @@ export const WorkerControlSchema = z.strictObject({
 });
 export type WorkerControl = z.infer<typeof WorkerControlSchema>;
 
-/** Why a worker lease ended. `crashed` and `lease-expired` are written by the recovery sweep. */
-export const WorkerStopReasonSchema = z.enum(["operator", "shutdown", "lease-expired", "crashed"]);
+
+export const WorkerStopReasonSchema = z.enum(["operator", "shutdown", "crashed"]);
 export type WorkerStopReason = z.infer<typeof WorkerStopReasonSchema>;
 
 /** The descriptor's ordered browser-system set, frozen when this worker lease starts. */
@@ -67,7 +67,7 @@ export type WorkerControlBasis = z.infer<typeof WorkerControlBasisSchema>;
 
 export const WorkerLeaseRecordSchema = z.strictObject({
   workerId: WorkerIdSchema,
-  /** A worker claims only its own workflow's rows (ref execution-and-sessions ). */
+  /** Home workflow; authenticated descendants share the worker. */
   workflow: WorkflowIdSchema,
   browserSystems: WorkerBrowserSystemsSchema,
   processId: PositiveIntSchema,
@@ -75,7 +75,7 @@ export const WorkerLeaseRecordSchema = z.strictObject({
   leaseGeneration: PositiveIntSchema,
   controlRevision: PositiveIntSchema,
   controlCommandId: CommandIdSchema.optional(),
-  birthCommandId: CommandIdSchema.optional(),
+  startCommandId: CommandIdSchema.optional(),
   recoveryBasis: z.strictObject({ state: z.enum(["starting", "idle", "busy", "waiting", "paused"]),
     directive: z.enum(["run", "pause"]), observedAt: IsoInstantSchema }).optional(),
   lifecycle: WorkerLifecycleSchema,

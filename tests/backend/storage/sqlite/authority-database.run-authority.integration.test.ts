@@ -236,8 +236,10 @@ describe("run claim store", () => {
     });
     assert.equal(renewed.state, "renewed");
 
-    const swept = database.authority.runs.sweepExpiredClaims({ staleBefore: MUCH_LATER, now: MUCH_LATER });
-    assert.equal(swept.length, 1);
+    assert.ok(renewed.state === "renewed");
+    const released = database.authority.runs.requeue({ runId: RUN_ID, expectedVersion: renewed.run.version,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 }, cause: "reassign", now: MUCH_LATER });
+    assert.equal(released.state, "applied");
     const zombie = database.authority.runs.renewClaim({
       runId: RUN_ID,
       claim: { workerId: WORKER_ID, claimGeneration: 1 },
@@ -530,18 +532,5 @@ describe("worker leases", () => {
     );
   });
 
-  it("expires a lease whose heartbeat went stale", async () => {
-    const database = await openDatabase();
-    database.authority.workerLeases.start(WORKER_START_REQUEST);
-    database.authority.workerLeases.reportLifecycle({
-      workerId: WORKER_ID,
-      leaseGeneration: 1,
-      lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: NOW },
-      now: NOW,
-    });
-    const expired = database.authority.workerLeases.sweepExpired({ staleBefore: LATER, now: LATER });
-    assert.equal(expired.length, 1);
-    assert.equal(expired[0].lifecycle.state, "stopped");
-    assert.equal(database.authority.workerLeases.listLive().length, 0);
-  });
+
 });

@@ -1,3 +1,4 @@
+import { onboardingProfileDirectory } from "../../../src/backend/runtime/browser/native-profile-probe.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -28,11 +29,11 @@ function world(method: "key" | "touch" = "key") {
   let waiter: ((value: unknown) => void) | undefined;
   let browserWaiter: ((value: unknown) => void) | undefined;
   let blockedStop = false, releaseStop: (() => void) | undefined, portalPages = 0;
-  let lostActiveStopAck = false, blockedPump = false, missingProcessExit = false;
+  let lostActiveStopAck = false, blockedPump = false;
   let startupHold: Promise<void> | undefined, releaseStartup: (() => void) | undefined, startupEntered: (() => void) | undefined;
   const replies = new Map<string, (value: unknown) => void>();
   let closed = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
-  let launchCount = 0;
+  let launchCount = 0, nativeProbes = 0, nativeBusy = false, revokeDuringProbe = false, mutateOwnerDuringProbe = false;
   let profile = "";
   const listeners: (() => void)[] = [];
   const calls: string[] = [];
@@ -78,6 +79,14 @@ function world(method: "key" | "touch" = "key") {
     close: async () => { closed = true; if (!missingCloseEvent) for (const listener of listeners) listener(); if (!blockedPump) { waiter?.(null); waiter = undefined; } browserWaiter?.(null); browserWaiter = undefined; } } as unknown as BrowserContext;
   const realProvider = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory, clock, closeProofMs: 50,
     launcher: { launch: async input => {
+      if(input.nativeOnly===true){
+        nativeProbes++;
+        if(nativeBusy)throw new Error("Failed to create a ProcessSingleton for your profile directory.");
+        if(revokeDuringProbe)current=false;
+        if(mutateOwnerDuringProbe)Reflect.set(owner,"accountId",randomUUID());
+        closed=false;pages=[makePage()];listeners.length=0;
+        return context;
+      }
       launchCount++; closed = false; pages = [makePage()]; listeners.length = 0; profile = input.profileDirectory;
       assert.equal(existsSync(join(input.extensionDirectory, "unlisted.txt")), false);
       assert.equal(readFileSync(join(input.extensionDirectory, "LICENSE"), "utf8"), "synthetic license fixture");
@@ -87,7 +96,7 @@ function world(method: "key" | "touch" = "key") {
       assert.equal(preferences.credentials_enable_service, false);
       assert.equal(preferences.profile.password_manager_enabled, false);
       return context;
-    }, observeProcess: () => ({ pid: 123, observation: closed && !missingProcessExit ? { state: "gone" } : { state: "alive", identity: { platform: "darwin", startToken: "synthetic-process" } } }) },
+    } },
   });
   const owner: DraftDuoBrowserOwner = { ...attempt, assertCurrent() { if (!current) throw new Error("synthetic revoked"); },
     async acquireCredentials() { throw new Error("unexpected credential acquisition"); },
@@ -121,11 +130,10 @@ function world(method: "key" | "touch" = "key") {
     else requests.push(request);
     return result;
   }
-  return { provider, rawProvider: realProvider, owner, attempt, bind, calls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
+  return { mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
     loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, launches: () => launchCount, profile: () => profile,
     portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
     loseActiveStopAck: () => { lostActiveStopAck = true; }, blockPump: () => { blockedPump = true; },
-    withholdProcessExit: () => { missingProcessExit = true; },
     releasePump: () => { blockedPump = false; waiter?.(null); waiter = undefined; },
     blockStartup: () => { startupHold = new Promise(resolve => { releaseStartup = resolve; }); return new Promise<void>(resolve => { startupEntered = resolve; }); },
     releaseStartup: () => { releaseStartup?.(); },
@@ -138,7 +146,40 @@ function world(method: "key" | "touch" = "key") {
 const BIND = { documentId: "A0000000000040008000000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com", username: "alex@example.edu" };
 
 describe("draft Duo provider", () => {
-  for (const proof of ["proved", "missing-event", "missing-process"] as const) it(`lost active-stop ACK requires settled attempt and ${proof} physical closure`, async () => {
+  for(const pathKind of ["random","old-generation","changed-owner"] as const)it(`refuses an unbound ${pathKind} directory without effects`,async()=>{
+    const w=world();
+    const directory=pathKind==="random"?join(w.browserRoot,"onboarding-Abc123")
+      :onboardingProfileDirectory(w.browserRoot,{...w.owner,...(pathKind==="old-generation"?{generation:w.owner.generation+1}:{accountId:randomUUID()})});
+    mkdirSync(directory,{mode:0o700});const retained=join(directory,"retained.txt");writeFileSync(retained,"retained browser data");
+    try{
+      await assert.rejects(w.rawProvider.showBrowser(w.owner),error=>error instanceof ProfileOnboardingDuoProviderError&&error.kind==="unknown");
+      assert.equal(readFileSync(retained,"utf8"),"retained browser data");assert.equal(w.launches(),0);assert.equal(w.nativeProbes(),0);assert.deepEqual(w.calls,[]);
+    }finally{await w.cleanup();}
+  });
+  for(const failure of ["busy","unproved","owner-drift","owner-fields"] as const)it(`keeps the exact existing profile before ${failure} reuse refusal`,async()=>{
+    const w=world(),directory=onboardingProfileDirectory(w.browserRoot,w.owner);
+    mkdirSync(directory,{mode:0o700});const retained=join(directory,"retained.txt");writeFileSync(retained,"retained browser data");
+    if(failure==="busy")w.refuseNative();
+    if(failure==="unproved")w.withholdCloseEvent();
+    if(failure==="owner-drift")w.revokeDuringProbe();
+    if(failure==="owner-fields")w.mutateOwnerDuringProbe();
+    try{
+      await assert.rejects(w.rawProvider.showBrowser(w.owner));
+      assert.equal(w.nativeProbes(),1);assert.equal(w.launches(),0);assert.equal(readFileSync(retained,"utf8"),"retained browser data");assert.deepEqual(w.calls,[]);
+    }finally{await w.closeBrowser();await w.cleanup();}
+  });
+  it("reuses only the canonical owner path after native closure and keeps completed cleanup absent",async()=>{
+    const w=world(),directory=onboardingProfileDirectory(w.browserRoot,w.owner);
+    mkdirSync(directory,{mode:0o700});writeFileSync(join(directory,"retained.txt"),"old browser data");
+    try{
+      await w.rawProvider.showBrowser(w.owner);
+      assert.equal(w.profile(),directory);assert.equal(w.nativeProbes(),1);assert.equal(w.launches(),1);assert.equal(existsSync(join(directory,"retained.txt")),false);
+      assert.deepEqual(await w.rawProvider.closeBrowser(w.owner),{state:"closed"});assert.equal(existsSync(directory),false);
+      await w.rawProvider.showBrowser(w.owner);assert.equal(w.nativeProbes(),1);assert.equal(w.launches(),2);
+      assert.deepEqual(await w.rawProvider.closeBrowser(w.owner),{state:"closed"});assert.equal(existsSync(directory),false);
+    }finally{await w.closeBrowser();await w.cleanup();}
+  });
+  for (const proof of ["proved", "missing-event"] as const) it(`lost active-stop ACK requires settled attempt and ${proof} physical closure`, async () => {
     const w = world();
     try {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
@@ -147,7 +188,6 @@ describe("draft Duo provider", () => {
         transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
       await w.send("software-created", { credentialId: "public-id", requestId: randomUUID() });
       w.loseActiveStopAck(); if (proof === "missing-event") w.withholdCloseEvent();
-      if (proof === "missing-process") w.withholdProcessExit();
       assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: proof === "proved" ? "closed" : "uncertain" });
       assert.ok(w.calls.includes("unknown")); assert.ok(!w.calls.includes("portal-accepted"));
       if (proof === "proved") { await w.provider.showBrowser(w.owner); assert.equal(w.launches(), 2); }

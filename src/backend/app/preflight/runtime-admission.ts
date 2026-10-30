@@ -55,10 +55,9 @@ export function composeRuntimePreflight(input: Readonly<{
       dashboard: {
         repoRoot: input.repoRoot, stateRoot, artifactRoot: runtimeAdmission.artifactRoot,
         backendPort: input.isolation.backendPort, frontendPort: input.isolation.frontendPort,
-        processLockRoot: join(input.repoRoot, input.isolation.processLockRoot), clock,
+        clock,
         authorityHealth: new AuthorityHealthPreflightRunner(runtimeAdmission, { stateRootTrustAnchor: dirname(stateRoot), stateRoot,
           authorityPath: join(stateRoot, "state.db"), backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 5000 }, clock, input.credentials),
-        listLiveWorkerProcesses: () => database.authority.workerLeases.listLive().map(lease => ({ workerId: lease.workerId, processId: lease.processId })),
       },
     });
   };

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 
 import { createBoundProfileFixture } from "../admission-fixture.js";
-import { join } from "node:path";
+
 
 
 import {
@@ -35,8 +35,8 @@ export function createRunClaimFixtures(
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     for (const poolIndex of [1, 2]) database.withAuthorityTransaction(repositories => {
       admitDirectWorker(repositories, { commandId: randomUUID(), workflow: WORKFLOW_ID, poolIndex,
-        expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0, processId: WORKER_START_REQUEST.processId,
-        processAcquisitionId: randomUUID(), authorityPath: profile.path, processLockRoot: join(root, "locks"), now: NOW }, randomUUID());
+    expectedPoolVersion: repositories.workerPools.get(WORKFLOW_ID)?.version ?? 0, processId: WORKER_START_REQUEST.processId,
+    now: NOW }, randomUUID());
     });
     databases.push(database);
     return database;

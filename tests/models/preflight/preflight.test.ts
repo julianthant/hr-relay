@@ -115,17 +115,17 @@ describe("preflight selection and reports", () => {
       "filesystem.health",
       "authority.health",
       "ports.available",
-      "process.orphans",
+      "provider.nominatim",
     ] as const;
     const authority = createPreflightAuthority({
       configFingerprint: CONFIG_FINGERPRINT,
-      requestedCapabilities: ["dashboard.serve"],
+      requestedCapabilities: ["dashboard.serve", "provider.nominatim"],
       runners: expectedChecks.map((check) => ({
         check: PreflightCheckIdSchema.parse(check),
         kind: PREFLIGHT_CHECKS.find((candidate) => candidate.id === check)?.runner ?? "pure",
         async run() {
-          return check === "process.orphans"
-            ? { check, state: "unhealthy" as const, summary: "one stale process record", impact: "operator review required" }
+          return check === "provider.nominatim"
+            ? { check, state: "unhealthy" as const, summary: "Nominatim provider unavailable", impact: "operator review required" }
             : { check, state: "healthy" as const, summary: `${check} healthy` };
         },
       })),
@@ -149,7 +149,7 @@ describe("preflight selection and reports", () => {
         configFingerprint: CONFIG_FINGERPRINT,
         descriptorFingerprint: undefined,
         checkedAt: "2026-08-10T19:00:00.000Z",
-        requestedCapabilities: ["dashboard.serve"],
+        requestedCapabilities: ["dashboard.serve", "provider.nominatim"],
         results: [
           { status: "pass", check: "runtime.compatibility", summary: "runtime.compatibility healthy" },
           { status: "pass", check: "config.valid", summary: "config.valid healthy" },
@@ -158,10 +158,10 @@ describe("preflight selection and reports", () => {
           { status: "pass", check: "ports.available", summary: "ports.available healthy" },
           {
             status: "warning",
-            check: "process.orphans",
-            summary: "one stale process record",
+            check: "provider.nominatim",
+            summary: "Nominatim provider unavailable",
             impact: "operator review required",
-            remediation: "review and explicitly clear stale rebuild processes or leases",
+            remediation: "configure a registered provider cell or leave the optional capability unavailable",
           },
         ],
       },
