@@ -97,8 +97,9 @@ The repository holds only the current version. No compatibility readers, old mig
   Workflow activation stays sequential: Person Lookup → Separations → OCR/Emergency Contact →
   OnBase → Onboarding, after each workflow's dry run and operator sign-off.
 - Finish a feature on its branch. Run `npm run test:local`, `npm run typecheck` and `npm run lint`,
-  then push and open a pull request into `staging`. The pull request auto-merges with a merge
-  commit when the cloud checks and Cursor Bugbot are green. The owner fixes a red check.
+  then push and open a draft pull request into `staging`. Fix red cloud checks while it is a draft.
+  When every check is green, mark it ready for review so Cursor Bugbot reviews it once, and enable
+  auto-merge. It merges with a merge commit when the checks and Bugbot are green.
 - One pull request per feature or fix, so Bugbot reviews one concern at a time. Never bundle
   unrelated changes; split a large task into separate pull requests that each build and pass alone.
   Title and describe what changed and why.
