@@ -615,3 +615,10 @@ exact row with verified detail. Not submitted requires a complete authoritative 
 no exact or ambiguous match. Check again requests confirmation readback only; a typed transaction
 number supplies no proof. Pending decisions keep the original outcome unknown. The isolated
 `ucpath-found` fixture is synthetic; backend acquisition and resolution wiring are separate.
+
+### Full dry-run preview presentation
+
+Full-preview stage accounting distinguishes Exercised, Unavailable, and Skipped. Dependent
+preview values display “dry-run sample” beside the value and warn that they are not receipts,
+subject proof, or real-run authority. The `dry-run-preview` parity fixture demonstrates complete
+and partial exercise without executing workflows. Executor and served projection wiring are separate.
