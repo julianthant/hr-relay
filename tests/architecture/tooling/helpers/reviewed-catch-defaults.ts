@@ -68,8 +68,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "0882df6a3d64970f26bd68fd5fcd142e82fa9e2775247e70414c59d12b187017",
-    "reason": "Only ENOENT returns explicit path absence; callers check it before creation or refusal, and other filesystem failures rethrow. Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
+      "sha256": "f3da468cfe1e8767245c0fad945f51f598f87404b03168d1746767c90193c474",
+    "reason": "Only ENOENT returns explicit path absence; callers check it before creation or refusal, and other filesystem failures rethrow. Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts. Operation-scoped registry reuse compares the complete stat witness and invalidates before and after mutation; failures still propagate."
   },
   {
     "path": "src/backend/runs/commands/ordinary-path-validator.ts",
@@ -113,13 +113,13 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "adde2c4614c134c458e3e781b2b5031123f9e42319a4e35ab38bb4e42eb780c0",
-    "reason": "The rollback failure array only accumulates errors: failed rollback retains database custody with the original failure, and successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or run-search-index-rebuild-required with its cause; it never returns validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody can release; required native browser closure precedes the cancellation transaction."
+    "sha256": "fee846452962f5cc4bd2ab6f9d9a16e54820828078b2b5f2c4d9acf8b6433dac",
+    "reason": "The rollback failure array only accumulates errors: failed rollback retains database custody with the original failure, and successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or run-search-index-rebuild-required with its cause; it never returns validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody can release; required native browser closure precedes the cancellation transaction. Transaction operation proofs clear before the precommit authority check; refusal still rolls back and rethrows."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
-    "sha256": "bfec50d0f6b3dbea8525b721950a29723cb981552066f56360be5ede97d5d79b",
-    "reason": "Only ENOENT returns absent source metadata; the caller rejects a missing main database and permits absent optional sidecars. Unsafe or changed sources throw. Construction and read failures rethrow after private cleanup; failed database close or snapshot disposal retains the resource owners and original causes as source-closure uncertainty, never a read result."
+    "sha256": "f59086e05ab9d54eb7a0fcb56007145304ab29792f93e99d6269fd80efd4fffa",
+    "reason": "Only ENOENT returns absent source metadata; the caller rejects a missing main database and permits absent optional sidecars. Unsafe or changed sources throw. Construction and read failures rethrow after private cleanup; failed database close or snapshot disposal retains the resource owners and original causes as source-closure uncertainty, never a read result. Operation-scoped reused snapshots still assert source identity and retain operation-owned disposal."
   },
   {
     "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
