@@ -119,7 +119,7 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - name: Mount test temp on a RAM disk
         run: |
           dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
