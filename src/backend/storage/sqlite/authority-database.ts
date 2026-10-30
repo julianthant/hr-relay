@@ -1117,10 +1117,11 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
 
 function authorityContentFingerprint(database: DatabaseSync): string {
   const hash = createHash("sha256");
+  const rowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null()]));
   for (const table of migrationTableNames(readIntPragma(database, "user_version"))) {
     hash.update(canonicalJsonStringify(table));
     for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
-      hash.update(canonicalJsonStringify(z.record(z.string(),z.union([z.string(),z.number(),z.null()])).parse(row)));
+      hash.update(canonicalJsonStringify(rowSchema.parse(row)));
     }
   }
   return hash.digest("hex");
