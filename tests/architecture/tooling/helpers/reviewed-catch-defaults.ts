@@ -68,8 +68,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "09ea6b5121cc8e93d9dd6fadf3ceb350ec42b4d6cd58ee7448e33ea4e2a13015",
-    "reason": "Only ENOENT denotes path absence. Descriptor and directory close failures retain source custody and original failures; publication cleanup aggregates failures. Installation acquisition traverses nested aggregate and cause failures, retains the exclusive lifetime capture on unproved source closure, and rethrows the original error; ordinary failed acquisition releases that capture before rethrowing. Inventory disposal refuses release on failed closure. Fixed nonce mutation locks and their exact callback/release failure handling belong to credential-safe-file.ts."
+      "sha256": "0882df6a3d64970f26bd68fd5fcd142e82fa9e2775247e70414c59d12b187017",
+    "reason": "Only ENOENT returns explicit path absence; callers check it before creation or refusal, and other filesystem failures rethrow. Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
   },
   {
     "path": "src/backend/runs/commands/ordinary-path-validator.ts",
@@ -113,8 +113,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "22b053922b3f6d2325168a5aaeb9d322111f887fcb44d36aafc07142b5055188",
-    "reason": "The empty rollback-failure accumulator cannot settle migration success: rollback failure retains database custody with the original error, and successful rollback rethrows that error. Failed external validation clears only its admission cache and throws the mutation error or run-search-index-rebuild-required. Malformed diagnostics remain explicit; stopped inspection and upgrade retain failed source closure and original causes. Finite native6 queued cancellation rolls back on failure and retains original plus rollback or database-close failures before installation or restore custody can release. Native browser closure uses the required port before the cancellation transaction; its failures retain the same source custody and original causes."
+    "sha256": "d19a900137515e657f2d68de478284a702e035d951918239d2136a0c2b0ce60f",
+    "reason": "The rollback failure array only accumulates errors: failed rollback retains database custody with the original failure, and successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or run-search-index-rebuild-required with its cause; it never returns validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody can release; required native browser closure precedes the cancellation transaction."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
