@@ -1,8 +1,12 @@
-import { useMemo, type ReactNode } from "react";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, RotateCcw, Square, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import type { BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
 import {
+  Banner,
+  Badge,
+  DialogBody,
   ActionBar,
   BareButton,
   Button,
@@ -454,4 +458,40 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
         </div>
       )}
   </>;
+}
+
+export function RunPauseControl({ runLabel, state, onAction }: {
+  runLabel: string;
+  state: "running" | "pause-pending" | "paused" | "resume-pending" | "unavailable";
+  onAction?: (action: "pause" | "resume") => void;
+}) {
+  const resumable = state === "paused";
+  const pending = state === "pause-pending" || state === "resume-pending";
+  return <div className="flex flex-col gap-2" aria-label={`${runLabel} pause controls`}>
+    <div className="flex items-center gap-2"><Badge tone="neutral">{resumable ? "Paused" : state === "pause-pending" ? "Pause requested" : state === "resume-pending" ? "Resume requested" : state === "unavailable" ? "Pause unavailable" : "Running"}</Badge>
+      <Button size="sm" variant="secondary" disabled={pending || state === "unavailable" || onAction === undefined} onClick={() => onAction?.(resumable ? "resume" : "pause")}>{state === "pause-pending" ? "Pausing…" : state === "resume-pending" ? "Resuming…" : resumable ? "Resume" : "Pause"}</Button></div>
+    <p role={pending ? "status" : undefined} className={dsText.body}>{state === "pause-pending" ? "No new items will start. Finishing the current step; a submit is never interrupted. Pause is not yet recorded." : resumable ? "Pause recorded. This run waits for explicit Resume, including after quitting." : state === "resume-pending" ? "Validating finished work before continuing. Resume is not yet confirmed." : state === "unavailable" || onAction === undefined ? "Run pause authority is unavailable." : "Pause stops new items after the current step finishes."}</p>
+  </div>;
+}
+
+export function PauseAllQuitControls({ state, activeCount, onPauseAll, onPauseAndQuit }: {
+  state: "ready" | "pausing" | "paused" | "blocked" | "unavailable";
+  activeCount: number;
+  onPauseAll?: () => void;
+  onPauseAndQuit?: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const quit = useRef<HTMLButtonElement>(null);
+  const enabled = state === "ready" && activeCount > 0;
+  return <div className="flex flex-col gap-2">
+    <div className="flex items-center gap-2"><Button variant="secondary" disabled={!enabled || !onPauseAll} onClick={onPauseAll}>Pause all</Button><Button ref={quit} variant="muted" disabled={!enabled || !onPauseAndQuit} onClick={() => setConfirming(true)}>Quit Relay</Button></div>
+    {state === "pausing" && <Banner tone="info" title="Pausing active work">Finishing current steps and waiting for owned resources to close. No completed pause or clean shutdown has been confirmed.</Banner>}
+    {state === "paused" && <Banner tone="info" title="All pauses recorded">Paused work remains paused after restart and waits for explicit Resume.</Banner>}
+    {state === "blocked" && <Banner tone="warning" title="Pause and quit not complete">RUNTIME_CUSTODY_UNCERTAIN: {ERROR_CATALOG.RUNTIME_CUSTODY_UNCERTAIN.text}</Banner>}
+    {state === "unavailable" && <p>Pause all and quit authority is unavailable.</p>}
+    <Dialog open={confirming && enabled} onOpenChange={setConfirming}><DialogContent size="sm" title="Pause all and quit?" description={`${activeCount} active ${activeCount === 1 ? "run" : "runs"} will pause before Relay quits.`} onCloseAutoFocus={event => { event.preventDefault(); quit.current?.focus(); }}>
+      <DialogBody><p>Stop new items, finish current steps, record pauses, and close owned resources before quitting. A submit is never interrupted. Paused work waits for explicit Resume after restart.</p></DialogBody>
+      <DialogFooter><Button variant="muted" autoFocus onClick={() => setConfirming(false)}>Keep Relay open</Button><Button disabled={!onPauseAndQuit} onClick={() => { setConfirming(false); onPauseAndQuit?.(); }}>Pause all and quit</Button></DialogFooter>
+    </DialogContent></Dialog>
+  </div>;
 }
