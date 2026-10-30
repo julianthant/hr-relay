@@ -14,8 +14,10 @@ operator merges the release pull request.
 
 | Branch | Required CI check names |
 | --- | --- |
-| `staging` | `static`, `unit (macos-15)`, `unit (windows-latest)`, `integration (macos-15)`, `integration (windows-latest)`, `architecture (macos-15)`, `architecture (windows-latest)`, `parity`, `privacy`, and the Cursor Bugbot check once its name is known |
+| `staging` | `static`, `unit (macos-15)`, `integration (macos-15)`, `architecture (macos-15)`, `parity`, `privacy`, and the Cursor Bugbot check once its name is known |
 | `main` | the `staging` checks, plus `release` |
+
+`unit (windows-latest)`, `integration (windows-latest)`, and `architecture (windows-latest)` are reported and not required until the Windows lane is portable. Then they become required.
 
 `release` runs only on PRs targeting `main`, after the other checks. Its isolated runner builds the
 web bundle, runs coverage alone, then performance. The operator authorizes release PRs from
@@ -23,11 +25,12 @@ web bundle, runs coverage alone, then performance. The operator authorizes relea
 by the repository owner; the workflow does not enable it. Confirm the check names on a pull request
 before locking them. Add the Cursor Bugbot check when its name is known; do not invent it.
 
-CI takes Node from `package.json` engines and caches npm. Unit, integration and architecture run on
-`macos-15` and `windows-latest` with fail-fast off. Static and privacy stay on Ubuntu. Parity stays
-on macOS. The batch runner requires `/usr/bin/lockf` and refuses Windows, so the Windows legs fail
-closed until that runner can host them. Desktop parity uses headless Chromium and existing
-references; CI never updates references or uploads HR evidence.
+CI takes Node from `package.json` engines and caches npm. Required unit, integration and architecture
+run on `macos-15`. The same suites are also reported on `windows-latest` and do not gate `release`
+or merges. Static and privacy stay on Ubuntu. Parity stays on macOS. The batch runner requires
+`/usr/bin/lockf` and refuses Windows, so those reported legs fail until the Windows lane lands.
+Desktop parity uses headless Chromium and existing references; CI never updates references or uploads
+HR evidence.
 
 ## Privacy check
 

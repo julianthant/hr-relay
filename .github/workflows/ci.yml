@@ -31,15 +31,22 @@ jobs:
       - run: npm run roadmap:check
 
   unit:
-    name: unit (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-15, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: unit (macos-15)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - run: npm run test:unit
+
+  unit-windows:
+    name: unit (windows-latest)
+    runs-on: windows-latest
     steps:
       - name: Keep committed line endings
-        if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,15 +57,25 @@ jobs:
       - run: npm run test:unit
 
   integration:
-    name: integration (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-15, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: integration (macos-15)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - run: npm run web:build
+      - run: npm run test:integration
+
+  integration-windows:
+    name: integration (windows-latest)
+    runs-on: windows-latest
     steps:
       - name: Keep committed line endings
-        if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -67,24 +84,27 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Install Chromium
-        if: runner.os == 'Windows'
         run: npx playwright install chromium
-      - name: Install Chromium
-        if: runner.os != 'Windows'
-        run: npx playwright install --with-deps chromium
       - run: npm run web:build
       - run: npm run test:integration
 
   architecture:
-    name: architecture (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-15, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: architecture (macos-15)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - run: npm run test:architecture
+
+  architecture-windows:
+    name: architecture (windows-latest)
+    runs-on: windows-latest
     steps:
       - name: Keep committed line endings
-        if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
