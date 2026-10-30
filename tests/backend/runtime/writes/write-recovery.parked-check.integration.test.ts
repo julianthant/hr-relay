@@ -38,20 +38,24 @@ const graph = flow(UcpathTerminationTargetSchema).transaction("submit-write", { 
   commit: { uses: UcpathCreateTermination, bind: ({ input }) => input },
   dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000,
 }).build({ schema: UcpathCreateTerminationOutputSchema, dependsOn: ["submit-write"], derive: ({ outputs }) => outputs["submit-write"].output });
-const descriptor = defineWorkflowDescriptor({ id: WorkflowIdSchema.parse("separations"), version: 1, contractFingerprint: WRITE_FIXTURE_FINGERPRINT,
-  code: "sep", label: "Synthetic held probe", icon: "ShieldCheck", category: "operations", canonicalInput: canonical, inputSubject: "eid",
-  surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [],
-  identity: { matchKey: input => `eid:${input.emplId}` }, presentation: { title: () => "Synthetic held probe" }, scenarios: ["parked-check/read"], flow: graph });
+function heldDescriptor(id: string) {
+  return defineWorkflowDescriptor({ id: WorkflowIdSchema.parse(id), version: 1, contractFingerprint: WRITE_FIXTURE_FINGERPRINT,
+    code: "sep", label: "Synthetic held probe", icon: "ShieldCheck", category: "operations", canonicalInput: canonical, inputSubject: "eid",
+    surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [],
+    identity: { matchKey: input => `eid:${input.emplId}` }, presentation: { title: () => "Synthetic held probe" }, scenarios: ["parked-check/read"], flow: graph });
+}
+const descriptor = heldDescriptor("separations");
 
 const disposers: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const dispose of disposers.splice(0).reverse()) await dispose(); });
-async function fixture(rows: number) {
+async function fixture(rows: number, workflowId: string = descriptor.id) {
+  const active = workflowId === descriptor.id ? descriptor : heldDescriptor(workflowId);
   const clock = manualClock(new Date(NOW));
   const opened = await openBoundDatabaseFixture("parked-read-check", clock);
   disposers.push(() => opened.close());
   const template = RunRecordSchema.parse(writeFixtureQueuedRun());
-  const run = RunRecordSchema.parse({ ...template, envelope: { ...template.envelope, workflow: descriptor.id, descriptorVersion: descriptor.version,
-    contractFingerprint: descriptor.contractFingerprint, resolvedInstance: { ucpath: "prod" }, dryRun: false },
+  const run = RunRecordSchema.parse({ ...template, envelope: { ...template.envelope, workflow: active.id, descriptorVersion: active.version,
+    contractFingerprint: active.contractFingerprint, resolvedInstance: { ucpath: "prod" }, dryRun: false },
     input: { raw: TARGET, parsed: { schemaHash: deriveSchemaHash(canonical, "output"), value: TARGET, protectedBindings: [] },
       ingressSchemaHash: deriveSchemaHash(UcpathTerminationTargetSchema, "input") },
     lifecycle: { state: "parked-write", writeIntentId: UUID_8, intentGeneration: 1, parkedAt: NOW, code: "unknown", message: "Synthetic unknown write" }, version: 4 });
@@ -61,7 +65,7 @@ async function fixture(rows: number) {
     observed: { kind: "person", identifierKind: "eid", bindingDigest: "a".repeat(64), displaySuffix: "0000" }, match: "match", observedAt: NOW,
     afterPrepareSpanPath: `${run.envelope.traceId}/submit-write/prepare` };
   const key = ucpathTerminationIdempotencyKey(TARGET);
-  const intent = WriteIntentRecordSchema.parse({ writeIntentId: UUID_8, workflowId: descriptor.id, itemId: run.envelope.itemId, taskId: UcpathCreateTermination.id,
+  const intent = WriteIntentRecordSchema.parse({ writeIntentId: UUID_8, workflowId: active.id, itemId: run.envelope.itemId, taskId: UcpathCreateTermination.id,
     system: "ucpath", idempotencyKey: key, idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", key), currentAttemptId: UUID_5,
     generation: 1, runId: run.envelope.runId, runAttempt: run.envelope.attempt, bindingProof: proof, bindingProofDigest: deriveWriteBindingProofDigest(proof),
     fencedAt: NOW, version: 1, createdAt: NOW, updatedAt: NOW, status: "parked", parkedCode: "unknown", message: "Synthetic unknown write",
@@ -74,7 +78,7 @@ async function fixture(rows: number) {
     writeIntents: { ...opened.database.authority.writeIntents, get: () => intent }, writeAttempts: { ...opened.database.authority.writeAttempts, get: () => attempt } };
   const target = ParkedWriteCheckTargetSchema.parse({ workerId: "separations-worker-1", expectedVersion: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 },
     membershipRevision: 1, processId: 42, startedAt: NOW, installationId: UUID_6, profileId: UUID_7,
-    workflowId: descriptor.id, itemId: run.envelope.itemId, runId: run.envelope.runId, runVersion: run.version,
+    workflowId: active.id, itemId: run.envelope.itemId, runId: run.envelope.runId, runVersion: run.version,
     runAttempt: run.envelope.attempt, traceId: run.envelope.traceId, nodeId: "submit-write", writeIntentId: UUID_8, intentVersion: 1,
     intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest });
   const events: string[] = [];
@@ -90,7 +94,7 @@ async function fixture(rows: number) {
     bindRunConfigFingerprint: () => { events.push("bind"); }, releaseRunConfigFingerprint: () => { events.push("release"); },
     closeAll: async () => { events.push("close"); if (failClose && events.includes("read")) throw new WorkerSessionClosureUnprovedError("separations-worker-1"); },
   };
-  const input: Parameters<typeof checkParkedWrite>[0] = { repositories, descriptor, target, commandId: UUID_7, requestedBy: "local-operator", signal: new AbortController().signal,
+  const input: Parameters<typeof checkParkedWrite>[0] = { repositories, descriptor: active, target, commandId: UUID_7, requestedBy: "local-operator", signal: new AbortController().signal,
     probe: { stores: taskStoreRegistry, clock, scheduler: new ManualScheduler(clock), taskDeadlineMs: 1000, log: recordingLogger().log }, sessions,
     configureRun: () => ({ taskDeadlineMs: 1000 }) };
   return { input, events, run, intent, attempt, driver, clock, database: opened.database, path: opened.path, holdRead: (hold: Promise<void>) => { readHold = hold; },
@@ -287,9 +291,32 @@ describe("held-only parked write checks", () => {
     assert.deepEqual(h.events, ["close", "bind", "read", "close", "release"]);
     assert.equal(canonicalJsonStringify([h.run, h.intent, h.attempt]), before);
   });
+  it("admits a non-separations workflow that reuses the held termination probe", async () => {
+    const h = await fixture(0, "person-lookup");
+    const result = await checkParkedWrite(h.input);
+    const descriptor = h.input.descriptor;
+    assert.ok(descriptor);
+    assert.equal(descriptor.id, "person-lookup");
+    assert.equal(result.result.provenance, "system-probe");
+    assert.equal(result.result.code, "PARKED_CHECK_ABSENT");
+    assert.equal(result.result.held, true);
+    assert.deepEqual(h.events, ["close", "bind", "read", "close", "release"]);
+  });
+  it("refuses a held probe whose system is not the registered read", async () => {
+    const h = await fixture(1);
+    const idempotencyKeyDigest = deriveIdempotencyKeyDigest("kuali", h.intent.idempotencyKey);
+    const intent = WriteIntentRecordSchema.parse({ ...h.intent, system: "kuali", idempotencyKeyDigest });
+    const target = ParkedWriteCheckTargetSchema.parse({ ...h.input.target, occurrenceKeyDigest: idempotencyKeyDigest });
+    const run = RunRecordSchema.parse({ ...h.run, envelope: { ...h.run.envelope, resolvedInstance: { ...h.run.envelope.resolvedInstance, kuali: "prod" } } });
+    const result = await checkParkedWrite({ ...h.input, target, repositories: { ...h.input.repositories, runs: { ...h.input.repositories.runs, get: () => run }, writeIntents: { ...h.input.repositories.writeIntents, get: () => intent } } });
+    assert.equal(result.result.state, "unavailable");
+    assert.equal(result.result.provenance, "not-observed");
+    assert.equal(result.evidence, undefined);
+    assert.deepEqual(h.events, []);
+  });
   it("refuses stale occurrence identities before session or provider access", async () => {
     const h = await fixture(1);
-    for (const patch of [{ runVersion: 5 }, { intentGeneration: 2 }, { writeAttemptId: UUID_6 }, { bindingProofDigest: "b".repeat(64) }, { occurrenceKeyDigest: "b".repeat(64) }]) {
+    for (const patch of [{ runVersion: 5 }, { workflowId: "person-lookup" }, { intentGeneration: 2 }, { writeAttemptId: UUID_6 }, { bindingProofDigest: "b".repeat(64) }, { occurrenceKeyDigest: "b".repeat(64) }]) {
       await assert.rejects(checkParkedWrite({ ...h.input, target: ParkedWriteCheckTargetSchema.parse({ ...h.input.target, ...patch }) }), /parked-check-authority-changed/);
     }
     assert.deepEqual(h.events, []);
