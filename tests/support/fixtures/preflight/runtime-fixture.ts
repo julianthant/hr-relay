@@ -81,7 +81,7 @@ async function createRuntimeFixtureBase() {
     },
   };
   return { profile, root, stateRoot, artifactRoot, clock, databasePath, executable, config, providerAvailability, doctorOptions, authorityHealth,
-    readRecord: () => record, setProtected(next: typeof record) { record = next; } };
+    readRecord: () => record, setProtected(this: void, next: typeof record) { record = next; } };
 }
 
 function bindRuntimeFixture(base: RuntimeFixtureBase, capabilities: readonly RuntimeCapability[], close: () => Promise<void>) {

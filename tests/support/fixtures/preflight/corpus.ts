@@ -15,7 +15,7 @@ import { ScenarioManifestSchema } from "../../../../src/models/trust/scenario.js
 import { PREFLIGHT_SCENARIO_MANIFESTS, PreflightScenarioIdSchema } from "../../../../src/models/trust/preflight-scenarios.js";
 import { FEATURE_RUNTIME_SPECS, PROVIDER_ADAPTER_SPECS, RUNTIME_DEPENDENCIES, SYSTEM_RUNTIME_SPECS } from "../../../../src/models/runtime/runtime-dependencies.js";
 import { PreflightReportWireSchema } from "../../../../src/models/preflight/preflight-contract.js";
-import { runtimeFixturePool, populatedProtectedRecord } from "./runtime-fixture.js";
+import { runtimeFixturePool, populatedProtectedRecord, type runtimeFixture } from "./runtime-fixture.js";
 
 const FixtureSchema = z.strictObject({ schemaVersion: z.literal(2), faults: z.array(z.strictObject({scenario:PreflightScenarioIdSchema, injection:z.string().min(1)})).length(PREFLIGHT_SCENARIO_MANIFESTS.length) });
 const ExecutionSchema = z.strictObject({ scenario:PreflightScenarioIdSchema, dependency:z.string().min(1), variant:z.string().min(1), check:z.string().min(1), report:PreflightReportWireSchema,
