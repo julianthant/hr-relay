@@ -363,7 +363,10 @@ Assistant permission uses the canonical Settings/grant authority; a grant alone 
 account capability. Browser dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
 draft validation, autosave, uncertainty and readback. Explicit parity previews keep their local controls.
 
-General composes appearance, ordinary General fields, annual dates, and ChatGPT account.
+General composes appearance, ordinary General fields, annual dates, ChatGPT account, and Delete account.
+Delete account presents explicit confirmation, blocked, deleting, and unavailable states. Until the
+person deletion owner supplies authority and a callback, the served control is unavailable.
+The isolated `delete-account` parity fixture exercises mock state without reading or erasing data.
 Shared date controls display `MM/DD/YYYY` and preserve partial input during unrelated renders.
 Provider budget/model and API-key controls are absent. Browser viewport is developer configuration,
 not an end-user field.

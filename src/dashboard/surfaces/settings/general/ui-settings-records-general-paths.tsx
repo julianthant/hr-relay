@@ -1,11 +1,13 @@
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { HubPermissionSettings, HubBrowserWindowSettings } from "./hub-preferences.js";
 import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { LoadingRegion, SettingsRowsSkeleton } from "../../shared/loading/loading.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import type { DeleteAccountPresentation } from "./delete-account-model.js";
 import { Form } from "@heroui/react";
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
-import { Banner, BodySection, Button, DateInput, Field, FormGroup, Input, PageHeading, Switch, dsText } from "../../../ds/ui.js";
+import { Banner, BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, DateInput, Field, FormGroup, Input, PageHeading, Switch, dsText } from "../../../ds/ui.js";
 import { formatSetting, settingInput, type SettingsDraftOperation } from "../editor/settings-draft-model.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { SettingsSaveFeedback } from "../editor/settings-feedback.js";
@@ -111,6 +113,7 @@ export function CompactSettingsSection({ editor, sectionId, appearance }: { edit
     {sectionId === "general" && <ChatGptAccountSettings />}
     {sectionId === "general" && appearance}
     {sectionId === "general" && <HubPermissionSettings />}
+    {sectionId === "general" && <DeleteAccountControl presentation={{ state: "unavailable" }} />}
     {editor.editor.state === "failed" && <Banner tone="danger" title="Editable settings could not be read">{editor.editor.message} <Button size="sm" onClick={editor.reload}>Try again</Button></Banner>}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} sectionId={sectionId} />
       : sectionId === "paths" ? <div className="settings-compact-form"><div className="ds-body-stack"><PathsContent editor={editor} /></div></div>
@@ -128,4 +131,25 @@ function CompactSettingsForm({ editor, sectionId }: { editor: Editor; sectionId:
       <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
       <div className="ds-body-stack">{sectionId === "general" ? <GeneralContent editor={editor} year={document.currentFiscalYear} /> : <PathsContent editor={editor} />}</div>
     </Form>;
+}
+
+export function DeleteAccountControl({ presentation }: { presentation: DeleteAccountPresentation }) {
+  const [confirming, setConfirming] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const deleting = presentation.state === "deleting";
+  return <BodySection title="Account">
+    <p>Delete the signed-in person’s data, history, evidence, settings, and encrypted credentials from this device. This cannot be undone.</p>
+    {presentation.state === "unavailable" && <p>Account deletion is unavailable until Relay can verify the signed-in person and resource closure.</p>}
+    {presentation.state === "blocked" && <Banner tone="warning" title="Account deletion blocked">{presentation.reason === "unresolved-write"
+      ? `PARKED_CHECK_UNKNOWN: ${ERROR_CATALOG.PARKED_CHECK_UNKNOWN.text} Resolve the unknown submission in Logs before deleting this account. No data or credentials have been erased.`
+      : `BROWSER_CLOSURE_UNPROVED: ${ERROR_CATALOG.BROWSER_CLOSURE_UNPROVED.text}`}</Banner>}
+    {deleting && <Banner tone="info" title="Deleting account">Waiting for owned resources to close and erasure to settle. Deletion is not complete.</Banner>}
+    <Button ref={trigger} variant="danger" disabled={presentation.state !== "ready"} onClick={() => setConfirming(true)}>{deleting ? "Deleting…" : "Delete account"}</Button>
+    <Dialog open={confirming && presentation.state === "ready"} onOpenChange={setConfirming}>
+      <DialogContent onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }} title="Delete account?" description={presentation.state === "unavailable" ? "" : `Permanently erase ${presentation.personName}’s Relay account from this device.`} size="sm">
+        <DialogBody><p>All data, history, evidence, settings, and encrypted credentials for this person will be erased. Other people’s accounts are unaffected.</p><p>This does not remove devices enrolled on the Duo website.</p></DialogBody>
+        <DialogFooter><Button variant="muted" autoFocus onClick={() => setConfirming(false)}>Keep account</Button><Button variant="danger" onClick={() => { if (presentation.state === "ready") { setConfirming(false); presentation.onConfirm(); } }}>Delete account permanently</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </BodySection>;
 }
