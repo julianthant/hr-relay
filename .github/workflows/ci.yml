@@ -31,9 +31,16 @@ jobs:
       - run: npm run roadmap:check
 
   unit:
-    name: unit
-    runs-on: macos-15
+    name: unit (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
+      - name: Keep committed line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -43,23 +50,42 @@ jobs:
       - run: npm run test:unit
 
   integration:
-    name: integration
-    runs-on: macos-15
+    name: integration (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
+      - name: Keep committed line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - name: Install Chromium
+        if: runner.os == 'Windows'
+        run: npx playwright install chromium
+      - name: Install Chromium
+        if: runner.os != 'Windows'
+        run: npx playwright install --with-deps chromium
       - run: npm run web:build
       - run: npm run test:integration
 
   architecture:
-    name: architecture
-    runs-on: macos-15
+    name: architecture (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
+      - name: Keep committed line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
