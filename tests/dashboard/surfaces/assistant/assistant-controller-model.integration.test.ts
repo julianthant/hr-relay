@@ -84,7 +84,7 @@ it('renders served proposal facts and citations in HUB and keeps confirmation an
   assert.match(host.textContent ?? '', /Confirmation is unavailable/u);
   const confirm = [...host.querySelectorAll('button')].find(button => button.textContent === 'Confirm'); assert.ok(confirm); assert.equal(confirm.disabled, true);
   await act(async () => { confirm.click(); current.onAction({ type: 'confirm' }); }); assert.equal(calls, 1);
-  for (const prefix of ['Model:', 'Thinking effort:', 'Ask only before submits', 'Voice input']) {
+  for (const prefix of ['Model:', 'Thinking effort:', 'Ask before every action', 'Voice input']) {
     const control = [...host.querySelectorAll('button')].find(button => button.getAttribute('aria-label')?.startsWith(prefix)); assert.ok(control); assert.equal(control.disabled, true);
   }
   await act(async () => current.onAction({ type: 'cancel' }));

@@ -68,7 +68,7 @@ export function createAssistantAuthorizationRepository(ports: Ports) {
     },
     createAction(input: unknown) {
       const record = AssistantActionRecordSchema.parse(input);
-      if (record.revision !== 1 || (record.state !== "prepared" && record.state !== "approved")) throw new Error("assistant-action-initial-state-invalid");
+      if (record.revision !== 1 || record.state !== "prepared") throw new Error("assistant-action-initial-state-invalid");
       return ports.mutate("assistant_actions", () => {
         const owner = AssistantChatRecordSchema.parse(read("assistant_chats", record.chatId));
         if (owner.profileId !== record.binding.profileId || owner.epoch !== record.binding.accountSessionEpoch) throw new Error("assistant-action-chat-owner-mismatch");

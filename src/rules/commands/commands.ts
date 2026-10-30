@@ -1,6 +1,6 @@
 import { AssistantModelPreferenceSchema } from "../../models/dashboard/assistant.js";
 import { NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
-import { AssistantPermissionModeSchema } from "../../models/profiles/assistant-permission-mode.js";
+import { StoredAssistantPermissionModeSchema } from "../../models/profiles/assistant-permission-mode.js";
 import { RunDisplayNameSchema } from "../../models/run/display-name.js";
 export { RunDisplayNameSchema } from "../../models/run/display-name.js";
 import { WorkerSlotRecordSchema } from "../../models/run/worker-slot.js";
@@ -199,7 +199,7 @@ export const AssistantModelPreferenceCommandRequestSchema = z.strictObject({
 });
 
 export const AssistantPermissionChangeSchema = z.strictObject({
-  expectedPolicyRevision: NonNegativeIntSchema, mode: AssistantPermissionModeSchema,
+  expectedPolicyRevision: NonNegativeIntSchema, mode: StoredAssistantPermissionModeSchema,
 });
 
 export const SettingsCommandRequestSchema = z.strictObject({

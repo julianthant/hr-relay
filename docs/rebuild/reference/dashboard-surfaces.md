@@ -359,7 +359,7 @@ renderer. Archive and UI catalog requests show removal notices, with a guarded r
 
 ### General and ChatGPT account
 
-Assistant permission uses the canonical Settings/grant authority; a grant alone does not verify
+Every assistant mutation requires an explicit Confirm. Settings grants enable proposals and never authorize automatic changes. Retired permission modes cannot be selected or granted; their terminal history stays inert. A grant alone does not verify
 account capability. Browser dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
 draft validation, autosave, uncertainty and readback. Explicit parity previews keep their local controls.
 
@@ -560,7 +560,7 @@ operator messages, notification text, subject identifiers and source-file bodies
 or ambiguous input refuses before inference. The trusted local projection also binds whether a
 request permits a help answer or requires canonical action completion. A notification action with
 only model text and no canonical call refuses; it cannot report an execution from model prose. Notification commands resolve the reference back to the
-same actor and complete sorted current inbox membership and versions, then use the existing permission and once-consumable command door.
+same actor and complete sorted current inbox membership and versions, then wait for operator confirmation before using the once-consumable command door.
 Plural actions use one opaque collection reference and exact matching count. Inbox Read all uses the
 same canonical collection command. The kernel checks the whole membership in its transaction before
 any row update; pinned history warnings remain unchanged. Counts describe current native notices,

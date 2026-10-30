@@ -68,7 +68,7 @@ test('assistant composer and workflow ports', { annotation: [{ type: 'required-a
   await expect(send).toBeDisabled();
   await textarea.fill('   '); await expect(send).toBeDisabled();
   await textarea.fill('Line one'); await textarea.press('Shift+Enter'); await expect(textarea).toHaveValue('Line one\n');
-  for (const label of ['Add files', 'Ask only before submits', 'Model: GPT-6.1 Sol', 'Thinking effort: Medium', 'Voice input']) {
+  for (const label of ['Add files', 'Ask before every action', 'Model: GPT-6.1 Sol', 'Thinking effort: Medium', 'Voice input']) {
     const trigger = page.getByRole('button', { name: label, exact: true });
     const boxes = () => Promise.all(['.hub-composer', 'textarea', '.hub-transcript'].map(selector => page.locator(selector).boundingBox()));
     const before = await boxes();
@@ -141,7 +141,7 @@ for (const scene of ['new', 'ask-read', 'ask-write', 'permission-changed', 'auto
     await page.goto(`${baseUrl}/?scene=${state}&text=${encodeURIComponent(text)}`);
     await expect(page.getByRole('textbox', { name: 'Message Relay' })).toBeEnabled();
     if (scene === 'attachment') await page.locator('input[type=file]').setInputFiles({ name: 'Review notes.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 fixture') });
-    const menuLabels: Record<string, string> = { 'attach-menu': 'Add files', 'approval-menu': 'Ask only before submits', 'model-menu': 'Model: GPT-6.1 Sol', 'effort-menu': 'Thinking effort: Medium', 'voice-menu': 'Voice input' };
+    const menuLabels: Record<string, string> = { 'attach-menu': 'Add files', 'approval-menu': 'Ask before every action', 'model-menu': 'Model: GPT-6.1 Sol', 'effort-menu': 'Thinking effort: Medium', 'voice-menu': 'Voice input' };
     if (menuLabels[scene]) {
       await page.getByRole('button', { name: menuLabels[scene], exact: true }).click();
       const menu = page.getByRole('menu'); await expect(menu).toBeVisible();

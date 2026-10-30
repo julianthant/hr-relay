@@ -78,9 +78,9 @@ export function createAssistantAuthorization(ports: Ports) {
         const { checked, manifest } = decision(capability, command);
         const id = randomUUID(), createdAt = now();
         repository.createAction({ id, chatId: capability.chatId, manifest, binding: checked.binding, command, plan: null,
-          revision: 1, state: checked.state === "approval-required" ? "prepared" : "approved", result: null, createdAt,
+          revision: 1, state: "prepared", result: null, createdAt,
           expiresAt: new Date(ports.clock.nowMs() + 60_000).toISOString() });
-        return Object.freeze({ id, revision: 1, state: checked.state === "approval-required" ? "prepared" as const : "approved" as const });
+        return Object.freeze({ id, revision: 1, state: "prepared" as const });
       });
     },
     approve(capability: Chat, id: string, revision: number) {

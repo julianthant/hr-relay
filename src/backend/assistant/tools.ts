@@ -1,7 +1,7 @@
 import { type NotificationCollectionTarget, type NotificationCollectionOperation } from "../../models/notifications/notifications.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { AssistantCitationSchema, ASSISTANT_FAILURES, AssistantActionProposalSchema, type AssistantRequest, type AssistantActionDecision, type AssistantActionResult } from "../../models/dashboard/assistant.js";
+import { AssistantCitationSchema, AssistantActionProposalSchema, type AssistantRequest, type AssistantActionDecision, type AssistantActionResult } from "../../models/dashboard/assistant.js";
 import { CommandRequestSchema, type CommandRequest } from "../../rules/commands/commands.js";
 import { canonicalJsonStringify, type JsonValue } from "../../rules/validation/canonical-json.js";
 import type { AssistantActionRecord } from "../../models/profiles/assistant-authorization.js";
@@ -144,22 +144,10 @@ export function createProductionAssistantTools(input: Readonly<{
           const actionView = AssistantActionProposalSchema.parse({ chatId: chat.chatId, actionId: proposal.id,
             revision: proposal.revision, expiresAt: record.expiresAt, label: collectionLabel(action, target.matchingCount),
             targetLabel: `${target.matchingCount} current notifications`, subject: "none", effect: "local-write" });
-          if (proposal.state === "prepared") {
-            const retained = invocationContext.assertRetainedCurrent?.bind(invocationContext);
-            if (retained === undefined) throw new AssistantLocalIntentError("assistant-confirmation-owner-required");
-            pending.set(proposal.id, { chat, revision: proposal.revision, command, expiresAt: record.expiresAt, record, assertCurrent: retained });
-            return { kind: "complete", result: { state: "action-proposal", proposal: actionView } };
-          }
-          current(); invocationContext.assertCurrent();
-          invocationContext.effectEntered?.(actionView);
-          try {
-            const result = input.authorization.consume(chat, proposal.id);
-            current(); invocationContext.assertCurrent();
-            if (result?.state !== "applied") return { kind: "complete", result: { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED", message: ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED } };
-            return { kind: "complete", result: { state: "answered", text: `${collectionLabel(action, target.matchingCount)}: completed. Only current local notifications were changed.`, citations: [] } };
-          } catch {
-            return { kind: "complete", result: { state: "unknown", actionId: actionView.actionId, action: actionView } };
-          }
+          const retained = invocationContext.assertRetainedCurrent?.bind(invocationContext);
+          if (retained === undefined) throw new AssistantLocalIntentError("assistant-confirmation-owner-required");
+          pending.set(proposal.id, { chat, revision: proposal.revision, command, expiresAt: record.expiresAt, record, assertCurrent: retained });
+          return { kind: "complete", result: { state: "action-proposal", proposal: actionView } };
         },
       }] }];
     },

@@ -55,7 +55,7 @@ it("fresh native authority has the exact current physical inventory", async () =
       assert.equal(CURRENT_TABLES.length, 39);
       assert.deepEqual(actual, CURRENT_TABLES);
       assert.deepEqual(AUTHORITY_TABLE_REGISTRY.map(row => row.name).sort(), CURRENT_TABLES);
-      assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, 10);
+      assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, 11);
     } finally { raw.close(); }
   } finally { await f.dispose(); }
 });

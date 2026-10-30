@@ -115,8 +115,8 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
 }
 
 it.each([
-  { mode: undefined, staleAccount: false }, { mode: "without-asking", staleAccount: false },
-  { mode: "every-action", staleAccount: false }, { mode: "every-action", staleAccount: true },
+  { mode: undefined, staleAccount: false }, { mode: "every-action", staleAccount: false },
+  { mode: "every-action", staleAccount: true },
 ] as const)("uses the real composed selected-account service with permission=$mode staleAccount=$staleAccount and bounded outbound data", async ({ mode, staleAccount }) => {
   const installed = mode !== undefined;
   await withServedAssistant(async ({ context, transport, clock, originalFetch, origin, post }) => {
@@ -221,7 +221,7 @@ it.each([
   });
 });
 
-it.each(["without-asking", "every-action"] as const)('serves preference CAS, replay and verification for %s', async mode => {
+it.each(["every-action"] as const)('serves preference CAS, replay and verification for %s', async mode => {
   await withServedAssistant(async ({ context, transport, clock, originalFetch, origin, post }) => {
     const preferenceResponse = await originalFetch(`${origin}/api/v1/assistant/model-preference`);
       assert.equal(preferenceResponse.status, 200);

@@ -1108,7 +1108,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
     }
   }
   if (expectedSchemaVersion >= 8 && database.prepare("SELECT 1 FROM assistant_grants WHERE id='current'").get() === undefined
-    && database.prepare("SELECT 1 FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' LIMIT 1").get() !== undefined) throw new Error("assistant-grant-missing-with-history");
+    && database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' ORDER BY rowid DESC LIMIT 1) WHERE ?<11 OR mode='every-action'").get(expectedSchemaVersion) !== undefined) throw new Error("assistant-grant-missing-with-history");
   if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database);
   if (expectedSchemaVersion >= 9) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   try{readAppSettings(database);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}

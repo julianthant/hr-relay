@@ -24,7 +24,7 @@ async function mount(ports: AssistantPorts, client = accountClient) {
   await act(async () => { root!.render(createElement(Harness)); });
 }
 afterEach(async () => { await act(async () => { root?.unmount(); }); host?.remove(); root = undefined; });
-async function review() { await act(async () => { await model.send({ text: 'run onboardings', files: [file], model: 'Default', effort: 'Medium', approval: 'Ask only before submits' }); }); }
+async function review() { await act(async () => { await model.send({ text: 'run onboardings', files: [file], model: 'Default', effort: 'Medium', approval: 'Ask before every action' }); }); }
 describe('assistant port settlements', () => {
   it('uses the existing account read and does not turn its failure into connected mock state', async () => {
     await mount({}, { async chatGptAccount() { throw Error('fixture unavailable'); } });
