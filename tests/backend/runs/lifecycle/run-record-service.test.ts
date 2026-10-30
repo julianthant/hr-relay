@@ -467,7 +467,7 @@ afterEach(_afterEachFixture0);
   it.each(["checkpoint","timeline","attempt","audit"])("refuses altered acknowledged authority: %s",async fault=>{
     const f=await fixture();positive(f).apply();
     const table=fault === "checkpoint" ? "run_checkpoints" : fault === "timeline" ? "timeline_events" : fault === "attempt" ? "write_attempts" : "command_audits";
-    let payloads: { rowid: number; payload_json: string }[] = [];
+    let payloads: { rowKey: number | bigint; payload_json: string }[] = [];
     f.rawMutation(raw=>{
       payloads=raw.prepare(`SELECT rowid AS rowKey, payload_json FROM ${table}`).all() as { rowKey: number | bigint; payload_json: string }[];
       for(const row of raw.prepare("SELECT name FROM sqlite_schema WHERE type='trigger' AND tbl_name=?").all(table)) raw.exec(`DROP TRIGGER ${String(row.name)}`);
@@ -478,7 +478,7 @@ afterEach(_afterEachFixture0);
     expect(()=>f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)).toThrow();
     f.rawMutation(raw=>{
       const update=raw.prepare(`UPDATE ${table} SET payload_json=? WHERE rowid=?`);
-      for (const row of payloads) update.run(row.payload_json, Number(row.rowKey));
+      for (const row of payloads) update.run(row.payload_json, row.rowKey);
     });
   });
   it("retains exact immutable publication and proof after authenticated terminal deletion, with no hidden run",async ()=>{
@@ -507,7 +507,10 @@ afterEach(_afterEachFixture0);
       raw.prepare("UPDATE deleted_runs SET trace_id=?,receipt_json=json_set(receipt_json,'$.traceId',?)").run("term-000000-abcd","term-000000-abcd");
     });
     expect(()=>f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)).toThrow(/deletion-settlement-mismatch/u);
-    f.rawMutation(raw=>raw.prepare("UPDATE deleted_runs SET trace_id=?, receipt_json=?").run(deleted?.trace_id, deleted?.receipt_json));
+    f.rawMutation(raw=>{
+      assert.ok(deleted);
+      raw.prepare("UPDATE deleted_runs SET trace_id=?, receipt_json=?").run(deleted.trace_id, deleted.receipt_json);
+    });
   });
   it.each(["run","workflow","item","attempt","execution-generation","descriptor","contract"])("refuses ordinary confirmation checkpoint substitution before any mutation: %s",async fault=>{
     const f=await fixture();f.apply();
