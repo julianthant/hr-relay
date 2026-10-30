@@ -1,3 +1,4 @@
+import type { DryRunBinding, DryRunScope } from "./dry-run.js";
 import type { ProtectedInputBinding } from "../write-safety/protected-input.js";
 /** Bundle-safe workflow graph vocabulary: the node shapes a descriptor is made of, operational type surfaces rather than durable-data boundaries. */
 import { z } from "zod";
@@ -41,6 +42,7 @@ export type AnyWorkflowRef = WorkflowRef<z.ZodType, z.ZodType>;
 /** The widest scope a runtime switch may see; never a source of inference. */
 export interface RuntimeScope {
   readonly input: JsonValue;
+  readonly dryRun?: DryRunScope;
   readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: JsonObject;
   readonly configuration?: Readonly<Record<string, JsonValue>>;
@@ -149,6 +151,7 @@ export interface TransactionNode<
     // Bind commit input before probes; never include ephemeral prepare output in durable transaction identity.
   readonly commit: Readonly<{ uses: C; bind: (scope: Scope) => z.input<C["input"]> }>;
   /** Same context/page lease from prepare start through commit verification. */
+  readonly previewBind?: (scope: Scope) => DryRunBinding | undefined;
   readonly leaseScope: "transaction";
   readonly dryRun: "stop-after-prepare" | "unsupported";
   readonly probePolicy: "always" | "retries-and-recovery-only";

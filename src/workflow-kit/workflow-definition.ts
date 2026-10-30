@@ -1,3 +1,4 @@
+import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
 import type { JsonValue } from "../rules/validation/canonical-json.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
 /** The ONE workflow-authoring seam. A `WorkflowDefinition` is ordered `[group, entries[]]` tuples whose order is presentation only; execution edges come from typed references the compiler resolves. */
@@ -99,6 +100,7 @@ export interface WorkflowEntryScope<
   References extends readonly AnyWorkflowEntry[],
 > {
   readonly input: z.output<InputSchema>;
+  readonly dryRun?: DryRunScope;
   readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: EntryOutputs<References>;
   readonly configuration?: Readonly<Record<string, JsonValue>>;
@@ -219,6 +221,7 @@ interface TransactionEntry<Id extends string, Output> extends WorkflowEntry<Id, 
   readonly probePolicy: "always" | "retries-and-recovery-only";
   readonly probeToFenceMaxMs: number;
   readonly retryBeforeFence?: RetryPolicy;
+  readonly previewBind?: (scope: unknown) => DryRunBinding | undefined;
   readonly prepareBind: (scope: unknown) => unknown;
   readonly commitBind: (scope: unknown) => unknown;
 }
@@ -311,6 +314,7 @@ export interface WorkflowAuthor<InputSchema extends z.ZodType> {
     identity: Identity,
     references: References,
     binds: Readonly<{
+      previewBind?: (scope: WorkflowEntryScope<InputSchema, References>) => DryRunBinding | undefined;
       prepareBind: (scope: WorkflowEntryScope<InputSchema, References>) => z.input<Identity["prepare"]["input"]>;
       commitBind: (scope: WorkflowEntryScope<InputSchema, References>) => z.input<Identity["commit"]["input"]>;
     }>,
@@ -414,6 +418,7 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
       identity: TransactionEntryIdentity,
       references: readonly AnyWorkflowEntry[],
       binds: Readonly<{
+        previewBind?: (scope: never) => DryRunBinding | undefined;
         prepareBind: (scope: never) => unknown;
         commitBind: (scope: never) => unknown;
       }>,
@@ -435,6 +440,7 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
         probePolicy: identity.probePolicy,
         probeToFenceMaxMs: identity.probeToFenceMaxMs,
         ...(identity.retryBeforeFence === undefined ? {} : { retryBeforeFence: identity.retryBeforeFence }),
+        ...(binds.previewBind === undefined ? {} : { previewBind: (scope: unknown) => binds.previewBind!(scope as never) }),
         prepareBind: (scope) => binds.prepareBind(scope as never),
         commitBind: (scope) => binds.commitBind(scope as never),
       };
@@ -921,6 +927,7 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
         ...(entry.label === undefined ? {} : { label: entry.label }),
         dependsOn,
         prepare: { uses: entry.prepareContract, bind: entry.prepareBind },
+        ...(entry.previewBind === undefined ? {} : { previewBind: entry.previewBind }),
         commit: { uses: entry.commitContract, bind: entry.commitBind },
         dryRun: entry.dryRun,
         probePolicy: entry.probePolicy,
