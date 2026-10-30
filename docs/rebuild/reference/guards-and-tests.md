@@ -100,7 +100,7 @@ the workers see.
 
 On macOS, `scripts/test/ram-tmp.sh <mebibytes>` attaches an APFS RAM disk, enables volume
 ownership (passwordless sudo), sets the volume root to mode `755`, creates a `0700` directory
-on it, and prints that path. Point `TMPDIR` at the
+on it, and prints that path. The CI mount step fails if that volume still shows `noowners`. Point `TMPDIR` at the
 printed path before Vitest; the private-temp setup still nests its own directory underneath and
 keeps its checks. Eject with `scripts/test/ram-tmp.sh eject` and the volume path (the parent of
 the printed directory). CI macOS test jobs mount 4096 MiB and export `TMPDIR` before the suite.
