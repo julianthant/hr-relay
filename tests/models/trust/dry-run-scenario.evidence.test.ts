@@ -111,7 +111,7 @@ describe("dry-run scenario execution", () => {
       scenarioId: "fixture-workflow/dry-run",
       workflow: "fixture-workflow",
       subjectLabel: "fixture-canary",
-      manifestDigest: "0aaccc8fbfc9c0083a8248104d800f74f073ad6d0736e0913a2685e118c7e297",
+      manifestDigest: "a88ff7081bb9be203451b4124d03bf359fc393135a07feacd1bf34072ac0eb13",
       verdict: "blocked",
       execution: { state: "not-started", reason: "subject-unavailable" },
       assertions: [{

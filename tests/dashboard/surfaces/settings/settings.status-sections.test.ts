@@ -199,7 +199,7 @@ describe("Workflow capabilities", () => {
     const help = mounted().querySelector('button[aria-label="What Dry run means"]');
     assert.ok(help instanceof HTMLButtonElement);
     await act(async () => { help.click(); });
-    assert.ok(document.body.textContent?.includes("Offers a rehearsal that reads everything for real and writes nothing."));
+    assert.ok(document.body.textContent?.includes("Previews each applicable stage without submitting. Sample values are labelled and unavailable stages stay visible. A workflow that changes no system of record uses Live read."));
   });
 
   it("groups the six actual capabilities by workflow", async () => {

@@ -54,8 +54,8 @@ describe("task-owned screenshots", () => {
       retained = captureScreenshot;
       calls.push("read"); await captureScreenshot(); calls.push("return");
     }, owner);
-    assert.deepEqual(calls, enabled ? ["read", "capture", "persist", "return", "reset"] : ["read", "return", "reset"]);
-    assert.deepEqual(captures.map(capture => capture.trigger), enabled ? [{ kind: "task-point", nodeId: "searching", attempt: 1 }] : []);
+    assert.deepEqual(calls, ["read", "capture", "persist", "return", "reset"]);
+    assert.deepEqual(captures.map(capture => capture.trigger), [{ kind: "task-point", nodeId: "searching", attempt: 1, boundary: "step" }]);
     assert.deepEqual(warnings, []);
     assert.ok(retained);
     await assert.rejects(retained(), error => error instanceof TaskError && error.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED");
@@ -69,28 +69,40 @@ describe("task-owned screenshots", () => {
     assert.deepEqual(captures.map(capture => capture.trigger), [{ kind: "lease-end", outcome: "succeeded" }]);
     await sessions.closeAll("worker-stop");
   });
-  for (const failure of ["unavailable", "missing", "persist", "capture"] as const) it(`does nothing with capture opted out for ${failure}`, async () => {
-    const { sessions, calls, captures, warnings, owner } = await world(false, failure);
-    assert.equal(await sessions.withDriver(need, "prod", new AbortController().signal, async (_driver, captureScreenshot) => {
-      await captureScreenshot();
-      return "found";
-    }, owner), "found");
-    assert.deepEqual(calls, ["reset"]);
-    assert.deepEqual(captures, []);
-    assert.deepEqual(warnings, []);
-    await sessions.closeAll("worker-stop");
-  });
-  for (const failure of ["unavailable", "missing", "persist", "capture"] as const) it(`continues with one safe warning for ${failure}`, async () => {
-    const { sessions, captures, warnings, owner } = await world(true, failure);
-    const result = await sessions.withDriver(need, "prod", new AbortController().signal, async (_driver, captureScreenshot) => {
-      await captureScreenshot();
-      return { status: "found" };
-    }, owner);
-    assert.deepEqual(result, { status: "found" });
-    assert.deepEqual(captures, []);
-    assert.deepEqual(warnings, [{ message: "Screenshot capture failed.", fields: { reason: failure === "unavailable" ? "page-changed" : "Error" } }]);
-    await sessions.closeAll("worker-stop");
-  });
+  for (const enabled of [false, true]) {
+    for (const failure of ["unavailable", "missing", "persist", "capture"] as const) it(`refuses ${failure} capture without continuing (enabled=${enabled})`, async () => {
+      const { sessions, calls, captures, warnings, owner } = await world(enabled, failure);
+      let continued = false;
+      await assert.rejects(sessions.withDriver(need, "prod", new AbortController().signal, async (_driver, captureScreenshot) => {
+        await captureScreenshot();
+        continued = true;
+        return { status: "found" };
+      }, owner), error => {
+        const primary = error instanceof AggregateError ? error.cause : error;
+        assert.ok(primary instanceof TaskError);
+        assert.equal(primary.code, "BROWSER_SCREENSHOT_CAPTURE_FAILED");
+        assert.equal(primary.taskId, owner.taskId);
+        if (failure !== "unavailable") {
+          assert.ok(error instanceof AggregateError);
+          assert.equal(error.errors.length, 2);
+          assert.equal(error.errors[0], primary);
+          assert.match(String(error.errors[1]), failure === "missing" ? /no screenshot capability/ : failure === "persist" ? /fixture persistence failed/ : /fixture capture failed/);
+        }
+        return true;
+      });
+      assert.equal(continued, false);
+      assert.equal(calls.includes("reset"), false);
+      assert.deepEqual(calls, failure === "missing" ? [] : failure === "capture" ? ["capture", "capture"] : ["capture", "persist", "capture", "persist"]);
+      assert.deepEqual(captures.map(capture => ({ trigger: capture.trigger, state: capture.screenshot.state })), failure === "unavailable" ? [
+        { trigger: { kind: "task-point", nodeId: "searching", attempt: 1, boundary: "step" }, state: "unavailable" },
+        { trigger: { kind: "lease-end", outcome: "failed" }, state: "unavailable" },
+      ] : []);
+      assert.deepEqual(warnings, [{ message: "Screenshot capture unavailable.", fields: {
+        code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", boundary: "step", reason: failure === "unavailable" ? "page-changed" : "Error",
+      } }]);
+      await sessions.closeAll("worker-stop");
+    });
+  }
 });
 
 it("refuses a task capture that resolves after cancellation", async () => {
@@ -112,12 +124,14 @@ it("refuses a task capture that resolves after cancellation", async () => {
 
 it("retains the task failure and failure-diagnostic and cleanup errors together", async () => {
   const { sessions, owner } = await world(true, "capture-and-close");
-  await assert.rejects(sessions.withDriver(need, "prod", new AbortController().signal, async (_driver, captureScreenshot) => {
-    await captureScreenshot();
-    throw new Error("task operation failed");
+  const primary = new Error("task operation failed");
+  await assert.rejects(sessions.withDriver(need, "prod", new AbortController().signal, async () => {
+    throw primary;
   }, owner), error => {
     assert.ok(error instanceof AggregateError);
     assert.equal(error.errors.length, 3);
+    assert.equal(error.cause, primary);
+    assert.equal(error.errors[0], primary);
     assert.match(String(error.cause), /task operation failed/);
     assert.match(String(error.errors[1]), /fixture capture failed/);
     assert.match(String(error.errors[2]), /fixture close failed/);

@@ -21,6 +21,10 @@ import {
   WorkerSessionManager,
 } from "../../../src/backend/runtime/workers/worker-sessions.js";
 import { kualiFinalizationIdempotencyKey } from "../../../src/models/systems/kuali/save-separation-finalization.js";
+import { UcpathReadJobSummary } from "../../../src/models/systems/ucpath/read-job-summary.js";
+import { SeparationsMatchIdentity } from "../../../src/models/workflows/separations/match-identity.js";
+import { buildIdentityEvidencePacket, deriveIdentityEvidenceDigest } from "../../../src/rules/separations/identity-evidence.js";
+import { noSeparationWritePlan } from "../../../src/rules/separations/write-plan.js";
 import { SearchPersonOrgOutputSchema } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { UcpathVerifyTerminationFilingPresent } from "../../../src/models/systems/ucpath/verify-termination-filing-present.js";
 import { SeparationsMatchDepartmentOption } from "../../../src/models/workflows/separations/match-department-option.js";
@@ -597,7 +601,42 @@ export function finalizationPreviewDependencies(
       provenance: [],
       writtenAt: FINALIZATION_NOW,
     });
+  if (FINALIZATION_JOB_SUMMARY_READ.state !== "read") {
+    throw new Error("finalization fixture requires a read job summary");
+  }
+  const jobSummary = FINALIZATION_JOB_SUMMARY_READ.summary;
+  const packet = buildIdentityEvidencePacket({
+    documentNumber: FINALIZATION_DOCUMENT,
+    documentName: FINALIZATION_RUN_INPUT.employeeName,
+    documentEidText: FINALIZATION_EID,
+    emplIdSource: "document-eid",
+    documentEidConflicts: false,
+    jobSummary,
+    nameSelection: FINALIZATION_NAME_SEARCH_OUTPUT.selection,
+    plan: noSeparationWritePlan(
+      "this chunk finalizes the Kuali document alone; the composed `separations` graph is where the whole write plan — the UCPath termination included — exists to show",
+    ),
+  });
   return [
+    {
+      state: "resolved",
+      nodeId: "job-summary",
+      checkpoint: rowFor("job-summary", UcpathReadJobSummary.output, jobSummary),
+    },
+    {
+      state: "resolved",
+      nodeId: "name-search",
+      checkpoint: rowFor("name-search", SearchPersonOrgOutputSchema, FINALIZATION_NAME_SEARCH_OUTPUT),
+    },
+    {
+      state: "resolved",
+      nodeId: "comparison",
+      checkpoint: rowFor("comparison", SeparationsMatchIdentity.output, {
+        packet,
+        approvalRequired: false,
+        evidenceDigest: deriveIdentityEvidenceDigest(packet),
+      }),
+    },
     {
       state: "resolved",
       nodeId: "approval",

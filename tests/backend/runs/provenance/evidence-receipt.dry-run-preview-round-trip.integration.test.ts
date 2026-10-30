@@ -62,7 +62,9 @@ describe("a dry run retains transaction preview accounting", () => {
       run,
       descriptorRuntimeNodes(separationsKualiFinalizationDescriptor).map(node => node.id === preview.nodeId
         ? { nodeId: node.id, state: "transaction-preview", preview, samples: [] }
-        : { nodeId: node.id, state: "exercised" }),
+        : node.kind === "gate"
+          ? { nodeId: node.id, state: "not-run", reason: "condition-false" }
+          : { nodeId: node.id, state: "exercised" }),
       finalizationPreviewDependencies(run),
       k.clock,
     );
@@ -141,7 +143,9 @@ describe("a dry run retains transaction preview accounting", () => {
       run,
       descriptorRuntimeNodes(separationsKualiFinalizationDescriptor).map(node => node.id === preview.nodeId
         ? { nodeId: node.id, state: "transaction-preview", preview, samples: [] }
-        : { nodeId: node.id, state: "exercised" }),
+        : node.kind === "gate"
+          ? { nodeId: node.id, state: "not-run", reason: "condition-false" }
+          : { nodeId: node.id, state: "exercised" }),
       finalizationPreviewDependencies(run),
       k.clock,
     );
