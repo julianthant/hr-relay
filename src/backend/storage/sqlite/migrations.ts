@@ -5,9 +5,9 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 9;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 10;
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
@@ -742,6 +742,14 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     `CREATE TRIGGER assistant_model_preference_no_delete BEFORE DELETE ON assistant_model_preference
       BEGIN SELECT RAISE(ABORT,'assistant-preference-delete-refused'); END`,
   ] },
+  { version: 10, statements: [
+    "DROP TABLE explorer_overrides",
+    "DROP TRIGGER command_audits_retained",
+    "DELETE FROM command_audits WHERE command_id IN (SELECT id FROM commands WHERE family='explorer' AND json_extract(request_json,'$.type')='apply-explorer-edit')",
+    "DELETE FROM commands WHERE family='explorer' AND json_extract(request_json,'$.type')='apply-explorer-edit'",
+    `CREATE TRIGGER command_audits_retained BEFORE DELETE ON command_audits
+      BEGIN SELECT RAISE(ABORT,'retained-evidence-required'); END`,
+  ] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
@@ -752,11 +760,11 @@ export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sour
     toSchemaVersion, sourceContentFingerprint, statements })).digest("hex");
 }
 
-export function migrationTableNames(version: number): readonly AuthorityTableName[] {
-  return AuthorityTableNameSchema.options.filter(name => (version >= 4
+export function migrationTableNames(version: number): readonly (AuthorityTableName | "explorer_overrides")[] {
+  return [...(version < 10 ? ["explorer_overrides" as const] : []), ...AuthorityTableNameSchema.options.filter(name => (version >= 4
     || (name !== "workbook_library" && name !== "workbook_library_history"))
     && (version >= 8 || !name.startsWith("assistant_"))
-    && (version >= 9 || name !== "assistant_model_preference"));
+    && (version >= 9 || name !== "assistant_model_preference"))];
 }
 
 export function auditMigrationTableCoverage(): readonly string[] {
@@ -765,7 +773,7 @@ export function auditMigrationTableCoverage(): readonly string[] {
   const registered = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
   return [
     ...registered.filter(name => !names.includes(name)).map(name => `registered table ${name} has no DDL`),
-    ...names.filter(name => !registered.some(registeredName => registeredName === name)).map(name => `DDL table ${name} is not registered`),
+    ...names.filter(name => name !== "explorer_overrides" && !registered.some(registeredName => registeredName === name)).map(name => `DDL table ${name} is not registered`),
   ];
 }
 

@@ -1,11 +1,7 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import {
-  workflowDryRunSupport,
-  workflowProjections,
-  workflowTerminalResultExecution,
-} from "../../../workflow-kit/workflow.js";
+import { workflowDryRunSupport, workflowProjections, workflowTerminalResultExecution } from "../../../workflow-kit/workflow.js";
 import { descriptorRuntimeNodes, runtimeNodeLabel } from "../../../workflow-kit/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { workflowDefinitionOf, workflowExplorerDeclaration, type AnyWorkflowDefinition } from "../../../workflow-kit/workflow-definition.js";
@@ -15,29 +11,7 @@ import { contractSchemaLeaves } from "../../../models/validation/contract-bounda
 import type { AnyTaskContract } from "../../../models/task/task-contract.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { z } from "zod";
-import {
-  ExplorerFreshnessWireSchema,
-  ExplorerProvenanceWireSchema,
-  SourcePathSchema,
-  WorkflowExplorerWireSchema,
-  type ExplorerContractFieldWire,
-  type ExplorerEdgeWire,
-  type ExplorerFieldRecordedWire,
-  type ExplorerFreshnessWire,
-  type ExplorerNodeShapeWire,
-  type ExplorerNodeWire,
-  type ExplorerProseWire,
-  type ExplorerProvenanceWire,
-  type ExplorerScenarioWire,
-  type ExplorerSubjectWire,
-  type ExplorerTaskBindingWire,
-  type ExplorerTaskWire,
-  type ExplorerUiLinkWire,
-  type ExplorerWriteSafetyWire,
-  type ExplorerWorkflowOverride,
-  type SourceLinkWire,
-  type WorkflowExplorerWire,
-} from "../../../models/dashboard/explorer.js";
+import { ExplorerFreshnessWireSchema, ExplorerProvenanceWireSchema, SourcePathSchema, WorkflowExplorerWireSchema, type ExplorerContractFieldWire, type ExplorerEdgeWire, type ExplorerFieldRecordedWire, type ExplorerFreshnessWire, type ExplorerNodeShapeWire, type ExplorerNodeWire, type ExplorerProseWire, type ExplorerProvenanceWire, type ExplorerScenarioWire, type ExplorerSubjectWire, type ExplorerTaskBindingWire, type ExplorerTaskWire, type ExplorerUiLinkWire, type ExplorerWriteSafetyWire, type SourceLinkWire, type WorkflowExplorerWire } from "../../../models/dashboard/explorer.js";
 import type { ExplorerOperationStructureWire } from "../../../models/dashboard/operation-structure.js";
 import type { Fingerprint } from "../../../rules/identity/ids.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -46,9 +20,7 @@ import { GENERATED_BUILD_MANIFEST } from "../../../workflow-kit/validation/gener
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
-import {
-  workflowSourcePath,
-} from "../../../workflow-kit/validation/source-layout.js";
+import { workflowSourcePath } from "../../../workflow-kit/validation/source-layout.js";
 import type { IntakeProjection } from "../../../models/intake/projection.js";
 import type { PendingImplBindings } from "../../../workflow-kit/validation/impl-bindings.js";
 
@@ -76,8 +48,6 @@ export interface ExplorerQueryDeps {
   readonly buildManifest?: BuildManifestSource;
   // Missing executable scenario files report unresolved names; packaging without tests must not discard the Explorer.
   readonly listScenarioSources: () => readonly Readonly<{ path: string; text: string }>[];
-  /** Presentation-only hot overrides; absence means revision zero. */
-  readonly overrides?: Readonly<{ readAll(): readonly ExplorerWorkflowOverride[] }>;
 }
 
 const SCENARIO_DIRECTORY = "tests/scenario";
@@ -591,35 +561,6 @@ function proseWire(
     : { state: "authored", text };
 }
 
-/** One resolution point for every field the safe-edit store is allowed to persist. */
-function resolveExplorerPresentation(
-  descriptor: AnyWorkflowDescriptor,
-  override: ExplorerWorkflowOverride | undefined,
-): Readonly<{
-  label: string;
-  icon: string;
-  category: string;
-  overrideRevision: number;
-}> {
-  if (override !== undefined
-    && (String(override.workflowId) !== String(descriptor.id)
-      || override.descriptorVersion !== descriptor.version
-      || override.contractFingerprint !== descriptor.contractFingerprint)) {
-    throw new Error(
-      `Explorer override ${String(override.workflowId)} targets descriptor v${String(override.descriptorVersion)} `
-      + `(${override.contractFingerprint}) but the live descriptor is ${String(descriptor.id)} `
-      + `v${String(descriptor.version)} (${descriptor.contractFingerprint}); refusing stale presentation authority`,
-    );
-  }
-  return Object.freeze({
-    label: override?.presentation.label ?? descriptor.label,
-    icon: override?.presentation.icon ?? descriptor.icon,
-    category: override?.presentation.category ?? descriptor.category,
-    overrideRevision: override?.revision ?? 0,
-  });
-}
-
-
 function operationStructureWire(descriptor: AnyWorkflowDescriptor): ExplorerOperationStructureWire {
   const definition = freezeWorkflowOperationDisplaySnapshot({
     workflowId: descriptor.id,
@@ -637,7 +578,6 @@ function operationStructureWire(descriptor: AnyWorkflowDescriptor): ExplorerOper
 function workflowWire(
   module: ExplorerModuleView,
   deps: ExplorerQueryDeps,
-  override: ExplorerWorkflowOverride | undefined,
   manifest: ReadonlyMap<string, ReadonlySet<string>>,
   ui: ReadonlyMap<string, readonly ExplorerUiLinkWire[]>,
   scenarioSources: readonly Readonly<{ path: string; text: string }>[],
@@ -683,9 +623,10 @@ function workflowWire(
     coverageByNode.set(String(point.nodeId), list);
   }
 
+
+
   const editable = descriptor.capabilities?.editData;
-
-
+  const editDataFields = typeof editable === "object" ? editable.fields : [];
   const descriptorPath = workflowSourcePath(workflowId, module.role);
   const modulePath = descriptorPath;
 
@@ -693,17 +634,15 @@ function workflowWire(
     descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose]),
   );
 
-  const effectivePresentation = resolveExplorerPresentation(descriptor, override);
 
-  const editDataFields = typeof editable === "object" ? editable.fields : [];
 
   return {
     id: descriptor.id,
-    label: effectivePresentation.label,
+    label: descriptor.label,
     summary: proseWire(descriptor.summary, `${workflowId}`, `${descriptorPath}'s \`summary\``),
     code: descriptor.code,
-    icon: effectivePresentation.icon,
-    category: effectivePresentation.category,
+    icon: descriptor.icon,
+    category: descriptor.category,
 
     role: module.role,
     version: descriptor.version,
@@ -712,36 +651,6 @@ function workflowWire(
     definitionPreview: declaration === undefined
       ? { state: "unavailable", reason: "this registered descriptor has no compiled ordered definition" }
       : { state: "compiled", groups: declaration, systemsFirstUse },
-    edit: {
-      overrideRevision: effectivePresentation.overrideRevision,
-      presentation: {
-        workflowLabel: true,
-        iconValues: [
-          "Search", "Users", "UserMinus", "UserPlus", "FileScan", "FileText",
-          "ClipboardCheck", "Upload", "CalendarClock", "ShieldCheck", "Building2",
-        ],
-        categoryValues: ["search", "onboarding", "separation", "documents", "timekeeping", "operations"],
-        timeline: {
-          state: "unavailable",
-          reason: "timeline presentation has no complete hot-apply reader; it remains descriptor-owned",
-        },
-      },
-      notificationPreferences: {
-        state: "unavailable",
-        reason: "this descriptor declares no notification-preference owner or closed preference union",
-      },
-      operationalPolicies: {
-        state: "code-change-only",
-        reason: "this descriptor declares no exact safe-edit value allowlist for operational policy",
-      },
-      editData: editDataFields.length === 0
-        ? { state: "unavailable", reason: "this descriptor allowlists no Edit Data fields" }
-        : {
-          state: "code-change-only",
-          fields: editDataFields,
-          reason: "Edit Data fields change runtime correction authority and require a reviewed descriptor change",
-        },
-    },
     surfaceShape: "shape" in descriptor.surface ? descriptor.surface.shape : "by-input",
     enqueue: descriptor.enqueue,
     inputSubject: typeof descriptor.inputSubject === "function"
@@ -831,7 +740,6 @@ function workflowWire(
 }
 
 export function buildWorkflowExplorer(deps: ExplorerQueryDeps): WorkflowExplorerWire {
-  const overrides = deps.overrides?.readAll();
   const manifest = manifestSourceIndex(deps.buildManifest ?? GENERATED_BUILD_MANIFEST);
   const ui = uiLinkIndex(deps.uiTaskLinks);
   const scenarioSources = deps.listScenarioSources();
@@ -840,7 +748,7 @@ export function buildWorkflowExplorer(deps: ExplorerQueryDeps): WorkflowExplorer
     generatedAt: deps.clock.now().toISOString(),
     descriptorHash: deps.descriptorSetHash,
     workflows: deps.modules.map((module) =>
-      workflowWire(module, deps, overrides?.find(({ workflowId }) => workflowId === module.descriptor.id),
+      workflowWire(module, deps,
         manifest, ui, scenarioSources)),
   });
 }

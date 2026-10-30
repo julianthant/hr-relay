@@ -1,7 +1,7 @@
 import { createBoundProfileFixture } from "../admission-fixture.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
-import { explorerEditCommandFingerprint } from "../../../../src/models/dashboard/explorer-override.js";
+
 import { testRunContinuation } from "../../fixtures/run-lifecycle-fixtures.js";
 import { WRITE_FIXTURE_IMPL_FINGERPRINT, writeFixtureDescriptor } from "../../fixtures/write-sequencer-fixtures.js";
 import assert from "node:assert/strict";
@@ -11,9 +11,9 @@ import { join } from "node:path";
 import { z } from "zod";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { separationsIdentityCheckModule } from "../../../../src/backend/app/registries/step-proof-modules.js";
-import { createCommandKernel, type CommandKernel, type ExplorerEditExecutor, type SettingsApplicationExecutor, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createCommandKernel, type CommandKernel, type SettingsApplicationExecutor, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
-import { ExplorerEditApplyResultSchema, ExplorerWorkflowOverrideSchema } from "../../../../src/models/dashboard/explorer.js";
+
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
@@ -41,7 +41,6 @@ interface HarnessOptions {
   readonly profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>;
   readonly prepareAssistantModelPreference?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["prepareAssistantModelPreference"];
   readonly failureResolution?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["failureResolution"];
-  readonly explorerEdits?: ExplorerEditExecutor;
   readonly afterAuthorityCommit?: () => void;
   readonly descriptors?: readonly AnyWorkflowDescriptor[];
 }
@@ -55,7 +54,6 @@ export interface Harness {
   readonly writeCalls: string[];
   readonly credentials: ReturnType<typeof createCredentialStore>;
   readonly stateRoot: string;
-  readonly explorerCalls: unknown[];
 }
 
 export function createCommandKernelTestWorld() {
@@ -205,7 +203,6 @@ export function createCommandKernelTestWorld() {
     const workerCalls: string[] = [];
     const writeCalls: string[] = [];
     const credentials = createCredentialStore({ stateRoot });
-    const explorerCalls: unknown[] = [];
     const kernel = createCommandKernel({
       ...(options.profile === undefined ? {} : { authorityProfileId: options.profile.admission.profileBinding.profileId }),
       ...(options.prepareAssistantModelPreference === undefined ? {} : { prepareAssistantModelPreference: options.prepareAssistantModelPreference }),
@@ -231,25 +228,6 @@ export function createCommandKernelTestWorld() {
       descriptors: {
         resolve: (workflowId) => descriptors.find((descriptor) => String(descriptor.id) === workflowId),
       },
-      explorerEdits: options.explorerEdits ?? {
-        apply: (input, repositories) => {
-          explorerCalls.push(input);
-          const override = ExplorerWorkflowOverrideSchema.parse({
-            overrideVersion: 1 as const,
-            workflowId: input.target.workflowId,
-            descriptorVersion: input.target.expectedVersion,
-            contractFingerprint: input.target.contractFingerprint,
-            revision: input.target.expectedOverrideRevision + 1,
-            appliedCommandId: input.commandId,
-            commandFingerprint: explorerEditCommandFingerprint(input),
-            presentation: { label: "Reviewed fixture label" },
-          });
-          const readback = repositories.explorerOverrides.replace(input, override);
-          return {
-            result: ExplorerEditApplyResultSchema.parse({ state: "applied", override, readback }),
-          };
-        },
-      },
       writeResolution: requeueingWriteResolution(writeCalls, database, clock),
       workerRuntime: acceptingWorkerRuntime(workerCalls, database),
       settings: settingsOverride ?? createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), credentials),
@@ -263,7 +241,6 @@ export function createCommandKernelTestWorld() {
       writeCalls,
       credentials,
       stateRoot,
-      explorerCalls,
     };
   }
 

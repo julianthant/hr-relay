@@ -13,11 +13,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { ActionCommandKeySchema } from "../../../src/models/dashboard/actions.js";
-import {
-  ParkedWriteDetailWireSchema,
-  ParkedWriteSubjectEvidenceSchema,
-  RunDetailSectionResponseSchema,
-} from "../../../src/models/dashboard/run-detail.js";
+import { ParkedWriteDetailWireSchema, ParkedWriteSubjectEvidenceSchema, RunDetailSectionResponseSchema } from "../../../src/models/dashboard/run-detail.js";
 import { QueuePrioritySchema, QueueStatusSchema } from "../../../src/models/dashboard/projection.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
 import { queueRowActions } from "../../../src/backend/runs/projections/queue-row-actions.js";
@@ -29,27 +25,9 @@ import { availableSections, readRunDetail, readRunSection } from "../../../src/b
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
 import { deriveDiagnosticContentDigest } from "../../../src/models/trust/diagnostic-capture.js";
-import {
-  makeWorld,
-  queuedEventOf,
-  runRecordOf,
-  uuidOf,
-  type DashboardWorld,
-} from "../../support/helpers/backend/dashboard-harness.js";
+import { makeWorld, queuedEventOf, runRecordOf, uuidOf, type DashboardWorld } from "../../support/helpers/backend/dashboard-harness.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
-import {
-  armField,
-  clientRouteReferences,
-  discriminantValues,
-  projectedCommandKeys,
-  normalizeClientPath,
-  readPendingWireBindings,
-  routeConnectivityProblems,
-  routeMatches,
-  servedRoutes,
-  PENDING_WIRE_BINDINGS_PATH,
-  type PendingWireBinding,
-} from "./helpers/wire-connectivity.js";
+import { armField, clientRouteReferences, discriminantValues, projectedCommandKeys, normalizeClientPath, readPendingWireBindings, routeConnectivityProblems, routeMatches, servedRoutes, PENDING_WIRE_BINDINGS_PATH, type PendingWireBinding } from "./helpers/wire-connectivity.js";
 
 const worlds: DashboardWorld[] = [];
 afterEach(async () => {
@@ -267,7 +245,6 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "notification-snooze-all": "complete actor inbox target, not a run row",
   "notification-unsnooze-all": "complete actor inbox target, not a run row",
 
-  "apply-explorer-edit": "The reviewed Explorer draft targets a workflow override revision, not a run row",
   "set-assistant-model-preference": "the assistant surface owns the model choice; no run row can express it",
 };
 

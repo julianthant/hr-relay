@@ -131,11 +131,11 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
       const module = modules.find((candidate) => candidate.descriptor.id === id);
       return module === undefined ? undefined : { ...module.descriptor, dataOrigins: dataOriginViewsOf(module), gateNodes: gateNodeViewsOf(module.descriptor), writeContracts: writeContractViewsOf(module.descriptor) };
     } } };
-    const explorer = composeExplorer({ database, clock, descriptorSetHash: hash });
+    const explorer = composeExplorer({ clock, descriptorSetHash: hash });
     const app: DashboardApp = new Hono();
     app.onError((error, c) => { const failure = failureStatus(error); return c.json(failure.body, failure.status); });
     app.use("*", async (c, next) => { c.set("requestActorId", LOCAL_OPERATOR_ACTOR_ID); await next(); });
-    registerExplorerRoutes(app, { ...explorer.routes, explorer: { ...explorer.routes.explorer, modules, buildManifest: fixtureBuildManifest(modules.map((module) => module.descriptor.id)) } });
+    registerExplorerRoutes(app, { ...explorer, explorer: { ...explorer.explorer, modules, buildManifest: fixtureBuildManifest(modules.map((module) => module.descriptor.id)) } });
     registerRunDetailRoutes(app, { runDetail: detailDeps });
     registerTrustRoutes(app, { runDetail: detailDeps });
     const day = clock.now().toISOString().slice(0, 10);

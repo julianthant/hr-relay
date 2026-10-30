@@ -474,7 +474,6 @@ const EXPECTED_ACTIVE = {
   settings: ["apply-settings", "apply-protected-settings"],
   "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
 
-  explorer: ["apply-explorer-edit"],
 } as const;
 
 const EXPECTED_DEFERRED = {
@@ -569,15 +568,6 @@ async function createHarness(wrap?: RepositoryWrap): Promise<GuardHarness> {
         state: "conflict",
         currentRevision: 1,
         message: "guard fixture has no mutable settings target",
-      }),
-    },
-    explorerEdits: {
-      apply: () => ({
-        result: {
-          state: "refused",
-          category: "fixture-refusal",
-          message: "Explorer guard fixture refuses before persistence",
-        },
       }),
     },
   });

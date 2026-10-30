@@ -6,7 +6,6 @@ import { admitWorkerPoolRoster } from "../../../../src/backend/storage/sqlite/wo
 import { type AuthorityTableName } from "../../../../src/models/config/authority.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { projectNotificationTrigger } from "../../../../src/rules/notifications/notification-triggers.js";
-import { explorerAuthorityFixture } from "../../fixtures/explorer-authority.js";
 import { GATE_RESULT, NOTIFICATION, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
 import { RUN_SESSION, START_PLAN } from "../../fixtures/phase1f-run-fixtures.js";
 import { testRunService } from "../../fixtures/run-lifecycle-fixtures.js";
@@ -554,22 +553,6 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     { table: "delegation_dependencies", prepare: (db) => { prepareDelegationOwners(db); db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
-    { table: "explorer_overrides", mutate: async db => {
-      const f = await explorerAuthorityFixture();
-      try {
-        const command = f.command(UUID_7);
-        const result = f.kernel.execute(command);
-        assert.equal(result.state, "applied");
-        const override = f.database.authority.explorerOverrides.read(command.target.workflowId);
-        const audit = f.database.authority.commandAudits.findByCommand(command.commandId);
-        assert.ok(override); assert.ok(audit);
-        db.withAuthorityTransaction(repos => {
-          repos.commands.insert(command);
-          repos.explorerOverrides.replace(command, override);
-          repos.commandAudits.insert(audit);
-        });
-      } finally { await f.dispose(); }
-    } },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
     { table: "notifications", prepare: db => { db.authority.notifications.create({ ...NOTIFICATION,
       ...projectNotificationTrigger({ kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: HASH_A }) }); }, mutate: db => {

@@ -35,7 +35,6 @@ const fields = {
   auth_leases: {credential_key:"credentialKey",generation:"generation",holder_worker_id:"holder.workerId",holder_system:"holder.system",state:"state",expires_at:"expiresAt",version:"version",updated_at:"updatedAt"},
   notifications: {id:"notificationId",actor_id:"actorId",dedupe_fingerprint:"dedupeFingerprint",status:"status",seen_count:"count",version:"version",created_at:"createdAt",updated_at:"updatedAt"},
   notification_states: {id:"concern",updated_at:"observedAt"},
-  explorer_overrides: {id:"workflowId",revision:"revision",command_id:"appliedCommandId"},
   diagnostic_snapshots: {id:"bundleId",run_id:"runId",origin_kind:"origin.kind",failure_id:"origin.failureId",content_digest:"contentDigest",retention_kind:"retention.kind",purge_after:"retention.purgeAfter",created_at:"createdAt"},
   diagnostic_files: {snapshot_id:"bundleId",artifact_id:"attachment.artifactId",kind:"attachment.kind",digest:"attachment.digest",sensitivity:"attachment.sensitivity",created_at:"createdAt"},
   dryrun_results: {id:"resultId",scenario_id:"scenarioId",workflow:"workflow",subject_label:"subjectLabel",manifest_digest:"manifestDigest",verdict:"verdict",execution_state:"execution.state",run_id:"execution.runId",trace_id:"execution.traceId",wall_time_ms:"wallTimeMs",created_at:"recordedAt"},

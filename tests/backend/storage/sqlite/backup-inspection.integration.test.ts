@@ -106,7 +106,7 @@ await _afterEachFixture0();
 
 {
 
-it.each(["explorer_overrides", "notifications", "notification_states"])("does not hide a missing current authority table %s after a healthy native inspection", async table => {
+it.each(["notifications", "notification_states"])("does not hide a missing current authority table %s after a healthy native inspection", async table => {
   const f = await fixture();
   try {
     inspectAuthorityBackupReadOnly(f.admission, f.path);

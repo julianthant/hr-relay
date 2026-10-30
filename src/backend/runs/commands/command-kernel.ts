@@ -60,7 +60,6 @@ import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-read
 import { WriteIntentRecordSchema, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../start/plan.js";
-import { type ExplorerEditApplyRequest, ExplorerEditApplyResultSchema, type ExplorerEditApplyResult } from "../../../models/dashboard/explorer.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsReadbackSchema, type ProtectedSettingsReadback } from "../../../models/config/protected-settings.js";
 
 /* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
@@ -108,7 +107,6 @@ const PHASE1_ACTIVE = {
   settings: ["apply-settings", "apply-protected-settings"],
   "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
 
-  explorer: ["apply-explorer-edit"],
 } as const;
 
 const PHASE1_DEFERRED = {
@@ -166,10 +164,6 @@ export type SettingsCommand = Extract<CommandRequest, { family: "settings" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type RunDeleteCommand = Extract<RunCommand, { type: "delete" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "recheck-write" | "resolve-write-absent" }>;
-
-export interface ExplorerEditExecutor {
-  apply(input: ExplorerEditApplyRequest, repositories: AuthorityRepositories): Readonly<{ result: ExplorerEditApplyResult }>;
-}
 
 export interface WriteResolutionContext {
   readonly command: WriteResolutionCommand;
@@ -301,7 +295,6 @@ export interface CommandKernelDependencies {
   readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution;capability:typeof failureResolutionCapability}>;
 
 
-  readonly explorerEdits?: ExplorerEditExecutor;
 }
 
 export interface CommandKernel {
@@ -2343,52 +2336,6 @@ function executeSettings(
   return application;
 }
 
-function executeExplorerEdit(
-  dependencies: CommandKernelDependencies,
-  repositories: AuthorityRepositories,
-  request: Extract<CommandRequest, { family: "explorer" }>,
-): CommandApplication {
-  const executor = dependencies.explorerEdits;
-  if (executor === undefined) {
-    throw new Error("explorer/apply-explorer-edit is active but no Explorer edit executor is composed");
-  }
-  const execution = executor.apply(request, repositories);
-  const outcome = ExplorerEditApplyResultSchema.parse(execution.result);
-  if (outcome.state === "conflict") {
-    conflict(request, outcome.currentOverrideRevision, outcome.message);
-  }
-  if (outcome.state === "refused") {
-    reject(request, "policy-refused", outcome.message);
-  }
-  if (outcome.state === "code-change-required") {
-    reject(request, "policy-refused", outcome.brief.reason);
-  }
-  const override = outcome.override;
-  const persisted = repositories.explorerOverrides.read(request.target.workflowId);
-  if (persisted === undefined
-    || String(override.workflowId) !== String(request.target.workflowId)
-    || override.descriptorVersion !== request.target.expectedVersion
-    || override.contractFingerprint !== request.target.contractFingerprint
-    || override.revision !== request.target.expectedOverrideRevision + 1
-    || canonicalJsonStringify(override) !== canonicalJsonStringify(outcome.readback)
-    || canonicalJsonStringify(override) !== canonicalJsonStringify(persisted)) {
-    throw new Error(
-      `Explorer edit executor returned a readback that does not exactly advance command ${request.commandId}'s target`,
-    );
-  }
-  const target: TargetReference = {
-    family: "explorer",
-    workflowId: override.workflowId,
-    revision: override.revision,
-  };
-  const application = applied(request, [target], [{
-    target,
-    before: request.target.expectedOverrideRevision,
-    after: override.revision,
-  }]);
-  return application;
-}
-
 /* ── dispatch, journal, and replay ───────────────────────────────────────── */
 
 function dispatchActive(
@@ -2455,8 +2402,6 @@ function dispatchActive(
         repositories.runtimeConfig.requireSettingsCurrent();
       }
       return executeIntake(dependencies, repositories, request, now);
-    case "explorer":
-      return executeExplorerEdit(dependencies, repositories, request);
     case "settings":
       return executeSettings(dependencies, repositories, request);
   }
@@ -2677,7 +2622,6 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
     if (DEFERRED_ARM_KEYS.has(`${family}/${action}`)) return false;
     if (family === "settings") return dependencies.settings !== undefined;
     if (family === "storage-relocation") return dependencies.storageRelocationPlans !== undefined;
-    if (family === "explorer") return dependencies.explorerEdits !== undefined;
     if (family === "failure-resolution") return dependencies.failureResolution?.capability().state === "available";
     if (family === "start" || family === "intake") return dependencies.workflowSources !== undefined
       && Object.entries(dependencies.workflowSources).some(([id, source]) => source === "served" && dependencies.descriptors.resolve(id) !== undefined

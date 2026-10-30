@@ -56,7 +56,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/diagnostic-image-fixtures.ts` | diagnostic image fixtures |
 | `fixtures/dry-run/person-lookup-manifest.ts` | person lookup manifest |
 | `fixtures/dry-run/separations-manifest.ts` | separations manifest |
-| `fixtures/explorer-authority.ts` | explorer authority |
 | `fixtures/explorer-seams.ts` | explorer seams |
 | `fixtures/image-geometry.ts` | image geometry |
 | `fixtures/intake-kernel-seams.ts` | intake kernel seams |

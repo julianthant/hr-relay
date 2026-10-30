@@ -2,16 +2,7 @@ import { z } from "zod";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { RunRecordSchema, RunStateSchema } from "../run/record.js";
 import { DeletedRunRecordSchema } from "../run/deleted-run.js";
-import {
-  CommandAuditIdSchema,
-  CommandIdSchema,
-  FingerprintSchema,
-  IsoInstantSchema,
-  LOCAL_OPERATOR_ACTOR_ID,
-  NonNegativeIntSchema,
-  PositiveIntSchema,
-  RunIdSchema,
-} from "../../rules/identity/ids.js";
+import { CommandAuditIdSchema, CommandIdSchema, FingerprintSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID, NonNegativeIntSchema, PositiveIntSchema, RunIdSchema } from "../../rules/identity/ids.js";
 
 export const AuthorityTableNameSchema = z.enum([
   "assistant_model_preference",
@@ -45,7 +36,6 @@ export const AuthorityTableNameSchema = z.enum([
   "auth_leases",
   "notifications",
   "notification_states",
-  "explorer_overrides",
   "artifacts",
   "timeline_events",
   "diagnostic_snapshots",

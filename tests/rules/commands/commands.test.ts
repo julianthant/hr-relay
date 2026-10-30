@@ -1,19 +1,7 @@
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from "../../../src/models/dashboard/assistant.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import {
-BulkRunCommandRequestSchema,
-COMMAND_EFFECT_BY_ACTION,
-COMMAND_FAMILY_REGISTRY,
-CommandActionSchema,
-CommandAuditRecordSchema,
-CommandEffectClassSchema,
-CommandFamilyRegistrySchema,
-CommandRequestSchema,
-CommandResultSchema,
-RunDisplayNameSchema,
-commandEffectClass,
-} from "../../../src/rules/commands/commands.js";
+import { BulkRunCommandRequestSchema, COMMAND_EFFECT_BY_ACTION, COMMAND_FAMILY_REGISTRY, CommandActionSchema, CommandAuditRecordSchema, CommandEffectClassSchema, CommandFamilyRegistrySchema, CommandRequestSchema, CommandResultSchema, RunDisplayNameSchema, commandEffectClass } from "../../../src/rules/commands/commands.js";
 import { COMMAND_FIXTURES,HASH_A,NOW,UUID_1,UUID_2,UUID_3 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
@@ -126,7 +114,6 @@ describe("authority classification and command families", () => {
       "notification-snooze-all": "local-write",
       "notification-unsnooze-all": "local-write",
 
-      "apply-explorer-edit": "local-write",
     };
     assert.deepEqual(COMMAND_EFFECT_BY_ACTION, expected);
     assert.deepEqual([...CommandActionSchema.options].sort(), Object.keys(expected).sort());

@@ -516,8 +516,7 @@ withheld values are named rather than guessed. Long source IDs/paths remain read
 on clipped chips.
 
 Current fixtures are not compiler authority or executable registration. Served wiring generates the
-timeline from each registered backend definition and preserves existing components. The retained
-Explorer query/validate command seam does not make local source edits or new-workflow authoring served.
+timeline from each registered backend definition and preserves existing components. Explorer exposes only its generated read-only query; no edit, override, validation or source-authoring command exists. Explorer editor records and their command/audit history are removed by the forward storage migration.
 
 ## Removed routes and specimen
 

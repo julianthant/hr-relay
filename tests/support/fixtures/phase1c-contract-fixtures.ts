@@ -3,10 +3,7 @@ import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../../src/models/config/schema.js";
 import { sourceColumnId } from "../../../src/models/intake/mapping.js";
-import {
-  deriveIdempotencyKeyDigest,
-  deriveWriteBindingProofDigest,
-} from "../../../src/rules/write-safety/write-safety.js";
+import { deriveIdempotencyKeyDigest, deriveWriteBindingProofDigest } from "../../../src/rules/write-safety/write-safety.js";
 
 export const UUID_1 = "11111111-1111-4111-8111-111111111111";
 export const UUID_2 = "22222222-2222-4222-8222-222222222222";
@@ -83,18 +80,6 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "storage-relocation", type: "cancel-storage-relocation",
     target: { installationId: UUID_2, sourceGeneration: 1, sourcePair: { stateRoot: "/source/state", artifactRoot: "/source/artifacts" }, expectedRevision: 1 },
     payload: { writeId: UUID_4, cancelledPlanCommandId: UUID_1, cancelledPlanDigest: HASH_A, requestFingerprint: HASH_B } },
-  {
-    ...BASE_COMMAND,
-    family: "explorer",
-    type: "apply-explorer-edit",
-    target: {
-      workflowId: "onboarding",
-      expectedVersion: 1,
-      contractFingerprint: HASH_A,
-      expectedOverrideRevision: 0,
-    },
-    payload: { changes: [{ kind: "workflow-label", value: "Reviewed onboarding" }] },
-  },
 ];
 
 export const SUBJECT_EVIDENCE = {

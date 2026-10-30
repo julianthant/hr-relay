@@ -36,7 +36,6 @@ import { createRunSearchIndex, runSearchIndexFromRow } from "./run-search-index.
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
 import { WorkerControlBasisSchema, LIVE_WORKER_STATES, WorkerLeaseRecordSchema, isLiveWorker, type WorkerLeaseRecord } from "../../../models/run/worker.js";
 import { createNotificationMetadataRepositories, validateNotificationMetadata } from "./notification-publications.js";
-import { createExplorerOverrideRepository, validateExplorerOverrides } from "./explorer-overrides.js";
 import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-provenance.js";
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
@@ -511,7 +510,6 @@ export type DuoCeremonyLeaseRepository = Readonly<{
 export type AuthorityRepositories = Readonly<{
   assistantModelPreference: ReturnType<typeof createAssistantModelPreferenceRepository>;
   assistantAuthorization: ReturnType<typeof createAssistantAuthorizationRepository>;
-  explorerOverrides: ReturnType<typeof createExplorerOverrideRepository>;
   timelineEvents: TimelineRepository;
   runs: RunRepository;
   failures: FailureRepository;
@@ -959,7 +957,7 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
   }
 
 
-function nativeTableKey(table: AuthorityTableName): string {
+function nativeTableKey(table: AuthorityTableName | "explorer_overrides"): string {
   if (table === "run_results" || table === "deleted_runs" || table === "run_search") return "run_id";
   if (table === "worker_pools") return "workflow";
   if (table === "workbook_library_history") return "workbook_id,version";
@@ -1037,9 +1035,11 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of migrationTableNames(expectedSchemaVersion)) {
-    if (table === "workbook_library" || table === "workbook_library_history") continue;
+    if (table === "workbook_library" || table === "workbook_library_history" || table === "explorer_overrides") continue;
     if (table === "run_search" && (!validateSearch || !searchReady)) continue;
-    for (const raw of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
+    const retained = expectedSchemaVersion >= 10 ? "" : table === "commands" ? " WHERE family<>'explorer'"
+      : table === "command_audits" ? " WHERE command_id NOT IN (SELECT id FROM commands WHERE family='explorer')" : "";
+    for (const raw of database.prepare(`SELECT * FROM ${table}${retained} ORDER BY ${nativeTableKey(table)}`).iterate()) {
       try {
         if (table === "database_states") {
           const row = z.strictObject({id:z.literal(1),schema_version:z.literal(expectedSchemaVersion),authority_generation:z.number().int().nonnegative(),updated_at:IsoInstantSchema,
@@ -1282,7 +1282,6 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     throw new Error(`authority schema metadata ${String(meta.schema_version)} disagrees with user_version ${String(schemaVersion)}`);
   }
   validateAuthorityRecordSchemas(database, true, expectedSchemaVersion);
-  validateExplorerOverrides(database);
   validateNotificationMetadata(database);
   validateWorkerControls(database);
   const violations = invariantViolations(database);
@@ -1731,7 +1730,6 @@ export class AuthorityDatabase implements Disposable {
   #savepointSequence = 0;
   #transactionMode: "authority" | "projection" | "read" | undefined;
   #authorityDirty = false;
-  #explorerOverridesDirty = false;
   #workerMembershipChanges = new Set<string>();
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
@@ -3454,7 +3452,6 @@ export class AuthorityDatabase implements Disposable {
       if (this.#transactionMode === "projection" && mode === "authority") throw new Error("authority mutation cannot run inside a projection transaction");
       const savepoint = `authority_nested_${String(this.#savepointSequence += 1)}`;
       const dirtyBefore = this.#authorityDirty;
-      const explorerDirtyBefore = this.#explorerOverridesDirty;
       const workerMembershipBefore = new Set(this.#workerMembershipChanges);
       const callbacksBefore = this.#authorityCommitCallbacks.length;
       this.#database.exec(`SAVEPOINT ${savepoint}`);
@@ -3467,7 +3464,6 @@ export class AuthorityDatabase implements Disposable {
         this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
         this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
         this.#authorityDirty = dirtyBefore;
-        this.#explorerOverridesDirty = explorerDirtyBefore;
         this.#workerMembershipChanges = workerMembershipBefore;
         this.#authorityCommitCallbacks.splice(callbacksBefore);
         throw error;
@@ -3478,7 +3474,6 @@ export class AuthorityDatabase implements Disposable {
     this.#transactionDepth = 1;
     this.#transactionMode = mode;
     this.#authorityDirty = false;
-    this.#explorerOverridesDirty = false;
     this.#workerMembershipChanges.clear();
     let result: Result;
     try {
@@ -3492,7 +3487,6 @@ export class AuthorityDatabase implements Disposable {
         if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation singleton is missing");
         search.publishChanges(this.getMeta().authorityGeneration, this.#now(), priorSearch);
       }
-      if (this.#explorerOverridesDirty) validateExplorerOverrides(this.#database);
       this.#database.exec("COMMIT");
       if (searchValidation === "none") this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
     } catch (error) {
@@ -3504,7 +3498,6 @@ export class AuthorityDatabase implements Disposable {
       this.#transactionMode = undefined;
       this.#snapshotExternalDataVersion = undefined;
       this.#authorityDirty = false;
-      this.#explorerOverridesDirty = false;
       this.#workerMembershipChanges.clear();
     }
     const callbacks = this.#authorityCommitCallbacks.splice(0);
@@ -3521,7 +3514,6 @@ export class AuthorityDatabase implements Disposable {
     this.#transactionDepth = 1;
     this.#transactionMode = "read";
     this.#authorityDirty = false;
-    this.#explorerOverridesDirty = false;
     try {
       const result = read();
       this.#database.exec("COMMIT");
@@ -3534,7 +3526,6 @@ export class AuthorityDatabase implements Disposable {
       this.#transactionMode = undefined;
       this.#snapshotExternalDataVersion = undefined;
       this.#authorityDirty = false;
-      this.#explorerOverridesDirty = false;
       }
   }
 
@@ -3547,7 +3538,6 @@ export class AuthorityDatabase implements Disposable {
       const outcome = operation();
       if (outcome.changes > 0) {
         this.#authorityDirty = true;
-        if (table === "explorer_overrides") this.#explorerOverridesDirty = true;
 
       }
       return outcome.result;
@@ -3927,10 +3917,6 @@ export class AuthorityDatabase implements Disposable {
       workbooks: createWorkbookLibraryRepository({ database: this.#database,
         mutate: work => this.#authorityWrite("workbook_library", work),
         read: work => this.#withReadSnapshot(work) }),
-      explorerOverrides: createExplorerOverrideRepository({ database: this.#database, mutate: (work) => {
-        if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") throw new Error("explorer-override-command-transaction-required");
-        return this.#authorityWrite("explorer_overrides", work);
-      } }),
       timelineEvents: createTimelineRepository({
         database: this.#database,
         read: (work) => this.#withReadSnapshot(work),

@@ -1,9 +1,10 @@
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../storage/sqlite/migrations.js";
 import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { reconcileStartupCrash, reconcileExitedWorker } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
-import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
+import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json";
 import { createAssistantService } from "../../../assistant/service.js";
 import { assistantSurfaceCoverage, createProductionAssistantTools } from "../../../assistant/tools.js";
 import { assistantKnowledgeArtifact, loadProductionAssistantContext } from "../../../assistant/context.js";
@@ -789,7 +790,7 @@ async function composeDashboardRuntimeStartup(
   const trustReads = createTrustReadDependencies({ database, artifactReader, reader: lifecycle });
   const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, ownsWorker, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? stepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
-  const explorerBoundary = composeExplorer({ database, clock, descriptorSetHash: setHash });
+  const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
 
   const workflowSources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredWorkflowSources);
 
@@ -837,7 +838,6 @@ async function composeDashboardRuntimeStartup(
         assistantAuthorization.assertEffect(command.commandId, command);
     },
     storageRelocationPlans,
-    explorerEdits: explorerBoundary.executor,
   });
 
   const assistantAuthorization = composeProfileAssistantAuthorization(profile.runtime, profile.token, kernel, clock);
@@ -954,7 +954,7 @@ async function composeDashboardRuntimeStartup(
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
     ...settingsBoundary.routes,
     ...composeStorage({ credentials: context.credentials, admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
-    ...explorerBoundary.routes,
+    ...explorerBoundary,
     activity,
     activityPopulation,
   });
@@ -1058,7 +1058,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       try {
         const claim = consumeAuthenticatedProfileUpgrade(authorization, exclusive);
         const report = await upgradeReadyProfileStorage(profileBrowserClosure, exclusive, claim, { plan: false, hostFacts: facts }, clock);
-        if (report.state !== "upgraded" || report.fromSchemaVersion !== 8 || report.toSchemaVersion !== 9) throw new Error("profile-upgrade-readback-unproved");
+        if (report.state !== "upgraded" || report.fromSchemaVersion !== 8 || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-upgrade-readback-unproved");
       } catch (error) {
         if (!(error instanceof AuthoritySourceClosureUnprovedError)) {
           try { exclusive.release(); exclusiveOwner = undefined; }

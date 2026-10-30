@@ -16,7 +16,6 @@ import { deepFreeze } from "../validation/immutability.js";
 import { ActorIdSchema, BrowserSessionIdSchema, CommandAuditIdSchema, CommandIdSchema, DependencyIdSchema, FingerprintSchema, GateIdSchema, IntakeSessionIdSchema, IntakeManifestIdSchema, IntakeTargetFieldIdSchema, IsoInstantSchema, ItemIdSchema, NodeIdSchema, TraceIdSchema, LOCAL_OPERATOR_ACTOR_ID, NotificationIdSchema, NonNegativeIntSchema, PositiveIntSchema, RunIdSchema, RunSessionIdSchema, SourceColumnIdSchema, SourceSurfaceIdSchema, StartPlanIdSchema, TaskIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, WriteAttemptIdSchema } from "../identity/ids.js";
 import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
 import { sha256Hex } from "../validation/sha256.js";
-import { ExplorerEditApplyRequestSchema } from "../../models/dashboard/explorer.js";
 
 /** A durable command identity cannot be reused by another command or authority. */
 export class CommandIdentityConflictError extends Error {
@@ -38,7 +37,6 @@ export const CommandFamilySchema = z.enum([
   "run",
   "gate",
   "notification",
-  "explorer",
 ]);
 
 export const CommandActionSchema = z.enum([
@@ -80,7 +78,6 @@ export const CommandActionSchema = z.enum([
   "notification-snooze",
   "notification-unsnooze",
   "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all",
-  "apply-explorer-edit",
 ]);
 
 export const OperatorReasonSchema = z.string().min(1).max(500).refine(
@@ -378,8 +375,6 @@ export const NotificationCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("notification"), type: z.enum(["notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"]), target: NotificationCollectionTargetSchema }),
 ]);
 
-/** The sole durable Explorer edit door; validation remains a read-only route. */
-export const ExplorerCommandRequestSchema = ExplorerEditApplyRequestSchema;
 
 export const WorkflowBatchCommandRequestSchema = z.strictObject({
   ...CommandEnvelopeFields,
@@ -407,7 +402,6 @@ export const CommandRequestSchema = z.union([
   RunCommandRequestSchema,
   GateCommandRequestSchema,
   NotificationCommandRequestSchema,
-  ExplorerCommandRequestSchema,
 ]);
 
 export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
@@ -430,7 +424,6 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   z.strictObject({ family: z.literal("run"), runId: RunIdSchema }),
   z.strictObject({ family: z.literal("gate"), runId: RunIdSchema, gateId: GateIdSchema }),
   z.strictObject({ family: z.literal("notification"), notificationId: NotificationIdSchema }),
-  z.strictObject({ family: z.literal("explorer"), workflowId: WorkflowIdSchema, revision: PositiveIntSchema }),
 ]);
 
 export const CommandRejectionCodeSchema = z.enum([
@@ -837,7 +830,6 @@ export const COMMAND_EFFECT_BY_ACTION = {
   "notification-snooze": "local-write",
   "notification-unsnooze": "local-write",
   "notification-read-all": "local-write", "notification-unread-all": "local-write", "notification-snooze-all": "local-write", "notification-unsnooze-all": "local-write",
-  "apply-explorer-edit": "local-write",
 } as const satisfies Record<z.infer<typeof CommandActionSchema>, CommandEffectClass>;
 
 export const COMMAND_ASSISTANT_METADATA = {
@@ -882,7 +874,6 @@ export const COMMAND_ASSISTANT_METADATA = {
   "notification-unread-all": "Mark current read notifications unread",
   "notification-snooze-all": "Snooze current notifications",
   "notification-unsnooze-all": "Unsnooze current notifications",
-  "apply-explorer-edit": "Apply a schema-bound Explorer edit",
 } as const satisfies Record<z.infer<typeof CommandActionSchema>, string>;
 
 export const CommandFamilySpecSchema = z.strictObject({
@@ -907,7 +898,6 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   run: ["retry", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"],
-  explorer: ["apply-explorer-edit"],
 } as const satisfies Record<z.infer<typeof CommandFamilySchema>, readonly z.infer<typeof CommandActionSchema>[]>;
 
 export const CommandFamilyRegistrySchema = z.array(CommandFamilySpecSchema).superRefine((entries, context) => {
@@ -950,7 +940,6 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"] },
-  { family: "explorer", actions: ["apply-explorer-edit"] },
 ].map((entry) => ({
   ...entry,
   effects: entry.actions.map((action) => COMMAND_EFFECT_BY_ACTION[CommandActionSchema.parse(action)]),

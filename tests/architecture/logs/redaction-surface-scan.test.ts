@@ -9,7 +9,6 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
-import { ExplorerPresentationLabelSchema } from "../../../src/models/dashboard/explorer.js";
 import { AtomicOutboxRecordSchema } from "../../../src/models/notifications/outbox.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../../src/models/dashboard/storage.js";
 import { redactDiagnosticFields, redactValue } from "../../../src/rules/redaction/redaction.js";
@@ -58,15 +57,6 @@ function pathCoveredBy(candidate: string, owned: readonly string[]): boolean {
 /* ── (a) the declaration audit ───────────────────────────────────────────── */
 
 describe("redaction surface scan — the declaration audit", () => {
-  it("refuses every universal credential/regulated-value canary as an operator-authored Explorer label", () => {
-    for (const name of UNIVERSAL_CANARY_NAMES) {
-      assert.equal(
-        ExplorerPresentationLabelSchema.safeParse(REDACTION_CANARIES[name]).success,
-        false,
-        name,
-      );
-    }
-  });
 
   it("dispositions every free-text and open-JSON leaf of every registered surface", () => {
     const violations = auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS);

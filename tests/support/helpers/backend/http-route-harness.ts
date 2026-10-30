@@ -159,8 +159,6 @@ export async function harness(options: {
   /** Wrap the real start-plan service (e.g. to observe whether admission reached it). */
   readonly startPlans?: (real: StartPlanService) => StartPlanService;
 
-  /** An Explorer safe-edit validation seam; absent by default. */
-  readonly explorerEdits?: DashboardAppDeps["explorerEdits"];
   /** The hub's per-subscriber pending bound; the hub default when absent. */
   readonly maxPending?: number;
   readonly preflightBeforeRun?: () => Promise<void>;
