@@ -18,8 +18,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "13dd9078cedbb64af7add7cac7bde4763df07e43894a17c71db29266ec01b5fd",
-    "reason": "A throwing actual database close records failed closure and preserves the original error. Open failure retains source-closure uncertainty; otherwise it closes the opened database before admission release and aggregates close or release failure with the original error. Runtime cleanup releases admission only after proven database and browser closure. The maintenance tick retains its first error, stops rescheduling, signals the worker stop controller, and compose surfaces a failed report. The exact root or inherited lifetime remains held through shutdown."
+    "sha256": "a404930f59126169a81d68abf5a9ee1af0ebb048be276108dd274be73654891d",
+    "reason": "A throwing actual database close records failed closure and preserves the original error. Worker-start inspection runs before the credential store; an unproved inspection close retains the issued admission and throws custody uncertainty without release. Open failure retains source-closure uncertainty; otherwise it closes the opened database before admission release and aggregates close or release failure with the original error. Runtime cleanup releases admission only after proven database and browser closure. The maintenance tick retains its first error, stops rescheduling, signals the worker stop controller, and compose surfaces a failed report. The exact root or inherited lifetime remains held through shutdown."
   },
   {
     "path": "src/backend/accounts/chatgpt-account-service.ts",
@@ -113,7 +113,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "d19a900137515e657f2d68de478284a702e035d951918239d2136a0c2b0ce60f",
+    "sha256": "adde2c4614c134c458e3e781b2b5031123f9e42319a4e35ab38bb4e42eb780c0",
     "reason": "The rollback failure array only accumulates errors: failed rollback retains database custody with the original failure, and successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or run-search-index-rebuild-required with its cause; it never returns validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody can release; required native browser closure precedes the cancellation transaction."
   },
   {
