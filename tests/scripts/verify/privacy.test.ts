@@ -26,7 +26,7 @@ describe("public repository privacy check", () => {
   });
 
   it("allows only named binary fixtures", () => {
-    for (const path of ["tests/support/fixtures/documents/synthetic-sample.pdf", "tests/support/fixtures/spreadsheet/color-filtered-roster.xlsx", "tests/support/helpers/dashboard/color-filtered-roster.xlsx"]) {
+    for (const path of ["tests/support/fixtures/documents/synthetic-sample.pdf", "tests/support/fixtures/spreadsheet/color-filtered-roster.xlsx"]) {
       assert.deepEqual(inspectTrackedFile(path, readFileSync(new URL(`../../../${path}`, import.meta.url))), []);
       assert.deepEqual(inspectTrackedFile(path, Buffer.from([0, 1, 2])), [{ path, rule: "private-document" }]);
     }
