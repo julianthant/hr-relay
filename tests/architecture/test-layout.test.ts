@@ -6,7 +6,7 @@ import { describe, it } from "vitest";
 import ts from "typescript";
 import { gitVisibleFiles, REPO_ROOT } from "./support/helpers/guard-files.js";
 
-const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".css", ".html"]);
+const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".css", ".html", ".sh"]);
 const MAPPING_EXCEPTIONS = /^tests\/(?:architecture|parity|perf|types|support)\//u;
 const TEST_SUFFIX = /(?:^|\/)(?:test|spec)\.[^/]+$|[._-](?:tests?|spec)(?:-d)?\.[^/]+$/u;
 const TEST_PREFIX = /(?:^|\/)(?:test|spec)[_-][^/]+\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/u;

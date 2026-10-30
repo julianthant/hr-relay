@@ -21,7 +21,7 @@
       "file": "tests/architecture/test-layout.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/codebase-structure.md",
-      "invariant": "Reason: tests placed outside the mirror keep recurring. Every canonical .test.ts outside architecture, parity, perf, types and support mirrors an existing tracked source file: leading src/ is dropped, other source paths remain complete, and dotted topic suffixes resolve against the longest source stem. Alternate test filename patterns are rejected with the expected canonical path; helper prefixes admit only modules without authored test registration.",
+      "invariant": "Reason: tests placed outside the mirror keep recurring. Every canonical .test.ts outside architecture, parity, perf, types and support mirrors an existing tracked source file, including shell scripts: leading src/ is dropped, other source paths remain complete, and dotted topic suffixes resolve against the longest source stem. Alternate test filename patterns are rejected with the expected canonical path; helper prefixes admit only modules without authored test registration.",
       "replacementRequired": true
     },
     {
