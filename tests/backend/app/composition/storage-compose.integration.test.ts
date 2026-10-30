@@ -78,16 +78,18 @@ afterEach(_afterEachFixture0);
 
   it("after uncertain audit, real CLI restore preserves credentials and exact retry repairs the missing audit", async () => {
     const f = await fixture(undefined, true); const revision = f.store.read().revision; const request = protectedCommand(revision); assert.ok(f.admission);
+    f.database.close();
     const backup = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["backup"], f.clock, f.repoRoot, f.admission, f.store);
     assert.equal(backup.exitCode, 0, backup.output);
     const directory = join_m0(f.root, "backups", "authority");
     const name = readdirSync(directory).find((entry) => entry.endsWith(".manifest.json")); assert.ok(name);
     const backupFiles = Object.fromEntries(readdirSync(directory).map((entry) => [entry, readFileSync(join_m0(directory, entry))]));
-    assert.throws(() => f.execute(request, failAudit(f.database)), /credential-audit-uncertain/u);
+    const reopened = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "uncertain-audit" }, f.clock, undefined, undefined, undefined, f.store); databases.push(reopened);
+    assert.throws(() => f.execute(request, failAudit(reopened)), /credential-audit-uncertain/u);
     const credentialPath = join_m0(f.root, "credentials", "protected.json");
     const credentialBytes = readFileSync(credentialPath);
     assert.equal(f.store.read().revision, revision + 1);
-    f.database.close();
+    reopened.close();
     const restore = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["restore", "--from", join_m0(directory, name), "--json"], f.clock, f.repoRoot, f.admission, f.store);
     assert.equal(restore.exitCode, 0, restore.output);
     const renewed = f.renewAfterRestore();
