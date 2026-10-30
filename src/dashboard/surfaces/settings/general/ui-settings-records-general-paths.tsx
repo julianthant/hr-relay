@@ -12,7 +12,7 @@ import { formatSetting, settingInput, type SettingsDraftOperation } from "../edi
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { SettingsSaveFeedback } from "../editor/settings-feedback.js";
 import { settingNote, settingTitle, settingPlaceholderCopy } from "../settings-presentation.js";
-import { StorageRelocationRows } from "./settings-relocation.js";
+import { FixedStorageRows } from "./settings-relocation.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
 import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
 import { ChatGptAccountSettings } from "./chatgpt-account.js";
@@ -95,9 +95,9 @@ function PathsContent({ editor }: { editor: Editor }) {
     ? fields.map(field => <PathRow key={field} editor={editor} field={field} />)
     : show ? <LoadingRegion label="Loading workflow paths" className="[&>*+*]:border-t [&>*+*]:border-ui-stroke"><SettingsRowsSkeleton rows={fields.length} wide copy={fields.map(settingPlaceholderCopy)} /></LoadingRegion> : null;
   return <>
-    <StorageRelocationRows editor={editor.relocationEditor}>
+    <FixedStorageRows editor={editor.relocationEditor}>
       {paths(["paths.browserProfileRoot", "paths.duoCredential", "paths.duoExtensionDir"])}
-    </StorageRelocationRows>
+    </FixedStorageRows>
     <BodySection title="Generated files"><FormGroup label="Generated files">
       {paths(["paths.reportsDir", "paths.downloadsDir"])}
     </FormGroup></BodySection>

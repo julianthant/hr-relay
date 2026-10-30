@@ -630,3 +630,12 @@ summary facts say “screenshots required.” The shared capture notice distingu
 capture failure (no click) from post-submit missing evidence with either independently proved or
 unknown write outcome. The `required-captures` fixture is presentation-only. Execution enforcement
 and served per-step capture projection remain owned by the workflow capture implementation.
+
+### Fixed app-data and maintenance presentation
+
+Paths shows runtime state and evidence roots read-only; there is no folder relocation picker,
+plan action, or shell-command copy control. Existing pending plans are explicitly unapplied.
+Document, download, and report pickers remain. Backup and Restore have unavailable, pending,
+verified-backup, blocked, and confirmation presentations. Restore never implies credentials roll
+back or unresolved writes disappear. The `fixed-backup` fixture has no file effects. Maintenance
+authority, stopped restore, and verified backup selection are wired separately.

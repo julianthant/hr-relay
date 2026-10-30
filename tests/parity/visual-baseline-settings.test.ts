@@ -195,31 +195,14 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(username).toHaveValue("");
 
       await page.goto(`${server.baseUrl}/?settings=paths`);
-      const picker = page.getByRole("button", { name: "Change Runtime state folder", exact: true });
-      await expect(picker).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "Runtime state folder", exact: true })).toHaveAttribute("readonly", "");
+      await expect(page.getByRole("textbox", { name: "Artifact folder", exact: true })).toHaveAttribute("readonly", "");
+      await expect(page.getByRole("button", { name: "Change Runtime state folder", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Change Reports directory", exact: true })).toBeVisible();
       await capture(page, info, theme, width, "paths-default");
-      await page.route("**/api/v1/settings/path-picker", async route => { await gate.promise; await route.fulfill({ json: { state: "unavailable", field: "paths.stateRoot", reason: "dialog-failed" } }); }, { times: 1 });
-      await picker.click();
-      await expect(picker).toBeDisabled();
-
-      gate.resolve();
-      await expect(page.getByText("The path picker could not be opened. Try again.", { exact: true })).toBeVisible();
-
-      await page.route("**/api/v1/settings/path-picker", route => route.fulfill({ json: { state: "selected", field: "paths.stateRoot", path: "/tmp/settings-fixture/new-state" } }), { times: 1 });
-      await page.route("**/api/v1/commands", route => route.abort("failed"));
-      await picker.click();
-      await expect(page.getByText("Plan write unconfirmed", { exact: true })).toBeVisible();
-      const warning = page.locator('[data-slot="toast"]').filter({ hasText: "Command result" });
-      await expect(warning).toHaveCount(1);
-      await expect(warning).toContainText("The command outcome is uncertain. Check its result before taking further action.");
-      await warning.locator('[data-slot="toast-close"]').hover();
-      await warning.getByRole("button", { name: "Dismiss", exact: true }).click();
-      await expect(warning).toHaveCount(0);
-      await expect(page.getByText("Plan write unconfirmed", { exact: true })).toBeVisible();
-
       await page.getByRole("button", { name: "Back to dashboard", exact: true }).click();
-      await expect(page.getByRole("dialog", { name: "Leave with an unconfirmed plan?", exact: true })).toBeVisible();
-      await capture(page, info, theme, width, "relocation-unconfirmed-exit");
+      await expect(page.getByRole("dialog", { name: "Leave with an unconfirmed plan?", exact: true })).toHaveCount(0);
+      await capture(page, info, theme, width, "fixed-paths-exit");
       await attachTree(page, info, evidence("paths-credentials", theme, width));
     } finally { gate.resolve(); await server.close(); }
   });
@@ -536,10 +519,10 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     await page.route("**/api/v1/settings/storage-relocation", async route => { await gate.promise; await route.fulfill({ status: 503, json: { state: "error", code: "fixture-unavailable", message: "Synthetic relocation unavailable", retryable: true } }); });
     try {
       await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "paths" });
-      await expect(page.getByRole("status", { name: "Loading runtime locations", exact: true })).toBeVisible();
+      await expect(page.getByText("Reading app-data locations", { exact: true })).toBeVisible();
 
       gate.resolve();
-      await expect(page.getByText("Runtime locations unavailable", { exact: true })).toBeVisible();
+      await expect(page.getByText("App-data locations unavailable", { exact: true })).toBeVisible();
 
       await attachTree(page, info, evidence("runtime-path-read", theme, width));
     } finally { gate.resolve(); await server.close(); }
@@ -553,13 +536,13 @@ test("Settings missing parts delay skeletons and retain independent Paths rows",
   await page.route("**/api/v1/settings/editable", async route => { reached++; await gate.promise; await route.fulfill({ status: 503, json: { state: "error", code: "SETTINGS_INITIAL_READ_UNAVAILABLE", message: "Synthetic read failure", retryable: true } }); });
   try {
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "paths" });
-    await expect(page.getByRole("button", { name: "Change Runtime state folder", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Change Artifact folder", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Runtime state folder", exact: true })).toHaveAttribute("readonly", "");
+    await expect(page.getByRole("textbox", { name: "Artifact folder", exact: true })).toHaveAttribute("readonly", "");
     await expect(page.getByRole("status", { name: "Loading workflow paths", exact: true }).first()).toBeVisible();
     expect(reached).toBe(1);
     gate.resolve();
     await expect(page.getByText("Editable settings could not be read", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Change Runtime state folder", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Runtime state folder", exact: true })).toHaveAttribute("readonly", "");
     await expect(page.locator('.settings-tab-body [data-slot="skeleton"]')).toHaveCount(0);
     await attachTree(page, info, "settings-independent-paths.a11y.yml");
   } finally { gate.resolve(); await server.close(); }

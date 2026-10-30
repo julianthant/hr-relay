@@ -1,92 +1,40 @@
-import { useDelayedLoading } from "../../shared/loading/loading-model.js";
-import { LoadingRegion, SettingsRowsSkeleton } from "../../shared/loading/loading.js";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Copy } from "lucide-react";
-import { Banner, BodySection, Button, Field, FormGroup, IconButton, Input, dsIcon } from "../../../ds/ui.js";
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
+import { useRef, useState, type ReactNode } from "react";
+import { Banner, BodySection, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, FormGroup, Input, dsText } from "../../../ds/ui.js";
 import type { useStorageRelocation } from "./settings-relocation-model.js";
-import { desiredRelocationPair } from "./settings-relocation-model.js";
-import { SettingsPathPicker } from "./settings-path-picker.js";
 
-type Editor = ReturnType<typeof useStorageRelocation>;
-
-function RelocationCommand({ commandId }: { commandId: string }) {
-  const command = `npm run cli -- storage relocate --plan ${commandId}`;
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "unavailable">("idle");
-  const resetTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(resetTimer.current), []);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(command);
-      setCopyState("copied");
-    } catch {
-      setCopyState("unavailable");
-    }
-    clearTimeout(resetTimer.current);
-    resetTimer.current = setTimeout(() => setCopyState("idle"), 2400);
-  };
-  return <div className="settings-relocation-command-block">
-    <div className="settings-relocation-command">
-      <Input name="storageRelocationCommand" autoComplete="off" type="text" aria-label="Relocation command" value={command} readOnly onFocus={event => event.currentTarget.select()} />
-      <IconButton size="sm" variant="outline" label="Copy relocation command" icon={<Copy aria-hidden className={dsIcon.sm} />} onClick={() => { void copy(); }} />
-    </div>
-    {copyState === "copied" && <span role="status">Command copied</span>}
-    {copyState === "unavailable" && <span role="alert">Copy unavailable. Select and copy the command.</span>}
-  </div>;
-}
-
-function RuntimePathRow({ editor, name, value, title, description }: {
-  editor: Editor; name: "stateRoot" | "artifactRoot"; value: string; title: string; description: string;
-}) {
-  const field = name === "stateRoot" ? "paths.stateRoot" : "paths.artifactRoot";
-  return <div data-settings-path={field} className="settings-relocation-row" onKeyDown={event => {
-    if (editor.draft[name] === undefined || event.defaultPrevented || event.repeat || event.altKey || event.shiftKey
-      || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z"
-      || (event.target instanceof HTMLElement && event.target.closest('[role="dialog"]'))) return;
-    event.preventDefault(); editor.reset(name);
-  }}>
-    <Field orientation="horizontal" controlWidth="wide" label={title} description={description} error={editor.errors[name]} disabled={editor.locked}>
-      <div className="settings-compact-control">
-        <SettingsPathPicker field={field} label={title} value={value} disabled={editor.locked} onSelected={path => editor.update(name, path)} />
-      </div>
-    </Field>
-  </div>;
-}
-
-export function StorageRelocationRows({ editor, children }: { editor: Editor; children?: ReactNode }) {
-  const show = useDelayedLoading(editor.read.state === "loading");
+export function FixedStorageRows({ editor, children }: { editor: ReturnType<typeof useStorageRelocation>; children?: ReactNode }) {
   const view = editor.read.state === "available" ? editor.read.view : undefined;
-  const pair = view === undefined ? undefined : desiredRelocationPair(view, editor.draft);
-  const hasWarning = editor.read.state === "unavailable" || editor.readProblem
-    || editor.save.state === "conflict" || editor.save.state === "refused" || editor.save.state === "unconfirmed" || (view !== undefined && view.pending !== null);
-  return <BodySection title="Runtime locations">
-    {hasWarning && <div className="mb-[var(--ds-space-heading-content)] flex flex-col gap-[var(--ds-space-heading-content)]">
-      {editor.read.state === "unavailable" && <Banner tone="warning" title="Runtime locations unavailable">
-        The active paths and relocation plan could not be verified. Editing is unavailable. <Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button>
-      </Banner>}
-    {editor.readProblem && <Banner tone="warning" title="Current relocation plan unavailable">The last verified paths remain shown, but editing is blocked until a fresh plan can be read. <Button size="sm" variant="secondary" onClick={editor.reload}>Refresh plan</Button></Banner>}
-    {editor.save.state === "conflict" || editor.save.state === "refused" || editor.save.state === "unconfirmed" ? <Banner tone="warning" title={editor.save.state === "unconfirmed" ? "Plan write unconfirmed" : editor.save.state === "conflict" ? "Relocation plan changed" : "Relocation plan not recorded"}>
-      {editor.save.message} {editor.save.state === "unconfirmed" && <Button size="sm" variant="secondary" onClick={editor.retry}>Retry exact attempt</Button>}
-      {editor.save.state === "conflict" && !editor.readProblem && <Button size="sm" variant="secondary" onClick={editor.submit}>Retry updated plan</Button>}
-    </Banner> : null}
-    {view !== undefined && view.pending !== null && <Banner tone="warning" title="Folder change planned">
-      <div className="settings-relocation-plan">
-        <p>The folders have not moved. A stopped, verified relocation is required before the new locations become active.</p>
-        <div><span>Runtime state:</span> <span>{view.sourcePair.stateRoot}</span> <span aria-hidden="true">→</span> <span>{view.pending.desiredPair.stateRoot}</span></div>
-        <div><span>Artifacts:</span> <span>{view.sourcePair.artifactRoot}</span> <span aria-hidden="true">→</span> <span>{view.pending.desiredPair.artifactRoot}</span></div>
-        <p>Stop the dashboard and workers, then run this command. Restart them after relocation completes.</p>
-        <RelocationCommand key={view.pending.commandId} commandId={view.pending.commandId} />
-        <Button size="sm" variant="secondary" disabled={editor.locked || editor.dirtyCount > 0} onClick={editor.cancel}>Cancel plan</Button>
-      </div>
-    </Banner>}
-    </div>}
-    <FormGroup label="Runtime locations">
-      {editor.read.state === "loading" && show && <LoadingRegion label="Loading runtime locations" className="[&>*+*]:border-t [&>*+*]:border-ui-stroke"><SettingsRowsSkeleton rows={2} wide /></LoadingRegion>}
-      {pair !== undefined && <>
-        <RuntimePathRow editor={editor} name="stateRoot" value={pair.stateRoot} title="Runtime state folder" description="Persistent settings and run data." />
-        <RuntimePathRow editor={editor} name="artifactRoot" value={pair.artifactRoot} title="Artifact folder" description="Run evidence and generated artifacts." />
-      </>}
-      {editor.save.state === "saving" && <p role="status" className="settings-relocation-note">Recording relocation plan…</p>}
-      {children}
-    </FormGroup>
+  return <BodySection title="App data">
+    <p>Relay assigns the app-data location. Moving the data folder is unavailable. Document, download, and report folders remain selectable.</p>
+    {view ? <FormGroup label="Runtime locations"><div data-settings-path="paths.stateRoot"><Field label="Runtime state folder" description="Fixed app-data location." orientation="horizontal"><Input readOnly value={view.sourcePair.stateRoot} /></Field></div><div data-settings-path="paths.artifactRoot"><Field label="Artifact folder" description="Fixed evidence location." orientation="horizontal"><Input readOnly value={view.sourcePair.artifactRoot} /></Field></div></FormGroup> : <div className="mb-[var(--ds-space-heading-content)]"><Banner tone="info" title={editor.read.state === "loading" ? "Reading app-data locations" : "App-data locations unavailable"}>No location is inferred.</Banner></div>}
+    {editor.readProblem && <Banner tone="warning" title="Current app-data locations unavailable">{editor.readProblem}</Banner>}
+    {view?.pending && <Banner tone="warning" title="Prior folder plan is not applied">The recorded plan has not moved these folders. Folder relocation is unavailable.</Banner>}
+    <FormGroup label="Runtime browser locations">{children}</FormGroup>
   </BodySection>;
+}
+
+export function BackupRestoreControls({ state, backupLabel, onBackup, onRestore }: {
+  state: "ready" | "backing-up" | "backup-complete" | "restoring" | "blocked" | "unavailable";
+  backupLabel?: string;
+  onBackup?: () => void;
+  onRestore?: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const restore = useRef<HTMLButtonElement>(null);
+  const ready = state === "ready" || state === "backup-complete";
+  return <div className="flex flex-col gap-2" aria-label="Backup and Restore">
+    <p className={dsText.body}>Backup is explicit. Restore accepts only a verified backup for the same person and installation, with ordinary Relay work stopped.</p>
+    <div className="flex gap-2"><Button variant="secondary" disabled={!ready || !onBackup} onClick={onBackup}>{state === "backing-up" ? "Backing up…" : "Backup"}</Button><Button ref={restore} variant="secondary" disabled={!ready || !onRestore || !backupLabel} onClick={() => setConfirming(true)}>{state === "restoring" ? "Restoring…" : "Restore"}</Button></div>
+    {backupLabel && <p>Selected verified backup: {backupLabel}</p>}
+    {state === "backing-up" && <Banner tone="info" title="Backup in progress">Waiting for backup verification. Completion is not confirmed.</Banner>}
+    {state === "backup-complete" && <Banner tone="success" title="Backup verified">The explicit backup completed and was verified.</Banner>}
+    {state === "restoring" && <Banner tone="info" title="Restore in progress">Waiting for the recorded replacement to settle. Restore is not complete.</Banner>}
+    {state === "blocked" && <Banner tone="warning" title="Restore blocked">RUNTIME_CUSTODY_UNCERTAIN: {ERROR_CATALOG.RUNTIME_CUSTODY_UNCERTAIN.text}</Banner>}
+    {state === "unavailable" && <p>Backup and Restore are unavailable until maintenance authority and verified backup selection are connected.</p>}
+    <Dialog open={confirming && ready} onOpenChange={setConfirming}><DialogContent size="sm" title="Restore this backup?" description={backupLabel} onCloseAutoFocus={event => { event.preventDefault(); restore.current?.focus(); }}>
+      <DialogBody><p>Replace this person’s database and artifacts with the verified backup. Stop ordinary work and prove owned resources closed first. Current credentials remain outside the restored database. Unresolved writes remain protected.</p></DialogBody>
+      <DialogFooter><Button variant="muted" autoFocus onClick={() => setConfirming(false)}>Keep current data</Button><Button disabled={!onRestore} onClick={() => { setConfirming(false); onRestore?.(); }}>Restore verified backup</Button></DialogFooter>
+    </DialogContent></Dialog>
+  </div>;
 }
