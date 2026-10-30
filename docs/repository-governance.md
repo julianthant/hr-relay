@@ -17,7 +17,7 @@ operator merges the release pull request.
 | `staging` | `static`, `unit (macos-15)`, `integration (macos-15)`, `architecture (macos-15)`, `parity`, `privacy`, and the Cursor Bugbot check once its name is known |
 | `main` | the `staging` checks, plus `release` |
 
-`unit (windows-latest)`, `integration (windows-latest)`, and `architecture (windows-latest)` are reported and not required until the Windows lane is portable. Then they become required.
+`unit (windows-latest)`, `integration (windows-latest)`, and `architecture (windows-latest)` stay in the workflow until a Windows run confirms the shared startup path check. They are not required. After that confirmation they are removed. They do not become required checks.
 
 `release` runs only on PRs targeting `main`, after the other checks. Its isolated runner builds the
 web bundle, runs coverage alone, then performance. The operator authorizes release PRs from
@@ -25,11 +25,11 @@ web bundle, runs coverage alone, then performance. The operator authorizes relea
 by the repository owner; the workflow does not enable it. Confirm the check names on a pull request
 before locking them. Add the Cursor Bugbot check when its name is known; do not invent it.
 
-CI takes Node from `package.json` engines and caches npm. Required unit, integration and architecture
-run on `macos-15`. The same suites are also reported on `windows-latest` and do not gate `release`
-or merges. Static and privacy stay on Ubuntu. Parity stays on macOS. Those reported Windows legs
-stay non-required until the Windows lane is portable. Desktop parity uses headless Chromium and
-existing references; CI never updates references or uploads HR evidence.
+CI takes Node from `package.json` engines and caches npm. Routine test suites are macOS:
+required unit, integration, and architecture on `macos-15`, and parity on macOS. Static and
+privacy stay on Ubuntu. The tests stay portable to Windows and macOS. The Windows suite jobs
+do not gate `release` or merges. Desktop parity uses headless Chromium and existing references;
+CI never updates references or uploads HR evidence.
 
 ## Privacy check
 
