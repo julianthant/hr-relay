@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -609,7 +609,41 @@ function prepareParityReportLifecycle(cwd: string, expectedUid?: number): Parity
   return readParityReportOnce(cwd, uid).identity;
 }
 
-function runChild(command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv, idleTimeoutMs = 180_000): Promise<ChildResult> {
+function commandStatus(error: unknown): number | undefined {
+  return typeof error === "object" && error !== null && "status" in error && typeof error.status === "number"
+    ? error.status : undefined;
+}
+
+function killProcessTree(pid: number): void {
+  if (process.platform === "win32") {
+    try {
+      execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+    } catch (error) {
+      if (commandStatus(error) !== 128) throw error;
+    }
+    return;
+  }
+  // shortcut: one pgrep snapshot, upgrade when a process forked during the kill must die too
+  let listed = "";
+  try {
+    listed = execFileSync("pgrep", ["-P", String(pid)], { encoding: "utf8" });
+  } catch (error) {
+    if (commandStatus(error) !== 1) throw error;
+  }
+  for (const line of listed.split("\n")) {
+    if (line.trim() === "") continue;
+    const childPid = Number(line);
+    if (!Number.isInteger(childPid)) throw new Error(`pgrep returned a non-pid: ${line}`);
+    killProcessTree(childPid);
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+  }
+}
+
+export function runChild(command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv, idleTimeoutMs = 180_000): Promise<ChildResult> {
   const child = spawn(command, [...args], { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
   let failure: string | undefined;
   let timer: NodeJS.Timeout | undefined;
@@ -617,8 +651,17 @@ function runChild(command: string, args: readonly string[], cwd: string, env: No
     if (timer !== undefined) clearTimeout(timer);
     timer = setTimeout(() => {
       failure = `no output for ${idleTimeoutMs}ms`;
-      // shortcut: kills the Playwright driver only, upgrade when a hung browser must die with it
-      child.kill("SIGKILL");
+      const pid = child.pid;
+      if (pid === undefined) {
+        child.kill("SIGKILL");
+        return;
+      }
+      try {
+        killProcessTree(pid);
+      } catch (error) {
+        failure = `${failure}; descendant kill failed: ${error instanceof Error ? error.message : String(error)}`;
+        child.kill("SIGKILL");
+      }
     }, idleTimeoutMs);
   };
   const pipe = (stream: NodeJS.ReadableStream | null, out: NodeJS.WriteStream): void => {

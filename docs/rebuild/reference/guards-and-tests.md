@@ -98,8 +98,9 @@ per-assertion progress messages. Multi-stage harnesses may emit stable phase mar
 `KEEP_TEST_TMP=1` keeps the directory. `tests/support/private-temp.test.ts` checks the directory
 the workers see.
 
-Parity launches Playwright directly and kills that child after 180 seconds without output. It does
-not take a suite lock. Its command lock remains the private file under `.tracker/data/locks`.
+Parity launches Playwright directly. After 180 seconds without output it kills that child and
+its descendants, and only then releases the command lock. It does not take a suite lock. The
+command lock remains the private file under `.tracker/data/locks`.
 
 `scripts/test/artifact-policy.ts` and its architecture owner keep generated coverage/test output
 untracked and ignored. Accepted task evidence belongs in the main checkout's ignored `.work/`
