@@ -218,7 +218,7 @@ try {
 for (const change of ["selection", "version", "cancel", "abort"] as const) it(`rechecks ${change} changes made during async browser preparation before claiming`, async () => {
   let release: () => void = () => undefined, completed: Promise<unknown> | undefined;
   try {
-    const h = await harness(), ingress = { ...h.ingress, submissions: [{ emplId: "10873698" }, { emplId: "10000002" }] };
+    const h = await harness(), ingress = { ...h.ingress, priority: "bulk" as const, submissions: [{ emplId: "10873698" }, { emplId: "10000002" }] };
     await h.plans.prepare?.(ingress, signal()); const plan = h.plans.plan(ingress);
     assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
     const queued = h.database.authority.runs.listByWorkflow(plan.workflowId); assert.equal(queued.length, 2);
