@@ -6,18 +6,33 @@ export const REBUILD_COVERAGE_INCLUDE = ["src/**/*.ts", "src/**/*.tsx"] as const
 export const REBUILD_UNIT_TEST_INCLUDE = ["tests/**/*.test.ts"] as const;
 export const REBUILD_UNIT_TEST_EXCLUDE = [
   "tests/**/*.integration.test.ts",
+  "tests/**/*.local.test.ts",
   "tests/architecture/**",
   "tests/parity/**",
   "tests/perf/**",
 ] as const;
 export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/**/*.integration.test.ts"] as const;
-export const REBUILD_INTEGRATION_TEST_EXCLUDE = ["tests/perf/**"] as const;
+export const REBUILD_INTEGRATION_TEST_EXCLUDE = [
+  "tests/**/*.local.integration.test.ts",
+  "tests/perf/**",
+] as const;
 export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
   "tests/architecture/**/*.test.ts",
 ] as const;
-export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [] as const;
+export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [
+  "tests/**/*.local.test.ts",
+  "tests/**/*.local.integration.test.ts",
+] as const;
 export const REBUILD_PERF_TEST_INCLUDE = ["tests/perf/**/*.test.ts"] as const;
-export const REBUILD_PERF_TEST_EXCLUDE = [] as const;
+export const REBUILD_PERF_TEST_EXCLUDE = [
+  "tests/**/*.local.test.ts",
+  "tests/**/*.local.integration.test.ts",
+] as const;
+export const REBUILD_LOCAL_TEST_INCLUDE = [
+  "tests/**/*.local.test.ts",
+  "tests/**/*.local.integration.test.ts",
+] as const;
+export const REBUILD_LOCAL_TEST_EXCLUDE = ["tests/parity/**"] as const;
 export const REBUILD_TEST_PROJECTS = [
   { name: "unit", include: REBUILD_UNIT_TEST_INCLUDE, exclude: REBUILD_UNIT_TEST_EXCLUDE },
   { name: "integration", include: REBUILD_INTEGRATION_TEST_INCLUDE, exclude: REBUILD_INTEGRATION_TEST_EXCLUDE },
@@ -27,6 +42,7 @@ export const REBUILD_TEST_PROJECTS = [
     exclude: REBUILD_ARCHITECTURE_TEST_EXCLUDE,
   },
   { name: "perf", include: REBUILD_PERF_TEST_INCLUDE, exclude: REBUILD_PERF_TEST_EXCLUDE },
+  { name: "local", include: REBUILD_LOCAL_TEST_INCLUDE, exclude: REBUILD_LOCAL_TEST_EXCLUDE },
 ] as const;
 export const REBUILD_TEST_EXEC_ARGV = ["--no-experimental-webstorage"] as const;
 export const REBUILD_TEST_REPORTERS = ["verbose"] as const;
@@ -52,8 +68,8 @@ export default defineConfig({
   },
   test: {
     setupFiles: ["tests/support/duo-ceremony-setup.ts"],
-    // Every named project, including architecture, must fail if its include or
-    // exclude leaves it empty; an empty lane proves no invariant.
+    // Cloud and perf projects fail when a selected run collects nothing. The
+    // local project may be empty; test:local passes --passWithNoTests=true.
     passWithNoTests: false,
     // One human stream for every Vitest entry point: project, file, suite and
     // full behavior/refusal title. Commands do not layer a second reporter on

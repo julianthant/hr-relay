@@ -22,6 +22,17 @@ export interface TestProcessOptions {
   readonly suiteLockRetryIntervalMs?: number;
   readonly suiteLockWaitTimeoutMs?: number;
 }
+/** Default `run` stays off operator-machine tests. `test:local` selects them. */
+const DEFAULT_RUN_PROJECTS = ["unit", "integration", "architecture", "perf"] as const;
+
+export function vitestCommandArguments(args: readonly string[]): string[] {
+  if (args[0] === "unit" || args[0] === "integration") return selectedTestArguments(args[0], args.slice(1));
+  if (args[0] === "run" && !args.slice(1).some((arg) => arg === "--project" || arg.startsWith("--project="))) {
+    return ["run", ...DEFAULT_RUN_PROJECTS.flatMap((name) => ["--project", name]), ...args.slice(1)];
+  }
+  return [...args];
+}
+
 export function selectedTestArguments(
   project: "unit" | "integration",
   filters: readonly string[],
@@ -285,9 +296,7 @@ async function runOwnedTestProcess(options: TestProcessOptions, lease?: HeldSuit
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--reap") { process.stdout.write(`${JSON.stringify(reapTestRuns(testRunsDirectory()))}\n`); return; }
-  const commandArgs = args[0] === "unit" || args[0] === "integration"
-    ? selectedTestArguments(args[0], args.slice(1))
-    : args;
+  const commandArgs = vitestCommandArguments(args);
   const result = await runTestProcess({ command: process.execPath, args: [fileURLToPath(new URL("./vitest.mjs", import.meta.resolve("vitest/package.json"))), ...commandArgs], cwd: process.cwd(), env: process.env, rootDirectory: testRunsDirectory(), suiteLock: ["run", "unit", "integration"].includes(args[0]) && !hasTestFilter(commandArgs.slice(1)) });
   process.exitCode = result.code;
 }

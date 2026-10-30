@@ -114,6 +114,7 @@ describe("test layout", () => {
   it("accepts source paths, retained full paths, CSS and dotted module topics", () => {
     assert.deepEqual(testLayoutViolations([
       "tests/backend/a/thing.test.ts", "tests/backend/a/thing.integration.test.ts",
+      "tests/backend/a/thing.local.test.ts", "tests/backend/a/thing.local.integration.test.ts",
       "tests/backend/a/thing.topic.test.ts", "tests/dashboard/ds/theme/tokens.test.ts",
       "tests/backend/a/test-thing.test.ts", "tests/backend/a/test-thing.topic.integration.test.ts",
       "tests/backend/a/thing-test.test.ts", "tests/backend/a/thing-test.topic.integration.test.ts",

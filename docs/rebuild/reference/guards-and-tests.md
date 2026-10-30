@@ -26,6 +26,7 @@ helpers that hide test registrations behind a helper-style name.
 | Types | `tests/types/`; `npm run typecheck` | Type inference and illegal calls pinned with `@ts-expect-error` and positive controls. |
 | Parity | `tests/parity/`; `npm run test:parity` | Desktop pixels, accessibility, focus, keyboard, loading, and interaction behavior with mock values. |
 | Performance | `tests/perf/**/*.test.ts`; Vitest `perf` via `npm run test:perf`. `tests/perf/dashboard-benchmark.ts` via `npm run perf:dashboard`. | Fixture performance checks outside coverage, deterministic structural counters, and separately reported host-dependent timings. |
+| Local | `<module>.local.test.ts` and `<module>.local.integration.test.ts`; Vitest `local` via `npm run test:local`. | Tests that need the operator's machine or accounts: a live dry run against UCPath, Kuali, CRM or Duo, the real login Keychain, or the real store. The topic name `local` is that marker. |
 
 A test that opens a database, including `:memory:`, starts a process or socket, drives a browser,
 or executes a composed workflow belongs in integration unless it is a repository-wide architecture
@@ -48,15 +49,19 @@ readers cannot observe temporary corruption or silently repaired inputs.
 
 ## 2. Vitest selection and commands
 
-`vitest.config.ts` defines four named projects. `guard-manifest.test.ts` audits exact includes,
-excludes, reporters, and single ownership of the offline test corpus. Empty projects fail.
+`vitest.config.ts` defines five named projects. `guard-manifest.test.ts` audits exact includes,
+excludes, reporters, and single ownership of the test corpus. Unit, integration, architecture and
+perf fail when empty. The local project may be empty: that is the absence of an operator-machine
+test, and `npm run test:local` passes `--passWithNoTests=true` for it. Cloud runs select unit,
+integration and architecture only. Coverage stays on those three and does not select local.
 
 | Project | Include | Exclude |
 | --- | --- | --- |
-| `unit` | `tests/**/*.test.ts` | `tests/**/*.integration.test.ts`, `tests/architecture/**`, `tests/parity/**`, `tests/perf/**` |
-| `integration` | `tests/**/*.integration.test.ts` | `tests/perf/**` |
-| `architecture` | `tests/architecture/**/*.test.ts` | None. |
-| `perf` | `tests/perf/**/*.test.ts` | None. |
+| `unit` | `tests/**/*.test.ts` | `tests/**/*.integration.test.ts`, `tests/**/*.local.test.ts`, `tests/architecture/**`, `tests/parity/**`, `tests/perf/**` |
+| `integration` | `tests/**/*.integration.test.ts` | `tests/**/*.local.integration.test.ts`, `tests/perf/**` |
+| `architecture` | `tests/architecture/**/*.test.ts` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` |
+| `perf` | `tests/perf/**/*.test.ts` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` |
+| `local` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` | `tests/parity/**` |
 
 `tests/parity/` is outside Vitest. There is no scenario project or current `tests/scenario/`
 corpus. Scenario declarations retained in workflow/contracts are graph metadata, not execution
@@ -64,13 +69,14 @@ results. Role-derived scenario paths do not prove that a file exists.
 
 | Command | Exact package script or purpose |
 | --- | --- |
-| `npm run test -- <paths>` | `tsx scripts/test/runner.ts run`; filters the all-project run. |
+| `npm run test -- <paths>` | `tsx scripts/test/runner.ts run`; selects unit, integration, architecture and perf. A bare `run` does not select `local`. |
 | `npm run test:unit -- <paths>` | `tsx scripts/test/runner.ts unit`; selects only `unit`. |
 | `npm run test:integration -- <paths>` | `tsx scripts/test/runner.ts integration`; selects only `integration`. |
 | `npm run test:architecture -- <paths>` | `tsx scripts/test/runner.ts run --project architecture --passWithNoTests=false`. |
+| `npm run test:local -- <paths>` | `tsx scripts/test/runner.ts run --project local --passWithNoTests=true`. |
 | `npm run test:coverage` | `tsx scripts/test/runner.ts run --coverage --project unit --project integration --project architecture && tsx scripts/test/suite-size.ts`. |
 | `npm run test:perf` | `tsx scripts/test/runner.ts run --project perf --passWithNoTests=false`. |
-| `npm run test:watch` | Direct interactive `vitest`; outside batch scratch containment. |
+| `npm run test:watch` | Interactive `vitest` on unit, integration, architecture and perf; outside batch scratch containment. |
 | `npm run test:reap` | `tsx scripts/test/runner.ts --reap`; explicitly reclaims eligible runner scratch. |
 | `npm run perf:dashboard` | `TZ=UTC tsx tests/perf/dashboard-benchmark.ts`. |
 
@@ -90,8 +96,10 @@ per-assertion progress messages. Multi-stage harnesses may emit stable phase mar
 
 `scripts/test/runner.ts` launches the installed Vitest CLI and propagates its failure exit.
 `runTestProcess` contains Vitest and parity children in a detached POSIX process group.
-It refuses Windows because this ownership model requires POSIX groups.
+It refuses Windows because this ownership model requires POSIX groups. Cloud CI still starts that
+runner on Windows; the refusal fails the Windows job.
 
+A bare `run` selects unit, integration, architecture and perf before taking the suite lock.
 Unfiltered `run`, `unit`, and `integration` invocations take a shared suite lock before starting a
 child or inactivity watchdog. Vitest's `parseCLI` identifies positional test-file and spec filters
 as focused runs. Those filters bypass the suite lock. Parity `assert` and `update` take the same

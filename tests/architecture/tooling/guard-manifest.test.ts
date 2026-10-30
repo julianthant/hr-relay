@@ -20,6 +20,8 @@ import vitestConfig, {
   REBUILD_INTEGRATION_TEST_EXCLUDE,
   REBUILD_PERF_TEST_INCLUDE,
   REBUILD_PERF_TEST_EXCLUDE,
+  REBUILD_LOCAL_TEST_INCLUDE,
+  REBUILD_LOCAL_TEST_EXCLUDE,
 } from "../../../vitest.config.js";
 import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 import { projectOwnershipViolations } from "../../../scripts/test/project-policy.js";
@@ -61,6 +63,8 @@ interface ArchitectureProjectInputs {
   readonly architectureExclude: readonly string[];
   readonly perfInclude: readonly string[];
   readonly perfExclude: readonly string[];
+  readonly localInclude: readonly string[];
+  readonly localExclude: readonly string[];
   readonly reporters: readonly string[];
 }
 
@@ -118,6 +122,8 @@ export function architectureProjectViolations({
   architectureExclude,
   perfInclude,
   perfExclude,
+  localInclude,
+  localExclude,
   reporters,
 }: ArchitectureProjectInputs): string[] {
   const violations: string[] = [];
@@ -132,14 +138,20 @@ export function architectureProjectViolations({
   if (JSON.stringify(unitInclude) !== JSON.stringify(["tests/**/*.test.ts"])) {
     violations.push("unit project include must remain tests/**/*.test.ts");
   }
-  if (JSON.stringify(unitExclude) !== JSON.stringify(["tests/**/*.integration.test.ts", "tests/architecture/**", "tests/parity/**", "tests/perf/**"])) {
-    violations.push("unit project must exclude integration suffixes, architecture, parity, and perf");
+  if (JSON.stringify(unitExclude) !== JSON.stringify([
+    "tests/**/*.integration.test.ts",
+    "tests/**/*.local.test.ts",
+    "tests/architecture/**",
+    "tests/parity/**",
+    "tests/perf/**",
+  ])) {
+    violations.push("unit project must exclude integration suffixes, operator-machine markers, architecture, parity, and perf");
   }
   if (JSON.stringify(integrationInclude) !== JSON.stringify(["tests/**/*.integration.test.ts"])) {
     violations.push("integration project must include every recursive tests/**/*.integration.test.ts file");
   }
-  if (JSON.stringify(integrationExclude) !== JSON.stringify(["tests/perf/**"])) {
-    violations.push("integration project must exclude tests/perf/**");
+  if (JSON.stringify(integrationExclude) !== JSON.stringify(["tests/**/*.local.integration.test.ts", "tests/perf/**"])) {
+    violations.push("integration project must exclude operator-machine markers and tests/perf/**");
   }
   if (
     JSON.stringify(architectureInclude) !==
@@ -149,20 +161,28 @@ export function architectureProjectViolations({
       "architecture project must include every recursive tests/architecture/**/*.test.ts file",
     );
   }
-  if (architectureExclude.length !== 0) {
-    violations.push(
-      `architecture project exclude must remain empty; received ${JSON.stringify(architectureExclude)}`,
-    );
+  if (JSON.stringify(architectureExclude) !== JSON.stringify(["tests/**/*.local.test.ts", "tests/**/*.local.integration.test.ts"])) {
+    violations.push("architecture project must exclude only operator-machine markers");
   }
   if (JSON.stringify(perfInclude) !== JSON.stringify(["tests/perf/**/*.test.ts"])) {
     violations.push("perf project must include every tests/perf/**/*.test.ts file");
   }
-  if (perfExclude.length !== 0) violations.push("perf project exclude must remain empty");
+  if (JSON.stringify(perfExclude) !== JSON.stringify(["tests/**/*.local.test.ts", "tests/**/*.local.integration.test.ts"])) {
+    violations.push("perf project must exclude only operator-machine markers");
+  }
+  if (JSON.stringify(localInclude) !== JSON.stringify(["tests/**/*.local.test.ts", "tests/**/*.local.integration.test.ts"])) {
+    violations.push("local project must include only operator-machine marker files");
+  }
+  if (JSON.stringify(localExclude) !== JSON.stringify(["tests/parity/**"])) {
+    violations.push("local project must exclude parity");
+  }
   if (JSON.stringify(reporters) !== JSON.stringify(["verbose"])) {
     violations.push("every Vitest entry point must use the single verbose streaming reporter from config");
   }
   return violations;
 }
+
+const OPERATOR_LOCAL_TEST = /(?:^|\/)[^/]+\.local(?:\.integration)?\.test\.tsx?$/u;
 
 export function testProjectTopologyViolations(
   root: string,
@@ -176,12 +196,27 @@ export function testProjectTopologyViolations(
   });
   const parity = all.filter((path) => path.startsWith("tests/parity/"));
   const runtime = all.filter((path) => !path.startsWith("tests/parity/"));
-  const violations = projectOwnershipViolations(runtime, projects.map((project) => ({
-    ...project, files: project.files.filter((path) => !path.startsWith("tests/parity/")),
-  })));
+  const cloud = projects.filter((project) => project.name !== "local");
+  const violations = projectOwnershipViolations(
+    runtime.filter((path) => !OPERATOR_LOCAL_TEST.test(path)),
+    cloud.map((project) => ({
+      ...project,
+      files: project.files.filter((path) => !path.startsWith("tests/parity/") && !OPERATOR_LOCAL_TEST.test(path)),
+    })),
+  );
   for (const path of parity) {
     const owners = projects.filter(({ files }) => files.includes(path)).map(({ name }) => name);
     if (owners.length > 0) violations.push(`${path}: expected no Vitest projects, found ${owners.join(", ")}`);
+  }
+  const localProject = projects.find((project) => project.name === "local");
+  for (const path of runtime.filter((file) => OPERATOR_LOCAL_TEST.test(file))) {
+    const owners = projects.filter(({ files }) => files.includes(path)).map(({ name }) => name);
+    if (owners.length !== 1 || owners[0] !== "local") {
+      violations.push(`${path}: expected the local project, found ${owners.join(", ") || "none"}`);
+    }
+  }
+  for (const path of localProject?.files ?? []) {
+    if (!OPERATOR_LOCAL_TEST.test(path)) violations.push(`${path}: local project collected a cloud test`);
   }
   return violations;
 }
@@ -249,7 +284,7 @@ describe("reviewed architecture guard manifest", () => {
     }
   });
 
-  it("keeps four exact projects with complete architecture and single test ownership", () => {
+  it("keeps five exact projects with complete architecture and single test ownership", () => {
     const actual = {
       command: packageJson.scripts[inventory.testScript] ?? "",
       unitInclude: REBUILD_UNIT_TEST_INCLUDE,
@@ -260,10 +295,16 @@ describe("reviewed architecture guard manifest", () => {
       architectureExclude: REBUILD_ARCHITECTURE_TEST_EXCLUDE,
       perfInclude: REBUILD_PERF_TEST_INCLUDE,
       perfExclude: REBUILD_PERF_TEST_EXCLUDE,
+      localInclude: REBUILD_LOCAL_TEST_INCLUDE,
+      localExclude: REBUILD_LOCAL_TEST_EXCLUDE,
       reporters: REBUILD_TEST_REPORTERS,
     };
     assert.deepEqual(architectureProjectViolations(actual), []);
-    assert.deepEqual(REBUILD_TEST_PROJECTS.map(({ name }) => name), ["unit", "integration", "architecture", "perf"]);
+    assert.equal(
+      packageJson.scripts["test:local"],
+      "tsx scripts/test/runner.ts run --project local --passWithNoTests=true",
+    );
+    assert.deepEqual(REBUILD_TEST_PROJECTS.map(({ name }) => name), ["unit", "integration", "architecture", "perf", "local"]);
     assert.deepEqual(configuredTestProjects(vitestConfig), REBUILD_TEST_PROJECTS);
     assert.deepEqual(configuredTestReporters(vitestConfig), REBUILD_TEST_REPORTERS);
     assert.deepEqual(testProjectTopologyViolations(REPO_ROOT), []);
@@ -282,8 +323,12 @@ describe("reviewed architecture guard manifest", () => {
       { ...actual, architectureInclude: ["tests/architecture/tooling/guard-manifest.test.ts"] },
       { ...actual, architectureInclude: ["tests/architecture/*.test.ts"] },
       { ...actual, architectureExclude: ["tests/architecture/runtime-isolation.test.ts"] },
+      { ...actual, architectureExclude: [] },
       { ...actual, perfInclude: ["tests/perf/**/*.integration.test.ts"] },
       { ...actual, perfExclude: ["tests/perf/**"] },
+      { ...actual, perfExclude: [] },
+      { ...actual, localInclude: ["tests/**/*.test.ts"] },
+      { ...actual, localExclude: [] },
       { ...actual, reporters: ["dot"] },
     ]) {
       assert.ok(architectureProjectViolations(bypass).length > 0, JSON.stringify(bypass));
@@ -327,6 +372,14 @@ describe("reviewed architecture guard manifest", () => {
         testProjectTopologyViolations(root, narrowed).join("\n"),
         /live\.combined\.test\.ts: expected exactly one Vitest project, found none/u,
       );
+      writeFixture(root, "tests/models/owned.local.test.ts", "export {};\n");
+      writeFixture(root, "tests/models/owned.local.integration.test.ts", "export {};\n");
+      assert.deepEqual(testProjectTopologyViolations(root).filter((violation) => violation.includes(".local.")), []);
+      const localLeak = REBUILD_TEST_PROJECTS.map((project) => project.name === "unit"
+        ? { ...project, exclude: project.exclude.filter((pattern) => pattern !== "tests/**/*.local.test.ts") }
+        : project);
+      assert.match(testProjectTopologyViolations(root, localLeak).join("\n"),
+        /tests\/models\/owned\.local\.test\.ts: expected the local project, found unit, local/u);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

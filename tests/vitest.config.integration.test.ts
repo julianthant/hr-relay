@@ -39,13 +39,17 @@ describe("architecture project empty collection", () => {
     );
   });
 
-  it("independently keeps the membership guard inside an architecture project with no exclusions", () => {
+  it("keeps the membership guard in architecture and limits exclusions to operator-machine markers", () => {
     const architecture = namedArchitectureProject(vitestConfig);
     assert.deepEqual(architecture?.include, ["tests/architecture/**/*.test.ts"]);
-    assert.deepEqual(
-      architecture?.exclude,
-      [],
-      "architecture exclusions could remove the membership guard that owns the architecture lane",
+    assert.deepEqual(architecture?.exclude, [
+      "tests/**/*.local.test.ts",
+      "tests/**/*.local.integration.test.ts",
+    ]);
+    assert.equal(
+      architecture?.exclude?.some((pattern) => pattern.includes("guard-manifest")),
+      false,
+      "architecture exclusions must not name the membership guard",
     );
     assert.ok(
       existsSync(join(REPO_ROOT, "tests/architecture/tooling/guard-manifest.test.ts")),
