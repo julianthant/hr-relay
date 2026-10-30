@@ -7,7 +7,22 @@ import { profileProcessQuery, proveProfileRootsUnused } from "../../../../src/ba
 
 afterEach(() => vi.restoreAllMocks());
 const result = (stdout: string, status = 0, stderr = "") => ({ pid: 0, output: [], stdout, stderr, status, signal: null });
-describe("complete process and descriptor closure observations", () => {
+
+it("refuses process closure off macOS without querying the OS", () => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  assert.ok(platform);
+  const query = vi.spyOn(profileProcessQuery, "spawnSync");
+  try {
+    Object.defineProperty(process, "platform", { value: "win32" });
+    assert.throws(() => proveProfileRootsUnused([]), /profile-process-closure-unproved/u);
+    assert.equal(query.mock.calls.length, 0);
+  } finally {
+    Object.defineProperty(process, "platform", platform);
+    query.mockRestore();
+  }
+});
+
+describe.skipIf(process.platform !== "darwin")("complete process and descriptor closure observations", () => {
   it("accepts complete process/cwd framing without opening any profile", () => {
     const query = vi.spyOn(profileProcessQuery, "spawnSync");
     query.mockReturnValueOnce(result(" 123 synthetic-worker\n")).mockReturnValueOnce(result("p123\nfcwd\ntDIR\nn/synthetic-other\n"));
