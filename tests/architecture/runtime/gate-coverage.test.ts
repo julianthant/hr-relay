@@ -31,7 +31,7 @@ const rootTypeScriptConfigFiles = tsconfig.include
 
 const EXACT_GATE_COMMANDS = {
   typecheck: "tsc --noEmit",
-  lint: "eslint src tests scripts vitest.config.ts vite.dashboard.config.ts vite.parity.config.ts --max-warnings 0",
+  lint: "node --max-old-space-size=6144 node_modules/eslint/bin/eslint.js --cache --cache-strategy content --cache-location node_modules/.cache/eslint/ src tests scripts vitest.config.ts vite.dashboard.config.ts vite.parity.config.ts --max-warnings 0",
   test: "tsx scripts/test/runner.ts run",
   "test:coverage": "tsx scripts/test/runner.ts run --coverage --project unit --project integration --project architecture && tsx scripts/test/suite-size.ts",
   "test:perf": "tsx scripts/test/runner.ts run --project perf --passWithNoTests=false",
