@@ -148,7 +148,8 @@ for (const pendingClose of [false, true]) it(pendingClose
       assert.equal(retained.operatorConfirmed, false); assert.equal(retained.exactCredentialRequestObserved, false);
       assert.equal(read().methods.touch.state, "idle"); assert.equal(acquisitions, 1); assert.equal(submissions, 1);
       await expect(context.pages()[0].locator("#accountList")).toContainText("Failed");
-      await assert.rejects(profile.session.cancelOnboarding(draft.token, draft.operationId));
+      assert.deepEqual(await profile.session.cancelOnboarding(draft.token, draft.operationId), { state: "signed-out" });
+      assert.ok(owner); const stale = owner; assert.throws(() => stale.assertCurrent()); await assert.rejects(stale.acquireCredentials());
       assert.equal(machine.readProfileRegistry().profiles.length, 0);
     } else {
       assert.deepEqual(await profile.session.cancelOnboarding(draft.token, draft.operationId), { state: "signed-out" });

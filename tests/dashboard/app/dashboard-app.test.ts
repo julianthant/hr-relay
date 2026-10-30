@@ -40,6 +40,7 @@ import { DashboardClientProvider as DashboardClientProvider_m2 } from '../../../
 import { DashboardDayWireSchema as DashboardDayWireSchema_m2,type DashboardDayWire as DashboardDayWire_m2 } from '../../../src/models/dashboard/projection.js';
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m2 } from '../../parity/helpers/fixture-queue.js';
 import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m2 } from "../../parity/helpers/workflow-composition.js";
+import { WORKFLOW_SOURCES } from "../../../src/dashboard/app/workflow-sources.js";
 import { createFixtureBff as createFixtureBff_m2 } from '../../support/helpers/dashboard/fixture-bff.js';
 
 
@@ -501,7 +502,13 @@ const _afterEachFixture0 = async () => {
 };
 async function settle() { await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); }
 
-async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; product?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response> } = {}) {
+function servedSessionMocks(workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION_m2>[0]) {
+  const composition = PARITY_WORKFLOW_COMPOSITION_m2(workflows);
+  const registered = new Set(workflows.map(flow => flow.workflowId));
+  for (const id of Object.keys(WORKFLOW_SOURCES)) assert_m2.equal(composition.sources[id], registered.has(id) ? "served" : "mock", id);
+  return Object.freeze({ ...composition, sessions: "served" as const });
+}
+async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof PARITY_WORKFLOW_COMPOSITION_m2 } = {}) {
   const { app } = createFixtureBff_m2();
   const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
   const requests: { url: string; resume?: string | null }[] = [];
@@ -539,7 +546,8 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE_m2.day}${options.search ? `&${options.search}` : ""}`);
   localStorage.setItem('hr-dashboard.workflow-panel', 'sidebar');
   const host = document.createElement('div'); document.body.append(host); root = createRoot_m2(host);
-  await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, options.product ? {} : { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m2 }) })));
+  const workflowComposition = options.workflowComposition ?? PARITY_WORKFLOW_COMPOSITION_m2;
+  await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, { workflowComposition }) })));
   await settle(); disposers.push(() => { open = false; });
   return { host, requests, streams,
     deliver: async (day: DashboardDayWire_m2, index = streams.length - 1) => { await act_m2(async () => snapshot(streams[index], day)); await settle(); },
@@ -744,8 +752,8 @@ afterEach_m2(_afterEachFixture0);
     assert_m2.ok([...document.querySelectorAll('[role="dialog"]')].some(dialog => dialog.textContent?.includes("Recover previous Delete run")));
     assert_m2.equal(commands.length, 1, "reviewing recovery must not dispatch a second command");
   });
-  it_m2('keeps product workflows mocked while Sessions subscribes to served authority', async () => {
-    const h = await mount({ product: true });
+  it_m2('serves registered workflows, mocks the other previews, and serves Sessions', async () => {
+    const h = await mount({ workflowComposition: servedSessionMocks });
     assert_m2.equal(h.streams.length, 1);
     assert_m2.equal(h.requests.some(request => request.url.includes(`/events/v1?topics=dashboard-day:${FIXTURE_DAY_WIRE_m2.day}`)), true);
     assert_m2.match(h.host.textContent ?? '', /Person Lookup/u);
@@ -753,7 +761,7 @@ afterEach_m2(_afterEachFixture0);
   });
   it_m2('keeps an unknown launch workflow in the explicit unavailable destination', async () => {
     const view = encodeURIComponent(JSON.stringify({ launchWorkflow: 'unregistered-workflow' }));
-    const h = await mount({ product: true, search: `start=1&view=${view}` });
+    const h = await mount({ workflowComposition: servedSessionMocks, search: `start=1&view=${view}` });
     assert_m2.match(h.host.textContent ?? '', /Destination unavailable/u);
     assert_m2.match(h.host.textContent ?? '', /This launch workflow is not registered/u);
     assert_m2.equal(h.streams.length, 1);
