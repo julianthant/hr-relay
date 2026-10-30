@@ -148,6 +148,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
   };
   async function readAccount(): Promise<void> {
     const request = ++epoch;
+    busy = true; notify();
     try {
       const account = await readWithDeadline(() => client.chatGptAccount(), "CHATGPT_AUTH_UNAVAILABLE");
       if (!current(request)) return;
@@ -158,16 +159,16 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
         await complete(account.attemptId, account.expiresAt, request);
       } else accept(account);
     } catch { if (current(request)) problem("failed", "CHATGPT_AUTH_UNAVAILABLE"); }
-    finally { if (current(request)) busy = false; }
+    finally { if (current(request)) { busy = false; notify(); } }
   }
   function refresh(): Promise<void> {
     if (refreshing !== undefined) return refreshing;
-    const reading = readAccount().finally(() => { if (refreshing === reading) refreshing = undefined; });
+    const reading = readAccount().finally(() => { if (refreshing === reading) { refreshing = undefined; notify(); } });
     refreshing = reading;
     return reading;
   }
   return {
-    mode: "live", getSnapshot: () => snapshot, getResource: () => resource,
+    mode: "live", getSnapshot: () => snapshot, getResource: (): ChatGptAccountResource => resource.state === "loaded" && (busy || refreshing !== undefined) ? { state: "loading" } : resource,
     subscribe: listener => {
       listeners.add(listener);
       if (!loaded && !busy && listeners.size === 1) { loaded = true; void refresh(); }
@@ -183,7 +184,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
       if (popup === undefined) { problem("refused", "CHATGPT_AUTH_UNAVAILABLE"); return; }
       ownedPopup = popup;
       clearTimeout(expiryTimer);
-      busy = true;
+      busy = true; notify();
       const request = ++epoch;
       try {
         const result = await client.startChatGptSignIn(input);
@@ -202,7 +203,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
         signingIn({ attemptId: result.attemptId, expiresAt: result.expiresAt, authorizationUrl: result.authorizationUrl }, request);
         await complete(result.attemptId, result.expiresAt, request);
       } catch { await reconcileProblem(request); }
-      finally { if (ownedPopup === popup) closePopup(); if (current(request)) busy = false; }
+      finally { if (ownedPopup === popup) closePopup(); if (current(request)) { busy = false; notify(); } }
     },
     cancelSignIn: async () => {
       const pending = snapshot.state === "unavailable" ? snapshot.account : snapshot;
@@ -212,7 +213,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
       cancelling = request;
       refreshing = undefined;
       scheduleSignInExpiry(pending.expiresAt, request);
-      busy = true;
+      busy = true; notify();
       try {
         const result = await readWithDeadline(signal => client.cancelChatGptSignIn(attemptId, signal), "CHATGPT_AUTH_UNAVAILABLE");
         if (!current(request)) return;
@@ -225,12 +226,12 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
         } else if (result.state === "uncertain") await reconcileProblem(request, result.code);
         else await reconcileProblem(request, result.code, "refused");
       } catch { await reconcileProblem(request); }
-      finally { if (cancelling === request) cancelling = undefined; if (current(request)) busy = false; }
+      finally { if (cancelling === request) cancelling = undefined; if (current(request)) { busy = false; notify(); } }
     },
     signOut: async () => {
       if (disposed || busy) return;
       clearTimeout(expiryTimer);
-      busy = true;
+      busy = true; notify();
       const request = ++epoch;
       try {
         const result = await client.signOutChatGpt();
@@ -246,7 +247,7 @@ export function createServedChatGptAccountPort(client: ChatGptAccountQueries, op
         } else if (result.state === "uncertain") await reconcileProblem(request, result.code);
         else problem("refused", result.code);
       } catch { await reconcileProblem(request); }
-      finally { busy = false; }
+      finally { busy = false; notify(); }
     },
   };
 }

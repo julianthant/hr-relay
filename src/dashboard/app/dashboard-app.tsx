@@ -1,3 +1,4 @@
+import { PreflightOcrContext, createServedPreflightOcrPort } from "../surfaces/settings/preflight/preflight-ocr-model.js";
 import { ChatGptAccountContext, createServedChatGptAccountPort } from "../surfaces/settings/general/chatgpt-account-model.js";
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
@@ -136,18 +137,20 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const session = profileSource === "served" ? publicProfile.state : undefined;
   const bootstrap = useBootstrap(session, profileSource === "mock" || session?.state === "active");
   const inheritedAccount = useContext(ChatGptAccountContext);
+  const inheritedOcr = useContext(PreflightOcrContext);
   const profileId = session?.state === "active" ? session.profileId : undefined;
   const profileEpoch = session?.state === "active" ? session.epoch : undefined;
   const accountScope = useMemo(() => ({ profileClient, profileSource, profileId, profileEpoch }), [profileClient, profileSource, profileId, profileEpoch]);
-  const [accountOwner, setAccountOwner] = useState<{ scope: typeof accountScope; port: ReturnType<typeof createServedChatGptAccountPort> }>();
+  const [accountOwner, setAccountOwner] = useState<{ scope: typeof accountScope; port: ReturnType<typeof createServedChatGptAccountPort>; ocr: ReturnType<typeof createServedPreflightOcrPort> }>();
   const account = accountOwner?.scope === accountScope ? accountOwner.port : undefined;
   useEffect(() => {
     if (profileSource !== "served" || profileId === undefined || profileEpoch === undefined) return;
     const port = createServedChatGptAccountPort(profileClient);
-    setAccountOwner({ scope: accountScope, port });
-    const close = (event: PageTransitionEvent) => { if (!event.persisted) port.dispose(); };
+    const ocr = createServedPreflightOcrPort(profileClient, port);
+    setAccountOwner({ scope: accountScope, port, ocr });
+    const close = (event: PageTransitionEvent) => { if (!event.persisted) { ocr.dispose(); port.dispose(); } };
     window.addEventListener("pagehide", close);
-    return () => { window.removeEventListener("pagehide", close); port.dispose(); };
+    return () => { window.removeEventListener("pagehide", close); ocr.dispose(); port.dispose(); };
   }, [accountScope, profileClient, profileSource, profileId, profileEpoch]);
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
@@ -183,6 +186,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
       className="flex h-screen min-h-[var(--ds-h-desktop-min)] min-w-[var(--ds-w-desktop-min)] flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]"
     >
     <ChatGptAccountContext.Provider value={account ?? inheritedAccount}>
+    <PreflightOcrContext.Provider value={accountOwner?.scope === accountScope ? accountOwner.ocr : inheritedOcr}>
     <TooltipProvider delayDuration={200}>
     <ToastProvider>
       {route.viewInvalid ? (
@@ -231,6 +235,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
       )}
     </ToastProvider>
     </TooltipProvider>
+    </PreflightOcrContext.Provider>
     </ChatGptAccountContext.Provider>
     </div>
   );

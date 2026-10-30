@@ -17,6 +17,7 @@ function setup(overrides: Partial<ChatGptAccountQueries> = {}, open?: () => Chat
     startChatGptSignIn: async () => { calls.push("start"); return started; },
     completeChatGptSignIn: async () => { calls.push("complete"); return { state: "completed", attemptId, account }; },
     cancelChatGptSignIn: async () => { calls.push("cancel"); return { state: "cancelled", attemptId }; },
+    testChatGptOcr: async () => { calls.push("ocr"); return { state: "completed", model: "Synthetic OCR" }; },
     signOutChatGpt: async () => { calls.push("out"); return { state: "signed-out", remoteRevocation: "confirmed" }; }, ...overrides,
   };
   const popup = { navigate: (url: string) => { calls.push(`navigate:${url}`); }, close: () => { calls.push("close"); } };
@@ -79,7 +80,7 @@ it("suppresses stale reads and completion settlements and resumes the original s
 });
 it("reads current state once at connected expiry without starting sign-in", async () => {
   vi.useFakeTimers(); let reads = 0, now = Date.parse("2026-10-12T12:59:59.000Z");
-  const queries: ChatGptAccountQueries = { chatGptAccount: async () => { reads++; return reads === 1 ? account : { state: "expired" }; }, startChatGptSignIn: async () => started, completeChatGptSignIn: async () => ({ state: "completed", attemptId, account }), cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }), signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }) };
+  const queries: ChatGptAccountQueries = { testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }), chatGptAccount: async () => { reads++; return reads === 1 ? account : { state: "expired" }; }, startChatGptSignIn: async () => started, completeChatGptSignIn: async () => ({ state: "completed", attemptId, account }), cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId }), signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "confirmed" }) };
   const port = createServedChatGptAccountPort(queries, { nowMs: () => now });
   try { await port.refresh(); now += 1000; await vi.advanceTimersByTimeAsync(1000); assert.equal(reads, 2); assert.deepEqual(port.getSnapshot(), { state: "expired" }); } finally { port.dispose(); vi.useRealTimers(); }
 });
@@ -284,4 +285,33 @@ it("expires a new pending attempt observed after confirmed cancellation", async 
     completion.resolve({ state: "completed", attemptId, account }); await signing;
     assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
   } finally { completion.resolve({ state: "completed", attemptId, account }); f.port.dispose(); vi.useRealTimers(); }
+});
+
+
+it("lets expired sign-out retain closure refusal and calls the existing sign-out once", async () => {
+  let calls = 0;
+  const f = setup({ chatGptAccount: async () => ({ state: "expired" }), signOutChatGpt: async () => { calls++; return { state: "uncertain", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text }; } });
+  try {
+    await f.port.refresh(); await f.port.signOut();
+    assert.equal(calls, 1); assert.equal(f.port.getResource().state, "uncertain");
+    assert.deepEqual(f.port.getSnapshot(), { state: "unavailable", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text, account: { state: "expired" } });
+  } finally { f.port.dispose(); }
+});
+
+
+it("publishes the actual unverified resource whenever its unavailable snapshot is observed", async () => {
+  const unavailable = ChatGptAccountStateSchema.parse({ state: "unavailable", code: "CHATGPT_USAGE_UNAVAILABLE", message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text });
+  const f = setup({ chatGptAccount: async () => unavailable });
+  const observed: ReturnType<typeof f.port.getResource>[] = [];
+  const unsubscribe = f.port.subscribe(() => {
+    if (f.port.getSnapshot().state === "unavailable") observed.push(f.port.getResource());
+  });
+  try {
+    await f.port.refresh();
+    assert.ok(observed.length > 0);
+    for (const resource of observed) {
+      assert.equal(resource.state, "failed"); assert.ok("code" in resource);
+      assert.equal(resource.code, "CHATGPT_USAGE_UNAVAILABLE");
+    }
+  } finally { unsubscribe(); f.port.dispose(); }
 });

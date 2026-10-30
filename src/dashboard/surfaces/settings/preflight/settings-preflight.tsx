@@ -1,3 +1,4 @@
+import { usePreflightOcr } from "./preflight-ocr-model.js";
 import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { ReactNode } from "react";
@@ -112,6 +113,8 @@ function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, ch
 
 function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workflowLabels }: { workflowLabels?: ReadonlyMap<string, string>; preflight: PreflightRerunState; onRerun: () => void; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   const scope = usePreflightScope();
+  const { snapshot: ocr, testOcr } = usePreflightOcr();
+  const ocrBusy = ocr.state === "loading";
   const displayed = preflight.state === "completed" || preflight.state === "historical" || preflight.state === "refreshing" ? preflight : undefined;
   const show = useDelayedLoading(displayed === undefined && preflight.state !== "refused");
   const busy = preflight.state === "running" || preflight.state === "refreshing";
@@ -129,10 +132,18 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
           <option value="dashboard">Dashboard</option>
           {scope.workflows.map(workflow => <option key={workflow.id} value={workflow.id}>{workflow.label}</option>)}
         </Select>
-      <Button variant="secondary" onClick={onRerun} disabled={busy || preflight.state === "idle"} aria-busy={busy}>Run preflight</Button>
     </>} />
     {scope.state === "unavailable" && <p className="diagnostic-status">Workflow scopes could not be read.</p>}
     <BodySection title="Status">
+      <div className="mb-[var(--ds-space-heading-content)] flex flex-wrap gap-2">
+        <Button variant="secondary" onClick={onRerun} disabled={busy || preflight.state === "idle"} aria-busy={busy}>Run preflight</Button>
+        <Button variant="secondary" onClick={() => { void testOcr(); }} disabled={ocr.state === "disabled" || ocrBusy || ocr.state === "uncertain"} loading={ocrBusy}>Test OCR</Button>
+      </div>
+      {ocr.state !== "idle" && <Banner className="mb-[var(--ds-space-heading-content)]"
+        tone={ocr.state === "completed" ? "success" : ocrBusy ? "info" : ocr.state === "failed" ? "danger" : "warning"}
+        title={ocr.state === "completed" ? "OCR test completed" : ocr.state === "loading" ? "Testing OCR" : ocr.state === "disabled" ? "OCR test unavailable" : ocr.state === "uncertain" ? "OCR test outcome uncertain" : ocr.state === "refused" ? "OCR test refused" : "OCR test failed"}>
+        {ocr.state === "completed" ? `Model: ${ocr.model}` : ocr.state === "loading" ? "Reading the fixed synthetic test page." : ERROR_CATALOG[ocr.code].text}
+      </Banner>}
     {preflight.state === "refused" && <Banner className="mb-[var(--ds-space-heading-content)]" tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
     {historical && <Banner className="mb-[var(--ds-space-heading-content)]" tone="warning" title="Previous result">{previousMessage} Run preflight for current readiness.</Banner>}
     {preflight.state !== "refused" && (displayed === undefined ? show && <LoadingRegion label="Loading readiness"><FormGroup label="Readiness summary" className="diagnostic-summary"><ResultRow controlWidth="wide" label={<SkeletonText className="w-40" />} value={<SkeletonText className="w-32" />} /></FormGroup></LoadingRegion> : <FormGroup label="Readiness summary" className="diagnostic-summary">

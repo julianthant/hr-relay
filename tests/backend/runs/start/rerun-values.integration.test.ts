@@ -23,6 +23,8 @@ import { sourceBoundHarness } from "../../../support/fixtures/integration/source
 import { WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { mappedReadDescriptor,mappedTransactionHarness,rerunValuesDeps,rerunValuesHarness,valueShapeHarness } from "../../../support/fixtures/rerun-values-fixtures.js";
 import { absentProbeEvidence } from "../../../support/fixtures/write-sequencer-fixtures.js";
+import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
+import { RerunValuesResponseSchema } from "../../../../src/models/dashboard/rerun-values.js";
 
 const disposers: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose(); });
@@ -46,6 +48,67 @@ function checkpointsDeps(h: Harness, rows: readonly RunCheckpointRecord[]) {
 function firstCheckpoint(h: Harness, run: RunRecord) { const cp = h.database.authority.runCheckpoints.listByItem(h.descriptor.id, run.envelope.itemId)[0]; assert.ok(cp); return cp; }
 
 describe("source-bound Rerun value read", () => {
+  it("preserves available source input for an unprotected plain-input workflow", async () => {
+    const h = await launchHarness(); disposers.push(h.dispose);
+    assert.ok(h.descriptor.surfaces.inputRun);
+    assert.equal(h.descriptor.surfaces.inputRun.typedInput, undefined);
+    const source = await h.completeSource();
+    assert.deepEqual(source.input.parsed.protectedBindings, []);
+    const result = readRerunValues({ reader: h.lifecycle, database: h.database,
+      descriptors: { resolve: () => h.descriptor } }, request(source));
+    assert.ok(result.state === "available");
+    assert.deepEqual(result.snapshot.sourceInput, { state: "available", value: source.input.parsed.value });
+  });
+  it.each(["safe-identity", "embedded-protected-value"] as const)("withholds protected input in the %s HTTP response", async kind => {
+    const descriptor = WORKFLOW_DESCRIPTORS.find(entry => entry.id === "separations"); assert.ok(descriptor);
+    const name = kind === "safe-identity" ? "Fixture Hidden Operator" : "1234567";
+    const secrets = protectedSecretSource({ timekeeperName: name });
+    let secretReads = 0;
+    const h = await launchHarness("reject-active", undefined, { descriptor,
+      protectedSecrets: { read: () => { secretReads += 1; return secrets.read(); } } });
+    disposers.push(h.dispose);
+    const submission = { documentNumber: "12345678" };
+    const plan = await h.client.submitStartPlan({ workflowId: descriptor.id, submissions: [submission], dryRun: true,
+      browserMode: "headless", captureBrowserScreenshots: false });
+    assert.deepEqual(plan.refused, []);
+    assert.ok(secretReads > 0);
+    const queued = h.start(plan);
+    assert.equal((await h.execute(queued)).state, "failed");
+    const source = h.fresh(queued);
+    const before = canonicalJsonStringify(source);
+    const response = await h.app.request(`http://localhost/api/v1/runs/${source.envelope.runId}/rerun-values?expectedVersion=${source.version}`);
+    assert.equal(response.status, 200);
+    const serialized = await response.text();
+    assert.equal(serialized.includes(name), false);
+    assert.equal(serialized.includes("timekeeperName"), false);
+    assert.equal(serialized.includes("withheld-protected-input"), false);
+    const result = RerunValuesResponseSchema.parse(JSON.parse(serialized)); assert.ok(result.state === "available");
+    if (kind === "embedded-protected-value") {
+      assert.deepEqual(result.snapshot.sourceInput, { state: "unavailable", reason: "protected" });
+      assert.equal(serialized.includes(submission.documentNumber), false);
+    } else {
+      assert.deepEqual(result.snapshot.sourceInput, { state: "partial", value: submission, identityCopied: true });
+      const readsBeforeRerun = secretReads;
+      const nextPlan = await h.client.submitStartPlan({ workflowId: descriptor.id, submissions: [submission], dryRun: true,
+        browserMode: "headless", captureBrowserScreenshots: false,
+        selectedStepKeys: descriptor.timeline.map(step => step.key),
+        rerunSource: { ...request(source), intent: "rerun", selectedStepKeys: descriptor.timeline.map(step => step.key), copiedFrom: [] } });
+      assert.deepEqual(nextPlan.refused, []);
+      assert.equal(secretReads, readsBeforeRerun);
+      const next = h.start(nextPlan);
+      assert.notEqual(next.envelope.runId, source.envelope.runId);
+      assert.deepEqual(next.input.raw, submission);
+      assert.equal(z.record(z.string(), z.unknown()).parse(next.input.parsed.value).timekeeperName, name);
+      assert.deepEqual(next.input.parsed.protectedBindings, source.input.parsed.protectedBindings);
+      assert.equal(JSON.stringify(nextPlan).includes(name), false);
+      assert.equal(JSON.stringify(h.submissions).includes(name), false);
+      assert.equal(JSON.stringify(h.finalCommands).includes(name), false);
+      assert.deepEqual(h.database.authority.writeIntents.listByRun(next.envelope.runId), []);
+      assert.deepEqual(h.world.events, []);
+    }
+    assert.equal(canonicalJsonStringify(h.fresh(source)), before);
+    assert.deepEqual(h.database.authority.writeIntents.listByRun(source.envelope.runId), []);
+  });
   it.each(["fingerprint", "version", "steps"] as const)("offers earlier %s source values without treating them as current authority", async change => {
     const h = await harness(); const run = await completed(h); const before = snapshot(h, run);
     h.registerDescriptor(mappedReadDescriptor(undefined, { contractFingerprint: "b".repeat(64),

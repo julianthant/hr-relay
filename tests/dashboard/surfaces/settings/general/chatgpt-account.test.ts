@@ -77,6 +77,7 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
     startChatGptSignIn: async () => { starts++; return started; },
     completeChatGptSignIn: () => completion.promise,
     cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId: started.attemptId }),
+    testChatGptOcr: async () => ({ state: "completed", model: "Synthetic OCR" }),
     signOutChatGpt: async () => ({ state: "signed-out", remoteRevocation: "unconfirmed" }),
   };
   const port = createServedChatGptAccountPort(queries, { open: () => ({ navigate() {}, close() {} }) });
@@ -103,4 +104,22 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
     assert.match(host.textContent ?? "", /Exact held operator.*exact@example.com/u);
     assert.equal(host.textContent?.includes(message), false); assert.equal(reads, 1); assert.equal(starts, 1);
   } finally { port.dispose(); }
+});
+
+
+it("lets a known expired session disconnect without inventing credentials for unknown accounts", async () => {
+  let signOuts = 0;
+  const port = controlledPort({ state: "expired" }, { signOut: async () => { signOuts++; } });
+  host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountSettings, { port })));
+  const disconnect = [...host.querySelectorAll("button")].find(button => button.textContent === "Disconnect");
+  assert.ok(disconnect); await act(async () => disconnect.click()); assert.equal(signOuts, 1);
+  const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "unavailable", message: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text }) }));
+  assert.doesNotMatch(html, /Disconnect/u);
+});
+
+it("keeps OCR diagnostics out of the account panel", () => {
+  const html = renderToStaticMarkup(createElement(ChatGptAccountSettings, { port: controlledPort({ state: "connected", name: "Operator", email: "operator@example.com", planUsage: "enabled" }) }));
+  assert.doesNotMatch(html, /Test OCR|OCR test/u);
+  assert.match(html, /Disconnect/u);
 });

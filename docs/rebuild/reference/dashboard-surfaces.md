@@ -205,6 +205,9 @@ new attempt. Input methods follow declared workflow capability: typed identifier
 or parent-only delegation. Served spreadsheet intake uploads in the launcher before opening a
 real `intake` session route.
 
+Rerun prefills safe source identity fields in Values, using the declared input parser. Protected
+values and identities that no longer satisfy the current input stay uncopied.
+
 Options show Priority as Interactive or Bulk, Browser mode as Headed or Headless, Dry run where
 declared, Capture screenshots and workflow-specific fields. New/reset dashboard
 launches start with Dry run off, Headed browser mode, and captures on. The operator explicitly
@@ -368,7 +371,9 @@ not an end-user field.
 `ChatGptAccountContext` provides `ChatGptAccountPort`; its default is a memory preview. Continue
 with ChatGPT invokes `signIn` directly with plan use requested. There is no intermediate dashboard
 sign-in dialog. The model distinguishes loading, signed-out, expired, unavailable, and connected,
-with plan-use state separate from identity. Sign-out requires acknowledgment. Usage links to
+with plan-use state separate from identity. Known expired sessions can Disconnect through the same
+acknowledged sign-out action; unknown unavailable state never implies stored credentials. OCR diagnostics
+live in Preflight, outside the account panel. Sign-out requires acknowledgment. Usage links to
 `https://chatgpt.com/settings/usage`. OAuth, consent, eligibility, usage limits, and secure token
 persistence require the backend account adapter. A displayed preview identity never proves plan access.
 
@@ -396,6 +401,16 @@ Preflight displays served checks with scope, fingerprint, checked time, and read
 Rerun retains the completed report's nodes/geometry rather than blanking the page. Remedy mapping
 navigates to Credentials, Routes, Storage, Sessions, or Settings. A rendered remedy does not repair.
 Missing checks and unavailable/history state remain explicit.
+
+Settings Preflight's Status section places Test OCR beside Run preflight, using the existing Button
+and Banner. It reads the fixed synthetic page only on an explicit click for a freshly loaded,
+plan-enabled account. The preflight-owned model distinguishes idle, disabled, loading,
+completion with the backend model name, local failure, refusal and uncertain outcome; failure text
+comes from the error catalog. Duplicate clicks are suppressed, calls are bounded to 120 seconds,
+and account refresh, account actions and profile disposal abort and invalidate pending results.
+Uncertain outcomes stay locked across account refresh and Settings navigation for the current
+profile lifetime. Neither page load, scope refresh, sign-in nor Run preflight dispatches OCR.
+The result is a diagnostic only and never contributes to readiness reports or admission.
 
 Storage displays health and doctor reports through its typed client. Authority availability differs
 from backup age. Storage excludes run-history presentation. Recovery actions require their exact

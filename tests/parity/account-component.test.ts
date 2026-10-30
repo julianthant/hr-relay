@@ -11,7 +11,10 @@ import { PARITY_THEMES } from "./helpers/capture.js";
 
 const cases = [
   { state: "loading" }, { state: "signed-out" }, { state: "expired" }, { state: "unavailable" },
+  { state: "ocr-idle" }, { state: "ocr-disabled" }, { state: "ocr-loading" }, { state: "ocr-completed" }, { state: "ocr-failed" }, { state: "ocr-refused" }, { state: "ocr-uncertain" },
   { state: "enabled" }, { state: "disabled" }, { state: "limit-reached" },
+  { state: "ocr-idle", action: "pending", control: "Test OCR" },
+  { state: "expired", action: "pending", control: "Disconnect" },
   { state: "signed-out", action: "pending", control: "Connect ChatGPT" },
   { state: "enabled", action: "pending", control: "Disconnect" },
   { state: "signed-out", action: "failed", control: "Connect ChatGPT" },
@@ -37,7 +40,8 @@ test.afterAll(async () => {
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const evidenceName = `account-component-${theme.name}-${String(width)}.a11y.yml`;
-  test(`account component fixture states ${theme.name} ${String(width)}`, { annotation: [{ type: "required-a11y-evidence", description: evidenceName }] }, async ({ page }, info) => {
+  const ocrEvidence = cases.filter(entry => entry.state.startsWith("ocr-")).map(entry => `preflight-${entry.state}-${"action" in entry ? entry.action : "success"}-${theme.name}-${String(width)}.a11y.yml`);
+  test(`account and preflight component fixture states ${theme.name} ${String(width)}`, { annotation: [evidenceName, ...ocrEvidence].map(description => ({ type: "required-a11y-evidence", description })) }, async ({ page }, info) => {
     const errors: string[] = [], network: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (new URL(request.url()).origin !== baseUrl) network.push(request.url()); });
@@ -46,13 +50,19 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     for (const entry of cases) {
       const action = "action" in entry ? entry.action : "success";
       await page.goto(`${baseUrl}/?${new URLSearchParams({ theme: theme.attribute, state: entry.state, action })}`);
-      const account = page.getByRole("group", { name: "ChatGPT account", exact: true });
+      const isOcr = entry.state.startsWith("ocr-");
+      const account = isOcr ? page.getByRole("region", { name: "Preflight", exact: true }) : page.getByRole("group", { name: "ChatGPT account", exact: true });
       await expect(account).toBeVisible();
       if (entry.state === "loading") await expect(page.getByRole("status", { name: "Loading ChatGPT account", exact: true })).toBeVisible();
       else if (entry.state === "unavailable") { await expect(page.getByText("ChatGPT account unavailable", { exact: true })).toBeVisible(); await expect(account.getByRole("button", { name: "Connect ChatGPT", exact: true })).toBeEnabled(); }
       else if (entry.state === "expired") await expect(account).toContainText("Your ChatGPT session expired.");
       else if (entry.state === "disabled") await expect(account).toContainText("ChatGPT plan access not enabled");
       else if (entry.state === "limit-reached") await expect(account).toContainText("Usage limit reached");
+      if (isOcr) {
+        const titles: Record<string, string> = { "ocr-disabled": "OCR test unavailable", "ocr-loading": "Testing OCR", "ocr-completed": "OCR test completed", "ocr-failed": "OCR test failed", "ocr-refused": "OCR test refused", "ocr-uncertain": "OCR test outcome uncertain" };
+        if (entry.state !== "ocr-idle") await expect(page.getByText(titles[entry.state], { exact: true })).toBeVisible();
+        if (entry.state === "ocr-loading" || entry.state === "ocr-uncertain" || entry.state === "ocr-disabled") await expect(account.getByRole("button", { name: "Test OCR", exact: true })).toBeDisabled();
+      }
       if ("control" in entry) {
         await account.getByRole("button", { name: entry.control, exact: true }).click();
         await expect(page.locator("body")).toHaveAttribute("data-action-calls", "1");
@@ -67,6 +77,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         }
       }
       await page.evaluate(() => document.fonts.ready);
+      if (isOcr) await attachShellA11y(page, info, `preflight-${entry.state}-${action}-${theme.name}-${String(width)}.a11y.yml`);
+      else await expect(account.getByRole("button", { name: "Test OCR", exact: true })).toHaveCount(0);
 
     }
     await attachShellA11y(page, info, evidenceName);
