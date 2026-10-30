@@ -19,8 +19,8 @@ import { initialSettingsFileRecord } from "../../../../src/models/config/setting
 import { testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
 import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
-export async function foundationFixture(options:{input?:RunRecord["input"]}={}){
- const profile=await createBoundProfileFixture();
+export async function foundationFixture(options:{input?:RunRecord["input"];sharedMachine?:true}={}){
+ const profile=await createBoundProfileFixture(options.sharedMachine===true?{sharedMachine:true}:{});
  const root=profile.stateRoot,path=profile.path;const clock=manualClock(new Date(NOW));
  const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock);
  const resolved=resolveConfigWithProvenance(initialSettingsFileRecord().settings,hostConfigFacts({}),clock,
