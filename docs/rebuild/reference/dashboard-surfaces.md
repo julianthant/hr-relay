@@ -639,3 +639,12 @@ Document, download, and report pickers remain. Backup and Restore have unavailab
 verified-backup, blocked, and confirmation presentations. Restore never implies credentials roll
 back or unresolved writes disappear. The `fixed-backup` fixture has no file effects. Maintenance
 authority, stopped restore, and verified backup selection are wired separately.
+
+### Two-method Duo sign-up presentation
+
+Sign-up presents Touch ID and Security key as distinct required verified enrollments at
+`duo.ucpath.edu`. Hardware-unavailable presentation identifies Chromium’s virtual platform
+authenticator for Touch ID; it never substitutes for Security key. Finish stays unavailable until
+both enrollments are verified. Finishing and cancellation stay pending until their owners settle.
+Unknown enrollment is labelled Unknown, not failed or completed. The `duo-signup` fixture is
+synthetic; actual enrollment, owned-resource closure, and account publication are separate.

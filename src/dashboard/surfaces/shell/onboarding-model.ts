@@ -84,7 +84,7 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
   });
 }
 
-export const duoMethodLabels = Object.freeze({ idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Failed", unavailable: "Failed" });
+export const duoMethodLabels = Object.freeze({ idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Unknown", unavailable: "Unavailable" });
 export function duoMethodPresentation(method: keyof DuoMethods, state: keyof typeof duoMethodLabels) {
   const failed = state === "unknown" || state === "unavailable";
   return {
