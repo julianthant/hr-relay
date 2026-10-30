@@ -22,7 +22,7 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { SettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { readSettings, readBootSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
-import { migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { migrationTableNames, SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { FingerprintSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createProfileVerifiers } from "../../../../src/backend/storage/configuration/verifier-store.js";
@@ -37,7 +37,7 @@ import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 const hostFacts = { primaryDisplay: null };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle") {
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 = 8) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
@@ -89,14 +89,21 @@ async function readyBoundEight(work: "idle" | "queued" = "idle") {
   assert.ok(existsSync(join(profile.machine.stateRoot, "machine", "credential-keys", `${binding.profileId}.json`)));
   assert.equal(profile.machine.readProfileRegistry().profiles.find(value => value.profileId === binding.profileId)?.credentialState, "saved");
   profile.admission.release();
-  // Synthetic current8-to-prior7 layout; registration, credentials and business rows are retained.
   const raw = new DatabaseSync(profile.path);
   try {
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
-    raw.exec('BEGIN EXCLUSIVE; DROP TABLE assistant_model_preference; UPDATE database_states SET schema_version=8 WHERE id=1; PRAGMA user_version=8; COMMIT');
-    const prior = inspectNativeAuthority(raw, 8);
-    assert.equal(prior.schemaVersion, 8);
+    raw.exec("BEGIN EXCLUSIVE");
+    if (sourceVersion < 10) {
+      const editorDdl = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE TABLE explorer_overrides \([\s\S]*?\n\) STRICT;/u)?.[0];
+      assert.ok(editorDdl);
+      raw.exec(editorDdl);
+    }
+    if (sourceVersion < 9) raw.exec("DROP TABLE assistant_model_preference");
+    raw.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(sourceVersion);
+    raw.exec(`PRAGMA user_version=${sourceVersion}; COMMIT`);
+    const prior = inspectNativeAuthority(raw, sourceVersion);
+    assert.equal(prior.schemaVersion, sourceVersion);
     assert.equal(prior.installationId, binding.installationId);
     assert.equal(prior.profileId, binding.profileId);
   } finally { raw.close(); }
@@ -109,7 +116,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle") {
 function rawEight(path: string) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
-    return Object.fromEntries(migrationTableNames(8).map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+    return Object.fromEntries(migrationTableNames(8).filter(table => table !== "explorer_overrides").map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
   } finally { raw.close(); }
 }
 
@@ -124,10 +131,10 @@ it("upgrades a genuinely READY bound profile with unchanged historical rows, cre
     assert.equal((await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: true, hostFacts }, systemClock)).state, "planned");
     assert.deepEqual(rawEight(f.path), before);
     const result = await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock);
-    assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 8, toSchemaVersion: 9, credentials: "unchanged" });
+    assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: 8, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
     const after = rawEight(f.path);
     for (const [table, rows] of Object.entries(before)) {
-      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: 9 })));
+      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows);
     }
@@ -413,4 +420,22 @@ it("revokes READY custody on exact artifact-root ancestry substitution", async (
     if (moved) { assert.deepEqual(readdirSync(artifacts), []); rmdirSync(artifacts); renameSync(saved, artifacts); }
     owner.release(); restore.release(); await f.close();
   }
+});
+
+it.each([9, 10] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
+  const f = await readyBoundEight("idle", sourceVersion);
+  try {
+    const before = rawEight(f.path);
+    const result = await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock);
+    assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: sourceVersion, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
+    const after = rawEight(f.path);
+    for (const [table, rows] of Object.entries(before)) {
+      if (table === "database_states") assert.deepEqual(after[table], rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else assert.deepEqual(after[table], rows);
+    }
+    const fresh = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(f.binding.profileId));
+    try { assert.equal(fresh.profileMaintenanceSchemaVersion(), CURRENT_AUTHORITY_SCHEMA_VERSION); }
+    finally { fresh.release(); }
+  } finally { await f.close(); }
 });

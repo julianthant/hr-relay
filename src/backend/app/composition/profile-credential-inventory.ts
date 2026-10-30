@@ -193,18 +193,18 @@ function assertCredentialBackupBinding(admission: RuntimeAdmission, backup: Awai
   if (manifest.profileId !== admission.profileBinding.profileId || manifest.installationId !== admission.profileBinding.installationId
     || manifest.sourceDatabaseIdentity !== AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db"))) throw new Error("profile-inventory-backup-binding-mismatch");
   if (manifest.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return;
-  if (manifest.schemaVersion !== 7 && manifest.schemaVersion !== 8) throw new Error("profile-inventory-backup-binding-mismatch");
+  if (manifest.schemaVersion !== 7 && manifest.schemaVersion !== 8 && manifest.schemaVersion !== 9 && manifest.schemaVersion !== 10) throw new Error("profile-inventory-backup-binding-mismatch");
   const matching = upgrades.filter(record => record.phase !== "baseline" && (record.backup.manifestPath === backup.manifestPath
     || record.backup.sha256 === manifest.sha256 || record.upgradeId === manifest.authorityContentFingerprint));
   const record = matching[0];
-  const destination = manifest.schemaVersion === 7 && record?.toSchemaVersion === 8 ? 8 : 9;
-  if (destination > CURRENT_AUTHORITY_SCHEMA_VERSION || matching.length !== 1 || record?.phase !== "settled" || record.fromSchemaVersion !== manifest.schemaVersion
+  const parsedDestination = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]).safeParse(record?.toSchemaVersion);
+  if (!parsedDestination.success) throw new Error("profile-inventory-backup-upgrade-unproved");
+  const destination = parsedDestination.data;
+  if (destination <= manifest.schemaVersion || destination > CURRENT_AUTHORITY_SCHEMA_VERSION || matching.length !== 1 || record?.phase !== "settled" || record.fromSchemaVersion !== manifest.schemaVersion
     || record.toSchemaVersion !== destination || record.backup.manifestPath !== backup.manifestPath
     || record.backup.sha256 !== manifest.sha256 || record.backup.authorityGeneration !== manifest.authorityGeneration
     || record.upgradeId !== manifest.authorityContentFingerprint
-    || record.planDigest !== (destination === 8
-      ? deriveAuthorityUpgradePlanDigest(7, manifest.authorityContentFingerprint, 8)
-      : deriveAuthorityUpgradePlanDigest(manifest.schemaVersion, manifest.authorityContentFingerprint))) throw new Error("profile-inventory-backup-upgrade-unproved");
+    || record.planDigest !== deriveAuthorityUpgradePlanDigest(manifest.schemaVersion, manifest.authorityContentFingerprint, destination)) throw new Error("profile-inventory-backup-upgrade-unproved");
 }
 
 function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; hostFacts: HostConfigFacts; clock: Clock }>, owner: CredentialMaintenancePurpose, authorize: () => void,

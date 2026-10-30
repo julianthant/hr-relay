@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
@@ -31,6 +33,14 @@ describe("assistant model preference additive schema", () => {
     assert.equal(deriveAuthorityUpgradePlanDigest(7, fingerprint, 8), historical);
     assert.notEqual(deriveAuthorityUpgradePlanDigest(7, fingerprint), historical);
     assert.equal(deriveAuthorityUpgradePlanDigest(8, fingerprint), deriveAuthorityUpgradePlanDigest(8, fingerprint, CURRENT_AUTHORITY_SCHEMA_VERSION));
+  });
+
+  it.each([[7, 8], [7, 9], [8, 9], [9, 10]] as const)("retains the exact historical %s-to-%s upgrade digest", (from, to) => {
+    const fingerprint = "1".repeat(64);
+    const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > from && migration.version <= to).flatMap(migration => migration.statements);
+    const expected = createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion: from, toSchemaVersion: to, sourceContentFingerprint: fingerprint, statements })).digest("hex");
+    assert.equal(deriveAuthorityUpgradePlanDigest(from, fingerprint, to), expected);
+    assert.notEqual(deriveAuthorityUpgradePlanDigest(from, fingerprint), expected);
   });
 
   it.each([[7, 7], [7, 12], [8, 8], [6, 8], [7, '8'], [7, null], [7, Number.NaN]])(

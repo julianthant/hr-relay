@@ -210,7 +210,7 @@ mismatch, not a requirement on every ordinary save.
 
 ### Assistant choice and private verification
 
-The schema 9 `assistant_model_preference` singleton is separate from Settings, grants and account
+The `assistant_model_preference` singleton is separate from Settings, grants and account
 credentials. Its repository authenticates the current row against command/audit history. Only a
 history-free absence resolves the canonical default model and effort at revision zero. Missing,
 corrupt, substituted or rolled-back authority refuses; it never resets to a default.
@@ -568,9 +568,9 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-The current schema is 9. Its additive `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
+The current schema is 11. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
 
-The finite bound-profile upgrade predecessor is schema 8. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
+The supported READY bound-profile upgrade sources are schemas 8, 9 and 10. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
 `src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 9` and
@@ -619,18 +619,17 @@ The record's `backup_digest` matches the backup SHA-256. A failed migration roll
 changes. For pending diagnostic stages it reclaims through `diagnostic-maintenance` and verifies
 unchanged authority generation and content fingerprint. Only the explicit stopped upgrade converts a
 prior schema.
-`upgradeReadyProfileStorage` separately handles an already READY, saved, bound schema8 profile.
+`upgradeReadyProfileStorage` separately handles an already READY, saved profile bound to supported schema 8, 9 or 10.
 It acquires the actual machine workspace's restore admission before privately issuing a stopped
 purpose from that same exclusive machine and registered runtime claim. Issuance verifies native
 source binding, anchored key/erasure-head evidence, fixed control and physical ancestry, and the
 shared all-stopped process/resource/copy inventory. The READY-only issuer defers its two exact
 storage readers and revalidates custody after each await; the setup issuer remains synchronous.
 This purpose admits original-source inspection, its own verified authority backups, and the finite
-8→9 migration only. It cannot initialize a profile, read credentials, open ordinary runtime storage,
+upgrade from that exact source to the current schema only. It cannot initialize a profile, read credentials, open ordinary runtime storage,
 grant generic writes/exclusive authority, delegate nested copies, or admit an in-memory database.
 Its source fingerprint is privately bound before issuance and checked again inside the migration
-transaction with the actual verified backup. Readback preserves prior business rows, Settings and
-their digests; only schema metadata and the appended upgrade record change. Already-current READY
+transaction with the actual verified backup. Readback binds the exact source version and current destination. Unrelated business rows, Settings, terminal assistant records and audits remain unchanged; only the declared editor records, retired automatic grants and pending automatic proposals are retired, alongside schema metadata and the appended upgrade record. Already-current READY
 inspection never reclaims diagnostics. Unproved source closure or rollback retains restore custody
 and the original failures. This service adds no public login, CLI, or automatic startup upgrade path.
 A changed source fails with `source-changed: re-plan upgrade`. Recovery, backups, and restores remain
@@ -740,7 +739,7 @@ Worker bootstrap acquires machine admission, captures durable selection, and tak
 
 A stopped cancelling profile uses a privately issued pending-logout inventory child, bound to its exact current operation, registry generation, parent lease and physical source. Its canonical database binding is parsed once from a descriptor-isolated snapshot retained only for that child. Every liveness check revalidates the exact unchanged main, WAL, SHM and journal identities and absences, plus current parent and operation custody; any change permanently revokes that child. Native resource inventories still take fresh strict snapshots. Disposal precedes child and parent release, and a failed snapshot cleanup retains custody. It admits descriptor-isolated inspection of canonical copies before an erasure CAS exists; it cannot grant ordinary credential reads, database writes, artifacts, workers or selection. The constructor-owned credential inventory authenticates key, external head and all recognized ciphertext copies before assessment, with complete profile and process-root membership revalidation. Cold closure requires terminal runs and closed leases, browsers, controls and write custody. A matching late erasure observes only its original request and pending publication head; incomplete capture remains a refusal when surviving copies cannot be certified.
 
-Logout inventory certifies independent backup and credential-stage copies only when both canonical UCPath identity and password were available for capture before that erase. When a prior erase leaves capture incomplete, even a clean-shaped existing copy remains uncertain; repeated resumes and restart cannot publish wiped until those copies are absent. No captured plaintext is persisted. Credential copy scans use the exact authenticated source-schema table registry for verified stopped backups, including supported pre-assistant copies. Their native schema, metadata, digest and physical custody must validate before scanning; ordinary runtime admission remains current-schema-only. Ordinary logout may retain noncurrent bound backups only for three exact settled transitions: historical 7→8, canonical pending-setup 7→9, and predecessor 8→9. Each copy requires its own authenticated profile/installation binding, exact source bytes and matching immutable receipt. The historical 7→8 case uses the canonical plan bounded at target8; 7→9 and 8→9 use their source version and the current target9 plan. All three cases require full stopped-process, resource and copy custody before and after inventory; missing, duplicate, foreign or mismatched evidence refuses. Historical receipts and backup bytes remain unchanged. Schema7 archival inspection grants no ordinary runtime, credential write or READY schema7 upgrade authority under schema9; the existing generic pending-setup conversion remains separate. Unbound schema1–6 backups retain a named binding refusal. Path identity alone never assigns them to a profile.
+Logout inventory certifies independent backup and credential-stage copies only when both canonical UCPath identity and password were available for capture before that erase. When a prior erase leaves capture incomplete, even a clean-shaped existing copy remains uncertain; repeated resumes and restart cannot publish wiped until those copies are absent. No captured plaintext is persisted. Credential copy scans use the exact authenticated source-schema table registry for verified stopped backups, including supported pre-assistant copies. Their native schema, metadata, digest and physical custody must validate before scanning; ordinary runtime admission remains current-schema-only. Noncurrent bound backups from schemas 7–10 require one exact settled upgrade receipt. Its recorded destination must be supported, newer than that source and no newer than the current schema. Verification derives the immutable plan for that actual source and recorded destination, including retained 7→8, 7→9 and 8→9 proofs; it never relabels historical receipts as current upgrades. Each copy requires its authenticated profile/installation binding, exact source bytes and matching receipt. Full stopped-process, resource and copy custody remains required before and after inventory; missing, duplicate, foreign or mismatched evidence refuses. Historical receipts and backup bytes remain unchanged. Schema7 archival inspection grants no ordinary runtime, credential write or READY schema7 upgrade authority; the generic pending-setup conversion remains separate. Unbound schema1–6 backups retain a named binding refusal. Path identity alone never assigns them to a profile.
 
 Settled worker reservation IDs retain allocation provenance. Closure authenticates the exact origin,
 revision and canonical retirement command. Remove-worker retirement requires

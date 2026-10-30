@@ -761,8 +761,9 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
-  toSchemaVersion: 8 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
-  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && !(fromSchemaVersion === 7 && toSchemaVersion === 8)) throw new Error('authority-upgrade-plan-target-unsupported');
+  toSchemaVersion: 8 | 9 | 10 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10)
+    || !isSupportedStoppedAuthoritySchemaVersion(fromSchemaVersion) || fromSchemaVersion < 7 || fromSchemaVersion >= toSchemaVersion)) throw new Error('authority-upgrade-plan-target-unsupported');
   const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
   return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,
     toSchemaVersion, sourceContentFingerprint, statements })).digest("hex");

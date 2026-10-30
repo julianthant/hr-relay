@@ -427,7 +427,9 @@ it('certifies the unchanged bound backup from a canonical seven-to-current pendi
   }
 });
 
-it('refuses retargeting a setup receipt to historical eight without the matching immutable plan', async () => {
+it.each([{ destination: 8, exact: false }, { destination: 8, exact: true }, { destination: 9, exact: false },
+  { destination: 9, exact: true }, { destination: 10, exact: false }, { destination: 10, exact: true }] as const)(
+  'checks the exact plan for a synthetic retained destination $destination with matching=$exact', async ({ destination, exact }) => {
   const f = await upgradedFixture(7);
   let bodyFailed = false;
   let cleanupFailure: { error: unknown } | undefined;
@@ -439,10 +441,13 @@ it('refuses retargeting a setup receipt to historical eight without the matching
     assert.ok(original && original.phase === "settled");
     assert.equal(original.fromSchemaVersion, 7);
     assert.equal(original.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    assert.notEqual(original.planDigest, deriveAuthorityUpgradePlanDigest(7, original.upgradeId, 8));
-    changeUpgradeProof(f, record => [AuthorityUpgradeRecordSchema.parse({ ...record, toSchemaVersion: 8 })]);
+    const historicalDigest = deriveAuthorityUpgradePlanDigest(7, original.upgradeId, destination);
+    assert.notEqual(original.planDigest, historicalDigest);
+    changeUpgradeProof(f, record => [AuthorityUpgradeRecordSchema.parse({ ...record, toSchemaVersion: destination,
+      ...(exact ? { planDigest: historicalDigest } : {}) })]);
     const generation = f.context.database.getMeta().authorityGeneration;
-    await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "profile-inventory-backup-upgrade-unproved");
+    if (exact) await f.inventory.prepare();
+    else await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "profile-inventory-backup-upgrade-unproved");
     assert.equal(f.context.database.getMeta().authorityGeneration, generation);
     assert.equal(readFileSync(backup.path).equals(bytes), true);
     changeUpgradeProof(f, () => [original]);

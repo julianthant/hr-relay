@@ -1,3 +1,4 @@
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { assertOfflineMaintenanceForProcessRoot, acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, prepareStoppedDeviceRecertification, type StoppedDeviceRecertification, type DeviceRecertificationAuthorization, assertStoppedMachineMaintenance, completeStoppedDuoPublicationRecovery as completeStoppedDuoRecoveryClaim, issueStoppedDuoPublicationRecovery as issueStoppedDuoRecoveryClaim, readIssuedDuoContinuity, requireStoppedControlProfileInventory, type DuoPublicationRecoveryClaim, type ExistingAuthorityEvidence, type InstallationLease, type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory, type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier, type RelocationVerifier, type RuntimeLocator, type RuntimePair, type ProfileRestoreContext, type ErasureRequestIdentity, type VerifiedSourceControlEntries, type AuthorityRestoreInput, type AuthorityRestoreVerifier, type CompletedRestoreCustody, type StoppedControlProfileInventory, type StoppedProfileControlUpgradeAdmission } from "./installation.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
@@ -129,7 +130,7 @@ type AdmissionScope = "flat-backup" | "profile-restore" | "installation" | "adop
   | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification"
   | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile-ready-upgrade" | "profile" | "profile-settlement" | "profile-repair-inventory" | "profile-pending-logout-inventory" | "stopped-control-inventory" | "stopped-incomplete-profile-inventory";
 
-type ReadyProfileUpgrade = Readonly<{ sourcePath: string; processLockRoot: string; sourceSchemaVersion: 6 | 8 | 9; copyPath?: string;
+type ReadyProfileUpgrade = Readonly<{ sourcePath: string; processLockRoot: string; sourceSchemaVersion: 6 | 8 | 9 | 10 | 11; copyPath?: string;
   qualification: { current: Readonly<{ kind: "inspection" }> | Readonly<{ kind: "qualified"; sourceFingerprint: string }> | Readonly<{ kind: "revoked" }> } }>;
 
 /** A lifetime-bound, path-specific authority to open this installation's physical storage. */
@@ -194,7 +195,7 @@ export class RuntimeAdmission {
     requireRegisteredProfileStorageClaim(claim, this, "issue");
     if (claim.phase !== "runtime") throw new Error("profile-upgrade-handoff-runtime-claim-required");
     const observed = readProfileDatabaseBinding(join(this.#stateRoot, "profiles", claim.profileId, "state.db"));
-    if (observed.state !== "bound" || observed.schemaVersion !== 8 || observed.binding.profileId !== claim.profileId
+    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10) || observed.binding.profileId !== claim.profileId
       || observed.binding.installationId !== this.locator.installationId) throw new Error("profile-upgrade-handoff-binding-refused");
     const lease = this.#authority as InstallationLease;
     assertInstallationLease(lease);
@@ -209,7 +210,7 @@ export class RuntimeAdmission {
     const ancestry = new Map<string, DirectoryIdentity>();
     noSymlinkAncestry(dirname(path), ancestry);
     const observed = readProfileDatabaseBinding(path);
-    if (observed.schemaVersion !== 8) return undefined;
+    if (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10) return undefined;
     if (this.#mode !== "shared") throw new Error("profile-upgrade-handoff-shared-required");
     if (claim.phase !== "runtime") throw new ProfileUpgradeSourceRefusalError();
     if (observed.state !== "bound" || observed.binding.installationId !== this.locator.installationId
@@ -279,7 +280,7 @@ export class RuntimeAdmission {
     const path = join(root, "state.db");
     const binding = { installationId: this.locator.installationId, profileId: claim.profileId };
     const observed = readProfileDatabaseBinding(path);
-    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9)) throw new Error("profile-stopped-upgrade-bound-required");
+    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION)) throw new Error("profile-stopped-upgrade-bound-required");
     assertCanonicalProfileBinding(path, binding);
     const ancestry = new Map<string, DirectoryIdentity>();
     noSymlinkAncestry(root, ancestry);
@@ -350,7 +351,7 @@ export class RuntimeAdmission {
   assertProfileMigration(path: string, sourceVersion: number, sourceFingerprint?: string): "ready" | "setup" {
     if (this.#readyUpgrade !== undefined) {
       this.assertStoppedProfileUpgrade(path, this.#readyUpgrade.processLockRoot);
-      if (this.#readyUpgrade.sourceSchemaVersion !== 8 || sourceVersion !== 8) throw new Error("profile-stopped-upgrade-version-refused");
+      if (![8, 9, 10].includes(this.#readyUpgrade.sourceSchemaVersion) || sourceVersion !== this.#readyUpgrade.sourceSchemaVersion) throw new Error("profile-stopped-upgrade-version-refused");
       const proof = this.#readyUpgrade.qualification.current;
       if (proof.kind !== "qualified" || sourceFingerprint !== undefined && sourceFingerprint !== proof.sourceFingerprint) {
         this.#readyUpgrade.qualification.current = { kind: "revoked" };
@@ -386,16 +387,16 @@ export class RuntimeAdmission {
       }
     }
   }
-  profileMaintenanceSchemaVersion(): 6 | 8 | 9 {
+  profileMaintenanceSchemaVersion(): 6 | 8 | 9 | 10 | 11 {
     const backup = this.#flatBackup ?? this.#readyUpgrade;
     this.assertLive();
-    if (backup === undefined) return 9;
+    if (backup === undefined) return CURRENT_AUTHORITY_SCHEMA_VERSION;
     const observed = readProfileDatabaseBinding(backup.copyPath ?? backup.sourcePath);
     if (backup.sourceSchemaVersion === 6) {
       if (observed.state !== "unbound" || observed.schemaVersion !== 6) throw new Error("existing-data-owner-source-changed");
       return 6;
     }
-    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9) || observed.binding.installationId !== this.profileBinding.installationId
+    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || observed.binding.installationId !== this.profileBinding.installationId
       || observed.binding.profileId !== this.profileBinding.profileId) throw new Error("profile-stopped-upgrade-binding-changed");
     return observed.schemaVersion;
   }
