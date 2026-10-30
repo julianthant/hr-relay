@@ -12,7 +12,7 @@ it("retains only admitted safe canonical values, rejecting freeform and permissi
   const ordinary = request({ "browser.headless": { set: false } });
   assert.equal(ordinary.type, "apply-settings"); if (ordinary.type !== "apply-settings") throw new Error("settings command required");
   const permission = { ...ordinary, payload: { patch: {}, patchFingerprint: deriveRawSettingsPatchFingerprint({}), settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-    assistantPermission: { expectedPolicyRevision: 0, mode: "without-asking" } } };
+    assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } };
   assert.equal(CommandRequestSchema.safeParse(permission).success, true);
   assert.equal(AssistantStoredCommandSchema.safeParse(permission).success, false);
   assert.equal(CommandRequestSchema.safeParse({ ...ordinary, payload: { ...ordinary.payload, assistantPermission: permission.payload.assistantPermission } }).success, false);

@@ -5,9 +5,9 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 9;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 11;
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
@@ -741,6 +741,14 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
       BEGIN SELECT RAISE(ABORT,'assistant-preference-revision-conflict'); END`,
     `CREATE TRIGGER assistant_model_preference_no_delete BEFORE DELETE ON assistant_model_preference
       BEGIN SELECT RAISE(ABORT,'assistant-preference-delete-refused'); END`,
+  ] },
+  { version: 11, statements: [
+    `UPDATE assistant_actions SET revision=revision+1,state='cancelled',
+      payload_json=json_set(payload_json,'$.revision',revision+1,'$.state','cancelled')
+      WHERE state IN ('prepared','approved')
+      AND json_extract(payload_json,'$.binding.mode') IN ('before-submits','without-asking')`,
+    `DELETE FROM assistant_grants
+      WHERE json_extract(payload_json,'$.policy.mode') IN ('before-submits','without-asking')`,
   ] },
 ]);
 

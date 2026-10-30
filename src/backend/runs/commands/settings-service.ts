@@ -27,6 +27,9 @@ function protectedInput(command: SettingsCommand) {
 }
 
 function ordinaryRequestRefusal(command: Extract<SettingsCommand, { type: "apply-settings" }>) {
+  if (command.payload.assistantPermission !== undefined && command.payload.assistantPermission.mode !== "every-action") {
+    return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "invalid-value", message: "assistant confirmation is required for every action" });
+  }
   if (containsRetiredTestRoutePatch(command.payload.patch)) {
     return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "not-editable", message: "retired test routes cannot be edited" });
   }

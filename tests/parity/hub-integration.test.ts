@@ -7,7 +7,7 @@ import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js'
 import { harness, disposeHttpRouteHarness } from '../support/helpers/backend/http-route-harness.js';
 
 const evidence = resolve('.work/HUB-WIRE-1-R2');
-const menuLabels = ['Add files', 'Ask only before submits', 'Model: GPT-6.1 Sol', 'Thinking effort: Medium', 'Voice input'];
+const menuLabels = ['Add files', 'Ask before every action', 'Model: GPT-6.1 Sol', 'Thinking effort: Medium', 'Voice input'];
 async function rectangles(page: Page) {
   return Promise.all(['.hub-composer', '#hub-panel-assistant textarea', '#hub-panel-assistant .hub-transcript'].map(selector => page.locator(selector).boundingBox()));
 }
