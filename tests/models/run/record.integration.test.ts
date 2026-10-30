@@ -1,5 +1,5 @@
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
-import { createRunClaimFixtures } from "../../support/helpers/backend/run-claim-fixtures.js";
+import { createRunClaimFixtures, heldClaim } from "../../support/helpers/backend/run-claim-fixtures.js";
 import { createRunIntegrationTestWorld } from "../../support/helpers/run-integration-world.js";
 import { default as assert } from "node:assert/strict";
 import { join } from "node:path";
@@ -358,7 +358,7 @@ afterEach(cleanupClaims);
       runId: RUN_ID,
       expectedVersion: claimed.version,
       claim: { workerId: WORKER_ID, claimGeneration: 1 },
-      lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW },
+      lifecycle: heldClaim(claimed, { state: "validating", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: NOW }),
       now: LATER,
     });
     if (validating.state !== "applied") throw new Error("validating transition should apply");
@@ -376,7 +376,7 @@ afterEach(cleanupClaims);
       runId: RUN_ID,
       expectedVersion: validating.run.version,
       claim: { workerId: WORKER_ID, claimGeneration: 1 },
-      lifecycle: { state: "running", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: LATER },
+      lifecycle: heldClaim(validating.run, { state: "running", workerId: WORKER_ID, claimedAt: NOW, heartbeatAt: LATER }),
       now: LATER,
     });
     if (running.state !== "applied") throw new Error("running transition should apply");
