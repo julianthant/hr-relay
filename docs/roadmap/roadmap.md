@@ -11,17 +11,16 @@ Statuses: `done`, `now`, `next`, `later`. One line per key implementation.
 - [done] Singleton app lock and held operations — one app owns the runtime and holds maintenance operations until they settle.
 - [done] Person Lookup and Separations rerun readiness — reruns use the current inputs and readiness checks.
 - [done] Settings Test OCR — the OCR test runs from Preflight.
-- [now] Automatic PR flow — publish history, run cloud CI on macOS and Windows, get Cursor Bugbot review and auto-merge into staging.
+- [now] Automatic PR flow — publish history, run cloud CI on macOS, get Cursor Bugbot review and auto-merge into staging.
 - [next] Functional spec — the charter owns product behaviour; reference docs own mechanisms.
 
 ## Dashboard ready
 
 Complete these in order.
 
-- [next] Portable storage core — one database and settings per person, simpler safety checks on Mac and Windows, backup and same-person restore, with no folder relocation.
+- [next] Portable storage core — one database and settings per person, simpler safety checks on Mac, backup and same-person restore, with no folder relocation.
 - [next] Sign-up and accounts — require Touch ID and a Duo security key, both added in Duo's device management at duo.ucpath.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Logout keeps credentials. Put Delete account in Settings > General. An empty machine says to sign up first. Back up the old store, then start clean.
 - [next] Workflow logins — use fast-duo for every workflow login and remove duo-autopilot before the dry runs.
-- [next] Windows test runner and portability — make Windows checks required.
 - [next] Runs — add Pause and Resume, "Pause all and quit" and reruns of failed items only. A crash parks items caught mid-submit as unknown.
 - [next] Write safety — take screenshots at every browser step and before and after submit. Dry runs fill the whole workflow with sample values where needed, without submitting. UCPath shows transaction-list findings for the operator to decide. Kuali keeps its reload check.
 - [next] OCR and Emergency Contact on the new core — review OCR, save corrections as revisions and feed approved snapshots into Emergency Contact.
@@ -32,6 +31,7 @@ Complete these in order.
 ## After the dashboard is ready
 
 - [later] Shared-laptop access — add a login screen and profile menu.
+- [later] Windows support — portable storage and required Windows checks.
 - [later] Desktop app — package for Mac and Windows with updates.
 - [later] Remaining workflows, one at a time — Oath Signature, Oath Upload, OnBase Emergency Contact, I-9 Check, I-9 Lookup, Onboarding, Work-Study, Kronos Pay Rule, CRM Document Download, SharePoint Download, Old Kronos Reports and Background Check.
 - [later] Parked work — re-judge schema baseline, one UI library and bundled backend against the new core.
