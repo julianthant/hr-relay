@@ -203,7 +203,10 @@ it("refuses diagnostic stage cleanup without an installation", () => {
 it("admits the maximum diagnostic attachment envelope", async () => {
   const f = await fixture();
   try {
+    if (existsSync(f.admission.artifactRoot) && readdirSync(f.admission.artifactRoot).length === 0) rmSync(f.admission.artifactRoot, { recursive: true });
     assert.equal(reclaimDiagnosticStages(f.admission, () => false), 0);
+    assert.equal(existsSync(f.admission.artifactRoot), false);
+    mkdirSync(f.admission.artifactRoot, { recursive: true, mode: 0o700 });
     const stage = await f.writer.stageDiagnostic(Buffer.alloc(10 * 1024 * 1024, 1), { mediaType: "image/png" }, "ordinary");
     assert.deepEqual(pendingDiagnosticArtifacts(f.admission), [stage.ref]);
     assert.equal(stage.publish().bytes, 10 * 1024 * 1024);
