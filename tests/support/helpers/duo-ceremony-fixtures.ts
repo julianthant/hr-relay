@@ -58,11 +58,11 @@ export function duoCeremonyGatesOver(
   database: AuthorityDatabase,
   clock: Clock,
   scheduler: MonotonicDeadlineScheduler = realScheduler,
-  options: Readonly<{ sessionAcquireMs?: number; graceMs?: number; pollIntervalMs?: number }> = {},
+  options: Readonly<{ sessionAcquireMs?: number; graceMs?: number; pollIntervalMs?: number; credentialKey?: string }> = {},
 ): DuoCeremonyGateFactory {
   return createDuoCeremonyGateFactory({
     leases: database.authority.duoCeremonyLeases,
-    credentialKey: FIXTURE_DUO_CREDENTIAL_KEY,
+    credentialKey: options.credentialKey === undefined ? FIXTURE_DUO_CREDENTIAL_KEY : FingerprintSchema.parse(options.credentialKey),
     clock,
     scheduler,
     sessionAcquireMs: options.sessionAcquireMs ?? FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,

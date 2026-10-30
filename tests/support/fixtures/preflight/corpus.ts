@@ -15,7 +15,7 @@ import { ScenarioManifestSchema } from "../../../../src/models/trust/scenario.js
 import { PREFLIGHT_SCENARIO_MANIFESTS, PreflightScenarioIdSchema } from "../../../../src/models/trust/preflight-scenarios.js";
 import { FEATURE_RUNTIME_SPECS, PROVIDER_ADAPTER_SPECS, RUNTIME_DEPENDENCIES, SYSTEM_RUNTIME_SPECS } from "../../../../src/models/runtime/runtime-dependencies.js";
 import { PreflightReportWireSchema } from "../../../../src/models/preflight/preflight-contract.js";
-import { runtimeFixture, populatedProtectedRecord } from "./runtime-fixture.js";
+import { runtimeFixturePool, populatedProtectedRecord } from "./runtime-fixture.js";
 
 const FixtureSchema = z.strictObject({ schemaVersion: z.literal(2), faults: z.array(z.strictObject({scenario:PreflightScenarioIdSchema, injection:z.string().min(1)})).length(PREFLIGHT_SCENARIO_MANIFESTS.length) });
 const ExecutionSchema = z.strictObject({ scenario:PreflightScenarioIdSchema, dependency:z.string().min(1), variant:z.string().min(1), check:z.string().min(1), report:PreflightReportWireSchema,
@@ -130,14 +130,17 @@ export async function executePreflightCorpus(transform?: (runners: readonly Pref
   const persistent = vi.spyOn(chromium,"launchPersistentContext").mockImplementation(()=>{actionCount++;throw new Error("Corpus attempted a persistent browser launch");});
   const spawn = vi.spyOn(childProcess,"spawn").mockImplementation(()=>{actionCount++;throw new Error("Corpus attempted a process launch");});
   const fetch = vi.spyOn(globalThis,"fetch").mockImplementation(()=>{externalCommitCount++;throw new Error("Corpus attempted an external request");});
+  let pool: Awaited<ReturnType<typeof runtimeFixturePool>> | undefined;
   try {
+  pool = await runtimeFixturePool();
   for(const entry of preflightFaultCases()) {
-    const f=await runtimeFixture(entry.dependency.capabilities);let undo:(()=>Promise<void>|void)|undefined;
+    const f=pool.fixture(entry.dependency.capabilities);let undo:(()=>Promise<void>|void)|undefined;
     try {
       const feature=FEATURE_RUNTIME_SPECS.find(candidate=>candidate.dependency===entry.dependency.id);
       if(feature!==undefined) for(const key of Object.keys(f.input.providerAvailability)) if(key.endsWith(`/${feature.providerCapability}`))Reflect.set(f.input.providerAvailability,key,key.startsWith(`${entry.variant}/`));
-      assert.equal((await f.report()).results.every(result=>result.status==="pass"||result.status==="warning"),true,"healthy control failed");
-      assert.equal((await f.report()).results.find(result=>result.check===entry.dependency.check)?.status,"pass");
+      const healthy=await f.report();
+      assert.equal(healthy.results.every(result=>result.status==="pass"||result.status==="warning"),true,"healthy control failed");
+      assert.equal(healthy.results.find(result=>result.check===entry.dependency.check)?.status,"pass");
       undo=await inject(f,entry);
       const databaseBefore=readFileSync(f.databasePath);
       const report=await f.report(transform);
@@ -146,8 +149,8 @@ export async function executePreflightCorpus(transform?: (runners: readonly Pref
       assert.equal((await f.report()).results.find(result=>result.check===entry.dependency.check)?.status,"pass","explicit restoration did not re-check healthy");
       executions.push(ExecutionSchema.parse({scenario:entry.dependency.scenario,dependency:entry.dependency.id,variant:entry.variant,check:entry.dependency.check,report,
         terminal:report.results.some(result=>result.status==="fail")?"failed":"partial",actionCount,externalCommitCount,evidence:[`preflight.${entry.dependency.scenario.slice("preflight/".length)}`],reportDigest:sha256Hex(canonicalJsonStringify(report)),restored:true}));
-    } finally {await undo?.();await f.close();}
+    } finally {await undo?.();}
   }
   auditPreflightExecutions(executions);return executions;
-  } finally {launch.mockRestore();persistent.mockRestore();spawn.mockRestore();fetch.mockRestore();}
+  } finally {await pool?.close();launch.mockRestore();persistent.mockRestore();spawn.mockRestore();fetch.mockRestore();}
 }

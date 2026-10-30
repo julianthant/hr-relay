@@ -1,7 +1,8 @@
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../helpers/admission-fixture.js";
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import nativeFs, { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { vi } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -24,8 +25,24 @@ export function populatedProtectedRecord(omitted?: string) {
   });
 }
 
-/** Fresh private inputs; the executable factory, strict authority and SQLite doctor are production code. */
-export async function runtimeFixture(capabilities: readonly RuntimeCapability[]) {
+function stateStamp(root: string): string {
+  if (!existsSync(root)) return "absent";
+  const lines: string[] = [];
+  const walk = (directory: string): void => {
+    for (const name of readdirSync(directory).sort()) {
+      const path = join(directory, name);
+      const stat = statSync(path);
+      if (stat.isDirectory()) walk(path);
+      else lines.push(`${path.slice(root.length)}:${String(stat.size)}:${String(stat.mtimeMs)}`);
+    }
+  };
+  walk(root);
+  return lines.join("|");
+}
+
+type RuntimeFixtureBase = Awaited<ReturnType<typeof createRuntimeFixtureBase>>;
+
+async function createRuntimeFixtureBase() {
   const profile = await createBoundProfileFixture();
   const root = profile.workspace, stateRoot = profile.stateRoot, artifactRoot = profile.admission.artifactRoot;
   const clock = manualClock(new Date("2026-09-19T12:00:00.000Z"));
@@ -49,14 +66,45 @@ export async function runtimeFixture(capabilities: readonly RuntimeCapability[])
   }
   let record = populatedProtectedRecord();
   const doctorOptions = { stateRootTrustAnchor: root, stateRoot, authorityPath: databasePath, backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 100 };
-  const input: RuntimePreflightRunnerInput = { config, providerAvailability, protectedSecrets: { read: () => record }, browserExecutablePath: () => executable,
+  const doctor = new AuthorityHealthPreflightRunner(profile.admission, doctorOptions, clock, boundProfileCredentials(profile.admission));
+  let doctorCache: { key: string; value: Awaited<ReturnType<PreflightRunner["run"]>> } | undefined;
+  const authorityHealth: PreflightRunner = {
+    check: doctor.check,
+    kind: doctor.kind,
+    run(context) {
+      const key = `${stateStamp(stateRoot)};${JSON.stringify(record)};${String(vi.isMockFunction(nativeFs.accessSync))}`;
+      if (doctorCache?.key === key) return Promise.resolve(doctorCache.value);
+      return Promise.resolve(doctor.run(context)).then((value) => {
+        doctorCache = { key, value };
+        return value;
+      });
+    },
+  };
+  return { profile, root, stateRoot, artifactRoot, clock, databasePath, executable, config, providerAvailability, doctorOptions, authorityHealth,
+    readRecord: () => record, setProtected(next: typeof record) { record = next; } };
+}
+
+function bindRuntimeFixture(base: RuntimeFixtureBase, capabilities: readonly RuntimeCapability[], close: () => Promise<void>) {
+  const input: RuntimePreflightRunnerInput = { config: base.config, providerAvailability: { ...base.providerAvailability }, protectedSecrets: { read: base.readRecord }, browserExecutablePath: () => base.executable,
     scope: PreflightAdmissionScopeSchema.parse({configSnapshotId:"11111111-1111-4111-8111-111111111111", configFingerprint:"a".repeat(64), descriptorFingerprint:"b".repeat(64), requestedCapabilities:capabilities}),
-    dashboard: {repoRoot:root, stateRoot, artifactRoot, backendPort:0, frontendPort:0, clock,
-      authorityHealth: new AuthorityHealthPreflightRunner(profile.admission, doctorOptions, clock, boundProfileCredentials(profile.admission)) },
+    dashboard: {repoRoot:base.root, stateRoot: base.stateRoot, artifactRoot: base.artifactRoot, backendPort:0, frontendPort:0, clock: base.clock,
+      authorityHealth: base.authorityHealth },
   };
   const report = (transform?: (runners: readonly PreflightRunner[]) => readonly PreflightRunner[]) => {
     const runners = createRuntimePreflightRunners(input);
-    return createPreflightAuthority({...input.scope, runners: transform === undefined ? runners : transform(runners), clock, scheduler:createTimeoutDeadlineScheduler(clock)}).refresh(new AbortController().signal);
+    return createPreflightAuthority({...input.scope, runners: transform === undefined ? runners : transform(runners), clock: base.clock, scheduler:createTimeoutDeadlineScheduler(base.clock)}).refresh(new AbortController().signal);
   };
-  return {root, credentials: boundProfileCredentials(profile.admission), admission: profile.admission, stateRoot, artifactRoot, databasePath, doctorOptions, clock, input, executable, report, setProtected(next: typeof record) {record=next;}, async close() {await profile.close();}};
+  return {root: base.root, credentials: boundProfileCredentials(base.profile.admission), admission: base.profile.admission, stateRoot: base.stateRoot, artifactRoot: base.artifactRoot, databasePath: base.databasePath, doctorOptions: base.doctorOptions, clock: base.clock, input, executable: base.executable, report, setProtected: base.setProtected, close};
+}
+
+/** Fresh private inputs; the executable factory, strict authority and SQLite doctor are production code. */
+export async function runtimeFixture(capabilities: readonly RuntimeCapability[]) {
+  const base = await createRuntimeFixtureBase();
+  return bindRuntimeFixture(base, capabilities, () => base.profile.close());
+}
+
+/** One profile and one authority-health cache for every capability scope in a corpus. */
+export async function runtimeFixturePool() {
+  const base = await createRuntimeFixtureBase();
+  return { fixture: (capabilities: readonly RuntimeCapability[]) => bindRuntimeFixture(base, capabilities, async () => {}), close: () => base.profile.close() };
 }
