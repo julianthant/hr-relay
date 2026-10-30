@@ -1,7 +1,8 @@
+import type { DryRunPreviewStage } from "./dry-run-preview-model.js";
 import { useMemo, useState } from "react";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import type { WorkflowSource } from "../../../app/workflow-sources.js";
-import { Badge, Banner, Button } from "../../../ds/ui.js";
+import { Badge, Banner, Button, Table, THead, TBody, TR, TH, TD } from "../../../ds/ui.js";
 import { StatusBadge } from "../../shared/status/status.js";
 import { dsStatusOf } from "../../shared/status/status-model.js";
 import { LogPanel } from "../log-panel.js";
@@ -71,4 +72,14 @@ function PreviewLogSample({ selection, nowIso }: { selection?: LogSelection; now
     });
   };
   return <LogPanel key={basis} context={selection && (scenarioId === 'preview' || scenarioId === 'selected') ? queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt) : undefined} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} status={selection && (scenarioId === "preview" || scenarioId === "selected") ? <StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" /> : <Badge tone="neutral">{scenario.status}</Badge>} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} />;
+}
+
+export function FullDryRunPreview({ stages }: { stages: readonly DryRunPreviewStage[] }) {
+  return <section aria-label="Full dry-run preview" className="log-decision">
+    <header className="log-decision-header"><h4>Dry run · Full preview</h4><Badge tone="neutral">No external writes</Badge></header>
+    <div className="log-decision-body"><p>Read, fill, verify, and capture every applicable stage without submit, save, or finalization.</p>
+      <Banner tone="info" title="Preview-only values">A dry-run sample is not a receipt, subject proof, or authority for a real run.</Banner>
+      <Table label="Dry-run stage accounting"><THead><TR><TH>Stage</TH><TH>Preview result</TH><TH>Details</TH></TR></THead><TBody>{stages.map(stage => <TR key={stage.id}><TH scope="row">{stage.label}</TH><TD>{stage.state === "exercised" ? "Exercised" : stage.state === "unavailable" ? "Unavailable" : "Skipped"}</TD><TD>{stage.detail}{stage.sample && <div><Badge tone="neutral">dry-run sample</Badge><p>{stage.sample.label}: {stage.sample.value}</p><p>Preview only · never reusable for a real submission.</p></div>}</TD></TR>)}</TBody></Table>
+    </div>
+  </section>;
 }

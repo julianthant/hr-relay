@@ -595,3 +595,10 @@ supply the existing model policy with synchronous currentness; without it the se
 transaction-free capability canary remain required before the assistant is usable. Subject actions,
 freeform or protected changes, unsupported owners and remaining served actions require their current
 operator interface until their canonical assistant binding is implemented.
+
+### Full dry-run preview presentation
+
+Full-preview stage accounting distinguishes Exercised, Unavailable, and Skipped. Dependent
+preview values display “dry-run sample” beside the value and warn that they are not receipts,
+subject proof, or real-run authority. The `dry-run-preview` parity fixture demonstrates complete
+and partial exercise without executing workflows. Executor and served projection wiring are separate.
