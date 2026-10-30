@@ -34,7 +34,7 @@ async function attach(page: Page, info: TestInfo, name: string) {
 }
 for (const entry of [
   { section: "general", path: "**/api/v1/settings/chatgpt-account", title: "ChatGPT account unavailable", group: "ChatGPT account" },
-  { section: "paths", path: "**/api/v1/settings/storage-relocation", title: "Runtime locations unavailable", group: "Runtime locations" },
+  { section: "paths", path: "**/api/v1/settings/storage-relocation", title: "App-data locations unavailable", group: "Runtime browser locations" },
   { section: "routes", path: "editable", title: "Onboarding roster URL unavailable", group: "SharePoint" },
 ]) test(`Settings warning slot and spacing for ${entry.section}`, { annotation: [{ type: "required-a11y-evidence", description: `settings-warning-${entry.section}.a11y.yml` }] }, async ({ page }, info) => {
   ensureParityBundle();
@@ -51,16 +51,18 @@ for (const entry of [
   } finally { await server.close(); }
 });
 
-test("Settings relocation uncertainty keeps its action in the spaced section slot", { annotation: [{ type: "required-a11y-evidence", description: "settings-warning-relocation-uncertain.a11y.yml" }] }, async ({ page }, info) => {
+test("Settings fixed app data never dispatches a relocation command", { annotation: [{ type: "required-a11y-evidence", description: "settings-warning-relocation-uncertain.a11y.yml" }] }, async ({ page }, info) => {
   ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   await page.setViewportSize({ width: 1280, height: 720 }); await installTheme(page, PARITY_THEMES[0]);
-  await page.route("**/api/v1/settings/path-picker", route => route.fulfill({ json: { state: "selected", field: "paths.stateRoot", path: "/tmp/set1-synthetic-state" } }));
-  await page.route("**/api/v1/commands", route => route.abort("failed"));
+  const writes: string[] = [];
+  page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
   try {
     await page.goto(`${server.baseUrl}/?settings=paths`);
-    await page.getByRole("button", { name: "Change Runtime state folder", exact: true }).click();
-    await sectionWarning(page, "Plan write unconfirmed", "Runtime locations");
-    await expect(page.getByRole("button", { name: "Retry exact attempt", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Runtime state folder", exact: true })).toHaveAttribute("readonly", "");
+    await expect(page.getByRole("button", { name: "Change Runtime state folder", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Copy relocation command", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Change Reports directory", exact: true })).toBeVisible();
+    expect(writes).toEqual([]);
     await attach(page, info, "settings-warning-relocation-uncertain.a11y.yml");
   } finally { await server.close(); }
 });

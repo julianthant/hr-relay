@@ -595,3 +595,12 @@ supply the existing model policy with synchronous currentness; without it the se
 transaction-free capability canary remain required before the assistant is usable. Subject actions,
 freeform or protected changes, unsupported owners and remaining served actions require their current
 operator interface until their canonical assistant binding is implemented.
+
+### Fixed app-data and maintenance presentation
+
+Paths shows runtime state and evidence roots read-only; there is no folder relocation picker,
+plan action, or shell-command copy control. Existing pending plans are explicitly unapplied.
+Document, download, and report pickers remain. Backup and Restore have unavailable, pending,
+verified-backup, blocked, and confirmation presentations. Restore never implies credentials roll
+back or unresolved writes disappear. The `fixed-backup` fixture has no file effects. Maintenance
+authority, stopped restore, and verified backup selection are wired separately.
