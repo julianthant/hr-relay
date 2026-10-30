@@ -4,24 +4,30 @@ The [root Git instructions](../AGENTS.md#git) own branch and release policy.
 
 ## Branch protection
 
-Protect `staging` and `main`: require pull requests, one independent approving review, dismissal of
-stale approvals, resolved conversations and passing required checks. Block force pushes and branch
-deletion. For both branches, enable "Require branches to be up to date before merging" so required
-checks validate the current target base. Enable merge commits; disable squash and rebase merging. Do not require linear history.
+Protect `staging` and `main`: require pull requests, resolved conversations and passing required
+checks. Do not require a human approving review. Block force pushes and branch deletion. For both
+branches, enable "Require branches to be up to date before merging" so required checks validate the
+current target base. Enable merge commits; disable squash and rebase merging. Do not require linear
+history. Enable repository auto-merge. A pull request into `staging` auto-merges with a merge commit
+when its required checks are green. The owner fixes a red check. `main` does not auto-merge: the
+operator merges the release pull request.
 
 | Branch | Required CI check names |
 | --- | --- |
-| `staging` | `static`, `unit`, `integration`, `architecture`, `parity`, `privacy` |
-| `main` | `static`, `unit`, `integration`, `architecture`, `parity`, `privacy`, `release` |
+| `staging` | `static`, `unit (macos-15)`, `unit (windows-latest)`, `integration (macos-15)`, `integration (windows-latest)`, `architecture (macos-15)`, `architecture (windows-latest)`, `parity`, `privacy`, and the Cursor Bugbot check once its name is known |
+| `main` | the `staging` checks, plus `release` |
 
 `release` runs only on PRs targeting `main`, after the other checks. Its isolated runner builds the
 web bundle, runs coverage alone, then performance. The operator authorizes release PRs from
 `staging` to `main`, and syncs `main` back into `staging` after merging. Branch protection is configured
-by the repository owner; the workflow does not enable it.
+by the repository owner; the workflow does not enable it. Confirm the check names on a pull request
+before locking them. Add the Cursor Bugbot check when its name is known; do not invent it.
 
-CI takes Node from `package.json` engines and caches npm. Test jobs use macOS because the test
-runner requires `/usr/bin/lockf`. Desktop parity uses headless Chromium and existing references;
-CI never updates references or uploads HR evidence.
+CI takes Node from `package.json` engines and caches npm. Unit, integration and architecture run on
+`macos-15` and `windows-latest` with fail-fast off. Static and privacy stay on Ubuntu. Parity stays
+on macOS. The batch runner requires `/usr/bin/lockf` and refuses Windows, so the Windows legs fail
+closed until that runner can host them. Desktop parity uses headless Chromium and existing
+references; CI never updates references or uploads HR evidence.
 
 ## Privacy check
 

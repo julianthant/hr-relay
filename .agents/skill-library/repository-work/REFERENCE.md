@@ -50,6 +50,7 @@ npm run test               # registered unit + integration + architecture projec
 npm run test:unit          # deterministic units only; positional file filters allowed
 npm run test:integration   # real-resource and composed workflow proofs; run deliberately
 npm run test:architecture  # the guard suite alone
+npm run test:local         # operator-machine tests only; passes when that project is empty
 npm run test:coverage      # 60/80 lines/statements/functions floors + the suite-size report
 npm run test:watch
 npm run test:reap          # reclaim only validated inactive owned test-run roots; retain live/unknown runs
