@@ -1,15 +1,19 @@
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
-import { copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { composeWorkerRuntime } from "../../../../src/backend/app/composition/worker-compose.js";
+import { RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { AuthorityBootStore } from "../../../../src/backend/storage/sqlite/authority-boot.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
 import { readAppSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { SettingsCurrentRecordSchema } from "../../../../src/models/config/settings-current.js";
@@ -27,30 +31,30 @@ vi.mock("../../../../src/backend/storage/configuration/credential-store.js",asyn
 
 {
 
-const roots:string[]=[];
-const _afterEachFixture0 = ()=>{vi.restoreAllMocks();for(const root of roots.splice(0))rmSync(root,{recursive:true,force:true});};
-function fixture() {
-  const root=mkdtempSync(join(tmpdir(),"relay-native-authority-"));roots.push(root);
-  const path=join(root,"authority.sqlite");
-  const admission=RuntimeAdmission.syntheticFixture(path);
+const cleanups:(()=>Promise<void>)[]=[];
+const _afterEachFixture0 = async()=>{vi.restoreAllMocks();for(const cleanup of cleanups.splice(0))await cleanup();};
+async function fixture() {
+  const profile=await createBoundProfileFixture();
+  cleanups.push(()=>profile.close());
+  const path=profile.path,admission=profile.admission;
   const open=()=>AuthorityDatabase.open(admission,{path,busyTimeoutMs:250,migrationOwner:"native-test"});
   return {path,open,admission};
 }
 describe("native authority admission",()=>{
 afterEach(_afterEachFixture0);
 
-  it("creates the current native schema and reopens with genuine baseline evidence",()=>{
-    const f=fixture();const authority=f.open();
-    expect(authority.getMeta()).toMatchObject({schemaVersion:6,authorityGeneration:0});
-    expect(authority.readUpgradePhases()).toMatchObject({state:"available",phases:[{phase:"baseline",fromSchemaVersion:0,toSchemaVersion:6}]});
+  it("creates the current native schema and reopens with genuine baseline evidence",async()=>{
+    const f=await fixture();const authority=f.open();
+    expect(authority.getMeta()).toMatchObject({schemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,authorityGeneration:0});
+    expect(authority.readUpgradePhases()).toMatchObject({state:"available",phases:[{phase:"baseline",fromSchemaVersion:0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION}]});
     authority.close();
-    const reopened=f.open();expect(reopened.getMeta().schemaVersion).toBe(6);reopened.close();
+    const reopened=f.open();expect(reopened.getMeta().schemaVersion).toBe(CURRENT_AUTHORITY_SCHEMA_VERSION);reopened.close();
     const db=new DatabaseSync(f.path,{readOnly:true});
-    try { expect(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()).toHaveLength(36); }
+    try { expect(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()).toHaveLength(AUTHORITY_TABLE_REGISTRY.length); }
     finally {db.close();}
   });
-  it("keeps initialization, nested rollback, publication generation and after-commit callbacks atomic",()=>{
-    const f=fixture();const authority=f.open();const callbacks:string[]=[];
+  it("keeps initialization, nested rollback, publication generation and after-commit callbacks atomic",async()=>{
+    const f=await fixture();const authority=f.open();const callbacks:string[]=[];
     authority.withAuthorityTransaction(repositories=>{
       expect(()=>authority.withAuthorityTransaction(nested=>{
         nested.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -76,9 +80,9 @@ afterEach(_afterEachFixture0);
         .toEqual({authority_generation:1,search_generation:1,search_state:"ready"});}
     finally {db.close();}
   });
-  it("refuses a current header whose index or immutable-evidence trigger is missing",()=>{
+  it("refuses a current header whose index or immutable-evidence trigger is missing",async()=>{
     for(const object of ["DROP INDEX run_search_workflow_idx","DROP TRIGGER write_attempts_immutable"]) {
-      const f=fixture();f.open().close();const db=new DatabaseSync(f.path);db.exec(object);db.close();
+      const f=await fixture();f.open().close();const db=new DatabaseSync(f.path);db.exec(object);db.close();
       expect(f.open).toThrow(/authority-native-schema-shape-mismatch/u);
     }
   });
@@ -87,24 +91,24 @@ afterEach(_afterEachFixture0);
 describe("real native authority boot", () => {
 afterEach(_afterEachFixture0);
 
-  it("boots an absent native path and reopens the exact initialized owner without mocks", () => {
-    const f = fixture();
+  it("reopens the bound profile database and the exact initialized owner without mocks", async () => {
+    const f = await fixture();
     const options = { path: f.path, busyTimeoutMs: 250, migrationOwner: "native-boot-positive" };
-    expect(existsSync(f.path)).toBe(false);
+    expect(fs.existsSync(f.path)).toBe(true);
     const fresh = AuthorityBootStore.open(f.admission, options);
     try {
       expect(fresh.report()).toMatchObject({ state: "healthy", mutationAvailability: "available" });
       const authority = fresh.requireWritable("enqueue");
-      expect(authority.getMeta()).toMatchObject({ schemaVersion: 6, authorityGeneration: 0 });
+      expect(authority.getMeta()).toMatchObject({ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, authorityGeneration: 0 });
       authority.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
       expect(authority.getMeta().authorityGeneration).toBe(1);
     } finally { fresh.close(); }
-    expect(existsSync(f.path)).toBe(true);
+    expect(fs.existsSync(f.path)).toBe(true);
     const existing = AuthorityBootStore.open(f.admission, options);
     try {
       expect(existing.report()).toMatchObject({ state: "healthy", mutationAvailability: "available" });
       const authority = existing.requireWritable("claim");
-      expect(authority.getMeta()).toMatchObject({ schemaVersion: 6, authorityGeneration: 1 });
+      expect(authority.getMeta()).toMatchObject({ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, authorityGeneration: 1 });
       expect(authority.authority.configSnapshots.get(CONFIG_SNAPSHOT.configSnapshotId)).toEqual(CONFIG_SNAPSHOT);
       expect(authority.authority.runtimeConfig.get()?.configFingerprint).toBe(CONFIG_SNAPSHOT.fingerprint);
     } finally { existing.close(); }
@@ -114,8 +118,9 @@ afterEach(_afterEachFixture0);
 describe("authority boot handle ownership after second inspection",()=>{
 afterEach(_afterEachFixture0);
 
-  it.each([false,true])("closes the opened handle and retains a failed-close handle for explicit retry: %s",closeFault=>{
-    const f=fixture();const originalOpen=AuthorityDatabase.open.bind(AuthorityDatabase);
+  it.each([false,true])("closes the opened handle and retains a failed-close handle for explicit retry: %s",async closeFault=>{
+    const f=await fixture();const originalOpen=AuthorityDatabase.open.bind(AuthorityDatabase);
+    const originalInspect=AuthorityDatabase.inspectExistingReadOnly.bind(AuthorityDatabase);
     let opened:AuthorityDatabase|undefined;let closes=0;let failClose=closeFault;
     vi.spyOn(AuthorityDatabase,"open").mockImplementation((...args)=>{
       const database=originalOpen(...args);opened=database;
@@ -123,7 +128,10 @@ afterEach(_afterEachFixture0);
       vi.spyOn(database,"close").mockImplementation(()=>{closes+=1;if(failClose)throw new Error("injected-close-fault");originalClose();});
       return database;
     });
-    vi.spyOn(AuthorityDatabase,"inspectExistingReadOnly").mockImplementation(()=>{throw new Error("injected-second-inspection-fault");});
+    vi.spyOn(AuthorityDatabase,"inspectExistingReadOnly").mockImplementation((...args)=>{
+      if(opened!==undefined)throw new Error("injected-second-inspection-fault");
+      return originalInspect(...args);
+    });
     const boot=AuthorityBootStore.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"boot-handle-proof"});
     try{
       expect(opened).toBeDefined();expect(closes).toBe(1);
@@ -146,20 +154,20 @@ const _afterEachFixture0 = async()=>{effects.credentials=0;effects.browsers=0;fo
 async function fixture() {
   const profile=await createBoundProfileFixture(),root=profile.workspace,stateRoot=profile.stateRoot;
   cleanups.push(()=>profile.close());
-  copyFileSync("package.json",join(root,"package.json"));
+  fs.copyFileSync("package.json",join(root,"package.json"));
   const path=profile.path;
-  const admission=profile.admission,clock=capturedInstantClock(NOW);
+  const admission=profile.admission,credentials=boundProfileCredentials(admission),clock=capturedInstantClock(NOW);
   const resolved=resolveConfigWithProvenance(initialSettingsFileRecord().settings,hostConfigFacts({}),clock,
     {stateRoot,artifactRoot:profile.admission.artifactRoot});
   const snapshot={configSnapshotId:UUID_1,revision:1,fingerprint:resolved.fingerprint,capturedAt:NOW,capturedBy:"local-operator",config:resolved.config,provenance:resolved.provenance};
   const options={path,busyTimeoutMs:5000,migrationOwner:"native-snapshot-proof"};
-  const database=AuthorityDatabase.open(admission,options,clock);
+  const database=AuthorityDatabase.open(admission,options,clock,undefined,undefined,undefined,credentials);
   try{database.authority.runtimeConfig.initialize(snapshot);}finally{database.close();}
   effects.credentials=0;
-  return {root,admission,machine:profile.machine,lifetime:profile.lifetime,clock,snapshot,options,path};
+  return {root,admission,credentials,machine:profile.machine,lifetime:profile.lifetime,clock,snapshot,options,path};
 }
 function applySettings(f:Awaited<ReturnType<typeof fixture>>){
-  const database=AuthorityDatabase.open(f.admission,f.options,f.clock);
+  const database=AuthorityDatabase.open(f.admission,f.options,f.clock,undefined,undefined,undefined,f.credentials);
   try{return database.withAuthorityTransaction(repositories=>{
     const patch={"browser.headless":{set:false}};
     const command=CommandRequestSchema.parse({commandId:UUID_2,requestedAt:NOW,requestedBy:"local-operator",source:"dashboard",family:"settings",type:"apply-settings",
@@ -176,7 +184,7 @@ describe("native selected configuration proof",()=>{
 afterEach(_afterEachFixture0);
 
   it("reads and reopens exact unchanged config bytes through genuine initialized command/audit/snapshot links",async()=>{
-    const f=await fixture();const database=AuthorityDatabase.open(f.admission,f.options,f.clock);
+    const f=await fixture();const database=AuthorityDatabase.open(f.admission,f.options,f.clock,undefined,undefined,undefined,f.credentials);
     try {
       expect(database.authority.configSnapshots.get(UUID_1)).toEqual(f.snapshot);
       expect(database.authority.runtimeConfig.get()?.configFingerprint).toBe(sha256Hex(canonicalJsonStringify(f.snapshot.config)));
@@ -206,9 +214,44 @@ afterEach(_afterEachFixture0);
       expect(read.prepare("SELECT * FROM worker_slots").all()).toEqual([]);expect(read.prepare("SELECT * FROM worker_leases").all()).toEqual([]);
     }finally{read.close();}
   });
+  it("retains the issued admission when inspection close is unproved before credentials or a browser",async()=>{
+    const f=await fixture();effects.credentials=0;
+    let issued:RuntimeAdmission|undefined;
+    const readOnly=AuthorityDatabase.inspectExistingReadOnly.bind(AuthorityDatabase);
+    vi.spyOn(AuthorityDatabase,"inspectExistingReadOnly").mockImplementation((admission,path,busyTimeoutMs)=>{
+      issued=admission;return readOnly(admission,path,busyTimeoutMs);
+    });
+    const injected=new Error("injected-inspection-close-refusal");
+    const actualRemove=fs.rmSync;
+    const remove=vi.spyOn(fs,"rmSync").mockImplementation((...args)=>{
+      if(String(args[0]).includes("relay-readonly-authority-"))throw injected;
+      actualRemove(...args);
+    });
+    syncBuiltinESMExports();
+    try{
+      let failure:unknown;
+      try{await composeWorkerRuntime({lifetimeLock:f.lifetime,admission:f.machine,isolation:rebuildRuntimeIsolation,args:["person-lookup","--pool-index","1","--drain"],
+        repoRoot:f.root,clock:f.clock,env:{},sessionFactory:{probeProfile:async()=>undefined,open:async()=>{effects.browsers+=1;throw new Error("unrequested browser effect");}}});
+      }catch(error){failure=error;}
+      expect(failure).toBeInstanceOf(RuntimeCustodyUncertainError);
+      if(!(failure instanceof RuntimeCustodyUncertainError))throw new Error("inspection custody missing");
+      expect(failure.errors).toHaveLength(1);
+      const closure: unknown = failure.errors[0];
+      expect(closure).toBe(failure.cause);
+      expect(closure).toBeInstanceOf(AuthoritySourceClosureUnprovedError);
+      if(!(closure instanceof AuthoritySourceClosureUnprovedError))throw new Error("inspection closure missing");
+      expect(closure.cause).toBe(injected);expect(closure.errors).toEqual([injected]);
+      expect(effects).toEqual({credentials:0,browsers:0});
+      if(issued===undefined)throw new Error("issued admission missing");
+      issued.assertLive();f.machine.assertLive();
+    }finally{remove.mockRestore();syncBuiltinESMExports();}
+    const read=new DatabaseSync(f.path,{readOnly:true});try {
+      expect(read.prepare("SELECT * FROM worker_slots").all()).toEqual([]);expect(read.prepare("SELECT * FROM worker_leases").all()).toEqual([]);
+    }finally{read.close();}
+  });
   it("admits an unchanged genuine saved revision with its exact ordinary command and audit",async()=>{
     const f=await fixture(),saved=applySettings(f);
-    const database=AuthorityDatabase.open(f.admission,f.options,f.clock);
+    const database=AuthorityDatabase.open(f.admission,f.options,f.clock,undefined,undefined,undefined,f.credentials);
     try{expect(database.authority.settingsCurrent.get()).toEqual(saved);}finally{database.close();}
     const boot=AuthorityBootStore.open(f.admission,f.options,f.clock);try{expect(boot.report().state).toBe("healthy");}finally{boot.close();}
   });
@@ -222,7 +265,7 @@ afterEach(_afterEachFixture0);
     }finally{raw.close();}
     effects.credentials=0;
     expect(()=>AuthorityDatabase.inspectExistingReadOnly(f.admission,f.path,250)).toThrow(/settings.*failed native record validation/u);
-    expect(()=>AuthorityDatabase.open(f.admission,f.options,f.clock)).toThrow(/settings.*failed native record validation/u);
+    expect(()=>AuthorityDatabase.open(f.admission,f.options,f.clock,undefined,undefined,undefined,f.credentials)).toThrow(/settings.*failed native record validation/u);
     const boot=AuthorityBootStore.open(f.admission,f.options,f.clock);
     try{expect(boot.report()).toMatchObject({state:"degraded-read-only",mutationAvailability:"blocked"});expect(()=>boot.requireWritable("claim")).toThrow(/unavailable/u);}finally{boot.close();}
     expect(effects.credentials).toBe(0);

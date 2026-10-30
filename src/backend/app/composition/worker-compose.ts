@@ -1,6 +1,6 @@
 import { createNominatimGeocodeAdapter } from "../../processing/providers/geocode-adapters.js";
 import { RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
-import { AuthoritySourceClosureUnprovedError } from "../../storage/source-closure.js";
+import { AuthoritySourceClosureUnprovedError, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
 import { createChatGptOcrAdapter, CHATGPT_OCR_MODEL } from "../../processing/providers/chatgpt-ocr-adapter.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
@@ -441,9 +441,15 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   try {
     selected.assertCurrent();
     issued = machine.admitProfile(machine.issueRegisteredProfileClaim(selected.profileId));
+    // shortcut: full inspect before the credential store duplicates open validation, replace when worker start has a credential-free snapshot check
+    AuthorityDatabase.inspectExistingReadOnly(issued, authorityPath, 5000);
     protectedAuthority = createCredentialStore({ admission: issued, stateRoot, erasureJournalAdmission: machine,
       erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
   } catch (error) {
+    if (error instanceof AuthoritySourceClosureUnprovedError) {
+      if (issued !== undefined) retainUnprovedSourceOwners(error, { admission: issued });
+      throw new RuntimeCustodyUncertainError([error]);
+    }
     try { issued?.release(); }
     catch (closeError) { throw new RuntimeCustodyUncertainError([error, closeError]); }
     throw error;
