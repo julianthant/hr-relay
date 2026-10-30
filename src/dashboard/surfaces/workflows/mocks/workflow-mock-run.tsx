@@ -1,3 +1,4 @@
+import { RequiredCaptureStatus } from "../../run-detail/logs/log-screenshots.js";
 import { useViewState } from "../../../app/navigation/view-route-model.js";
 import { useState } from "react";
 import { Check, ArrowLeft, ArrowRight, Play } from "lucide-react";
@@ -18,7 +19,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   onSubmit: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
 }) {
   const flow = mockWorkflow(workflowId);
-  const [draft, setDraft] = useState<MockDraft>(() => editableMockDraft(workflowId, initialDraft ?? source?.draft ?? initialMockDraft(workflowId)));
+  const [draft, setDraft] = useState<MockDraft>(() => ({ ...editableMockDraft(workflowId, initialDraft ?? source?.draft ?? initialMockDraft(workflowId)), captures: true }));
   const [stage, setStage] = useViewState("launchStage", source ? "Steps" : "Input");
   const [fileError, setFileError] = useState<string>();
   const [reading, setReading] = useState(false);
@@ -92,7 +93,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
             {!source && planSteps.length > 0 && <Checkbox label="Customize steps" description="Choose optional steps." checked={optionalSteps} onCheckedChange={value => { setOptionalSteps(value === true); if (value !== true) patch({ selectedSteps: flow.steps.map(step => step.key), manualSteps: [] }); }} />}
             {pdf && !uploadOnly && <Checkbox label="Extract with OCR" description="Turn off to enter records manually in OCR review." checked={draft.ocrMode !== "manual"} onCheckedChange={value => patch({ ocrMode: value === true ? "extract" : "manual" })} />}
             {flow.dryRun && <Checkbox label="Dry run" description="Stop before submission." checked={draft.dryRun} onCheckedChange={value => patch({ dryRun: value === true })} />}
-            <Checkbox label="Capture screenshots" description="Keep browser captures." checked={draft.captures} onCheckedChange={value => patch({ captures: value === true })} />
+            <RequiredCaptureStatus state="required" />
           </>}>
           {workflowId === "onboarding" && <div className="grid grid-cols-2 gap-4">
             <SegmentedChoice label="Hire type" value={draft.hireType} options={[{ value: "new-hire", label: "New hire" }, { value: "rehire", label: "Rehire" }]} onChange={hireType => patch({ hireType })} />

@@ -622,3 +622,11 @@ Full-preview stage accounting distinguishes Exercised, Unavailable, and Skipped.
 preview values display “dry-run sample” beside the value and warn that they are not receipts,
 subject proof, or real-run authority. The `dry-run-preview` parity fixture demonstrates complete
 and partial exercise without executing workflows. Executor and served projection wiring are separate.
+
+### Required capture presentation
+
+Run and Rerun have no capture-off choice. Options label workflow screenshots required; browser
+summary facts say “screenshots required.” The shared capture notice distinguishes a pre-submit
+capture failure (no click) from post-submit missing evidence with either independently proved or
+unknown write outcome. The `required-captures` fixture is presentation-only. Execution enforcement
+and served per-step capture projection remain owned by the workflow capture implementation.

@@ -354,7 +354,7 @@ export function mockConfirmationFacts(id: MockWorkflowId, draft: MockDraft): rea
     ...(draft.manualSteps?.length ? [{ key: "Manual reading", value: steps.filter(step => usesManualRead(draft, step.key)).map(step => step.label).join(", ") }] : []),
     ...(pdf && !uploadOnly ? [{ key: "OCR extraction", value: draft.ocrMode === "manual" ? "Off · enter records in review" : "On" }] : []),
     { key: "Queue", value: draft.priority === "interactive" ? "Interactive" : "Bulk" },
-    { key: "Browser", value: `${draft.browser === "headed" ? "Headed" : "Headless"} · screenshots ${draft.captures ? "on" : "off"}` },
+    { key: "Browser", value: `${draft.browser === "headed" ? "Headed" : "Headless"} · screenshots required` },
     ...(flow.dryRun ? [{ key: "Dry run", value: draft.dryRun ? "On" : "Off" }] : []),
     ...(id === "onboarding" ? [{ key: "Hire type", value: draft.hireType === "rehire" ? "Rehire · UC_CONC_HIRE" : "New hire · UC_FULL_HIRE" }] : []),
     ...(id === "person-lookup" ? [{ key: "Lookup mode", value: draft.lookupMode }, { key: "CRM check", value: draft.crmCheck ? "On" : "Off" }] : []),
