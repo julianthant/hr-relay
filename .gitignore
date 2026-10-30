@@ -16,7 +16,7 @@ node_modules/
 .idea/
 
 # Claude Code
-.claude/settings.local.json
+.claude/
 .design/
 
 # Playwright CLI
