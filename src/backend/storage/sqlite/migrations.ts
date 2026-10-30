@@ -745,7 +745,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   { version: 10, statements: [
     "DROP TABLE explorer_overrides",
     "DROP TRIGGER command_audits_retained",
-    "DELETE FROM command_audits WHERE command_id IN (SELECT id FROM commands WHERE family='explorer' AND json_extract(request_json,'$.type')='apply-explorer-edit')",
+    "DELETE FROM command_audits WHERE json_extract(payload_json,'$.request.family')='explorer' AND json_extract(payload_json,'$.request.type')='apply-explorer-edit' AND command_id IN (SELECT id FROM commands WHERE family='explorer' AND json_extract(request_json,'$.type')='apply-explorer-edit')",
     "DELETE FROM commands WHERE family='explorer' AND json_extract(request_json,'$.type')='apply-explorer-edit'",
     `CREATE TRIGGER command_audits_retained BEFORE DELETE ON command_audits
       BEGIN SELECT RAISE(ABORT,'retained-evidence-required'); END`,
@@ -777,11 +777,15 @@ export function migrationTableNames(version: number): readonly (AuthorityTableNa
 
 export function auditMigrationTableCoverage(): readonly string[] {
   const statements = [...SQLITE_MIGRATIONS[0].statements, ...WORKBOOK_LIBRARY_MIGRATION.statements, ...SQLITE_MIGRATIONS.filter(migration => migration.version >= 8).flatMap(migration => migration.statements)];
-  const names = statements.flatMap(statement => [...statement.matchAll(/CREATE TABLE ([a-z_]+)/gu)].map(match => match[1]));
+  const names = new Set<string>();
+  for (const statement of statements) for (const match of statement.matchAll(/(CREATE|DROP) TABLE ([a-z_]+)/gu)) {
+    if (match[1] === "CREATE") names.add(match[2]);
+    else names.delete(match[2]);
+  }
   const registered = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
   return [
-    ...registered.filter(name => !names.includes(name)).map(name => `registered table ${name} has no DDL`),
-    ...names.filter(name => name !== "explorer_overrides" && !registered.some(registeredName => registeredName === name)).map(name => `DDL table ${name} is not registered`),
+    ...registered.filter(name => !names.has(name)).map(name => `registered table ${name} has no DDL`),
+    ...[...names].filter(name => !registered.some(registeredName => registeredName === name)).map(name => `DDL table ${name} is not registered`),
   ];
 }
 

@@ -101,6 +101,18 @@ it("does not turn the displayed default into a grant, and requires genuine token
   assert.equal(f.database.getMeta().authorityGeneration, before);
 });
 
+it.each(["before-submits", "without-asking"])("refuses an operator attempt to recreate retired %s authority", async mode => {
+  const f = await fixture();
+  const request = f.permissionCommand("every-action");
+  assert.equal(request.type, "apply-settings");
+  if (request.type !== "apply-settings") throw new Error("settings required");
+  const before = f.database.getMeta().authorityGeneration;
+  const result = f.execute({ ...request, payload: { ...request.payload, assistantPermission: { expectedPolicyRevision: 0, mode } } });
+  assert.equal(result.state, "rejected");
+  assert.equal(f.database.getMeta().authorityGeneration, before);
+  assert.equal(f.database.authority.assistantAuthorization.grant(), undefined);
+});
+
 it("claims once and commits the real canonical Settings result in one authority generation", async () => {
   const f = await fixture(); assert.equal(f.grant("every-action").state, "applied");
   const chat = f.authorization.createChat(), command = f.command(), proposal = f.authorization.prepare(chat, command);

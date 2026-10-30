@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react';
-import { ArrowUp, ChevronDown, Folder, Hand, Mic, Plus, Send, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, Folder, Hand, Mic, Plus, X } from 'lucide-react';
 import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, DropdownMenu, DropdownMenuTrigger,
   DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuItem, DropdownMenuRadioGroup,
   DropdownMenuRadioItem, DropdownMenuSeparator } from '../../ds/ui.js';

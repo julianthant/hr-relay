@@ -11,7 +11,7 @@ function editorDatabase() {
   }
   for (const [id, family, type] of [["editor-command", "explorer", "apply-explorer-edit"], ["keep-command", "notification", "notification-read"]]) {
     database.prepare("INSERT INTO commands VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(id, family, "operator", null, null, "digest", JSON.stringify({ family, type }), "succeeded", "{}", "created", "created");
-    database.prepare("INSERT INTO command_audits VALUES (?,?,?,?,?)").run(`${id}-audit`, id, null, "{}", "created");
+    database.prepare("INSERT INTO command_audits VALUES (?,?,?,?,?)").run(`${id}-audit`, id, null, JSON.stringify({ request: { family, type } }), "created");
   }
   database.prepare("INSERT INTO explorer_overrides VALUES (?,?,?,?)").run("person-lookup", 1, "editor-command", "{}");
   return database;
@@ -53,5 +53,17 @@ it("rolls back all editor deletion when an unexpected retained row references it
     assert.throws(() => retire(database), /FOREIGN KEY constraint failed/u);
     assert.deepEqual(migrationTableNames(9).map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), before);
     assert.throws(() => database.exec("DELETE FROM command_audits WHERE command_id='keep-command'"), /retained-evidence-required/u);
+  } finally { database.close(); }
+});
+
+it("refuses an unrelated audit linked to an editor command instead of deleting it", () => {
+  const database = editorDatabase();
+  try {
+    database.prepare("INSERT INTO command_audits VALUES (?,?,?,?,?)").run("unexpected-audit", "editor-command", null,
+      JSON.stringify({ request: { family: "run", type: "retry" } }), "created");
+    const before = database.prepare("SELECT * FROM command_audits").all();
+    assert.throws(() => retire(database), /FOREIGN KEY constraint failed/u);
+    assert.deepEqual(database.prepare("SELECT * FROM command_audits").all(), before);
+    assert.ok(database.prepare("SELECT * FROM explorer_overrides").get());
   } finally { database.close(); }
 });

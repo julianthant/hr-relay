@@ -1,6 +1,23 @@
 import { z } from "zod";
-import { AssistantApprovalBindingSchema, AssistantConfigDescriptorSchema, AssistantDecisionSchema, AssistantModelProposalSchema, AssistantResolvedActionSchema, readAssistantAuthority, type AssistantApprovalBinding, type AssistantDecision, type AssistantRefusalCode, type AssistantStaleField } from "../../models/profiles/assistant-permissions.js";
-import { commandEffectClass, commandEffectIsWeaker, deriveSettingsCommandFingerprint, storageRelocationRequestFingerprint, type CommandRequest } from "../../rules/commands/commands.js";
+import {
+  AssistantApprovalBindingSchema,
+  AssistantConfigDescriptorSchema,
+  AssistantDecisionSchema,
+  AssistantModelProposalSchema,
+  AssistantResolvedActionSchema,
+  readAssistantAuthority,
+  type AssistantApprovalBinding,
+  type AssistantDecision,
+  type AssistantRefusalCode,
+  type AssistantStaleField,
+} from "../../models/profiles/assistant-permissions.js";
+import {
+  commandEffectClass,
+  commandEffectIsWeaker,
+  deriveSettingsCommandFingerprint,
+  storageRelocationRequestFingerprint,
+  type CommandRequest,
+} from "../../rules/commands/commands.js";
 import { FingerprintSchema, PositiveIntSchema, WorkerIdSchema } from "../../rules/identity/ids.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";

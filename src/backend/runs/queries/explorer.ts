@@ -1,7 +1,11 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { workflowDryRunSupport, workflowProjections, workflowTerminalResultExecution } from "../../../workflow-kit/workflow.js";
+import {
+  workflowDryRunSupport,
+  workflowProjections,
+  workflowTerminalResultExecution,
+} from "../../../workflow-kit/workflow.js";
 import { descriptorRuntimeNodes, runtimeNodeLabel } from "../../../workflow-kit/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { workflowDefinitionOf, workflowExplorerDeclaration, type AnyWorkflowDefinition } from "../../../workflow-kit/workflow-definition.js";
@@ -11,7 +15,28 @@ import { contractSchemaLeaves } from "../../../models/validation/contract-bounda
 import type { AnyTaskContract } from "../../../models/task/task-contract.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { z } from "zod";
-import { ExplorerFreshnessWireSchema, ExplorerProvenanceWireSchema, SourcePathSchema, WorkflowExplorerWireSchema, type ExplorerContractFieldWire, type ExplorerEdgeWire, type ExplorerFieldRecordedWire, type ExplorerFreshnessWire, type ExplorerNodeShapeWire, type ExplorerNodeWire, type ExplorerProseWire, type ExplorerProvenanceWire, type ExplorerScenarioWire, type ExplorerSubjectWire, type ExplorerTaskBindingWire, type ExplorerTaskWire, type ExplorerUiLinkWire, type ExplorerWriteSafetyWire, type SourceLinkWire, type WorkflowExplorerWire } from "../../../models/dashboard/explorer.js";
+import {
+  ExplorerFreshnessWireSchema,
+  ExplorerProvenanceWireSchema,
+  SourcePathSchema,
+  WorkflowExplorerWireSchema,
+  type ExplorerContractFieldWire,
+  type ExplorerEdgeWire,
+  type ExplorerFieldRecordedWire,
+  type ExplorerFreshnessWire,
+  type ExplorerNodeShapeWire,
+  type ExplorerNodeWire,
+  type ExplorerProseWire,
+  type ExplorerProvenanceWire,
+  type ExplorerScenarioWire,
+  type ExplorerSubjectWire,
+  type ExplorerTaskBindingWire,
+  type ExplorerTaskWire,
+  type ExplorerUiLinkWire,
+  type ExplorerWriteSafetyWire,
+  type SourceLinkWire,
+  type WorkflowExplorerWire,
+} from "../../../models/dashboard/explorer.js";
 import type { ExplorerOperationStructureWire } from "../../../models/dashboard/operation-structure.js";
 import type { Fingerprint } from "../../../rules/identity/ids.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -20,7 +45,9 @@ import { GENERATED_BUILD_MANIFEST } from "../../../workflow-kit/validation/gener
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
-import { workflowSourcePath } from "../../../workflow-kit/validation/source-layout.js";
+import {
+  workflowSourcePath,
+} from "../../../workflow-kit/validation/source-layout.js";
 import type { IntakeProjection } from "../../../models/intake/projection.js";
 import type { PendingImplBindings } from "../../../workflow-kit/validation/impl-bindings.js";
 

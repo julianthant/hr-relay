@@ -3,12 +3,26 @@ import { z } from "zod";
 import { ContractSchemaLeafKindSchema } from "../validation/contract-boundary.js";
 
 import { ContractFieldPathSchema, TaskErrorCodeSchema } from "../task/task-contract.js";
-import { BrowserSystemIdSchema, FingerprintSchema, IsoInstantSchema, NodeIdSchema, ObservationIdSchema, ProviderCapabilityIdSchema, ScenarioIdSchema, TaskIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
+import {
+  BrowserSystemIdSchema,
+  FingerprintSchema,
+  IsoInstantSchema,
+  NodeIdSchema,
+  ObservationIdSchema,
+  ProviderCapabilityIdSchema,
+  ScenarioIdSchema,
+  TaskIdSchema,
+  WorkflowIdSchema,
+} from "../../rules/identity/ids.js";
 import { SecretNameSchema } from "../config/secret-names.js";
 import { SessionNeedSchema } from "../sessions/session.js";
 import { NodeConditionSchema } from "../workflow/node-condition.js";
 import { WorkflowModuleRoleSchema } from "../../workflow-kit/validation/module-role.js";
-import { WorkflowOperatorFieldSchema, TimelineCategoryKeySchema, WorkflowCodeSchema } from "../workflow/presentation.js";
+import {
+  WorkflowOperatorFieldSchema,
+  TimelineCategoryKeySchema,
+  WorkflowCodeSchema,
+} from "../workflow/presentation.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 import { ExplorerOperationStructureWireSchema } from "./operation-structure.js";
 

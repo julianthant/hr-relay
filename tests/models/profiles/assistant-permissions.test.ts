@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
-import { ASSISTANT_COMMAND_INVENTORY, ASSISTANT_PERMISSION_INITIAL_MODE, AssistantActionManifestSchema, AssistantModelProposalSchema, readAssistantAuthority } from "../../../src/models/profiles/assistant-permissions.js";
+import {
+  ASSISTANT_COMMAND_INVENTORY,
+  ASSISTANT_PERMISSION_INITIAL_MODE,
+  AssistantActionManifestSchema,
+  AssistantModelProposalSchema,
+  readAssistantAuthority,
+} from "../../../src/models/profiles/assistant-permissions.js";
 import { CommandActionSchema } from "../../../src/rules/commands/commands.js";
 
 const PROFILE = "11111111-1111-4111-8111-111111111111";

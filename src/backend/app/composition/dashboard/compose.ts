@@ -4,7 +4,7 @@ import { createNominatimGeocodeAdapter } from "../../../processing/providers/geo
 import { reconcileStartupCrash, reconcileExitedWorker } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
-import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json";
+import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
 import { createAssistantService } from "../../../assistant/service.js";
 import { assistantSurfaceCoverage, createProductionAssistantTools } from "../../../assistant/tools.js";
 import { assistantKnowledgeArtifact, loadProductionAssistantContext } from "../../../assistant/context.js";

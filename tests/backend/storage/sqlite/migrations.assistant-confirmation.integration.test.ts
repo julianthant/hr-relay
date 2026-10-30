@@ -18,11 +18,17 @@ it("retires automatic grants and pending actions without changing terminal or un
     }
     database.prepare("INSERT INTO assistant_grants VALUES (?,?,?,?,?,?)").run("current", "profile", 1, "grant-command",
       JSON.stringify({ policy: { mode: "without-asking" } }), "created");
+    database.prepare("INSERT INTO commands VALUES (?,?,?,?,?,?,?,?,?,?,?)").run("grant-command", "settings", "operator", null, null, "digest",
+      JSON.stringify({ payload: { assistantPermission: { mode: "without-asking" } } }), "succeeded", "{}", "created", "created");
+    database.prepare("INSERT INTO command_audits VALUES (?,?,?,?,?)").run("grant-audit", "grant-command", null,
+      JSON.stringify({ historicalMode: "without-asking" }), "created");
+    const history = ["commands", "command_audits"].map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() }));
     const before = database.prepare("SELECT * FROM assistant_actions ORDER BY id").all();
     const migration = SQLITE_MIGRATIONS.find(value => value.version === 11);
     assert.ok(migration);
     for (const statement of migration.statements) database.exec(statement);
     assert.deepEqual(database.prepare("SELECT * FROM assistant_grants").all(), []);
+    assert.deepEqual(["commands", "command_audits"].map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), history);
     for (const prior of before) {
       const current = database.prepare("SELECT * FROM assistant_actions WHERE id=?").get(prior.id);
       assert.ok(current);
@@ -32,5 +38,21 @@ it("retires automatic grants and pending actions without changing terminal or un
         assert.deepEqual(JSON.parse(String(current.payload_json)), { ...JSON.parse(String(prior.payload_json)), state: "cancelled", revision: 2 });
       } else assert.deepEqual(current, prior);
     }
+  } finally { database.close(); }
+});
+
+it("keeps an existing every-action grant byte-for-byte", () => {
+  const database = new DatabaseSync(":memory:");
+  try {
+    for (const migration of SQLITE_MIGRATIONS.filter(value => value.version < 11)) {
+      for (const statement of migration.statements) database.exec(statement);
+    }
+    database.prepare("INSERT INTO assistant_grants VALUES (?,?,?,?,?,?)").run("current", "profile", 2, "grant-command",
+      JSON.stringify({ policy: { mode: "every-action" } }), "created");
+    const before = database.prepare("SELECT * FROM assistant_grants").all();
+    const migration = SQLITE_MIGRATIONS.find(value => value.version === 11);
+    assert.ok(migration);
+    for (const statement of migration.statements) database.exec(statement);
+    assert.deepEqual(database.prepare("SELECT * FROM assistant_grants").all(), before);
   } finally { database.close(); }
 });

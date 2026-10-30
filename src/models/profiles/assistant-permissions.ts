@@ -1,7 +1,18 @@
 import { z } from "zod";
 import { ProfileIdSchema } from "./profile.js";
-import { COMMAND_FAMILY_REGISTRY, CommandActionSchema, CommandEffectClassSchema, CommandFamilySchema, CommandRequestSchema } from "../../rules/commands/commands.js";
-import { CommandIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
+import {
+  COMMAND_FAMILY_REGISTRY,
+  CommandActionSchema,
+  CommandEffectClassSchema,
+  CommandFamilySchema,
+  CommandRequestSchema,
+} from "../../rules/commands/commands.js";
+import {
+  CommandIdSchema,
+  FingerprintSchema,
+  IsoInstantSchema,
+  PositiveIntSchema,
+} from "../../rules/identity/ids.js";
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { SubjectEvidenceSchema } from "../../rules/write-safety/write-safety-primitives.js";

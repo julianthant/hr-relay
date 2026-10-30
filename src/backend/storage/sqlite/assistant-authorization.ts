@@ -37,7 +37,7 @@ export function createAssistantAuthorizationRepository(ports: Ports) {
           ports.database.prepare("SELECT request_json,state FROM commands WHERE id=?").get(record.commandId));
         const request = SettingsCommandRequestSchema.parse(JSON.parse(command.request_json));
         const selected = request.payload.assistantPermission;
-        if (request.requestedBy !== "local-operator" || selected === undefined || selected.mode !== record.policy.mode
+        if (request.requestedBy !== "local-operator" || selected === undefined || selected.mode !== "every-action" || selected.mode !== record.policy.mode
           || selected.expectedPolicyRevision !== revision) throw new Error("assistant-grant-command-mismatch");
         ports.database.prepare("INSERT INTO assistant_grants(id,profile_id,revision,command_id,payload_json,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET profile_id=excluded.profile_id,revision=excluded.revision,command_id=excluded.command_id,payload_json=excluded.payload_json,updated_at=excluded.updated_at")
           .run(record.id, record.profileId, record.policy.revision, record.commandId, canonicalJsonStringify(record), record.updatedAt);

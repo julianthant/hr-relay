@@ -1,4 +1,7 @@
-import { WorkflowExplorerWireSchema, type WorkflowExplorerWire } from "../../../models/dashboard/explorer.js";
+import {
+  WorkflowExplorerWireSchema,
+  type WorkflowExplorerWire,
+} from "../../../models/dashboard/explorer.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "../transport.js";
 

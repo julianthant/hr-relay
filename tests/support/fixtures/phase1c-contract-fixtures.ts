@@ -3,7 +3,10 @@ import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../../src/models/config/schema.js";
 import { sourceColumnId } from "../../../src/models/intake/mapping.js";
-import { deriveIdempotencyKeyDigest, deriveWriteBindingProofDigest } from "../../../src/rules/write-safety/write-safety.js";
+import {
+  deriveIdempotencyKeyDigest,
+  deriveWriteBindingProofDigest,
+} from "../../../src/rules/write-safety/write-safety.js";
 
 export const UUID_1 = "11111111-1111-4111-8111-111111111111";
 export const UUID_2 = "22222222-2222-4222-8222-222222222222";

@@ -28,7 +28,10 @@ import type { MonotonicDeadlineScheduler } from "../../../src/backend/runtime/sc
 import { executePreflightRunner } from "../../../src/models/preflight/preflight.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
-import { deriveRunResultDigest, deriveTerminalDependencyDigest } from "../../../src/models/run/result.js";
+import {
+  deriveRunResultDigest,
+  deriveTerminalDependencyDigest,
+} from "../../../src/models/run/result.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/models/run/record.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { TerminalAuthorizationRecordSchema } from "../../../src/models/run/terminal-authorization.js";
@@ -39,8 +42,12 @@ import { RUN_RECORD_JSON_SQL } from "../../../src/backend/storage/sqlite/run-rec
 import { AuthorityDatabase as RealAuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService, AuthorityBootStore, AuthorityDatabase, AuthorityHealthPreflightRunner, AuthorityMutationUnavailableError, OfflineAuthorityRestoreService, OfflineRestoreFailure, SpanAuthorityRunRootSchema, doctorAuthorityStorage, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/index.js";
 import { acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { QUEUED_RUN } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
+import {
+  QUEUED_RUN,
+} from "../../support/fixtures/phase1f-run-fixtures.js";
+import {
+  CURRENT_AUTHORITY_SCHEMA_VERSION,
+} from "../../../src/backend/storage/sqlite/migrations.js";
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
