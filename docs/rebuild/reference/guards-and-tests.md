@@ -99,7 +99,7 @@ per-assertion progress messages. Multi-stage harnesses may emit stable phase mar
 the workers see.
 
 On macOS, `scripts/test/ram-tmp.sh <mebibytes>` attaches an APFS RAM disk, enables volume
-ownership (passwordless sudo), sets the volume root to mode `755`, creates a `0700` directory
+ownership with `sudo -n /usr/sbin/diskutil enableOwnership`, sets the volume root to mode `755`, creates a `0700` directory
 on it, and prints that path. The CI mount step fails if that volume still shows `noowners`. Point `TMPDIR` at the
 printed path before Vitest; the private-temp setup still nests its own directory underneath and
 keeps its checks. Eject with `scripts/test/ram-tmp.sh eject` and the volume path (the parent of

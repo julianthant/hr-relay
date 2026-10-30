@@ -41,7 +41,7 @@ fi
 mount="/Volumes/$name"
 chmod 755 "$mount"
 # diskutil asks for root. CI runners have passwordless sudo; a local password prompt would hang.
-if ! sudo -n diskutil enableOwnership "$mount" >/dev/null; then
+if ! sudo -n /usr/sbin/diskutil enableOwnership "$mount" >/dev/null; then
   echo "ram-tmp: enableOwnership needs passwordless sudo" >&2
   diskutil eject "$mount" >/dev/null || true
   exit 1
