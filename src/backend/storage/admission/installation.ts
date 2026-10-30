@@ -1705,14 +1705,25 @@ const PROFILE_REGISTRY_PROOF = "profile-registry";
 function profileRegistryProofKey(control: string, locator: RuntimeLocator): string {
   return `${control}\0${locator.installationId}\0${String(locator.generation)}\0${locator.stateRoot}`;
 }
-function provenProfileRegistry(control: string, locator: RuntimeLocator): ProfileRegistryDocument | undefined {
-  const slot = outermostOperationProof()?.slots.get(PROFILE_REGISTRY_PROOF);
-  if (slot === undefined || typeof slot !== "object" || !("key" in slot) || !("document" in slot)) return undefined;
-  const proof = slot as { key: string; document: ProfileRegistryDocument };
-  return proof.key === profileRegistryProofKey(control, locator) ? proof.document : undefined;
+class ProfileRegistryProof {
+  constructor(readonly key: string, readonly witness: string, readonly document: ProfileRegistryDocument) {}
 }
-function rememberProfileRegistry(control: string, locator: RuntimeLocator, document: ProfileRegistryDocument): void {
-  outermostOperationProof()?.slots.set(PROFILE_REGISTRY_PROOF, { key: profileRegistryProofKey(control, locator), document });
+function profileRegistryStatWitness(control: string, locator: RuntimeLocator): string {
+  const operations = join(locator.stateRoot, "machine", "operations");
+  const paths = [...profileEvidencePaths(control, locator), operations, join(control, "profile-publication.json"),
+    ...(lstatMaybe(operations) === undefined ? [] : readdirSync(operations).sort().map(name => join(operations, name)))];
+  return paths.map(path => {
+    const stat = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+    return stat === undefined ? "absent" : [stat.dev, stat.ino, stat.mode, stat.uid, stat.nlink, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
+  }).join("|");
+}
+function provenProfileRegistry(control: string, locator: RuntimeLocator): ProfileRegistryDocument | undefined {
+  const proof = outermostOperationProof()?.slots.get(PROFILE_REGISTRY_PROOF);
+  return proof instanceof ProfileRegistryProof && proof.key === profileRegistryProofKey(control, locator)
+    && proof.witness === profileRegistryStatWitness(control, locator) ? proof.document : undefined;
+}
+function rememberProfileRegistry(control: string, locator: RuntimeLocator, witness: string, document: ProfileRegistryDocument): void {
+  outermostOperationProof()?.slots.set(PROFILE_REGISTRY_PROOF, new ProfileRegistryProof(profileRegistryProofKey(control, locator), witness, document));
 }
 function dropProfileRegistryProof(): void {
   outermostOperationProof()?.slots.delete(PROFILE_REGISTRY_PROOF);
@@ -2370,16 +2381,18 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           return readMachineRegistry(control, locator);
         });
       }
+      if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
       const proven = provenProfileRegistry(control, locator);
       if (proven !== undefined) return proven;
-      if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
+      const witness = profileRegistryStatWitness(control, locator);
       const before = profileObservation(control, locator);
       const document = readMachineRegistry(control, locator, false);
       const after = profileObservation(control, locator);
       assertHeld();
-      if (before !== after || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-registry-observation-changed");
+      if (before !== after || witness !== profileRegistryStatWitness(control, locator)
+        || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-registry-observation-changed");
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
-      rememberProfileRegistry(control, locator, document);
+      rememberProfileRegistry(control, locator, witness, document);
       return document;
     },
     assertDraftDuoPublicationRecovery(operationId: string, profileId: string, generation: number) {
