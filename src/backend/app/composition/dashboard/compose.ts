@@ -1,3 +1,4 @@
+import { createAssistantWorkflowStarts } from "../../../assistant/workflow-start.js";
 import { readProfileDatabaseBinding } from "../../../storage/sqlite/profile-local-databases.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../storage/sqlite/migrations.js";
 import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
@@ -843,20 +844,6 @@ async function composeDashboardRuntimeStartup(
 
   const assistantAuthorization = composeProfileAssistantAuthorization(profile.runtime, profile.token, kernel, clock);
   const knowledge = assistantKnowledgeArtifact(DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served").map(descriptor => ({ id: descriptor.id, label: descriptor.label })));
-  const assistantTools = createProductionAssistantTools({ database, kernel, authorization: assistantAuthorization, knowledge,
-    actorId: resolved.config.actor.id, clock, assertCurrent });
-  const assistant = createAssistantService({ account: { ...chatGptAccount, ...context.accountAuthority },
-    context: () => loadProductionAssistantContext(repoRoot, knowledge),
-    runtime: () => { assertCurrent(); return knowledge.policy; },
-    modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
-    readModelPreference: () => captureSelectedModel().view,
-    verifySelectedModel: async signal => {
-      const captured = captureSelectedModel();
-      await chatGptAccount.verifyAssistantCapability(captured.view.preference, captured.assertPreferenceCurrent, signal);
-      captured.assertPreferenceCurrent();
-    },
-    clock, ...assistantTools,
-  });
 
 
   const commands = createDashboardCommandService({
@@ -883,6 +870,25 @@ async function composeDashboardRuntimeStartup(
     configSnapshotId,
     plannedBy: LOCAL_OPERATOR_ACTOR_ID,
   });
+
+  const workflowStarts = createAssistantWorkflowStarts({ database, runs: lifecycle, plans: startPlans, commands,
+    authorization: assistantAuthorization, descriptors, served: workflowId => workflowSources[workflowId] === "served",
+    actorId: resolved.config.actor.id, clock, assertCurrent });
+  const assistantTools = createProductionAssistantTools({ database, kernel, authorization: assistantAuthorization, knowledge,
+    actorId: resolved.config.actor.id, clock, assertCurrent, workflowStarts });
+  const assistant = createAssistantService({ account: { ...chatGptAccount, ...context.accountAuthority },
+    context: () => loadProductionAssistantContext(repoRoot, knowledge),
+    runtime: () => { assertCurrent(); return knowledge.policy; },
+    modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
+    readModelPreference: () => captureSelectedModel().view,
+    verifySelectedModel: async signal => {
+      const captured = captureSelectedModel();
+      await chatGptAccount.verifyAssistantCapability(captured.view.preference, captured.assertPreferenceCurrent, signal);
+      captured.assertPreferenceCurrent();
+    },
+    clock, ...assistantTools,
+  });
+
 
   const intake = composeIntake({ database, artifacts, parser: intakeParser, projections: intakeProjections, descriptors, clock, ids });
   const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock });

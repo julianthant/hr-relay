@@ -1,3 +1,4 @@
+import { ASSISTANT_START_SELECTED_WORKFLOW, type createAssistantWorkflowStarts } from "./workflow-start.js";
 import { type NotificationCollectionTarget, type NotificationCollectionOperation } from "../../models/notifications/notifications.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -52,6 +53,7 @@ export function createProductionAssistantTools(input: Readonly<{
   database: AuthorityDatabase; kernel: CommandKernel; authorization: ReturnType<typeof createAssistantAuthorization>;
   knowledge: ReturnType<typeof assistantKnowledgeArtifact>;
   actorId: string; clock: Clock; assertCurrent(): void;
+  workflowStarts?: ReturnType<typeof createAssistantWorkflowStarts>;
 }>) {
   type Captured = { intent: Intent; refs: Map<string, NotificationCollectionTarget> };
   const requests = new WeakMap<AssistantRequest, Captured>();
@@ -59,7 +61,8 @@ export function createProductionAssistantTools(input: Readonly<{
   const pending = new Map<string, Pending>();
   const current = () => { input.assertCurrent(); };
   return Object.freeze({
-    decideAction(decision: AssistantActionDecision, signal: AbortSignal): AssistantActionResult {
+    decideAction(decision: AssistantActionDecision, signal: AbortSignal): AssistantActionResult | Promise<AssistantActionResult> {
+      if (input.workflowStarts?.owns(decision.actionId)) return input.workflowStarts.decideAction(decision, signal);
       signal.throwIfAborted(); current();
       const issued = pending.get(decision.actionId);
       if (issued === undefined || issued.chat.chatId !== decision.chatId || issued.revision !== decision.revision
@@ -88,7 +91,8 @@ export function createProductionAssistantTools(input: Readonly<{
     },
     projectInput(request: AssistantRequest): Readonly<{ completion: "answer" | "canonical-action"; input: JsonValue; citations: readonly z.infer<typeof AssistantCitationSchema>[] }> {
       current();
-      const intent = localAssistantIntent(request, input.knowledge.topics), refs: Captured["refs"] = new Map();
+      if (request.message.trim().toLowerCase() === ASSISTANT_START_SELECTED_WORKFLOW && input.workflowStarts !== undefined) return input.workflowStarts.projectInput(request);
+      const intent = localAssistantIntent({ message: request.message }, input.knowledge.topics), refs: Captured["refs"] = new Map();
       if (intent.kind === "notification") {
         const target = input.database.withAuthorityReadSnapshot(() => input.database.authority.notifications.collection(input.actorId, operationOf(intent.action)));
         refs.set(`ref_${randomUUID().replaceAll("-", "")}`, target);
@@ -107,6 +111,7 @@ export function createProductionAssistantTools(input: Readonly<{
     },
     async bindFunctions(context: AssistantFunctionContext, signal: AbortSignal): Promise<readonly AssistantFunctionSet[]> {
       signal.throwIfAborted(); current();
+      if (context.request.message.trim().toLowerCase() === ASSISTANT_START_SELECTED_WORKFLOW && input.workflowStarts !== undefined) return input.workflowStarts.bindFunctions(context, signal);
       for (const [id, entry] of pending) if (Date.parse(entry.expiresAt) <= input.clock.nowMs()) pending.delete(id);
       const captured = requests.get(context.request);
       if (captured === undefined) throw new Error("assistant-request-not-projected");

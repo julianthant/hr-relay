@@ -266,7 +266,7 @@ it.each(["every-action"] as const)("binds opaque notification references to actu
     assert.equal(operator.proposal.targetLabel, "25 current notifications");
     const identity = { chatId: operator.proposal.chatId, actionId: operator.proposal.actionId, revision: operator.proposal.revision, decision: "confirm" as const };
     assert.throws(() => tools.decideAction({ ...identity, chatId: randomUUID() }, new AbortController().signal));
-    assert.equal(tools.decideAction(identity, new AbortController().signal).state, "applied");
+    assert.equal((await tools.decideAction(identity, new AbortController().signal)).state, "applied");
     assert.equal(f.database.authority.notifications.get(notification.notificationId)?.status, "read");
     const record = f.database.authority.assistantAuthorization.action(identity.actionId); assert.ok(record);
     assert.equal(record.command.source, "assistant");
@@ -328,7 +328,7 @@ it.each(["cancel", "expired", "manifest", "grant", "target", "added", "restart"]
   const result = AssistantResultSchema.parse(outcome.result);
   assert.equal(result.state, "action-proposal"); if (result.state !== "action-proposal") throw new Error("operator proposal required");
   const decision = { chatId: result.proposal.chatId, actionId: result.proposal.actionId, revision: result.proposal.revision, decision: "confirm" as const };
-  if (change === "cancel") assert.equal(tools.decideAction({ ...decision, decision: "cancel" }, new AbortController().signal).state, "cancelled");
+  if (change === "cancel") assert.equal((await tools.decideAction({ ...decision, decision: "cancel" }, new AbortController().signal)).state, "cancelled");
   if (change === "expired") f.clock.advanceWall(60_001);
   if (change === "manifest") { const prior = f.kernel.assistantManifest(); f.kernel.assistantManifest = () => ({ ...prior, revision: PositiveIntSchema.parse(prior.revision + 1) }); }
   if (change === "grant") assert.equal(f.grant("every-action").state, "applied");
@@ -364,7 +364,7 @@ it.each(["confirm", "cancel"] as const)("keeps stale collection confirmation ref
     const rows = f.database.authority.notifications.listByActor("local-operator");
     const input = { chatId: proposal.chatId, actionId: proposal.actionId, revision: proposal.revision, decision };
     if (decision === "confirm") assert.throws(() => tools.decideAction(input, new AbortController().signal));
-    else assert.equal(tools.decideAction(input, new AbortController().signal).state, "cancelled");
+    else assert.equal((await tools.decideAction(input, new AbortController().signal)).state, "cancelled");
     assert.equal(f.database.authority.assistantAuthorization.action(proposal.actionId)?.state, decision === "cancel" ? "cancelled" : "prepared");
     assert.equal(f.database.authority.commands.get(action.command.commandId), undefined);
     assert.equal(f.database.authority.commandAudits.findByCommand(action.command.commandId), undefined);

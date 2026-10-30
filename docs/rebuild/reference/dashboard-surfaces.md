@@ -335,6 +335,15 @@ component. The explicit parity composition supplies approved mock conversations 
 scenes; product failures never select those producers. Chat titles and drafts are local to the mounted
 shell.
 
+For a currently selected served Queue run, send `start selected workflow` to propose the same
+workflow for that run's canonical subject input. The model receives a request-scoped opaque reference,
+workflow ID and execution mode; subject values remain local. Read-only graphs use Live read, and
+transaction graphs require supported dry-run traversal. Protected inputs and stale definitions refuse.
+The existing proposal card shows the selected subject and mode. Confirm checks the selected run/version,
+person/session, current Settings, canonical plan, grant, revision and expiry, then submits through the
+same command service as Run, including worker capacity. Cancel starts nothing. Lost dispatch remains
+unknown and cannot be automatically retried. Changing the selection invalidates the pending card.
+
 ## Settings
 
 Settings is a full-height takeover with its own navigation rail, search, guarded Back to dashboard,

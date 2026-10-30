@@ -53,6 +53,12 @@ the current served account binding once, without a polling or activation loop.
 owns durable preference and private account authority. Neither a mounted control nor source wiring
 establishes live model or operator acceptance.
 
+The assistant's selected subject reference is the visible served run and its exact version. It is
+resolved locally through the canonical run reader; the Responses request receives only a fresh opaque
+reference and workflow/mode metadata. Workflow confirmation uses the existing assistant action endpoint,
+then the same command service as dashboard Run. It preserves the ordinary start planner, preflight,
+worker capacity and once-only command/audit authority.
+
 ## Static workflow source policy
 
 `app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json` into `WORKFLOW_SOURCES`.
