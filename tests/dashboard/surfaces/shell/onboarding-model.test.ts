@@ -394,7 +394,7 @@ for (const recovery of ["same", "foreign-operation", "foreign-profile", "signed-
 });
 
 it("maps each Duo method state to its approved label, note and track without inventing completion", () => {
-  assert.deepEqual(duoMethodLabels, { idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Failed", unavailable: "Failed" });
+  assert.deepEqual(duoMethodLabels, { idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Unknown", unavailable: "Unavailable" });
   for (const method of ["key", "touch"] as const) {
     for (const state of ["idle", "pending", "complete", "unknown", "unavailable"] as const) {
       const { note, track } = duoMethodPresentation(method, state);

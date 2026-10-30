@@ -595,3 +595,12 @@ supply the existing model policy with synchronous currentness; without it the se
 transaction-free capability canary remain required before the assistant is usable. Subject actions,
 freeform or protected changes, unsupported owners and remaining served actions require their current
 operator interface until their canonical assistant binding is implemented.
+
+### Two-method Duo sign-up presentation
+
+Sign-up presents Touch ID and Security key as distinct required verified enrollments at
+`duo.ucpath.edu`. Hardware-unavailable presentation identifies Chromium’s virtual platform
+authenticator for Touch ID; it never substitutes for Security key. Finish stays unavailable until
+both enrollments are verified. Finishing and cancellation stay pending until their owners settle.
+Unknown enrollment is labelled Unknown, not failed or completed. The `duo-signup` fixture is
+synthetic; actual enrollment, owned-resource closure, and account publication are separate.
