@@ -13,7 +13,7 @@ import { createReceiptService } from "../../../../src/backend/runs/trust/receipt
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
-import { AuthorityDatabase, detachBoundFixtureWorkers } from "../../../support/helpers/synthetic-database-admission.js";
+import { AuthorityDatabase, detachBoundFixtureWorkers, registerBoundFixtureWorker } from "../../../support/helpers/synthetic-database-admission.js";
 import { deletedRunFromRow } from "../../../../src/backend/storage/sqlite/deleted-run-row.js";
 import { reconstructConfirmedOperation } from "../../../../src/models/events/confirmed-operation.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
@@ -32,6 +32,7 @@ import { testAdmittedWorker, testWorkerLifetime } from "../../../support/fixture
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 import { NOW as NOW_m2, foundationFixture as baseFoundationFixture_m2, failure as failure_m2, id as id_m2, terminalizeFixtureFailure } from "../../../support/helpers/database-foundation/fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { AuthorityDatabase as AuthorityDatabase_m2 } from "../../../support/helpers/synthetic-storage-admission.js";
 
 import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-lookup/workflow.js";
@@ -164,12 +165,26 @@ async function fixture(faultStep?:string) {
   const path=profile.path;
   mkdirSync(join(profile.stateRoot,"locks"),{recursive:true,mode:0o700});
   const open=()=>AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"native-test"},undefined,{afterStorageStep:step=>{if(step === activeFault)throw new Error("resolution-storage-fault");}});
-  let db=open();cleanups.push(async ()=>{db.close();await profile.close();});
+  let db=open();
+  let closed=false;
+  let bindWorkers=()=>{};
+  cleanups.push(async ()=>{
+    if (closed) { db=open(); closed=false; bindWorkers(); }
+    releaseSeededWriteOwners(db,LATEST);db.close();closed=true;await profile.close();
+  });
   db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const run=RunRecordSchema.parse({...QUEUED_RUN,envelope:{...QUEUED_RUN.envelope,workflow:WRITE_INTENT_ATTEMPTING.workflowId,
     configSnapshotId:CONFIG_SNAPSHOT.configSnapshotId,configFingerprint:CONFIG_SNAPSHOT.fingerprint},version:5,claimGeneration:1,
     lifecycle:{state:"parked-write",writeIntentId:WRITE_INTENT_ATTEMPTING.writeIntentId,intentGeneration:1,
       parkedAt:NOW,code:"unknown",message:"offline indeterminate probe"}});
+  bindWorkers=()=>{
+    for (const slot of db.authority.workerSlots.list(run.envelope.workflow)) {
+      if (slot.retiredAt !== null) continue;
+      const lease = db.authority.workerLeases.get(slot.workerId);
+      if (lease === undefined || lease.lifecycle.state === "stopped") continue;
+      registerBoundFixtureWorker({ database: db, path, workerId: slot.workerId, generation: lease.leaseGeneration, processId: lease.processId, clock: capturedInstantClock(LATEST) });
+    }
+  };
   const admitted=testAdmittedWorker(db,capturedInstantClock(NOW),{path,workflow:run.envelope.workflow,poolIndex:1,browserSystems:[]});
   const worker=admitted.workerId;
   const workerLifetime=admitted.workerLifetime;
@@ -224,7 +239,10 @@ async function fixture(faultStep?:string) {
   });
   const rawMutation=(work:(raw:DatabaseSync)=>void)=>{const raw=new DatabaseSync(path);try{work(raw);}finally{raw.close();}};
   const inspect=()=>{const raw=new DatabaseSync(path,{readOnly:true});try{return inspectNormalAuthority(raw);}finally{raw.close();}};
-  return {path,get db(){return db;},run,parked,original,command,audit,settlement,resolution,apply,rawMutation,inspect,setFault:(step:string)=>{activeFault=step;},restart:()=>{db.close();db=open();}};
+  const restart=()=>{
+    detachBoundFixtureWorkers(db);db.close();closed=true;db=open();closed=false;bindWorkers();
+  };
+  return {path,get db(){return db;},run,parked,original,command,audit,settlement,resolution,apply,rawMutation,inspect,setFault:(step:string)=>{activeFault=step;},restart};
 }
 function positive(f:Awaited<ReturnType<typeof fixture>>) {
   const resolution={...f.resolution,decision:"present" as const};
@@ -421,7 +439,10 @@ afterEach(_afterEachFixture0);
 
   it.each(["missing","extra","timeline-time","checkpoint-output","checkpoint-run","checkpoint-workflow","checkpoint-item","checkpoint-attempt"])("refuses an altered whole publication on read and maintenance: %s",async fault=>{
     const f=await fixture();const p=positive(f);p.apply();
+    let publicationJson: string | null = null;
     f.rawMutation(raw=>{
+      const saved=raw.prepare("SELECT publication_json FROM write_intents").get() as { publication_json: string | null } | undefined;
+      publicationJson=saved?.publication_json ?? null;
       if(fault === "missing") {raw.prepare("UPDATE write_intents SET publication_json=NULL").run();return;}
       const row=raw.prepare("SELECT publication_json FROM write_intents").get()!;
       const publication=JSON.parse(String(row.publication_json)) as Record<string,unknown>;
@@ -441,17 +462,24 @@ afterEach(_afterEachFixture0);
     expect(()=>f.db.authority.writeIntents.get(f.parked.writeIntentId)).toThrow();
     expect(()=>f.inspect()).toThrow();
     expect(()=>f.restart()).toThrow();
+    f.rawMutation(raw=>raw.prepare("UPDATE write_intents SET publication_json=?").run(publicationJson));
   });
   it.each(["checkpoint","timeline","attempt","audit"])("refuses altered acknowledged authority: %s",async fault=>{
     const f=await fixture();positive(f).apply();
+    const table=fault === "checkpoint" ? "run_checkpoints" : fault === "timeline" ? "timeline_events" : fault === "attempt" ? "write_attempts" : "command_audits";
+    let payloads: { rowid: number; payload_json: string }[] = [];
     f.rawMutation(raw=>{
-      const table=fault === "checkpoint" ? "run_checkpoints" : fault === "timeline" ? "timeline_events" : fault === "attempt" ? "write_attempts" : "command_audits";
+      payloads=raw.prepare(`SELECT rowid AS rowKey, payload_json FROM ${table}`).all() as { rowKey: number | bigint; payload_json: string }[];
       for(const row of raw.prepare("SELECT name FROM sqlite_schema WHERE type='trigger' AND tbl_name=?").all(table)) raw.exec(`DROP TRIGGER ${String(row.name)}`);
       raw.prepare(`UPDATE ${table} SET payload_json=json_set(payload_json,?,?)`).run(
         fault === "checkpoint" ? "$.implFingerprint" : fault === "timeline" ? "$.payload.facts.traceId" : fault === "attempt" ? "$.bindingProofDigest" : "$.writeResolution.recheck.commandId",
         fault === "checkpoint" || fault === "attempt" ? "b".repeat(64) : fault === "timeline" ? "term-000000-abcd" : UUID_8);
     });
     expect(()=>f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)).toThrow();
+    f.rawMutation(raw=>{
+      const update=raw.prepare(`UPDATE ${table} SET payload_json=? WHERE rowid=?`);
+      for (const row of payloads) update.run(row.payload_json, Number(row.rowKey));
+    });
   });
   it("retains exact immutable publication and proof after authenticated terminal deletion, with no hidden run",async ()=>{
     const f=await fixture();const p=positive(f);p.apply();
@@ -472,8 +500,14 @@ afterEach(_afterEachFixture0);
     const generation=f.db.getMeta().authorityGeneration;
     expect(new RunRecordService({database:f.db,clock:capturedInstantClock(LATEST),ids:sequentialIdFactory("c"),publishQueued:()=>{}}).delete(request).state).toBe("applied-already");
     expect(f.db.getMeta().authorityGeneration).toBe(generation);
-    f.rawMutation(raw=>{raw.exec("DROP TRIGGER deleted_runs_identity");raw.prepare("UPDATE deleted_runs SET trace_id=?,receipt_json=json_set(receipt_json,'$.traceId',?)").run("term-000000-abcd","term-000000-abcd");});
+    let deleted: { trace_id: string; receipt_json: string } | undefined;
+    f.rawMutation(raw=>{
+      deleted=raw.prepare("SELECT trace_id, receipt_json FROM deleted_runs").get() as { trace_id: string; receipt_json: string } | undefined;
+      raw.exec("DROP TRIGGER deleted_runs_identity");
+      raw.prepare("UPDATE deleted_runs SET trace_id=?,receipt_json=json_set(receipt_json,'$.traceId',?)").run("term-000000-abcd","term-000000-abcd");
+    });
     expect(()=>f.db.authority.writeIntents.getPublication(f.parked.writeIntentId)).toThrow(/deletion-settlement-mismatch/u);
+    f.rawMutation(raw=>raw.prepare("UPDATE deleted_runs SET trace_id=?, receipt_json=?").run(deleted?.trace_id, deleted?.receipt_json));
   });
   it.each(["run","workflow","item","attempt","execution-generation","descriptor","contract"])("refuses ordinary confirmation checkpoint substitution before any mutation: %s",async fault=>{
     const f=await fixture();f.apply();
