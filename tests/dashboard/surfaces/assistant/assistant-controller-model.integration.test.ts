@@ -177,11 +177,13 @@ it('renders the existing served action card with truthful local facts and confir
   const cardLabel = card.getAttribute('aria-label'); assert.ok(cardLabel !== null);
   assert.equal(cardLabel, "Proposed action details");
   assert.ok(card.textContent?.includes(actionLabel));
-  assert.match(host.textContent ?? '', /Model, effort, permission-mode and voice controls are unavailable/u);
-  assert.match(host.textContent ?? '', /Review and confirm issued local actions/u);
+  assert.match(host.textContent ?? '', /Model, effort and voice controls are unavailable/u);
+  assert.match(host.textContent ?? '', /Review and confirm each proposed change/u);
+  assert.match(host.textContent ?? '', /Select a served run and send “start selected workflow” to propose its subject/u);
   assert.match(card.textContent ?? '', /SubjectNone/u); assert.match(card.textContent ?? '', /Local notification/u);
   assert.equal(card.textContent?.includes('Dry run'), false); assert.equal(card.textContent?.includes('Alex Rivera'), false);
   const confirm = [...card.querySelectorAll('button')].find(button => button.textContent === 'Confirm'); assert.ok(confirm); assert.equal(confirm.disabled, false);
+  assert.equal(confirmations, 0);
   await act(async () => { confirm.click(); confirm.click(); });
   assert.equal(confirmations, 1); assert.match(host.textContent ?? '', /Action completed/u);
   assert.equal(confirm.disabled, true);
