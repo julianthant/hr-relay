@@ -88,12 +88,14 @@ it("preserves the actual lifecycle command's claimed and failed completion pair 
       runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
         settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } }).state, "applied");
     let current = f.db.authority.runs.get(f.run.envelope.runId); assert.ok(current);
+    assert.ok(current.lifecycle.state === "claimed");
     const claim = { workerId, claimGeneration: current.claimGeneration }, now = f.clock.now().toISOString();
+    const workerLifetime = current.lifecycle.workerLifetime;
     const validating = f.db.authority.runs.transition({ runId: current.envelope.runId, expectedVersion: current.version,
-      claim, lifecycle: { state: "validating", workerId, claimedAt: now, heartbeatAt: now }, now });
+      claim, lifecycle: { state: "validating", workerId, workerLifetime, claimedAt: now, heartbeatAt: now }, now });
     assert.equal(validating.state, "applied"); if (validating.state !== "applied") throw new Error("validation refused");
     const running = f.db.authority.runs.transition({ runId: current.envelope.runId, expectedVersion: validating.run.version,
-      claim, lifecycle: { state: "running", workerId, claimedAt: now, heartbeatAt: now, currentNodeId: "searching" }, now });
+      claim, lifecycle: { state: "running", workerId, workerLifetime, claimedAt: now, heartbeatAt: now, currentNodeId: "searching" }, now });
     assert.equal(running.state, "applied"); if (running.state !== "applied") throw new Error("running refused");
     current = running.run;
     const record = failure();
