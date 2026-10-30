@@ -45,8 +45,9 @@ source and compiled projections; this skill still produces a `hr-manage` runbook
    findings into "Known failure modes".
 7. `config/test-data.json` (`subjects`; D341) for public canary labels. Private values resolve
    only through the typed reader and ignored `config/test-data.local.json`; never read or print
-   them. Scenario and parity suites are retired; declared `scenarios` are contract data, not test
-   evidence. Find current checks in active suite roots and use `ref guards-and-tests` §10.5 for
+   them. The scenario rehearsal corpus is retired; desktop parity remains active under
+   `tests/parity/`. Declared `scenarios` are contract data, not test evidence. Find current checks
+   in active suite roots and use `ref guards-and-tests` §10.5 for
    canary availability and acceptance status.
 8. The platform-wide rails live in `.agents/skills/hr-manage/SKILL.md` and
    `.agents/skill-library/hr-debug/REFERENCE.md` — read both once so the generated resource points to
@@ -90,7 +91,7 @@ Stop when you can fill every template section from evidence. A section you canno
 - Processes: `npm run dashboard` (BFF 3938 + vite 5174) and
   `npm run cli -- worker <workflow-id>`; restart the BFF after workflow-definition changes
   (fingerprint trap — hr-debug §stale-bff).
-- Start: the run modal via playwright-cli, or `POST /api/v1/start-plans` → `POST /api/v1/commands` with `dryRun` — **dryRun=true is the default; a real write only under the controlled-commit proof with the operator's explicit per-run authorization.**
+- Start: the signed-in dashboard run modal via playwright-cli with `dryRun` — **dryRun=true is the default; a real write only under the controlled-commit proof with the operator's explicit per-run authorization.**
 - Gate ceremony (if it gates): <which gate, what the packet shows, approval shape is SERVER-computed>.
 
 ## Dry run must show (assert over authority, not logs)
@@ -104,8 +105,9 @@ Stop when you can fill every template section from evidence. A section you canno
 ## Current verification and gate status
 - Focused tests, lint, and affected static/generated checks: <existing paths and verified outcomes from the owning task>
 - Phase-exit gates: <only the gates required by the active phase plan, with actual outcomes or not run>
-- Do not infer test execution from declared scenario ids or revive retired scenario/parity
-  obligations. Follow root `AGENTS.md` and `ref guards-and-tests` for cadence.
+- Do not infer test execution from declared scenario ids or revive the retired scenario
+  corpus. Keep active desktop parity obligations. Follow root `AGENTS.md` and
+  `ref guards-and-tests` for cadence.
 
 ## Known failure modes (from the owning reference and nearest module AGENTS.md)
 - <one line per verified issue: the symptom, cause, owning reference, and nearest module
