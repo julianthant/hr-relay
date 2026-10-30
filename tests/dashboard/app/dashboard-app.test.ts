@@ -493,10 +493,10 @@ afterEach_m1(_afterEachFixture0);
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 Reflect.set(globalThis, 'ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 let root: Root_m2 | undefined;
-const disposers: (() => void)[] = [];
+const disposers: (() => void | Promise<void>)[] = [];
 const _afterEachFixture0 = async () => {
   await act_m2(async () => root?.unmount()); root = undefined;
-  for (const dispose of disposers.splice(0)) dispose();
+  for (const dispose of disposers.splice(0)) await dispose();
   document.body.replaceChildren(); localStorage.clear(); window.history.replaceState(null, '', '/');
 };
 async function settle() { await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); }
@@ -629,7 +629,7 @@ afterEach_m2(_afterEachFixture0);
     { section: "credentials", field: "UCPath username", value: "private-credential-sentinel", title: "Credentials save unconfirmed", inline: "Credentials write unconfirmed" },
   ]) for (const replacement of ["confirmed", "conflict", "refused"] as const) it_m2(`replaces one ${save.title} warning on ${replacement} exact replay`, async () => {
     const commands: unknown[] = [];
-    const authority = syntheticSettingsAuthority(); disposers.push(authority.close);
+    const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
     const h = await mount({ search: `settings=${save.section}`, settingsRead: authority.read, command: body => {
       commands.push(body);
       if (commands.length <= 2) return Promise.reject(new Error("private-transport-sentinel"));
@@ -680,7 +680,7 @@ afterEach_m2(_afterEachFixture0);
   });
   it_m2("dismisses only the recovered command warning while another Settings command remains unknown", async () => {
     const commands: ReturnType<typeof CommandRequestSchema.parse>[] = [];
-    const authority = syntheticSettingsAuthority(); disposers.push(authority.close);
+    const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
     const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
       const command = CommandRequestSchema.parse(body); commands.push(command);
       const attempts = commands.filter(candidate => candidate.commandId === command.commandId).length;

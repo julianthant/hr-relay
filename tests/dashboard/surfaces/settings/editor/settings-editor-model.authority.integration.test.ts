@@ -12,11 +12,11 @@ import { syntheticSettingsAuthority } from "../../../../support/helpers/dashboar
 import { FIXTURE_STORAGE_RELOCATION } from "../../../../parity/helpers/fixture-settings.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../../../src/models/dashboard/settings-editor.js";
 
-const cleanups: (() => void)[] = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
 async function setup() {
-  const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+  const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
   const initial = authority.read();
   authority.apply({ "actor.label": { set: "Newer saved values" } });
   const newer = authority.read();
@@ -166,7 +166,7 @@ it("refuses protected revision rollback independently of an unchanged ordinary r
 });
 
 it("reopens from the exact verified document while sharing a pending refresh and keeps writes locked until it settles", async () => {
-  const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+  const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
   const original = authority.read();
   const held = Promise.withResolvers<EditableSettingsWire>();
   let calls = 0;
@@ -187,7 +187,7 @@ it("reopens from the exact verified document while sharing a pending refresh and
 });
 
 for (const outcome of ["success", "failure"] as const) it(`settles editable and relocation ${outcome} after the production StrictMode effect replay`, async () => {
-  const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+  const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
   const client = { editableSettings: () => outcome === "success" ? Promise.resolve(authority.read()) : Promise.reject(new Error("synthetic editable unavailable")), storageRelocationPlans: () => outcome === "success" ? Promise.resolve(FIXTURE_STORAGE_RELOCATION) : Promise.reject(new Error("synthetic relocation unavailable")) } as unknown as DashboardClient;
   let state: ReturnType<typeof useEditableSettings> | undefined;
   function Probe() { state = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); return null; }

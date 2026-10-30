@@ -248,6 +248,7 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "resume-worker": "worker-browser commands target the worker pool, not a run row",
   "refresh-browser": "worker-browser commands target the worker pool, not a run row",
   "reopen-browser": "worker-browser commands target the worker pool, not a run row",
+  "check-parked-write": "the parked-write probe is a worker-browser command bound to an idle worker lease; run rows project recheck-write and resolve-write-absent, not this verb",
   "apply-settings": "the Settings surface owns the whole payload; a row control cannot express it",
   "apply-protected-settings": "the Settings surface owns its write-only protected payload; row actions cannot express it",
   "plan-storage-relocation": "Settings plans a complete installation root pair; no run row owns storage location",

@@ -25,7 +25,7 @@ import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../..
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDraftDuoCredentialStore } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
 import type { DraftDuoBrowserOwner, ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
-import { ProfileOnboardingDuoProviderError } from "../../../../src/backend/profiles/onboarding-duo-provider.js";
+import { ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { issueDraftDuoCredentialPurpose, openDuoCredentialDocument } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";

@@ -22,6 +22,7 @@ const PRIVATE_SQLITE_ADAPTERS = [
   "src/backend/storage/sqlite/notification-publications.ts",
   "src/backend/storage/sqlite/profile-local-databases.ts",
   "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
+  "src/backend/storage/sqlite/run-record-row.ts",
   "src/backend/storage/sqlite/run-search-index.ts",
   "src/backend/storage/sqlite/run-summaries.ts",
   "src/backend/storage/sqlite/settings-activation.ts",

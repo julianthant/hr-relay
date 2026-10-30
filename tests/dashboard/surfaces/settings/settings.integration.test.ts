@@ -6,9 +6,9 @@ import { afterEach,describe,it,vi } from "vitest";
 import { ProtectedSettingsNameSchema } from "../../../../src/models/config/protected-settings.js";
 import { ProtectedSettingsCommandRequestSchema,SettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { mountSettingsHarness,settingsAction,syntheticSettingsAuthority } from "../../../support/helpers/dashboard/settings-harness.js";
-const cleanups: (() => void)[] = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
-async function setup() { const authority = syntheticSettingsAuthority(); cleanups.push(authority.close); const mounted = await mountSettingsHarness(authority, "protected-store"); cleanups.push(mounted.close); return { ...mounted, authority }; }
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+async function setup() { const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close); const mounted = await mountSettingsHarness(authority, "protected-store"); cleanups.push(mounted.close); return { ...mounted, authority }; }
 function savedText(host: HTMLElement): string {
   const copy = host.cloneNode(true) as HTMLElement;
   copy.querySelectorAll("input").forEach(input => input.remove());
