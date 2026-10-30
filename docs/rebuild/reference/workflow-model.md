@@ -495,7 +495,7 @@ The result uses `active-status` in Search mode. In Match mode, it derives the ou
 
 `unselectedCrmRecords` is nullable. `crm-results` runs for an array, including `[]`, and skips when the field is `null`. Its bind builds the same query as `cross-verify`. The task reads the current CRM results and compares them with the discovered records. If they differ, it fails with `PERSON_LOOKUP_CRM_RESULTS_CHANGED`. `crm-results` returns unresolved rows without treating a row as the selected CRM record. When `crmRecord` is present, `crm-selected-record` reopens the record and verifies its current identity and facts. `crm-results` skips on this branch.
 
-`searching`, `matching`, `crm-selected-record`, and `crm-results` own the task-point screenshot captures. `captureBrowserScreenshots` gates image capture. With the option off, `crm-results` still reads and compares the CRM records, but its screenshot call is a no-op. Checkpoint replay restores task output and does not invoke capture or create a new Screenshot action.
+`searching`, `matching`, `crm-selected-record`, and `crm-results` own the task-point screenshot captures. These workflow captures are required even when `captureBrowserScreenshots` is false. A failed or unavailable required capture prevents the task checkpoint. Checkpoint replay restores task output and does not invoke capture or create a new Screenshot action.
 
 The workflow has no transaction, gate, parallel, or delegation node. Its dry-run preview refuses because the graph contains no transaction. Its declaration is not evidence of a current live run or completed dashboard wiring.
 

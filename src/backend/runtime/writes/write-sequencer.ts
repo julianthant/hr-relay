@@ -217,7 +217,8 @@ export interface TransactionSessionHost {
     need: SessionNeed,
     instance: string | undefined,
     signal: AbortSignal,
-    operation: (driver: BrowserDriver) => Promise<Result>,
+    operation: (driver: BrowserDriver, captureScreenshot: () => Promise<void>) => Promise<Result>,
+    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>,
   ): Promise<Result>;
   withTransactionDriver<Result>(
     need: SessionNeed,
@@ -226,7 +227,9 @@ export interface TransactionSessionHost {
     operation: (
       driver: BrowserDriver,
       ownership: Readonly<{ retainAfterFence(): void }>,
+      captureScreenshot: (boundary?: "step" | "before-submit" | "after-submit") => Promise<void>,
     ) => Promise<Result>,
+    screenshotOwner?: Readonly<{ taskId: TaskId; nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>,
   ): Promise<Result>;
   closeAll(reason: "parked"): Promise<void>;
 }
@@ -1947,7 +1950,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         need,
         instance,
         context.signal,
-        async (driver, ownership) => {
+        async (driver, ownership, captureScreenshot) => {
         const leaseId = deps.ids.uuid();
 
         /* beat ② — prepare stages the page; output is preview data only */
@@ -1987,6 +1990,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           afterPrepareSpanPath,
         });
         const bindingProofDigest = FingerprintSchema.parse(deriveWriteBindingProofDigest(bindingProof));
+
+        await captureScreenshot("before-submit");
 
         /* beat ④ — probe→fence budget, then the durable CAS before any click */
         const elapsedMs = deps.clock.monotonicMs() - probeCompletedMonotonicMs;
@@ -2133,6 +2138,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           commitSettlement = { state: "failed", error: failure };
         }
 
+        try { await captureScreenshot("after-submit"); }
+        catch { reportDiagnosticFailure(context); }
         let emissionFailure: Readonly<{ error: unknown }> | undefined;
         try {
           // Flush fallible observations only after commit callback settlement so recording cannot strand a fenced-but-unclicked write.
@@ -2216,6 +2223,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         }
         return { intent: fenced, proofValue: captured.proofValue, outputValue: captured.outputValue };
         },
+        { taskId: commitContract.id, nodeId: String(node.id), attempt: envelope.attempt, log: context.captureLog ?? deps.log },
       );
     } catch (error) {
       if (error instanceof PostFenceWriteFailure) {
@@ -2477,7 +2485,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const need = commitTask.impl.sessions[0];
     if (need === undefined) throw new Error(`${commitContract.id} declares no transaction session need`);
     const instance = resolvedInstanceFor(context, need.system);
-    return deps.sessions.withDriver(need, instance, context.signal, async (driver) => {
+    return deps.sessions.withDriver(need, instance, context.signal, async (driver, captureScreenshot) => {
       const prepareInput: unknown = prepareContract.input.parse(node.prepare.bind(context.scope));
       emitTaskSpan(context, "prepare", "span.started");
       let prepareOutput: unknown;
@@ -2529,6 +2537,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           );
         }
       }
+      await captureScreenshot();
       return TransactionDryRunPreviewSchema.parse({
         kind: "transaction-dry-run-preview",
         nodeId: String(node.id),
@@ -2543,7 +2552,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         },
         observedAt,
       });
-    });
+    }, { taskId: prepareContract.id, nodeId: String(node.id), attempt: envelope.attempt, log: context.captureLog ?? deps.log });
   }
 
   return Object.freeze({ executeTransaction, executeDryRun });

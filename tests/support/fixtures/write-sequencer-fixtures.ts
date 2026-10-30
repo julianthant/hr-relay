@@ -34,7 +34,7 @@ import { defineCanonicalInput } from "../../../src/models/workflow/canonical-inp
 import type { RuntimeFlowNode } from "../../../src/models/workflow/graph.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
 import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
-import { WorkerSessionManager } from "../../../src/backend/runtime/workers/worker-sessions.js";
+import { WorkerSessionManager, type WorkerSessionManagerOptions } from "../../../src/backend/runtime/workers/worker-sessions.js";
 import { assertSequencerMintedMutationCapability } from "../../../src/backend/runtime/writes/write-sequencer.js";
 import { recordBrowserAction, runDeclaredAction } from "../../../src/backend/systems/browser-shared/action-notes.js";
 import { CONFIG_SNAPSHOT, HASH_C, UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
@@ -704,7 +704,12 @@ export function writeFixtureQueuedRun(options: Readonly<{
 }
 
 export function writeFixtureSessions(world: WriteFixtureWorld): SessionFactoryHarness {
-  return sessionFactoryHarness({ ucpath: () => createFixtureDriver(world) });
+  const harness = sessionFactoryHarness({ ucpath: () => createFixtureDriver(world) });
+  return { ...harness, factory: { ...harness.factory, open: async input => {
+    const resource = await harness.factory.open(input);
+    return { ...resource, screenshot: async () => ({ state: "available" as const, sessionId: resource.sessionId,
+      pageVersion: 1, observedAt: WRITE_FIXTURE_NOW, bytes: new Uint8Array([137, 80, 78, 71]), width: 1280, height: 720 }) };
+  } } };
 }
 
 export async function writeFixtureSessionManager(
@@ -712,12 +717,14 @@ export async function writeFixtureSessionManager(
   registry: TaskStoreRegistry,
   clock: TestClock,
   duoCeremony?: DuoCeremonyGateFactory,
+  browserScreenshotCapture?: WorkerSessionManagerOptions["browserScreenshotCapture"],
 ): Promise<WorkerSessionManager> {
   duoCeremony ??= await fixtureDuoCeremonyGates(clock);
   return new WorkerSessionManager({
     workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
     workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
     stores: registry,
+    browserScreenshotCapture: browserScreenshotCapture ?? { capture: async () => undefined },
     factory: harness.factory,
     clock,
     scheduler: new ManualScheduler(clock),

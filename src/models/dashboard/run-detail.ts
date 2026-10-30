@@ -647,7 +647,8 @@ export const FailureDetailWireSchema = z.strictObject({
 /** Provenance is a closed membership, not failure detail or actor data. */
 export const RunCaptureOriginWireSchema = z.strictObject({
   operation: DeclaredActionIdentitySchema.optional(),
-  browserCapture: z.strictObject({ nodeId: NodeIdSchema, attempt: PositiveIntSchema, sessionId: BrowserSessionIdSchema }).optional(),
+  browserCapture: z.strictObject({ nodeId: NodeIdSchema, attempt: PositiveIntSchema, sessionId: BrowserSessionIdSchema,
+    boundary: z.enum(["step", "before-submit", "after-submit"]).optional() }).optional(),
   capturedAt: IsoInstantSchema.optional(),
   bundleId: DiagnosticBundleIdSchema,
   originKind: z.enum(["failure", "unexpected-state", "subject-mismatch", "recovery-park", "operator-request"]),

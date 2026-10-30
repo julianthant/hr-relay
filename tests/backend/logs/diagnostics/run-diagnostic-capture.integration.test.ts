@@ -452,6 +452,34 @@ describe("selected lease screenshot actions", () => {
   });
 });
 
+it("retains exact pre/post-submit boundary metadata and refuses a foreign browser session", async () => {
+  const authority = await openAuthorityHarness();
+  disposers.push(authority.dispose);
+  const { database, clock } = authority;
+  database.authority.runs.enqueue(personLookupQueuedRun());
+  const { service } = captureService(database);
+  const capture = createRunBrowserScreenshotCapture({ service });
+  const sessionId = BrowserSessionIdSchema.parse("10000000-0000-4000-8000-000000000001");
+  const context = { runId: RUN_ID, configFingerprint: HASH_A, descriptorFingerprint: HASH_B, system: "ucpath",
+    screenshot: { state: "available" as const, sessionId, pageVersion: 1, observedAt: NOW,
+      bytes: new Uint8Array([137, 80, 78, 71]), width: 1280, height: 720 } };
+  for (const boundary of ["before-submit", "after-submit"] as const) {
+    await withBrowserActionNotes(clock, () => withBrowserActionSession(sessionId, () => capture.capture({ ...context,
+      trigger: { kind: "task-point", nodeId: "submit-write", attempt: 1, boundary },
+    })), actions => { assert.equal(actions.filter(action => action.kind === "screenshot").length, 1); });
+  }
+  const bundles = database.authority.diagnosticBundles.listByRun(RUN_ID);
+  assert.equal(bundles.length, 2);
+  assert.deepEqual(bundles.map(bundle => bundle.redaction.fields.find(field => field.key === "captureBoundary")?.value), ["before-submit", "after-submit"]);
+  for (const bundle of bundles) {
+    assert.equal(bundle.redaction.fields.find(field => field.key === "nodeId")?.value, "submit-write");
+    assert.equal(bundle.redaction.fields.find(field => field.key === "runAttempt")?.value, 1);
+    assert.equal(bundle.redaction.fields.find(field => field.key === "browserSessionId")?.value, sessionId);
+  }
+  await assert.rejects(capture.capture({ ...context, trigger: { kind: "task-point", nodeId: "submit-write", attempt: 1, boundary: "before-submit" } }), /matching active browser lease/);
+  assert.equal(database.authority.diagnosticBundles.listByRun(RUN_ID).length, 2);
+});
+
 describe("task screenshot persistence before checkpoint", () => {
   for (const failure of ["none", "note", "unavailable", "capture", "persist", "undeclared"] as const) it(`preserves task results and screenshot action persistence rules (${failure})`, async () => {
     const world = createRunExecutorTestWorld();
@@ -468,7 +496,7 @@ describe("task screenshot persistence before checkpoint", () => {
       const harness = await world.executorHarness({ stores });
       const { database, clock } = harness.authority;
       const queued = RunRecordSchema.parse(personLookupQueuedRun());
-      const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: true } }, clock.now().toISOString());
+      const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: false } }, clock.now().toISOString());
       const { service } = captureService(database);
       const capture = createRunBrowserScreenshotCapture({ service });
       const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse(claimed.claim.workerId), workflowId: WorkflowIdSchema.parse("person-lookup"), stores,
@@ -483,7 +511,7 @@ describe("task screenshot persistence before checkpoint", () => {
         duoCeremony: await fixtureDuoCeremonyGates(clock), browserScreenshotCapture: failure === "persist" ? { capture: async context => { if (context.system === "ucpath") throw new TypeError("private persistence content"); await capture.capture(context); } } : capture,
       });
       sessions.bindRunConfigFingerprint(FingerprintSchema.parse(claimed.run.envelope.configFingerprint), "headless", { runId: claimed.run.envelope.runId,
-        descriptorFingerprint: claimed.run.envelope.contractFingerprint, captureBrowserScreenshots: true });
+        descriptorFingerprint: claimed.run.envelope.contractFingerprint, captureBrowserScreenshots: false });
       const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
       const result = await executeClaimedRun({ ...harness.deps, sessions, taskNotes: { ...notes, emitRunAction: (input, authority) => {
         if (failure === "note" && input.action.kind === "screenshot") throw new Error("note append failure");
@@ -493,19 +521,19 @@ describe("task screenshot persistence before checkpoint", () => {
         assert.equal(result.state, "done", JSON.stringify(database.authority.failures.listByRun(claimed.run.envelope.runId)));
         assert.ok(database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId }).some(row => row.payload.kind === "note" && row.payload.note.action?.kind === "screenshot"));
       } else if (failure === "unavailable" || failure === "capture" || failure === "persist") {
-        assert.equal(result.state, "done");
+        assert.equal(result.state, "failed");
         const settledRun = database.authority.runs.get(claimed.run.envelope.runId);
         assert.ok(settledRun);
         const lifecycle = settledRun.lifecycle;
-        assert.ok(lifecycle?.state === "terminal" && lifecycle.outcome === "done");
-        assert.deepEqual(database.authority.failures.listByRun(claimed.run.envelope.runId), []);
-        assert.ok(database.authority.runCheckpoints.latest(claimed.run.envelope.workflow, claimed.run.envelope.itemId, "searching"));
+        assert.ok(lifecycle?.state === "terminal" && lifecycle.outcome === "failed");
+        assert.equal(database.authority.failures.listByRun(claimed.run.envelope.runId)[0]?.code, "BROWSER_SCREENSHOT_CAPTURE_FAILED");
+        assert.equal(database.authority.runCheckpoints.latest(claimed.run.envelope.workflow, claimed.run.envelope.itemId, "searching"), undefined);
         const notes = database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId })
           .flatMap(row => row.payload.kind === "note" ? [row.payload.note] : []);
         assert.equal(notes.filter(note => note.spanPath === taskSpanPath(claimed.run.envelope.traceId, NodeIdSchema.parse("searching"), 1, claimed.claim.claimGeneration) && note.action?.kind === "screenshot").length, 0);
         const warnings = notes.filter(note => note.level === "warn");
         assert.equal(warnings.length, 1);
-        assert.equal(warnings[0]?.message, "Screenshot capture failed.");
+        assert.equal(warnings[0]?.message, "Screenshot capture unavailable.");
         assert.deepEqual(warnings[0]?.fields?.map(field => ({ key: field.key, value: field.value })), [{ key: "reason", value: failure === "unavailable" ? "secret-controls-present" : failure === "persist" ? "TypeError" : "Error" }]);
         assert.doesNotMatch(JSON.stringify(warnings), /private/);
         const section = buildRunLogsSection({ timeline: database.authority.timelineEvents, projection: { runLogSnapshot: () => ({ entries: [] }) }, descriptors: { resolve: () => undefined } } as unknown as RunDetailQueryDeps,
@@ -603,7 +631,7 @@ describe("Person Lookup final capture points", () => {
         const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
         const result = await executeClaimedRun({ ...harness.deps, sessions, taskNotes: notes }, { ...claimed, signal: new AbortController().signal });
         assert.equal(result.state, "done", JSON.stringify(database.authority.failures.listByRun(claimed.run.envelope.runId)));
-        const points = enabled ? ["ucpath-detail", kind === "selected" ? "crm-record" : "crm-results"] : [];
+        const points = ["ucpath-detail", kind === "selected" ? "crm-record" : "crm-results"];
         assert.deepEqual(acquired, points);
         assert.deepEqual(persisted, points);
         const screenshotNotes = database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId }).flatMap(row => row.payload.kind === "note" && row.payload.note.action?.kind === "screenshot" ? [row.payload.note] : []);

@@ -92,6 +92,7 @@ export interface WriteSequencerContext {
   readonly claim: RunClaimToken;
   readonly scope: RuntimeScope;
   readonly dryRun: boolean;
+  readonly captureLog?: Pick<TaskLogger, "warn">;
   readonly signal: AbortSignal;
   /** Synchronous in-memory handoff after beat ⑦; consumers publish after the sequencer returns. */
   readonly onDurableCommit?: (proof: Readonly<{ writeIntentId: string; confirmedAt: string; proofDigest: string }>) => void;
@@ -1201,19 +1202,23 @@ export async function executeClaimedRun(
               deps.sessions.withDriver(need, instanceSelection, controller.signal, (driver, captureScreenshot) => raceAbortable(
                 Promise.resolve().then(() => withBrowserActionBinding(
                   declaredActionBinder,
-                  () => run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver,
-                    captureScreenshot: task.impl.screenshots === "task" ? captureScreenshot : () => Promise.reject(new TaskError(
-                      contract.id, "BROWSER_SCREENSHOT_CAPTURE_FAILED", "Task screenshot capture requires declared task ownership",
-                    )),
-                  } }),
+                  async () => {
+                    const output = await run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver,
+                      captureScreenshot: task.impl.screenshots === "task" ? captureScreenshot : () => Promise.reject(new TaskError(
+                        contract.id, "BROWSER_SCREENSHOT_CAPTURE_FAILED", "Task screenshot capture requires declared task ownership",
+                      )),
+                    } });
+                    if (task.impl.screenshots !== "task") await captureScreenshot();
+                    return output;
+                  },
                 )),
                 controller.signal,
                 contract.id, retain,
-              ), task.impl.screenshots === "task" ? { taskId: contract.id, nodeId: String(node.id), attempt: envelope.attempt, log: taskLogger } : undefined),
+              ), { taskId: contract.id, nodeId: String(node.id), attempt: envelope.attempt, log: taskLogger }),
               controller.signal,
               contract.id, retain,
             ),
-            (actions) => drainBrowserActions(spanPath, actions, task.impl.screenshots === "task" ? contract.id : undefined),
+            (actions) => drainBrowserActions(spanPath, actions, contract.id),
           );
         }
       } finally {
@@ -1772,13 +1777,23 @@ export async function executeClaimedRun(
             },
           };
 
+          const captureLog: Pick<TaskLogger, "warn"> = {
+            warn(message, fields) {
+              deps.log.warn(message, fields);
+              deps.taskNotes?.emitRunLog({ workflow: descriptor.id,
+                address: { runId, attempt: envelope.attempt, traceId: envelope.traceId,
+                  spanPath: `${envelope.traceId}/${String(node.id)}/commit` },
+                level: "warn", message, fields,
+              }, getRun());
+            },
+          };
           if (envelope.dryRun) {
             let preview: TransactionDryRunPreview;
             try {
               preview = TransactionDryRunPreviewSchema.parse(await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeDryRun({
                 descriptor, node, run: getRun(), claim,
                 scope: transactionScope,
-                dryRun: true,
+                dryRun: true, captureLog,
                 signal: input.signal,
                 confirmedForRole: (role, taskId, parsedInput) => confirmedRole(role, taskId, parsedInput)?.actions,
                 ...(trackedBinders === undefined ? {} : { operationActionBinders: trackedBinders }),
@@ -1806,7 +1821,7 @@ export async function executeClaimedRun(
             const raw = await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeTransaction({
               descriptor, node, run: getRun(), claim,
               scope: transactionScope,
-              dryRun: envelope.dryRun,
+              dryRun: envelope.dryRun, captureLog,
               signal: input.signal,
               confirmedForRole: (role, taskId, parsedInput) => confirmedRole(role, taskId, parsedInput)?.actions,
               onDurableCommit: proof => { durableCommitProof = proof; },

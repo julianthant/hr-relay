@@ -131,6 +131,7 @@ export function createRunBrowserScreenshotCapture(input: Readonly<{
           { key: "browserSystem", classification: "safe-diagnostic", transform: "allow", value: context.system },
           { key: "browserSessionId", classification: "safe-diagnostic", transform: "allow", value: context.screenshot.sessionId },
           ...(context.trigger.kind === "task-point" ? [
+            { key: "captureBoundary", classification: "safe-diagnostic" as const, transform: "allow" as const, value: context.trigger.boundary ?? "step" },
             { key: "nodeId", classification: "safe-diagnostic" as const, transform: "allow" as const, value: context.trigger.nodeId },
             { key: "runAttempt", classification: "safe-diagnostic" as const, transform: "allow" as const, value: context.trigger.attempt },
           ] : []),
