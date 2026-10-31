@@ -13,7 +13,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "0f53bc7657bfa560716292328812bd261e761bb5ea42fa9d2454f04254abbf31",
+    "sha256": "d4fa08b31a95fa7855bce50379bedca80d01acc0d401baad3a01ddc5f82b7aa8",
     "reason": "Startup source-closure uncertainty records failed producer closure before unwind, retaining dependent database and admission custody. Selected-context open failure retains typed custody uncertainty and rethrows. Upgrade cleanup clears exclusiveOwner only after release. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and immediate stop promises, whose callers await and propagate failures before storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately. Required native browser closure failures follow the same upgrade rejection and custody-retention path."
   },
   {
@@ -113,7 +113,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "d19a900137515e657f2d68de478284a702e035d951918239d2136a0c2b0ce60f",
+    "sha256": "f2aebc20762abbc253e64391fe0984c4e2e17cfa51648590055f07981705abd3",
     "reason": "The rollback failure array only accumulates errors: failed rollback retains database custody with the original failure, and successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or run-search-index-rebuild-required with its cause; it never returns validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody can release; required native browser closure precedes the cancellation transaction."
   },
   {
