@@ -367,6 +367,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await page.keyboard.press("Escape");
       await editor.getByRole("button", { name: "Insert", exact: true }).click();
       await expect(page.getByRole("menu", { name: "Insert", exact: true })).toBeVisible();
+      await expect(page.getByRole("menu", { name: "Columns", exact: true })).toHaveCount(0);
       await capture(page, info, theme, width, "spreadsheet-insert-menu");
       await page.getByRole("menuitem", { name: "Add row", exact: true }).click();
       await expect(editor.locator(".spreadsheet-grid tbody tr")).toHaveCount(3);
