@@ -45,8 +45,10 @@
       - paragraph: Readiness for the dashboard and its workflows.
       - text: Check readiness for
       - combobox "Check readiness for": Dashboard
-      - button "Run preflight"
       - heading "Status" [level=2]
+      - button "Run preflight"
+      - button "Test OCR" [disabled]
+      - status: OCR test unavailable ChatGPT plan use is not enabled for this connection.
       - group "Readiness summary":
         - img "Done"
         - text: Ready to run Last checked
@@ -115,11 +117,6 @@
           - listitem:
             - text: Network ports
             - paragraph: Checks the dashboard's reserved ports.
-            - img "Done"
-            - text: Passed
-          - listitem:
-            - text: Unfinished processes
-            - paragraph: Checks for stale processes or worker leases.
             - img "Done"
             - text: Passed
 - status

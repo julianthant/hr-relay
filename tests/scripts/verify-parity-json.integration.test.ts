@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
@@ -36,4 +36,22 @@ it("kills an idle parity child's descendants before the child returns", async ()
     await new Promise((resolve) => setTimeout(resolve, 40));
   }
   throw new Error(`descendant ${pid} kept writing after the idle timeout`);
+});
+
+it("keeps recreated parity output private without changing the parent umask", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "hrt-parity-mode-"));
+  const previousUmask = process.umask(0o022);
+  try {
+    const source = "import {mkdirSync,writeFileSync} from 'node:fs'; mkdirSync('output'); writeFileSync('output/results.json', '{}');";
+    const result = await runChild(process.execPath, ["--input-type=module", "-e", source], directory, process.env);
+    assert.equal(result.code, 0);
+    assert.equal(process.umask(), 0o022);
+    if (process.platform !== "win32") {
+      assert.equal(statSync(join(directory, "output")).mode & 0o777, 0o700);
+      assert.equal(statSync(join(directory, "output/results.json")).mode & 0o777, 0o600);
+    }
+  } finally {
+    process.umask(previousUmask);
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

@@ -1,5 +1,6 @@
 /** Desktop parity uses isolated servers and paired screenshot/a11y references. */
 import "./tests/support/helpers/credential-keychain-process-preload.mjs";
+import { availableParallelism } from "node:os";
 import { defineConfig } from "@playwright/test";
 import { parityUpdateRequested } from "./tests/parity/helpers/reference-store.js";
 
@@ -11,7 +12,7 @@ export default defineConfig({
   outputDir: "tests/parity/.output",
   globalSetup: "./tests/parity/helpers/global-setup.ts",
   fullyParallel: true,
-  workers: 2,
+  workers: Math.min(4, availableParallelism()),
   retries: 0,
   timeout: 120_000,
   // Refresh reference pairs only in explicit update mode.

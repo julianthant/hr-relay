@@ -97,7 +97,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } finally { await server.close(); }
   });
 
-  test(`Preflight scope and rerun stay beside the heading and retain authority @ ${theme.attribute} ${width}`, async ({ page }) => {
+  test(`Preflight scope stays beside the heading and Status rerun retains authority @ ${theme.attribute} ${width}`, async ({ page }) => {
     ensureParityBundle();
     const server = await startSetupPreflightServer("unavailable");
     try {
@@ -108,7 +108,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const surface = page.getByRole("region", { name: "Preflight", exact: true });
       const heading = surface.locator(".ds-page-heading");
       const scope = heading.getByRole("combobox", { name: "Check readiness for", exact: true });
-      const rerun = heading.getByRole("button", { name: "Run preflight", exact: true });
+      const status = surface.locator(".ds-body-section").filter({ has: page.getByRole("heading", { name: "Status", exact: true }) });
+      const rerun = status.getByRole("button", { name: "Run preflight", exact: true });
       await expect(scope).toBeVisible();
       await chooseSelect(scope, server.scope);
       await expect(surface).toContainText("Readiness unavailable");
@@ -119,7 +120,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.route("**/api/v1/preflight/rerun", async route => { await pending; await route.continue(); });
       await rerun.focus();
       await page.keyboard.press("Enter");
-      const running = heading.getByRole("button", { name: "Run preflight", exact: true });
+      const running = status.getByRole("button", { name: "Run preflight", exact: true });
       await expect(running).toBeDisabled();
       release!();
       const summary = surface.getByRole("group", { name: "Readiness summary", exact: true });

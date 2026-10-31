@@ -21,7 +21,6 @@ import { assertParityBundleIsCurrent, PARITY_DIST_DIR, readBundleStamp } from ".
 import { registerStorageRoutes } from "../../../src/backend/transports/http/routes/storage.js";
 import type { DashboardApp } from "../../../src/backend/transports/http/routes/api-types.js";
 import { doctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
-import { acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 
 const retainedStorageRecoveryOwners = new Set<object>();
@@ -31,7 +30,7 @@ export async function storageRecoveryTarget() {
   const repoRoot = fixture.workspace, profileId = fixture.admission.profileBinding.profileId;
   const held: { fixture: typeof fixture; child?: ReturnType<typeof spawn>; admission?: RuntimeAdmission; machine?: RuntimeAdmission;
     restore?: OfflineMaintenanceOperation; server?: Server; shell?: FixtureServer; competing?: RuntimeAdmission;
-    backendLock?: ReturnType<typeof acquireRuntimeProcessLock>; lifetime?: RuntimeLifetimeLock; primary?: unknown } = { fixture };
+    lifetime?: RuntimeLifetimeLock; primary?: unknown } = { fixture };
   retainedStorageRecoveryOwners.add(held);
   try {
   const port = fixture.lifetime.port;
@@ -49,6 +48,7 @@ export async function storageRecoveryTarget() {
     const { AuthorityDatabase } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/authority-database.ts"))});
     const { AuthorityBackupService } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/backup-service.ts"))});
     const { OfflineAuthorityRestoreService } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/offline-restore.ts"))});
+    const { profileBrowserClosure } = await import(${JSON.stringify(sourceUrl("src/backend/runtime/browser/native-profile-probe.ts"))});
     const { createCredentialStore } = await import(${JSON.stringify(sourceUrl("src/backend/storage/configuration/credential-store.ts"))});
     const { PROTECTED_SETTINGS_SCHEMA_HASH } = await import(${JSON.stringify(sourceUrl("src/models/config/protected-settings.ts"))});
     const { observeRuntimeLockSnapshot } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/runtime-process-locks.ts"))});
@@ -183,8 +183,8 @@ export async function storageRecoveryTarget() {
     const admission = acquireDiagnostic();
     if (restoreHandle !== undefined) {
       admission.assertExclusive();
-      assert.throws(() => { held.backendLock = acquireRuntimeProcessLock({processLockRoot, name: "server", pid: process.pid}, clock); },
-        /runtime process start refused until restore exits/u);
+      assert.throws(() => { held.competing = CanonicalRuntimeAdmission.acquireMachine(repoRoot, "shared", lifetime); },
+        /offline-maintenance-unissued/u);
     }
     try {
       shell = await startFixtureServer({distDir: PARITY_DIST_DIR, bundle: {proof: "working-tree"}});
