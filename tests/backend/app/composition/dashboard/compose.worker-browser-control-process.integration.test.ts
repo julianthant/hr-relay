@@ -47,6 +47,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
   let profile: ReturnType<typeof composeProfileRuntime> | undefined;
   let token: string | undefined;
   const children: ChildProcess[] = []; const output: string[] = []; const faults: string[] = [];
+  const runIds = [randomUUID(), randomUUID()];
   type DiagnosticPhase = 'starting' | 'boot-admission' | 'boot-runtime' | 'first-boot' | 'settings-request' | 'settings-response'
     | 'worker-command-request' | 'worker-command-response' | 'paused-workers' | 'claimed-runs' | 'browser-session'
     | 'run-completion' | 'idle-workers' | 'heartbeat' | 'first-stop' | 'closed-children' | 'second-boot'
@@ -103,7 +104,10 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     children.push(child); child.stdout?.on("data",chunk => output.push(String(chunk))); child.stderr?.on("data",chunk => output.push(String(chunk)));
     return { pid:child.pid, kill:signal => child.kill(signal), onExit:listener => {child.on("exit",listener);}, onError:listener => {child.on("error",listener);} };
   };
-  const diagnostics = () => output.join("") + JSON.stringify({ leases: database?.authority.workerLeases.listLive(), runs: [1,2].flatMap(index => database?.authority.runs.listByWorker(worker(index)) ?? []) });
+  const diagnostics = () => output.join("") + JSON.stringify({ leases: database?.authority.workerLeases.listLive(), runs: runIds.map(runId => ({
+    state: database?.authority.runs.get(runId)?.lifecycle.state ?? "absent",
+    failureCodes: database?.authority.failures.listByRun(runId).map(failure => failure.code) ?? [],
+  })) });
   phase = 'boot-admission';
   const boot = async () => {
     const bootMachine = acquireEntrypointAdmission(root, "shared", lifetimeLock);
@@ -170,7 +174,6 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     }
     phase = 'paused-workers';
     await waitFor(()=>[1,2].every(index=>db.authority.workerLeases.get(worker(index))?.lifecycle.state==="paused"),"workers did not observe pause",diagnostics);
-    const runIds=[randomUUID(),randomUUID()];
     const active=db.authority.runtimeConfig.get(); assert.ok(active);
     for (const runId of runIds) {
       const candidate=RunRecordSchema.parse(personLookupQueuedRun({runId,itemId:randomUUID(),dryRun:true}));
