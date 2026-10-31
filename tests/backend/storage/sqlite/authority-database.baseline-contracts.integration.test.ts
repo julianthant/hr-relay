@@ -1,6 +1,8 @@
+import { AuthorityDatabase, createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { NOTIFICATION } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe,it } from "vitest";
 import { buildIntakeManifest } from "../../../../src/models/intake/manifest.js";
@@ -69,4 +71,36 @@ describe("native imported-artifact contracts", () => {
       assert.equal(canonicalJsonStringify(db.authority.intakeManifests.get(id(11))), frozen);
     } finally { await f.dispose(); }
   });
+});
+
+it("clones seeded profile state without sharing writes or a live canonical path", async () => {
+  const fixtures = createClonedProfileFixtures();
+  const held: BoundProfileStorageFixture[] = [];
+  const databases: AuthorityDatabase[] = [];
+  try {
+    const first = await fixtures.create(); held.push(first);
+    const peer = await fixtures.create(); held.push(peer);
+    assert.notEqual(peer.path, first.path);
+    const originalInode = lstatSync(first.path).ino;
+    const database = AuthorityDatabase.open({ path: first.path, busyTimeoutMs: 250, migrationOwner: "clone-isolation" });
+    databases.push(database);
+    database.authority.notifications.create({ ...NOTIFICATION, trigger: "backfill-gap", links: [] });
+    database.close();
+    await first.close();
+    const next = await fixtures.create(); held.push(next);
+    assert.equal(next.path, first.path);
+    assert.notEqual(lstatSync(next.path).ino, originalInode);
+    await first.close();
+    next.admission.assertLive();
+    for (const profile of [next, peer]) {
+      const current = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "clone-isolation" });
+      databases.push(current);
+      assert.equal(current.authority.notifications.get(NOTIFICATION.notificationId), undefined);
+      current.close();
+    }
+  } finally {
+    for (const database of databases) database.close();
+    for (const profile of held) await profile.close();
+    await fixtures.close();
+  }
 });

@@ -11,9 +11,10 @@ import { systemClock, type Clock } from "../../../src/rules/time/clock.js";
 import { createProfileVerifiers } from "../../../src/backend/storage/configuration/verifier-store.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 import { createProfileSession } from "../../../src/backend/profiles/profile-session.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statfsSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -253,6 +254,65 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
     failedBoundProfileFixtures.add({ workspace, admissions: ownedAdmissions, lifetime, primary: error });
     throw error;
   }
+}
+
+export type BoundProfileStorageFixture = Pick<Awaited<ReturnType<typeof createBoundProfileFixture>>,
+  "workspace" | "stateRoot" | "path" | "admission" | "close">;
+
+export function createClonedProfileFixtures() {
+  const seeds: { profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; snapshot: string; active: boolean }[] = [];
+  let apfsType: number | undefined;
+  return {
+    async create(this: void): Promise<BoundProfileStorageFixture> {
+      const root = realpathSync(tmpdir());
+      if (apfsType === undefined) {
+        if (process.platform !== "darwin") throw new Error("fixture-apfs-required");
+        const device = execFileSync("/bin/df", ["-P", root], { encoding: "utf8" }).trim().split("\n").at(-1)?.trim().split(/\s+/u)[0];
+        if (device === undefined) throw new Error("fixture-apfs-volume-unavailable");
+        const info = execFileSync("/usr/sbin/diskutil", ["info", "-plist", device]);
+        const filesystem = execFileSync("/usr/bin/plutil", ["-extract", "FilesystemType", "raw", "-o", "-", "-"],
+          { input: info, encoding: "utf8" }).trim();
+        if (filesystem !== "apfs") throw new Error("fixture-apfs-required");
+        apfsType = statfsSync(root).type;
+      }
+      if (statfsSync(root).type !== apfsType) throw new Error("fixture-apfs-required");
+      let seed = seeds.find(candidate => !candidate.active);
+      if (seed === undefined) {
+        const profile = await createBoundProfileFixture();
+        const directory = realpathSync(mkdtempSync(join(root, "relay-profile-seed-")));
+        seed = { profile, snapshot: join(directory, "profile"), active: true };
+        seeds.push(seed);
+        execFileSync("/bin/cp", ["-cR", profile.stateRoot, seed.snapshot]);
+      }
+      const current = seed;
+      current.active = true;
+      const profile = current.profile;
+      if (statfsSync(current.snapshot).type !== apfsType || statfsSync(dirname(profile.stateRoot)).type !== apfsType) throw new Error("fixture-apfs-required");
+      assertBoundFixtureWorkersReleased(profile.admission);
+      profile.admission.release();
+      rmSync(profile.stateRoot, { recursive: true });
+      execFileSync("/bin/cp", ["-cR", current.snapshot, profile.stateRoot]);
+      profile.renewAfterRestore();
+      const admission = profile.admission;
+      let closed = false;
+      return { workspace: profile.workspace, stateRoot: profile.stateRoot, path: profile.path, admission,
+        async close() {
+          if (closed) return;
+          assertBoundFixtureWorkersReleased(admission);
+          admission.release();
+          current.active = false;
+          closed = true;
+        } };
+    },
+    async close() {
+      if (seeds.some(seed => seed.active)) throw new Error("fixture-clone-still-held");
+      for (const seed of seeds) {
+        await seed.profile.close();
+        rmSync(dirname(seed.snapshot), { recursive: true });
+      }
+      seeds.length = 0;
+    },
+  };
 }
 
 export async function openBoundDatabaseFixture(migrationOwner: string, clock: Clock = systemClock, busyTimeoutMs = 250,

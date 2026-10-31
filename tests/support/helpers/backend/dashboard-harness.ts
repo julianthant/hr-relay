@@ -1,6 +1,6 @@
 import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
-import { createBoundProfileFixture } from "../admission-fixture.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { WorkerSlotRecordSchema, type WorkerSlotRecord } from "../../../../src/models/run/worker-slot.js";
 import type { WorkerControlRecord } from "../../../../src/models/run/worker-control.js";
 import { AuthorityDatabase } from "../synthetic-database-admission.js";
@@ -216,13 +216,14 @@ export async function makeWorld(input?: Readonly<{
   reader?: CanonicalRunReader;
   timeline?: TimelineRepository;
   collectRebuilds?: boolean;
+  profileFixture?: () => Promise<BoundProfileStorageFixture>;
 
   descriptors?: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
 }>): Promise<DashboardWorld> {
-  const held: { fixture?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; raws: Set<DatabaseSync>; primary?: { error: unknown }; failure?: Error } = { raws: new Set() };
+  const held: { fixture?: BoundProfileStorageFixture; database?: AuthorityDatabase; raws: Set<DatabaseSync>; primary?: { error: unknown }; failure?: Error } = { raws: new Set() };
   retainedDashboardWorldOwners.add(held);
   try {
-  const fixture = await createBoundProfileFixture(); held.fixture = fixture;
+  const fixture = await (input?.profileFixture ?? createBoundProfileFixture)(); held.fixture = fixture;
   const stateRoot = fixture.stateRoot;
   const clock = manualClock(AT);
   const authority = authorityFake();
