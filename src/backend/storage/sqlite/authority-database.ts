@@ -1019,13 +1019,13 @@ function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRe
     const request = z.record(z.string(),z.unknown()).parse(command.request);
     const lifecycle = request.lifecycle === undefined ? undefined : z.record(z.string(),z.unknown()).parse(request.lifecycle);
     const declaredOutcome = command.operation === "transition" ? lifecycle?.outcome : "cancelled";
-    const declaredEndedAt = command.operation === "transition" ? lifecycle?.endedAt : command.operation === "requeue" ? audit.result.kind === "run" ? audit.result.terminal?.endedAt : undefined : request.endedAt;
+    const declaredEndedAt = command.operation === "transition" ? lifecycle?.endedAt : command.operation === "requeue" ? audit.result.kind === "run" ? audit.result.terminal?.endedAt : undefined : command.operation === "recover-crash" ? request.now : request.endedAt;
     if (request.runId !== record.runId || request.expectedVersion !== evidence.appliedVersion - 1
       || declaredOutcome !== evidence.outcome || declaredEndedAt !== record.createdAt
       || audit.result.kind !== "run" || audit.result.terminal?.outcome !== evidence.outcome
       || audit.result.terminal.endedAt !== record.createdAt
-      || (command.operation === "requeue" && run.cancelRequested !== true)
-      || (command.operation !== "transition" && command.operation !== "terminalize" && command.operation !== "requeue")
+      || ((command.operation === "requeue" || command.operation === "recover-crash") && run.cancelRequested !== true)
+      || (command.operation !== "transition" && command.operation !== "terminalize" && command.operation !== "requeue" && command.operation !== "recover-crash")
       || audit.result.kind !== "run" || audit.result.runId !== record.runId || audit.result.appliedVersion !== evidence.appliedVersion
       || command.requestFingerprint !== evidence.requestFingerprint || audit.auditId !== CommandAuditIdSchema.parse(evidence.commandId)
       || z.object({outcome_json:z.string()}).parse(commandRaw).outcome_json !== canonicalJsonStringify(audit)
@@ -2791,7 +2791,7 @@ export class AuthorityDatabase implements Disposable {
       if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome === "done" || run.lifecycle.outcome === "failed" || run.lifecycle.outcome === "interrupted") return;
       if (run.version !== audit.result.appliedVersion) throw new Error("terminal-evidence-run-version-mismatch");
       const request = z.record(z.string(), z.unknown()).parse(command.request);
-      if (request.runId !== run.envelope.runId || (command.operation !== "transition" && command.operation !== "terminalize" && command.operation !== "requeue")) throw new Error("terminal-evidence-command-target-mismatch");
+      if (request.runId !== run.envelope.runId || (command.operation !== "transition" && command.operation !== "terminalize" && command.operation !== "requeue" && command.operation !== "recover-crash")) throw new Error("terminal-evidence-command-target-mismatch");
       const result = createRunTerminalEvidenceResult(run, {
         kind: "lifecycle-evidence", outcome: run.lifecycle.outcome,
         commandId: command.commandId, auditId: audit.auditId,

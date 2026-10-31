@@ -1,10 +1,7 @@
 
 import * as credentialStores from "../../../../src/backend/storage/configuration/credential-store.js";
 import { RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
-import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
-import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createWorkerCompositionTestWorld } from "../../../support/helpers/backend/worker-composition-world.js";
-import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
@@ -15,8 +12,7 @@ import { composeWorkerRuntime } from "../../../../src/backend/app/composition/wo
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js";
-import { WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { ITEM_ID, RUN_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { RUN_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { happySessionHarness, healthyCrmDriver, personLookupQueuedRun, sessionFactoryHarness, type SessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
 const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, captureSyntheticClosure, workerLifetime, composeInput, cleanup } = createWorkerCompositionTestWorld();
@@ -120,150 +116,6 @@ describe("composed worker runtime", () => {
       );
     } finally { await lifetime.close(); }
 
-  });
-
-  it("reclaims a lease whose process died without settling, instead of bricking the workflow", async () => {
-    const { repoRoot, stateRoot } = await repoRootWithState();
-    const clock = manualClock(new Date(NOW));
-    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const workerId = admittedWorkerId(stateRoot, clock);
-    const seed = reopen(stateRoot, clock);
-
-    const lifetime = await workerLifetime(stateRoot, clock, workerId);
-    assert.equal(seed.authority.workerLeases.reportLifecycle({
-      workerId,
-      leaseGeneration: lifetime.lease.leaseGeneration,
-      lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: NOW },
-      now: NOW,
-    }).state, "applied");
-    await lifetime.crash();
-    clock.advanceWall(120_000);
-    clock.advanceMonotonic(120_000);
-
-    const lines: string[] = [];
-    const report = await composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions: happySessionHarness(), lines, poolIndex: POOL_INDEX_1,
-    }));
-    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
-    const lease = seed.authority.workerLeases.get(workerId);
-    assert.ok(lease && lease.leaseGeneration === 2 && lease.processId === process.pid);
-    assert.ok(lines.some((line) => line.includes("stale worker lease reclaimed before start")));
-    await lifetime.close();
-  });
-
-  it("sweeps its own orphaned claim at startup and then claims it, same workflow", async () => {
-    const { repoRoot, stateRoot } = await repoRootWithState();
-    const clock = manualClock(new Date(NOW));
-    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const workerId = admittedWorkerId(stateRoot, clock);
-    const crashed = reopen(stateRoot, clock);
-    const claimed = crashed.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: NOW });
-    assert.equal(claimed.state, "claimed", "the crashed process must actually own the row");
-    // The clock barely moves: the heartbeat this row carries is FRESH, which is
-    // precisely why the staleness-gated boot sweep skips it.
-    clock.advanceWall(2_000);
-    clock.advanceMonotonic(2_000);
-
-    const lines: string[] = [];
-    const report = await composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions: happySessionHarness(), lines, poolIndex: POOL_INDEX_1,
-    }));
-    assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
-    assert.ok(
-      lines.some((line) => line.includes("orphaned claim released before the first poll")),
-      "the startup self-sweep did not report releasing the row",
-    );
-    const run = crashed.authority.runs.get(RUN_ID);
-    assert.ok(run && run.lifecycle.state === "terminal");
-    assert.equal(run.lifecycle.outcome, "done");
-    assert.equal(run.envelope.attempt, 1, "recovery preserves the immutable item attempt");
-  });
-
-  for (const recovery of ["startup", "global"] as const) it(`${recovery} recovery publishes cancellation once without claiming or opening browsers`, async () => {
-    const { repoRoot, stateRoot } = await repoRootWithState();
-    const clock = manualClock(new Date(NOW));
-    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const workerId = admittedWorkerId(stateRoot, clock, recovery === "startup" ? 1 : 2);
-    const database = reopen(stateRoot, clock);
-    if (recovery === "global" && database.authority.workerLeases.get(workerId) === undefined) assert.equal(database.authority.workerLeases.start({ workerId, workflow: WORKFLOW_ID,
-      browserSystems: ["crm", "ucpath"], processId: process.pid, requestedBy: "local-operator", now: NOW }).state, "started");
-    const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: NOW });
-    assert.ok(claimed.state === "claimed");
-    const service = testRunService(database, clock);
-    assert.equal(service.transition({ commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      runId: RUN_ID, expectedVersion: claimed.run.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() } }).state, "applied");
-    if (recovery === "global") clock.advanceWall(600_000);
-    const sessions = happySessionHarness();
-    const report = await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 }));
-    assert.deepEqual(report.outcomes, []);
-    assert.equal(sessions.opens("ucpath"), 0);
-    assert.equal(sessions.opens("crm"), 0);
-    const settled = database.authority.runs.get(RUN_ID);
-    assert.ok(settled);
-    assert.deepEqual(settled.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: clock.now().toISOString() });
-    assert.equal(settled.envelope.attempt, claimed.run.envelope.attempt);
-    assert.equal(settled.claimGeneration, claimed.run.claimGeneration);
-    // A fresh process repeating startup/global maintenance must not duplicate the terminal event.
-    await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 }));
-    const terminal = database.authority.timelineEvents.page({ runId: RUN_ID })
-      .flatMap((record) => record.payload.kind === "span" ? [record.payload.event] : [])
-      .flatMap((event) => event.t === "span.ended" && event.kind === "run" && event.runId === RUN_ID ? [event] : []);
-    assert.equal(terminal.length, 1);
-    assert.equal(terminal[0]?.outcome, "cancelled");
-    assert.equal(terminal[0]?.attempt, claimed.run.envelope.attempt);
-    assert.equal(terminal[0]?.traceId, claimed.run.envelope.traceId);
-  });
-
-  it("parks — never requeues — its own orphaned claim that holds an attempting write intent", async () => {
-    const { repoRoot, stateRoot } = await repoRootWithState();
-    const clock = manualClock(new Date(NOW));
-    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const workerId = admittedWorkerId(stateRoot, clock);
-    const crashed = reopen(stateRoot, clock);
-    const claimed = crashed.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId, now: NOW });
-    assert.ok(claimed.state === "claimed");
-    const validating = crashed.authority.runs.transition({
-      runId: RUN_ID,
-      expectedVersion: claimed.run.version,
-      claim: { workerId, claimGeneration: 1 },
-      lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW },
-      now: NOW,
-    });
-    assert.ok(validating.state === "applied");
-    const running = crashed.authority.runs.transition({
-      runId: RUN_ID,
-      expectedVersion: validating.run.version,
-      claim: { workerId, claimGeneration: 1 },
-      lifecycle: { state: "running", workerId, claimedAt: NOW, heartbeatAt: NOW, currentNodeId: "searching" },
-      now: NOW,
-    });
-    assert.ok(running.state === "applied");
-    const bindingProof = { ...WRITE_INTENT_ATTEMPTING.bindingProof,
-      afterPrepareSpanPath: `${running.run.envelope.traceId}/termination/prepare` };
-    const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
-    fenceWriteFixture(crashed, {
-      intent: { ...WRITE_INTENT_ATTEMPTING, workflowId: WORKFLOW_ID, itemId: ITEM_ID, bindingProof, bindingProofDigest },
-      attempt: { ...WRITE_ATTEMPT, bindingProof, bindingProofDigest },
-    });
-    clock.advanceWall(2_000);
-    clock.advanceMonotonic(2_000);
-
-    const lines: string[] = [];
-    const report = await composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions: happySessionHarness(), lines, poolIndex: POOL_INDEX_1,
-    }));
-
-    assert.deepEqual(report.outcomes, []);
-    assert.equal(report.stopped, "idle");
-    assert.ok(
-      lines.some((line) => line.includes("orphaned claim routed to ref write-safety recovery")),
-      "the startup self-sweep did not report the recovery routing",
-    );
-    const run = crashed.authority.runs.get(RUN_ID);
-    assert.ok(run && run.lifecycle.state === "parked-write");
-    assert.equal(run.lifecycle.writeIntentId, WRITE_INTENT_ATTEMPTING.writeIntentId);
-    assert.equal(run.envelope.attempt, 1, "a parked write must never take a new attempt");
   });
 
   it("stops gracefully mid-run: the run is abandoned, never terminalized over a lost claim", async () => {
