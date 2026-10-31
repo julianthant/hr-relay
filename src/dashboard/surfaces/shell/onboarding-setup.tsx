@@ -1,7 +1,7 @@
-import { ERROR_CATALOG, operatorFailureSentence } from "../../../models/failures/error-catalog.js";
+import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { useEffect, useState } from "react";
 import { Check, Fingerprint, KeyRound } from "lucide-react";
-import { Banner, BodySection, Button, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
+import { Badge, Button, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
 import { duoMethodLabels, duoMethodPresentation, duoSummary, useMockDuoSetup, useServedDuoSetup, type DuoConfirmationScope, type ServedOnboardingPort } from "./onboarding-model.js";
 import { DuoMethodPill } from "./onboarding.js";
 import "./onboarding-setup.css";
@@ -52,25 +52,20 @@ export function OnboardingSetup({ page, port }: { page: "fast" | "duo"; port?: S
   </div>;
 }
 
-export function DuoSignupSteps({ methods, platformAuthenticator, state, onEnroll, onFinish, onCancel }: {
+export function DuoSignupSteps({ methods, platformAuthenticator, state, onEnroll, onFinish, onCancel, onShowSetup }: {
   methods: Readonly<Record<"key" | "touch", "idle" | "pending" | "complete" | "unknown" | "unavailable">>;
   platformAuthenticator: "hardware" | "virtual";
   state: "enrolling" | "finishing" | "cancelling";
   onEnroll?: (method: "key" | "touch") => void;
   onFinish?: () => void;
   onCancel?: () => void;
+  onShowSetup?: () => void;
 }) {
   const busy = state !== "enrolling" || methods.key === "pending" || methods.touch === "pending";
   const ready = methods.key === "complete" && methods.touch === "complete";
-  return <section aria-label="Required Duo methods" className="ds-body-stack">
-    <p>Add both methods in Duo device management at duo.ucpath.edu. Each method requires verified enrollment.</p>
-    <BodySection title="1 · Touch ID"><p>{platformAuthenticator === "hardware" ? "Use the platform Touch ID authenticator." : "Touch ID hardware is unavailable. Chromium supplies a virtual platform authenticator for this method."}</p><DuoMethodPill state={methods.touch} /><Button variant="secondary" disabled={busy || methods.touch !== "idle" || !onEnroll} onClick={() => onEnroll?.("touch")}>Add Touch ID</Button></BodySection>
-    <BodySection title="2 · Security key"><p>FastDuo answers Duo’s security-key challenge in Relay’s browser. This is separate from the Touch ID method.</p><DuoMethodPill state={methods.key} /><Button variant="secondary" disabled={busy || methods.key !== "idle" || !onEnroll} onClick={() => onEnroll?.("key")}>Add Security key</Button></BodySection>
-    {(methods.key === "unknown" || methods.touch === "unknown") && <Banner tone="warning" title="Enrollment outcome unknown">Review the existing Duo devices. Do not repeat this attempt or treat a captured credential as verified enrollment.</Banner>}
-    {(methods.key === "unavailable" || methods.touch === "unavailable") && <Banner tone="warning" title="Enrollment unavailable">PROFILE_AUTHORITY_UNAVAILABLE: {ERROR_CATALOG.PROFILE_AUTHORITY_UNAVAILABLE.text}</Banner>}
-    {state === "finishing" && <Banner tone="info" title="Finishing sign-up">Waiting for the complete account to be published. The dashboard is not available yet.</Banner>}
-    {state === "cancelling" && <Banner tone="info" title="Cancelling sign-up">Closing owned resources before removing unfinished sign-up. Cancellation is not complete.</Banner>}
-    <p>{ready ? "Both method enrollments are verified. Finish publishes the complete account." : "Finish stays unavailable until both method enrollments are verified. Capture alone is not enrollment."}</p>
-    <div className="flex gap-2"><Button variant="muted" disabled={state !== "enrolling" || !onCancel} onClick={onCancel}>Back to login</Button><Button disabled={!ready || busy || !onFinish} onClick={onFinish}>Finish</Button></div>
+  return <section aria-label="Required Duo methods" className="duo-signup-methods">
+    <div className="duo-signup-cards">{(["touch", "key"] as const).map(method => <section key={method} className="duo-signup-card"><div className="flex items-center justify-between gap-3"><span className="duo-signup-icon">{methods[method] === "complete" ? <Check aria-hidden /> : method === "touch" ? <Fingerprint aria-hidden /> : <KeyRound aria-hidden />}</span><Badge tone={methods[method] === "complete" ? "success" : "neutral"}>{methods[method] === "complete" ? "Added" : methods[method] === "pending" ? "Waiting for Duo" : methods[method] === "unknown" ? "Unknown" : methods[method] === "unavailable" ? "Unavailable" : "Not added"}</Badge></div><h2>{method === "touch" ? "Touch ID" : "Security key"}</h2><p>{methods[method] === "complete" ? method === "touch" && platformAuthenticator === "virtual" ? "Verified · Chromium virtual authenticator." : "Verified in Duo." : methods[method] === "pending" ? "Finish adding it in the setup browser." : methods[method] === "unknown" ? "Enrollment is unverified. Review your Duo devices." : methods[method] === "unavailable" ? "Enrollment is unavailable. Reopen the setup browser." : method === "touch" ? platformAuthenticator === "virtual" ? "Chromium supplies a virtual platform authenticator." : "Use Touch ID on this Mac." : "Use FastDuo in Relay’s setup browser."}</p>{methods[method] === "idle" && <Button variant="secondary" disabled={busy || !onEnroll} onClick={() => onEnroll?.(method)}>Add {method === "touch" ? "Touch ID" : "Security key"}</Button>}{(methods[method] === "pending" || methods[method] === "unknown" || methods[method] === "unavailable") && <Button variant="secondary" disabled={state !== "enrolling" || !onShowSetup} onClick={onShowSetup}>Show setup browser</Button>}</section>)}</div>
+    {state !== "enrolling" && <p role="status">{state === "finishing" ? "Finishing sign-up; your account is not published yet." : "Cancelling sign-up; resource closure is not complete."}</p>}
+    <footer className="flex items-center justify-between border-t border-ui-stroke pt-[var(--ds-space-loose)]"><Button variant="muted" disabled={state !== "enrolling" || !onCancel} onClick={onCancel}>Back to login</Button><Button disabled={!ready || busy || !onFinish} onClick={onFinish}>Finish</Button></footer>
   </section>;
 }
