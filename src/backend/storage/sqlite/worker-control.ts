@@ -373,7 +373,7 @@ export function admitWorkerReset(repositories: AuthorityRepositories, input: unk
   let lifecycle: WorkerLifecycleBinding | undefined;
   if (lease.lifecycle.state === "stopped") {
     const active = repositories.runtimeConfig.get(), pool = repositories.workerPools.get(slot.workflow);
-    if (replacementDescriptor?.id !== slot.workflow || active === undefined || pool === undefined) throw new Error("worker-reset-replacement-authority-unavailable");
+    if (lease.startCommandId === undefined || replacementDescriptor?.id !== slot.workflow || active === undefined || pool === undefined) throw new Error("worker-reset-replacement-authority-unavailable");
     lifecycle = WorkerLifecycleBindingSchema.parse({ commandId: request.commandId,
       member: reset.member, lifetime: reset.lifetime, basis: reset.basis, reservedControlRevision: reset.reservedControlRevision,
       poolVersion: pool.version, desiredWorkers: pool.desiredWorkers, operation: { kind: "retry", mode: "browserless",
