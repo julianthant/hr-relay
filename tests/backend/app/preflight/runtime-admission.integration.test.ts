@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
-import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { createClonedProfileFixtures, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import fs, { renameSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
-import { it, vi } from "vitest";
+import { afterAll, it, vi } from "vitest";
 import { composeWorkerProcessControl } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -45,11 +45,13 @@ import { AuthorityBackupService, AuthorityDatabase } from "../../../support/help
 
 {
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 const cleanup: (() => void | Promise<void>)[] = [];
 const _afterEachFixture0 = async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose(); };
 const signal = (): AbortSignal => new AbortController().signal;
 async function harness(configureRunners?: (runners: readonly PreflightRunner[]) => readonly PreflightRunner[]) {
-  const profile = await createBoundProfileFixture();
+  const profile = await profileFixtures.create();
   const repoRoot = profile.workspace, stateRoot = profile.stateRoot;
   const clock = manualClock(new Date("2026-09-19T12:00:00Z"));
   const database = AuthorityDatabase.open({ path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "preflight-test" }, clock);

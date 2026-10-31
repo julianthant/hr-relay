@@ -116,7 +116,7 @@ it("refuses a cross-device clone before deleting the previous profile", async ()
   try {
     vi.spyOn(fs, "statSync").mockImplementation((path, options) => {
       const result = stat(path, options);
-      if (path === dirname(first.stateRoot)) result.dev++;
+      if (result !== undefined && path === dirname(first.stateRoot)) result.dev++;
       return result;
     });
     syncBuiltinESMExports();
