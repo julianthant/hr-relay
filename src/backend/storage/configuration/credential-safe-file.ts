@@ -305,7 +305,8 @@ export class PrivateFileLockUnavailableError extends Error {
 export type OperationProof = { active: boolean; readonly slots: Map<string, unknown>; readonly release: Array<() => void> };
 const operationProof = new AsyncLocalStorage<OperationProof>();
 export function outermostOperationProof(): OperationProof | undefined {
-  return operationProof.getStore();
+  const proof = operationProof.getStore();
+  return proof?.active === true ? proof : undefined;
 }
 function discardOperationProof(proof: OperationProof): void {
   proof.slots.clear();
@@ -318,7 +319,7 @@ function discardOperationProof(proof: OperationProof): void {
   }
 }
 export function withOperationProof<T>(body: () => T): T {
-  if (operationProof.getStore() !== undefined) return body();
+  if (outermostOperationProof() !== undefined) return body();
   const proof: OperationProof = { active: true, slots: new Map(), release: [] };
   let settled = false;
   const finish = (error?: unknown) => {

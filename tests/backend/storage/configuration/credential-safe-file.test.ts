@@ -277,3 +277,30 @@ it("retains proof resources when source closure is unproved", () => {
   assert.equal(releases, 0);
   assert.equal(outermostOperationProof(), undefined);
 });
+
+it("starts a fresh proof when an async descendant outlives its operation", async () => {
+  let releases = 0;
+  const deferred = withOperationProof(() => {
+    const original = outermostOperationProof();
+    assert.ok(original);
+    original.slots.set("prior", "verified");
+    original.release.push(() => { releases++; });
+    return { pending: new Promise<void>(resolve => { setImmediate(resolve); }).then(() => {
+      assert.equal(original.active, false);
+      assert.equal(original.slots.size, 0);
+      assert.equal(outermostOperationProof(), undefined);
+      withOperationProof(() => {
+        const fresh = outermostOperationProof();
+        assert.ok(fresh);
+        assert.notEqual(fresh, original);
+        assert.equal(fresh.slots.size, 0);
+        fresh.release.push(() => { releases++; });
+      });
+      assert.equal(outermostOperationProof(), undefined);
+    }) };
+  });
+  assert.equal(releases, 1);
+  await deferred.pending;
+  assert.equal(releases, 2);
+  assert.equal(outermostOperationProof(), undefined);
+});
