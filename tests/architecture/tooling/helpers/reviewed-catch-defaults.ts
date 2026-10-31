@@ -8,8 +8,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/browser/onboarding-duo-provider.ts",
-    "sha256": "7cbed0d0e7b1078c0f9c8b6748ede60635bde192220609a2381bf66142716618",
-    "reason": "A failed UNKNOWN-retention or failure-report callback marks closure unproved and retains the original and retention errors. Closure propagates that stored failure with both causes, keeps the active attempt and browser uncertain, and refuses replacement or relaunch; it never reports successful cleanup. Worker stop failure remains uncertain while pump/report settlement is awaited, and the enclosing browser close retains both causes."
+    "sha256": "4730bee5f4781cfcbdfffadfccad276d05537bca11de666dac614668b43be7c8",
+    "reason": "Failed UNKNOWN retention or failure-report callbacks retain both causes and leave attempt/browser closure unproved. Context or broker termination revokes the owner and settles the attempt; physical profile deletion waits for owner cleanup and keeps all private-path and native closure checks. Worker stop failure remains uncertain until pump/report settlement and enclosing browser closure are proved; replacement or relaunch remains refused after unproved cleanup."
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
@@ -18,8 +18,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "a404930f59126169a81d68abf5a9ee1af0ebb048be276108dd274be73654891d",
-    "reason": "A throwing actual database close records failed closure and preserves the original error. Worker-start inspection runs before the credential store; an unproved inspection close retains the issued admission and throws custody uncertainty without release. Open failure retains source-closure uncertainty; otherwise it closes the opened database before admission release and aggregates close or release failure with the original error. Runtime cleanup releases admission only after proven database and browser closure. The maintenance tick retains its first error, stops rescheduling, signals the worker stop controller, and compose surfaces a failed report. The exact root or inherited lifetime remains held through shutdown."
+    "sha256": "e61641f9f61f92a5ffcc563f806a41246221c5a5dd6c5252cebe97d7cbf5b16f",
+    "reason": "The bound native open validates authority in one SQLite snapshot before protected values are read. Failed opening cleanup retains the actual native database, issued admission and both original/close errors as custody uncertainty. Other open failures close the actual database before admission release and aggregate cleanup errors. Runtime cleanup releases admission only after proven database and browser closure. Maintenance failure stops rescheduling and signals the worker stop controller; composition surfaces the failure. Actual root or inherited lifetime custody remains held through shutdown."
   },
   {
     "path": "src/backend/accounts/chatgpt-account-service.ts",
@@ -33,7 +33,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/storage-doctor.ts",
-    "sha256": "383186ffd3199ca35d6d9a1422cccdc084f1d2530b2ec2d96a4d8d397de4adc6",
+    "sha256": "4c4caa82a69ab726740576666d28eb766353953e9ad9c927a20e72bb07aee780",
     "reason": "ENOENT alone denotes no backup directory; failed authority, credential, recovery or backup inspection publishes explicit unavailable, degraded or invalid health, and relocation-history verification failure makes restore unavailable."
   },
   {
@@ -68,7 +68,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "0882df6a3d64970f26bd68fd5fcd142e82fa9e2775247e70414c59d12b187017",
+      "sha256": "d3f33060ba0f2cca11cd46582b434f1171b7b161fa0cb410b8b0e1907934a3de",
     "reason": "Only ENOENT returns explicit path absence; callers check it before creation or refusal, and other filesystem failures rethrow. Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
   },
   {
@@ -113,12 +113,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "adde2c4614c134c458e3e781b2b5031123f9e42319a4e35ab38bb4e42eb780c0",
-    "reason": "The rollback failure array only accumulates errors: failed rollback retains database custody with the original failure, and successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or run-search-index-rebuild-required with its cause; it never returns validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody can release; required native browser closure precedes the cancellation transaction."
+    "sha256": "3756eaf07dd622967da1bce2a325ceb1fdf8f3e2de7d0eedfb741eb048cb8f83",
+    "reason": "Failed constructor cleanup retains the actual native database and admission with both opening and close failures. Failed rollback retains database custody with the original failure; successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or named search refusal, never validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody releases; required native browser closure precedes cancellation."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
-    "sha256": "bfec50d0f6b3dbea8525b721950a29723cb981552066f56360be5ede97d5d79b",
+    "sha256": "9d126991d2a6b2aae868121c86137f04626a2dac4c49c418b54ef963571ccfd4",
     "reason": "Only ENOENT returns absent source metadata; the caller rejects a missing main database and permits absent optional sidecars. Unsafe or changed sources throw. Construction and read failures rethrow after private cleanup; failed database close or snapshot disposal retains the resource owners and original causes as source-closure uncertainty, never a read result."
   },
   {
