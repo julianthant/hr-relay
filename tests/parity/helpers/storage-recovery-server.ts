@@ -1,7 +1,6 @@
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createBoundProfileFixture } from '../../support/helpers/admission-fixture.js';
 import { RuntimeAdmission as CanonicalRuntimeAdmission, acquireRecoveryRuntimeRestore, type RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import { rebuildRuntimeIsolation } from '../../../src/backend/app/config/runtime-isolation.js';
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 /** Storage-owned test composition: real doctor route; fixture shell/settings/SSE/static responses. */
 import assert from "node:assert/strict";

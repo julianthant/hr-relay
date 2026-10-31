@@ -65,8 +65,10 @@ for (const entry of ['service', 'command'] as const) it(`retains actual stopped 
     assert.equal(inspected.errors.length, 1); assert.equal(inspected.errors[0], inspected.cause);
     assert.ok(inspected.cause instanceof AuthoritySourceClosureUnprovedError);
     let sourceFailure: unknown = inspected.cause;
-    for (let depth = 0; depth < (entry === "command" ? 2 : 0); depth++) {
-      assert.ok(sourceFailure instanceof AuthoritySourceClosureUnprovedError);
+    const wrappers = new Set<AuthoritySourceClosureUnprovedError>();
+    while (sourceFailure instanceof AuthoritySourceClosureUnprovedError && sourceFailure.cause instanceof AuthoritySourceClosureUnprovedError) {
+      assert.equal(wrappers.has(sourceFailure), false);
+      wrappers.add(sourceFailure);
       assert.deepEqual(sourceFailure.errors, [sourceFailure.cause]);
       sourceFailure = sourceFailure.cause;
     }

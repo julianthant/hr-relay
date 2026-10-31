@@ -23,11 +23,7 @@ import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { CONFIG_SNAPSHOT, LATER, NOW, UUID_1, UUID_2, UUID_3 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-const effects=vi.hoisted(()=>({credentials:0,browsers:0}));
-vi.mock("../../../../src/backend/storage/configuration/credential-store.js",async()=>{
-  const actual=await vi.importActual<typeof import("../../../../src/backend/storage/configuration/credential-store.js")>("../../../../src/backend/storage/configuration/credential-store.js");
-  return {...actual,createCredentialStore:(...args:Parameters<typeof actual.createCredentialStore>)=>{effects.credentials+=1;return actual.createCredentialStore(...args);}};
-});
+const effects={credentials:0,browsers:0};
 
 {
 
@@ -150,7 +146,7 @@ afterEach(_afterEachFixture0);
 
 {
 const cleanups:(()=>Promise<void>)[]=[];
-const _afterEachFixture0 = async()=>{effects.credentials=0;effects.browsers=0;for(const cleanup of cleanups.splice(0))await cleanup();};
+const _afterEachFixture0 = async()=>{vi.restoreAllMocks();syncBuiltinESMExports();effects.credentials=0;effects.browsers=0;for(const cleanup of cleanups.splice(0))await cleanup();};
 async function fixture() {
   const profile=await createBoundProfileFixture(),root=profile.workspace,stateRoot=profile.stateRoot;
   cleanups.push(()=>profile.close());
@@ -163,6 +159,12 @@ async function fixture() {
   const options={path,busyTimeoutMs:5000,migrationOwner:"native-snapshot-proof"};
   const database=AuthorityDatabase.open(admission,options,clock,undefined,undefined,undefined,credentials);
   try{database.authority.runtimeConfig.initialize(snapshot);}finally{database.close();}
+  const open=fs.openSync,protectedPath=join(stateRoot,"credentials","protected.json");
+  vi.spyOn(fs,"openSync").mockImplementation((...args)=>{
+    if(String(args[0])===protectedPath)effects.credentials+=1;
+    return open(...args);
+  });
+  syncBuiltinESMExports();
   effects.credentials=0;
   return {root,admission,credentials,machine:profile.machine,lifetime:profile.lifetime,clock,snapshot,options,path};
 }
@@ -214,20 +216,24 @@ afterEach(_afterEachFixture0);
       expect(read.prepare("SELECT * FROM worker_slots").all()).toEqual([]);expect(read.prepare("SELECT * FROM worker_leases").all()).toEqual([]);
     }finally{read.close();}
   });
-  it("retains the issued admission when inspection close is unproved before credentials or a browser",async()=>{
+  it("retains the issued admission and native owner when opening validation and close fail before credentials or a browser",async()=>{
     const f=await fixture();effects.credentials=0;
+    const raw=new DatabaseSync(f.path);
+    try{raw.exec("CREATE TABLE unowned_authority(id TEXT)");}finally{raw.close();}
+    const before=fs.readFileSync(f.path);
     let issued:RuntimeAdmission|undefined;
-    const readOnly=AuthorityDatabase.inspectExistingReadOnly.bind(AuthorityDatabase);
-    vi.spyOn(AuthorityDatabase,"inspectExistingReadOnly").mockImplementation((admission,path,busyTimeoutMs)=>{
-      issued=admission;return readOnly(admission,path,busyTimeoutMs);
+    const open=AuthorityDatabase.open.bind(AuthorityDatabase);
+    vi.spyOn(AuthorityDatabase,"open").mockImplementation((admission,...args)=>{
+      issued=admission;return open(admission,...args);
     });
-    const injected=new Error("injected-inspection-close-refusal");
-    const actualRemove=fs.rmSync;
-    const remove=vi.spyOn(fs,"rmSync").mockImplementation((...args)=>{
-      if(String(args[0]).includes("relay-readonly-authority-"))throw injected;
-      actualRemove(...args);
+    const injected=new Error("injected-native-opening-close-refusal");
+    const owner:{native?:DatabaseSync}={};
+    const close:unknown=Object.getOwnPropertyDescriptor(DatabaseSync.prototype,"close")?.value;
+    if(typeof close!=="function")throw new Error("actual native close required");
+    vi.spyOn(DatabaseSync.prototype,"close").mockImplementation(function(this:DatabaseSync){
+      if(this.location()===f.path){owner.native=this;throw injected;}
+      Reflect.apply(close,this,[]);
     });
-    syncBuiltinESMExports();
     try{
       let failure:unknown;
       try{await composeWorkerRuntime({lifetimeLock:f.lifetime,admission:f.machine,isolation:rebuildRuntimeIsolation,args:["person-lookup","--pool-index","1","--drain"],
@@ -240,11 +246,19 @@ afterEach(_afterEachFixture0);
       expect(closure).toBe(failure.cause);
       expect(closure).toBeInstanceOf(AuthoritySourceClosureUnprovedError);
       if(!(closure instanceof AuthoritySourceClosureUnprovedError))throw new Error("inspection closure missing");
-      expect(closure.cause).toBe(injected);expect(closure.errors).toEqual([injected]);
+      expect(closure.errors).toHaveLength(2);
+      const causes:readonly unknown[]=closure.errors;
+      expect(causes[0]).toBeInstanceOf(Error);
+      if(!(causes[0] instanceof Error))throw new Error("opening validation cause missing");
+      expect(causes[0].message).toMatch(/authority-native-schema-shape-mismatch/u);
+      expect(closure.cause).toBe(causes[0]);expect(causes[1]).toBe(injected);
       expect(effects).toEqual({credentials:0,browsers:0});
       if(issued===undefined)throw new Error("issued admission missing");
-      issued.assertLive();f.machine.assertLive();
-    }finally{remove.mockRestore();syncBuiltinESMExports();}
+      expect(owner.native).toBeDefined();
+      expect(owner.native?.prepare("SELECT 1 AS value").get()?.value).toBe(1);
+      issued.assertLive();f.machine.assertLive();f.lifetime.assertHeld();
+      expect(fs.readFileSync(f.path)).toEqual(before);
+    }finally{vi.restoreAllMocks();syncBuiltinESMExports();owner.native?.close();issued?.release();}
     const read=new DatabaseSync(f.path,{readOnly:true});try {
       expect(read.prepare("SELECT * FROM worker_slots").all()).toEqual([]);expect(read.prepare("SELECT * FROM worker_leases").all()).toEqual([]);
     }finally{read.close();}
