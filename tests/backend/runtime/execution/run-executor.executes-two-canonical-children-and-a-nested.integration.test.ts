@@ -1,3 +1,5 @@
+import { afterAll } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { NodeIdSchema } from "../../../../src/rules/identity/ids.js";
 import type { RunResultRecord } from "../../../../src/models/run/result.js";
 import { createTaskProvenanceCollector } from "../../../../src/backend/runs/provenance/task-provenance.js";
@@ -17,7 +19,9 @@ import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json
 import { Plan1CanonicalInput, Plan1Input, Plan1Output, plan1Contract, plan1Parent, plan1Stores, plan1Workflows } from "../../../support/fixtures/plan1-operation-workflows.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
-const {executorHarness, enqueueAndClaim, SIGNAL, readPersistedNotes, cleanup } = createRunExecutorTestWorld();
+const profiles = createClonedProfileFixtures();
+afterAll(() => profiles.close());
+const {executorHarness, enqueueAndClaim, SIGNAL, readPersistedNotes, cleanup } = createRunExecutorTestWorld(profiles.create);
 
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";

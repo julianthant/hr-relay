@@ -1,3 +1,5 @@
+import { afterAll } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { lifecycleCommandId, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { runClaim } from "../../../../src/models/run/record.js";
@@ -10,7 +12,9 @@ import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run
 import { RUN_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { happySessionHarness, healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld();
+const profiles = createClonedProfileFixtures();
+afterAll(() => profiles.close());
+const {executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld(profiles.create);
 
 afterEach(cleanup);
 
