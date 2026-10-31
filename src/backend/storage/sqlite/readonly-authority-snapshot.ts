@@ -108,13 +108,13 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string) {
   const cached = proof?.slots.get(key) as { marker: string; snapshot: ReturnType<typeof copyReadonlyAuthoritySnapshot> } | undefined;
   if (cached?.marker === marker) {
     cached.snapshot.assertUnchanged();
-    return Object.freeze({ path: cached.snapshot.path, assertUnchanged: cached.snapshot.assertUnchanged, dispose() {} });
+    return Object.freeze({ path: cached.snapshot.path, assertUnchanged: cached.snapshot.assertUnchanged, dispose() { if (!proof?.active) cached.snapshot.dispose(); } });
   }
   const snapshot = copyReadonlyAuthoritySnapshot(sourcePath);
   if (proof === undefined) return snapshot;
   proof.slots.set(key, { marker, snapshot });
   proof.release.push(() => { snapshot.dispose(); });
-  return Object.freeze({ path: snapshot.path, assertUnchanged: () => snapshot.assertUnchanged(), dispose() {} });
+  return Object.freeze({ path: snapshot.path, assertUnchanged: () => snapshot.assertUnchanged(), dispose() { if (!proof.active) snapshot.dispose(); } });
 }
 
 function copyReadonlyAuthoritySnapshot(sourcePath: string) {

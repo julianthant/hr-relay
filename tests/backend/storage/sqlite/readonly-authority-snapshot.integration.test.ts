@@ -1,8 +1,8 @@
 import { createHistoricalIncompleteProfileFixture } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { readPrivateFile, fsyncPath } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
-import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
+import { withOperationProof, readPrivateFile, fsyncPath } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+import { retainAuthoritySourceClosure, AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import assert from "node:assert/strict";
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
@@ -264,4 +264,25 @@ it("withdraws a genuine incomplete profile while preserving safe SQLite 0644 cus
   assert.deepEqual(capture(), before);
   assert.equal(digest(f.keyPath), key);
   assert.equal(digest(f.protectedPath), protectedDocument);
+});
+
+it("lets the owner dispose a retained snapshot after unproved operation closure", async () => {
+  const profile = await createBoundProfileFixture();
+  let snapshot: ReturnType<typeof createReadonlyAuthoritySnapshot> | undefined;
+  let cached: ReturnType<typeof createReadonlyAuthoritySnapshot> | undefined;
+  const failure = retainAuthoritySourceClosure([new Error("retained source")], { database: {} });
+  try {
+    assert.throws(() => withOperationProof(() => {
+      snapshot = createReadonlyAuthoritySnapshot(profile.path);
+      cached = createReadonlyAuthoritySnapshot(profile.path);
+      assert.equal(cached.path, snapshot.path);
+      snapshot.dispose(); cached.dispose();
+      assert.equal(fs.existsSync(snapshot.path), true);
+      throw failure;
+    }), error => error === failure);
+    assert.ok(snapshot && cached);
+    assert.equal(fs.existsSync(snapshot.path), true);
+    snapshot.dispose(); cached.dispose(); snapshot.dispose();
+    assert.equal(fs.existsSync(dirname(snapshot.path)), false);
+  } finally { await profile.close(); }
 });

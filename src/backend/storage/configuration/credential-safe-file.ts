@@ -302,7 +302,7 @@ export class PrivateFileLockUnavailableError extends Error {
 }
 
 /** Reused checks for one profile operation. Discarded when that operation ends; a nested lock keeps the outer proof. */
-export type OperationProof = { readonly slots: Map<string, unknown>; readonly release: Array<() => void> };
+export type OperationProof = { active: boolean; readonly slots: Map<string, unknown>; readonly release: Array<() => void> };
 const operationProof = new AsyncLocalStorage<OperationProof>();
 export function outermostOperationProof(): OperationProof | undefined {
   return operationProof.getStore();
@@ -319,11 +319,12 @@ function discardOperationProof(proof: OperationProof): void {
 }
 export function withOperationProof<T>(body: () => T): T {
   if (operationProof.getStore() !== undefined) return body();
-  const proof: OperationProof = { slots: new Map(), release: [] };
+  const proof: OperationProof = { active: true, slots: new Map(), release: [] };
   let settled = false;
   const finish = (error?: unknown) => {
     if (settled) return;
     settled = true;
+    proof.active = false;
     if (hasUnprovedSourceClosure(error)) {
       proof.slots.clear();
       retainUnprovedSourceOwners(error, { operationProof: proof });
