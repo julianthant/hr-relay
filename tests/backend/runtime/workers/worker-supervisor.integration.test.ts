@@ -1,3 +1,5 @@
+import { assertRuntimeLifetimeHeld } from "../../../support/helpers/backend/runtime-lifetime.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { once } from "node:events";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { writePrivateStage } from '../../../../src/backend/storage/configuration/credential-safe-file.js';
@@ -21,7 +23,7 @@ import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-qu
 import { type WorkerProcessSpawner } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
 import { createDashboardWorkerProcessSupervisor } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { assertWorkerProcessStopped, readRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { assertWorkerProcessStopped } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { workerPoolMember, WorkerPoolMemberSchema } from "../../../../src/models/run/worker-slot.js";
@@ -272,11 +274,13 @@ it("retires a real worker only after its opened Chromium profile closes, custody
       }
       database?.close();
       await runtime?.stop();
-      if (runtime !== undefined) {
-        const server = readRuntimeProcessLock(join_m1(root, rebuildRuntimeIsolation.processLockRoot), 'server');
-        assert.ok(server?.releasedAt !== null && server?.releasedAt !== undefined);
+      if (runtime !== undefined) await assertRuntimeLifetimeHeld(profile.lifetime);
+      if (failures.length === 0) {
+        await world.cleanup();
+        assert.throws(() => profile.lifetime.assertHeld());
+        const replacement = await RuntimeLifetimeLock.acquire(profile.lifetime.port);
+        await replacement.close();
       }
-      if (failures.length === 0) await world.cleanup();
       else retainedPhysicalWorkerFixtures.push({ runtime, database, profile, children, world });
     } catch (error) {
       retainedPhysicalWorkerFixtures.push({ runtime, database, profile, children, world });
