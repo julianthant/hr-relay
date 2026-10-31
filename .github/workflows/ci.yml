@@ -56,7 +56,7 @@ jobs:
 
   integration-shard:
     name: integration shard ${{ matrix.shard }}/4
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 30
     strategy:
       fail-fast: false

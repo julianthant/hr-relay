@@ -113,8 +113,8 @@ mount step also fails if the volume still shows `noowners`. Point `TMPDIR` at th
 before Vitest; the private-temp setup still nests its own directory underneath and keeps its
 checks. Eject with `scripts/test/ram-tmp.sh eject` and the volume path (the parent of the
 printed directory). CI macOS test jobs mount 2048 MiB and export `TMPDIR` before the suite.
-The mount logs physical memory, CPU count and requested disk size. Architecture uses the 14 GB
-Intel runner; other test jobs use 7 GB Apple Silicon runners. Keep room for Node and Chromium;
+The mount logs physical memory, CPU count and requested disk size. Architecture and integration use
+14 GB Intel runners; unit, parity and release use 7 GB Apple Silicon runners. Keep room for Node and Chromium;
 raise the disk size only after a measured peak no longer fits.
 
 Parity launches Playwright directly. After 180 seconds without output it kills that child and
