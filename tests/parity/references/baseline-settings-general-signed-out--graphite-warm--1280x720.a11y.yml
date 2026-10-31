@@ -41,7 +41,7 @@
       - link "Keyboard":
         - /url: "?settings=keyboard"
     - heading "General" [level=1]
-    - paragraph: ChatGPT account, appearance, and browser preferences.
+    - paragraph: ChatGPT account, appearance, and account controls.
     - heading "ChatGPT account" [level=2]
     - group "ChatGPT account":
       - text: Use your ChatGPT plan
@@ -57,9 +57,9 @@
       - text: Assistant permission Choose when Relay asks before taking an action.
       - button "Ask only before submits"
     - heading "Account" [level=2]
-    - paragraph: Delete the signed-in person’s data, history, evidence, settings, and encrypted credentials from this device. This cannot be undone.
-    - paragraph: Account deletion is unavailable until Relay can verify the signed-in person and resource closure.
-    - button "Delete account" [disabled]
+    - group "Account":
+      - text: Delete account Account deletion is unavailable. Try again when connected.
+      - button "Delete account" [disabled]
     - heading "Employment" [level=2]
     - group "Employment":
       - text: Job end date (required)

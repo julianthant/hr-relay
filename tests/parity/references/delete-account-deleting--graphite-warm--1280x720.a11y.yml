@@ -6,16 +6,44 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- main:
-  - status: UI mock No account data is read or erased.
-  - heading "General" [level=1]
-  - paragraph: Settings · Personal
-  - heading "Account" [level=2]
-  - paragraph: Delete the signed-in person’s data, history, evidence, settings, and encrypted credentials from this device. This cannot be undone.
-  - status: Deleting account Waiting for owned resources to close and erasure to settle. Deletion is not complete.
-  - button "Deleting…" [disabled]
-  - button "Show ready"
-  - button "Show blocked"
-  - button "Show closure-blocked"
-  - button "Show deleting"
-  - button "Show unavailable"
+- region "Settings":
+  - navigation "Settings":
+    - heading "Settings" [level=2]
+    - group:
+      - searchbox "Search settings"
+    - text: Personal
+    - link "General":
+      - /url: "?fixture=delete-account"
+    - link "Credentials":
+      - /url: "?fixture=fixed-backup"
+    - text: Advanced
+    - link "Paths":
+      - /url: "?fixture=fixed-backup"
+    - link "Routes":
+      - /url: "?fixture=fixed-backup"
+    - text: Data
+    - link "Spreadsheets":
+      - /url: "?fixture=fixed-backup"
+    - link "Explorer":
+      - /url: "?fixture=fixed-backup"
+    - link "Analytics":
+      - /url: "?fixture=fixed-backup"
+    - text: Status
+    - link "Storage":
+      - /url: "?fixture=fixed-backup"
+    - link "Preflight":
+      - /url: "?fixture=fixed-backup"
+  - main:
+    - heading "General" [level=1]
+    - paragraph: ChatGPT account, appearance, and account controls for Alex Morgan.
+    - heading "Appearance" [level=2]
+    - group "Appearance":
+      - switch "Dark theme Dashboard appearance on this browser." [checked]
+      - text: Dark theme Dashboard appearance on this browser.
+      - switch "Animations Subtle motion. Your reduced-motion preference takes priority." [checked]
+      - text: Animations Subtle motion. Your reduced-motion preference takes priority.
+    - heading "Account" [level=2]
+    - group "Account":
+      - text: Delete account
+      - status: Deleting your account; erasure is not complete.
+      - button "Deleting…" [disabled]
