@@ -84,7 +84,8 @@ it("keeps Nominatim no-match and remote failures explicit without provider-body 
     }
     assert.equal(responses.length, 0);
   } finally {
-    try { await owner.stop(); } finally { vi.useRealTimers(); }
+    vi.useRealTimers();
+    await owner.stop();
   }
 }, 10_000);
 it("cancels a worker queued behind the parent without starting its fetch", async () => {
