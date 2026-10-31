@@ -9,9 +9,14 @@
 - dialog "Pause all and quit?":
   - banner:
     - heading "Pause all and quit?" [level=2]
-    - paragraph: 2 active runs will pause before Relay quits.
+    - paragraph: Each run finishes its current step, then pauses. Resume them next time.
     - button "Close"
-  - paragraph: Stop new items, finish current steps, record pauses, and close owned resources before quitting. A submit is never interrupted. Paused work waits for explicit Resume after restart.
+  - strong: Alex Morgan
+  - paragraph: Person Lookup · Verify employee
+  - text: PL04236388
+  - strong: EID 10777012
+  - paragraph: Separations · Submit termination
+  - text: SP99300911
   - contentinfo:
-    - button "Keep Relay open"
+    - button "Keep working"
     - button "Pause all and quit"

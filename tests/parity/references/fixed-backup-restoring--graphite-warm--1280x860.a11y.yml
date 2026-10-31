@@ -1,0 +1,67 @@
+# fixed-backup-restoring--graphite-warm--1280x860
+# adapter: fixture
+# fixture: fixed-backup
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x860  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Settings":
+  - navigation "Settings":
+    - heading "Settings" [level=2]
+    - group:
+      - searchbox "Search settings"
+    - text: Personal
+    - link "General":
+      - /url: "?fixture=delete-account"
+    - link "Credentials":
+      - /url: "?fixture=fixed-backup"
+    - text: Advanced
+    - link "Paths":
+      - /url: "?fixture=fixed-backup"
+    - link "Routes":
+      - /url: "?fixture=fixed-backup"
+    - text: Data
+    - link "Spreadsheets":
+      - /url: "?fixture=fixed-backup"
+    - link "Explorer":
+      - /url: "?fixture=fixed-backup"
+    - link "Analytics":
+      - /url: "?fixture=fixed-backup"
+    - text: Status
+    - link "Storage":
+      - /url: "?fixture=fixed-backup"
+    - link "Preflight":
+      - /url: "?fixture=fixed-backup"
+  - main:
+    - heading "Paths" [level=1]
+    - paragraph: Where Relay saves files on this Mac.
+    - heading "Folders" [level=2]
+    - group "Folders":
+      - text: Documents
+      - paragraph: Exported records and reports.
+      - text: ~/Documents/Relay
+      - button "Change Documents": Change
+      - text: Downloads
+      - paragraph: Files downloaded during runs.
+      - text: ~/Downloads/Relay
+      - button "Change Downloads": Change
+      - text: Reports
+      - paragraph: CSV and XLSX exports.
+      - text: ~/Documents/Relay/Reports
+      - button "Change Reports": Change
+    - heading "App data Managed by Relay" [level=2]
+    - group "App data":
+      - text: Data Runs, settings, and history.
+      - textbox "Data path": ~/Library/Application Support/Relay/people/am
+      - button "Copy data path"
+      - text: Evidence Screenshots and downloads kept as evidence.
+      - textbox "Evidence path": ~/Library/Application Support/Relay/people/am/artifacts
+      - button "Copy evidence path"
+    - heading "Backup and restore" [level=2]
+    - group "Backup and restore":
+      - text: Back up Last backup Oct 30, 2026 at 9:12 PM
+      - button "Back up now" [disabled]
+      - text: Restore
+      - status: Restoring your data; replacement is not complete.
+      - button "Restoring…" [disabled]

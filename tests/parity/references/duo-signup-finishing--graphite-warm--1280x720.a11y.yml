@@ -6,27 +6,18 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
+- text: Relay
 - main:
-  - status: UI mock No Duo enrollment, credential creation, or account publication occurs.
-  - heading "Set up Duo" [level=1]
-  - paragraph: Sign-up · Two required methods
+  - navigation "Sign-up steps": ✓ Your details 2 Duo setup 3 Ready
+  - heading "Add your sign-in methods" [level=1]
+  - paragraph: Add both in the setup browser, in either order.
   - region "Required Duo methods":
-    - paragraph: Add both methods in Duo device management at duo.ucpath.edu. Each method requires verified enrollment.
-    - heading "1 · Touch ID" [level=2]
-    - paragraph: Use the platform Touch ID authenticator.
-    - text: Completed
-    - button "Add Touch ID" [disabled]
-    - heading "2 · Security key" [level=2]
-    - paragraph: FastDuo answers Duo’s security-key challenge in Relay’s browser. This is separate from the Touch ID method.
-    - text: Completed
-    - button "Add Security key" [disabled]
-    - status: Finishing sign-up Waiting for the complete account to be published. The dashboard is not available yet.
-    - paragraph: Both method enrollments are verified. Finish publishes the complete account.
+    - text: Added
+    - heading "Touch ID" [level=2]
+    - paragraph: Verified in Duo.
+    - text: Added
+    - heading "Security key" [level=2]
+    - paragraph: Verified in Duo.
+    - status: Finishing sign-up; your account is not published yet.
     - button "Back to login" [disabled]
     - button "Finish" [disabled]
-  - button "Verify mock Touch ID"
-  - button "Verify mock both"
-  - button "Show unknown"
-  - button "Show unavailable"
-  - button "Show virtual platform"
-  - button "Reset mock"

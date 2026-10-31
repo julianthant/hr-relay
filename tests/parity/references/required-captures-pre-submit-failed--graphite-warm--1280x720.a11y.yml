@@ -6,15 +6,16 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- main:
-  - status: UI mock No browser capture or submit is attempted.
-  - heading "Screenshots" [level=1]
-  - paragraph: Run options and Logs
-  - status:
-    - text: Required screenshot unavailable
-    - paragraph: "BROWSER_SCREENSHOT_CAPTURE_FAILED: The browser screenshot could not be captured or saved."
-    - paragraph: Stopped before submit. The required before-submit capture is unavailable; no submit was clicked.
-  - button "Show required"
-  - button "Show pre-submit-failed"
-  - button "Show post-submit-unknown"
-  - button "Show post-submit-proved"
+- region "Queue":
+  - text: NEEDS YOU · 1
+  - strong: EID 10777012
+  - text: Stopped
+  - paragraph: Did the submit reach UCPath?
+- region "Selected run logs":
+  - heading "EID 10777012" [level=2]
+  - text: Stopped
+  - heading "09:00:02 Submit termination · UCPath" [level=3]
+  - heading "Before submit" [level=4]
+  - status: Not captured Stopped before submit. No submit was clicked.
+  - heading "After submit" [level=4]
+  - text: Not captured · submit was not clicked.

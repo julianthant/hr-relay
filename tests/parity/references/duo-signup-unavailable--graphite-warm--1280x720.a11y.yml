@@ -6,27 +6,19 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
+- text: Relay
 - main:
-  - status: UI mock No Duo enrollment, credential creation, or account publication occurs.
-  - heading "Set up Duo" [level=1]
-  - paragraph: Sign-up · Two required methods
+  - navigation "Sign-up steps": ✓ Your details 2 Duo setup 3 Ready
+  - heading "Add your sign-in methods" [level=1]
+  - paragraph: Add both in the setup browser, in either order.
   - region "Required Duo methods":
-    - paragraph: Add both methods in Duo device management at duo.ucpath.edu. Each method requires verified enrollment.
-    - heading "1 · Touch ID" [level=2]
-    - paragraph: Use the platform Touch ID authenticator.
-    - text: Not started
+    - text: Not added
+    - heading "Touch ID" [level=2]
+    - paragraph: Use Touch ID on this Mac.
     - button "Add Touch ID"
-    - heading "2 · Security key" [level=2]
-    - paragraph: FastDuo answers Duo’s security-key challenge in Relay’s browser. This is separate from the Touch ID method.
     - text: Unavailable
-    - button "Add Security key" [disabled]
-    - status: "Enrollment unavailable PROFILE_AUTHORITY_UNAVAILABLE: Current profile authority is unavailable."
-    - paragraph: Finish stays unavailable until both method enrollments are verified. Capture alone is not enrollment.
+    - heading "Security key" [level=2]
+    - paragraph: Enrollment is unavailable. Reopen the setup browser.
+    - button "Show setup browser"
     - button "Back to login"
     - button "Finish" [disabled]
-  - button "Verify mock Touch ID"
-  - button "Verify mock both"
-  - button "Show unknown"
-  - button "Show unavailable"
-  - button "Show virtual platform"
-  - button "Reset mock"

@@ -6,45 +6,49 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- main:
-  - status: UI mock Synthetic transactions. No UCPath reads, decisions, or writes are sent.
-  - heading "Logs" [level=1]
-  - paragraph: Separation · Unknown submission
+- region "Queue":
+  - text: NEEDS YOU · 1
+  - strong: EID 10777012
+  - text: Write parked
+  - paragraph: Did the submit reach UCPath?
+- region "Selected run logs":
+  - heading "EID 10777012" [level=2]
+  - text: Write parked
   - region "UCPath found transactions":
-    - heading "UCPath found transactions" [level=4]
-    - text: Outcome unknown
-    - paragraph: Example original attempt 1 · Original submit remains held. These controls never submit again.
-    - paragraph: "List: Complete · Authority: Verified"
+    - heading "Did this submit reach UCPath?" [level=3]
+    - paragraph: Submitted Oct 30, 2026 at 9:00 AM. Relay won’t submit it again.
+    - heading "Found in UCPath" [level=4]
+    - text: Complete list
+    - paragraph: These transactions need verification. Check again or look up a transaction.
     - table "Transactions found in UCPath":
       - rowgroup:
-        - row "Select Transaction Person / EID Type / effective date Submitted Match / details":
+        - row "Select Transaction Person Action Submitted Match":
           - columnheader "Select"
           - columnheader "Transaction"
-          - columnheader "Person / EID"
-          - columnheader "Type / effective date"
+          - columnheader "Person"
+          - columnheader "Action"
           - columnheader "Submitted"
-          - columnheader "Match / details"
+          - columnheader "Match"
       - rowgroup:
-        - row "Select transaction EXAMPLE-1024 EXAMPLE-1024 Example Person EXAMPLE-EID Separation 10/30/2026 10/30/2026 9:00 AM exact · Detail unverified":
-          - cell "Select transaction EXAMPLE-1024":
-            - button "Select transaction EXAMPLE-1024" [disabled]: Select
-          - cell "EXAMPLE-1024"
-          - cell "Example Person EXAMPLE-EID"
-          - cell "Separation 10/30/2026"
-          - cell "10/30/2026 9:00 AM"
-          - cell "exact · Detail unverified"
-    - text: Exact transaction number
+        - row "Select transaction 00481024 00481024 Rivera, Alex 10777012 Termination Eff. 10/30/2026 10/30 9:00 AM Detail unverified":
+          - cell "Select transaction 00481024":
+            - radio "Select transaction 00481024" [disabled]
+          - cell "00481024"
+          - cell "Rivera, Alex 10777012"
+          - cell "Termination Eff. 10/30/2026"
+          - cell "10/30 9:00 AM"
+          - cell "Detail unverified"
+        - row "Select transaction 00479310 00479310 Rivera, Alex 10777012 Data change Eff. 10/12/2026 10/12 2:15 PM Different action":
+          - cell "Select transaction 00479310":
+            - radio "Select transaction 00479310" [disabled]
+          - cell "00479310"
+          - cell "Rivera, Alex 10777012"
+          - cell "Data change Eff. 10/12/2026"
+          - cell "10/12 2:15 PM"
+          - cell "Different action"
+    - text: Know the transaction number?
     - textbox "Exact transaction number"
-    - paragraph: Optional. Requests exact readback; typing a number supplies no proof.
-    - text: Decide from verified evidence.
-    - button "Submitted" [disabled]
-    - button "Not submitted" [disabled]
+    - button "Look up" [disabled]
     - button "Check again"
-  - button "Show exact"
-  - button "Show ambiguous"
-  - button "Show absent"
-  - button "Show incomplete"
-  - button "Show unverified"
-  - button "Show unauthoritative"
-  - button "Show loading"
-  - button "Show unavailable"
+    - button "Not submitted" [disabled]
+    - button "Submitted" [disabled]

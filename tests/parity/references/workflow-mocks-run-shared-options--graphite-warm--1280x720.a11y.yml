@@ -71,34 +71,40 @@
       - button "3 Steps" [disabled]: Steps
     - listitem:
       - button "4 Confirm" [disabled]: Confirm
-  - heading "Run options" [level=3]
-  - paragraph: Set how this work enters the queue.
   - region "Options":
-    - checkbox "Customize steps" [checked]
-    - text: Customize steps Choose optional steps.
-    - checkbox "Dry run"
-    - text: Dry run Stop before submission.
-    - status: Screenshots required Capture every declared browser-step boundary, including before and after submit. Required workflow captures cannot be turned off.
-    - group "Hire type":
+    - heading "Run" [level=2]
+    - group "Run options":
+      - checkbox "Customize steps" [checked]
+      - text: Customize steps Choose optional steps.
+      - switch "Dry run Fill and check every step without submitting."
+      - text: Dry run Fill and check every step without submitting. Screenshots
+      - paragraph: Required by this workflow.
+      - text: Always on Priority
+      - paragraph: Interactive runs go first.
+      - group "Priority":
+        - text: Priority
+        - radio "Interactive"
+        - text: Interactive
+        - radio "Bulk" [checked]
+        - text: Bulk
+      - text: Browser
+      - paragraph: Headless runs in the background.
+      - group "Browser mode":
+        - text: Browser mode
+        - radio "Headed"
+        - text: Headed
+        - radio "Headless" [checked]
+        - text: Headless
+    - heading "Onboarding" [level=2]
+    - group "Workflow options":
       - text: Hire type
-      - radio "New hire" [checked]
-      - text: New hire
-      - radio "Rehire"
-      - text: Rehire
-    - group "Priority":
-      - text: Priority
-      - radio "Interactive"
-      - text: Interactive
-      - radio "Bulk" [checked]
-      - text: Bulk
-    - paragraph: "Interactive: work you’re waiting on. Bulk: background batches; interactive runs take priority."
-    - group "Browser mode":
-      - text: Browser mode
-      - radio "Headed"
-      - text: Headed
-      - radio "Headless" [checked]
-      - text: Headless
-    - paragraph: Run browsers in the background.
+      - paragraph: Applies to every item.
+      - group "Hire type":
+        - text: Hire type
+        - radio "New hire" [checked]
+        - text: New hire
+        - radio "Rehire"
+        - text: Rehire
   - contentinfo:
     - text: 1 runOnboarding
     - button "Back"

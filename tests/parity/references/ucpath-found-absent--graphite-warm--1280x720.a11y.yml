@@ -6,38 +6,33 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- main:
-  - status: UI mock Synthetic transactions. No UCPath reads, decisions, or writes are sent.
-  - heading "Logs" [level=1]
-  - paragraph: Separation · Unknown submission
+- region "Queue":
+  - text: NEEDS YOU · 1
+  - strong: EID 10777012
+  - text: Write parked
+  - paragraph: Did the submit reach UCPath?
+- region "Selected run logs":
+  - heading "EID 10777012" [level=2]
+  - text: Write parked
   - region "UCPath found transactions":
-    - heading "UCPath found transactions" [level=4]
-    - text: Outcome unknown
-    - paragraph: Example original attempt 1 · Original submit remains held. These controls never submit again.
-    - paragraph: "List: Complete · Authority: Verified"
+    - heading "Did this submit reach UCPath?" [level=3]
+    - paragraph: Submitted Oct 30, 2026 at 9:00 AM. Relay won’t submit it again.
+    - heading "Found in UCPath" [level=4]
+    - text: Complete list
     - table "Transactions found in UCPath":
       - rowgroup:
-        - row "Select Transaction Person / EID Type / effective date Submitted Match / details":
+        - row "Select Transaction Person Action Submitted Match":
           - columnheader "Select"
           - columnheader "Transaction"
-          - columnheader "Person / EID"
-          - columnheader "Type / effective date"
+          - columnheader "Person"
+          - columnheader "Action"
           - columnheader "Submitted"
-          - columnheader "Match / details"
+          - columnheader "Match"
       - rowgroup
-    - paragraph: No matching transactions found in the complete, authoritative list.
-    - text: Exact transaction number
+    - paragraph: No matching transactions in the complete, authoritative list.
+    - text: Know the transaction number?
     - textbox "Exact transaction number"
-    - paragraph: Optional. Requests exact readback; typing a number supplies no proof.
-    - text: Decide from verified evidence.
-    - button "Submitted" [disabled]
-    - button "Not submitted"
+    - button "Look up" [disabled]
     - button "Check again"
-  - button "Show exact"
-  - button "Show ambiguous"
-  - button "Show absent"
-  - button "Show incomplete"
-  - button "Show unverified"
-  - button "Show unauthoritative"
-  - button "Show loading"
-  - button "Show unavailable"
+    - button "Not submitted"
+    - button "Submitted" [disabled]

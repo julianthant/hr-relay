@@ -41,17 +41,37 @@
       - link "Keyboard":
         - /url: "?settings=keyboard"
     - heading "Paths" [level=1]
-    - paragraph: Workflow files and runtime locations.
-    - heading "App data" [level=2]
-    - paragraph: Relay assigns the app-data location. Moving the data folder is unavailable. Document, download, and report folders remain selectable.
-    - group "Runtime locations":
-      - text: Runtime state folder
-      - paragraph: Fixed app-data location.
-      - textbox "Runtime state folder": /tmp/settings-fixture/state
-      - text: Artifact folder
-      - paragraph: Fixed evidence location.
-      - textbox "Artifact folder": /tmp/settings-fixture/artifacts
-    - group "Runtime browser locations":
+    - paragraph: Where Relay saves files on this Mac.
+    - heading "Folders" [level=2]
+    - group "Folders":
+      - text: Documents
+      - paragraph: Onboarding documents.
+      - text: /tmp/settings-fixture/onboarding
+      - button "Change Documents": Change
+      - text: Downloads
+      - paragraph: Files downloaded during runs.
+      - text: /tmp/settings-fixture/downloads
+      - button "Change Downloads": Change
+      - text: Reports
+      - paragraph: CSV and XLSX exports.
+      - text: /tmp/reports
+      - button "Change Reports": Change
+    - heading "App data Managed by Relay" [level=2]
+    - group "App data":
+      - text: Data Runs, settings, and history.
+      - textbox "Data path": /tmp/settings-fixture/state
+      - button "Copy data path"
+      - text: Evidence Screenshots and downloads kept as evidence.
+      - textbox "Evidence path": /tmp/settings-fixture/artifacts
+      - button "Copy evidence path"
+    - heading "Backup and restore" [level=2]
+    - group "Backup and restore":
+      - text: Back up Backups are unavailable. Try again when connected.
+      - button "Back up now" [disabled]
+      - text: Restore Restore is unavailable. Try again when connected.
+      - button "Restore…" [disabled]
+    - heading "Workflow locations" [level=2]
+    - group "Workflow locations":
       - text: Browser profile folder
       - paragraph: Fresh folder for browser sessions in new runs.
       - text: /tmp/settings-fixture/auth
@@ -64,22 +84,6 @@
       - paragraph: Unpacked Duo browser extension for new runs.
       - text: /tmp/settings-fixture/duo-autopilot
       - button "Change Duo extension folder": Change
-    - heading "Generated files" [level=2]
-    - group "Generated files":
-      - text: Reports directory
-      - paragraph: Where generated reports are written.
-      - text: /tmp/reports
-      - button "Change Reports directory": Change
-      - text: Downloads directory
-      - paragraph: Where browser downloads are kept.
-      - text: /tmp/settings-fixture/downloads
-      - button "Change Downloads directory": Change
-    - heading "Workflow documents" [level=2]
-    - group "Workflow documents":
-      - text: Onboarding documents
-      - paragraph: Folder containing onboarding documents.
-      - text: /tmp/settings-fixture/onboarding
-      - button "Change Onboarding documents": Change
       - text: I-9 check tracker
       - paragraph: Workbook used to track I-9 checks.
       - text: /tmp/settings-fixture/i9.xlsx

@@ -18,24 +18,25 @@
         - button "Clear search"
       - status: Settings fields unavailable
     - heading "Paths" [level=1]
-    - paragraph: Workflow files and runtime locations.
-    - alert:
-      - text: Editable settings could not be read Settings could not be read. Try again.
+    - paragraph: Where Relay saves files on this Mac.
+    - heading "Folders" [level=2]
+    - group "Folders":
+      - text: Couldn’t load your folders Your saved folders are unchanged.
       - button "Try again"
-    - heading "App data" [level=2]
-    - paragraph: Relay assigns the app-data location. Moving the data folder is unavailable. Document, download, and report folders remain selectable.
-    - group "Runtime locations":
-      - text: Runtime state folder
-      - paragraph: Fixed app-data location.
-      - textbox "Runtime state folder": /tmp/settings-fixture/state
-      - text: Artifact folder
-      - paragraph: Fixed evidence location.
-      - textbox "Artifact folder": /tmp/settings-fixture/artifacts
-    - group "Runtime browser locations"
-    - heading "Generated files" [level=2]
-    - group "Generated files"
-    - heading "Workflow documents" [level=2]
-    - group "Workflow documents"
+    - heading "App data Managed by Relay" [level=2]
+    - group "App data":
+      - text: Data Runs, settings, and history.
+      - textbox "Data path": /tmp/settings-fixture/state
+      - button "Copy data path"
+      - text: Evidence Screenshots and downloads kept as evidence.
+      - textbox "Evidence path": /tmp/settings-fixture/artifacts
+      - button "Copy evidence path"
+    - heading "Backup and restore" [level=2]
+    - group "Backup and restore":
+      - text: Back up Backups are unavailable. Try again when connected.
+      - button "Back up now" [disabled]
+      - text: Restore Restore is unavailable. Try again when connected.
+      - button "Restore…" [disabled]
 - status
 - region "Session Panel":
   - group "Session actions":

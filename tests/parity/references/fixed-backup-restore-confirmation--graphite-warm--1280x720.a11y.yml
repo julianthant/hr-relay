@@ -6,12 +6,17 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- dialog "Restore this backup?":
+- dialog "Restore from backup":
   - banner:
-    - heading "Restore this backup?" [level=2]
-    - paragraph: Example verified backup · same person and installation
+    - heading "Restore from backup" [level=2]
+    - paragraph: Your current data is replaced. You’ll sign in again afterwards.
     - button "Close"
-  - paragraph: Replace this person’s database and artifacts with the verified backup. Stop ordinary work and prove owned resources closed first. Current credentials remain outside the restored database. Unresolved writes remain protected.
+  - radio "Oct 30, 2026 · 9:12 PM" [checked]
+  - text: Oct 30, 2026 · 9:12 PM Automatic before upgrade 48 MB
+  - radio "Oct 28, 2026 · 6:40 PM"
+  - text: Oct 28, 2026 · 6:40 PM Manual 46 MB
+  - radio "Oct 21, 2026 · 8:05 AM"
+  - text: Oct 21, 2026 · 8:05 AM Manual 41 MB
   - contentinfo:
-    - button "Keep current data"
-    - button "Restore verified backup"
+    - button "Cancel"
+    - button "Restore"

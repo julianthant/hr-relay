@@ -6,22 +6,62 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- main:
-  - status: UI mock No backup, restore, or file operation is performed.
-  - heading "Paths" [level=1]
-  - paragraph: Fixed app data · Backup and Restore
-  - heading "App data" [level=2]
-  - paragraph: Relay assigns the app-data location. Moving the data folder is unavailable.
-  - text: Runtime state folder
-  - textbox "Runtime state folder": Example app data / person / database
-  - text: Artifact folder
-  - textbox "Artifact folder": Example app data / person / artifacts
-  - paragraph: Backup is explicit. Restore accepts only a verified backup for the same person and installation, with ordinary Relay work stopped.
-  - button "Backing up…" [disabled]
-  - button "Restore" [disabled]
-  - paragraph: "Selected verified backup: Example verified backup · same person and installation"
-  - status: Backup in progress Waiting for backup verification. Completion is not confirmed.
-  - button "Show ready"
-  - button "Show backup-complete"
-  - button "Show blocked"
-  - button "Show unavailable"
+- region "Settings":
+  - navigation "Settings":
+    - heading "Settings" [level=2]
+    - group:
+      - searchbox "Search settings"
+    - text: Personal
+    - link "General":
+      - /url: "?fixture=delete-account"
+    - link "Credentials":
+      - /url: "?fixture=fixed-backup"
+    - text: Advanced
+    - link "Paths":
+      - /url: "?fixture=fixed-backup"
+    - link "Routes":
+      - /url: "?fixture=fixed-backup"
+    - text: Data
+    - link "Spreadsheets":
+      - /url: "?fixture=fixed-backup"
+    - link "Explorer":
+      - /url: "?fixture=fixed-backup"
+    - link "Analytics":
+      - /url: "?fixture=fixed-backup"
+    - text: Status
+    - link "Storage":
+      - /url: "?fixture=fixed-backup"
+    - link "Preflight":
+      - /url: "?fixture=fixed-backup"
+  - main:
+    - heading "Paths" [level=1]
+    - paragraph: Where Relay saves files on this Mac.
+    - heading "Folders" [level=2]
+    - group "Folders":
+      - text: Documents
+      - paragraph: Exported records and reports.
+      - text: ~/Documents/Relay
+      - button "Change Documents": Change
+      - text: Downloads
+      - paragraph: Files downloaded during runs.
+      - text: ~/Downloads/Relay
+      - button "Change Downloads": Change
+      - text: Reports
+      - paragraph: CSV and XLSX exports.
+      - text: ~/Documents/Relay/Reports
+      - button "Change Reports": Change
+    - heading "App data Managed by Relay" [level=2]
+    - group "App data":
+      - text: Data Runs, settings, and history.
+      - textbox "Data path": ~/Library/Application Support/Relay/people/am
+      - button "Copy data path"
+      - text: Evidence Screenshots and downloads kept as evidence.
+      - textbox "Evidence path": ~/Library/Application Support/Relay/people/am/artifacts
+      - button "Copy evidence path"
+    - heading "Backup and restore" [level=2]
+    - group "Backup and restore":
+      - text: Back up
+      - status: Backing up; verification is pending.
+      - button "Backing up…" [disabled]
+      - text: Restore Stop all runs before restoring.
+      - button "Restore…" [disabled]

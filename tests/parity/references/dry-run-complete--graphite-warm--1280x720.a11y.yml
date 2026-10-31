@@ -6,39 +6,32 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- main:
-  - status: UI mock Synthetic preview accounting. No workflow is executed.
-  - heading "Logs" [level=1]
-  - paragraph: Separation · Dry run
+- region "Queue":
+  - text: DONE · 1
+  - strong: EID 10777012
+  - text: Dry run Done
+  - paragraph: Submit termination
+- region "Selected run logs":
+  - heading "EID 10777012" [level=2]
+  - text: Dry run Done ● Read request ● Fill termination ◌ Submit Not clicked ● Finalize in Kuali
+  - heading "09:12:40 Submit · UCPath · not clicked in a dry run" [level=3]
+  - paragraph: 09:12:41 Transaction number SIM-48216 Dry-run sample
+  - heading "09:12:52 Finalize in Kuali · filled, not saved" [level=3]
   - region "Full dry-run preview":
-    - heading "Dry run · Full preview" [level=4]
-    - text: No external writes
-    - paragraph: Read, fill, verify, and capture every applicable stage without submit, save, or finalization.
-    - status: Preview-only values A dry-run sample is not a receipt, subject proof, or authority for a real run.
-    - table "Dry-run stage accounting":
-      - rowgroup:
-        - row "Stage Preview result Details":
-          - columnheader "Stage"
-          - columnheader "Preview result"
-          - columnheader "Details"
-      - rowgroup:
-        - row "Read person Exercised Read and verify the intended person.":
-          - rowheader "Read person"
-          - cell "Exercised"
-          - cell "Read and verify the intended person."
-        - row "Separation transaction Exercised Read, fill, verify, and capture. Submit was not clicked.":
-          - rowheader "Separation transaction"
-          - cell "Exercised"
-          - cell "Read, fill, verify, and capture. Submit was not clicked."
-        - 'row "Dependent transaction Exercised Filled and captured using a preview-only dependency. dry-run sample Prior transaction number: DRY-RUN-SAMPLE-0001 Preview only · never reusable for a real submission."':
-          - rowheader "Dependent transaction"
-          - cell "Exercised"
-          - 'cell "Filled and captured using a preview-only dependency. dry-run sample Prior transaction number: DRY-RUN-SAMPLE-0001 Preview only · never reusable for a real submission."':
-            - text: Filled and captured using a preview-only dependency. dry-run sample
-            - paragraph: "Prior transaction number: DRY-RUN-SAMPLE-0001"
-            - paragraph: Preview only · never reusable for a real submission.
-        - row "Optional branch Skipped Not applicable to this example.":
-          - rowheader "Optional branch"
-          - cell "Skipped"
-          - cell "Not applicable to this example."
-  - button "Show unavailable stage"
+    - heading "Dry run result" [level=4]
+    - text: 4 of 4 steps exercised
+    - group "Read request":
+      - term: Read request
+      - definition: Person verified. Exercised
+    - group "Fill termination":
+      - term: Fill termination
+      - definition: Fields filled and checked. Exercised
+    - group "Submit":
+      - term: Submit
+      - definition: Not clicked. Exercised
+    - group "Finalize in Kuali":
+      - term: Finalize in Kuali
+      - definition: Filled, not saved. Exercised Transaction number SIM-48216 Dry-run sample
+    - group "Optional branch":
+      - term: Optional branch
+      - definition: Not applicable. Skipped
