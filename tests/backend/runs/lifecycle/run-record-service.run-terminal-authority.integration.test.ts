@@ -117,6 +117,7 @@ describe("atomic success terminal authority", () => {
     const path = syntheticDatabasePath(database);
     assert.equal(path, join(roots.at(-1) ?? "", "state.db"));
     const raw = new DatabaseSync(path);
+    const checkpoints = raw.prepare("SELECT * FROM run_checkpoints").all();
     try {
       assert.equal(raw.prepare("PRAGMA database_list").all().find(row => row.name === "main")?.file, path);
       const guard = raw.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='run_checkpoints_owner_delete'").get();
@@ -132,6 +133,13 @@ describe("atomic success terminal authority", () => {
     assert.throws(() => AuthorityDatabase.open(
       { path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, CLOCK,
     ), /timeline-checkpoint-reference-mismatch/);
+    const repair = new DatabaseSync(path);
+    try {
+      for (const row of checkpoints) {
+        const columns = Object.keys(row);
+        repair.prepare(`INSERT INTO run_checkpoints(${columns.join(",")}) VALUES(${columns.map(() => "?").join(",")})`).run(...Object.values(row));
+      }
+    } finally { repair.close(); }
 
   });
 

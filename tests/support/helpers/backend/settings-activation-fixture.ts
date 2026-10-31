@@ -1,3 +1,4 @@
+import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { RunEnvelopeSchema } from "../../../../src/models/run/envelope.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -73,6 +74,6 @@ export async function settingsFixture(isolateBrowser = false) {
     resolutions: () => resolutions,
     save: (patch: SettingsPatch) => execute(command(patch)),
     create: (overrides: Partial<CreateRunRequest> = {}) => requireLifecycleApplied(service.create(request(overrides))),
-    close: async () => { database.close(); await profile.close(); },
+    close: async () => { releaseSeededWriteOwners(database, clock.now().toISOString()); database.close(); await profile.close(); },
   };
 }

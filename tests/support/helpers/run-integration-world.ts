@@ -1,3 +1,4 @@
+import { releaseSeededWriteOwners } from "./timeline-write-fixture.js";
 import { jsonLeafPaths } from "../../../src/backend/runs/provenance/task-provenance.js";
 import { createBoundProfileFixture } from "./admission-fixture.js";
 import { buildRunResult } from "../../../src/backend/runs/lifecycle/run-result.js";
@@ -204,7 +205,7 @@ export function createRunIntegrationTestWorld(CLOCK = manualClock(new Date(LATER
     };
   }
   const cleanup = async () => {
-    for (const database of databases.splice(0)) database.close();
+    for (const database of databases.splice(0)) { releaseSeededWriteOwners(database, CLOCK.now().toISOString()); database.close(); }
     for (const profile of profiles.splice(0)) await profile.close();
     roots.splice(0);
   };

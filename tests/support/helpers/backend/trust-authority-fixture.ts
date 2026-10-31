@@ -1,3 +1,4 @@
+import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { testWorkerPorts, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -94,7 +95,7 @@ export async function trustWorld() {
     async dispose() {
       const failures: unknown[] = [];
       let databaseClosed = false;
-      try { database.close(); databaseClosed = true; } catch (error) { failures.push(error); }
+      try { releaseSeededWriteOwners(database, world.clock.now().toISOString()); database.close(); databaseClosed = true; } catch (error) { failures.push(error); }
       if (databaseClosed) {
         try { await profile.close(); } catch (error) { failures.push(error); }
       }

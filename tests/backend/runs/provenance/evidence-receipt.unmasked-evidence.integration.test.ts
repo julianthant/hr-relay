@@ -1,11 +1,8 @@
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
 import { buildRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
@@ -28,13 +25,13 @@ function derive(run = kualiReceiptEvidence().run, result = kualiReceiptEvidence(
 }
 
 describe("durable receipt boundaries", () => {
-  it("reopens complete composition-5 bytes from isolated SQLite and projects those exact facts", () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-unmasked-receipt-"));
-    const options = { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unmasked-receipt-test" };
+  it("reopens complete composition-5 bytes from isolated SQLite and projects those exact facts", async () => {
+    const profile = await createBoundProfileFixture();
+    const options = { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unmasked-receipt-test" };
     const clock = manualClock(new Date("2026-09-29T12:00:00.000Z"));
     let database: AuthorityDatabase | undefined;
     try {
-      const admission = RuntimeAdmission.syntheticFixture(options.path);
+      const admission = profile.admission;
       database = AuthorityDatabase.open(admission, options, clock);
       database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
       const base = RunRecordSchema.parse(kualiReceiptEvidence().run);
@@ -66,7 +63,7 @@ describe("durable receipt boundaries", () => {
       assert.deepEqual(projected.value, receipt);
     } finally {
       database?.close();
-      rmSync(root, { recursive: true, force: true });
+      await profile.close();
     }
   });
 
