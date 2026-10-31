@@ -6,32 +6,77 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- region "Queue":
-  - text: DONE · 1
-  - strong: EID 10777012
-  - text: Dry run Done
-  - paragraph: Submit termination
-- region "Selected run logs":
-  - heading "EID 10777012" [level=2]
-  - text: Dry run Done ● Read request ● Fill termination ◌ Submit Not clicked ● Finalize in Kuali
-  - heading "09:12:40 Submit · UCPath · not clicked in a dry run" [level=3]
-  - paragraph: 09:12:41 Transaction number SIM-48216 Dry-run sample
-  - heading "09:12:52 Finalize in Kuali · filled, not saved" [level=3]
-  - region "Full dry-run preview":
-    - heading "Dry run result" [level=4]
-    - text: 4 of 4 steps exercised
-    - group "Read request":
-      - term: Read request
-      - definition: Person verified. Exercised
-    - group "Fill termination":
-      - term: Fill termination
-      - definition: Fields filled and checked. Exercised
-    - group "Submit":
-      - term: Submit
-      - definition: Not clicked. Exercised
-    - group "Finalize in Kuali":
-      - term: Finalize in Kuali
-      - definition: Filled, not saved. Exercised Transaction number SIM-48216 Dry-run sample
-    - group "Optional branch":
-      - term: Optional branch
-      - definition: Not applicable. Skipped
+- complementary "Workspace":
+  - heading "Relay" [level=2]
+  - button "Notifications, 0 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup …
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup …
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations …
+      - listitem:
+        - button "I-9 Check": I-9 Check …
+- main:
+  - region "Queue":
+    - text: DONE · 1
+    - strong: EID 10777012
+    - text: Dry run Done
+    - paragraph: Submit termination
+    - text: "9:31 AM #1 SP99300911"
+  - region "Selected run logs":
+    - heading "EID 10777012" [level=2]
+    - text: Dry run Done
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Read request · Completed" [disabled]: Read request
+        - listitem:
+          - button "Fill termination · Completed" [disabled]: Fill termination
+        - listitem:
+          - button "Submit · Not clicked": Submit Not clicked
+        - listitem:
+          - button "Finalize in Kuali · Completed": Finalize in Kuali
+    - region "Run logs":
+      - region "Submit":
+        - time: 09:12:40
+        - heading "Submit" [level=3]
+        - text: UCPath
+        - time: 09:12:40
+        - paragraph: Not clicked in a dry run.
+      - region "Finalize in Kuali":
+        - time: 09:12:52
+        - heading "Finalize in Kuali" [level=3]
+        - text: Kuali
+        - time: 09:12:52
+        - paragraph: Filled, not saved.
+        - region "Full dry-run preview":
+          - heading "Dry run result" [level=4]
+          - text: 4 of 4 steps exercised
+          - group "Person verified":
+            - term: Person verified
+            - definition: Rivera, Alex · 10777012
+          - group "Fields filled and checked":
+            - term: Fields filled and checked
+            - definition: "14"
+          - group "Transaction number":
+            - term: Transaction number
+            - definition: SIM-48216 Sample
+          - group "Submit":
+            - term: Submit No submit was clicked.
+            - definition: Not clicked
+          - group "Optional branch":
+            - term: Optional branch Not applicable.
+            - definition: Skipped
+    - group:
+      - searchbox "Search logs"
+    - status: 2 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"

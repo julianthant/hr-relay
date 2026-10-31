@@ -6,49 +6,83 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- region "Queue":
-  - text: NEEDS YOU · 1
-  - strong: EID 10777012
-  - text: Write parked
-  - paragraph: Did the submit reach UCPath?
-- region "Selected run logs":
-  - heading "EID 10777012" [level=2]
-  - text: Write parked
-  - region "UCPath found transactions":
-    - heading "Did this submit reach UCPath?" [level=3]
-    - paragraph: Submitted Oct 30, 2026 at 9:00 AM. Relay won’t submit it again.
-    - heading "Found in UCPath" [level=4]
-    - text: Complete list · authority unverified
-    - paragraph: The list is unverified. Check again.
-    - table "Transactions found in UCPath":
-      - rowgroup:
-        - row "Select Transaction Person Action Submitted Match":
-          - columnheader "Select"
-          - columnheader "Transaction"
-          - columnheader "Person"
-          - columnheader "Action"
-          - columnheader "Submitted"
-          - columnheader "Match"
-      - rowgroup:
-        - row "Select transaction 00481024 00481024 Rivera, Alex 10777012 Termination Eff. 10/30/2026 10/30 9:00 AM Exact":
-          - cell "Select transaction 00481024":
-            - radio "Select transaction 00481024" [disabled]
-          - cell "00481024"
-          - cell "Rivera, Alex 10777012"
-          - cell "Termination Eff. 10/30/2026"
-          - cell "10/30 9:00 AM"
-          - cell "Exact"
-        - row "Select transaction 00479310 00479310 Rivera, Alex 10777012 Data change Eff. 10/12/2026 10/12 2:15 PM Different action":
-          - cell "Select transaction 00479310":
-            - radio "Select transaction 00479310" [disabled]
-          - cell "00479310"
-          - cell "Rivera, Alex 10777012"
-          - cell "Data change Eff. 10/12/2026"
-          - cell "10/12 2:15 PM"
-          - cell "Different action"
-    - text: Know the transaction number?
-    - textbox "Exact transaction number"
-    - button "Look up" [disabled]
-    - button "Check again"
-    - button "Not submitted" [disabled]
-    - button "Submitted" [disabled]
+- complementary "Workspace":
+  - heading "Relay" [level=2]
+  - button "Notifications, 0 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup …
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup …
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations …
+      - listitem:
+        - button "I-9 Check": I-9 Check …
+- main:
+  - region "Queue":
+    - text: NEEDS YOU · 1
+    - strong: EID 10777012
+    - text: Write parked
+    - paragraph: Did the submit reach UCPath?
+    - text: "9:31 AM #1 SP99300911"
+  - region "Selected run logs":
+    - heading "EID 10777012" [level=2]
+    - text: Write parked
+    - navigation "Run timeline":
+      - list
+    - region "Run logs":
+      - region "Submit":
+        - time: 09:00:02
+        - heading "Submit" [level=3]
+        - text: UCPath
+        - time: 09:00:09
+        - paragraph: Write outcome unknown. The original submit remains held.
+        - region "UCPath found transactions":
+          - heading "Did this submit reach UCPath?" [level=3]
+          - paragraph: Submitted Oct 30, 2026 at 9:00 AM. Relay won’t submit it again.
+          - heading "Found in UCPath" [level=4]
+          - text: Complete list · authority unverified
+          - paragraph: The list is unverified. Check again.
+          - table "Transactions found in UCPath":
+            - rowgroup:
+              - row "Select Transaction Person Action Submitted Match":
+                - columnheader "Select"
+                - columnheader "Transaction"
+                - columnheader "Person"
+                - columnheader "Action"
+                - columnheader "Submitted"
+                - columnheader "Match"
+            - rowgroup:
+              - row "Select transaction 00481024 00481024 Rivera, Alex 10777012 Termination Eff. 10/30/2026 10/30 9:00 AM Exact":
+                - cell "Select transaction 00481024":
+                  - radio "Select transaction 00481024" [disabled]
+                - cell "00481024"
+                - cell "Rivera, Alex 10777012"
+                - cell "Termination Eff. 10/30/2026"
+                - cell "10/30 9:00 AM"
+                - cell "Exact"
+              - row "Select transaction 00479310 00479310 Rivera, Alex 10777012 Data change Eff. 10/12/2026 10/12 2:15 PM Different action":
+                - cell "Select transaction 00479310":
+                  - radio "Select transaction 00479310" [disabled]
+                - cell "00479310"
+                - cell "Rivera, Alex 10777012"
+                - cell "Data change Eff. 10/12/2026"
+                - cell "10/12 2:15 PM"
+                - cell "Different action"
+          - text: Know the transaction number?
+          - textbox "Exact transaction number"
+          - button "Look up" [disabled]
+          - button "Check again"
+          - button "Not submitted" [disabled]
+          - button "Submitted" [disabled]
+    - group:
+      - searchbox "Search logs"
+    - status: 1 action
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"

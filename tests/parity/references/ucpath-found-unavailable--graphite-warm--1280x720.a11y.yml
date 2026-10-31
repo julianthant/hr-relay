@@ -6,21 +6,55 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- region "Queue":
-  - text: NEEDS YOU · 1
-  - strong: EID 10777012
-  - text: Write parked
-  - paragraph: Did the submit reach UCPath?
-- region "Selected run logs":
-  - heading "EID 10777012" [level=2]
-  - text: Write parked
-  - region "UCPath found transactions":
-    - heading "Did this submit reach UCPath?" [level=3]
-    - paragraph: Submitted Oct 30, 2026 at 9:00 AM. Relay won’t submit it again.
-    - paragraph: Confirmation couldn’t be read. Check again.
-    - text: Know the transaction number?
-    - textbox "Exact transaction number"
-    - button "Look up" [disabled]
-    - button "Check again"
-    - button "Not submitted" [disabled]
-    - button "Submitted" [disabled]
+- complementary "Workspace":
+  - heading "Relay" [level=2]
+  - button "Notifications, 0 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup …
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup …
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations …
+      - listitem:
+        - button "I-9 Check": I-9 Check …
+- main:
+  - region "Queue":
+    - text: NEEDS YOU · 1
+    - strong: EID 10777012
+    - text: Write parked
+    - paragraph: Did the submit reach UCPath?
+    - text: "9:31 AM #1 SP99300911"
+  - region "Selected run logs":
+    - heading "EID 10777012" [level=2]
+    - text: Write parked
+    - navigation "Run timeline":
+      - list
+    - region "Run logs":
+      - region "Submit":
+        - time: 09:00:02
+        - heading "Submit" [level=3]
+        - text: UCPath
+        - time: 09:00:09
+        - paragraph: Write outcome unknown. The original submit remains held.
+        - region "UCPath found transactions":
+          - heading "Did this submit reach UCPath?" [level=3]
+          - paragraph: Submitted Oct 30, 2026 at 9:00 AM. Relay won’t submit it again.
+          - paragraph: Confirmation couldn’t be read. Check again.
+          - text: Know the transaction number?
+          - textbox "Exact transaction number"
+          - button "Look up" [disabled]
+          - button "Check again"
+          - button "Not submitted" [disabled]
+          - button "Submitted" [disabled]
+    - group:
+      - searchbox "Search logs"
+    - status: 1 action
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"

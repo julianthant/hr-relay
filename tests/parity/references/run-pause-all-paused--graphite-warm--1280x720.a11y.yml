@@ -6,23 +6,65 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- region "Queue":
-  - text: ACTIVE · 2
-  - button "Pause all" [disabled]
-  - button "Quit Relay" [disabled]
-  - status: All runs paused. Resume them next time.
-  - strong: Alex Morgan
-  - text: Paused
-  - paragraph: Verifying employee
-  - strong: EID 10777012
-  - text: Paused
-  - paragraph: Paused after Submit termination
-- region "Selected run logs":
-  - heading "Alex Morgan" [level=2]
-  - text: Paused
-  - button "Resume"
-  - status: Pause recorded. Resume explicitly after restart.
-  - text: ● Read request 14s ◌ Verify employee Paused after this step ○ Read timecard ○ Record result
-  - heading "09:31:00 Verify employee · UCPath" [level=3]
-  - paragraph: 09:31:04 Search by EID 10773012
-  - paragraph: 09:31:09 Read job record
+- complementary "Workspace":
+  - heading "Relay" [level=2]
+  - button "Notifications, 0 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup …
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup …
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations …
+      - listitem:
+        - button "I-9 Check": I-9 Check …
+- main:
+  - region "Queue":
+    - text: ACTIVE · 2
+    - button "Pause all" [disabled]
+    - status: All runs paused. Resume them next time.
+    - strong: Alex Morgan
+    - text: Paused
+    - paragraph: Verifying employee
+    - text: "9:31 AM #1 PL04236388"
+    - strong: EID 10777012
+    - text: Paused
+    - paragraph: Paused after Submit termination
+    - text: "9:20 AM #1 SP99300911"
+  - region "Selected run logs":
+    - heading "Alex Morgan" [level=2]
+    - text: Paused
+    - button "Resume"
+    - status: Pause recorded. Resume explicitly after restart.
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Read request · Completed · 14s" [disabled]: Read request 14s
+        - listitem:
+          - button "Verify employee · Paused after this step": Verify employee Paused after this step
+        - listitem:
+          - button "Read timecard · Upcoming" [disabled]: Read timecard
+        - listitem:
+          - button "Record result · Upcoming" [disabled]: Record result
+    - region "Run logs":
+      - region "Verify employee":
+        - time: 09:31:00
+        - heading "Verify employee" [level=3]
+        - text: UCPath
+        - time: 09:31:04
+        - paragraph: Search by EID 10773012
+        - time: 09:31:09
+        - paragraph: Read job record
+        - time: 09:31:10
+        - paragraph: All runs paused. Resume them next time.
+    - group:
+      - searchbox "Search logs"
+    - status: 3 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"

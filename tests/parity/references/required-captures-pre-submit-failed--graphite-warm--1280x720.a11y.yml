@@ -6,16 +6,47 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- region "Queue":
-  - text: NEEDS YOU · 1
-  - strong: EID 10777012
-  - text: Stopped
-  - paragraph: Did the submit reach UCPath?
-- region "Selected run logs":
-  - heading "EID 10777012" [level=2]
-  - text: Stopped
-  - heading "09:00:02 Submit termination · UCPath" [level=3]
-  - heading "Before submit" [level=4]
-  - status: Not captured Stopped before submit. No submit was clicked.
-  - heading "After submit" [level=4]
-  - text: Not captured · submit was not clicked.
+- complementary "Workspace":
+  - heading "Relay" [level=2]
+  - button "Notifications, 0 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup …
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup …
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations …
+      - listitem:
+        - button "I-9 Check": I-9 Check …
+- main:
+  - region "Queue":
+    - text: NEEDS YOU · 1
+    - strong: EID 10777012
+    - text: Stopped
+    - paragraph: Did the submit reach UCPath?
+    - text: "9:31 AM #1 SP99300911"
+  - region "Selected run logs":
+    - heading "EID 10777012" [level=2]
+    - text: Stopped
+    - navigation "Run timeline":
+      - list
+    - region "Run logs":
+      - region "Submit termination":
+        - time: 09:00:02
+        - heading "Submit termination" [level=3]
+        - text: UCPath
+        - time: 09:00:02
+        - paragraph: Stopped before submit. No submit was clicked.
+        - status "Before submit Submit not clicked": Not captured Before submit Submit not clicked Stopped before submit. No submit was clicked.
+        - status "After submit Submit not clicked": Not captured After submit Submit not clicked Stopped before submit. No submit was clicked.
+    - group:
+      - searchbox "Search logs"
+    - status: 1 action
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"

@@ -6,21 +6,53 @@
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- region "Queue":
-  - text: DONE · 1
-  - strong: EID 10777012
-  - text: Done
-  - paragraph: Submit termination
-- region "Selected run logs":
-  - heading "EID 10777012" [level=2]
-  - text: Done
-  - heading "09:00:02 Submit termination · UCPath" [level=3]
-  - heading "Before submit" [level=4]
-  - figure "Before submit":
-    - text: Capture Browser
-    - button "Enlarge screenshot captured at 09:00:01":
-      - img "UCPath before submit"
-    - text: Before submit
-  - heading "After submit" [level=4]
-  - status: Not captured The separately proved write outcome is preserved; do not submit again.
-  - paragraph: 09:00:09 Confirmed in UCPath 00481024 Proved
+- complementary "Workspace":
+  - heading "Relay" [level=2]
+  - button "Notifications, 0 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup …
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup …
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations …
+      - listitem:
+        - button "I-9 Check": I-9 Check …
+- main:
+  - region "Queue":
+    - text: DONE · 1
+    - strong: EID 10777012
+    - text: Done
+    - paragraph: Submit termination
+    - text: "9:31 AM #1 SP99300911"
+  - region "Selected run logs":
+    - heading "EID 10777012" [level=2]
+    - text: Done
+    - navigation "Run timeline":
+      - list
+    - region "Run logs":
+      - region "Submit termination":
+        - time: 09:00:02
+        - heading "Submit termination" [level=3]
+        - text: UCPath
+        - time: 09:00:02
+        - text: Submit termination
+        - figure "Before submit 09:00:01":
+          - button "Enlarge screenshot captured at 09:00:01":
+            - img "UCPath before submit"
+          - text: Before submit
+          - time: 09:00:01
+        - status "After submit Browser closed first": Not captured After submit Browser closed first The separately proved write outcome is preserved; do not submit again.
+        - time: 09:00:09
+        - text: Confirmed in UCPath 00481024 Proved
+    - group:
+      - searchbox "Search logs"
+    - status: 1 action
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"
