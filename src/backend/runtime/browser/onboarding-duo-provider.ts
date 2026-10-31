@@ -364,12 +364,14 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         session.context = context;
         context.on("close", () => {
           session.contextClosed = true;
-          if (!session.revoked) {
+          // Context closure precedes native profile release; the next owner operation proves cleanup.
+          if (!session.close) {
+            session.revoked = true;
             if (active) {
               if (active.accepted || active.attempt.method === "key" && active.requestId) active.revoked = true;
               else void reportFailure(active, new ProfileOnboardingDuoProviderError(active.capability ? "unknown" : "unavailable", "browser-lifetime"));
+              void close(active);
             }
-            void closeBrowser(session);
           }
         });
         return context;
@@ -401,7 +403,12 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
             await workerCall(worker, "browserReply", [request.id, { ok: true, value: owner.readState() }]);
           } catch { await workerCall(worker, "browserReply", [request.id, { ok: false }]); }
         }
-      })().catch(() => { if (!session.revoked) queueMicrotask(() => { void closeBrowser(session); }); });
+      })().catch(() => {
+        if (!session.revoked) {
+          session.revoked = true;
+          if (active) void close(active);
+        }
+      });
       session.setup = context.pages()[0] ?? await context.newPage();
       browserCurrent(session);
       await session.setup.goto(new URL("options.html", worker.url()).href, { waitUntil: "domcontentloaded" });

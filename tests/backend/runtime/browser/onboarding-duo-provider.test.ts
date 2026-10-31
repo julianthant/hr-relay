@@ -468,7 +468,9 @@ describe("draft Duo provider", () => {
       assert.deepEqual(w.failures, []);
       assert.ok(w.calls.includes("unknown"));
       assert.ok(!w.calls.includes("portal-accepted"));
+      assert.ok(existsSync(w.profile()), "context closure retains the profile until owner cleanup");
       assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "closed" });
+      assert.equal(existsSync(w.profile()), false);
       const retained = [...w.calls];
       await w.provider.showBrowser(w.owner);
       assert.equal(w.launches(), 2); assert.equal(w.portalPages(), 0);
