@@ -1,3 +1,5 @@
+import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../../support/helpers/admission-fixture.js";
+import { afterAll } from "vitest";
 import { WorkerStopDirectiveContextSchema } from "../../../../../src/backend/runtime/workers/worker-loop.js";
 import { createDashboardChildTestWorld } from "../../../../support/helpers/backend/dashboard-child-world.js";
 import { instrumentPool,kernelOver,type PoolEffectEvent } from "../../../../support/helpers/backend/dashboard-pool-world.js";
@@ -7,8 +9,6 @@ import { seedSyntheticRuntimeConfig } from "../../../../support/fixtures/operato
 import { releaseAdmissionFixture,releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
 import { composeWorkerProcessControl } from "../../../../../src/backend/app/composition/dashboard/compose.js";
@@ -42,9 +42,15 @@ function required<T>(value: T | undefined, what: string): T {
 
 /* ── shared cleanup: kill every child even on failure, then sweep roots ──── */
 
-const { roots, openDatabases, cleanups, cleanup } = createDashboardChildTestWorld(releaseAdmissionFixtures, releaseAdmissionFixture);
+const { openDatabases, cleanups, cleanup } = createDashboardChildTestWorld(releaseAdmissionFixtures, releaseAdmissionFixture);
 
-afterEach(cleanup, 30_000);
+const profiles = createClonedProfileFixtures();
+const heldProfiles: BoundProfileStorageFixture[] = [];
+afterAll(() => profiles.close());
+afterEach(async () => {
+  await cleanup();
+  for (const profile of heldProfiles.splice(0)) await profile.close();
+}, 30_000);
 
 /* ── shared command plumbing ─────────────────────────────────────────────── */
 
@@ -154,9 +160,9 @@ interface SoakHarnessOptions {
   ) => WorkerPoolRuntimeSeam;
 }
 
-function openSoakHarness(options?: SoakHarnessOptions): SoakHarness {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-w5-soak-"));
-  roots.push(root);
+async function openSoakHarness(options?: SoakHarnessOptions): Promise<SoakHarness> {
+  const profile = await profiles.create(); heldProfiles.push(profile);
+  const root = profile.stateRoot;
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
     { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
@@ -247,7 +253,7 @@ describe("soak: overlapping command sequences over the composed pool door (deter
   it(
     "serializes SAME-workflow commands, interleaves DIFFERENT workflows, and every acknowledgement is truthful",
     async () => {
-      const harness = openSoakHarness();
+      const harness = await openSoakHarness();
 
       // ── plan up, both workflows, driven concurrently ────────────────────
       const planPlId = nextCommandId();
@@ -438,7 +444,7 @@ describe("soak: overlapping command sequences over the composed pool door (deter
   );
 
   it("a spawn ENOENT surfaces typed with retained admission while the sibling workflow's in-flight spawn still lands", async () => {
-    const harness = openSoakHarness();
+    const harness = await openSoakHarness();
     const SEP_1 = await planFixture(harness, SEP);
     const PL_1 = await planFixture(harness, PL);
     const spawnSepId = nextCommandId();
@@ -474,7 +480,7 @@ describe("soak: overlapping command sequences over the composed pool door (deter
   });
 
   it("an undelivered escalation SIGTERM reaches the fault sink and records NO stage that did not happen", async () => {
-    const harness = openSoakHarness({
+    const harness = await openSoakHarness({
       childFor: (_member, pid) => new FakeWorkerChild(pid, false),
     });
     const PL_1 = await planFixture(harness, PL);
@@ -520,7 +526,7 @@ describe("soak: overlapping command sequences over the composed pool door (deter
   });
 
   it("a worker that dies before supervisor admission is durably refused without a pause effect", async () => {
-    const harness = openSoakHarness({
+    const harness = await openSoakHarness({
       interceptPool: (pool, edges) => ({
         ...pool,
         pausePoolWorker: async (context) => {
