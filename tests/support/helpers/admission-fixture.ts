@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { createProfileSession } from "../../../src/backend/profiles/profile-session.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statfsSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statfsSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -282,12 +282,14 @@ export function createClonedProfileFixtures() {
         const directory = realpathSync(mkdtempSync(join(root, "relay-profile-seed-")));
         seed = { profile, snapshot: join(directory, "profile"), active: true };
         seeds.push(seed);
+        if (statSync(profile.stateRoot).dev !== statSync(directory).dev) throw new Error("fixture-clone-device-mismatch");
         execFileSync("/bin/cp", ["-cR", profile.stateRoot, seed.snapshot]);
       }
       const current = seed;
-      current.active = true;
       const profile = current.profile;
       if (statfsSync(current.snapshot).type !== apfsType || statfsSync(dirname(profile.stateRoot)).type !== apfsType) throw new Error("fixture-apfs-required");
+      if (statSync(current.snapshot).dev !== statSync(dirname(profile.stateRoot)).dev) throw new Error("fixture-clone-device-mismatch");
+      current.active = true;
       assertBoundFixtureWorkersReleased(profile.admission);
       profile.admission.release();
       rmSync(profile.stateRoot, { recursive: true });

@@ -2,9 +2,11 @@ import { AuthorityDatabase, createClonedProfileFixtures, type BoundProfileStorag
 import { NOTIFICATION } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { lstatSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { describe,it } from "vitest";
+import { dirname, join } from "node:path";
+import { describe,it, vi } from "vitest";
 import { buildIntakeManifest } from "../../../../src/models/intake/manifest.js";
 import { IntakeSessionSchema } from "../../../../src/models/intake/session.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -101,6 +103,27 @@ it("clones seeded profile state without sharing writes or a live canonical path"
   } finally {
     for (const database of databases) database.close();
     for (const profile of held) await profile.close();
+    await fixtures.close();
+  }
+});
+
+it("refuses a cross-device clone before deleting the previous profile", async () => {
+  const fixtures = createClonedProfileFixtures();
+  const first = await fixtures.create();
+  const inode = lstatSync(first.path).ino;
+  await first.close();
+  const stat = fs.statSync;
+  try {
+    vi.spyOn(fs, "statSync").mockImplementation((path, options) => {
+      const result = stat(path, options);
+      if (path === dirname(first.stateRoot)) result.dev++;
+      return result;
+    });
+    syncBuiltinESMExports();
+    await assert.rejects(() => fixtures.create(), /fixture-clone-device-mismatch/u);
+    assert.equal(lstatSync(first.path).ino, inode);
+  } finally {
+    vi.restoreAllMocks(); syncBuiltinESMExports();
     await fixtures.close();
   }
 });
