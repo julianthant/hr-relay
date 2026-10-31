@@ -5,7 +5,7 @@ import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
-import { outermostOperationProof } from "../configuration/credential-safe-file.js";
+import { outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
 import { existsSync, statSync, lstatSync, mkdtempSync, realpathSync, rmSync, type BigIntStats } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -194,9 +194,11 @@ export function openReadOnlyDatabase(path: string, busyTimeoutMs: number): Datab
 
 
 export function withAuthorityDatabaseReadOnly<Result>(admission:RuntimeAdmission,pathInput:string,read:(database:DatabaseSync)=>Result,busyTimeoutMs=250):Result {
- const path=resolve(pathInput);
- requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
- return withReadonlyAuthoritySnapshot(path, read, busyTimeoutMs);
+ return withOperationProof(() => {
+   const path=resolve(pathInput);
+   requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
+   return withReadonlyAuthoritySnapshot(path, read, busyTimeoutMs);
+ });
 }
 
 export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (database: DatabaseSync) => Result, busyTimeoutMs = 250): Result {

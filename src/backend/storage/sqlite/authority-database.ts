@@ -2048,33 +2048,37 @@ export class AuthorityDatabase implements Disposable {
   }
 
   static inspectExistingReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
-    requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
-    return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
+    return withOperationProof(() => {
+      requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
+      return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
+    });
   }
 
   static inspectStoppedUpgrade(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock) {
-    requireStoppedUpgradeSource(admission, path, processLockRoot, clock, true);
-    const snapshot = createReadonlyAuthoritySnapshot(path);
-    let database: DatabaseSync | undefined;
-    let result: ReturnType<typeof inspectNativeAuthority> | undefined;
-    let primary: { error: unknown } | undefined;
-    try {
-      database = new DatabaseSync(snapshot.path, { enableForeignKeyConstraints: true });
-      result = inspectNativeAuthority(database, readIntPragma(database, "user_version"));
-    } catch (error) { primary = { error }; }
-    const failures: unknown[] = [];
-    try { database?.close(); }
-    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { snapshot, ...(database === undefined ? {} : { database }) }); }
-    try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
-    try { snapshot.dispose(); }
-    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [...failures, error] : [primary.error, ...failures, error], { snapshot }); }
-    if (failures.length !== 0) {
-      if (primary !== undefined) throw new AggregateError([primary.error, ...failures], "authority-source-validation-failed", { cause: primary.error });
-      throw failures[0];
-    }
-    if (primary !== undefined) throw primary.error;
-    if (result === undefined) throw new Error("profile-stopped-upgrade-inspection-unavailable");
-    return result;
+    return withOperationProof(() => {
+      requireStoppedUpgradeSource(admission, path, processLockRoot, clock, true);
+      const snapshot = createReadonlyAuthoritySnapshot(path);
+      let database: DatabaseSync | undefined;
+      let result: ReturnType<typeof inspectNativeAuthority> | undefined;
+      let primary: { error: unknown } | undefined;
+      try {
+        database = new DatabaseSync(snapshot.path, { enableForeignKeyConstraints: true });
+        result = inspectNativeAuthority(database, readIntPragma(database, "user_version"));
+      } catch (error) { primary = { error }; }
+      const failures: unknown[] = [];
+      try { database?.close(); }
+      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { snapshot, ...(database === undefined ? {} : { database }) }); }
+      try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
+      try { snapshot.dispose(); }
+      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [...failures, error] : [primary.error, ...failures, error], { snapshot }); }
+      if (failures.length !== 0) {
+        if (primary !== undefined) throw new AggregateError([primary.error, ...failures], "authority-source-validation-failed", { cause: primary.error });
+        throw failures[0];
+      }
+      if (primary !== undefined) throw primary.error;
+      if (result === undefined) throw new Error("profile-stopped-upgrade-inspection-unavailable");
+      return result;
+    });
   }
 
   static upgradeStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string, expectedSourceDatabaseIdentity: string) => VerifiedBackup) {
