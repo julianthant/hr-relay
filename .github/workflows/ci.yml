@@ -109,3 +109,14 @@ jobs:
       - run: npm run web:build
       - run: npm run test:coverage
       - run: npm run test:perf
+
+  train:
+    name: merge train
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'staging' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [static, unit, integration, architecture, parity, privacy]
+    uses: ./.github/workflows/merge-train.yml
+    with:
+      pr: ${{ github.event.pull_request.number }}
+      conclusion: ${{ contains(needs.*.result, 'failure') && 'failure' || (contains(needs.*.result, 'cancelled') && 'cancelled' || 'success') }}
+    secrets:
+      TRAIN_TOKEN: ${{ secrets.TRAIN_TOKEN }}

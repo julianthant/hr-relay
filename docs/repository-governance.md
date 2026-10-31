@@ -4,20 +4,36 @@ The [root Git instructions](../AGENTS.md#git) own branch and release policy.
 
 ## Branch protection
 
-Protect `staging` and `main`: require pull requests, one independent approving review, dismissal of
-stale approvals, resolved conversations and passing required checks. Block force pushes and branch
-deletion. For both branches, enable "Require branches to be up to date before merging" so required
-checks validate the current target base. Enable merge commits; disable squash and rebase merging. Do not require linear history.
+`staging` requires passing checks on a branch that is up to date with `staging`, with no review
+requirement, so green PRs auto-merge with a merge commit. `main` additionally requires one
+independent approving review. Both block force pushes and branch deletion. Merge commits only;
+squash and rebase merging are disabled.
 
 | Branch | Required CI check names |
 | --- | --- |
-| `staging` | `static`, `unit`, `integration`, `architecture`, `parity`, `privacy` |
-| `main` | `static`, `unit`, `integration`, `architecture`, `parity`, `privacy`, `release` |
+| `staging` | `static`, `privacy`, `unit (macos-15)`, `integration (macos-15)`, `architecture (macos-15)`, `parity` |
+| `main` | the `staging` checks plus `release` |
 
 `release` runs only on PRs targeting `main`, after the other checks. Its isolated runner builds the
 web bundle, runs coverage alone, then performance. The operator authorizes release PRs from
-`staging` to `main`, and syncs `main` back into `staging` after merging. Branch protection is configured
-by the repository owner; the workflow does not enable it.
+`staging` to `main`, and syncs `main` back into `staging` after merging.
+
+## Merge train and automatic fixes
+
+`.github/workflows/merge-train.yml` runs on every push to `staging` and every finished CI run. It
+labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then picks the
+oldest open, non-draft, same-repository PR into `staging` with auto-merge enabled and no
+`train-failed`, `needs-human` or `merge-conflict` label. While one such PR is up to date, the train
+waits; otherwise it merges `staging` into the oldest PR that is behind, which re-runs CI on the
+combination. A PR it cannot update gets `merge-conflict`. The workflow uses the `TRAIN_TOKEN`
+secret (fine-grained, this repository, Contents and Pull requests read/write), because pushes made
+with the default token do not start CI.
+
+Cursor fixes PRs on GitHub: Bugbot reviews every push and commits its fixes to the PR branch, a
+Cursor Automation on finished CI runs fixes failed CI, and another on the `merge-conflict` label
+resolves conflicts. Their instructions forbid raising deadlines, skipping or loosening tests,
+updating parity references and editing workflows; anything that needs those gets `needs-human`.
+The operator watches only `needs-human`.
 
 CI takes Node from `package.json` engines and caches npm. Test jobs use macOS because the test
 runner requires `/usr/bin/lockf`. Desktop parity uses headless Chromium and existing references;

@@ -96,8 +96,10 @@ The repository holds only the current version. No compatibility readers, old mig
 - The operator launches every task. Non-overlapping feature implementation may run in parallel.
   Workflow activation stays sequential: Person Lookup → Separations → OCR/Emergency Contact →
   OnBase → Onboarding, after each workflow's dry run and operator sign-off.
-- A verified feature enters `staging` through a PR with a merge commit, after required checks and
-  independent review, on the operator's go. The operator previews `staging` in the main checkout,
+- A verified feature enters `staging` through a ready (non-draft) PR, one concern per PR, with
+  auto-merge on (merge commit). It merges once required checks pass on a branch up to date with
+  `staging`; the merge train and Cursor fixers keep it moving and the operator handles only
+  `needs-human`. Pull a branch before continuing work on it. The operator previews `staging` in the main checkout,
   which owns the store, credentials and ports: stop the dashboard, switch to `staging`, start it.
   A rejected feature is reverted on `staging`.
 - After operator sign-off and full checks, a release PR merges `staging` into `main` with a merge
