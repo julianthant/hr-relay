@@ -34,19 +34,23 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         const description = heading.locator(".ds-page-heading-description");
         if (await description.count()) {
           await expect(description).toBeVisible();
-          const title = (await heading.locator(".ds-page-heading-title").boundingBox())!;
-          const copy = (await description.boundingBox())!;
-          expect(copy.y - title.y - title.height, `${section}: title/description gap`).toBe(4);
-          const next = heading.locator("xpath=following-sibling::*[1]");
-          if (await next.count()) {
-            const content = (await next.boundingBox())!;
-            expect(content.y - copy.y - copy.height, `${section}: description/content gap`).toBe(await heading.evaluate(node => node.parentElement?.classList.contains("settings-compact-page") ? 30 : 16));
-          }
-          if (await heading.locator(".ds-page-heading-actions").count()) {
-            const actions = (await heading.locator(".ds-page-heading-actions").boundingBox())!;
-            const headerBox = (await heading.boundingBox())!;
-            expect(Math.abs(actions.y + actions.height / 2 - headerBox.y - headerBox.height / 2), `${section}: heading action alignment`).toBeLessThanOrEqual(1);
-          }
+          await expect(async () => {
+            const title = (await heading.locator(".ds-page-heading-title").boundingBox())!;
+            const copy = (await description.boundingBox())!;
+            expect(title, `${section}: loaded title`).not.toBeNull();
+            expect(copy, `${section}: loaded description`).not.toBeNull();
+            expect(copy.y - title.y - title.height, `${section}: title/description gap`).toBe(4);
+            const next = heading.locator("xpath=following-sibling::*[1]");
+            if (await next.count()) {
+              const content = (await next.boundingBox())!;
+              expect(content.y - copy.y - copy.height, `${section}: description/content gap`).toBe(await heading.evaluate(node => node.parentElement?.classList.contains("settings-compact-page") ? 30 : 16));
+            }
+            if (await heading.locator(".ds-page-heading-actions").count()) {
+              const actions = (await heading.locator(".ds-page-heading-actions").boundingBox())!;
+              const headerBox = (await heading.boundingBox())!;
+              expect(Math.abs(actions.y + actions.height / 2 - headerBox.y - headerBox.height / 2), `${section}: heading action alignment`).toBeLessThanOrEqual(1);
+            }
+          }).toPass({ timeout: 5000 });
         }
         for (const copy of await page.locator(".ds-body-section-description").all()) {
           const title = (await copy.locator("xpath=preceding-sibling::*[1]").boundingBox())!;
