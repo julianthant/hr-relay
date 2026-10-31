@@ -84,7 +84,7 @@ current corpus.
 - OCR Records is the document review body, with its floating control outside the document text.
 - Standalone OCR has no downstream approval; delegated OCR holds downstream outcomes until approval.
 - The launcher shares Input/Values, Options, Steps, and Confirm layouts without adding empty stages.
-- Fixed and editable Run Options share a field grid; Dry run starts off, browser mode is Headed, and workflow captures are required.
+- Run and Rerun Options use card rows; Dry run starts off, browser mode is Headed, and Screenshots is locked Always on.
 - Reading steps allow typed manual values while form actions and required sign-in steps remain included.
 - Settings uses a stationary rail/Navbar and body-scoped content, search, guarded exit, and child breadcrumbs.
 - Settings places General/Credentials under Personal and Paths/Routes under Advanced; Performance remains reachable through Settings search.

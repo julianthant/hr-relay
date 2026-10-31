@@ -364,8 +364,9 @@ account capability. Browser dimensions use the canonical `display.screenWidth` a
 draft validation, autosave, uncertainty and readback. Explicit parity previews keep their local controls.
 
 General composes appearance, ordinary General fields, annual dates, ChatGPT account, and Delete account.
-Delete account presents explicit confirmation, blocked, deleting, and unavailable states. Until the
-person deletion owner supplies authority and a callback, the served control is unavailable.
+Delete account presents ready, explicit confirmation, deleting, and unavailable states. Deletion has
+no blocked presentation. Until the person deletion owner supplies authority and a callback, the served
+control is unavailable.
 The isolated `delete-account` parity fixture exercises mock state without reading or erasing data.
 Shared date controls display `MM/DD/YYYY` and preserve partial input during unrelated renders.
 Provider budget/model and API-key controls are absent. Browser viewport is developer configuration,
@@ -619,13 +620,12 @@ number supplies no proof. Pending decisions keep the original outcome unknown. T
 ### Full dry-run preview presentation
 
 Full-preview stage accounting distinguishes Exercised, Unavailable, and Skipped. Dependent
-preview values display “dry-run sample” beside the value and warn that they are not receipts,
-subject proof, or real-run authority. The `dry-run` parity fixture demonstrates complete
+preview values display “Dry-run sample” beside the value; they confer no real-run authority. The `dry-run` parity fixture demonstrates complete
 and partial exercise without executing workflows. Executor and served projection wiring are separate.
 
 ### Required capture presentation
 
-Run and Rerun have no capture-off choice. Options label workflow screenshots required; browser
+Run and Rerun have no capture-off choice. Options show a locked “Always on” Screenshots row; browser
 summary facts say “screenshots required.” The shared capture notice distinguishes a pre-submit
 capture failure (no click) from post-submit missing evidence with either independently proved or
 unknown write outcome. The `required-captures` fixture is presentation-only. Execution enforcement
@@ -634,8 +634,8 @@ and served per-step capture projection remain owned by the workflow capture impl
 ### Fixed app-data and maintenance presentation
 
 Paths shows runtime state and evidence roots read-only; there is no folder relocation picker,
-plan action, or shell-command copy control. Existing pending plans are explicitly unapplied.
-Document, download, and report pickers remain. Backup and Restore have unavailable, pending,
+plan action, or shell-command copy control. Copy buttons copy the displayed paths. Existing pending plans are explicitly unapplied.
+Folders groups the existing document, download, and report pickers. Backup and restore sits below App data. Backup and Restore have unavailable, pending,
 verified-backup, blocked, and confirmation presentations. Restore never implies credentials roll
 back or unresolved writes disappear. The `fixed-backup` fixture has no file effects. Maintenance
 authority, stopped restore, and verified backup selection are wired separately.
