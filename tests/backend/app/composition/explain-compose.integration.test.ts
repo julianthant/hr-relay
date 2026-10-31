@@ -68,7 +68,7 @@ describe("explain run", () => {
     assert.equal(runView.debugEvents?.records[0]?.scope.kind, "run");
     const path = join(root, "state.db");
     const admission = profileFixtureStorageAdmission(path);
-    const before = readFileSync(path); const inventory = readdirSync(root, { recursive: true }).sort();
+    const before = readFileSync(path); const inventory = readdirSync(root, { recursive: true, encoding: "utf8" }).sort();
     const sourceBytes = inventory.filter(name => lstatSync(join(root, name)).isFile()).map(name => [name, readFileSync(join(root, name))] as const);
     assert.match(composeExplainRuntime({ admission, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] }), /nextCursor/u);
     let after = 0; const categories = new Set<string>();
@@ -80,7 +80,7 @@ describe("explain run", () => {
       if (!page.hasMore) break;
     }
     assert.equal(categories.size, 7);
-    assert.deepEqual(readFileSync(path), before); assert.deepEqual(readdirSync(root, { recursive: true }).sort(), inventory);
+    assert.deepEqual(readFileSync(path), before); assert.deepEqual(readdirSync(root, { recursive: true, encoding: "utf8" }).sort(), inventory);
     for (const [name, bytes] of sourceBytes) assert.deepEqual(readFileSync(join(root, name)), bytes);
     assert.throws(() => parseDiagnosticArgs(["--limit", "1001"]));
     assert.throws(() => parseDiagnosticArgs(["--after", "-1"]));

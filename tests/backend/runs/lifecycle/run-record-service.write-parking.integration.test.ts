@@ -41,7 +41,7 @@ afterEach(async () => {
       }
       if (run.lifecycle.state === "parked-write") {
         const intent = database.authority.writeIntents.get(run.lifecycle.writeIntentId);
-        if (intent?.runId !== run.envelope.runId) {
+        if (intent === undefined || !("runId" in intent) || intent.runId !== run.envelope.runId) {
           assert.equal(database.authority.runs.transition({ runId: run.envelope.runId,
             expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: MUCH_LATER }, now: MUCH_LATER }).state, "applied");
         }
