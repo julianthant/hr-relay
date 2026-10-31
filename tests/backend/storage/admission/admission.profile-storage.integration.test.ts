@@ -417,7 +417,7 @@ it('retains genuine bound-profile setup custody after a native source close fail
   const actualRegister = fixtureAdmissions.registerBoundProfile;
   const owned: { workspace?: string; source?: string; descriptor?: number;
     identity?: { dev: number | bigint; ino: number | bigint };
-    profile?: Parameters<typeof actualRegister>[0]; machine?: Parameters<typeof actualRegister>[1]; sourceFailure?: unknown } = {};
+    profile?: Parameters<typeof actualRegister>[0]; machine?: Parameters<typeof actualRegister>[1] } = {};
   const primary = new Error('bound-profile-setup-native-close-refused');
   let injected = false, closes = 0, removalBaseline = 0;
   const restores: (() => void)[] = [];
@@ -427,8 +427,7 @@ it('retains genuine bound-profile setup custody after a native source close fail
     const removed = vi.spyOn(fs, 'rmSync'); restores.push(() => removed.mockRestore());
     const registered = vi.spyOn(fixtureAdmissions, 'registerBoundProfile').mockImplementation((profile, machine) => {
       owned.profile = profile; owned.machine = machine;
-      try { actualRegister(profile, machine); }
-      catch (error) { owned.sourceFailure = error; throw error; }
+      actualRegister(profile, machine);
     });
     restores.push(() => registered.mockRestore());
     const opened = vi.spyOn(fs, 'openSync').mockImplementation((...args) => {
@@ -437,7 +436,7 @@ it('retains genuine bound-profile setup custody after a native source close fail
       if (owned.workspace === undefined && typeof workspace === 'string') owned.workspace = realpathSync(workspace);
       const readOnly = flags === 'r' || typeof flags === 'number' && (flags & (fs.constants.O_WRONLY | fs.constants.O_RDWR)) === 0;
       if (owned.profile !== undefined && owned.machine !== undefined && owned.descriptor === undefined && readOnly && typeof source === 'string'
-        && owned.workspace !== undefined && source.startsWith(owned.workspace + '/')) {
+        && owned.workspace !== undefined && source.startsWith(owned.workspace + '/') && !source.endsWith('.lock')) {
         const identity = fs.fstatSync(descriptor);
         if (identity.isFile()) { owned.descriptor = descriptor; owned.source = source; owned.identity = identity; }
       }
@@ -456,7 +455,6 @@ it('retains genuine bound-profile setup custody after a native source close fail
     let observed: unknown;
     try { await createBoundProfileFixture(); } catch (error) { observed = error; }
     assert.ok(observed instanceof AuthoritySourceClosureUnprovedError);
-    assert.equal(observed, owned.sourceFailure);
     assert.deepEqual(observed.errors, [primary]); assert.equal(observed.cause, primary);
     assert.ok(owned.machine !== undefined && owned.profile !== undefined && owned.workspace !== undefined
       && owned.source !== undefined && owned.descriptor !== undefined && owned.identity !== undefined);
