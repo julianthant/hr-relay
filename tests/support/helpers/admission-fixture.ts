@@ -1,3 +1,4 @@
+import { withOperationProof } from "../../../src/backend/storage/configuration/credential-safe-file.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySourceClosure } from "../../../src/backend/storage/source-closure.js";
 import { credentialKeyCustody } from "../../../src/backend/storage/configuration/credential-key-custody.js";
@@ -194,62 +195,64 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
   const lifetime = options.lifetime ?? await RuntimeLifetimeLock.acquire(0);
   const ownedAdmissions: RuntimeAdmission[] = [];
   try {
-    let machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
-    ownedAdmissions.push(machine);
-    mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
-    const fields = { firstName: "Fixture", lastName: "Example", email: "fixture@ucsd.edu",
-      password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
-    const session = createSyntheticProfileSession({ admission: machine, machineRoot: machine.stateRoot,
-      repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine, admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(request, writer, copies),
-      initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine, admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
-      activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
-    const draft = options.pending === "storage" ? undefined : session.signUp(fields);
-    if (draft !== undefined && draft.state !== "onboarding") throw new Error("fixture draft was not created");
-    const operation = draft ?? machine.beginProfileSignUp({ firstName: fields.firstName, lastName: fields.lastName,
-      createdAt: IsoInstantSchema.parse(fields.createdAt), emailKey: createProfileVerifiers(machine.stateRoot).emailKeyFor(fields.email),
-      commandFingerprint: "a".repeat(64) });
-    let admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
-    ownedAdmissions.push(admission);
-    const stateRoot = admission.stateRoot;
-    registerBoundProfile(admission, machine);
-    const finish = async () => {
-      if (draft === undefined) throw new Error("fixture onboarding draft unavailable");
-      const current = draft;
-      if (current.state !== "onboarding" || current.profileId !== operation.profileId) throw new Error("fixture onboarding draft changed");
-      const active = await finishProfileOnboarding(session, current);
-      if (active.state !== "active" || active.profileId !== operation.profileId) throw new Error("bound profile fixture signup refused");
-      admission.release();
-      admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
-      ownedAdmissions.push(admission);
-      registerBoundProfile(admission, machine);
-      return active;
-    };
-    if (options.pending === undefined) await finish();
-    if (options.sharedMachine === true) {
-      await session.close();
-      admission.release();
-      machine.release();
-      machine = acquireEntrypointAdmission(workspace, "shared", lifetime);
+    return await withOperationProof(async () => {
+      let machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
       ownedAdmissions.push(machine);
-      admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
+      mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
+      const fields = { firstName: "Fixture", lastName: "Example", email: "fixture@ucsd.edu",
+        password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
+      const session = createSyntheticProfileSession({ admission: machine, machineRoot: machine.stateRoot,
+        repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine, admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(request, writer, copies),
+        initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine, admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
+        activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
+      const draft = options.pending === "storage" ? undefined : session.signUp(fields);
+      if (draft !== undefined && draft.state !== "onboarding") throw new Error("fixture draft was not created");
+      const operation = draft ?? machine.beginProfileSignUp({ firstName: fields.firstName, lastName: fields.lastName,
+        createdAt: IsoInstantSchema.parse(fields.createdAt), emailKey: createProfileVerifiers(machine.stateRoot).emailKeyFor(fields.email),
+        commandFingerprint: "a".repeat(64) });
+      let admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
       ownedAdmissions.push(admission);
+      const stateRoot = admission.stateRoot;
       registerBoundProfile(admission, machine);
-    }
-    const renewAfterRestore = () => {
-      assertBoundFixtureWorkersReleased(admission);
-      admission.release();
-      admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
-      ownedAdmissions.push(admission);
-      registerBoundProfile(admission, machine);
-      return { admission, credentials: boundProfileCredentials(admission) };
-    };
-    let controllerClosure: Promise<void> | undefined;
-    const closeController = (): Promise<void> => controllerClosure ??= (async () => {
-      await session.close(); unregisterBoundProfile(admission); admission.release(); machine.release();
-      if (ownsLifetime) await lifetime.close();
-    })();
-    return { workspace, lifetime, get machine() { return machine; }, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish, renewAfterRestore, closeController,
-      async close() { await closeController(); rmSync(workspace, { recursive: true, force: true }); } };
+      const finish = async () => {
+        if (draft === undefined) throw new Error("fixture onboarding draft unavailable");
+        const current = draft;
+        if (current.state !== "onboarding" || current.profileId !== operation.profileId) throw new Error("fixture onboarding draft changed");
+        const active = await finishProfileOnboarding(session, current);
+        if (active.state !== "active" || active.profileId !== operation.profileId) throw new Error("bound profile fixture signup refused");
+        admission.release();
+        admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
+        ownedAdmissions.push(admission);
+        registerBoundProfile(admission, machine);
+        return active;
+      };
+      if (options.pending === undefined) await finish();
+      if (options.sharedMachine === true) {
+        await session.close();
+        admission.release();
+        machine.release();
+        machine = acquireEntrypointAdmission(workspace, "shared", lifetime);
+        ownedAdmissions.push(machine);
+        admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
+        ownedAdmissions.push(admission);
+        registerBoundProfile(admission, machine);
+      }
+      const renewAfterRestore = () => {
+        assertBoundFixtureWorkersReleased(admission);
+        admission.release();
+        admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
+        ownedAdmissions.push(admission);
+        registerBoundProfile(admission, machine);
+        return { admission, credentials: boundProfileCredentials(admission) };
+      };
+      let controllerClosure: Promise<void> | undefined;
+      const closeController = (): Promise<void> => controllerClosure ??= (async () => {
+        await session.close(); unregisterBoundProfile(admission); admission.release(); machine.release();
+        if (ownsLifetime) await lifetime.close();
+      })();
+      return { workspace, lifetime, get machine() { return machine; }, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish, renewAfterRestore, closeController,
+        async close() { await closeController(); rmSync(workspace, { recursive: true, force: true }); } };
+    });
   } catch (error) {
     failedBoundProfileFixtures.add({ workspace, admissions: ownedAdmissions, lifetime, primary: error });
     throw error;
