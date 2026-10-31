@@ -6,6 +6,7 @@ import { createNominatimService } from "../../../../src/backend/processing/provi
 import { ProviderRequestEnvelopeSchema } from "../../../../src/models/providers/providers.js";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
+import { scaledMs } from "../../../support/time-scale.js";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -36,4 +37,4 @@ it("retains pending and rejected stop while an injected fetch remains unsettled"
   assert.equal(fetches, 1); complete();
   await new Promise<void>(done => setTimeout(done, 20)); assert.equal(fetches, 1);
   await assert.rejects(service.stop(), /closure-unproven/u);
-}, 10_000);
+}, scaledMs(10_000));

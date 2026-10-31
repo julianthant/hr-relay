@@ -32,6 +32,7 @@ import { RuntimeAdmission } from "../../../src/backend/storage/admission/admissi
 import { RESTORE_ADMISSION_REQUEST, createChatGptCredentialRepository } from "../../../src/backend/storage/configuration/credential-store.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
+import { scaledMs } from "../../support/time-scale.js";
 
 const machineAdmissions = new Map<string, RuntimeAdmission>();
 const sessionOwners = new Set<ReturnType<typeof realCreateProfileSession>>();
@@ -451,7 +452,7 @@ describe("profile session", () => {
     const registry = JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as { profiles: { firstName: string }[] };
     assert.equal(registry.profiles.length, 1);
     assert.equal(registry.profiles[0]?.firstName, "Alex");
-  }, 20_000);
+  }, scaledMs(20_000));
 
   for (const record of ["malformed", "unknown"] as const) it(`retains a ${record} profile lock without sign-up effects`, async () => {
     const root = await temp();

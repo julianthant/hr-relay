@@ -23,6 +23,7 @@ import { ExplorerEditApplyRequestSchema, ExplorerWorkflowOverrideSchema } from "
 import { CommandAuditRecordSchema, CommandResultSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 import { manualClock, systemClock } from "../../../../../src/rules/time/clock.js";
 import { settingsSetOperations } from "../../../../support/fixtures/settings-operation-fixtures.js";
+import { scaledMs } from "../../../../support/time-scale.js";
 
 const { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, createProfileFixture, cleanup } = createDashboardPortTestWorld(() => {
       vi.mocked(fsyncSync).mockReset();
@@ -273,7 +274,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"] });
     assert.deepEqual(card?.browsers, []);
     assert.equal(records[0]?.exited, false);
-  }, 20_000);
+  }, scaledMs(20_000));
 
   function observeExplorerSnapshot(authorityPath: string, onCommit?: () => void) {
     const statements: string[] = [];
@@ -338,7 +339,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         assert.equal(vi.mocked(readFileSync).mock.calls.filter(([path]) => String(path).startsWith(fixture.path)).length, 0);
       }
     } finally { await runtime.stop(); }
-  }, 20_000);
+  }, scaledMs(20_000));
 
   it.each(["GET", "validate"] as const)("keeps the captured Explorer %s view across a concurrent commit and sees it on the next request", async operation => {
     const fixture = await committedExplorer(); journalExplorer(fixture);
@@ -376,7 +377,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         assert.equal(crossed, true);
       } finally { writer.close(); }
     } finally { await runtime.stop(); }
-  }, 20_000);
+  }, scaledMs(20_000));
 
   it("applies and replays the complete Explorer command after a real runtime restart", async () => {
     const fixture = await committedExplorer();
@@ -398,7 +399,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
       assert.equal((await client.workflowExplorer()).workflows.find(row => row.id === fixture.request.target.workflowId)?.label, "Recovered people search");
     } finally { await runtime.stop(); }
-  }, 20_000);
+  }, scaledMs(20_000));
 
   it("plans new runs with saved settings without a dashboard restart", async () => {
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));

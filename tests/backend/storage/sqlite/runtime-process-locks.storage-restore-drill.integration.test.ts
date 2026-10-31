@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, observeProcessIdentity, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { scaledMs } from "../../../support/time-scale.js";
 
 const {CLOCK, composeStorageCommand, drillPaths, attemptingDrillPaths, open, takeBackup, corrupt, pretendAliveIdentity, deadPid, cleanup } = createStorageRestoreTestWorld();
 
@@ -371,7 +372,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     );
     assert.equal(next.generation, 3);
     next.release();
-  }, 30_000);
+  }, scaledMs(30_000));
 
   it("keeps one live process identity stable when the caller timezone changes", async () => {
     const paths = await drillPaths();
@@ -445,7 +446,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
 });
 
 async function waitFor(predicate: () => boolean, diagnostics: readonly string[]): Promise<void> {
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + scaledMs(20_000);
   while (!predicate()) {
     if (Date.now() >= deadline) {
       throw new Error(`timed out waiting for lock contenders:\n${diagnostics.join("")}`);

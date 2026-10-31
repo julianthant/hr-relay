@@ -39,6 +39,7 @@ import { describe, expect } from "vitest";
 import { WorkerPoolMemberSchema as WorkerPoolMemberSchema_m2, type WorkerPoolMember } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { workerCliArgv, type WorkerDurableStopReceipt, type WorkerLeaseBirthFact } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
+import { scaledMs } from "../../../support/time-scale.js";
 
 {
 
@@ -117,7 +118,7 @@ it.each(["poolIndex", "membershipRevision"] as const)("refuses an altered same-i
 const retainedPhysicalWorkerFixtures: object[] = [];
 
 async function waitFor(test: () => boolean, message: string, diagnostics: () => string) {
-  const deadline = systemClock.monotonicMs() + 25_000;
+  const deadline = systemClock.monotonicMs() + scaledMs(25_000);
   while (!test()) { if (systemClock.monotonicMs() > deadline) throw new Error(`${message}\n${diagnostics()}`); await new Promise(resolve => setTimeout(resolve, 25)); }
 }
 
@@ -288,7 +289,7 @@ it("retires a real worker only after its opened Chromium profile closes, custody
     }
   }
   if (failures.length > 0) throw new AggregateError(failures, `native retirement proof failed; retained ${root}\n${output.join("")}`, { cause: failures[0] });
-}, 90_000);
+}, scaledMs(90_000));
 }
 
 {

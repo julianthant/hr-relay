@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { chromium } from "playwright";
 import type { BrowserContext } from "playwright";
 import { it } from "vitest";
+import { scaledMs } from "../../support/time-scale.js";
 
 interface RealmReceipt {
   type: string;
@@ -171,4 +172,4 @@ it("real extension isolated native create uses page RP/origin and ignores forged
     finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
     // Keep this owned synthetic root until the sole runner proves physical process/FD closure.
   }
-}, 30000);
+}, scaledMs(30000));

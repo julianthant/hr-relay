@@ -24,6 +24,7 @@ import { WorkerChildEvidenceSchema } from "../../../../src/backend/runtime/worke
 import { systemClock, manualClock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { scaledMs } from "../../../support/time-scale.js";
 
 async function fixture() {
   const f = await createBoundProfileFixture();
@@ -403,7 +404,7 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
     if (!closed) retainedNativeRetirementFixtures.push({ f, profile, dashboard, children });
   }
   if (failures.length > 0) throw new AggregateError(failures, "canonical retirement proof failed");
-}, 60_000);
+}, scaledMs(60_000));
 
 it("refuses a real other-workflow plan bound to a previously valid stopped slot in both readers", async () => {
   const { f, planned, input } = await stoppedPlanFixture();

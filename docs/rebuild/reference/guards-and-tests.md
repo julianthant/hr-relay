@@ -97,7 +97,9 @@ CI runs architecture files serially.
 The two native browser process-proof files run first and serially on integration shard 1, without
 competing test files. All four ordinary shards exclude those two files, so each file runs once.
 Remaining integration files, unit and parity use two workers. Unit, integration and parity job
-budgets are 30 minutes; test deadlines are unchanged. Remaining-file steps run after a failed proof
+budgets are 30 minutes. CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
+Vitest test and hook limits, test wait helpers and the browser deadlines tests pass to product code by it.
+Local runs use 1. Product defaults are unchanged. Remaining-file steps run after a failed proof
 unless the workflow is cancelled, preserving failure visibility.
 
 ## 3. Private test temporary directory

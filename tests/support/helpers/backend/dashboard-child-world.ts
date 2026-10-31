@@ -9,6 +9,7 @@ import { type WorkerProcessSpawner } from "../../../../src/backend/runtime/worke
 import { WorkerProcessLockFileSchema } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { systemClock, type Clock } from "../../../../src/rules/time/clock.js";
+import { scaledMs } from "../../time-scale.js";
 
 export interface RealChildRecord {
   readonly member: WorkerPoolMember;
@@ -131,10 +132,10 @@ export function createDashboardChildTestWorld(releaseAdmissionFixtures: () => vo
     diagnostics: () => string,
     timeoutMs = 20_000,
   ): Promise<void> {
-    const deadline = systemClock.monotonicMs() + timeoutMs;
+    const deadline = systemClock.monotonicMs() + scaledMs(timeoutMs);
     while (!predicate()) {
       if (systemClock.monotonicMs() > deadline) {
-        throw new Error(`timed out after ${String(timeoutMs)}ms waiting for ${what}\n${diagnostics()}`);
+        throw new Error(`timed out after ${String(scaledMs(timeoutMs))}ms waiting for ${what}\n${diagnostics()}`);
       }
       await new Promise((resolve) => setTimeout(resolve, 25));
     }

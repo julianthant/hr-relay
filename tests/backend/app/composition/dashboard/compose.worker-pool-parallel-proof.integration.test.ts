@@ -24,6 +24,7 @@ import { manualClock,type Clock,type TestClock } from "../../../../../src/rules/
 
 import { AuthorityDatabase } from "../../../../support/helpers/admission-fixture.js";
 import { ManualScheduler } from "../../../../support/helpers/phase1f-executor-harness.js";
+import { scaledMs } from "../../../../support/time-scale.js";
 
 function servedControlBasis(database: AuthorityDatabase, workerId: string) {
   const lease = database.authority.workerLeases.get(workerId);
@@ -50,7 +51,7 @@ afterAll(() => profiles.close());
 afterEach(async () => {
   await cleanup();
   for (const profile of heldProfiles.splice(0)) await profile.close();
-}, 30_000);
+}, scaledMs(30_000));
 
 /* ── shared command plumbing ─────────────────────────────────────────────── */
 

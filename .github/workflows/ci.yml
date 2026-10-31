@@ -11,6 +11,8 @@ permissions:
 
 env:
   RELAY_TEST_RAM_MB: "2048"
+  # Standard macOS runners are about 2.5x slower than an operator Mac; tests stretch their waits to match.
+  RELAY_TEST_TIME_SCALE: "2.5"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

@@ -26,6 +26,8 @@ import { composeProfileRuntime } from "../../../../../src/backend/app/compositio
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
 import { readSettings } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
+import { FIXTURE_DUO_CREDENTIAL_KEY } from "../../../../support/helpers/duo-ceremony-fixtures.js";
+import { scaledMs } from "../../../../support/time-scale.js";
 
 const worker = (index: number) => `person-lookup-worker-${String(index)}`;
 function groupPids(group: number): number[] {
@@ -34,7 +36,7 @@ function groupPids(group: number): number[] {
   });
 }
 async function waitFor(test: () => boolean, message: string, output: () => string, milliseconds = 20_000) {
-  const deadline = systemClock.monotonicMs() + milliseconds;
+  const deadline = systemClock.monotonicMs() + scaledMs(milliseconds);
   while (!test()) { if (systemClock.monotonicMs() > deadline) throw new Error(`${message}\n${output()}`); await new Promise(resolve => setTimeout(resolve,25)); }
 }
 
@@ -107,7 +109,9 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
   const diagnostics = () => output.join("") + JSON.stringify({ leases: database?.authority.workerLeases.listLive(), runs: runIds.map(runId => ({
     state: database?.authority.runs.get(runId)?.lifecycle.state ?? "absent",
     failureCodes: database?.authority.failures.listByRun(runId).map(failure => failure.code) ?? [],
-  })) });
+  })), duoLease: database?.authority.duoCeremonyLeases.get(FIXTURE_DUO_CREDENTIAL_KEY),
+  browsers: [1, 2].map(index => database?.authority.workerControls.browsers(worker(index)).map(({ system, health }) => ({ system, health }))),
+  traces: readdirSync(root).filter(name => /^browser-\d+\.jsonl$/u.test(name)).map(name => readFileSync(join(root, name), "utf8").trim().split("\n")) });
   phase = 'boot-admission';
   const boot = async () => {
     const bootMachine = acquireEntrypointAdmission(root, "shared", lifetimeLock);
@@ -121,7 +125,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     assert.equal(existsSync(join(machine.stateRoot, "state.db")), false);
     phase = 'boot-runtime';
     const dashboard = await composeDashboardRuntime({ lifetimeLock, admission: machine, profile: { runtime: profile, token }, preflightRunnerFactory: healthyRuntimePreflightRunners,isolation:rebuildRuntimeIsolation,backendPortOverride:0,frontendPortOverride:0,env:{},repoRoot:root,
-    workerProcess:{launch:{environment:{},command:process.execPath,prefixArgs:["--import","tsx",join(process.cwd(),"tests/support/processes/worker-browser-control-cli.ts"),root],cwd:process.cwd()},spawn:spawnWorker,birth:{pollMs:25,timeoutMs:20_000},faultSink:line=>faults.push(line)}});
+    workerProcess:{launch:{environment:{},command:process.execPath,prefixArgs:["--import","tsx",join(process.cwd(),"tests/support/processes/worker-browser-control-cli.ts"),root],cwd:process.cwd()},spawn:spawnWorker,birth:{pollMs:25,timeoutMs:scaledMs(20_000)},faultSink:line=>faults.push(line)}});
     return { dashboard, machine: bootMachine };
   };
   const failures: unknown[]=[];
@@ -344,4 +348,4 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     }
   }
   if(failures.length>0)throw new AggregateError(failures,`process proof failed; retained ${root}\n${output.join("")}`);
-},90_000);
+}, scaledMs(90_000));

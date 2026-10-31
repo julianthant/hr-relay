@@ -14,6 +14,7 @@ import { GeocodeOutcomeSchema } from "../../../../src/rules/normalization/geocod
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
+import { scaledMs } from "../../../support/time-scale.js";
 
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -55,7 +56,7 @@ it("spaces actual owned fetch starts across process workers and config snapshots
   assert.equal(parentResults.length, 4); for (const result of parentResults) assert.equal(result.state, "produced");
   assert.equal(starts.length, 5); for (let i = 1; i < starts.length; i++) assert.ok((starts[i] ?? 0) - (starts[i - 1] ?? 0) >= 1000, JSON.stringify(starts));
   assert.equal(maximumActive, 1); assert.equal(urls[0]?.searchParams.get("countrycodes"), "us"); assert.equal(urls[0]?.searchParams.get("limit"), "1");
-}, 15_000);
+}, scaledMs(15_000));
 it("cancels queued requests and honors their original deadline before any fetch", async () => {
   let calls = 0;
   const owner = createNominatimGeocodeAdapter({ clock: systemClock, fetchFn: async () => { calls++; return Response.json([]); } }); cleanups.push(() => owner.stop());
@@ -87,7 +88,7 @@ it("keeps Nominatim no-match and remote failures explicit without provider-body 
     vi.useRealTimers();
     await owner.stop();
   }
-}, 10_000);
+}, scaledMs(10_000));
 it("cancels a worker queued behind the parent without starting its fetch", async () => {
   let calls = 0;
   const owner = createNominatimGeocodeAdapter({clock:systemClock,fetchFn:async()=>{calls++;return Response.json([]);}});
@@ -115,4 +116,4 @@ it("fails in-flight and queued worker requests when their parent dies without re
   const replacement=createNominatimGeocodeAdapter({clock:systemClock,fetchFn:async()=>{starts.push(performance.now());return Response.json([]);}});cleanups.push(()=>replacement.stop());
   const attempt=performance.now();assert.equal((await replacement.invoke(request,options())).response.state,"produced");
   assert.ok((starts[0]??0)-attempt>=1000);assert.equal(starts.length,1);
-},10000);
+}, scaledMs(10000));

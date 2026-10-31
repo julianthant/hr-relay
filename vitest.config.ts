@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 import { availableParallelism } from "node:os";
+import { scaledMs } from "./tests/support/time-scale.js";
 
 export const REBUILD_COVERAGE_INCLUDE = ["src/**/*.ts", "src/**/*.tsx"] as const;
 export const REBUILD_UNIT_TEST_INCLUDE = ["tests/**/*.test.ts"] as const;
@@ -86,8 +87,8 @@ const sharedConfig = defineConfig({
     pool: "forks",
     isolate: true,
     globals: false,
-    testTimeout: 30_000,
-    hookTimeout: 30_000,
+    testTimeout: scaledMs(30_000),
+    hookTimeout: scaledMs(30_000),
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
