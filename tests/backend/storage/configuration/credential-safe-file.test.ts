@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
-import { readPrivateFile, withPrivateFileLock, type PrivateFileLock } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+import { outermostOperationProof, withOperationProof, readPrivateFile, withPrivateFileLock, type PrivateFileLock } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 
 for (const label of ["authority database", "managed data"] as const) {
   it(`reads retained 0644 ${label} bytes without changing mode or identity`, () => {
@@ -243,4 +243,37 @@ for (const stage of ["unproved-close", "proved-close-and-cleanup-failure"] as co
     throw error;
   }
   if (primary !== undefined) throw primary.error;
+});
+
+for (const asynchronous of [false, true]) it(`preserves operation and proof release failures (${asynchronous ? "async" : "sync"})`, async () => {
+  const primary = new Error("operation failed"), cleanup = new Error("proof release failed");
+  const body = () => {
+    const proof = outermostOperationProof();
+    assert.ok(proof);
+    proof.release.push(() => { throw cleanup; });
+    if (asynchronous) return Promise.reject(primary);
+    throw primary;
+  };
+  const check = (error: unknown) => {
+    assert.ok(error instanceof AggregateError);
+    assert.deepEqual(error.errors, [primary, cleanup]);
+    assert.equal(error.cause, cleanup);
+    return true;
+  };
+  if (asynchronous) await assert.rejects(() => withOperationProof(body), check);
+  else assert.throws(() => withOperationProof(body), check);
+  assert.equal(outermostOperationProof(), undefined);
+});
+
+it("retains proof resources when source closure is unproved", () => {
+  let releases = 0;
+  const failure = retainAuthoritySourceClosure([new Error("source still open")], { database: {} });
+  assert.throws(() => withOperationProof(() => {
+    const proof = outermostOperationProof();
+    assert.ok(proof);
+    proof.release.push(() => { releases++; });
+    throw failure;
+  }), error => error === failure);
+  assert.equal(releases, 0);
+  assert.equal(outermostOperationProof(), undefined);
 });

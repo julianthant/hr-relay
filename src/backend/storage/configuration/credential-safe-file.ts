@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { systemClock } from "../../../rules/time/clock.js";
-import { retainAuthoritySourceClosure } from "../source-closure.js";
+import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySourceClosure } from "../source-closure.js";
 import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, readdirSync, type Stats } from "node:fs";
 import { join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
@@ -308,22 +308,40 @@ export function outermostOperationProof(): OperationProof | undefined {
   return operationProof.getStore();
 }
 function discardOperationProof(proof: OperationProof): void {
-  const release = proof.release.splice(0);
   proof.slots.clear();
-  for (const finish of release) finish();
+  while (proof.release.length !== 0) {
+    const finish = proof.release[0];
+    if (finish === undefined) throw new Error("operation-proof-release-missing");
+    try { finish(); }
+    catch (error) { retainUnprovedSourceOwners(error, { operationProof: proof }); throw error; }
+    proof.release.shift();
+  }
 }
 export function withOperationProof<T>(body: () => T): T {
   if (operationProof.getStore() !== undefined) return body();
   const proof: OperationProof = { slots: new Map(), release: [] };
   let settled = false;
-  const finish = () => { if (settled) return; settled = true; discardOperationProof(proof); };
+  const finish = (error?: unknown) => {
+    if (settled) return;
+    settled = true;
+    if (hasUnprovedSourceClosure(error)) {
+      proof.slots.clear();
+      retainUnprovedSourceOwners(error, { operationProof: proof });
+      return;
+    }
+    try { discardOperationProof(proof); }
+    catch (cleanup) {
+      if (error !== undefined) throw new AggregateError([error, cleanup], "operation and proof cleanup failed", { cause: cleanup });
+      throw cleanup;
+    }
+  };
   try {
     const result = operationProof.run(proof, body);
-    if (result instanceof Promise) return result.finally(finish) as T;
+    if (result instanceof Promise) return result.then((value: Awaited<T>) => { finish(); return value; }, (error: unknown) => { finish(error); throw error; }) as T;
     finish();
     return result;
   } catch (error) {
-    finish();
+    finish(error);
     throw error;
   }
 }
