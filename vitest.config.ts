@@ -60,7 +60,7 @@ export const REBUILD_COVERAGE_FLOORS = {
   branches: { phase1ReportOnly: true, phase2Global: 50, phase2SafetyCritical: 70 },
 } as const;
 
-export default defineConfig({
+const sharedConfig = defineConfig({
   resolve: {
     alias: {
       "@": resolve(import.meta.dirname, "src/dashboard"),
@@ -85,18 +85,6 @@ export default defineConfig({
     // and module-level caches are per-file no matter the scheduling.
     pool: "forks",
     isolate: true,
-    // Full coverage at the CPU-derived default starves the fixture/guard
-    // checks on shared machines. Bound file concurrency, not their deadlines.
-    maxWorkers: Math.min(4, availableParallelism()),
-    projects: REBUILD_TEST_PROJECTS.map(({ name, include, exclude }) => ({
-      extends: true,
-      test: {
-        name,
-        include: [...include],
-        exclude: [...exclude],
-        fileParallelism: true,
-      },
-    })),
     globals: false,
     testTimeout: 30_000,
     hookTimeout: 30_000,
@@ -159,5 +147,24 @@ export default defineConfig({
         "src/**/*projection*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
       },
     },
+  },
+});
+
+export default defineConfig({
+  ...sharedConfig,
+  test: {
+    ...sharedConfig.test,
+    // Keep the cap at the root so CLI limits also apply to named projects.
+    maxWorkers: Math.min(4, availableParallelism()),
+    projects: REBUILD_TEST_PROJECTS.map(({ name, include, exclude }) => ({
+      ...sharedConfig,
+      test: {
+        ...sharedConfig.test,
+        name,
+        include: [...include],
+        exclude: [...exclude],
+        fileParallelism: true,
+      },
+    })),
   },
 });

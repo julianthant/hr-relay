@@ -2,8 +2,23 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { join,resolve } from "node:path";
 import { describe,it } from "vitest";
+import { createVitest } from "vitest/node";
 import vitestConfig,{ REBUILD_TEST_EXEC_ARGV } from "../vitest.config.js";
 const REPO_ROOT = resolve(import.meta.dirname, "..");
+
+it("applies CLI worker limits to every named CI project", async () => {
+  const names = ["unit", "integration", "architecture"];
+  for (const maxWorkers of [1, 2]) {
+    const context = await createVitest("test", { config: resolve(REPO_ROOT, "vitest.config.ts"),
+      watch: false, maxWorkers, project: names });
+    try {
+      assert.deepEqual(context.projects.map(project => project.name).sort(), [...names].sort());
+      for (const project of context.projects) {
+        assert.equal(project.config.maxWorkers ?? context.config.maxWorkers, maxWorkers, project.name);
+      }
+    } finally { await context.close(); }
+  }
+});
 
 function namedArchitectureProject(config: unknown): {
   readonly include?: readonly string[];

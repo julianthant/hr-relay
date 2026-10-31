@@ -90,10 +90,12 @@ injected violations.
 Vitest uses isolated forks, file parallelism, `maxWorkers: Math.min(4, availableParallelism())`,
 `globals: false`, and one `verbose` reporter. Test and hook timeouts remain **30,000 ms**. Worker
 arguments include `--no-experimental-webstorage`, avoiding process-global Node localStorage.
+The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-CI bounds each integration and parity shard to two workers, leaving runner capacity for their
-browser and worker child processes. Their job budgets are 30 minutes; test deadlines are unchanged.
+CI runs architecture files serially and bounds each integration and parity shard to two workers,
+leaving runner capacity for their browser and worker child processes. Integration and parity job
+budgets are 30 minutes; test deadlines are unchanged.
 
 ## 3. Private test temporary directory
 
