@@ -71,6 +71,14 @@ jobs:
       - run: npm ci
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+      # macOS verifies a freshly downloaded Chromium.app on its first launches; pay that once here.
+      - name: Time cold and warm Chromium launches
+        run: >-
+          node --input-type=module -e "import { chromium } from 'playwright'; import { mkdtempSync } from 'node:fs';
+          import { tmpdir } from 'node:os'; import { join } from 'node:path';
+          for (const label of ['cold', 'warm']) { const started = performance.now();
+          const context = await chromium.launchPersistentContext(mkdtempSync(join(tmpdir(), 'warm-')), { channel: 'chromium', headless: true });
+          await context.close(); console.log(label + ' Chromium launch: ' + Math.round(performance.now() - started) + ' ms'); }"
       - run: npm run web:build
       - name: Mount test temp on a RAM disk
         run: |
