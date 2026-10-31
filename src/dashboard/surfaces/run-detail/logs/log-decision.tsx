@@ -58,10 +58,10 @@ export function UcpathFoundTransactions({ attemptLabel, presentation, onDecision
   const busy = presentation.state === "checking" || presentation.state === "loading";
   const uncertain = found && (!found.complete || !found.authoritative || found.rows.some(candidate => candidate.match === "ambiguous" || !candidate.detailVerified));
   return <section className="log-decision ucpath-found" aria-label="UCPath found transactions">
-    <div className="log-decision-body"><h3 className="text-title font-semibold">Did this submit reach UCPath?</h3><p>{attemptLabel}. Relay won’t submit it again.</p>
+    <div className="log-decision-body"><h3 className="text-[16px] font-semibold">Did this submit reach UCPath?</h3><p className="ucpath-found-subtitle">{attemptLabel}. Relay won’t submit it again.</p>
       {busy && <p role="status">{presentation.state === "loading" ? "Reading transaction list…" : "Checking confirmation again…"}</p>}
       {presentation.state === "unavailable" && <p>Confirmation couldn’t be read. Check again.</p>}
-      {found && <><div className="flex items-center justify-between gap-4"><h4 className="font-medium">Found in UCPath</h4><span className="text-caption text-ui-muted">{found.complete ? "Complete list" : "Partial list"}{!found.authoritative && " · authority unverified"}</span></div>
+      {found && <><div className="ucpath-found-table-title flex items-center justify-between gap-4"><h4 className="font-medium">Found in UCPath</h4><span className="text-caption text-ui-muted">{found.complete ? "Complete list" : "Partial list"}{!found.authoritative && " · authority unverified"}</span></div>
         {uncertain && <p className="text-ui-warning">{!found.complete ? "The list is incomplete. Check again or look up a transaction." : !found.authoritative ? "The list is unverified. Check again." : "These transactions need verification. Check again or look up a transaction."}</p>}
         <Table label="Transactions found in UCPath"><THead><TR><TH><span className="sr-only">Select</span></TH><TH>Transaction</TH><TH>Person</TH><TH>Action</TH><TH>Submitted</TH><TH>Match</TH></TR></THead><TBody>{found.rows.map(candidate => <TR key={candidate.transactionNumber}>
           <TD><input type="radio" name="found-transaction" aria-label={`Select transaction ${candidate.transactionNumber}`} checked={selected === candidate.transactionNumber} disabled={!found.authoritative || candidate.match !== "exact" || !candidate.detailVerified || !onDecision} onChange={() => setSelected(candidate.transactionNumber)} /></TD>

@@ -602,8 +602,8 @@ operator interface until their canonical assistant binding is implemented.
 
 ### Run pause presentation
 
-Queue controls expose per-run Pause and Resume, Pause all, and the explicit
-“Pause all and quit?” confirmation. Requested pause/resume states stay pending until the
+Logs exposes per-run Pause and Resume. The queue header has only Pause all; the app quit path opens
+the explicit “Pause all and quit?” confirmation. Requested pause/resume states stay pending until the
 owner supplies recorded completion. No submit is interrupted. Unavailable authority disables
 the controls; unknown closure cannot show a completed pause or clean shutdown. The isolated
 `run-pause` parity fixture changes mock state only. Backend lifecycle wiring is separate.
@@ -619,8 +619,9 @@ number supplies no proof. Pending decisions keep the original outcome unknown. T
 
 ### Full dry-run preview presentation
 
-Full-preview stage accounting distinguishes Exercised, Unavailable, and Skipped. Dependent
-preview values display “Dry-run sample” beside the value; they confer no real-run authority. The `dry-run` parity fixture demonstrates complete
+Full-preview accounting counts exercised applicable steps, including submit rehearsals where no click occurs.
+The result card shows verified-person, checked-field, and sample-transaction facts; only Not clicked, Unavailable,
+and Skipped exceptions carry chips. Preview values carry a Sample tag with a Dry-run sample accessible name; they confer no real-run authority. The `dry-run` parity fixture demonstrates complete
 and partial exercise without executing workflows. Executor and served projection wiring are separate.
 
 ### Required capture presentation
@@ -629,7 +630,9 @@ Run and Rerun have no capture-off choice. Options show a locked “Always on” 
 summary facts say “screenshots required.” The shared capture notice distinguishes a pre-submit
 capture failure (no click) from post-submit missing evidence with either independently proved or
 unknown write outcome. The `required-captures` fixture is presentation-only. Execution enforcement
-and served per-step capture projection remain owned by the workflow capture implementation.
+and served per-step capture projection remain owned by the workflow capture implementation. Submit captures use
+equal cards with captions below the image; missing captures carry a short reason and independently proved
+outcomes retain their confirmation row.
 
 ### Fixed app-data and maintenance presentation
 

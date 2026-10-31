@@ -7,18 +7,21 @@ const servers = registerReferenceServers(["server"]);
 
 test("Dry run labels every sample and excludes unavailable steps from completion", async ({ page }) => {
   await page.goto(`${servers.server.baseUrl}/?fixture=dry-run`);
-  await expect(page.getByText("Dry-run sample", { exact: true })).toHaveCount(2);
-  await expect(page.getByText("SIM-48216", { exact: true })).toHaveCount(2);
-  await expect(page.getByText("Not clicked", { exact: true })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Finalize in Kuali", exact: true })).toContainText("Exercised");
-  await expect(page.getByText("4 of 4 steps exercised", { exact: true })).toBeVisible();
+  const result = page.getByRole("region", { name: "Full dry-run preview", exact: true });
+  await expect(result.getByRole("group", { name: "Person verified", exact: true })).toContainText("Rivera, Alex · 10777012");
+  await expect(result.getByRole("group", { name: "Fields filled and checked", exact: true })).toContainText("14");
+  await expect(result.getByRole("group", { name: "Transaction number", exact: true })).toContainText("SIM-48216");
+  await expect(result.getByLabel("Dry-run sample", { exact: true })).toHaveText("Sample");
+  await expect(result.getByText("Exercised", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Run timeline", exact: true })).toContainText("Not clicked");
+  await expect(result.getByText("4 of 4 steps exercised", { exact: true })).toBeVisible();
   await page.goto(`${servers.server.baseUrl}/?fixture=dry-run&state=unavailable`);
-  const row = page.getByRole("group", { name: "Finalize in Kuali", exact: true });
+  const row = result.getByRole("group", { name: "Finalize in Kuali", exact: true });
   await expect(row).toContainText("Unavailable");
   await expect(row).not.toContainText("Exercised");
-  await expect(page.getByText("Dry-run sample", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Dry-run sample", { exact: true })).toHaveCount(0);
   await expect(page.getByText("3 of 4 steps exercised", { exact: true })).toBeVisible();
-  await expect(page.getByText("Skipped", { exact: true })).toBeVisible();
+  await expect(result.getByText("Skipped", { exact: true })).toBeVisible();
 });
 
 for (const state of ["complete", "unavailable"] as const) test(`dry-run ${state} presentation`, { annotation: [{ type: "required-a11y-evidence", description: `dry-run-${state}.a11y.yml` }] }, async ({ page }, info) => {
