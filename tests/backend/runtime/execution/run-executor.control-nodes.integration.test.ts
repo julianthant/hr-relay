@@ -1,3 +1,5 @@
+import { workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { plan1Contract, plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
 import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
 import { randomUUID } from "node:crypto";
@@ -748,21 +750,36 @@ describe("parallel and seam arms", () => {
     const queued = canonical.start(childRunDescriptor, controlQueuedRun(childRunDescriptor, "left").input.raw, { dryRun: false });
     assert.equal(queued.envelope.runId, RUN_ID);
     const reclaimed = claim(database, childRunDescriptor);
-    const pending = await executeClaimedRun({ ...wired.deps, childRuns }, { ...reclaimed, signal: SIGNAL });
+    wired.deps.sessions.releaseRunConfigFingerprint();
+    wired.deps.sessions.configureExecution(childRunDescriptor.id, wired.deps.stores);
+    const pending = await withBoundRunConfigFingerprint(wired.deps.sessions, reclaimed.run.envelope.configFingerprint,
+      () => executeClaimedRun({ ...wired.deps, childRuns }, { ...reclaimed, signal: SIGNAL }));
     assert.equal(pending.state, "yielded-delegation");
     assert.deepEqual(contexts, ["delegate"]);
     const children = database.authority.runs.listChildren(RUN_ID);
     assert.equal(children.length, 1);
     assert.ok(children[0]);
-    testWorkerPorts(database, wired.authority.clock, { path, descriptor: childLeafDescriptor, poolIndex: 1 });
+    const home = testWorkerLifetime(database, childRunDescriptor.id, 1);
+    const runtime = database.authority.runtimeConfig.get();
+    assert.ok(runtime);
+    const childMutation = canonical.lifecycle.claimNext({ commandId: randomUUID(), workflow: childRunDescriptor.id,
+      workerId: home.workerId, workerLifetime: home.workerLifetime, runtimeConfig: {
+        generation: runtime.generation, settingsRevision: runtime.settingsRevision,
+        settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
+    assert.equal(childMutation.state, "applied");
+    if (!("run" in childMutation)) throw new Error("child fixture claim refused");
+    await wired.deps.sessions.closeAll("parked");
     wired.deps.sessions.configureExecution(childLeafDescriptor.id, plan1Stores);
-    const childClaim = claim(database, childLeafDescriptor);
+    const childClaim = { run: childMutation.run, claim: { workerId: home.workerId, claimGeneration: childMutation.run.claimGeneration } };
     assert.equal(childClaim.run.envelope.runId, children[0].envelope.runId);
-    const childDone = await executeClaimedRun({ ...wired.deps, descriptor: childLeafDescriptor, stores: plan1Stores, buildManifest: childExecutionBuildManifest }, { ...childClaim, signal: SIGNAL });
+    const childDone = await withBoundRunConfigFingerprint(wired.deps.sessions, childClaim.run.envelope.configFingerprint,
+      () => executeClaimedRun({ ...wired.deps, lifecycle: workerRunLifecyclePort(canonical.lifecycle), descriptor: childLeafDescriptor, stores: plan1Stores, buildManifest: childExecutionBuildManifest }, { ...childClaim, signal: SIGNAL }));
     assert.deepEqual(childDone, { state: "done", runId: children[0].envelope.runId });
+    await wired.deps.sessions.closeAll("parked");
     wired.deps.sessions.configureExecution(childRunDescriptor.id, wired.deps.stores);
     const resumed = claim(database, childRunDescriptor);
-    const done = await executeClaimedRun({ ...wired.deps, childRuns }, { ...resumed, signal: SIGNAL });
+    const done = await withBoundRunConfigFingerprint(wired.deps.sessions, resumed.run.envelope.configFingerprint,
+      () => executeClaimedRun({ ...wired.deps, childRuns }, { ...resumed, signal: SIGNAL }));
     assert.deepEqual(done, { state: "done", runId: RUN_ID });
   });
 });
