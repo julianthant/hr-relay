@@ -1064,7 +1064,7 @@ it("rechecks a registry proof after another async context publishes", async () =
     let entered: () => void = () => undefined, resume: () => void = () => undefined;
     const started = new Promise<void>(resolve => { entered = resolve; });
     const held = new Promise<void>(resolve => { resume = resolve; });
-    const at = "2026-10-30T12:00:00.000Z";
+    const at = IsoInstantSchema.parse("2026-10-30T12:00:00.000Z");
     const reader = withOperationProof(async () => {
       assert.notEqual(registry.read().profiles.find(row => row.profileId === profileId)?.lastSignedInAt, at);
       entered();
