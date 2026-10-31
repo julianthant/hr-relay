@@ -1,3 +1,4 @@
+import * as privateFiles from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 
 import * as credentialStores from "../../../../src/backend/storage/configuration/credential-store.js";
 import { RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
@@ -280,10 +281,18 @@ describe("composed worker runtime", () => {
         admission: profileAdmission(repoRoot), credentials: boundProfileCredentials(profileAdmission(repoRoot)),
       });
       const before = readFileSync(join(stateRoot, "state.db"));
-      await assert.rejects(
-        composeWorkerRuntime(input),
-        corruption.id === "command-envelope" ? /command-row-identity-mismatch/u : /command-audit-settlement-mismatch/u,
-      );
+      const readPrivateFile = privateFiles.readPrivateFile;
+      const credentialReads: string[] = [];
+      const readSpy = vi.spyOn(privateFiles, "readPrivateFile").mockImplementation((path, options) => {
+        if (path === join(stateRoot, "credentials", "protected.json")) credentialReads.push(path);
+        return readPrivateFile(path, options);
+      });
+      try {
+        await assert.rejects(
+          composeWorkerRuntime(input),
+          corruption.id === "command-envelope" ? /command-row-identity-mismatch/u : /command-audit-settlement-mismatch/u,
+        );
+      } finally { readSpy.mockRestore(); }
       const raw = new DatabaseSync(join(stateRoot, "state.db"), { readOnly: true });
       try {
         const row = raw.prepare("SELECT payload_json FROM settings WHERE id='current'").get();
@@ -295,6 +304,7 @@ describe("composed worker runtime", () => {
         assert.deepEqual(raw.prepare("SELECT id FROM browser_sessions").all(), []);
       } finally { raw.close(); }
       assert.deepEqual(readFileSync(join(stateRoot, "state.db")), before);
+      assert.deepEqual(credentialReads, [], "native corruption refuses before credential values are read");
       assert.equal(sessions.opens("ucpath"), 0);
       assert.equal(sessions.opens("crm"), 0);
     },

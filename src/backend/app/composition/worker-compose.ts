@@ -442,8 +442,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   try {
     selected.assertCurrent();
     issued = machine.admitProfile(machine.issueRegisteredProfileClaim(selected.profileId));
-    // shortcut: full inspect before the credential store duplicates open validation, replace when worker start has a credential-free snapshot check
-    AuthorityDatabase.inspectExistingReadOnly(issued, authorityPath, 5000);
     protectedAuthority = createCredentialStore({ admission: issued, stateRoot, erasureJournalAdmission: machine,
       erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
   } catch (error) {

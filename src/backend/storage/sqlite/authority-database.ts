@@ -1802,14 +1802,16 @@ export class AuthorityDatabase implements Disposable {
       }
       if (readOnlyNoMigrate) {
         this.#configureReadOnlyConnection();
-        this.#validateReadOnlyNoMigrateDatabase(existingVersion);
       } else {
         if (!existed && purpose !== "stopped-restore-projection") this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#configureConnection();
         if (existed && purpose === "ordinary") this.#initializeSchema(existingVersion, options.migrationOwner);
-        this.#validateDatabase();
       }
+      this.#database.exec("BEGIN");
+      if (readOnlyNoMigrate) this.#validateReadOnlyNoMigrateDatabase(existingVersion);
+      else this.#validateDatabase();
       readAppSettings(this.#database);
+      this.#database.exec("COMMIT");
       this.#credentialCommandIds = commandId => {
         if (credentials === undefined) throw new CredentialContextRequiredError();
         assertCredentialStoreOwner(credentials, this.#admission);
