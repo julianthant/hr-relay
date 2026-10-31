@@ -30,6 +30,9 @@ if [ "$(uname -s)" != "Darwin" ]; then
   exit 2
 fi
 
+/usr/sbin/sysctl hw.memsize hw.logicalcpu >&2
+printf 'ram-tmp: requested_mib=%s\n' "$mb" >&2
+
 sectors=$((mb * 2048))
 dev=$(hdiutil attach -nomount "ram://$sectors")
 dev=$(printf '%s' "$dev" | tr -d '[:space:]')

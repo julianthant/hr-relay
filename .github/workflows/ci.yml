@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  RELAY_TEST_RAM_MB: "4096"
+  RELAY_TEST_RAM_MB: "2048"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -36,7 +36,7 @@ jobs:
   unit:
     name: unit (macos-15)
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -52,7 +52,7 @@ jobs:
             *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
           esac
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - run: npm run test:unit
+      - run: npm run test:unit -- --maxWorkers=2
 
   integration-shard:
     name: integration shard ${{ matrix.shard }}/4
