@@ -1,3 +1,4 @@
+import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { plan1Contract, plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
@@ -8,7 +9,7 @@ import { testWorkerPorts, testWorkerLifetime } from "../../../support/fixtures/r
 import { testRunLifecycle,testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { afterAll,afterEach,describe,it } from "vitest";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { deriveGateResultCheckpointFingerprint } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -46,6 +47,8 @@ sessionManagerFor,
 type AuthorityHarness,
 } from "../../../support/helpers/phase1f-executor-harness.js";
 
+const profiles = createClonedProfileFixtures();
+afterAll(() => profiles.close());
 const disposers: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
   for (const dispose of disposers.splice(0)) await dispose();
@@ -198,11 +201,11 @@ function controlQueuedRun(descriptor: AnyWorkflowDescriptor, route: "left" | "ri
 }
 
 async function controlHarness(descriptor: AnyWorkflowDescriptor, childRuns?: ChildRunExecutor): Promise<Readonly<{
-  authority: AuthorityHarness;
+  authority: AuthorityHarness<BoundProfileStorageFixture>;
   emitter: ReturnType<typeof recordingTimelineEmitter>;
   deps: RunExecutorDependencies;
 }>> {
-  const authority = await openAuthorityHarness();
+  const authority = await openAuthorityHarness(profiles.create);
   testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor: descriptor, poolIndex: 1 });
   disposers.push(authority.dispose);
   const sessions = happySessionHarness();
@@ -221,6 +224,7 @@ async function controlHarness(descriptor: AnyWorkflowDescriptor, childRuns?: Chi
     log: recordingLogger().log,
     ...(childRuns === undefined ? {} : { childRuns }),
   };
+  disposers.unshift(() => deps.sessions.closeAll("worker-stop"));
   return { authority, emitter, deps };
 }
 
