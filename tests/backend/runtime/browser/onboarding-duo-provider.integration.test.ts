@@ -31,7 +31,8 @@ for (const pendingClose of [false, true]) it(pendingClose
   const provider = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: realpathSync(join(process.cwd(), "fast-duo")), clock: systemClock, closeProofMs: 5000,
     launcher: { async launch(input) {
       launches++; assert.equal(input.headless, false);
-      context = await chromium.launchPersistentContext(input.profileDirectory, { channel: "chromium", headless: false,
+      // Full Chromium exercises the synthetic extension UI without a desktop session.
+      context = await chromium.launchPersistentContext(input.profileDirectory, { channel: "chromium", headless: true,
         args: [`--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`] });
       await context.route("**/*", async route => {
         const request = route.request();
