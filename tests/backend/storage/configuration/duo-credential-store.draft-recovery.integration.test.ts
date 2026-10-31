@@ -1,3 +1,4 @@
+import { onboardingProfileDirectory } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { readyProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
@@ -42,6 +43,14 @@ async function privateDraftFixture(onboardingDuo?: ProfileOnboardingDuoProvider)
     password: "disposable-draft-recovery", createdAt: new Date().toISOString() });
   if (draft.state !== "onboarding") throw new Error("fixture genuine draft required");
   return { root, lifetime, machine, profile, draft, processLockRoot };
+}
+
+function retainDraftBrowserDirectory(f: Awaited<ReturnType<typeof privateDraftFixture>>, operationId = f.draft.operationId) {
+  const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "operations", `${operationId}.json`), "utf8")));
+  assert.ok(operation.onboarding);
+  const root = join(f.machine.stateRoot, "browsers", "onboarding");
+  mkdirSync(onboardingProfileDirectory(root, { ...operation, accountId: operation.onboarding.accountId,
+    generation: operation.onboarding.generation }), { recursive: true, mode: 0o700 });
 }
 
 async function draftFixture() {
@@ -473,7 +482,7 @@ it("limits finished publishing to value-free metadata and refuses key provisioni
 const retainedProcessLossFixtures = new Set<unknown>();
 for (const boundary of ["source-fsync", "protected-stage"] as const) {
   it(`recovers actual dead-writer process loss after ${boundary} without treating owned abort source as a writer stage`, async () => {
-    const f = await privateDraftFixture(); await f.profile.close(); f.machine.release();
+    const f = await privateDraftFixture(); retainDraftBrowserDirectory(f); await f.profile.close(); f.machine.release();
     const port = f.lifetime.port; await f.lifetime.close();
     const child = fork(fileURLToPath(new URL("../../../support/processes/profile-onboarding-abort-worker.ts", import.meta.url)), [f.root, boundary, String(port)],
       { execArgv: ["--disable-warning=ExperimentalWarning", "--import", "tsx"], detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
@@ -537,7 +546,7 @@ for (const change of ["same-length", "replacement"] as const) {
 }
 
 it("removes an unfinished sign-up at startup through the existing cancellation path", async () => {
-  const f = await privateDraftFixture(); await f.profile.close(); f.machine.release();
+  const f = await privateDraftFixture(); retainDraftBrowserDirectory(f); await f.profile.close(); f.machine.release();
   const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime);
   const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
   try {
@@ -555,6 +564,7 @@ it("removes a sign-up interrupted before its profile or credentials were initial
   const draft = f.machine.beginProfileSignUp({ emailKey: original.emailKey, firstName: original.firstName, lastName: original.lastName,
     createdAt: original.createdAt, commandFingerprint: original.commandFingerprint });
   assert.equal(existsSync(join(f.machine.stateRoot, "profiles", draft.profileId)), false);
+  retainDraftBrowserDirectory(f, draft.operationId);
   await f.profile.close(); f.machine.release();
   const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime);
   const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
