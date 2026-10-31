@@ -96,6 +96,8 @@ it("uses the real fixed-1GiB repository boundary once per unique digest and publ
 const sourceUrl = (relative: string) => new URL(relative, import.meta.url).href;
 function child(source: string) {
   const process = spawn(globalThis.process.execPath, ["--import", "tsx", "--input-type=module", "-e", source], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), stdio: ["ignore", "pipe", "pipe", "ipc"] });
+  assert.ok(process.stdout);
+  assert.ok(process.stderr);
   let stdout = "", stderr = "";
   process.stdout.on("data", bytes => { stdout += String(bytes); });
   process.stderr.on("data", bytes => { stderr += String(bytes); });
