@@ -1,4 +1,4 @@
-import { outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
+import { clearOperationProofSlots, revalidateOperationProof, outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
 import { assertOfflineMaintenanceForProcessRoot, type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
@@ -3460,7 +3460,7 @@ export class AuthorityDatabase implements Disposable {
 
   #withTransaction<Result>(mode: "authority" | "projection", work: () => Result, searchValidation: "all" | "progress" | "none" = "all"): Result {
     return withOperationProof(() => {
-      if (this.#transactionDepth === 0) outermostOperationProof()?.slots.clear();
+      if (this.#transactionDepth === 0) clearOperationProofSlots();
       this.#assertOpen();
       if (this.#transactionDepth > 0) {
         if (this.#transactionMode === "read") throw new Error(`${mode} mutation cannot run inside an authority read snapshot`);
@@ -3486,6 +3486,7 @@ export class AuthorityDatabase implements Disposable {
           throw error;
         } finally { this.#transactionDepth -= 1; }
       }
+      const witnesses = new Map(outermostOperationProof()?.witnesses);
       this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
       this.#database.exec("BEGIN IMMEDIATE");
       this.#transactionDepth = 1;
@@ -3506,7 +3507,7 @@ export class AuthorityDatabase implements Disposable {
           search.publishChanges(this.getMeta().authorityGeneration, this.#now(), priorSearch);
         }
         if (this.#explorerOverridesDirty) validateExplorerOverrides(this.#database);
-        outermostOperationProof()?.slots.clear();
+        revalidateOperationProof(witnesses);
         this.#assertOpen();
         this.#database.exec("COMMIT");
         if (searchValidation === "none") this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
@@ -3515,7 +3516,7 @@ export class AuthorityDatabase implements Disposable {
         this.#authorityCommitCallbacks.splice(0);
         throw error;
       } finally {
-        outermostOperationProof()?.slots.clear();
+        clearOperationProofSlots();
         this.#transactionDepth = 0;
         this.#transactionMode = undefined;
         this.#snapshotExternalDataVersion = undefined;
@@ -3531,10 +3532,11 @@ export class AuthorityDatabase implements Disposable {
 
   #withReadSnapshot<Result>(read: () => Result): Result {
     return withOperationProof(() => {
-      if (this.#transactionDepth === 0) outermostOperationProof()?.slots.clear();
+      if (this.#transactionDepth === 0) clearOperationProofSlots();
       this.#assertOpen();
       if (this.#transactionDepth > 0) return read();
 
+      const witnesses = new Map(outermostOperationProof()?.witnesses);
       this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
       this.#database.exec("BEGIN");
       this.#transactionDepth = 1;
@@ -3543,7 +3545,7 @@ export class AuthorityDatabase implements Disposable {
       this.#explorerOverridesDirty = false;
       try {
         const result = read();
-        outermostOperationProof()?.slots.clear();
+        revalidateOperationProof(witnesses);
         this.#assertOpen();
         this.#database.exec("COMMIT");
         return result;
@@ -3551,7 +3553,7 @@ export class AuthorityDatabase implements Disposable {
         this.#database.exec("ROLLBACK");
         throw error;
       } finally {
-        outermostOperationProof()?.slots.clear();
+        clearOperationProofSlots();
         this.#transactionDepth = 0;
         this.#transactionMode = undefined;
         this.#snapshotExternalDataVersion = undefined;

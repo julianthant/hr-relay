@@ -1702,36 +1702,49 @@ function assertErasureMembership(document: ProfileRegistryDocument, heads: reado
 }
 
 const PROFILE_REGISTRY_PROOF = "profile-registry";
-/** Profile custody verified in the current operation; dropped with the registry proof. */
 export const PROFILE_CUSTODY_PROOF = "profile-custody";
 function profileRegistryProofKey(control: string, locator: RuntimeLocator): string {
-  return `${control}\0${locator.installationId}\0${String(locator.generation)}\0${locator.stateRoot}`;
+  return `${PROFILE_REGISTRY_PROOF}\0${control}\0${locator.installationId}\0${String(locator.generation)}\0${locator.stateRoot}`;
 }
 class ProfileRegistryProof {
-  constructor(readonly key: string, readonly witness: string, readonly document: ProfileRegistryDocument) {}
+  constructor(readonly paths: readonly string[], readonly witness: string, readonly document: ProfileRegistryDocument, readonly assertUnchanged: () => void) {}
 }
-function profileRegistryStatWitness(control: string, locator: RuntimeLocator): string {
-  const operations = join(locator.stateRoot, "machine", "operations");
+function profileRegistryWitnessPaths(control: string, locator: RuntimeLocator): readonly string[] {
+  const machine = join(locator.stateRoot, "machine");
+  const operations = join(machine, "operations");
   const receipts = join(control, RECEIPTS);
-  const paths = [...profileEvidencePaths(control, locator), operations, join(control, "profile-publication.json"), join(control, "journal.json"), receipts,
-    ...[operations, receipts].flatMap(directory => lstatMaybe(directory) === undefined ? [] : readdirSync(directory).sort().map(name => join(directory, name)))];
+  const directories = [operations, receipts, join(machine, "erasures"), join(machine, "credential-keys"), join(machine, "duo-credentials")];
+  const roots = [control, locator.stateRoot, locator.artifactRoot, machine, ...directories];
+  for (const directory of roots) assertNoSymlinkComponents(directory);
+  return [...profileEvidencePaths(control, locator), ...roots,
+    ...["profile-publication.json", "journal.json", "profile-control-upgrade.json", "device-recertification.json", ".installation-mutation.lock"].map(name => join(control, name)),
+    join(locator.stateRoot, FENCE), join(locator.artifactRoot, FENCE),
+    ...directories.flatMap(directory => lstatMaybe(directory) === undefined ? [] : readdirSync(directory).sort().map(name => join(directory, name)))];
+}
+function profileRegistryStatWitness(control: string, locator: RuntimeLocator, paths: readonly string[]): string {
+  for (const directory of [control, locator.stateRoot, locator.artifactRoot]) assertNoSymlinkComponents(directory);
   return paths.map(path => {
     const stat = lstatSync(path, { bigint: true, throwIfNoEntry: false });
     return stat === undefined ? "absent" : [stat.dev, stat.ino, stat.mode, stat.uid, stat.nlink, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
   }).join("|");
 }
 function provenProfileRegistry(control: string, locator: RuntimeLocator): ProfileRegistryDocument | undefined {
-  const proof = outermostOperationProof()?.slots.get(PROFILE_REGISTRY_PROOF);
-  return proof instanceof ProfileRegistryProof && proof.key === profileRegistryProofKey(control, locator)
-    && proof.witness === profileRegistryStatWitness(control, locator) ? proof.document : undefined;
+  const proof = outermostOperationProof()?.witnesses.get(profileRegistryProofKey(control, locator));
+  return proof instanceof ProfileRegistryProof
+    && proof.witness === profileRegistryStatWitness(control, locator, proof.paths) ? proof.document : undefined;
 }
-function rememberProfileRegistry(control: string, locator: RuntimeLocator, witness: string, document: ProfileRegistryDocument): void {
-  outermostOperationProof()?.slots.set(PROFILE_REGISTRY_PROOF, new ProfileRegistryProof(profileRegistryProofKey(control, locator), witness, document));
+function rememberProfileRegistry(control: string, locator: RuntimeLocator, paths: readonly string[], witness: string, document: ProfileRegistryDocument): void {
+  const proof = outermostOperationProof(), key = profileRegistryProofKey(control, locator);
+  // Relocated installations revalidate their retained source roots.
+  if (proof === undefined || locator.generation !== 0 || proof.witnesses.has(key)) return;
+  proof.witnesses.set(key, new ProfileRegistryProof(paths, witness, document, () => {
+    if (witness !== profileRegistryStatWitness(control, locator, paths)) fail("profile-registry-observation-changed");
+  }));
 }
-function dropProfileRegistryProof(): void {
-  const slots = outermostOperationProof()?.slots;
-  slots?.delete(PROFILE_REGISTRY_PROOF);
-  slots?.delete(PROFILE_CUSTODY_PROOF);
+function dropProfileRegistryProof(control: string, locator: RuntimeLocator): void {
+  const proof = outermostOperationProof();
+  proof?.witnesses.delete(profileRegistryProofKey(control, locator));
+  proof?.slots.delete(PROFILE_CUSTODY_PROOF);
 }
 
 function profileEvidencePaths(control: string, locator: RuntimeLocator): readonly string[] {
@@ -2035,9 +2048,9 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     assertHeld();
     if (options?.readonlyControl === true) fail("worker-machine-control-read-only");
     outermostOperationProof()?.slots.delete("symlink-free");
-    dropProfileRegistryProof();
+    dropProfileRegistryProof(control, locator);
     try { return withInstallationControl(control, callback); }
-    finally { dropProfileRegistryProof(); }
+    finally { dropProfileRegistryProof(control, locator); }
   }
   function publishOperation(input: ProfileOperation | string, creating: boolean, keyStageWitness?: CommittedCredentialKeyStage): void {
       mutate(held => {
@@ -2386,19 +2399,19 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           return readMachineRegistry(control, locator);
         });
       }
-      // The proof's stat witness covers the locator, installation, journal and receipt files.
       const proven = provenProfileRegistry(control, locator);
       if (proven !== undefined) return proven;
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
-      const witness = profileRegistryStatWitness(control, locator);
+      const paths = profileRegistryWitnessPaths(control, locator);
+      const witness = profileRegistryStatWitness(control, locator, paths);
       const before = profileObservation(control, locator);
       const document = readMachineRegistry(control, locator, false);
       const after = profileObservation(control, locator);
       assertHeld();
-      if (before !== after || witness !== profileRegistryStatWitness(control, locator)
+      if (before !== after || witness !== profileRegistryStatWitness(control, locator, paths)
         || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-registry-observation-changed");
       if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
-      rememberProfileRegistry(control, locator, witness, document);
+      rememberProfileRegistry(control, locator, paths, witness, document);
       return document;
     },
     assertDraftDuoPublicationRecovery(operationId: string, profileId: string, generation: number) {

@@ -302,14 +302,33 @@ export class PrivateFileLockUnavailableError extends Error {
 }
 
 /** Reused checks for one profile operation. Discarded when that operation ends; a nested lock keeps the outer proof. */
-export type OperationProof = { active: boolean; readonly slots: Map<string, unknown>; readonly release: Array<() => void> };
+export type OperationProof = {
+  active: boolean;
+  readonly slots: Map<string, unknown>;
+  readonly witnesses: Map<string, { assertUnchanged(): void }>;
+  readonly locks: Set<PrivateFileLock>;
+  readonly release: Array<() => void>;
+};
 const operationProof = new AsyncLocalStorage<OperationProof>();
 export function outermostOperationProof(): OperationProof | undefined {
   const proof = operationProof.getStore();
   return proof?.active === true ? proof : undefined;
 }
+export function clearOperationProofSlots(): void {
+  const proof = outermostOperationProof();
+  proof?.slots.clear();
+  proof?.witnesses.clear();
+}
+export function revalidateOperationProof(witnesses = outermostOperationProof()?.witnesses): void {
+  const proof = outermostOperationProof();
+  if (proof === undefined) return;
+  proof.slots.clear();
+  for (const lock of proof.locks) lock.assertHeld();
+  for (const witness of new Set([...(witnesses?.values() ?? []), ...proof.witnesses.values()])) witness.assertUnchanged();
+}
 function discardOperationProof(proof: OperationProof): void {
   proof.slots.clear();
+  proof.witnesses.clear();
   while (proof.release.length !== 0) {
     const finish = proof.release[0];
     if (finish === undefined) throw new Error("operation-proof-release-missing");
@@ -320,7 +339,7 @@ function discardOperationProof(proof: OperationProof): void {
 }
 export function withOperationProof<T>(body: () => T): T {
   if (outermostOperationProof() !== undefined) return body();
-  const proof: OperationProof = { active: true, slots: new Map(), release: [] };
+  const proof: OperationProof = { active: true, slots: new Map(), witnesses: new Map(), locks: new Set(), release: [] };
   let settled = false;
   const finish = (error?: unknown) => {
     if (settled) return;
@@ -328,6 +347,7 @@ export function withOperationProof<T>(body: () => T): T {
     proof.active = false;
     if (hasUnprovedSourceClosure(error)) {
       proof.slots.clear();
+      proof.witnesses.clear();
       retainUnprovedSourceOwners(error, { operationProof: proof });
       return;
     }
@@ -390,8 +410,11 @@ export function withPrivateFileLock<T>(directory: string, name: string, body: (h
   }
   let outcome: { kind: "value"; value: T } | { kind: "error"; error: unknown };
   return withOperationProof(() => {
+    const proof = outermostOperationProof();
+    proof?.locks.add(held);
     try { held.assertHeld(); outcome = { kind: "value", value: body(held) }; }
     catch (error) { outcome = { kind: "error", error }; }
+    proof?.locks.delete(held);
     try {
       held.assertHeld();
       if (identity === undefined) throw new Error("private lock identity is unavailable");
