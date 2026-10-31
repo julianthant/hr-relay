@@ -68,7 +68,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "d3f33060ba0f2cca11cd46582b434f1171b7b161fa0cb410b8b0e1907934a3de",
+      "sha256": "564008b168c4e89c77141c11be2a08d3f5272331646f69efadc8cd1ba35f7553",
     "reason": "Only ENOENT returns explicit path absence; callers check it before creation or refusal, and other filesystem failures rethrow. Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
   },
   {
