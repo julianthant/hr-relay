@@ -1,9 +1,8 @@
-import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { UcpathFoundPresentation, UcpathFoundDecision } from "./ucpath-found-model.js";
 import { SkeletonText } from "../../shared/loading/loading.js";
 import { useRef, useState } from "react";
 import { Check, Clock, ImageOff, PauseCircle, ScanSearch, TriangleAlert, UserRoundSearch } from "lucide-react";
-import { Banner, Badge, Table, THead, TBody, TR, TH, TD, Button, DateInput, Dialog, DialogBody, DialogContent, Field, Input } from "../../../ds/ui.js";
+import { Badge, Table, THead, TBody, TR, TH, TD, Button, DateInput, Dialog, DialogBody, DialogContent, Field, Input } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { decisionAnswerValid, LOG_DECISION_STATUS, type LogDecision, type LogDecisionAction, type LogDecisionAnswer } from "./log-decision-model.js";
 import { LogScreenshots } from "./log-screenshots.js";
@@ -57,25 +56,24 @@ export function UcpathFoundTransactions({ attemptLabel, presentation, onDecision
   const submitted = found?.authoritative === true && row?.match === "exact" && row.detailVerified;
   const absent = found?.complete === true && found.authoritative && found.rows.every(candidate => candidate.match === "different" && candidate.detailVerified);
   const busy = presentation.state === "checking" || presentation.state === "loading";
-  return <section className="log-decision" aria-label="UCPath found transactions">
-    <header className="log-decision-header"><h4>UCPath found transactions</h4><Badge tone="neutral">Outcome unknown</Badge></header>
-    <div className="log-decision-body"><p>{attemptLabel} · Original submit remains held. These controls never submit again.</p>
-      {busy && <Banner tone="info" title={presentation.state === "loading" ? "Reading transaction list" : "Checking confirmation again"}>Reading confirmation only. No submit is repeated.</Banner>}
-      {presentation.state === "unavailable" && <Banner tone="warning" title="Confirmation unavailable">PARKED_CHECK_UNKNOWN: {ERROR_CATALOG.PARKED_CHECK_UNKNOWN.text}</Banner>}
-      {found && <><p>List: {found.complete ? "Complete" : "Incomplete"} · Authority: {found.authoritative ? "Verified" : "Unverified"}</p>
-        {(!found.complete || !found.authoritative || found.rows.some(candidate => candidate.match === "ambiguous")) && <Banner tone="warning" title="Evidence remains uncertain">PARKED_CHECK_AMBIGUOUS: {ERROR_CATALOG.PARKED_CHECK_AMBIGUOUS.text} A not-submitted decision is unavailable.</Banner>}
-        <Table label="Transactions found in UCPath"><THead><TR><TH>Select</TH><TH>Transaction</TH><TH>Person / EID</TH><TH>Type / effective date</TH><TH>Submitted</TH><TH>Match / details</TH></TR></THead><TBody>{found.rows.map(candidate => <TR key={candidate.transactionNumber}>
-          <TD><Button size="sm" variant="secondary" aria-pressed={selected === candidate.transactionNumber} aria-label={`Select transaction ${candidate.transactionNumber}`} disabled={candidate.match !== "exact" || !candidate.detailVerified || !onDecision} onClick={() => setSelected(candidate.transactionNumber)}>{selected === candidate.transactionNumber ? "Selected" : "Select"}</Button></TD>
-          <TD>{candidate.transactionNumber}</TD><TD>{candidate.person}<br />{candidate.employeeId}</TD><TD>{candidate.transactionType}<br />{candidate.effectiveDate}</TD><TD>{candidate.submittedAt}</TD><TD>{candidate.match} · {candidate.detailVerified ? "Detail verified" : "Detail unverified"}</TD>
+  const uncertain = found && (!found.complete || !found.authoritative || found.rows.some(candidate => candidate.match === "ambiguous" || !candidate.detailVerified));
+  return <section className="log-decision ucpath-found" aria-label="UCPath found transactions">
+    <div className="log-decision-body"><h3 className="text-title font-semibold">Did this submit reach UCPath?</h3><p>{attemptLabel}. Relay won’t submit it again.</p>
+      {busy && <p role="status">{presentation.state === "loading" ? "Reading transaction list…" : "Checking confirmation again…"}</p>}
+      {presentation.state === "unavailable" && <p>Confirmation couldn’t be read. Check again.</p>}
+      {found && <><div className="flex items-center justify-between gap-4"><h4 className="font-medium">Found in UCPath</h4><span className="text-caption text-ui-muted">{found.complete ? "Complete list" : "Partial list"}{!found.authoritative && " · authority unverified"}</span></div>
+        {uncertain && <p className="text-ui-warning">{!found.complete ? "The list is incomplete. Check again or look up a transaction." : !found.authoritative ? "The list is unverified. Check again." : "These transactions need verification. Check again or look up a transaction."}</p>}
+        <Table label="Transactions found in UCPath"><THead><TR><TH><span className="sr-only">Select</span></TH><TH>Transaction</TH><TH>Person</TH><TH>Action</TH><TH>Submitted</TH><TH>Match</TH></TR></THead><TBody>{found.rows.map(candidate => <TR key={candidate.transactionNumber}>
+          <TD><input type="radio" name="found-transaction" aria-label={`Select transaction ${candidate.transactionNumber}`} checked={selected === candidate.transactionNumber} disabled={!found.authoritative || candidate.match !== "exact" || !candidate.detailVerified || !onDecision} onChange={() => setSelected(candidate.transactionNumber)} /></TD>
+          <TD><span className="font-mono">{candidate.transactionNumber}</span></TD><TD>{candidate.person}<span className="block font-mono text-caption text-ui-muted">{candidate.employeeId}</span></TD><TD>{candidate.transactionType}<span className="block text-caption text-ui-muted">Eff. {candidate.effectiveDate}</span></TD><TD>{candidate.submittedAt}</TD><TD>{candidate.match === "exact" && candidate.detailVerified ? <Badge tone="success">Exact</Badge> : candidate.match === "different" ? "Different action" : candidate.detailVerified ? "Possible" : "Detail unverified"}</TD>
         </TR>)}</TBody></Table>
-        {found.rows.length === 0 && <p>No matching transactions found{found.complete && found.authoritative ? " in the complete, authoritative list." : "; absence is not established."}</p>}
+        {found.rows.length === 0 && <p>{found.complete && found.authoritative ? "No matching transactions in the complete, authoritative list." : "No transactions loaded; absence is not established."}</p>}
       </>}
-      <Field label="Exact transaction number" description="Optional. Requests exact readback; typing a number supplies no proof."><Input value={transaction} disabled={busy || !onDecision} onChange={event => setTransaction(event.target.value)} /></Field>
+      {(!found || uncertain || !found.rows.some(candidate => candidate.match === "exact" && candidate.detailVerified)) && <div className="flex items-end gap-2"><Field label="Know the transaction number?"><Input aria-label="Exact transaction number" value={transaction} disabled={busy || !onDecision} onChange={event => setTransaction(event.target.value)} /></Field><Button variant="secondary" disabled={busy || !onDecision || !transaction.trim()} onClick={() => onDecision?.({ kind: "check-again", transactionNumber: transaction.trim() })}>Look up</Button></div>}
     </div>
-    <footer className="log-decision-footer"><span>Decide from verified evidence.</span><div className="log-decision-actions">
-      <Button size="sm" disabled={!submitted || busy || !onDecision} onClick={() => { if (row && submitted) onDecision?.({ kind: "submitted", transactionNumber: row.transactionNumber }); }}>Submitted</Button>
+    <footer className="log-decision-footer"><Button size="sm" variant="secondary" disabled={busy || !onDecision} onClick={() => onDecision?.({ kind: "check-again", ...(transaction.trim() ? { transactionNumber: transaction.trim() } : {}) })}>Check again</Button><div className="log-decision-actions">
       <Button size="sm" variant="secondary" disabled={!absent || busy || !onDecision} onClick={() => { if (absent) onDecision?.({ kind: "not-submitted" }); }}>Not submitted</Button>
-      <Button size="sm" variant="secondary" disabled={busy || !onDecision} onClick={() => onDecision?.({ kind: "check-again", ...(transaction.trim() ? { transactionNumber: transaction.trim() } : {}) })}>Check again</Button>
+      <Button size="sm" disabled={!submitted || busy || !onDecision} onClick={() => { if (row && submitted) onDecision?.({ kind: "submitted", transactionNumber: row.transactionNumber }); }}>{submitted && row ? `Submitted as ${row.transactionNumber}` : "Submitted"}</Button>
     </div></footer>
   </section>;
 }
