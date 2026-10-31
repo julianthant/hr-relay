@@ -1818,7 +1818,10 @@ export class AuthorityDatabase implements Disposable {
         return credentials.ownsCommandId(commandId);
       };
     } catch (error) {
-      this.#database.close();
+      try { this.#database.close(); }
+      catch (closeError) {
+        throw retainAuthoritySourceClosure([error, closeError], { database: this.#database, admission: this.#admission });
+      }
       if (error instanceof AuthoritySchemaVersionError) throw error;
       throw new Error(`failed to open authority database ${options.path}: ${errorMessage(error)}`, { cause: error });
     }
