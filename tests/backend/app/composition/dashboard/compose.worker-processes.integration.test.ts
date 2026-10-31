@@ -245,7 +245,7 @@ describe("real processes: two children supervised concurrently through the compo
         for (const [record, index] of [[record1, 1], [record2, 2]] as const) {
           assert.equal(record.command, process.execPath);
           assert.deepEqual([...record.argv], [
-            "--import", "tsx", STUB_CLI_PATH, harness.dbPath, harness.lockRoot, "installed",
+            "--import", "tsx", STUB_CLI_PATH, String(harness.profile.lifetime.port), harness.dbPath, harness.lockRoot, "installed",
             "worker", "person-lookup", "--pool-index", String(index),
             "--worker-id", record.member.workerId, "--ordinal", String(record.member.ordinal),
             "--membership-revision", String(record.member.membershipRevision), "--launch-command-id", index === 1 ? spawn1Id : spawn2Id,
