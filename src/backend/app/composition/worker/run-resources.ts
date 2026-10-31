@@ -15,7 +15,7 @@ import { type BrowserSessionFactoryOptions, BrowserProfileAdmissionSchema, Playw
 import { lstatSync } from "node:fs";
 import type { WorkerId } from "../../../../rules/identity/ids.js";
 import type { DebugEvent } from "../../../../models/events/timeline.js";
-import { createNominatimWorkerAdapter } from "../../../processing/providers/nominatim-owner.js";
+import type { ProviderAdapter } from "../../../../workflow-kit/providers.js";
 import { createCensusGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import type { AuthorityRepositories } from "../../../storage/sqlite/authority-database.js";
 import { composeDuoCeremonyGateFactory, type DuoCeremonyGateFactory } from "../../../runtime/gates/duo-ceremony-gate.js";
@@ -26,7 +26,7 @@ import { selectRunSettings } from "../../../runs/settings/run-settings.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
- nominatim?:ReturnType<typeof createNominatimWorkerAdapter>;
+ nominatim:ProviderAdapter<"geocode.nominatim"> & { stop():Promise<void> };
  ocr:NonNullable<NonNullable<WorkerRunResources["providers"]>["adapters"]["ocr.extract"]>;
  authority:AuthorityRepositories;artifacts:ContentAddressedArtifactWriter;clock:Clock;ids:IdFactory;
  isolation:RuntimeIsolation;protectedSecrets:Pick<CredentialStore,"read">;scheduler:MonotonicDeadlineScheduler;
@@ -38,7 +38,7 @@ export function createRunResourcesFactory(input:Readonly<{
 }>) {
  if(input.sessionFactory!==undefined&&input.createSessionFactory!==undefined)throw new Error("browser-session-factory-owner-conflict");
  const profiles=createBrowserProfileAuthority(input);
- const nominatim=input.nominatim??createNominatimWorkerAdapter(input.clock);
+ const nominatim=input.nominatim;
  const compose=(config:Config):WorkerRunResources=>{
   input.assertBrowserRoot(config.paths.browserProfileRoot);
   return Object.freeze({

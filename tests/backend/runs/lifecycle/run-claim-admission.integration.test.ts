@@ -1,3 +1,4 @@
+import { createNominatimWorkerAdapter } from "../../../../src/backend/processing/providers/nominatim-owner.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -64,7 +65,7 @@ const flows={
   const writer=artifacts(f);await writer.ready;
   const account=await chatGptFixture(admission);try{
   const ocr=createChatGptOcrAdapter({account:account.service,artifacts:writer,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
-  const factory=createRunResourcesFactory({ocr,assertBrowserRoot:root=>assertProfileBrowserRoot(admission,root),assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("b"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("synthetic proof must not open a browser");}}});
+  const factory=createRunResourcesFactory({nominatim:createNominatimWorkerAdapter(f.clock),ocr,assertBrowserRoot:root=>assertProfileBrowserRoot(admission,root),assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("b"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("synthetic proof must not open a browser");}}});
   const resources=factory.forRun(f.run);assert.equal(resources.taskDeadlineMs,f.snapshot.config.timeouts.taskMs);assert.equal(resources.sessionAcquireMs,f.snapshot.config.timeouts.sessionAcquireMs);assert.equal(resources.defaultBrowserMode,f.snapshot.config.browser.headless?"headless":"headed");assert.ok(resources.providers?.adapters["geocode.nominatim"]);
   assert.equal(factory.forRun(f.run),resources);
   }finally{await account.cleanup();}
