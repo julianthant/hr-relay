@@ -15,6 +15,19 @@ import { insertMeasuredSearchRun } from "../../../../support/helpers/backend/cro
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 
+function restoreSearchRun(h: Awaited<ReturnType<typeof harness>>, run: RunRecord): void {
+  const raw = new DatabaseSync(join(h.stateRoot, "state.db"));
+  try {
+    const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='runs'").all();
+    for (const trigger of triggers) { assert.equal(typeof trigger.name, "string"); raw.exec(`DROP TRIGGER "${String(trigger.name)}"`); }
+    const row = runRecordColumns(run), columns = Object.keys(row).filter(column => column !== "id");
+    raw.prepare(`UPDATE runs SET ${columns.map(column => `${column}=?`).join(",")} WHERE id=?`)
+      .run(...columns.map(column => row[column as keyof typeof row]), run.envelope.runId);
+    for (const trigger of triggers) { assert.equal(typeof trigger.sql, "string"); raw.exec(String(trigger.sql)); }
+  } finally { raw.close(); }
+  assert.equal(h.database.rebuildRunSearchIndex({ restart: true, limit: 500 }).state, "published");
+}
+
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("serves strict cross-date search from durable run authority", async () => {
@@ -199,6 +212,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         corpusCase.dimension,
       );
       assert.doesNotMatch(String(body.message), new RegExp(corpusCase.observed, "u"), corpusCase.dimension);
+      restoreSearchRun(h, run);
     }
   });
 
@@ -228,6 +242,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(body.code, "LOGGING_UNAVAILABLE");
     assert.equal(body.message, "Debug logging is unavailable; inspect the local emergency fault log.");
     assert.doesNotMatch(JSON.stringify(body), new RegExp(sensitiveNodeId, "u"));
+    restoreSearchRun(h, run);
   });
 
   it("serves one dedicated XLSX download only after its exact evidence is durable", async () => {
