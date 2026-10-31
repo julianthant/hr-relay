@@ -165,6 +165,9 @@ registry test read or assert their paths.
 `tests/architecture/systems/fixtures/selector-evidence-bindings.json` owns selector-binding inputs.
 `tests/architecture/dashboard/fixtures/pending-wire-bindings.json` owns dashboard wire exceptions.
 
+`tests/support/processes/failure-resolution-peer.ts` runs the independent annotation writers;
+`tests/support/helpers/failure-resolution/fixtures.ts` owns their launch and closure.
+
 `tests/parity/` holds the desktop presentation contract and its references.
 `tests/perf/` holds dashboard performance checks. `tests/types/` holds compile-time inputs and their checks.
 `tests/scripts/docs/roadmap.test.ts` tests roadmap parsing.

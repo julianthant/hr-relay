@@ -92,7 +92,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/caching-compiler-host.ts` | content-checked shared parsed compiler sources and fresh Programs |
 | `helpers/backend/cross-date-search-harness.ts` | cross date search harness |
 | `helpers/backend/dashboard-harness.ts` | dashboard harness |
-| `helpers/backend/failure-resolution-peer.ts` | failure resolution peer |
+| `processes/failure-resolution-peer.ts` | failure resolution peer |
 | `helpers/backend/http-route-harness.ts` | http route harness |
 | `helpers/backend/served-database-surfaces-fixtures.ts` | served database surfaces fixtures |
 | `helpers/backend/settings-activation-fixture.ts` | settings activation fixture |

@@ -81,6 +81,7 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
 ] as const;
 const PROCESS_ENTRYPOINTS = [
+  { file: "failure-resolution-peer.ts", consumers: ["tests/support/helpers/failure-resolution/fixtures.ts"] },
   { file: 'child-execution-crash-worker.ts', consumers: ['tests/backend/app/composition/worker-compose.child-crash.integration.test.ts'] },
   { file: 'duo-credential-store-worker.ts', consumers: ['tests/backend/storage/configuration/duo-credential-store.integration.test.ts'] },
   { file: 'storage-restore-attempt-worker.ts', consumers: ['tests/support/helpers/backend/storage-restore-world.ts'] },

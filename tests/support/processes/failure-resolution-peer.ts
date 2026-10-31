@@ -1,15 +1,15 @@
 /** Disposable independent-process writer used only by D's concurrency/refresh proofs. */
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { acquireSharedRuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { WorkerRuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { WorkerRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { join } from "node:path";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
+import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { basename, dirname, resolve } from "node:path";
-import { manualClock } from "../../../../src/rules/time/clock.js";
-import { FailureResolutionCommandSchema } from "../../../../src/rules/commands/commands.js";
-import { resolutionKernel } from "../failure-resolution/fixtures.js";
-import { NOW } from "../database-foundation/fixtures.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
+import { FailureResolutionCommandSchema } from "../../../src/rules/commands/commands.js";
+import { resolutionKernel } from "../helpers/failure-resolution/fixtures.js";
+import { NOW } from "../helpers/database-foundation/fixtures.js";
 const path = process.argv[2]; if (!path) throw new Error("peer database path missing");
 const parentStop = new AbortController();
 const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[3]), () => parentStop.abort(new Error("fixture-parent-disconnected")));
