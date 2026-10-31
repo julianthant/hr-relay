@@ -1988,7 +1988,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (peers.some((peer) => mode === "exclusive" || peer.mode === "exclusive")) fail("installation lease busy");
     if (options?.recoverRelocation) assertLocalRestoreHeld(options.recoverRelocation.restoreAdmission);
     const resolved = existsSync(join(control, "installation.json")) ? readLocator(control, workspace, mode === "exclusive" ? options?.recoverRelocation : undefined, mode === "exclusive" ? options?.recoverAuthorityRestore : undefined) : (mode === "exclusive" && options?.defaultPair ? adopt(control, workspace, options.defaultPair, options.verifyExisting, options.initializeFresh, options.machine) : fail("installation locator missing"));
-    credentialKeyCustody.migrateDirectory(join(resolved.stateRoot, "machine", "credential-keys"), resolved.installationId, admitCredentialKeyMigration(control, resolved, options?.stoppedControlForward === true), options?.readonlyControl !== true && options?.stoppedControlForward !== true && peers.length === 0);
+    credentialKeyCustody.migrateDirectory(join(resolved.stateRoot, "machine", "credential-keys"), resolved.installationId, admitCredentialKeyMigration(control, resolved, options?.stoppedControlForward === true), options?.readonlyControl !== true && peers.length === 0);
     if (options?.machine === true) readMachineRegistry(control, resolved, options.readonlyControl !== true);
     return resolved;
   }); } catch (error) {
