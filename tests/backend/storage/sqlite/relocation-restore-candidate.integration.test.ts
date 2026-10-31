@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { it } from "vitest";
+import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
@@ -27,7 +28,7 @@ it("admits a current profile backup and refuses foreign profile, path and physic
     assert.throws(() => validateStorageRelocationRestoreCandidate({ ...input,
       verifiedBackup: { ...verifiedBackup, manifest: { ...manifest, profileId: randomUUID() } } }), /backup profile binding differs/u);
     assert.throws(() => validateStorageRelocationRestoreCandidate({ ...input,
-      verifiedBackup: { ...verifiedBackup, manifest: { ...manifest, sourceDatabaseIdentity: "f".repeat(64) } } }), /former physical authority origin/u);
+      verifiedBackup: { ...verifiedBackup, manifest: { ...manifest, sourceDatabaseIdentity: FingerprintSchema.parse("f".repeat(64)) } } }), /former physical authority origin/u);
     assert.deepEqual(readFileSync(verifiedBackup.backupPath), before);
   } finally { database.close(); await profile.close(); }
 });
