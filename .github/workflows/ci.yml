@@ -56,6 +56,7 @@ jobs:
   integration-shard:
     name: integration shard ${{ matrix.shard }}/4
     runs-on: macos-15
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -84,7 +85,7 @@ jobs:
     name: integration (macos-15)
     needs: [integration-shard]
     if: always()
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     steps:
       - name: Require every integration shard
         run: test "${{ needs.integration-shard.result }}" = "success"
@@ -92,6 +93,7 @@ jobs:
   architecture:
     name: architecture (macos-15)
     runs-on: macos-15
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -109,9 +111,14 @@ jobs:
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
       - run: npm run test:architecture
 
-  parity:
-    name: parity
+  parity-shard:
+    name: parity shard ${{ matrix.shard }}/2
     runs-on: macos-15
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -128,7 +135,22 @@ jobs:
             *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
           esac
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - run: npm run test:parity
+      - run: npm run test:parity -- --shard=${{ matrix.shard }}/2 --workers=3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: parity-results-${{ matrix.shard }}
+          path: tests/parity/.output/results.json
+          include-hidden-files: true
+
+  parity:
+    name: parity
+    needs: [parity-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every parity shard
+        run: test "${{ needs.parity-shard.result }}" = "success"
 
   privacy:
     name: privacy
