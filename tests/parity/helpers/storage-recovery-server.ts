@@ -117,7 +117,6 @@ export async function storageRecoveryTarget() {
   assert.ok(ready);
   const lifetime = await RuntimeLifetimeLock.acquire(port); held.lifetime = lifetime;
   const {root, authorityPath, manifestPath, stagedPath, operationId, sourceDatabaseIdentity} = ready;
-  const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
   const journalPath = join(repoRoot, ".tracker", "control", "journal.json");
   assert.equal(existsSync(journalPath), true);
   assert.throws(() => { held.competing = acquireEntrypointAdmission(repoRoot, "shared", lifetime); }, /unfinished restoring/u);

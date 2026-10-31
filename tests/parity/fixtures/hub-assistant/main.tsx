@@ -20,5 +20,5 @@ function Served(){const served=useAssistantController(servedClient,1,undefined,f
 const element = document.getElementById('fixture');
 if (!element) throw new Error('Missing assistant fixture root');
 const mount=createRoot(element);
-if(params.get('served')==='1'){const preview=createServedChatGptAccountPort(client);preview.refresh().then(()=>mount.render(<ChatGptAccountContext.Provider value={{...preview,mode:'live'}}><Served/></ChatGptAccountContext.Provider>));}
+if(params.get('served')==='1'){const preview=createServedChatGptAccountPort(client);void preview.refresh().then(()=>mount.render(<ChatGptAccountContext.Provider value={{...preview,mode:'live'}}><Served/></ChatGptAccountContext.Provider>));}
 else mount.render(<AssistantPanel producer={createAssistantMockProducer(scene)} accountClient={client} onClose={noop} onRename={noop} onChats={noop} onOpenChatFile={async()=>null} initialText={params.get('text')||''} onRegisterSpreadsheet={async file=>{document.body.dataset.registered=file.name;}} onRunWorkflow={async request=>{if(request.dryRun!==true)throw Error('fixture-refuses-live');document.body.dataset.run=JSON.stringify(request);return {state:'complete',source:'mock',files:[{...request.file,id:'updated',name:'Updated.csv',status:'Updated'},{...request.file,id:'generated',name:'Results.csv',status:'Generated'}]};}}/>);
