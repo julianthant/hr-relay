@@ -155,11 +155,11 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
         await expect(dialog.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
         await expect(dialog.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
-        await expect(dialog.getByRole("checkbox", { name: "Dry run", exact: true })).toHaveCount(flow.dryRun ? 1 : 0);
+        await expect(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true })).toHaveCount(flow.dryRun ? 1 : 0);
         const flags = dialog.locator(".launch-flags"), controls = dialog.locator(".launch-options-grid");
         expect((await flags.boundingBox())!.y).toBeLessThan((await controls.boundingBox())!.y);
         await expect(dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true })).toHaveCount(0);
-        await expect(dialog.getByText("Screenshots required", { exact: true })).toBeVisible();
+        await expect(dialog.getByText("Always on", { exact: true })).toBeVisible();
         await dialog.getByRole("radio", { name: "Bulk", exact: true }).press("Space");
         await dialog.getByRole("radio", { name: "Headless", exact: true }).press("Space");
         await expect(dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true })).toHaveCount(0);
@@ -298,7 +298,7 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await advance(dialog);
     await expect(dialog.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
     await expect(dialog.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
-    await expect(dialog.getByRole("checkbox", { name: "Dry run", exact: true })).not.toBeChecked();
+    await expect(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true })).not.toBeChecked();
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Start a run", exact: true }).click();
     await dialog.getByRole("navigation", { name: "Workflow", exact: true }).getByRole("button", { name: "Person Lookup", exact: true }).click();

@@ -135,7 +135,7 @@ describe("registered Person Lookup and Separations served launch", () => {
     await readiness.fill(input, entry.text);
     await readiness.press("Continue");
     if (entry.dryRun) {
-      assert.equal(readiness.checkbox("Dry run").getAttribute("aria-checked"), "false");
+      assert.equal(readiness.checkbox("Dry run").matches(":checked"), false);
       await act(async () => readiness.checkbox("Dry run").click());
     }
     await readiness.press("Continue");

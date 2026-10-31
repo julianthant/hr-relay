@@ -1,11 +1,13 @@
-import { useState } from "react";
-import { Banner, Button, DsBodyScope, PageHeading, TooltipProvider, dsText, useDemoTheme } from "../../../../../src/dashboard/ds/ui.js";
-import { RequiredCaptureStatus } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-screenshots.js";
+import { Badge } from "../../../../../src/dashboard/ds/ui.js";
+import { LogScreenshots, RequiredCaptureStatus } from "../../../../../src/dashboard/surfaces/run-detail/logs/log-screenshots.js";
+import { LogsSurface } from "./control-surfaces.js";
+
 export function ControlPreview() {
-  const { theme } = useDemoTheme();
-  const [state, setState] = useState<"required" | "pre-submit-failed" | "post-submit-unknown" | "post-submit-proved">("required");
-  return <div data-app-root data-demo-theme={theme}><TooltipProvider><DsBodyScope><main className={`ds-body-stack ${dsText.body}`} style={{ margin: "0 auto", maxWidth: 900, padding: "var(--ds-space-section)" }}>
-    <Banner tone="info" title="UI mock">No browser capture or submit is attempted.</Banner><PageHeading title="Screenshots" description="Run options and Logs" /><RequiredCaptureStatus state={state} />
-    <div className="flex gap-2">{(["required", "pre-submit-failed", "post-submit-unknown", "post-submit-proved"] as const).map(value => <Button key={value} variant="muted" onClick={() => setState(value)}>Show {value}</Button>)}</div>
-  </main></DsBodyScope></TooltipProvider></div>;
+  const scenario = new URLSearchParams(location.search).get("state");
+  const state = scenario === "pre-submit-failed" || scenario === "post-submit-proved" || scenario === "post-submit-unknown" ? scenario : "required";
+  return <LogsSurface queueLabel={state === "required" || state === "post-submit-proved" ? "DONE · 1" : "NEEDS YOU · 1"} status={<Badge tone="neutral">{state === "post-submit-unknown" ? "Write parked" : state === "pre-submit-failed" ? "Stopped" : "Done"}</Badge>}>
+    <h3 className="mb-[var(--ds-space-loose)] font-medium">09:00:02{"\u3000"} Submit termination <span className="text-ui-muted">· UCPath</span></h3>
+    <div className="grid grid-cols-2 gap-[var(--ds-space-cozy)]"><section><h4 className="mb-2 text-caption text-ui-muted">Before submit</h4>{state === "pre-submit-failed" ? <RequiredCaptureStatus state={state} /> : <LogScreenshots screenshots={[{ src: "/logs-preview/ucpath-reason.svg", alt: "UCPath before submit", label: "Before submit", kind: "browser", time: "09:00:01", width: 850, height: 320 }]} />}</section><section><h4 className="mb-2 text-caption text-ui-muted">After submit</h4>{state === "required" ? <LogScreenshots screenshots={[{ src: "/logs-preview/ucpath-submitted.svg", alt: "UCPath after submit", label: "After submit", kind: "browser", time: "09:00:09", width: 850, height: 300 }]} /> : state === "pre-submit-failed" ? <div className="log-capture-unavailable">Not captured · submit was not clicked.</div> : <RequiredCaptureStatus state={state} />}</section></div>
+    {state === "post-submit-proved" && <p className="mt-[var(--ds-space-section)]">09:00:09{"\u3000"} Confirmed in UCPath{"\u3000"} <span className="font-mono">00481024</span>{"\u3000"}<Badge tone="success">Proved</Badge></p>}
+  </LogsSurface>;
 }

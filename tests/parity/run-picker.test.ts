@@ -53,7 +53,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     const flags = dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true });
     await expect(flags).toHaveCount(0);
-    await expect(dialog.getByText("Screenshots required", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Always on", { exact: true })).toBeVisible();
     expect(await picker.evaluate((element, original) => element === original, originalPicker)).toBe(true);
     await expect(flags).toHaveCount(0);
     await picker.getByRole("button", { name: "I-9 Check", exact: true }).click();

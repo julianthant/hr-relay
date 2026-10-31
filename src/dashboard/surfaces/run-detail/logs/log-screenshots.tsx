@@ -1,7 +1,6 @@
-import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, Minus, Monitor, Plus, RotateCw } from "lucide-react";
-import { Banner, Select, Button, Dialog, DialogContent, DialogTrigger, IconButton } from "../../../ds/ui.js";
+import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, LockKeyhole, Minus, Monitor, Plus, RotateCw } from "lucide-react";
+import { Select, Button, Dialog, DialogContent, DialogTrigger, IconButton } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { LogScreenshot } from "./log-feed-model.js";
 import { captureGeometry, captureKindLabel, captureLoadProblem, captureSourceDimensions, type CaptureMode } from "./log-screenshots-model.js";
@@ -96,10 +95,6 @@ export function LogScreenshots({ screenshots }: { screenshots: readonly LogScree
 }
 
 export function RequiredCaptureStatus({ state }: { state: "required" | "pre-submit-failed" | "post-submit-unknown" | "post-submit-proved" }) {
-  return <Banner tone={state === "required" ? "info" : "warning"} title={state === "required" ? "Screenshots required" : "Required screenshot unavailable"}>
-    {state === "required" ? "Capture every declared browser-step boundary, including before and after submit. Required workflow captures cannot be turned off." : <>
-      <p>BROWSER_SCREENSHOT_CAPTURE_FAILED: {ERROR_CATALOG.BROWSER_SCREENSHOT_CAPTURE_FAILED.text}</p>
-      <p>{state === "pre-submit-failed" ? "Stopped before submit. The required before-submit capture is unavailable; no submit was clicked." : state === "post-submit-unknown" ? "The after-submit capture is unavailable. The original write outcome stays unknown and held. Do not submit again." : "The after-submit capture is unavailable. The separately proved write outcome is preserved. Do not submit again."}</p>
-    </>}
-  </Banner>;
+  if (state === "required") return <div className="required-capture-row"><div><span className="font-medium">Screenshots</span><p className="text-caption text-ui-muted">Required by this workflow.</p></div><span className="flex items-center gap-2 text-caption"><LockKeyhole aria-hidden className="size-3.5 text-ui-muted" />Always on</span></div>;
+  return <div className="log-capture-unavailable flex-col items-start gap-2" role="status"><span className="flex items-center gap-2"><ImageOff aria-hidden className="size-4" />Not captured</span><span className="text-caption">{state === "pre-submit-failed" ? "Stopped before submit. No submit was clicked." : state === "post-submit-unknown" ? "The write outcome is unknown; check UCPath without submitting again." : "The separately proved write outcome is preserved; do not submit again."}</span></div>;
 }

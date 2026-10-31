@@ -1,3 +1,4 @@
+import { setSwitchChecked } from "./helpers/switch-choice.js";
 import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 
 import { createHash } from 'node:crypto';
@@ -93,7 +94,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(parsed).toContainText('2 runs');
       await expect(parsed.getByRole('listitem')).toHaveCount(2);
       await run.getByRole('button', { name: 'Continue', exact: true }).click();
-      await expect(run.getByRole('heading', { name: 'Run options', exact: true })).toBeVisible();
+      await expect(run.getByRole('heading', { name: 'Run', exact: true })).toBeVisible();
       const workbook = run.getByRole('button', { name: 'None Workbook · Optional', exact: true });
       await workbook.focus();
       await workbook.press('ArrowDown');
@@ -134,7 +135,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await rerun.getByRole('button', { name: 'Confirm', exact: true }).click();
         await expect(rerun.getByRole('textbox', { name: 'Employee ID', exact: true })).toHaveValue('10812345');
         await rerun.getByRole('button', { name: 'Continue', exact: true }).click();
-        await rerun.getByRole('checkbox', { name: 'Dry run', exact: true }).check();
+        await setSwitchChecked(rerun.getByRole('switch', { name: 'Dry run Fill and check every step without submitting.', exact: true }), true);
         await rerun.getByRole('button', { name: 'Preview plan', exact: true }).click();
         const submit = rerun.getByRole('button', { name: 'Start dry run', exact: true });
         await expect(submit).toBeVisible();
