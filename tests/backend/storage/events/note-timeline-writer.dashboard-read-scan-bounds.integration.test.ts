@@ -1,8 +1,9 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { terminalDone, depsOf, observedDepsOf, observedEvent } from "../../../support/helpers/backend/note-scope-fixtures.js";
 
 import assert from "node:assert/strict";
 
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { buildRunSection, createRunNoteScanCache, type RunNoteScanEntry } from "../../../../src/backend/runs/queries/run-detail.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { type RunRecord } from "../../../../src/models/run/record.js";
@@ -12,9 +13,11 @@ import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/su
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 
 const { descriptor: subjectDescriptor } = createSubjectTitleTestWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 const worlds: DashboardWorld[] = [];
 async function world(): Promise<DashboardWorld> {
-  const created = await makeWorld({ descriptors: { resolve: () => subjectDescriptor } });
+  const created = await makeWorld({ profileFixture: profileFixtures.create, descriptors: { resolve: () => subjectDescriptor } });
   worlds.push(created);
   return created;
 }

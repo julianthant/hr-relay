@@ -1,10 +1,11 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { terminalDone, depsOf, observedDepsOf, observedEvent } from "../../../support/helpers/backend/note-scope-fixtures.js";
 
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { separationsKualiFinalizationModule } from "../../../../src/backend/app/registries/step-proof-modules.js";
 import { deterministicUuid } from "../../../../src/backend/runs/lifecycle/support.js";
@@ -15,9 +16,11 @@ import { createTimelineEmitter } from "../../../../src/backend/storage/events/ti
 import { AT, instantOffsetOf, makeWorld, queuedEventOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 const worlds: DashboardWorld[] = [];
 async function world(): Promise<DashboardWorld> {
-  const created = await makeWorld({ descriptors: { resolve: () => personLookupDescriptor } });
+  const created = await makeWorld({ profileFixture: profileFixtures.create, descriptors: { resolve: () => personLookupDescriptor } });
   worlds.push(created);
   return created;
 }
@@ -178,7 +181,7 @@ describe("a logs GET opens only its run partitions", () => {
 
   it("serves a real transaction module as probe, prepare, fence, commit, verify without fabricating fence data", async () => {
     const module = separationsKualiFinalizationModule;
-    const w = await makeWorld({ descriptors: { resolve: () => module.descriptor } });
+    const w = await makeWorld({ profileFixture: profileFixtures.create, descriptors: { resolve: () => module.descriptor } });
     worlds.push(w);
     queuedEventOf(w, { seed: 1, workflow: "separations-kuali-finalization" });
     const emitObserved = (taskId: string, direction: "read" | "write", at: string): void => {
