@@ -79,6 +79,7 @@ export function composeProfileActivity(input: Readonly<{
         if (reservation.state !== "settled" || plan?.request.type !== "plan-worker-count"
           || plan.phase.state !== "succeeded" || plan.auditedAt === undefined
           || !plan.roster?.selected.some(member => member.workerId === slot.workerId)
+          || before.controls.some(control => control.request.type === "spawn-worker" && control.request.payload.workerId === slot.workerId)
           || before.browsers.some(browser => browser.workerId === slot.workerId)
           || before.runs.some(run => runClaim(run)?.workerId === slot.workerId)
           || before.duoLeases.some(lease => lease.holder.workerId === slot.workerId)) throw new Error("profile-worker-lifetime-unavailable");
