@@ -70,6 +70,7 @@ for (const theme of PARITY_THEMES) {
         await chooseSelect(picker, option.value);
         await expect(picker).toHaveAttribute("data-value", option.value);
         await expect(explorer.getByRole("list", { name: "Workflow steps" })).toBeVisible();
+        await expect(page.getByRole("listbox")).toHaveCount(0);
         await attachPresentationReference(page, info, `explorer-${option.value}-${theme.attribute}.png`);
       }
       await witness(page, info, "baseline-workflows.a11y.yml");
