@@ -71,7 +71,7 @@ describe("cross-date search authority read", () => {
       corruptRunSource(raw, "UPDATE runs SET envelope_json = ?, lifecycle_json = ? WHERE id = ?",
         canonicalJsonStringify(envelope), canonicalJsonStringify(lifecycle), run.envelope.runId);
 
-      assert.throws(
+      try { assert.throws(
         () => database.authority.runs.search({
           q: "separations",
           scope: "workflow",
@@ -79,7 +79,11 @@ describe("cross-date search authority read", () => {
           limit: 1,
         }),
         /run-search-index-rebuild-required/,
-      );
+      ); } finally {
+        const { envelope: originalEnvelope, ...originalLifecycle } = run;
+        corruptRunSource(raw, "UPDATE runs SET envelope_json = ?, lifecycle_json = ? WHERE id = ?",
+          canonicalJsonStringify(originalEnvelope), canonicalJsonStringify(originalLifecycle), run.envelope.runId);
+      }
     } finally {
       raw.close();
       database.close();
@@ -98,7 +102,7 @@ const AFTER_LATER = "2026-07-31T17:02:00.000Z";
 
 function corruptRunConsequence(
   mutate: (run: RunRecord) => unknown,
-): void {
+): () => void {
   const path = join(roots.at(-1) ?? "", "state.db");
   const raw = new DatabaseSync(path);
   try {
@@ -112,8 +116,9 @@ function corruptRunConsequence(
       for (const guard of guards) raw.exec("DROP TRIGGER " + guard.name);
       const row = raw.prepare("SELECT * FROM runs WHERE id=?").get(RUN_ID);
       if (row === undefined) throw new Error("run is absent from corruption fixture");
+      const original = runRecordFromRow(row);
       const corrupted = z.looseObject({ lifecycle: RunLifecycleSchema, claimGeneration: z.number().int(),
-        version: z.number().int(), updatedAt: z.string() }).parse(mutate(runRecordFromRow(row)));
+        version: z.number().int(), updatedAt: z.string() }).parse(mutate(original));
       const { envelope, ...lifecycle } = corrupted;
       void envelope;
       const owner = "workerId" in corrupted.lifecycle ? corrupted.lifecycle.workerId : null;
@@ -124,6 +129,18 @@ function corruptRunConsequence(
           corrupted.version, corrupted.claimGeneration, corrupted.updatedAt, RUN_ID);
       for (const guard of guards) raw.exec(guard.sql);
       raw.exec("COMMIT");
+      return () => {
+        const restore = new DatabaseSync(path);
+        try {
+          restore.exec("BEGIN");
+          for (const guard of guards) restore.exec("DROP TRIGGER " + guard.name);
+          restore.prepare("UPDATE runs SET lifecycle_json=?,state=?,outcome=?,owner_worker_id=?,heartbeat_at=?,version=?,claim_generation=?,updated_at=? WHERE id=?")
+            .run(row.lifecycle_json ?? null, row.state ?? null, row.outcome ?? null, row.owner_worker_id ?? null,
+              row.heartbeat_at ?? null, row.version ?? null, row.claim_generation ?? null, row.updated_at ?? null, RUN_ID);
+          for (const guard of guards) restore.exec(guard.sql);
+          restore.exec("COMMIT");
+        } finally { restore.close(); }
+      };
     } catch (error) { raw.exec("ROLLBACK"); throw error; }
   } finally {
     raw.close();
@@ -168,12 +185,12 @@ afterEach(cleanup);
       const record = failure(running);
       const request = { failure: record, authorization: failureAuthorization(running) } as const;
       database.terminalizeFailure(personLookupDescriptor, request);
-      corruptRunConsequence(mutate);
-      assert.throws(
+      const restore = corruptRunConsequence(mutate);
+      try { assert.throws(
         () => database.terminalizeFailure(personLookupDescriptor, request),
         /completion|terminal consequence|run-search-index-corrupt/,
         name,
-      );
+      ); } finally { restore(); }
     }
   });
 });
@@ -207,12 +224,12 @@ afterEach(cleanup);
         authorization: terminal.authorization,
       };
       database.terminalizeSuccess(request, terminal.factoryAuthorization);
-      corruptRunConsequence(mutate);
-      assert.throws(
+      const restore = corruptRunConsequence(mutate);
+      try { assert.throws(
         () => database.terminalizeSuccess(request),
         /completion|terminal consequence|run-search-index-corrupt/,
         name,
-      );
+      ); } finally { restore(); }
     }
   });
 });
