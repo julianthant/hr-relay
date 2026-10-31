@@ -132,6 +132,20 @@ function plan(f: Awaited<ReturnType<typeof fixture>>, settled = true, workflow: 
   return { request, slot };
 }
 
+it("keeps an audited planned member without a first lifetime quiescent until explicit spawn", async () => {
+  const f = await fixture();
+  try {
+    const planned = plan(f);
+    assert.equal(f.context.database.authority.workerLeases.get(planned.slot.workerId), undefined);
+    const activity = composeProfileActivity(f.input);
+    const before = byteSnapshot(f.workspace), generation = f.context.database.getMeta().authorityGeneration;
+    assert.equal(activity.hasUnquiescedWork(f.admission.profileBinding.profileId), false);
+    assert.equal(f.context.database.getMeta().authorityGeneration, generation);
+    assert.equal(isDeepStrictEqual(byteSnapshot(f.workspace), before), true);
+    assert.equal(reservationReaders(f)[0]?.state, "settled");
+  } finally { await f.cleanup(); }
+});
+
 async function stoppedPlanFixture(mode: "plan" | "direct" = "plan") {
   const f = await fixture();
   let planned: { slot: ReturnType<typeof plan>["slot"]; request: { commandId: string } } | undefined = mode === "plan" ? plan(f) : undefined;

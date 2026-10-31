@@ -1,11 +1,8 @@
-import { workerPoolMember } from "../../../../../src/models/run/worker-slot.js";
-import { spawn } from "node:child_process";
-import { once } from "node:events";
+import { createDashboardChildTestWorld } from "../../../../support/helpers/backend/dashboard-child-world.js";
+import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
 import { hostConfigFacts } from "../../../../../src/models/config/host-display.js";
 import { randomUUID } from "node:crypto";
-import { bindWorkerProcessAdmission } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { admitDirectWorker } from "../../../../../src/backend/storage/sqlite/worker-slots.js";
 import { releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
@@ -24,7 +21,7 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../.
 import { explorerEditCommandFingerprint } from "../../../../../src/models/dashboard/explorer-override.js";
 import { ExplorerEditApplyRequestSchema, ExplorerWorkflowOverrideSchema } from "../../../../../src/models/dashboard/explorer.js";
 import { CommandAuditRecordSchema, CommandResultSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
-import { manualClock } from "../../../../../src/rules/time/clock.js";
+import { manualClock, systemClock } from "../../../../../src/rules/time/clock.js";
 import { settingsSetOperations } from "../../../../support/fixtures/settings-operation-fixtures.js";
 
 const { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, createProfileFixture, cleanup } = createDashboardPortTestWorld(() => {
@@ -194,22 +191,28 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("publishes a lease-only worker card from the real tail tick, before any span exists", async () => {
-    const profile = await createProfileFixture(manualClock(new Date("2026-08-28T12:00:00.000Z")));
+    const clock = systemClock;
+    const profile = await createProfileFixture(clock);
     const repoRoot = profile.workspace;
     const lifetimeLock = profile.lifetime;
+    const children = createDashboardChildTestWorld(() => {}, () => {});
+    const records: Parameters<typeof children.realStubSpawner>[0] = [];
     const runtime = await composeDashboardRuntime({ lifetimeLock,
+      frontendPortOverride: 0, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      workerProcess: { launch: children.stubLaunch(join(profile.stateRoot, "state.db"),
+        join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "installed", process.execPath, lifetimeLock),
+        spawn: children.realStubSpawner(records, lifetimeLock), birth: { pollMs: 25, timeoutMs: 10_000 } },
       ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
-      clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
+      clock,
       repoRoot,
     });
-    let releaseWorker: (() => Promise<void>) | undefined = undefined;
-    cleanups.push(async () => { await releaseWorker?.(); await runtime.stop(); });
+    cleanups.push(async () => { try { await runtime.stop(); } finally { await children.cleanup(); } });
 
     const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-    const day = "2026-08-28";
+    const day = clock.todayLocal();
     const initial = await client.dashboardDay(day);
     assert.deepEqual(initial.workerCards, []);
 
@@ -235,81 +238,26 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     await live;
     assert.equal(days.at(-1)?.workerCards.length, 0);
 
-    // A worker PROCESS writes its lease in authority and has emitted no span:
-    // nothing on disk moves, so only the tick's lease reconcile can publish it.
-    const child = spawn(process.execPath, ["-e", 'process.on("message", () => { process.disconnect(); }); process.send("ready");'],
-      { detached: true, env: {}, stdio: ["ignore", "ignore", "ignore", "ipc"] });
-    const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => {
-      child.once("close", (code, signal) => resolve({ code, signal }));
-    });
-    const pid = child.pid;
-    let settleLifetime: (() => void) | undefined;
-    let release: Promise<void> | undefined;
-    releaseWorker = async () => {
-      release ??= (async () => {
-        if (child.connected) {
-          await new Promise<void>((resolve, reject) => {
-            child.send("stop", error => { if (error === null) resolve(); else reject(error); });
-          });
-        }
-        assert.deepEqual(await closed, { code: 0, signal: null });
-        assert.ok(pid !== undefined);
-        assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
-        assert.throws(() => process.kill(-pid, 0), { code: "ESRCH" });
-        settleLifetime?.();
-      })();
-      return release;
-    };
-    const ready: unknown = (await once(child, "message"))[0];
-    assert.equal(ready, "ready");
-    assert.ok(pid !== undefined);
-    const database = profile.openDatabase({
-      path: join(profile.stateRoot, "state.db"),
-      busyTimeoutMs: 250,
-      migrationOwner: "unit-test",
-    });
-    let binderCloseAttempted = false;
-    try {
-      const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-      const authorityPath = join(profile.stateRoot, "state.db");
-      const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
-      const bound = bindWorkerProcessAdmission({ authorityPath, processLockRoot, clock, pid,
-        open: () => database, close: owned => {
-          binderCloseAttempted = true;
-          owned.close();
-        },
-        admit: (authority) => authority.withAuthorityTransaction(repositories => admitDirectWorker(repositories, { commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1, expectedPoolVersion: 0,
-    processId: pid,
-    now: clock.now().toISOString() }, randomUUID()).workerId) });
-      settleLifetime = () => {
-        const owner = profile.openDatabase({ path: authorityPath, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
-        const failures: unknown[] = [];
-        try {
-          const lease = owner.authority.workerLeases.get(bound.workerId);
-          const slot = owner.authority.workerSlots.get(bound.workerId);
-          assert.ok(lease !== undefined && slot !== undefined);
-          assert.equal(lease.processId, pid);
-          assert.equal(child.exitCode, 0); assert.equal(child.signalCode, null);
-          const lifetime = { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt };
-          owner.settleInterruptedWorker(lifetimeLock, bound.workerId, lease.leaseGeneration, clock.now().toISOString());
-          assert.equal(owner.authority.workerLeases.get(bound.workerId)?.lifecycle.state, "stopped");
-          owner.assertWorkerLifecycleRelease(bound.workerId);
-          assert.ok(owner.authority.workerControls.browsers(bound.workerId).every(browser => browser.health === "closed"));
-          bound.processLock.release();
-          owner.assertStoppedWorkerLifetime(workerPoolMember(slot), lifetime);
-        } catch (error: unknown) { failures.push(error); }
-        try { owner.close(); } catch (error: unknown) { failures.push(error); }
-        if (failures.length > 1) throw new AggregateError(failures, "fixture-worker-settlement-failed", { cause: failures[0] });
-        if (failures.length === 1) throw failures[0];
-      };
-      assert.equal(database.authority.workerLeases.start({ workerId: bound.workerId, workflow: personLookupDescriptor.id,
-        browserSystems: ["crm", "ucpath"], processId: pid, requestedBy: "local-operator", now: clock.now().toISOString() }).state, "started");
-      const started = database.authority.workerLeases.get("person-lookup-worker-1");
-      assert.ok(started);
-      assert.equal(started.processId, pid);
-    } finally {
-      if (!binderCloseAttempted) database.close();
-    }
+    const origin = `http://127.0.0.1:${String(runtime.port)}`;
+    const response = await fetch(`${origin}/api/v1/commands`, { method: "POST",
+      headers: { "content-type": "application/json", origin }, body: JSON.stringify({
+        commandId: randomUUID(), family: "worker-browser", type: "plan-worker-count",
+        target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 },
+        source: "dashboard", requestedBy: "local-operator", requestedAt: clock.now().toISOString(),
+      }) });
+    assert.equal(CommandResultSchema.parse(await response.json()).state, "applied");
+    const spawnResponse = await fetch(`${origin}/api/v1/commands`, { method: "POST",
+      headers: { "content-type": "application/json", origin }, body: JSON.stringify({
+        commandId: randomUUID(), family: "worker-browser", type: "spawn-worker",
+        target: { workflowId: personLookupDescriptor.id, expectedVersion: 1 },
+        payload: { workerId: "person-lookup-worker-1" }, source: "dashboard", requestedBy: "local-operator",
+        requestedAt: clock.now().toISOString(),
+      }) });
+    const spawned: unknown = await spawnResponse.json();
+    assert.equal(spawnResponse.status, 200, JSON.stringify(spawned) + records.flatMap(record => record.output).join(""));
+    assert.equal(CommandResultSchema.parse(spawned).state, "applied");
+    assert.equal(records.length, 1);
+    assert.ok(records[0]?.pid !== undefined);
 
     const deadline = setTimeout(() => {
       assert.fail(`no worker-card snapshot within 5s; snapshots seen: ${String(days.length)}`);
@@ -324,7 +272,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.equal(card?.state, "starting");
     assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"] });
     assert.deepEqual(card?.browsers, []);
-    await releaseWorker();
+    assert.equal(records[0]?.exited, false);
   }, 20_000);
 
   function observeExplorerSnapshot(authorityPath: string, onCommit?: () => void) {
