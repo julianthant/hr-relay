@@ -1,15 +1,13 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { afterAll } from "vitest";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { Readable } from "node:stream";
 import { describe,it } from "vitest";
 import { exportSearchMetadata } from "../../../../src/backend/runs/exports/search-metadata-export.js";
 import { createOperatorXlsxExportService } from "../../../../src/backend/runs/exports/operator-xlsx-export-service.js";
 import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { CrossDateSearchPageSchema } from "../../../../src/models/dashboard/search.js";
 import { LOCAL_OPERATOR_ACTOR_ID,PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
@@ -123,9 +121,12 @@ function evidenceCount(path: string): number {
   }
 }
 
-function exportHarness(label: string) {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), `hrauto-operator-xlsx-${label}-`));
-  const path = join(root, "authority.db");
+const profiles = createClonedProfileFixtures();
+afterAll(() => profiles.close());
+
+async function exportHarness(label: string) {
+  const profile = await profiles.create();
+  const root = profile.stateRoot, path = profile.path;
   const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
   const database = AuthorityDatabase.open({
     path,
@@ -138,17 +139,17 @@ function exportHarness(label: string) {
     clock,
     database,
     artifacts: createContentAddressedArtifactWriter({
-      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts")),
+      admission: profile.admission,
     }),
-    close: () => {
+    close: async () => {
       database.close();
-      rmSync(root, { recursive: true, force: true });
+      await profile.close();
     },
   };
 }
 
 function fakeSearchExportService(
-  harness: ReturnType<typeof exportHarness>,
+  harness: Awaited<ReturnType<typeof exportHarness>>,
   pages: Readonly<{
     first: ReturnType<typeof searchPage>;
     continuations?: Readonly<Record<string, ReturnType<typeof searchPage>>>;
@@ -175,7 +176,7 @@ function fakeSearchExportService(
   });
 }
 
-function realSearchService(harness: ReturnType<typeof exportHarness>, signingByte: number) {
+function realSearchService(harness: Awaited<ReturnType<typeof exportHarness>>, signingByte: number) {
   return createCrossDateSearchService({
     clock: harness.clock,
     sourceIdentity: harness.database.getSourceDatabaseIdentity(),
@@ -205,7 +206,7 @@ async function bytesOf(stream: NodeJS.ReadableStream): Promise<Buffer> {
 
 describe("operator XLSX export service", () => {
   it("exports an elapsed-clock signed selection through XLSX, CSV and diagnostic collectors including continuation", async () => {
-    const h = exportHarness("elapsed-selection"); await h.artifacts.ready;
+    const h = await exportHarness("elapsed-selection"); await h.artifacts.ready;
     try {
       insertMeasuredSearchRun(h.database, { authorityPath: h.path, seed: 93, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       insertMeasuredSearchRun(h.database, { authorityPath: h.path, seed: 94, enqueuedAt: "2026-08-28T14:00:00.000Z" });
@@ -231,19 +232,11 @@ describe("operator XLSX export service", () => {
       const result = await service.export(LOCAL_OPERATOR_ACTOR_ID, { requestVersion: 3, selection });
       assert.equal(result.evidence.selection.kind, "search");
       assert.ok(result.bytes.length > 0);
-    } finally { h.close(); }
+    } finally { await h.close(); }
   });
   it("persists content-addressed bytes and exact attachment evidence before returning", async () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-operator-xlsx-"));
-    const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
-    const database = AuthorityDatabase.open({
-      path: join(root, "authority.db"),
-      busyTimeoutMs: 1_000,
-      migrationOwner: "operator-xlsx-test",
-    }, clock);
-    const artifacts = createContentAddressedArtifactWriter({
-      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts")),
-    });
+    const h = await exportHarness("operator-xlsx");
+    const { clock, database, artifacts } = h;
     try {
       const service = createOperatorXlsxExportService({
         clock,
@@ -295,7 +288,7 @@ describe("operator XLSX export service", () => {
         download.bytes,
       );
 
-      const raw = new DatabaseSync(join(root, "authority.db"));
+      const raw = new DatabaseSync(h.path);
       try {
         assert.throws(
           () => raw.prepare("UPDATE artifacts SET payload_json=json_set(payload_json,'$.exportEvidenceJson',?),version=version+1 WHERE kind='generated' AND export_id = ?")
@@ -317,22 +310,13 @@ describe("operator XLSX export service", () => {
         raw.close();
       }
     } finally {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
+      await h.close();
     }
   });
 
   it("refuses a search selection from a foreign authority snapshot before composing bytes", async () => {
-    const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-operator-xlsx-foreign-"));
-    const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
-    const database = AuthorityDatabase.open({
-      path: join(root, "authority.db"),
-      busyTimeoutMs: 1_000,
-      migrationOwner: "operator-xlsx-foreign-test",
-    }, clock);
-    const artifacts = createContentAddressedArtifactWriter({
-      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/data/artifacts")),
-    });
+    const h = await exportHarness("operator-xlsx-foreign");
+    const { clock, database, artifacts } = h;
     try {
       const service = createOperatorXlsxExportService({
         clock,
@@ -370,7 +354,7 @@ describe("operator XLSX export service", () => {
         }),
         /selection names authority generation 20, but the export read generation 19/,
       );
-      const raw = new DatabaseSync(join(root, "authority.db"));
+      const raw = new DatabaseSync(h.path);
       try {
         const row = raw.prepare("SELECT count(*) AS count FROM artifacts WHERE kind='generated' AND export_id IS NOT NULL").get();
         assert.equal(row?.count, 0);
@@ -378,13 +362,12 @@ describe("operator XLSX export service", () => {
         raw.close();
       }
     } finally {
-      database.close();
-      rmSync(root, { recursive: true, force: true });
+      await h.close();
     }
   });
 
   it("walks every continuation of one exact selected snapshot before persisting", async () => {
-    const h = exportHarness("multi-page");
+    const h = await exportHarness("multi-page");
     try {
       const first = pageWith({
         totalMatches: 2,
@@ -406,12 +389,12 @@ describe("operator XLSX export service", () => {
       assert.equal(h.database.authority.operatorXlsxExports.get(EXPORT_ID)?.selection.kind, "search");
       assert.equal(evidenceCount(h.path), 1);
     } finally {
-      h.close();
+      await h.close();
     }
   });
 
   it("refuses a repeated continuation without leaving export evidence", async () => {
-    const h = exportHarness("repeated-cursor");
+    const h = await exportHarness("repeated-cursor");
     try {
       const first = pageWith({
         totalMatches: 2,
@@ -432,12 +415,12 @@ describe("operator XLSX export service", () => {
       );
       assert.equal(evidenceCount(h.path), 0);
     } finally {
-      h.close();
+      await h.close();
     }
   });
 
   it("refuses a moved continuation snapshot without leaving export evidence", async () => {
-    const h = exportHarness("moved-continuation");
+    const h = await exportHarness("moved-continuation");
     try {
       const first = pageWith({
         totalMatches: 2,
@@ -459,12 +442,12 @@ describe("operator XLSX export service", () => {
       );
       assert.equal(evidenceCount(h.path), 0);
     } finally {
-      h.close();
+      await h.close();
     }
   });
 
   it("refuses incomplete continuation coverage without leaving export evidence", async () => {
-    const h = exportHarness("incomplete-pages");
+    const h = await exportHarness("incomplete-pages");
     try {
       const first = pageWith({
         totalMatches: 3,
@@ -485,12 +468,12 @@ describe("operator XLSX export service", () => {
       );
       assert.equal(evidenceCount(h.path), 0);
     } finally {
-      h.close();
+      await h.close();
     }
   });
 
   it("refuses a selected token after the search signer restarts without leaving evidence", async () => {
-    const h = exportHarness("foreign-signer");
+    const h = await exportHarness("foreign-signer");
     try {
       insertMeasuredSearchRun(h.database, { authorityPath: h.path, seed: 91, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const selectedBy = realSearchService(h, 0x41);
@@ -526,7 +509,7 @@ describe("operator XLSX export service", () => {
       );
       assert.equal(evidenceCount(h.path), 0);
     } finally {
-      h.close();
+      await h.close();
     }
   });
 });
@@ -534,7 +517,7 @@ describe("operator XLSX export service", () => {
 
 describe("G explicit export lifecycle", () => {
   for (const fault of ["put", "readback", "settlement"] as const) it(`retains a failed registration after ${fault}, then replays the same content on the same file`, async () => {
-    const h = exportHarness(`failure-${fault}`);
+    const h = await exportHarness(`failure-${fault}`);
     await h.artifacts.ready;
     try {
       const repository = h.database.authority.operatorXlsxExports;
@@ -570,11 +553,11 @@ describe("G explicit export lifecycle", () => {
       assert.equal(evidenceCount(h.path), 1);
       assert.deepEqual(download.evidence, repository.get(EXPORT_ID));
       assert.deepEqual(download.bytes, await bytesOf(await h.artifacts.open(download.evidence.artifact)));
-    } finally { h.close(); }
+    } finally { await h.close(); }
   });
 
   it("refuses a changed settlement receipt instead of returning inconsistent download metadata", async () => {
-    const h = exportHarness("receipt-fault"); await h.artifacts.ready;
+    const h = await exportHarness("receipt-fault"); await h.artifacts.ready;
     try {
       const repository = h.database.authority.operatorXlsxExports;
       const service = createOperatorXlsxExportService({ clock: h.clock, ids: { uuid: () => EXPORT_ID },
@@ -589,11 +572,11 @@ describe("G explicit export lifecycle", () => {
       assert.equal(stored.download.contentDisposition, 'attachment; filename="hr-run-search-2026-08-28-g19.xlsx"');
       const replay = await fakeSearchExportService(h, { first: searchPage() }).export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest());
       assert.deepEqual(replay.evidence, stored);
-    } finally { h.close(); }
+    } finally { await h.close(); }
   });
 
   it("replays immutable evidence and refuses changed request or selected contents", async () => {
-    const h = exportHarness("identified-replay"); await h.artifacts.ready;
+    const h = await exportHarness("identified-replay"); await h.artifacts.ready;
     try {
       const service = fakeSearchExportService(h, { first: searchPage() });
       const first = await service.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest());
@@ -608,11 +591,11 @@ describe("G explicit export lifecycle", () => {
       await assert.rejects(changed.export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest()), /content-divergent/u);
       assert.deepEqual(h.database.authority.operatorXlsxExports.get(EXPORT_ID), first.evidence);
       assert.equal(h.database.getMeta().authorityGeneration, generation);
-    } finally { h.close(); }
+    } finally { await h.close(); }
   });
 
   it("keeps independent same-byte exports separate and refuses divergent pending byte commitments", async () => {
-    const h = exportHarness("independent"); await h.artifacts.ready;
+    const h = await exportHarness("independent"); await h.artifacts.ready;
     try {
       const first = await fakeSearchExportService(h, { first: searchPage() }).export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest());
       const secondId = "00020002-0002-4002-8002-000200020003";
@@ -633,6 +616,6 @@ describe("G explicit export lifecycle", () => {
       assert.throws(() => repository.insert({ ...first.evidence, exportId: pendingId, createdAt: registration.requestedAt,
         selection: { ...first.evidence.selection, query: { ...selectedSearchRequest().selection.query, q: "changed" } } }), /publication-identity-conflict/u);
       assert.equal(repository.getFile(pendingId)?.state, "pending");
-    } finally { h.close(); }
+    } finally { await h.close(); }
   });
 });
