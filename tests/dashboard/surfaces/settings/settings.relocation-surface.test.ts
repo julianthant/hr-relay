@@ -38,7 +38,7 @@ describe("storage relocation Paths controls", () => {
       preflight: [], onSection: () => undefined, onExitGuardChange: next => { guard = next; },
     }) }) })); });
     await act(async () => undefined);
-    const change = host.querySelector('[data-settings-path="paths.downloadsDir"] button[aria-label="Change Downloads directory"]');
+    const change = host.querySelector('[data-settings-path="paths.downloadsDir"] button[aria-label="Change Downloads"]');
     if (!(change instanceof HTMLButtonElement)) throw new Error("downloads picker action missing");
     await act(async () => { change.click(); await Promise.resolve(); }); await idle();
     assert.ok(guard);
@@ -69,7 +69,7 @@ describe("storage relocation Paths controls", () => {
       preflight: [], onSection: () => undefined, onExitGuardChange: () => undefined,
     }) }) })));
     await act(async () => undefined);
-    const change = host.querySelector('[data-settings-path="paths.downloadsDir"] button[aria-label="Change Downloads directory"]');
+    const change = host.querySelector('[data-settings-path="paths.downloadsDir"] button[aria-label="Change Downloads"]');
     if (!(change instanceof HTMLButtonElement)) throw new Error("downloads picker action missing");
     await act(async () => { change.click(); await Promise.resolve(); });
     await idle();

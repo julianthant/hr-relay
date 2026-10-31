@@ -1,0 +1,19 @@
+import type { ReactNode } from "react";
+import { DsBodyScope, PageHeading, SearchInput, TakeoverFrame, TooltipProvider, dsFocus, useDemoTheme } from "../../../../../src/dashboard/ds/ui.js";
+import { LogPanel } from "../../../../../src/dashboard/surfaces/run-detail/log-panel.js";
+
+export function SettingsSurface({ section, children }: { section: "General" | "Paths"; children: ReactNode }) {
+  const { theme } = useDemoTheme();
+  return <div data-app-root data-demo-theme={theme} className="dashboard-shell min-w-[1024px] h-screen"><TooltipProvider><TakeoverFrame label="Settings" direction="row" className="settings-takeover h-full">
+    <nav className="settings-panel-nav" aria-label="Settings"><div className="settings-nav-header"><h2>Settings</h2></div><SearchInput aria-label="Search settings" placeholder="Search" className="settings-nav-search" />{[["Personal", "General", "Credentials"], ["Advanced", "Paths", "Routes"], ["Data", "Spreadsheets", "Explorer", "Analytics"], ["Status", "Storage", "Preflight"]].map(([heading, ...items]) => <div key={heading} className="settings-nav-group"><span>{heading}</span>{items.map(label => <a className={dsFocus} key={label} href={`?fixture=${label === "General" ? "delete-account" : "fixed-backup"}`} aria-current={label === section ? "page" : undefined}>{label}</a>)}</div>)}</nav>
+    <main className="settings-content flex-1 overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]"><DsBodyScope className="settings-tab-body"><div className="settings-compact-page"><PageHeading title={section} description={section === "General" ? "ChatGPT account, appearance, and account controls for Alex Morgan." : "Where Relay saves files on this Mac."} />{children}</div></DsBodyScope></main>
+  </TakeoverFrame></TooltipProvider></div>;
+}
+
+export function LogsSurface({ title = "EID 10777012", status, toolbar, queueControls, children, queueLabel = "NEEDS YOU · 1" }: { title?: string; status: ReactNode; toolbar?: ReactNode; queueControls?: ReactNode; queueLabel?: string; children: ReactNode }) {
+  const { theme } = useDemoTheme();
+  return <div data-app-root data-demo-theme={theme} className="ui-theme-scope flex h-screen min-w-[1024px] gap-3 bg-ui-canvas p-3 font-ui text-ui-primary"><TooltipProvider><DsBodyScope className="flex min-w-0 flex-1 gap-3" style={{ maxWidth: "none" }}>
+    <section aria-label="Queue" className="w-[350px] shrink-0 rounded-[var(--ds-radius-lg)] border border-ui-stroke bg-ui-panel p-[var(--ds-space-cozy)]"><div className="mb-[var(--ds-space-cozy)] flex items-center justify-between gap-2"><span className="text-caption text-ui-muted">{queueLabel}</span>{queueControls}</div><div className="rounded-[var(--ds-radius-md)] border border-ui-stroke-control bg-ui-table p-[var(--ds-space-cozy)]"><div className="flex items-center justify-between gap-2"><strong>{title}</strong>{status}</div><p className="mt-1 text-caption text-ui-muted">{queueLabel.startsWith("ACTIVE") ? "Verifying employee" : queueLabel.startsWith("DONE") ? "Submit termination" : "Did the submit reach UCPath?"}</p></div>{queueLabel.startsWith("ACTIVE") && <div className="mt-[var(--ds-space-cozy)] rounded-[var(--ds-radius-md)] border border-ui-stroke bg-ui-table p-[var(--ds-space-cozy)]"><div className="flex items-center justify-between gap-2"><strong>EID 10777012</strong><span className="text-caption text-ui-muted">Paused</span></div><p className="mt-1 text-caption text-ui-muted">Paused after Submit termination</p></div>}</section>
+    <LogPanel title={title} steps={[]} timeline={[]} status={queueLabel.startsWith("ACTIVE") ? status : undefined} toolbar={queueLabel.startsWith("ACTIVE") ? toolbar : status} content={<div className="min-h-0 overflow-y-auto p-[var(--ds-space-loose)]">{children}</div>} />
+  </DsBodyScope></TooltipProvider></div>;
+}

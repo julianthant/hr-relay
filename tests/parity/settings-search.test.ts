@@ -155,7 +155,7 @@ test("A path target waits for its verified authority without a false unavailable
   try {
     await page.goto(`${server.baseUrl}/?settings=paths&settingsTarget=paths.stateRoot`);
     await expect(page.getByRole("heading", { name: "Paths", exact: true })).toBeVisible();
-    await expect(page.getByText("Reading app-data locations", { exact: true })).toBeVisible();
+    await expect(page.getByText("Reading app-data locations…", { exact: true })).toBeVisible();
     await expect(page.getByText("Setting unavailable", { exact: true })).toHaveCount(0);
     if (release === undefined) throw new Error("path read release unavailable");
     release();

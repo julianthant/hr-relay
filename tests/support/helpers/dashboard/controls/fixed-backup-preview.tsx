@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { Banner, Button, BodySection, DsBodyScope, Field, Input, PageHeading, TooltipProvider, dsText, useDemoTheme } from "../../../../../src/dashboard/ds/ui.js";
-import { BackupRestoreControls } from "../../../../../src/dashboard/surfaces/settings/general/settings-relocation.js";
+import { BodySection, Button, Field, FormGroup, PathControl } from "../../../../../src/dashboard/ds/ui.js";
+import { AppDataPaths, BackupRestoreControls } from "../../../../../src/dashboard/surfaces/settings/general/settings-relocation.js";
+import { SettingsSurface } from "./control-surfaces.js";
+
 export function ControlPreview() {
-  const { theme } = useDemoTheme();
-  const [state, setState] = useState<"ready" | "backing-up" | "backup-complete" | "restoring" | "blocked" | "unavailable">("ready");
-  return <div data-app-root data-demo-theme={theme}><TooltipProvider><DsBodyScope><main className={`ds-body-stack ${dsText.body}`} style={{ margin: "0 auto", maxWidth: 900, padding: "var(--ds-space-section)" }}>
-    <Banner tone="info" title="UI mock">No backup, restore, or file operation is performed.</Banner><PageHeading title="Paths" description="Fixed app data · Backup and Restore" />
-    <BodySection title="App data"><p>Relay assigns the app-data location. Moving the data folder is unavailable.</p><Field label="Runtime state folder"><Input readOnly value="Example app data / person / database" /></Field><Field label="Artifact folder"><Input readOnly value="Example app data / person / artifacts" /></Field></BodySection>
-    <BackupRestoreControls state={state} backupLabel="Example verified backup · same person and installation" onBackup={() => setState("backing-up")} onRestore={() => setState("restoring")} />
-    <div className="flex gap-2">{(["ready", "backup-complete", "blocked", "unavailable"] as const).map(value => <Button key={value} variant="muted" onClick={() => setState(value)}>Show {value}</Button>)}</div>
-  </main></DsBodyScope></TooltipProvider></div>;
+  const scenario = new URLSearchParams(location.search).get("state");
+  const [pending, setPending] = useState<"backing-up" | "restoring">();
+  const [retried, setRetried] = useState(false);
+  const state = pending ?? (scenario === "backing-up" || scenario === "backup-complete" || scenario === "restoring" || scenario === "blocked" || scenario === "unavailable" ? scenario : "ready");
+  return <SettingsSurface section="Paths"><BodySection title="Folders"><FormGroup label="Folders">{scenario === "read-failure" && !retried ? <div className="hub-settings-row"><div><div className="hub-row-label">Couldn’t load your folders</div><span className="hub-row-note">Your saved folders are unchanged.</span></div><Button variant="secondary" onClick={() => setRetried(true)}>Try again</Button></div> : [["Documents", "Exported records and reports.", "~/Documents/Relay"], ["Downloads", "Files downloaded during runs.", "~/Downloads/Relay"], ["Reports", "CSV and XLSX exports.", "~/Documents/Relay/Reports"]].map(([label, description, path]) => <div key={label} className="settings-compact-row"><Field orientation="horizontal" controlWidth="wide" label={label} description={description}><PathControl label={label} value={path} onChange={() => undefined} /></Field></div>)}</FormGroup></BodySection>
+    <AppDataPaths locations={{ stateRoot: "~/Library/Application Support/Relay/people/am", artifactRoot: "~/Library/Application Support/Relay/people/am/artifacts" }} />
+    <BodySection title="Backup and restore"><BackupRestoreControls state={state} backupLabel="Oct 30, 2026 at 9:12 PM" onBackup={() => setPending("backing-up")} backups={[{ id: "latest", label: "Oct 30, 2026 · 9:12 PM", description: "Automatic before upgrade", size: "48 MB" }, { id: "manual", label: "Oct 28, 2026 · 6:40 PM", description: "Manual", size: "46 MB" }, { id: "older", label: "Oct 21, 2026 · 8:05 AM", description: "Manual", size: "41 MB" }]} onRestore={id => { document.documentElement.dataset.selectedBackup = id; setPending("restoring"); }} /></BodySection>
+  </SettingsSurface>;
 }
