@@ -5,46 +5,37 @@ import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./hel
 import { REFERENCES, registerReferenceServers } from "./helpers/reference-harness.js";
 const servers = registerReferenceServers(["server"]);
 
-test("Run Pause and Resume distinguish requests from recorded pauses", async ({ page }) => {
+test("Pause and Resume distinguish requests from recorded pauses", async ({ page }) => {
   await page.goto(`${servers.server.baseUrl}/?fixture=run-pause`);
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   await expect(page.getByRole("button", { name: "Pausing…", exact: true })).toBeDisabled();
-  await expect(page.getByText("Pause is not yet recorded.", { exact: false })).toBeVisible();
-  await expect(page.getByText("Paused", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Show paused", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Pause is not yet recorded.");
+  await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByText("Paused", { exact: true })).toHaveCount(0);
+  await page.goto(`${servers.server.baseUrl}/?fixture=run-pause&state=paused`);
   await page.getByRole("button", { name: "Resume", exact: true }).click();
   await expect(page.getByRole("button", { name: "Resuming…", exact: true })).toBeDisabled();
 });
-test("Quit asks explicitly and waits for pause and resource settlement", async ({ page }) => {
+test("Quit confirms and waits for pause and resource settlement", async ({ page }) => {
   await page.goto(`${servers.server.baseUrl}/?fixture=run-pause`);
   await page.getByRole("button", { name: "Quit Relay", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Pause all and quit?" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Keep Relay open", exact: true })).toBeFocused();
+  const dialog = page.getByRole("dialog", { name: "Pause all and quit?", exact: true });
+  await expect(dialog.getByRole("button", { name: "Keep working", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Quit Relay", exact: true })).toBeFocused();
   await page.getByRole("button", { name: "Quit Relay", exact: true }).click();
-  await page.getByRole("button", { name: "Pause all and quit", exact: true }).click();
-  await expect(page.getByText("Pausing active work", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Pause all and quit", exact: true }).click();
+  await expect(page.getByText("Finishing current steps; pauses and shutdown are not yet confirmed.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Pause all", exact: true })).toBeDisabled();
-  await page.getByRole("button", { name: "Show closure unknown", exact: true }).click();
-  await expect(page.getByText("Pause and quit not complete", { exact: true })).toBeVisible();
+  await page.goto(`${servers.server.baseUrl}/?fixture=run-pause&state=closure-unknown`);
+  await expect(page.getByText("Closure is unknown. Keep Relay open and check active runs.", { exact: true })).toBeVisible();
 });
 
-for (const [state, actions] of [
-  ["running", []],
-  ["pause-pending", ["Pause"]],
-  ["paused", ["Show paused"]],
-  ["resume-pending", ["Show paused", "Resume"]],
-  ["quit-confirmation", ["Quit Relay"]],
-  ["pausing", ["Pause all"]],
-  ["closure-unknown", ["Show closure unknown"]],
-  ["unavailable", ["Show unavailable"]],
-  ["all-paused", ["Record mock pauses"]],
-  ["all-unavailable", ["Show all unavailable"]],
-] as const) test(`run-pause ${state} presentation`, { annotation: [{ type: "required-a11y-evidence", description: `run-pause-${state}.a11y.yml` }] }, async ({ page }, info) => {
-  await page.goto(`${servers.server.baseUrl}/?fixture=run-pause`);
-  await expect(page.getByRole("heading", { name: "Run controls", exact: true, level: 1 })).toBeVisible();
-  for (const name of actions) await page.getByRole("button", { name, exact: true }).click();
+for (const state of ["running", "pause-pending", "pausing", "paused", "resume-pending", "unavailable", "closure-unknown", "all-paused", "all-unavailable", "quit-confirmation"] as const) test(`run-pause ${state} presentation`, { annotation: [{ type: "required-a11y-evidence", description: `run-pause-${state}.a11y.yml` }] }, async ({ page }, info) => {
+  await page.goto(`${servers.server.baseUrl}/?fixture=run-pause&state=${state}`);
+  await expect(page.getByRole("heading", { name: "Alex Morgan", exact: true, level: 2 })).toBeVisible();
+  if (state === "quit-confirmation") await page.getByRole("button", { name: "Quit Relay", exact: true }).click();
+  await expect(page.getByText("UI mock", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Show (ready|blocked|unavailable|exact|paused)/ })).toHaveCount(0);
   await captureParityPair(page, REFERENCES, {
     stateId: `run-pause-${state}`, viewport: "1280x720", theme: "graphite-warm",
     adapter: "fixture", fixtureId: "run-pause", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
