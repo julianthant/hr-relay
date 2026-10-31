@@ -179,7 +179,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/separations-composition-fixtures.ts` | separations composition fixtures |
 | `helpers/settings-storage-doctor-fixtures.ts` | settings storage reports and resize observer fixture |
 | `helpers/storage/native-authority/retained-database-fixture.ts` | retained database fixture |
-| `helpers/storage/storage-relocation-fixture.ts` | storage relocation fixture |
 | `helpers/storage/synchronous-mutex-deadline.ts` | scoped 5,000 ms manual-clock mutex polling |
 | `helpers/storage/transaction-history-fixture.ts` | transaction history fixture |
 | `helpers/synthetic-database-admission.ts` | synthetic database admission |

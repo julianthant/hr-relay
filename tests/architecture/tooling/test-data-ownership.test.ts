@@ -21,7 +21,6 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/support/fixtures/integration/activity-person-pseudonym-fixtures.ts",
   "tests/support/fixtures/integration/settings-runtime-corruption-fixtures.ts",
   "tests/support/helpers/integration/storage-recovery-fixture.ts",
-  "tests/support/helpers/storage/storage-relocation-fixture.ts",
 
   "tests/support/fixtures/preflight/corpus.ts",
   "tests/support/helpers/synthetic-storage-admission.ts",
@@ -70,8 +69,6 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/fixtures/integration/activity-person-pseudonym-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/fixtures/integration/settings-runtime-corruption-fixtures.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/integration/storage-recovery-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
-  { importer: "tests/support/helpers/storage/storage-relocation-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
-  { importer: "tests/support/helpers/storage/storage-relocation-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/admission-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/synthetic-storage-admission.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/backend/dashboard-harness.ts", module: "node:sqlite", symbol: "DatabaseSync" },
