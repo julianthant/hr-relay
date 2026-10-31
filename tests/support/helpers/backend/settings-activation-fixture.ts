@@ -70,10 +70,17 @@ export async function settingsFixture(isolateBrowser = false) {
     resolvedInstance: RunEnvelopeSchema.shape.resolvedInstance.parse(QUEUED_RUN.envelope.resolvedInstance), priority: "bulk", shape: "single", dryRun: true,
     input: QUEUED_RUN.input, runtimeConfig: selectRunRuntime(database.authority), ...overrides,
   });
-  return { root, path, clock, host, database, snapshot, service, request, command, execute, published,
+  let databaseClosed = false;
+  const closeDatabase = () => {
+    if (databaseClosed) return;
+    releaseSeededWriteOwners(database, clock.now().toISOString());
+    database.close();
+    databaseClosed = true;
+  };
+  return { root, path, clock, host, database, snapshot, service, request, command, execute, published, closeDatabase,
     resolutions: () => resolutions,
     save: (patch: SettingsPatch) => execute(command(patch)),
     create: (overrides: Partial<CreateRunRequest> = {}) => requireLifecycleApplied(service.create(request(overrides))),
-    close: async () => { releaseSeededWriteOwners(database, clock.now().toISOString()); database.close(); await profile.close(); },
+    close: async () => { closeDatabase(); await profile.close(); },
   };
 }
