@@ -1,3 +1,4 @@
+import { observePid } from "./runtime-process-locks.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { RunRecordSchema, runClaim, type RunRecord } from "../../../models/run/record.js";
@@ -373,7 +374,7 @@ export function admitWorkerReset(repositories: AuthorityRepositories, input: unk
   let lifecycle: WorkerLifecycleBinding | undefined;
   if (lease.lifecycle.state === "stopped") {
     const active = repositories.runtimeConfig.get(), pool = repositories.workerPools.get(slot.workflow);
-    if (lease.startCommandId === undefined || replacementDescriptor?.id !== slot.workflow || active === undefined || pool === undefined) throw new Error("worker-reset-replacement-authority-unavailable");
+    if (observePid(lease.processId).state !== "gone" || replacementDescriptor?.id !== slot.workflow || active === undefined || pool === undefined) throw new Error("worker-reset-replacement-authority-unavailable");
     lifecycle = WorkerLifecycleBindingSchema.parse({ commandId: request.commandId,
       member: reset.member, lifetime: reset.lifetime, basis: reset.basis, reservedControlRevision: reset.reservedControlRevision,
       poolVersion: pool.version, desiredWorkers: pool.desiredWorkers, operation: { kind: "retry", mode: "browserless",
