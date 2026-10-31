@@ -67,6 +67,7 @@ export default defineConfig({
     },
   },
   test: {
+    env: { TZ: "America/Los_Angeles" },
     globalSetup: ["tests/support/private-temp-setup.ts"],
     setupFiles: ["tests/support/duo-ceremony-setup.ts"],
     // Cloud and perf projects fail when a selected run collects nothing. The

@@ -6,6 +6,7 @@ import { parityUpdateRequested } from "./tests/parity/helpers/reference-store.js
 
 const keychainPreload = new URL("./tests/support/helpers/credential-keychain-process-preload.mjs", import.meta.url).href;
 process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ""} --import=${keychainPreload}`;
+process.env.TZ = "America/Los_Angeles";
 
 export default defineConfig({
   testDir: "tests/parity",
@@ -32,6 +33,7 @@ export default defineConfig({
     isMobile: false,
     hasTouch: false,
     headless: true,
+    timezoneId: "America/Los_Angeles",
     deviceScaleFactor: 1,
   },
   reporter: [

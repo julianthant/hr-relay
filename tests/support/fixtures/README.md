@@ -158,6 +158,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/dashboard/served-fixtures/seeded-services.ts` | seeded services |
 | `helpers/dashboard/settings-harness.tsx` | settings harness |
 | `helpers/database-foundation/fixtures.ts` | fixtures |
+| `helpers/duo-ceremony-cleanup.ts` | shared Duo fixture cleanup queue and reverse-order drain |
 | `helpers/duo-ceremony-fixtures.ts` | duo ceremony fixtures |
 | `helpers/failure-resolution/fixtures.ts` | fixtures |
 | `helpers/geocode/nominatim-client.ts` | nominatim client |

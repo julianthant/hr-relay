@@ -21,7 +21,7 @@ it_m0('formats typed spreadsheet dates while preserving raw and unmapped cell va
 {
 
 
-function bytes(value: Uint8Array): ArrayBuffer { return value.slice().buffer; }
+function bytes(value: Uint8Array): ArrayBuffer { return new Uint8Array(value).buffer; }
 
 describe_m1('XLSX / CSV editor round trips', () => {
   it_m1('imports color-filtered Excel tables with all records, fills and other sheets intact', async () => {

@@ -47,6 +47,9 @@ answers remain independent of the producer under test. Tests never rewrite track
 or parity references in place. Generator behavior is exercised in scratch directories so parallel
 readers cannot observe temporary corruption or silently repaired inputs.
 
+Vitest fixtures and desktop parity use `America/Los_Angeles` explicitly. Parity browser contexts
+use the same zone, so reviewed local dates and times do not depend on the host's time zone.
+
 ## 2. Vitest selection and commands
 
 `vitest.config.ts` defines five named projects. `guard-manifest.test.ts` audits exact includes,
@@ -89,6 +92,8 @@ Vitest uses isolated forks, file parallelism, `maxWorkers: Math.min(4, available
 arguments include `--no-experimental-webstorage`, avoiding process-global Node localStorage.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
+CI bounds each integration and parity shard to two workers, leaving runner capacity for their
+browser and worker child processes. Their job budgets are 30 minutes; test deadlines are unchanged.
 
 ## 3. Private test temporary directory
 

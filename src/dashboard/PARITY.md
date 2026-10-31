@@ -25,7 +25,8 @@ in a separate commit. Never refresh references to make wiring pass.
 
 The default lane is headless Chromium, 1280×720, device scale factor 1, no touch, and no mobile
 emulation. Default reference captures use the `graphite-warm` theme with `data-demo-theme="dark"`.
-It uses two workers, `fullyParallel: true`, no retries, and a 120-second test timeout.
+It uses up to four workers locally, bounded by available CPUs, and two per CI shard, `fullyParallel: true`, no
+retries, and a 120-second test timeout. Fixture processes and browsers use `America/Los_Angeles`.
 Individual desktop interaction specs cover resize, zoom-related canvas behavior,
 keyboard access, and reduced motion. `workflow-batches.test.ts` explicitly tests light and dark
 outside the default reference axis. Do not add phone or coarse-pointer variants.
@@ -59,6 +60,7 @@ Playwright writes test artifacts and `results.json` under `tests/parity/.output/
 includes the expected, actual, and diff images. Accessibility/metadata drift names the fixture,
 theme, viewport, variant, reference path, and differing lines. Inspect both visual and semantic
 halves before changing source.
+CI uploads the output directory, including failure images and error contexts alongside the JSON report.
 
 The wrapper rejects stale or malformed JSON, unsafe report paths, missing required accessibility
 attachments, duplicate evidence names, wrong digests, and non-passing required evidence producers.

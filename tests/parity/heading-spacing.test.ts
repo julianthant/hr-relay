@@ -20,6 +20,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await page.goto(`${server.baseUrl}/?settings=${section}`);
         if (section === "spreadsheets") {
           const library = page.locator(".hub-sheets-library");
+          await expect(library.getByRole("heading", { name: "Spreadsheets", exact: true })).toBeVisible();
           const title = (await library.getByRole("heading", { name: "Spreadsheets", exact: true }).boundingBox())!;
           const intro = (await library.locator(".hub-sheets-intro").boundingBox())!;
           expect(intro.y - title.y - title.height).toBe(4);
@@ -28,10 +29,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           continue;
         }
         const heading = page.locator(".ds-page-heading").first();
-        await expect(heading.locator(".ds-page-heading-title")).toBeVisible();
         await expect(page.locator("[data-settings-loading]")).toHaveCount(0);
+        await expect(heading.locator(".ds-page-heading-title")).toBeVisible();
         const description = heading.locator(".ds-page-heading-description");
         if (await description.count()) {
+          await expect(description).toBeVisible();
           const title = (await heading.locator(".ds-page-heading-title").boundingBox())!;
           const copy = (await description.boundingBox())!;
           expect(copy.y - title.y - title.height, `${section}: title/description gap`).toBe(4);
