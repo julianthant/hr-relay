@@ -628,6 +628,11 @@ export class RunRecordService {
       if (journal.state === "replay") return this.replayRun(journal.result);
       const previous = this.read(request.runId);
       if (previous.state !== "present") return refused({ reason: "lost" });
+      const held = runClaim(previous.run);
+      if (previous.run.version !== request.expectedVersion || held === undefined || held.workerId !== request.claim.workerId
+        || held.claimGeneration !== request.claim.claimGeneration || Date.parse(request.now) < Date.parse(previous.run.envelope.enqueuedAt)) {
+        throw new Error("crash-recovery-claim-changed");
+      }
       if (previous.run.cancelRequested === true && repositories.writeIntents.listByRun(request.runId)
         .every(intent => intent.status === "committed" || intent.status === "observed-present")) {
         const identity = this.dependencies.database.crashRunRecoveryIdentity(request.runId);

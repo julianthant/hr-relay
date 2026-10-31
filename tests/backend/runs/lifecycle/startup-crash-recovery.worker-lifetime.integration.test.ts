@@ -75,6 +75,19 @@ for (const scenario of ["interrupted", "startup-cancelled", "global-cancelled", 
           workerLifetime: { membershipRevision: f.slot.membershipRevision, leaseGeneration: f.started.leaseGeneration + 1 },
           now: f.now }, f.lifetime), /crash-recovery-lifetime-changed/u);
         assert.deepEqual(f.database.authority.runs.get(queued.envelope.runId), before);
+        const generation = f.database.getMeta().authorityGeneration;
+        for (const drift of [
+          { expectedVersion: before.version + 1 },
+          { claim: { workerId: "person-lookup-worker-999", claimGeneration: before.claimGeneration } },
+          { now: new Date(Date.parse(before.envelope.enqueuedAt) - 1).toISOString() },
+        ]) {
+          assert.throws(() => f.service.recoverCrash({ commandId: randomUUID(), runId: queued.envelope.runId,
+            expectedVersion: before.version, claim: { workerId: f.slot.workerId, claimGeneration: before.claimGeneration },
+            workerLifetime: { membershipRevision: f.slot.membershipRevision, leaseGeneration: f.started.leaseGeneration },
+            now: f.now, ...drift }, f.lifetime), /crash-recovery-claim-changed/u);
+          assert.deepEqual(f.database.authority.runs.get(queued.envelope.runId), before);
+          assert.equal(f.database.getMeta().authorityGeneration, generation);
+        }
       }
       f.clock.advanceWall(scenario === "global-cancelled" ? 600_000 : 2_000);
       f.clock.advanceMonotonic(2_000);
