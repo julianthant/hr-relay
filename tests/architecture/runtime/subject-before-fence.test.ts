@@ -20,6 +20,7 @@ import { EidSchema, taskId, TaskIdSchema } from "../../../src/rules/identity/ids
 import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { fixtureDescriptor } from "../../support/fixtures/descriptor-fixtures.js";
+import { duoCeremonyGatesOver } from "../../support/helpers/duo-ceremony-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../../support/helpers/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
 import {
@@ -160,7 +161,7 @@ async function orderingHarness(): Promise<OrderingHarness> {
   const world = createWriteFixtureWorld();
   const registry = buildWriteFixtureRegistry(world);
   const sessions = writeFixtureSessions(world);
-  const manager = await writeFixtureSessionManager(sessions, registry, clock);
+  const manager = await writeFixtureSessionManager(sessions, registry, clock, duoCeremonyGatesOver(database, clock));
   const sequencer = createWriteSequencer({
     lifecycle: testRunLifecycle(database, clock),
     stores: registry,

@@ -123,7 +123,7 @@ sit beside their owning families. Shared packages and renderer code do not load 
 
 ## Tests and evidence
 
-Tests mirror their source modules. Paths under `src/` drop that prefix; script, Duo, and root configuration
+Tests mirror their source modules, including tracked shell scripts. Paths under `src/` drop that prefix; script, Duo, and root configuration
 paths retain their full path. Unit files use `.test.ts`; integration files use `.integration.test.ts`
 beside them. Topic suffixes split larger suites.
 

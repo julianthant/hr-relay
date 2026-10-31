@@ -21,7 +21,7 @@
       "file": "tests/architecture/test-layout.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/codebase-structure.md",
-      "invariant": "Reason: tests placed outside the mirror keep recurring. Every canonical .test.ts outside architecture, parity, perf, types and support mirrors an existing tracked source file: leading src/ is dropped, other source paths remain complete, and dotted topic suffixes resolve against the longest source stem. Alternate test filename patterns are rejected with the expected canonical path; helper prefixes admit only modules without authored test registration.",
+      "invariant": "Reason: tests placed outside the mirror keep recurring. Every canonical .test.ts outside architecture, parity, perf, types and support mirrors an existing tracked source file, including shell scripts: leading src/ is dropped, other source paths remain complete, and dotted topic suffixes resolve against the longest source stem. Alternate test filename patterns are rejected with the expected canonical path; helper prefixes admit only modules without authored test registration.",
       "replacementRequired": true
     },
     {
@@ -53,7 +53,7 @@
       "file": "tests/architecture/tooling/guard-manifest.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Every active architecture guard is registered exactly once and exists, every offline authored test is collected exactly once in its disjoint project, and coverage exclusions, floors and required ratchet arms remain executable against violating fixtures. Reviewed catch allowances pin exact current source bytes, require a nonzero original finding, and reject both an injected unsafe catch and an independent comment-only source change. Runtime cycle checks exclude erased type imports while value, mixed-value and side-effect cycles retain negative controls; layering inspects every import.",
+      "invariant": "Every active architecture guard is registered exactly once and exists, every offline authored test is collected exactly once in its disjoint project, and coverage exclusions, floors and required ratchet arms remain executable against violating fixtures. Reviewed catch allowances pin exact current source bytes, require a nonzero original finding, and reject both an injected unsafe catch and an independent comment-only source change. Runtime cycle checks exclude erased type imports while value, mixed-value and side-effect cycles retain negative controls; layering inspects every import. Current storage-operation classifications preserve rollback, refusal, source-identity and cleanup behavior; injected unsafe catches and independent byte changes still fail.",
       "replacementRequired": true
     },
     {

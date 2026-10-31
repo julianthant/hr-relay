@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -24,15 +23,19 @@ it.each([
     const raw = new DatabaseSync(path, { enableForeignKeyConstraints: false });
     try {
       raw.exec("BEGIN IMMEDIATE");
-      const insert = raw.prepare(`INSERT INTO timeline_events
-        (id,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json)
-        VALUES(?,?,?,?,?,?,?,?,?,?)`);
       const payload = limit.payloadBytes === 2 ? "{}" : JSON.stringify({ padding: "é".repeat(Math.ceil(limit.payloadBytes / 2)) });
       assert.ok(Buffer.byteLength(payload, "utf8") >= limit.payloadBytes);
       if (limit.code === "payload") assert.ok(Buffer.byteLength(payload, "utf8") < 256 * 1024);
-      for (let index = 0; index < limit.count; index++) {
-        insert.run(randomUUID(), "person-lookup", limit.distinctRuns ? randomUUID() : null,
-          limit.distinctRuns ? null : "doctor-limit-worker", "debug", NOW, NOW, "2026-10-10", "ordinary", payload);
+      const sqlPayload = payload.replaceAll("'", "''");
+      const runId = limit.distinctRuns ? "lower(hex(randomblob(16)))" : "NULL";
+      const workerId = limit.distinctRuns ? "NULL" : "'doctor-limit-worker'";
+      for (let remaining = limit.count; remaining > 0; remaining -= 400) {
+        const rows = Math.min(400, remaining);
+        raw.exec(`WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n < ${String(rows)})
+          INSERT INTO timeline_events
+          (id,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json)
+          SELECT lower(hex(randomblob(16))),'person-lookup',${runId},${workerId},'debug','${NOW}','${NOW}','2026-10-10','ordinary','${sqlPayload}'
+          FROM seq`);
       }
       raw.exec("COMMIT");
       assert.equal(raw.prepare("SELECT count(*) AS count FROM timeline_events").get()?.count, limit.count);

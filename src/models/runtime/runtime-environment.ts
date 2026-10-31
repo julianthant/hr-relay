@@ -68,6 +68,7 @@ const ComputedReaderBulkTargetSchema = z.strictObject({
     "dashboard-child-processes",
     "secure-local-environment-admission",
     "test-command-child",
+    "xcode-tool-child",
   ]),
   reason: z.string().min(1),
 });
@@ -126,7 +127,7 @@ const SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
 
 const TEST_ONLY_ENVIRONMENT_KEYS = [
   "PARITY_UPDATE", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN",
-  "TMPDIR", "TMP", "TEMP", "KEEP_TEST_TMP",
+  "TMPDIR", "TMP", "TEMP", "KEEP_TEST_TMP", "DEVELOPER_DIR",
 ] as const;
 
 const INERT_RETIRED_ENVIRONMENT_KEYS = [
@@ -171,6 +172,7 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
     "tests/backend/app/composition/dashboard/compose.public-profile-shell.integration.test.ts",
   ],
   KEEP_TEST_TMP: ["tests/support/private-temp-setup.ts"],
+  DEVELOPER_DIR: ["fast-duo/scripts/package-safari.mjs"],
   TZ: [
     "tests/backend/runs/projections/run-summary.derivation.integration.test.ts",
     "tests/perf/dashboard-fixture.integration.test.ts",
@@ -228,6 +230,7 @@ export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilyS
 
 export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([
   { key: "NODE_OPTIONS", paths: ["playwright.parity.config.ts"] },
+  { key: "DEVELOPER_DIR", paths: ["fast-duo/scripts/package-safari.mjs"] },
 ]));
 
 interface ComputedReaderInput {
@@ -249,7 +252,8 @@ interface ComputedReaderInput {
         readonly boundary:
           | "dashboard-child-processes"
           | "secure-local-environment-admission"
-          | "test-command-child";
+          | "test-command-child"
+          | "xcode-tool-child";
         readonly reason: string;
       };
 }
@@ -271,6 +275,7 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "hostAwareResolutionEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
   computedReader({ path: "scripts/dev/dashboard.ts", enclosingSymbol: "<module>", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "target-bootstrap", targets: { kind: "bulk-pass-through", boundary: "dashboard-child-processes", reason: "the dashboard launcher forwards its inherited environment plus one owned nonce to the two same-runtime child processes" } }),
   computedReader({ path: "scripts/verify-parity-json.ts", enclosingSymbol: "main", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "test-command-child", reason: "the parity wrapper forwards its inherited environment to its same-checkout Playwright child" } }),
+  computedReader({ path: "fast-duo/scripts/package-safari.mjs", enclosingSymbol: "<module>", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "xcode-tool-child", reason: "the Safari packager forwards its inherited environment and pins DEVELOPER_DIR for xcodebuild" } }),
   computedReader({ path: "vite.dashboard.config.ts", enclosingSymbol: "<module>", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "5c77e74cb49d532097f685ae27e9a8029afb783349dbaff9f709b90a7cece316", classification: "target-bootstrap", targets: { kind: "closed-targets", exact: ["HRAUTO_DASHBOARD_LAUNCH_NONCE"], families: [] } }),
 ]));
 
