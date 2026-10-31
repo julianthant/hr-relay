@@ -568,7 +568,8 @@ export class RunRecordService {
       if (journal.state === "replay") return this.replayRun(journal.result);
       const current = this.read(request.runId);
       if (current.state !== "present") return refused({ reason: "lost" });
-      try { this.assertCurrentExecution({ runId: request.runId, claim: request.claim }); }
+      // Renewal retains callback custody while reset fences new work.
+      try { this.assertCurrentExecution({ runId: request.runId, claim: request.claim }, true); }
       catch (error) {
         if (error instanceof RunLifecycleRefusedError && error.outcome.state === "refused" && error.outcome.refusal.reason === "lost") return error.outcome;
         throw error;
