@@ -93,9 +93,12 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-CI runs architecture files serially on the standard Intel macOS runner and bounds unit, integration and parity to two workers,
-leaving runner capacity for their browser and worker child processes. Unit, integration and parity job
-budgets are 30 minutes; test deadlines are unchanged.
+CI runs architecture files serially.
+The two native browser process-proof files run first and serially on integration shard 1, without
+competing test files. All four ordinary shards exclude those two files, so each file runs once.
+Remaining integration files, unit and parity use two workers. Unit, integration and parity job
+budgets are 30 minutes; test deadlines are unchanged. Remaining-file steps run after a failed proof
+unless the workflow is cancelled, preserving failure visibility.
 
 ## 3. Private test temporary directory
 
@@ -113,8 +116,8 @@ mount step also fails if the volume still shows `noowners`. Point `TMPDIR` at th
 before Vitest; the private-temp setup still nests its own directory underneath and keeps its
 checks. Eject with `scripts/test/ram-tmp.sh eject` and the volume path (the parent of the
 printed directory). CI macOS test jobs mount 2048 MiB and export `TMPDIR` before the suite.
-The mount logs physical memory, CPU count and requested disk size. Architecture and integration use
-14 GB Intel runners; unit, parity and release use 7 GB Apple Silicon runners. Keep room for Node and Chromium;
+The mount logs physical memory, CPU count and requested disk size. Test jobs use 7 GB Apple Silicon
+runners. Keep room for Node and Chromium;
 raise the disk size only after a measured peak no longer fits.
 
 Parity launches Playwright directly. After 180 seconds without output it kills that child and

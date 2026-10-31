@@ -24,8 +24,7 @@ by the repository owner; the workflow does not enable it. Confirm the check name
 before locking them. Add the Cursor Bugbot check when its name is known; do not invent it.
 
 CI takes Node from `package.json` engines and caches npm. Routine test suites are macOS:
-required unit and parity on `macos-15`, and integration and architecture on the standard
-`macos-15-intel` runner. Architecture keeps its `architecture (macos-15)` required check name.
+required unit, integration, architecture and parity on `macos-15` Apple Silicon runners.
 Static and privacy stay on Ubuntu. CI runs no Windows jobs. Integration runs as four shards; the required
 check remains `integration (macos-15)`, which fails unless every shard succeeded. Desktop parity
 uses headless Chromium and existing references; CI never updates references or uploads HR evidence.
