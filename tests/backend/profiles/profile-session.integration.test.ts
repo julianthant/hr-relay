@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../support/compiled-process.js";
 import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { PrivateFileLockUnavailableError, withOperationProof } from "../../../src/backend/storage/configuration/credential-safe-file.js";
 import { FakeKeyringEntry } from "../../support/helpers/credential-keychain-fake.js";
@@ -855,7 +856,7 @@ it("allocates distinct durable activation generations under cross-process exclus
   const activate = () => {
     let readyResolve: (() => void) | undefined, readyReject: ((error: Error) => void) | undefined;
     const ready = new Promise<void>((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
-    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", source, String(lifetime.port)], { stdio: ["pipe", "pipe", "pipe", "ipc"] });
+    const child = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", source, String(lifetime.port)], { stdio: ["pipe", "pipe", "pipe", "ipc"] });
     const input = child.stdin;
     assert.ok(input && child.stdout && child.stderr);
     let stdout = "";

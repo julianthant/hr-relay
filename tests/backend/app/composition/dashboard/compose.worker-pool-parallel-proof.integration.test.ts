@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../../support/compiled-process.js";
 import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import { WorkerStopDirectiveContextSchema } from "../../../../../src/backend/runtime/workers/worker-loop.js";
@@ -186,7 +187,7 @@ async function openSoakHarness(options?: SoakHarnessOptions): Promise<SoakHarnes
     launch: {
       environment: {},
       command: "/usr/bin/fake-worker-node",
-      prefixArgs: Object.freeze(["--import", "tsx", "src/cli.ts"]),
+      prefixArgs: Object.freeze(["--import", testProcessImport(), "src/cli.ts"]),
       cwd: root,
     },
     spawn: (request) => {

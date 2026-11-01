@@ -150,6 +150,8 @@ Shared fixtures, fresh-authority builders, and child-process entrypoints live un
 - `tests/support/duo-ceremony-setup.ts` registers the shared Duo fixture cleanup for every Vitest project; the fixture owner stays process-safe.
 Shared composition setup lives in `tests/support/helpers/backend/{capability-wiring-world,write-recovery-world,dashboard-child-world,worker-loop-world}.ts`
 and `tests/support/helpers/dashboard/mounted-rerun-world.ts`; each test owns its allocation, hooks, and cleanup.
+`tests/support/compiled-process{,-setup,-loader}.ts` owns test child JavaScript preparation,
+launch imports and content-addressed loading; `guards-and-tests.md` owns its cache contract.
 `tests/support/helpers/backend/runtime-lifetime.ts` owns temporary kernel listeners for tests;
 `tests/backend/runs/lifecycle/run-record-service.write-parking.integration.test.ts` owns write-park journal and event atomicity.
 

@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../compiled-process.js";
 import { spawn, type SpawnOptions } from "node:child_process";
 import { once } from "node:events";
 import { z } from "zod";
@@ -22,7 +23,7 @@ export async function assertRuntimeLifetimeHeld(lock:RuntimeLifetimeLock):Promis
 
 export async function runInheritedRuntimeChild(lock: RuntimeLifetimeLock, code: string, args: readonly string[], options: Pick<SpawnOptions, "cwd" | "env" | "timeout"> = {}) {
   lock.assertHeld();
-  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, String(lock.port), ...args],
+  const child = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", code, String(lock.port), ...args],
     { cwd: process.cwd(), ...options, stdio: ["ignore", "pipe", "pipe", "ipc"] });
   assert.ok(child.stdout && child.stderr);
   const output: Buffer[] = [], errors: Buffer[] = [];

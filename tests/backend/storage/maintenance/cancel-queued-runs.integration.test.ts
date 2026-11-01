@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
 import assert from "node:assert/strict";
@@ -30,7 +31,7 @@ async function fixture(claimGeneration = 0) {
   const f = await createHistoricalFlatProfileFixture();
   const rowModule = pathToFileURL(join(process.cwd(), "src/backend/storage/sqlite/run-record-row.ts")).href;
   const recordModule = pathToFileURL(join(process.cwd(), "src/models/run/record.ts")).href;
-  const changed = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e",
+  const changed = spawnSync(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e",
     `import { DatabaseSync } from "node:sqlite"; import { runRecordFromRow, updateRunRecord } from ${JSON.stringify(rowModule)};
       import { RunRecordSchema } from ${JSON.stringify(recordModule)};
       const raw = new DatabaseSync(process.argv[1]);
@@ -136,7 +137,7 @@ it("dispatches the actual secure-bootstrap CLI plan and apply against an isolate
     for (const name of ["runtime-isolation.json", "test-data.json", "dashboard-workflow-sources.json"]) cpSync(join(process.cwd(), "config", name), join(f.workspace, "config", name));
     symlinkSync(dirname(dirname(fileURLToPath(import.meta.resolve("tsx/package.json")))), join(f.workspace, "node_modules"));
     const command = (args: string[]) => spawnSync(process.execPath,
-      ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "cancel-queued-runs", ...args],
+      ["--import", testProcessImport(), "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "cancel-queued-runs", ...args],
       { cwd: f.workspace, encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(workerBootstrapEnvironment()) });
     const planned = command(["--plan", "--json"]);
     assert.equal(planned.error, undefined); assert.equal(planned.status, 0, planned.stderr);

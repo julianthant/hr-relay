@@ -1,3 +1,4 @@
+import { testProcessImport } from "./support/compiled-process.js";
 
 import assert from "node:assert/strict";
 import { type ChildProcessByStdio,spawn } from "node:child_process";
@@ -202,7 +203,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
 
       const child = spawn(
         process.execPath,
-        ["--import", "tsx", join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
+        ["--import", testProcessImport(), join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
         { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe", "ipc"] },
       ) as DashboardChild;
       const output = captureOutput(child);
@@ -233,7 +234,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
 
         const duplicate = spawn(
           process.execPath,
-          ["--import", "tsx", join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
+          ["--import", testProcessImport(), join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
           { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe"] },
         );
         const duplicateOutput = captureOutput(duplicate);
@@ -296,7 +297,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
     try {
       const child = spawn(
         process.execPath,
-        ["--import", "tsx", join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
+        ["--import", testProcessImport(), join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
         { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe"] },
       );
       const output = captureOutput(child);
