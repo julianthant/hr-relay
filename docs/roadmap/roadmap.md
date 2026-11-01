@@ -11,7 +11,7 @@ Statuses: `done`, `now`, `next`, `later`. One line per key implementation.
 - [done] Singleton app lock and held operations — one app owns the runtime and holds maintenance operations until they settle.
 - [done] Person Lookup and Separations rerun readiness — reruns use the current inputs and readiness checks.
 - [done] Settings Test OCR — the OCR test runs from Preflight.
-- [done] Automatic PR flow — publish history, run cloud CI on macOS, get Cursor Bugbot review and auto-merge into staging.
+- [done] Automatic PR flow — publish history, run cloud CI on Ubuntu with macOS for macOS-only tests, get Cursor Bugbot review and auto-merge into staging.
 - [next] Functional spec — the charter owns product behaviour; reference docs own mechanisms.
 
 ## Dashboard ready
