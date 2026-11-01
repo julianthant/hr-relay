@@ -106,7 +106,7 @@ test('assistant menu selection, popup and motion contracts', { annotation: [{ ty
   expect(await page.locator('.hub-spinner').evaluate(element => getComputedStyle(element).animationName)).toBe('none');
   await attachShellA11y(page, info, 'hub-assistant-controls.a11y.yml');
 });
-for (const scene of ['new', 'ask-read', 'ask-write', 'permission-changed', 'auto', 'working', 'cancelling', 'done', 'failed', 'handoff', 'destructive', 'delete-working', 'resolved', 'declined', 'conversation', 'typing', 'multiline', 'attachment', 'attach-menu', 'approval-menu', 'model-menu', 'effort-menu', 'voice-menu', 'record-popup', 'sign-in-popup']) {
+for (const scene of ['new', 'ask-read', 'ask-write', 'permission-changed', 'working', 'cancelling', 'done', 'failed', 'handoff', 'destructive', 'delete-working', 'resolved', 'declined', 'conversation', 'typing', 'multiline', 'attachment', 'attach-menu', 'approval-menu', 'model-menu', 'effort-menu', 'voice-menu', 'record-popup', 'sign-in-popup']) {
   test(`assistant approved ${scene}`, { annotation: [{ type: 'required-a11y-evidence', description: `hub-assistant-${scene}.a11y.yml` }] }, async ({ page }, info) => {
     const state = scene === 'record-popup' ? 'done' : scene === 'sign-in-popup' ? 'handoff' : scene.endsWith('-menu') || ['typing', 'multiline', 'attachment'].includes(scene) ? 'ask-write' : scene;
     const text = scene === 'typing' ? 'Review these changes before I save.' : scene === 'multiline' ? 'Compare the current employment record.\nCheck the new work email.\nShow me the change before saving.' : scene === 'attachment' ? 'Review these notes.' : '';

@@ -591,9 +591,9 @@ it("persists a task screenshot through a complete frozen binder into Logs withou
   } finally { await world.cleanup(); }
 });
 
-describe("Person Lookup final capture points", () => {
+describe("Person Lookup per-task capture points", () => {
   for (const kind of ["selected", "empty", "ambiguous"] as const) for (const enabled of [true, false]) {
-    it(`captures exactly the final CRM ${kind} page (enabled=${enabled})`, async () => {
+    it(`captures each browser task once on the CRM ${kind} branch (enabled=${enabled})`, async () => {
       const world = createRunExecutorTestWorld();
       let sessions: WorkerSessionManager | undefined;
       try {
@@ -616,6 +616,7 @@ describe("Person Lookup final capture points", () => {
         const capture = createRunBrowserScreenshotCapture({ service });
         const acquired: string[] = [];
         const persisted: string[] = [];
+        const capturedNodes: string[] = [];
         sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse(claimed.claim.workerId), workflowId: WorkflowIdSchema.parse("person-lookup"), stores: taskStoreRegistry,
           factory: { probeProfile: async () => undefined, open: async input => {
             const resource = await factory.factory.open(input);
@@ -624,16 +625,22 @@ describe("Person Lookup final capture points", () => {
               return { state: "available" as const, sessionId: resource.sessionId, pageVersion: 1, observedAt: clock.now().toISOString(), bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 };
             } };
           } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: duoCeremonyGatesOver(database, clock),
-          browserScreenshotCapture: { capture: async context => { await capture.capture(context); persisted.push(pages.get(context.system) ?? "unexpected-page"); } },
+          browserScreenshotCapture: { capture: async context => {
+            assert.ok(context.trigger.kind === "task-point");
+            await capture.capture(context);
+            persisted.push(pages.get(context.system) ?? "unexpected-page");
+            capturedNodes.push(context.trigger.nodeId);
+          } },
         });
         sessions.bindRunConfigFingerprint(FingerprintSchema.parse(claimed.run.envelope.configFingerprint), "headless", { runId: claimed.run.envelope.runId,
           descriptorFingerprint: claimed.run.envelope.contractFingerprint });
         const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
         const result = await executeClaimedRun({ ...harness.deps, sessions, taskNotes: notes }, { ...claimed, signal: new AbortController().signal });
         assert.equal(result.state, "done", JSON.stringify(database.authority.failures.listByRun(claimed.run.envelope.runId)));
-        const points = ["ucpath-detail", kind === "selected" ? "crm-record" : "crm-results"];
+        const points = ["ucpath-detail", "crm-results", kind === "selected" ? "crm-record" : "crm-results"];
         assert.deepEqual(acquired, points);
         assert.deepEqual(persisted, points);
+        assert.deepEqual(capturedNodes, ["searching", "cross-verify", kind === "selected" ? "crm-selected-record" : "crm-results"]);
         const screenshotNotes = database.authority.timelineEvents.page({ runId: claimed.run.envelope.runId }).flatMap(row => row.payload.kind === "note" && row.payload.note.action?.kind === "screenshot" ? [row.payload.note] : []);
         assert.equal(screenshotNotes.length, points.length);
         assert.equal(database.authority.diagnosticBundles.listByRun(claimed.run.envelope.runId).length, points.length);

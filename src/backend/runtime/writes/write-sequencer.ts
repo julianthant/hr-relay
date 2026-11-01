@@ -517,6 +517,7 @@ export async function executeIdempotencyProbe(
     transactionId?: string;
     instance: string;
     signal: AbortSignal;
+    screenshotOwner?: Readonly<{ nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>;
     onRecord?: (taskId: TaskId, batch: BoundedTaskRecordBatch) => void;
     actionBinderForInput?: (taskId: string, parsedInput: unknown) => BrowserActionBinder;
     confirmedForInput?: (taskId: string, parsedInput: unknown) => ConfirmedTaskActions | undefined;
@@ -550,7 +551,7 @@ export async function executeIdempotencyProbe(
     );
   }
   const proofSchema = commitContract.writeSafety.completion.proofSchema;
-  const raw = await deps.sessions.withDriver(need, input.instance, input.signal, async (driver) => {
+  const raw = await deps.sessions.withDriver(need, input.instance, input.signal, async (driver, captureScreenshot) => {
     const invocation = beginBoundedTask(deps, probeRef.taskId, input.signal, (innerSignal, recordData) => {
       const run = RunnableTaskSchema.parse(probeTask.impl.run);
       const confirmed = input.confirmedForInput?.(probeRef.taskId, probeInput);
@@ -562,8 +563,9 @@ export async function executeIdempotencyProbe(
     }, input.onRecord === undefined ? undefined : (batch) => input.onRecord?.(probeRef.taskId, batch));
     deps.retainCallback?.(invocation.settlement);
     const { raw: output } = await invocation.bounded;
+    if (input.screenshotOwner !== undefined) await captureScreenshot();
     return output;
-  });
+  }, input.screenshotOwner === undefined ? undefined : { ...input.screenshotOwner, taskId: probeRef.taskId });
   try {
     const verdict = probeVerdictSchema(proofSchema).parse(probeTask.contract.output.parse(raw));
     if (input.transactionId !== undefined && verdict.state === "present") {
@@ -1138,6 +1140,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         ...(transactionId === undefined ? {} : { transactionId }),
         instance,
         signal: context.signal,
+        screenshotOwner: { nodeId: String(context.node.id), attempt: context.run.envelope.attempt, log: context.captureLog ?? deps.log },
         onRecord: (taskId, batch) => emitObservedBatch(context, "probe", taskId, batch),
         actionBinderForInput: context.operationReadBinder === undefined ? undefined : (taskId, parsedInput) => context.operationReadBinder!("probe", taskId, parsedInput),
         confirmedForInput: context.confirmedForRole === undefined ? undefined : (taskId, parsedInput) => context.confirmedForRole!("probe", taskId, parsedInput),
@@ -1409,6 +1412,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     commitInput: unknown;
     driver: BrowserDriver;
     rawCommitOutput: unknown;
+    captureScreenshot: () => Promise<void>;
     intent: AttemptingIntent;
   }>): Promise<{ proofValue: JsonValue; outputValue: JsonValue }> {
     const { commitContract, intent } = input;
@@ -1500,6 +1504,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           }));
         },
       );
+      await input.captureScreenshot();
       verdict = probeVerdictSchema(completion.proofSchema).parse(verifyTask.contract.output.parse(raw));
       emitTaskSpan(input.context, "verify", "span.ended", "done", true);
     } catch (error) {
@@ -1979,6 +1984,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
               }));
             },
           );
+          await captureScreenshot("step");
           prepareOutput = prepareContract.output.parse(raw);
           emitTaskSpan(context, "prepare", "span.ended", "done");
         } catch (error) {
@@ -2146,8 +2152,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           commitSettlement = { state: "failed", error: failure };
         }
 
+        let captureFailure: Readonly<{ error: unknown }> | undefined;
         try { await captureScreenshot("after-submit"); }
-        catch { reportDiagnosticFailure(context); }
+        catch (error) { captureFailure = { error }; reportDiagnosticFailure(context); }
         let emissionFailure: Readonly<{ error: unknown }> | undefined;
         try {
           // Flush fallible observations only after commit callback settlement so recording cannot strand a fenced-but-unclicked write.
@@ -2211,13 +2218,20 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           diagnosticIsProgramFailure: containsSchemaFailure,
           reportDeliveryFailure: () => reportDiagnosticFailure(context),
           verifySavedEffect: () => captureProof({ context, commitContract, commitInput, driver,
-            rawCommitOutput, intent: fenced }),
+            rawCommitOutput, captureScreenshot: () => captureScreenshot("step"), intent: fenced }),
           onProgramFailure: error => { throw postFenceTaskFailure(
             `${commitContract.id} post-settlement observation failed schema validation after saved-effect verification`,
             "post-fence-commit-and-observation-exception",
             error,
           ); },
         });
+        if (captureFailure !== undefined) {
+          throw postFenceTaskFailure(
+            `${commitContract.id} required post-submit screenshot failed after saved-effect verification`,
+            "post-fence-session-exception",
+            captureFailure.error,
+          );
+        }
         if (!isFreshOccurrenceProof(fenced, envelope, {
           schemaHash: deriveSchemaHash(commitContract.writeSafety.completion.proofSchema, "output"), value: captured.proofValue,
         })) {
