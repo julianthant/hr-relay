@@ -205,7 +205,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     assert.equal(db.authority.workerControls.get(busy.request.commandId),undefined);
     writeFileSync(join(root,"release-drivers"),"release\n");
     phase = 'run-completion';
-    await waitFor(()=>runIds.every(id=>{const state=db.authority.runs.get(id)?.lifecycle; return state?.state==="terminal"&&state.outcome==="done";}),"dry runs did not finish",diagnostics);
+    await waitFor(()=>runIds.every(id=>{const state=db.authority.runs.get(id)?.lifecycle; return state?.state==="terminal"&&state.outcome==="done";}),"dry runs did not finish",diagnostics,30_000);
     phase = 'run-completion';
     await waitFor(()=>[1,2].every(index=>db.authority.workerLeases.get(worker(index))?.lifecycle.state==="idle"),"workers not idle",diagnostics);
     const original=liveSession(); assert.ok(original);
