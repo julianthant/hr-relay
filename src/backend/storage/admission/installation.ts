@@ -280,6 +280,8 @@ const MARKER = ".runtime-owner.json";
 const FENCE = ".runtime-source-fence.json";
 export const RUNTIME_ROOT_AUTHORITY_ENTRY_NAMES = Object.freeze([MARKER,FENCE]);
 const RECEIPTS = "relocation-receipts";
+const FlatStartCleanIntentSchema = z.strictObject({ schemaVersion: z.literal(1), installationId: z.uuid(),
+  backup: z.strictObject({ backupPath: z.string(), backupDigest: z.string() }) });
 const issuedLeases = new WeakSet<object>();
 
 function fail(reason: string): never { throw new Error(`runtime-control: ${reason}`); }
@@ -1086,6 +1088,7 @@ function readLocator(control: string, workspace: string, recovery?: { installati
 }
 function rawLocator(control: string, workspace: string): RuntimeLocator {
   const installation = readInstallation(control, workspace);
+  if (!lstatMaybe(join(control, "locator.json"))) fail("installation locator missing; offline recovery required");
   const locator = readStrict(join(control, "locator.json"), LocatorSchema);
   if (locator.installationId !== installation.installationId) fail("locator installation mismatch");
   validatePair(workspace, locator);
@@ -1934,6 +1937,14 @@ export function inspectPendingRelocationRecovery(workspacePath: string, operatio
 function preflightProfileFormats(control: string, workspace: string, stoppedForward: boolean): void {
   if (!lstatMaybe(join(control, "installation.json"))) return;
   const locator = rawLocator(control, workspace), machine = join(locator.stateRoot, "machine");
+  const clean = join(control, "flat-start-clean.json");
+  if (lstatMaybe(clean)) {
+    const intent = readStrict(clean, FlatStartCleanIntentSchema);
+    const backup = retainedStorageBackup(workspace, locator.installationId);
+    if (intent.installationId !== locator.installationId || backup === undefined
+      || canonicalJsonStringify(intent.backup) !== canonicalJsonStringify(backup)) fail("flat-start-clean-intent-changed");
+    return;
+  }
   if (!lstatMaybe(machine)) return;
   const marker = readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() }));
   const pending = join(control, "profile-control-upgrade.json");
@@ -2049,8 +2060,11 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (peers.some((peer) => mode === "exclusive" || peer.mode === "exclusive")) fail("installation lease busy");
     if (options?.recoverRelocation) assertLocalRestoreHeld(options.recoverRelocation.restoreAdmission);
     const resolved = existsSync(join(control, "installation.json")) ? readLocator(control, workspace, mode === "exclusive" ? options?.recoverRelocation : undefined, mode === "exclusive" ? options?.recoverAuthorityRestore : undefined) : (mode === "exclusive" && options?.defaultPair ? adopt(control, workspace, options.defaultPair, options.verifyExisting, options.initializeFresh, options.machine) : fail("installation locator missing"));
+    const publicationPath = join(control, "profile-publication.json");
+    const publication = lstatMaybe(publicationPath) ? readProfileEvidence(publicationPath, ProfilePublicationSchema) : undefined;
     credentialKeyCustody.migrateDirectory(join(resolved.stateRoot, "machine", "credential-keys"), resolved.installationId, admitCredentialKeyMigration(control, resolved, options?.stoppedControlForward === true), options?.readonlyControl !== true && peers.length === 0
-      && !lstatMaybe(join(control, "profile-publication.json")) && !lstatMaybe(join(control, "profile-control-upgrade.json")) && !lstatMaybe(join(control, "journal.json")));
+      && (publication === undefined || publication.kind === "profile" && publication.keyStage !== undefined)
+      && !lstatMaybe(join(control, "profile-control-upgrade.json")) && !lstatMaybe(join(control, "journal.json")));
     if (options?.machine === true) readMachineRegistry(control, resolved, options.readonlyControl !== true);
     return resolved;
   }); } catch (error) {
@@ -2404,8 +2418,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       const intentPath = join(control, "flat-start-clean.json");
       const intent = { schemaVersion: 1 as const, installationId: locator.installationId, backup: reference };
       if (lstatMaybe(intentPath)) {
-        const prior = readStrict(intentPath, z.strictObject({ schemaVersion: z.literal(1), installationId: z.uuid(),
-          backup: z.strictObject({ backupPath: z.string(), backupDigest: z.string() }) }));
+        const prior = readStrict(intentPath, FlatStartCleanIntentSchema);
         if (canonicalJsonStringify(prior) !== canonicalJsonStringify(intent)) fail("flat-start-clean-intent-changed");
       } else atomicJson(intentPath, intent);
       const source = SourceRecordSchema.parse(JSON.parse(backupFile(join(dirname(reference.backupPath), "source.json")).bytes.toString("utf8")));
@@ -2528,14 +2541,16 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (document.activeProfileId !== null || row?.lifecycle !== "cancelling" || operation.phase === "complete") {
           fail("profile-pending-logout-unavailable");
         }
-        const current = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), LogoutOperationSchema);
+        const file = readPrivateFile(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
+        if (file === undefined) fail("profile-pending-logout-operation-changed");
+        const current = LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
         if (canonicalJsonStringify(current) !== canonicalJsonStringify(operation)) fail("profile-pending-logout-operation-changed");
         const observation = profileObservation(control, locator);
         const publication = readPrivateFile(join(control, "profile-publication.json"), { label: "lock", maxBytes: 1_048_576 });
         const pending = publication === undefined ? { absent: true } : { device: publication.identity.device, inode: publication.identity.inode,
           digest: createHash("sha256").update(publication.bytes).digest("hex") };
         assertHeld();
-        return canonicalJsonStringify({ document, observation, pending });
+        return canonicalJsonStringify({ document, observation, pending, operationIdentity: file.identity });
       });
       const original = read();
       return Object.freeze({ assertHeld() {

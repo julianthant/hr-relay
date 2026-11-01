@@ -180,15 +180,17 @@ it("binds destination and retained source capabilities to one live relocation op
     const profile = await createBoundProfileFixture();
     cleanup = async () => await profile.close();
     const destination = { stateRoot: join(profile.workspace, 'relocation-target'), artifactRoot: join(profile.workspace, 'relocation-target-artifacts') };
-    const held = restore(profile.workspace, profile.lifetime);
+    const held = profile.admission.acquireOfflineMaintenance();
     cleanup = async () => { held.release(); await profile.close(); };
 
     const before = currentProfileRelocationSnapshot(profile.workspace);
     const registry = profile.machine.readProfileRegistry();
-    const source = AuthorityDatabase.inspectExistingReadOnly(profile.admission, profile.path);
+    const stopped = profile.admission.forStoppedMaintenance(held);
+    cleanup = async () => { stopped.release(); held.release(); await profile.close(); };
+    const source = AuthorityDatabase.inspectExistingReadOnly(stopped, profile.path);
     expect(() => profile.machine.beginRelocation(destination, currentProfileRelocationPlan(profile.machine.locator, destination), held))
       .toThrow(ProfileStorageRelocationUnsupportedError);
-    expect(AuthorityDatabase.inspectExistingReadOnly(profile.admission, profile.path)).toEqual(source);
+    expect(AuthorityDatabase.inspectExistingReadOnly(stopped, profile.path)).toEqual(source);
     expect(profile.machine.readProfileRegistry()).toEqual(registry);
     expect(currentProfileRelocationSnapshot(profile.workspace)).toEqual(before);
     expect(existsSync(destination.stateRoot)).toBe(false);

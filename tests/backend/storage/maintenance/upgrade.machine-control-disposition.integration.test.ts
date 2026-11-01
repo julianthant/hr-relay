@@ -48,10 +48,11 @@ it("converts only stopped machine-control format while keeping an incomplete his
   maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
   assert.deepEqual(current, { state: "current", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
-  assert.throws(() => maintenance.admitProfile(f.profileId), /profile-storage-claim-unavailable/u);
+  assert.throws(() => maintenance.admitProfile(f.profileId), /offline-maintenance-busy/u);
   for (const source of original) assert.equal(readFileSync(source.path).equals(source.bytes), true);
   maintenance.release();
   const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
+  assert.throws(() => machine.admitProfile(f.profileId), /profile-storage-claim-unavailable/u);
   const profile = composeProfileRuntime({ admission: machine,  hostFacts, clock: systemClock });
   const signed = profile.session.signIn({ email: historicalIncompleteProfileFields.email, password: historicalIncompleteProfileFields.password,
     at: new Date().toISOString() });
@@ -90,7 +91,9 @@ it("retains unbound schema2 suspect files and refuses conversion before control 
   writeFileSync(join(suspects, "unbound.sqlite"), "synthetic-unbound-suspect", { mode: 0o600 });
   try {
     const before = storageTree(f.workspace);
-    assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime), /profile-control-upgrade-suspect-custody-unproved/u);
+    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+    try { await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory), /profile-control-upgrade-suspect-custody-unproved/u); }
+    finally { maintenance.release(); }
     assert.deepEqual(storageTree(f.workspace), before);
   } finally { await f.close(); }
 });
@@ -115,9 +118,12 @@ for (const boundary of ["registry", "control", "marker"] as const) it(`retains t
   cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const current = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
   assert.deepEqual(current, { state: "current", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
-  assert.throws(() => cold.admitProfile(f.profileId), /profile-storage-claim-unavailable/u);
+  assert.throws(() => cold.admitProfile(f.profileId), /offline-maintenance-busy/u);
   for (const source of original) assert.equal(readFileSync(source.path).equals(source.bytes), true);
-  cold.release(); await f.close();
+  cold.release();
+  const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
+  try { assert.throws(() => machine.admitProfile(f.profileId), /profile-storage-claim-unavailable/u); }
+  finally { machine.release(); await f.close(); }
 });
 
 it("converts settled control3 and preserves exact completed historical upgrade artifacts", async () => {

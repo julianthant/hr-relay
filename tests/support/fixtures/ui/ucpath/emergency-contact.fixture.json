@@ -1,0 +1,70 @@
+{
+  "input": {
+    "emplId": "10000001",
+    "expectedName": "Example, Alex",
+    "contact": {
+      "name": "Morgan Example",
+      "relationship": "Mother",
+      "primary": false,
+      "cellPhone": "2025550100",
+      "homePhone": "2025550101",
+      "workPhone": "2025550102",
+      "address": {
+        "kind": "explicit",
+        "fields": {
+          "address1": "123 Example Street",
+          "address2": "Unit 4",
+          "city": "Example City",
+          "state": "CA",
+          "postalCode": "90001",
+          "country": "USA"
+        }
+      }
+    }
+  },
+  "page": {
+    "pageStateId": "ucpath.emergency-contact.editor-ready",
+    "displayedEid": "10000001",
+    "displayedName": "Example, Alex",
+    "observation": "persisted",
+    "view": "all",
+    "totalRows": 2,
+    "observedAt": "2026-11-01T12:00:00.000Z",
+    "rows": [
+      {
+        "rowIndex": 0,
+        "name": "Taylor Sample",
+        "relationship": "Friend",
+        "primary": true,
+        "phone": "(202) 555-0199",
+        "sameAddressAsEmployee": false,
+        "address": null
+      },
+      {
+        "rowIndex": 1,
+        "name": "",
+        "relationship": "",
+        "primary": false,
+        "phone": "",
+        "sameAddressAsEmployee": false,
+        "address": null
+      }
+    ]
+  },
+  "savedRow": {
+    "rowIndex": 1,
+    "name": "Morgan Example",
+    "relationship": "Parent",
+    "primary": false,
+    "phone": "(202) 555-0100",
+    "sameAddressAsEmployee": false,
+    "address": {
+      "address1": "123 Example Street",
+      "address2": "Unit 4",
+      "city": "Example City",
+      "state": "CA",
+      "postalCode": "90001",
+      "country": "USA"
+    }
+  }
+}

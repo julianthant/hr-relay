@@ -890,7 +890,7 @@ export async function prepareStorageBackupCommand(
   const release = (primary?: { error: unknown }) => {
     if (retained !== undefined) throw retained;
     if (released) return;
-    try { operation.release(); profile?.release(); }
+    try { if (storage !== admission && storage !== profile) storage.release(); profile?.release(); operation.release(); }
     catch (error) {
       retained = retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { admission: storage, restore: operation });
       throw retained;
@@ -906,7 +906,7 @@ export async function prepareStorageBackupCommand(
     if (selected !== undefined) admission.assertExclusive();
     const claim = selected === undefined ? undefined : selected.profileId;
     profile = claim === undefined ? undefined : admission.admitStoppedProfile(claim, operation);
-    storage = profile ?? admission;
+    storage = (profile ?? admission).forStoppedMaintenance(operation);
     selected?.assertCurrent();
     if (existsSync(join(storage.stateRoot, "state.db"))) {
       closure = await prepareStoppedBackupClosure(profileBrowserClosure, storage, operation, clock, join(repoRoot, isolation.processLockRoot));

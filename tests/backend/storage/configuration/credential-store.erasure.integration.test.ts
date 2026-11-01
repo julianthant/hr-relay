@@ -279,9 +279,9 @@ it("refuses passive doctor presence when an exact external erasure advances betw
   } });
   const originalCiphertext = readFileSync(stored.path);
   armed = true;
-  const report = await doctorAuthorityStorage(stored.admission, { stateRoot: stored.tracker, authorityPath: join(stored.tracker, "state.db"),
-    stateRootTrustAnchor: stored.stateRoot, backupDirectory: join(stored.tracker, "backups", "authority"), busyTimeoutMs: 250 }, undefined, stored.store);
-  assert.equal(report.protectedSettings.state, "unavailable");
+  await assert.rejects(doctorAuthorityStorage(stored.admission, { stateRoot: stored.tracker, authorityPath: join(stored.tracker, "state.db"),
+    stateRootTrustAnchor: stored.stateRoot, backupDirectory: join(stored.tracker, "backups", "authority"), busyTimeoutMs: 250 }, undefined, stored.store),
+  /authority changed while the storage doctor awaited external evidence \(initial=available; final=authority-unavailable\)/u);
   assert.ok(captured !== undefined);
   assert.ok(isDeepStrictEqual(snapshot(stored.machine.stateRoot), captured), "doctor changed external writer's settled bytes");
   assert.ok(isDeepStrictEqual(snapshot(join(stored.stateRoot, ".tracker", "control")), capturedControl), "doctor changed settled control bytes");

@@ -380,7 +380,7 @@ export class RuntimeAdmission {
     return "setup";
   }
   assertAuthorityBackupWrite(path: string): void {
-    if (this.#scope === "profile-maintenance") {
+    if (this.#scope === "profile-maintenance" || (this.#scope === "profile-upgrade" && this.#readyUpgrade === undefined)) {
       this.assertLive();
       const directory = join(this.#stateRoot, "backups", "authority");
       if (!isAbsolute(path) || resolve(path) !== path || path !== directory && (dirname(path) !== directory
@@ -413,9 +413,8 @@ export class RuntimeAdmission {
     }
   }
   authorityBackupExpectedSource(): AuthorityBackupExpectedSource {
-    this.assertReadable();
+    this.assertLive();
     const path = join(this.#stateRoot, "state.db");
-    this.assertReadOnlyAuthorityDatabase(path);
     if (this.#flatBackup !== undefined) {
       const backup = this.#flatBackup, proof = backup.qualification.current;
       if (backup.copyPath !== undefined || backup.sourceSchemaVersion !== 6 || proof.kind !== "qualified") throw new Error("authority-backup-source-unqualified");
@@ -423,6 +422,7 @@ export class RuntimeAdmission {
       return Object.freeze({ kind: "unbound-predecessor", schemaVersion: 6, authorityContentFingerprint: proof.sourceFingerprint });
     }
     if (this.#scope === "profile-upgrade") {
+      this.assertReadOnlyAuthorityDatabase(path);
       this.assertOfflineMaintenance(this.maintenanceOperation());
       const observed = readProfileDatabaseBinding(path);
       if (observed.state === "unbound") {

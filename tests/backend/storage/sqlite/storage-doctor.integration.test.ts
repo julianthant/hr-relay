@@ -339,7 +339,11 @@ afterEach(_afterEachFixture0);
     rmSync(copy, { recursive: true });
     writeFileSync(copy, "short");
     assert.equal(summarizeBackupHealth_m3(w.options, w.database.getMeta().authorityGeneration, w.clock), "missing");
-    const spy = vi.spyOn(fs, "lstatSync").mockImplementation(() => { throw Object.assign(new Error("denied"), { code: "EACCES" }); });
+    const lstat = fs.lstatSync;
+    const spy = vi.spyOn(fs, "lstatSync").mockImplementation((...args) => {
+      if (String(args[0]).startsWith(w.directory)) throw Object.assign(new Error("denied"), { code: "EACCES" });
+      return lstat(...args);
+    });
     syncBuiltinESMExports();
     try { assert.equal(summarizeBackupHealth_m3(w.options, undefined, w.clock), "unavailable"); }
     finally { spy.mockRestore(); syncBuiltinESMExports(); }

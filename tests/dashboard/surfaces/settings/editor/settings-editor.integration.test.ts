@@ -99,8 +99,9 @@ describe("typed Settings catalog controls", () => {
     assert.deepEqual([...host.querySelectorAll("h1")].map(node => node.textContent), ["Paths"]);
     assert.deepEqual([...host.querySelectorAll("h2")].map(node => node.textContent), ["Folders", "App dataManaged by Relay", "Backup and restore", "Workflow locations"]);
     assert.equal(host.querySelectorAll(".hub-settings-row input[readonly]").length, 2);
-    assert.equal(host.querySelectorAll(".settings-compact-row .ds-path-control button").length, 7);
-    for (const path of ["paths.browserProfileRoot", "paths.duoCredential", "paths.duoExtensionDir",
+    assert.equal(host.querySelectorAll(".settings-compact-row .ds-path-control button").length, 6);
+    assert.equal(host.querySelector('[data-settings-path="paths.duoCredential"]'), null);
+    for (const path of ["paths.browserProfileRoot", "paths.duoExtensionDir",
       "paths.reportsDir", "paths.downloadsDir", "paths.onboardingDocsDir", "paths.i9CheckTrackerPath"]) {
       const row = host.querySelector(`[data-settings-path="${path}"]`);
       if (row === null) throw new Error(`missing ${path} row`);

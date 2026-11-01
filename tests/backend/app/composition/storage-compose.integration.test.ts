@@ -2,7 +2,7 @@ import { storageTree } from "../../../support/helpers/integration/storage-recove
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
-import { withOfflineMaintenanceSync, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { withStoppedProfileMaintenanceSync, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
@@ -413,7 +413,7 @@ afterEach(_afterEachFixture0);
     assert.equal(applied.exitCode, 0, applied.output);
     assert.deepEqual(JSON.parse(applied.output), { ...JSON.parse(plan.output), state: "initialized" });
     const admission = admissions.get(p.repoRoot); assert.ok(admission);
-    withOfflineMaintenanceSync(admission, () => AuthorityDatabase.inspectStoppedUpgrade(admission, p.authorityPath, join_m0(p.repoRoot, rebuildRuntimeIsolation.processLockRoot), CLOCK));
+    withStoppedProfileMaintenanceSync(admission, stopped => AuthorityDatabase.inspectStoppedUpgrade(stopped, p.authorityPath, join_m0(p.repoRoot, rebuildRuntimeIsolation.processLockRoot), CLOCK));
     const database = new DatabaseSync(p.authorityPath, { readOnly: true });
     try { assert.deepEqual(database.prepare("SELECT * FROM settings").all(), []); }
     finally { database.close(); }

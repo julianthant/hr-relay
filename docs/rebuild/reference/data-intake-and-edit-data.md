@@ -121,13 +121,22 @@ The retained CLI helpers in `src/backend/transports/cli/ocr.ts` generate instruc
 
 ### 4.3 Stack classification and grouping
 
-`src/models/ocr/stack.ts` consumes a `ClassifiedStack`; it does not perform image classification. Duplicate `sourcePage` values refuse. `groupStack` puts each supplied page in a subject, `unidentified`, `otherForms`, or `dataless` bucket.
+`src/models/ocr/stack.ts` validates a `ClassifiedStack`; it does not perform image classification. Duplicate `sourcePage` values refuse. `groupStack` needs only page number, kind and subject name, and puts each supplied page in a subject, `unidentified`, `otherForms`, or `dataless` bucket.
 
 `personMatchKey` lowercases and sorts alphabetic name tokens, drops single-letter tokens, and requires at least two tokens. Matching is exact across the whole supplied stack. It does not pair adjacent pages or infer fuzzy name matches.
 
 A subject is `complete`, `duplicate`, or `incomplete`. Duplicates take precedence, while `missingKinds` still names absent sections. An I-9 comprises Section 1 and Section 2 pages; an orphan section remains visible as incomplete. `reportStack` exposes classified/accounted totals and kind counts. The schema does not prove the supplied classifications cover every page of the original PDF.
 
 ### 4.4 Durable extracted records
+
+The provider-free contracts in `src/models/workflows/ocr/` bind an original PDF and every rendered
+page in a fingerprinted source manifest. Page accounting retains one ordered child outcome per
+original page, including failed, cancelled and blocked children. Each successful reading binds its
+manifest, original page, image and explicit reading invocation. Replay keeps that extraction ID;
+a deliberate rereading uses a new invocation. Manual readings retain operator assertion provenance.
+The immutable review seed retains raw fields and absences, separate duplicate records, roster source
+evidence and match proposals, and explicit unresolved identity work. These contracts do not register
+an executable workflow, persist versions or approve records.
 
 The native `artifacts` table stores `imported`, `extracted`, and `generated` rows. `AuthorityDatabase.authority.ocrExtractions` stores admitted OCR records under `${sourceSha256}#${sourcePage}#${formType}`. An identical whole-record replay returns `existing`; different content at that key throws. Producer or timestamp changes can therefore conflict even when answer fingerprints agree.
 

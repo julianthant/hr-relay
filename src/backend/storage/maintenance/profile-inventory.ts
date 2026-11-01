@@ -241,18 +241,27 @@ export function assertStoppedBackupClosure(closure: StoppedBackupClosure, admiss
 
 export async function probeRestoreProfileBrowsersClosed(admission: RuntimeAdmission, processLockRoot: string,
   restore: OfflineMaintenanceOperation, clock: Clock, browserClosure: ProfileBrowserClosure): Promise<void> {
-  let custody: ReturnType<typeof AuthorityDatabase.readProfileRestoreBrowserInventory>;
-  try { custody = AuthorityDatabase.readProfileRestoreBrowserInventory(admission, processLockRoot, restore); }
-  catch (error) {
-    if (!unreadableRestoreSqlite(error)) throw error;
-    await probeUnreadableRestoreBrowsersClosed(admission, processLockRoot, restore, clock, browserClosure);
-    return;
-  }
-  const settings = custody.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
-    : custody.settingsAuthority.record.saved?.settings ?? custody.settingsAuthority.record.initialization.settings.settings;
-  const config = resolveConfigWithProvenance(settings, { primaryDisplay: null }, clock,
-    { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
-  await probeRetainedBrowsersClosed({ admission, custody, config, browserClosure, clock, signal: new AbortController().signal });
+  const owner = admission;
+  admission = owner.forStoppedMaintenance(restore);
+  let retain = false;
+  try {
+    let custody: ReturnType<typeof AuthorityDatabase.readProfileRestoreBrowserInventory>;
+    try { custody = AuthorityDatabase.readProfileRestoreBrowserInventory(admission, processLockRoot, restore); }
+    catch (error) {
+      if (!unreadableRestoreSqlite(error)) throw error;
+      await probeUnreadableRestoreBrowsersClosed(admission, processLockRoot, restore, clock, browserClosure);
+      return;
+    }
+    const settings = custody.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
+      : custody.settingsAuthority.record.saved?.settings ?? custody.settingsAuthority.record.initialization.settings.settings;
+    const config = resolveConfigWithProvenance(settings, { primaryDisplay: null }, clock,
+      { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
+    await probeRetainedBrowsersClosed({ admission, custody, config, browserClosure, clock, signal: new AbortController().signal });
+  } catch (error) {
+    retain = hasUnprovedSourceClosure(error);
+    if (retain) retainUnprovedSourceOwners(error, { admission, restore });
+    throw error;
+  } finally { if (!retain && admission !== owner) admission.release(); }
 }
 
 export class ProfileRestoreBrowserCustodyUnprovedError extends Error {

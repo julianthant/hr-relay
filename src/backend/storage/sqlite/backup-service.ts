@@ -27,7 +27,6 @@ import { inspectAuthorityBackupReadOnly, type AuthorityBackupSourceReadOnly } fr
 import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import {
-  AuthorityBackupManifestSchema,
   StoppedAuthorityBackupManifestSchema,
   UnboundPredecessorBackupManifestSchema,
   AuthorityBackupRequestSchema,
@@ -104,9 +103,14 @@ export async function verifyBackupBytesAtPath(
   }
 }
 
+function parseCurrentBackupManifest(value: unknown): AuthorityBackupManifest {
+  const manifest = StoppedAuthorityBackupManifestSchema.parse(value);
+  if (manifest.manifestVersion !== 4) throw new Error("backup-profile-binding-required");
+  return manifest;
+}
+
 export function parseBackupManifestFile(manifestPath: string): AuthorityBackupManifest {
-  const text = readFileSync(manifestPath, "utf8");
-  return AuthorityBackupManifestSchema.parse(JSON.parse(text));
+  return parseCurrentBackupManifest(JSON.parse(readFileSync(manifestPath, "utf8")));
 }
 
 export async function verifyBackupManifestAtPath(
@@ -173,7 +177,7 @@ function verifyStoppedManifest(manifestPath: string, expected: AuthorityBackupEx
   const file = readPrivateFile(manifestPath, { label: "lock", maxBytes: 64_000 });
   if (file === undefined) throw new Error("profile-maintenance-backup-manifest-required");
   const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes));
-  const manifest = expected.kind === "profile" ? AuthorityBackupManifestSchema.parse(value) : UnboundPredecessorBackupManifestSchema.parse(value);
+  const manifest = expected.kind === "profile" ? parseCurrentBackupManifest(value) : UnboundPredecessorBackupManifestSchema.parse(value);
   assertExpectedBackupSource(expected, manifest);
   if (expected.kind === "profile" && manifest.sourceDatabaseIdentity !== authoritySourceDatabaseIdentity(expected)) throw new Error("profile-maintenance-backup-source-mismatch");
   const backupPath = join(dirname(manifestPath), manifest.backupFileName);

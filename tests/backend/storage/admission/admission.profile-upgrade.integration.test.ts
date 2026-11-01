@@ -3,7 +3,7 @@ import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/n
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { composeProfileCredentialInitializationInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { storageRecoveryFixture, credentialTrap } from "../../../support/helpers/integration/storage-recovery-fixture.js";
+import { storageRecoveryFixture, credentialTrap, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, lstatSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -63,9 +63,16 @@ it.each([6, 7])("keeps pending setup database-only until canonical binding, then
     assert.equal(upgraded.state, "upgraded");
     assert.equal(upgraded.fromSchemaVersion, version);
     assert.equal(upgraded.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    store.migrateHistory({ operation });
-    assert.equal(store.read().revision, request.expectedRevision);
-    assert.equal(store.apply(request).state, "applied");
+    if (version === 6) {
+      const retained = storageTree(workspace);
+      assert.throws(() => store.migrateHistory({ operation }), /backup-profile-binding-required/u);
+      assert.deepEqual(storageTree(workspace), retained);
+      assert.throws(() => store.apply(request), /credential-key-required/u);
+    } else {
+      store.migrateHistory({ operation });
+      assert.equal(store.read().revision, request.expectedRevision);
+      assert.equal(store.apply(request).state, "applied");
+    }
     setup.release();
     assert.throws(() => setup.forStoppedProfileUpgrade(), /released admission/u);
   } finally { machine.release(); rmSync(workspace, { recursive: true, force: true }); }

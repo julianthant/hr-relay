@@ -368,3 +368,17 @@ export function withOfflineMaintenanceSync<Result>(admission: RuntimeAdmission,
   try { operation.release(); } catch (error) { throw retainAuthoritySourceClosure([error], { admission, restore: operation }); }
   return result;
 }
+
+export function withStoppedProfileMaintenanceSync<Result>(admission: RuntimeAdmission,
+  run: (stopped: RuntimeAdmission) => Result): Result {
+  return withOfflineMaintenanceSync(admission, operation => {
+    const stopped = admission.forStoppedMaintenance(operation);
+    let retain = false;
+    try { return run(stopped); }
+    catch (error) {
+      retain = hasUnprovedSourceClosure(error);
+      if (retain) retainUnprovedSourceOwners(error, { admission: stopped, restore: operation });
+      throw error;
+    } finally { if (!retain && stopped !== admission) stopped.release(); }
+  });
+}

@@ -34,7 +34,7 @@ import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, rmSync, readdirSync, lstatSync } from "node:fs";
 import { join } from 'node:path';
 import { describe, it, vi } from "vitest";
-import { createBoundProfileFixture, readAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, readAuthenticatedCredentialFixture, signInBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createCredentialStore, captureCredentialErasureHead, verifyCredentialErasureHead } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -185,7 +185,13 @@ describe("profile restore continuity", () => {
       :new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
     let primary:{error:unknown}|undefined;
     let operation: OfflineMaintenanceOperation | undefined;
-    const inventoryProbe=vi.spyOn(nativeBrowserInventory,"probeRestoreProfileBrowsersClosed");
+    const probe = nativeBrowserInventory.probeRestoreProfileBrowsersClosed;
+    const inventoryProbe=vi.spyOn(nativeBrowserInventory,"probeRestoreProfileBrowsersClosed").mockImplementation((owner, ...args) => {
+      assert.notEqual(owner, f.current());
+      assert.deepEqual(owner.profileBinding, f.current().profileBinding);
+      owner.assertStoppedProfile(args[1]);
+      return probe(owner, ...args);
+    });
     const native=vi.spyOn(profileBrowserClosure,"probeClosed").mockRejectedValue(refusal);
     try{
       const manifestPath=await f.backup(); operation=f.operation(); const request={manifestPath};
@@ -199,7 +205,7 @@ describe("profile restore continuity", () => {
         {copyFile:(from,to)=>{copies++;copyFileSync(from,to);},atomicReplace:(from,to)=>{replacements++;renameSync(from,to);}},f.store());
       await assert.rejects(restore.restore(request,operation),error=>error instanceof OfflineRestoreFailure
         &&error.authorityState==="unchanged"&&error.cause===refusal);
-      assert.equal(native.mock.calls.length,1);assert.equal(inventoryProbe.mock.calls[0]?.[0],f.current());
+      assert.equal(native.mock.calls.length,1);assert.equal(inventoryProbe.mock.calls.length,1);
       assert.deepEqual([copies,replacements,projections],[0,0,0]);
       const after=fs.lstatSync(f.path);
       assert.deepEqual([after.dev,after.ino,after.size,after.mtimeMs,after.ctimeMs],
@@ -651,6 +657,7 @@ describe("profile restore continuity", () => {
       restoreHandle.release(); restoreHandle = undefined; recovery.admission.release(); recovery = undefined;
       freshMachine = RuntimeAdmission.acquireMachine(f.workspace, "exclusive", f.lifetime);
       assert.equal(freshMachine.readProfileRegistry().sessionGeneration, beforeGeneration + 1);
+      signInBoundProfileFixture(freshMachine);
       const fresh = freshMachine.admitProfile(f.profileId);
       const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-recovered-fresh" }); database.close(); fresh.release();
     } finally {
@@ -722,6 +729,7 @@ describe("profile restore continuity", () => {
 
   it("reports replaced and retains the genuine root when exclusive operation release fails", async () => {
     const f = await world();
+    const manifestPath = await f.backup();
     const operation = f.operation(), journal = join(f.workspace, ".tracker", "control", "journal.json");
     const releaseFailure = new Error("synthetic-exact-operation-release-failure");
     const assertHeld = f.lifetime.assertOfflineMaintenance.bind(f.lifetime);
@@ -731,7 +739,6 @@ describe("profile restore continuity", () => {
       if (replaced && !existsSync(journal)) throw releaseFailure;
     });
     try {
-      const manifestPath = await f.backup();
       await assert.rejects(f.restore(async () => {}, (source, target) => { renameSync(source, target); replaced = true; })
         .restore({ manifestPath }, operation), error => error instanceof OfflineRestoreFailure
           && error.authorityState === "replaced" && error.message.includes("release failed"));
@@ -807,13 +814,13 @@ describe("profile restore continuity", () => {
 
 it("releases consumed restore ownership if stopped-facade derivation fails before payload effects", async () => {
   const f = await world();
+  const restore = f.restore();
+  createProfileRegistry(f.machine).advanceSession(null);
   const operation = f.operation();
   const before = readFileSync(f.path);
-  const failure = new Error("synthetic-stopped-admission-derivation-failure");
-  const derive = vi.spyOn(RuntimeAdmission.prototype, "forStoppedMaintenance").mockImplementationOnce(() => { throw failure; });
   try {
-    await assert.rejects(f.restore().restore({ manifestPath: "unused" }, operation), failure);
+    await assert.rejects(restore.restore({ manifestPath: "unused" }, operation), /profile-storage-claim-generation-changed/u);
     assert.equal(isOfflineMaintenanceOperationActive(operation), false);
     assert.deepEqual(readFileSync(f.path), before);
-  } finally { derive.mockRestore(); operation.release(); await f.close(); }
+  } finally { operation.release(); await f.close(); }
 });

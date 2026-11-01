@@ -1,4 +1,4 @@
-import { withOfflineMaintenanceSync, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { withStoppedProfileMaintenanceSync, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, linkSync, lstatSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -25,7 +25,7 @@ it("preserves the exact stopped-backup source witness after pending profile init
     const input = (args: readonly string[]) => composeStorageCommand(rebuildRuntimeIsolation, args, clock, f.workspace, f.admission);
     assert.equal((await input(["upgrade", "--plan", "--json"])).exitCode, 0);
     assert.equal((await input(["upgrade", "--json"])).exitCode, 0);
-    withOfflineMaintenanceSync(f.admission, () => AuthorityDatabase.inspectStoppedUpgrade(f.admission, f.path, join(f.workspace, rebuildRuntimeIsolation.processLockRoot), clock));
+    withStoppedProfileMaintenanceSync(f.admission, stopped => AuthorityDatabase.inspectStoppedUpgrade(stopped, f.path, join(f.workspace, rebuildRuntimeIsolation.processLockRoot), clock));
     const database = new DatabaseSync(f.path, { readOnly: true });
     try { assert.deepEqual(database.prepare("SELECT * FROM settings").all(), []); }
     finally { database.close(); }
