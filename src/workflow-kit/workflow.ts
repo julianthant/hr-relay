@@ -1,3 +1,4 @@
+import { DryRunStepSchema } from "../models/workflow/dry-run.js";
 import { lifecycleCommandId } from "../rules/commands/lifecycle-command-id.js";
 import { sha256Hex } from "../rules/validation/sha256.js";
 import type { RerunValueMappingSpec } from "../models/workflow/rerun-values.js";
@@ -53,7 +54,6 @@ import {
 import { GraphNodeKindSchema, DelegationManifestRefSchema, childRunOutcomeSchema, projectTransactionOutcome } from "../models/workflow/graph.js";
 import type { GraphNodeBase, RuntimeFlowNode } from "../models/workflow/graph.js";
 import {
-  TransactionDryRunPreviewSchema,
   TransactionOutcomeSchema,
 } from "../rules/write-safety/write-safety-primitives.js";
 import { WorkflowSurfacesSchema, parseInputRunText, toRawSubmission } from "../models/workflow/ingress.js";
@@ -361,7 +361,7 @@ export interface WorkflowProjections {
   /** Registered graph scenarios unioned with every used task contract's scenarios. */
   readonly scenarios: readonly ScenarioId[];
   readonly contracts: readonly AnyTaskContract[];
-  /** Whether this GRAPH can be previewed, and where a preview stops. */
+  /** Whether every transaction in this graph supports preparation without commit. */
   readonly dryRun: WorkflowDryRunSupport;
 }
 
@@ -369,8 +369,8 @@ export interface WorkflowProjections {
 export type WorkflowDryRunSupport =
   | Readonly<{
     state: "supported";
-    /** The first transaction node; a preview stops there (ref task-contract ). */
-    stopsAt: string;
+    /** First preparation boundary; its real dependencies are retained in preview evidence. */
+    firstTransactionNodeId: string;
   }>
   | Readonly<{ state: "unsupported"; reason: "no-transaction-node" }>
   | Readonly<{
@@ -390,7 +390,7 @@ function deriveDryRunSupport(nodes: readonly RuntimeFlowNode[]): WorkflowDryRunS
       return Object.freeze({ state: "unsupported", reason: "node-declares-unsupported", nodeId: String(node.id) });
     }
   }
-  return Object.freeze({ state: "supported", stopsAt: String(first.id) });
+  return Object.freeze({ state: "supported", firstTransactionNodeId: String(first.id) });
 }
 
 /** The ONE derivation every consumer shares — the projection computes it once. */
@@ -1535,34 +1535,31 @@ export function defineWorkflowDescriptor<
           `${id} is not previewable (${dryRun.reason}); no preview result can describe a run of it`,
         );
       }
-      const preview = TransactionDryRunPreviewSchema.parse(previewInput);
-      // A preview must name the node the executor could actually stop at.
-      if (preview.nodeId !== dryRun.stopsAt) {
-        throw new Error(
-          `preview for run ${currentRun.envelope.runId} stopped at "${preview.nodeId}", but ${id} previews `
-          + `stop at "${dryRun.stopsAt}"`,
-        );
+      const steps = z.array(DryRunStepSchema).parse(previewInput);
+      const expectedIds = nodes.map(node => String(node.id));
+      if (steps.length !== expectedIds.length || steps.some((step, index) => step.nodeId !== expectedIds[index])) {
+        throw new Error("dry-run preview must account for every declared node exactly once in execution order");
       }
-      const stopNode = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(preview.nodeId), "dry-run preview");
-      if (stopNode.kind !== "transaction") {
-        throw new Error(`${id}: dry-run preview node ${preview.nodeId} is a ${stopNode.kind} node`);
+      for (const step of steps) {
+        const node = nodeByIdOrThrow(id, nodes, step.nodeId, "dry-run preview");
+        if (step.state === "transaction-preview" && (node.kind !== "transaction" || step.preview.nodeId !== step.nodeId)) {
+          throw new Error("dry-run preview transaction membership mismatch");
+        }
+        if (node.kind === "transaction" && step.state === "exercised") throw new Error("a preview cannot claim a transaction executed");
       }
-      /** The preview's dependencies are the transaction node's OWN `dependsOn` (the facts its
-       *  prepare/commit read), not `terminalDependsOn` — the authored `derive` never ran. */
+      const firstTransaction = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(dryRun.firstTransactionNodeId), "dry-run preview");
       const { dependencies } = resolveTerminalDependencies(
         currentRun,
         evidenceInput,
-        dependencySpecFor(
-          stopNode.dependsOn.map((nodeId) => NodeIdSchema.parse(nodeId)),
-          "dry-run preview",
-        ),
+        dependencySpecFor([...new Set([...firstTransaction.dependsOn,
+          ...nodes.filter(node => node.kind === "task" && steps.find(step => step.nodeId === node.id)?.state === "exercised").map(node => node.id)])], "dry-run preview"),
         "dry-run preview",
       );
       const previewValue = JsonValueSchema.parse(RunDryRunPreviewResultSchema.parse({
         kind: "dry-run-preview",
-        stoppedAtNodeId: preview.nodeId,
         externalCommit: "none",
-        preview,
+        coverage: { state: "full" },
+        steps,
       }));
       // The hash of the bytes actually stored — never the descriptor's declared
       // result hash, which would make a preview readable as a completed workflow.

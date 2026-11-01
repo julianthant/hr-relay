@@ -248,7 +248,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         driver: binding.createDriver(page, this.#options.clock),
         beginDiagnostics: () => diagnostics.begin(),
         endDiagnostics: () => diagnostics.end(),
-        screenshot: async (): Promise<BrowserScreenshotEvidence> => {
+        screenshot: async (sampleLabels?: readonly string[]): Promise<BrowserScreenshotEvidence> => {
           const version = pageVersion;
           const identity = { pageVersion: version, sessionId, observedAt: this.#options.clock.now().toISOString() };
           const unavailable = (reason: Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"]): BrowserScreenshotEvidence => Object.freeze({ ...identity, state: "unavailable", reason });
@@ -261,6 +261,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             for (const frame of frames) if (await frame.locator(secretControls).count() > 0) return unavailable("secret-controls-present");
             if (pageVersion !== version) return unavailable("page-changed");
             const capture = await captureFullPage(page, {
+              ...(sampleLabels === undefined ? {} : { sampleLabels }),
               secretControls,
               afterCapture: async () => {
                 const after = await binding.verifyAuthenticated({ page, config, recordEvidence: this.#recordEvidence });

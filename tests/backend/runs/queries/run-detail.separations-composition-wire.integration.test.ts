@@ -92,10 +92,10 @@ describe("separations — start planning through the existing service", () => {
   } catch (error) { throw retainWireFailure(error); }
   });
 
-  it("dry-run stops at the first transaction node", async () => {
+  it("dry-run supports preparation at every transaction node", async () => {
     try {
     const support = workflowDryRunSupport(separationsDescriptor);
-    assert.deepEqual(support, { state: "supported", stopsAt: "clear-pending" });
+    assert.deepEqual(support, { state: "supported", firstTransactionNodeId: "clear-pending" });
 
     const transactions = descriptorRuntimeNodes(separationsDescriptor)
       .filter((node) => node.kind === "transaction");

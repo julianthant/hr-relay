@@ -306,6 +306,8 @@ export function sessionFactoryHarness(
           acceptDownloads: input.acceptDownloads,
           exclusive: input.exclusive,
           driver,
+          screenshot: async () => ({ state: "available" as const, sessionId, pageVersion: 1,
+            observedAt: EXECUTOR_NOW, bytes: new Uint8Array([137, 80, 78, 71]), width: 1280, height: 720 }),
           authentication: {
             authenticate: async (): Promise<"logged-in"> => {
               logins += 1;
@@ -376,6 +378,7 @@ export async function sessionManagerFor(
     workflowId: EXECUTOR_WORKFLOW_ID,
     stores: taskStoreRegistry,
     factory: harness.factory,
+    browserScreenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } },
     clock,
     scheduler,
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
@@ -383,6 +386,6 @@ export async function sessionManagerFor(
     ...(onEvent === undefined ? {} : { onEvent }),
   });
 
-  manager.bindRunConfigFingerprint(FingerprintSchema.parse(QUEUED_RUN.envelope.configFingerprint));
+  manager.bindRunConfigFingerprint(FingerprintSchema.parse(QUEUED_RUN.envelope.configFingerprint), "headless", { runId: QUEUED_RUN.envelope.runId, descriptorFingerprint: QUEUED_RUN.envelope.contractFingerprint, captureBrowserScreenshots: false });
   return manager;
 }

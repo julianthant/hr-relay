@@ -768,19 +768,21 @@ export function deriveRunEvidenceReceipt(
       evidence: [],
     });
 
-    const reached = preview.preview.outcome.state === "would-prepare"
-      ? `staged its page and observed subject ${preview.preview.outcome.subject.state}`
-      : `settled ${preview.preview.outcome.state} at its ${preview.preview.probe.state} probe, `
-        + "before anything was staged";
+    const reached = preview.steps.flatMap(step => step.state !== "transaction-preview" ? [] : [
+      `transaction node "${step.nodeId}" ${step.preview.outcome.state === "would-prepare"
+        ? `staged its page and observed subject ${step.preview.outcome.subject.state}`
+        : `settled already-present at its ${step.preview.probe.state} probe, before anything was staged`}`,
+    ]).join("; ");
+    const unavailable = preview.steps.filter(step => step.state === "unavailable").map(step => step.nodeId);
+    const samples = preview.steps.flatMap(step => step.state === "transaction-preview" ? step.samples : []);
     warnings.push({
-      id: entryId("warning", "dry-run-preview"),
-      code: ErrorCodeSchema.parse("DRY_RUN_PREVIEW"),
-      summary: `this run was a DRY RUN: transaction node "${preview.stoppedAtNodeId}" was previewed `
-        + `(${reached}, observed ${preview.preview.observedAt}) and the run ended `
-        + "there. No external write was attempted — no write intent, no fence, no commit — so this "
-        + "receipt states what WOULD have been written, never what was",
-      loadBearing: true,
-      evidence: [],
+      id: entryId("warning", "dry-run-preview"), code: ErrorCodeSchema.parse("DRY_RUN_PREVIEW"),
+      summary: `this run was a DRY RUN: ${reached}. `
+        + (preview.coverage.state === "partial" ? "Historical partial preview; later stages were not recorded. " : "Every declared stage is accounted for. ")
+        + (unavailable.length === 0 ? "" : `Unavailable stages: ${unavailable.join(", ")}. `)
+        + (samples.length === 0 ? "" : samples.map(sample => `${sample.label}: ${sample.field} = ${canonicalJsonStringify(sample.value)}. `).join(""))
+        + "No external write was attempted — no write intent, no fence, no commit. Samples are preview-only values, never receipts or write authority.",
+      loadBearing: true, evidence: [],
     });
   } else if (result !== undefined && terminalEvidence === undefined) {
     const resultScope: EvidenceValueScope = { kind: "workflow-result", workflowId: descriptor.id };

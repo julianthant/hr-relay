@@ -8,7 +8,7 @@ import {
 } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import { terminalEvidenceResult, type RunResultRecord } from "../../../models/run/result.js";
+import { RunDryRunPreviewResultSchema, terminalEvidenceResult, type RunResultRecord } from "../../../models/run/result.js";
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -196,10 +196,13 @@ export function evaluateReceiptDerivationBinding(
     // Preview terminal dependencies bind the preview boundary, not ordinary workflow success dependencies.
     const dryRun = workflowDryRunSupport(descriptor);
     const previewed = run.envelope.dryRun;
-    const declared = (previewed && dryRun.state === "supported"
-      ? descriptorRuntimeNodes(descriptor)
-        .find((node) => String(node.id) === dryRun.stopsAt)?.dependsOn ?? []
-      : workflowTerminalResultExecution(descriptor).dependsOn).map(String);
+    const preview = previewed ? RunDryRunPreviewResultSchema.parse(result.result.value) : undefined;
+    const firstDependencies = dryRun.state === "supported" ? descriptorRuntimeNodes(descriptor)
+      .find(node => String(node.id) === dryRun.firstTransactionNodeId)?.dependsOn ?? [] : [];
+    const declared = preview === undefined ? workflowTerminalResultExecution(descriptor).dependsOn.map(String)
+      : [...new Set([...firstDependencies.map(String), ...descriptorRuntimeNodes(descriptor)
+        .filter(node => node.kind === "task" && preview.steps.some(step => step.nodeId === node.id && step.state === "exercised"))
+        .map(node => String(node.id))])];
     const retained = result.dependencies.map((dependency) => String(dependency.nodeId));
     checks.push(canonicalJsonStringify([...declared].sort()) === canonicalJsonStringify([...retained].sort())
       ? held("terminal-dependency-set", `both depend on [${declared.join(", ")}]`)

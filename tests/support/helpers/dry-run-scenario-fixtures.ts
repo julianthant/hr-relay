@@ -77,7 +77,8 @@ const EvidenceTerminalSchema = z.discriminatedUnion("lifecycle", [
     resultSchema: z.literal("RunDryRunPreviewResultSchema"),
     kind: z.literal("dry-run-preview"),
     externalCommit: z.literal("none"),
-    stoppedAtNodeId: z.string().min(1),
+    coverage: z.literal("full"),
+    previewedNodeIds: z.array(z.string().min(1)).min(1),
     preview: EvidencePreviewSchema,
   }),
   z.strictObject({
@@ -271,7 +272,8 @@ export function evaluateDryRunScenarioEvidence(
       && evidence.terminal.resultSchema === scenarioCase.terminal.resultSchema
       && evidence.terminal.kind === scenarioCase.terminal.kind
       && evidence.terminal.externalCommit === scenarioCase.terminal.externalCommit
-      && evidence.terminal.stoppedAtNodeId === scenarioCase.terminal.stoppedAtNodeId;
+      && evidence.terminal.coverage === scenarioCase.terminal.coverage
+      && same(evidence.terminal.previewedNodeIds, scenarioCase.terminal.previewedNodeIds);
   const previewMatches = scenarioCase.preview.outcome === "not-reached"
     ? evidence.terminal.lifecycle === "failed"
     : evidence.terminal.lifecycle === "done"
@@ -465,7 +467,7 @@ const MANIFEST = {
       resultSchema: "RunDryRunPreviewResultSchema",
       kind: "dry-run-preview",
       externalCommit: "none",
-      stoppedAtNodeId: "write",
+      coverage: "full", previewedNodeIds: ["write"],
     },
     preview: { outcome: "would-prepare", subject: "match", staged: true },
   }],

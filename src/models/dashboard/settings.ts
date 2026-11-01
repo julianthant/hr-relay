@@ -27,9 +27,9 @@ export const SystemHostWireSchema = z.strictObject({
 });
 export type SystemHostWire = z.infer<typeof SystemHostWireSchema>;
 
-/** Where a dry run stops, per workflow — the wire face of `WorkflowDryRunSupport`. */
+/** Whole-workflow preview support and its first preparation boundary. */
 export const DryRunPostureWireSchema = z.union([
-  z.strictObject({ state: z.literal("supported"), stopsAt: NodeIdSchema }),
+  z.strictObject({ state: z.literal("supported"), firstTransactionNodeId: NodeIdSchema }),
   z.strictObject({ state: z.literal("unsupported"), reason: z.literal("no-transaction-node") }),
   z.strictObject({
     state: z.literal("unsupported"),

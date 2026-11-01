@@ -101,7 +101,7 @@ export const DryRunProbeObservationSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), evidence: AbsentEvidenceSchema }),
   z.strictObject({
     state: z.literal("not-required"),
-    reason: z.literal("policy-retries-and-recovery-only"),
+    reason: z.enum(["policy-retries-and-recovery-only", "preview-only-sample"]),
   }),
 ]);
 export type DryRunProbeObservation = z.infer<typeof DryRunProbeObservationSchema>;

@@ -31,7 +31,7 @@ export const CAPABILITY_SPECS: readonly CapabilitySpec[] = Object.freeze([
   {
     key: "dry-run",
     label: "Dry run",
-    meaning: "Offers a rehearsal that reads everything for real and writes nothing. A workflow that changes no system of record has nothing to rehearse.",
+    meaning: "Previews each applicable stage without submitting. Sample values are labelled and unavailable stages stay visible. A workflow that changes no system of record uses Live read.",
   },
   {
     key: "edit-data",
@@ -76,7 +76,7 @@ export interface CapabilityRow {
 
 function dryRunCell(row: WorkflowCapabilityRowWire): CapabilityCell {
   if (row.dryRun.state === "supported") {
-    return { state: "available", detail: `stops at ${String(row.dryRun.stopsAt)}` };
+    return { state: "available", detail: "traverses all applicable stages" };
   }
   if (row.dryRun.reason === "no-transaction-node") {
     return { state: "not-applicable", reason: "writes to no system of record" };
@@ -88,7 +88,7 @@ function dryRunCell(row: WorkflowCapabilityRowWire): CapabilityCell {
 /** Distinguish preview support, no transactions and preview refusal before offering a real write. */
 export function dryRunPostureSentence(row: WorkflowCapabilityRowWire): string {
   if (row.dryRun.state === "supported") {
-    return `Stops after the prepare of ${String(row.dryRun.stopsAt)} — nothing is committed.`;
+    return "Reads, fills, verifies and captures each applicable stage without submitting; sample values are labelled dry-run sample.";
   }
   if (row.dryRun.reason === "no-transaction-node") {
     return "Nothing to stop at: this graph commits to no system of record, so a rehearsal of it is an ordinary run.";
