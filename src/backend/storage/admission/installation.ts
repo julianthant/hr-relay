@@ -1302,6 +1302,9 @@ function assertOnboardingFinishPublicationDocument(locator: RuntimeLocator,
     || canonicalJsonStringify(added[0].registration.onboardingCompletion) !== canonicalJsonStringify(profileOnboardingCompletion(operation))) fail("profile-onboarding-finish-invalid");
   const current = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), SignUpOperationSchema);
   if (canonicalJsonStringify(current) !== canonicalJsonStringify(operation)) fail("profile-onboarding-finish-operation-changed");
+  const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
+  if (pepper === undefined || pepper.bytes.length !== 32 || pepper.identity.device !== intent.pepper.device || pepper.identity.inode !== intent.pepper.inode
+    || createHash("sha256").update(pepper.bytes).digest("hex") !== intent.pepper.digest) fail("profile-onboarding-finish-pepper-changed");
 }
 
 function prepareProfileOnboardingFinish(control: string, locator: RuntimeLocator,
@@ -1310,9 +1313,6 @@ function prepareProfileOnboardingFinish(control: string, locator: RuntimeLocator
   const { operation, prior, priorDocument, document, priorVerifiers, verifiers } = intent;
   const root = join(locator.stateRoot, "profiles", operation.profileId), registryPath = join(locator.stateRoot, "machine", "profiles.json"),
     verifierPath = join(locator.stateRoot, "machine", "profile-verifiers.json");
-  const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
-  if (pepper === undefined || pepper.bytes.length !== 32 || pepper.identity.device !== intent.pepper.device || pepper.identity.inode !== intent.pepper.inode
-    || createHash("sha256").update(pepper.bytes).digest("hex") !== intent.pepper.digest) fail("profile-onboarding-finish-pepper-changed");
   revalidate(); assertCanonicalProfileBinding(join(root, "state.db"), { installationId: locator.installationId, profileId: operation.profileId });
   if (canonicalJsonStringify(profileAuthorityFileWitnesses(root)) !== canonicalJsonStringify(intent.databases)) fail("profile-onboarding-finish-source-changed");
   const currentVerifiers = readStrict(verifierPath, ProfileVerifierDocumentSchema), currentDocument = readStrict(registryPath, ProfileRegistryDocumentSchema);
