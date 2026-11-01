@@ -15,7 +15,7 @@ import { fsyncPath, replacePrivateFile, writePrivateStage } from "../private-pat
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
 import { validateDuoKeyPair } from "./duo-signing.js";
 import { credentialKeyCustody } from "./credential-key-custody.js";
-import { assertPrivateFileLockBytes, capturePriorPrivateFileLock, createPrivateLock, ensureChildDirectory, noSymlinkAncestry, readPrivateFile, PrivateFileReadTransitionError, removeExactPath, statDirectory, withPrivateFileLock, PrivateFileLockUnavailableError, type DirectoryIdentity } from "./credential-safe-file.js";
+import { assertPrivateFileLockBytes, capturePriorPrivateFileLock, createPrivateLock, ensureChildDirectory, noSymlinkAncestry, readPrivateFile, PrivateFileReadTransitionError, removeExactPath, statDirectory, withPrivateFileLock, withOperationProof, PrivateFileLockUnavailableError, type DirectoryIdentity } from "./credential-safe-file.js";
 
 export type CanonicalCredentialKind = "protected" | "duo" | "chatgpt";
 export type CanonicalCredentialRecord = Readonly<{ revision: number; value: unknown }>;
@@ -945,7 +945,7 @@ export function createCanonicalCredentials(admissionInput: RuntimeAdmission,
   const ownedStages = new Map<string, Readonly<{ bytes: Buffer; kind?: CanonicalCredentialKind; identity?: DirectoryIdentity }>>();
   let publicationEpoch = 0;
   function assertAccess(): void {
-    admission.assertCredentialRead();
+    admission.assertLive();
     if (!noSymlinkAncestry(directory, ancestry)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     statDirectory(directory, "canonical credential head", 0o700);
   }
@@ -958,28 +958,32 @@ export function createCanonicalCredentials(admissionInput: RuntimeAdmission,
     throw new CanonicalCredentialError(busy ? "CREDENTIAL_BUSY" : code, { cause: error });
   }
   function readHead(): { head: Head; key: Buffer } {
-    assertAccess();
-    if (readPrivateFile(operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CanonicalCredentialError("CREDENTIAL_BUSY");
-    const file = readPrivateFile(headPath, { label: "lock", maxBytes });
-    if (file === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
-    const parsed = CanonicalCredentialHeadSchema.safeParse(parse(file.bytes));
-    if (!parsed.success) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
-    const head = parsed.data;
-    if (head.installationId !== binding.installationId || head.profileId !== binding.profileId || head.state !== "active") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-    const key = authenticateHead(head);
-    inspectCanonicalNamespace(canonical, head, key, ownedStages, assertAccess, ancestry);
-    if (capturedGeneration !== undefined && (head.generation !== capturedGeneration.generation || head.key.keyId !== capturedGeneration.keyId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-    capturedGeneration ??= { generation: head.generation, keyId: head.key.keyId };
-    assertAccess(); return { head, key };
+    return withOperationProof(() => {
+      admission.assertCredentialRead();
+      assertAccess();
+      if (readPrivateFile(operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CanonicalCredentialError("CREDENTIAL_BUSY");
+      const file = readPrivateFile(headPath, { label: "lock", maxBytes });
+      if (file === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
+      const parsed = CanonicalCredentialHeadSchema.safeParse(parse(file.bytes));
+      if (!parsed.success) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
+      const head = parsed.data;
+      if (head.installationId !== binding.installationId || head.profileId !== binding.profileId || head.state !== "active") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      const key = authenticateHead(head);
+      inspectCanonicalNamespace(canonical, head, key, ownedStages, assertAccess, ancestry);
+      if (capturedGeneration !== undefined && (head.generation !== capturedGeneration.generation || head.key.keyId !== capturedGeneration.keyId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      capturedGeneration ??= { generation: head.generation, keyId: head.key.keyId };
+      assertAccess(); admission.assertCredentialRead(); return { head, key };
+    });
   }
   function assertCurrent(): void { try { readHead(); } catch (error) { translate(error); } }
   function read(kind: CanonicalCredentialKind): CanonicalCredentialRecord | undefined {
-    const { head, key } = readHead();
-    assertCurrent();
-    if (!noSymlinkAncestry(dirname(paths[kind]), ancestry)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-    const file = readPrivateFile(paths[kind], { label: "protected.json", maxBytes });
-    if (file === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-    const record = open(head, key, kind, file.bytes); assertCurrent(); return record;
+    return withOperationProof(() => {
+      const { head, key } = readHead();
+      if (!noSymlinkAncestry(dirname(paths[kind]), ancestry)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      const file = readPrivateFile(paths[kind], { label: "protected.json", maxBytes });
+      if (file === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      const record = open(head, key, kind, file.bytes); assertCurrent(); return record;
+    });
   }
   function publish(path: string, bytes: Buffer, kind?: CanonicalCredentialKind): void {
     const stage = join(dirname(path), `.${binding.profileId}.${randomUUID()}.canonical.tmp`);

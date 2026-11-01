@@ -29,6 +29,7 @@ import { createRunResourcesFactory, type BrowserProfileAuthority } from "./worke
 import { bindFailureCapture } from "../../runs/lifecycle/failure-resolution.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
 import { captureSelectedProfileStorage, RuntimeCustodyUncertainError } from "./storage-compose.js";
+import { withOperationProof } from "../../storage/configuration/credential-safe-file.js";
 import { assertProfileBrowserRoot } from "./profile-credential-inventory.js";
 import { type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
@@ -443,6 +444,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   try {
     selected.assertCurrent();
     issued = machine.admitProfile(selected.profileId);
+    selected.assertCurrent();
     protectedAuthority = createCredentialStore({ admission: issued, stateRoot });
   } catch (error) {
     if (hasUnprovedSourceClosure(error)) {
@@ -455,7 +457,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     throw error;
   }
   const admission = issued;
-  const assertCurrent = (): void => { selected.assertCurrent(); admission.assertProfileRuntime(); };
+  const assertCurrent = (): void => withOperationProof(() => admission.assertProfileRuntime());
   const assertBrowserRoot = (root: string): void => { assertCurrent(); assertProfileBrowserRoot(admission, root); };
   let opened: AuthorityDatabase | undefined;
   const bound = (() => {
@@ -589,7 +591,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     onDebug: (category, debugWorkerId, event) => {
       debugEvents.emit({ category, ...event }, { kind: "worker", workerId: debugWorkerId });
     },
-    assertProfileOwner: requestedWorkerId => {
+    assertProfileOwner: requestedWorkerId => withOperationProof(() => {
       assertCurrent();
       if (requestedWorkerId !== workerId) throw new Error("browser-profile-worker-owner-mismatch");
       input.lifetimeLock.assertHeld();
@@ -597,7 +599,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       if (lease?.processId !== process.pid || lease.leaseGeneration !== workerLifetime.leaseGeneration
         || member?.membershipRevision !== workerLifetime.membershipRevision || member.retiredAt !== null
         || !isLiveWorker(lease)) throw new Error("browser-profile-worker-owner-mismatch");
-    },
+    }),
     ...(input.sessionFactory === undefined ? {} : {sessionFactory:input.sessionFactory}),
     ...(input.createSessionFactory === undefined ? {} : {createSessionFactory:input.createSessionFactory}),
     ...(input.duoCeremony === undefined ? {} : {duoCeremony:input.duoCeremony})});
@@ -847,8 +849,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         },
         providers: baselineResources.providers,
         resourcesForRun: run => { assertCurrent(); return ownedResources.forRun(run); },
-        idleCadence: () => resolveConfigWithProvenance(readSettings(database.authority).settings,hostFacts,clock,
-          { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.daemon.idleRepollMs,
+        idleCadence: () => withOperationProof(() => resolveConfigWithProvenance(readSettings(database.authority).settings,hostFacts,clock,
+          { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.daemon.idleRepollMs),
         artifacts,
         writeSequencerFor: (sessions, taskDeadlineMs) => createWriteSequencer({
           stores,
