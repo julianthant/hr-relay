@@ -10,7 +10,7 @@ import { absentProbeEvidence, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, writeFixt
 const { harness, cleanup } = createDryRunPreviewResultTestWorld();
 afterEach(cleanup);
 
-it("previews both ordered writes and accounts for an unavailable dependent read without committing", async () => {
+it("previews both ordered writes and accounts for a skipped gate and unavailable dependent read without committing", async () => {
   const h = await harness(writeFixtureTraversalDescriptor);
   h.world.commitThrows = new Error("preview must never invoke a commit task");
   h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -19,8 +19,13 @@ it("previews both ordered writes and accounts for an unavailable dependent read 
   assert.ok(result);
   const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
   assert.deepEqual(preview.steps.map(step => [step.nodeId, step.state]), [
-    ["submit-write", "transaction-preview"], ["second-write", "transaction-preview"], ["after-write", "unavailable"],
+    ["submit-write", "transaction-preview"], ["second-write", "transaction-preview"],
+    ["not-required", "not-run"], ["after-write", "unavailable"],
   ]);
+  assert.deepEqual(preview.steps.find(step => step.nodeId === "not-required"), {
+    nodeId: "not-required", state: "not-run", reason: "condition-false",
+  });
+  assert.equal(h.database.authority.gateResults.get(`${WRITE_FIXTURE_RUN_ID}:not-required`), undefined);
   assert.equal(preview.coverage.state, "full");
   assert.equal(h.world.events.filter(event => event === "prepare").length, 2);
   assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, 0);
@@ -38,6 +43,6 @@ it("previews both ordered writes and accounts for an unavailable dependent read 
     }, WRITE_FIXTURE_RUN_ID, undefined, run);
     assert.ok(section.section === "logs");
     assert.ok(section.payload.dryRunPreview?.state === "available");
-    assert.deepEqual(section.payload.dryRunPreview.stages.map(stage => stage.state), ["exercised", "exercised", "unavailable"]);
+    assert.deepEqual(section.payload.dryRunPreview.stages.map(stage => stage.state), ["exercised", "exercised", "skipped", "unavailable"]);
   } finally { await world.dispose(); }
 });

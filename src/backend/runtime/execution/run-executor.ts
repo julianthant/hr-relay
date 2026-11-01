@@ -1672,6 +1672,7 @@ export async function executeClaimedRun(
               return await failNode(node, undefined, new Error(`inapplicable gate "${node.id}" carries a stored operator result; evidence changed`));
             }
             skippedReasons.set(String(node.id), "condition-false");
+            if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "not-run", reason: "condition-false" });
             continue;
           }
           transitionTo(runningLifecycle(node.id));

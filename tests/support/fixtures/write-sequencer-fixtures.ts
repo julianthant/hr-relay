@@ -499,6 +499,9 @@ function buildDescriptor(
     commit: { uses: commitContract, bind: ({ input }) => ({ eid: input.eid }) },
     previewBind: ({ input }) => ({ prepare: { eid: input.eid }, commit: { eid: input.eid }, samples: [] }),
     dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000,
+  }).gate("not-required", { dependsOn: [], label: "Not required", resolvedBy: "operator",
+    result: z.strictObject({ approved: z.boolean() }),
+    when: { kind: "not-equals", of: { from: "input", path: "eid" }, value: WRITE_FIXTURE_EID },
   }).step("after-write", WriteFixtureProbe, { dependsOn: ["second-write"], replay: "always-rerun",
     bind: ({ input }) => ({ eid: input.eid }) }).build({ schema: z.strictObject({ transactionId: z.string().min(1) }),
       dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => ({ transactionId: outputs[WRITE_FIXTURE_NODE_ID].output.transactionId }) });
