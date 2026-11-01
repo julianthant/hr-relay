@@ -425,7 +425,7 @@ export function captureCanonicalCredentialStartupLocks(lifetime: RuntimeLifetime
 
 export function captureCanonicalCredentialPublication(machine: RuntimeAdmission, profile: RuntimeAdmission,
   operation: SignUpOperation, publication: ProfilePublicationRead) {
-  requireRuntimeAdmission(machine); requireRuntimeAdmission(profile);
+  requireRuntimeAdmission(machine); requireRuntimeAdmission(profile, publication);
   const assertCurrent = () => machine.assertCanonicalCredentialCreation(profile, operation, publication);
   const source = assertCurrent(), ancestry = new Map<string, DirectoryIdentity>();
   const paths = fixedCanonicalPaths(source.machineRoot, source.profileRoot, source.binding);

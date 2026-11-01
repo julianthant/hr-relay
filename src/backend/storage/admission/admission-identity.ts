@@ -7,9 +7,9 @@ export function registerRuntimeAdmission(admission: RuntimeAdmission): void {
   issued.add(admission);
 }
 
-export function requireRuntimeAdmission(value: RuntimeAdmission | undefined): RuntimeAdmission {
+export function requireRuntimeAdmission(value: RuntimeAdmission | undefined, publication?: Parameters<RuntimeAdmission["assertLive"]>[0]): RuntimeAdmission {
   if (value === undefined || !issued.has(value)) throw new Error("runtime-admission: required");
-  value.assertLive();
+  value.assertLive(publication);
   return value;
 }
 

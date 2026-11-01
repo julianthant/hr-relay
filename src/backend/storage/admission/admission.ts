@@ -94,7 +94,7 @@ function assertActiveRootSafe(path: string): void {
 
 type AdmissionAuthority = Readonly<{
   retainSourceClosure?(error: unknown): void;
-  assertHeld(): void;
+  assertHeld(publication?: ProfilePublicationRead): void;
   captureRestoreContext?(credentials: ReturnType<typeof captureStoppedCanonicalCredentialHead>): ProfileRestoreContext;
   beginAuthorityRestore?(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void;
   settleAuthorityRestore?(input: AuthorityRestoreInput, outcome: "unchanged" | "replaced", verify: AuthorityRestoreVerifier, restore: OfflineMaintenanceOperation): void;
@@ -143,7 +143,7 @@ export class RuntimeAdmission {
   #released = false;
   readonly #sourceFailures = new Set<unknown>();
   #stoppedControlInventory: StoppedControlProfileInventory | undefined;
-  #stoppedLogout: { operation: LogoutOperation; restore: OfflineMaintenanceOperation; witness: Readonly<{ assertHeld(): void }> } | undefined;
+  #stoppedLogout: { operation: LogoutOperation; restore: OfflineMaintenanceOperation; witness: ReturnType<InstallationLease["capturePendingProfileLogout"]> } | undefined;
   readonly #profileBinding: ProfileDatabaseBinding | undefined;
   readonly #profileParent: RuntimeAdmission | undefined;
   readonly #pendingLogout: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }> | undefined;
@@ -553,7 +553,7 @@ export class RuntimeAdmission {
     }
   }
   readProfileRegistration(lease: InstallationLease, operation: SignUpOperation, publication: ProfilePublicationRead) {
-    requireRuntimeAdmission(this);
+    requireRuntimeAdmission(this, publication);
     const machine = this.#profileParent;
     if (machine === undefined || machine.#authority !== lease || !(lease.lifetime instanceof RuntimeLifetimeLock)) throw new Error("profile-publication-owner-required");
     assertFinishedProfileOnboarding(operation);
@@ -697,9 +697,9 @@ export class RuntimeAdmission {
     lifetime.assertOfflineMaintenance(restore, context.workspace);
     const operation = deepFreeze(LogoutOperationSchema.parse(input)), lease = this.#authority as InstallationLease;
     const state = { operation, restore, witness: lease.capturePendingProfileLogout(operation) };
-    const held = () => {
+    const held = (publication?: ProfilePublicationRead) => {
       this.assertLive(); owner.assertLive();
-      lifetime.assertOfflineMaintenance(restore, context.workspace); state.witness.assertHeld();
+      lifetime.assertOfflineMaintenance(restore, context.workspace); state.witness.assertHeld(publication);
     };
     held();
     const admission = new RuntimeAdmission(issuanceToken, { assertHeld: held, readInstallationContext: () => this.readInstallationContext(),
@@ -709,8 +709,8 @@ export class RuntimeAdmission {
     admission.#stoppedLogout = state;
     return admission;
   }
-  assertPendingLogoutPublicationOwner(lease: InstallationLease, restore: OfflineMaintenanceOperation): void {
-    this.assertLive();
+  assertPendingLogoutPublicationOwner(lease: InstallationLease, restore: OfflineMaintenanceOperation, publication: ProfilePublicationRead): void {
+    this.assertLive(publication);
     if (this.#stoppedLogout?.restore !== restore || (this.#profileParent === undefined || this.#profileParent.#authority !== lease)) throw new Error("profile-logout-publication-owner-mismatch");
   }
   commitPendingLogoutSettlement(next: LogoutOperation, source: AuthorityDatabase): void {
@@ -815,7 +815,7 @@ export class RuntimeAdmission {
     noSymlinkAncestry(root, ancestry);
     let restoreCustody: { input: AuthorityRestoreInput; restore: OfflineMaintenanceOperation } | undefined;
     let restoreSettled = false;
-    const assertHeld = () => {
+    const assertHeld = (scope?: ProfilePublicationRead) => {
       this.assertLive();
       if (restoreSettled) throw new Error("profile-restore-context-expired");
       if (maintenance !== undefined) this.assertOfflineMaintenance(maintenance);
@@ -828,7 +828,7 @@ export class RuntimeAdmission {
       const verified = proof?.slots.get(PROFILE_CUSTODY_PROOF);
       if (verified instanceof WeakSet && verified.has(claim)) return;
       if (!noSymlinkAncestry(root, ancestry)) throw new Error("profile-storage-root-disappeared");
-      claim.verify("custody");
+      claim.verify("custody", scope);
       if (proof === undefined) return;
       if (verified instanceof WeakSet) verified.add(claim);
       else proof.slots.set(PROFILE_CUSTODY_PROOF, new WeakSet([claim]));
@@ -919,9 +919,9 @@ export class RuntimeAdmission {
     }
     return this.#authority.readRelocationReceipts();
   }
-  assertLive(): void {
+  assertLive(publication?: ProfilePublicationRead): void {
     if (!(#released in this) || this.#released) throw new Error("runtime-admission: missing or released admission");
-    this.#authority.assertHeld();
+    this.#authority.assertHeld(publication);
   }
   assertStorageRootsSafe(): void {
     this.assertLive();

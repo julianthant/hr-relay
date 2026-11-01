@@ -246,7 +246,7 @@ export type InstallationLease = Readonly<{ retainSourceClosure(error: unknown): 
   reclassifyIncompleteProfile(profile: RuntimeAdmission): void;
   resumeIncompleteProfileDraft(profileId: string, restore: OfflineMaintenanceOperation): boolean;
   assertColdPendingLogout(operation: z.infer<typeof LogoutOperationSchema>): void;
-  capturePendingProfileLogout(operation: z.infer<typeof LogoutOperationSchema>): Readonly<{ assertHeld(): void }>;
+  capturePendingProfileLogout(operation: z.infer<typeof LogoutOperationSchema>): Readonly<{ assertHeld(publication?: ProfilePublicationRead): void }>;
   captureStoppedProfileUpgrade(profileId: string): Readonly<{ assertHeld(): void }>;
   captureProfileUpgradeHandoff(profileId: string): Readonly<{ consume(next: InstallationLease): void }>;
   publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, profile: RuntimeAdmission): void;
@@ -1927,7 +1927,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (registration !== undefined) {
         const { operation } = registration, scope = new ActiveProfilePublicationRead(control, workspace, locator, operation.operationId, held, current);
         try {
-          const inspect = () => { current(); return requireRuntimeAdmission(registration.profile).readProfileRegistration(registration.lease, operation, scope); };
+          const inspect = () => { current(); return requireRuntimeAdmission(registration.profile, scope).readProfileRegistration(registration.lease, operation, scope); };
           const captured = inspect();
           if (lstatMaybe(intentPath)) {
             const pending = readStrict(intentPath, ProfilePublicationSchema);
@@ -2295,44 +2295,46 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         || source.dev !== operation.source.database.device || source.ino !== operation.source.database.inode) fail("profile-logout-native-source-changed");
     },
     publishStoppedLogoutSettlement(admission: RuntimeAdmission, expected: z.infer<typeof LogoutOperationSchema>, input: z.infer<typeof LogoutOperationSchema>, restore: OfflineMaintenanceOperation, source: AuthorityDatabase): void {
-      mutate(() => {
-        assertStoppedLogoutMaintenance(this, restore);
-        requireRuntimeAdmission(admission).assertPendingLogoutPublicationOwner(this, restore);
-        if (!(source instanceof AuthorityDatabase)) fail("profile-logout-native-publication-owner-required");
-        const next = LogoutOperationSchema.parse(input);
-        if (Buffer.byteLength(JSON.stringify(next)) > 1_048_576) fail("profile-logout-settlement-evidence-too-large");
-        source.assertPendingLogoutPublication(admission, next);
-        const path = join(locator.stateRoot, "machine", "operations", `${expected.operationId}.json`);
-        const { settlement: beforeSettlement, ...beforeIdentity } = expected, { settlement: afterSettlement, ...afterIdentity } = next;
-        if (canonicalJsonStringify(readProfileEvidence(path, LogoutOperationSchema)) !== canonicalJsonStringify(expected)
-          || canonicalJsonStringify(afterIdentity) !== canonicalJsonStringify(beforeIdentity)) fail("profile-logout-settlement-operation-changed");
-        const beforePhase = expected.settlement?.phase, afterPhase = next.settlement?.phase;
-        if (!(beforePhase === undefined && afterPhase === "prepared" || beforePhase === "prepared" && afterPhase === "commit-intent"
-          || beforePhase === "commit-intent" && afterPhase === "done")) fail("profile-logout-settlement-transition-refused");
-        if (beforeSettlement !== undefined && afterSettlement !== undefined) {
-          const { phase: _beforePhase, after: beforeAfter, ...beforeInputs } = beforeSettlement;
-          const { phase: _afterPhase, after: afterAfter, ...afterInputs } = afterSettlement;
-          if (canonicalJsonStringify(beforeInputs) !== canonicalJsonStringify(afterInputs) || beforeAfter !== undefined && beforeAfter !== afterAfter) fail("profile-logout-settlement-input-changed");
-        }
-        const document = readMachineRegistry(control, locator, false), row = document.profiles.find(profile => profile.profileId === expected.profileId);
-        if (document.activeProfileId !== null || document.sessionGeneration !== expected.sessionGeneration + 1 || row?.lifecycle !== "cancelling") fail("profile-logout-settlement-epoch-changed");
-        const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-        const intent = ProfilePublicationSchema.parse({ kind: "profile", schemaVersion: 1, installationId: locator.installationId, prior, document,
-          operation: { kind: "write", operation: next } });
-        if (intent.kind !== "profile") fail("profile-logout-settlement-transition-refused");
-        if (Buffer.byteLength(JSON.stringify(intent)) > 1_048_576) fail("profile-logout-settlement-evidence-too-large");
-        if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-publication-pending");
-        atomicJson(join(control, "profile-publication.json"), intent);
-        atomicJson(path, next);
-        prepareProfileRegistryPublication(control, locator, join(locator.stateRoot, "machine", "profiles.json"), document, prior, intent)();
+      mutate(held => {
+        const scope = new ActiveProfilePublicationRead(control, workspace, locator, expected.operationId, held, assertHeld);
+        try {
+          assertStoppedLogoutMaintenance(this, restore);
+          requireRuntimeAdmission(admission, scope).assertPendingLogoutPublicationOwner(this, restore, scope);
+          if (!(source instanceof AuthorityDatabase)) fail("profile-logout-native-publication-owner-required");
+          const next = LogoutOperationSchema.parse(input);
+          if (Buffer.byteLength(JSON.stringify(next)) > 1_048_576) fail("profile-logout-settlement-evidence-too-large");
+          source.assertPendingLogoutPublication(admission, next);
+          const path = join(locator.stateRoot, "machine", "operations", `${expected.operationId}.json`);
+          const { settlement: beforeSettlement, ...beforeIdentity } = expected, { settlement: afterSettlement, ...afterIdentity } = next;
+          if (canonicalJsonStringify(readProfileEvidence(path, LogoutOperationSchema)) !== canonicalJsonStringify(expected)
+            || canonicalJsonStringify(afterIdentity) !== canonicalJsonStringify(beforeIdentity)) fail("profile-logout-settlement-operation-changed");
+          const beforePhase = expected.settlement?.phase, afterPhase = next.settlement?.phase;
+          if (!(beforePhase === undefined && afterPhase === "prepared" || beforePhase === "prepared" && afterPhase === "commit-intent"
+            || beforePhase === "commit-intent" && afterPhase === "done")) fail("profile-logout-settlement-transition-refused");
+          if (beforeSettlement !== undefined && afterSettlement !== undefined) {
+            const { phase: _beforePhase, after: beforeAfter, ...beforeInputs } = beforeSettlement;
+            const { phase: _afterPhase, after: afterAfter, ...afterInputs } = afterSettlement;
+            if (canonicalJsonStringify(beforeInputs) !== canonicalJsonStringify(afterInputs) || beforeAfter !== undefined && beforeAfter !== afterAfter) fail("profile-logout-settlement-input-changed");
+          }
+          const document = readMachineRegistry(control, locator, false), row = document.profiles.find(profile => profile.profileId === expected.profileId);
+          if (document.activeProfileId !== null || document.sessionGeneration !== expected.sessionGeneration + 1 || row?.lifecycle !== "cancelling") fail("profile-logout-settlement-epoch-changed");
+          const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
+          const intent = ProfilePublicationSchema.parse({ kind: "profile", schemaVersion: 1, installationId: locator.installationId, prior, document,
+            operation: { kind: "write", operation: next } });
+          if (intent.kind !== "profile") fail("profile-logout-settlement-transition-refused");
+          if (Buffer.byteLength(JSON.stringify(intent)) > 1_048_576) fail("profile-logout-settlement-evidence-too-large");
+          if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-publication-pending");
+          atomicJson(join(control, "profile-publication.json"), intent);
+          atomicJson(path, next);
+          prepareProfileRegistryPublication(control, locator, join(locator.stateRoot, "machine", "profiles.json"), document, prior, intent)();
+        } finally { scope.expire(); }
       });
     },
     capturePendingProfileLogout(input: z.infer<typeof LogoutOperationSchema>) {
       const operation = LogoutOperationSchema.parse(input);
-      const read = () => mutate(() => {
+      const observe = (document: ProfileRegistryDocument) => {
         assertHeld();
         if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-pending-logout-locator-changed");
-        const document = readMachineRegistry(control, locator, false);
         const row = document.profiles.find(entry => entry.profileId === operation.profileId);
         if (document.activeProfileId !== null || document.sessionGeneration !== operation.sessionGeneration + 1 || (row?.lifecycle !== "cancelling" && !(row?.lifecycle === "ready" && operation.settlement?.phase === "done")) || operation.phase === "complete") {
           fail("profile-pending-logout-unavailable");
@@ -2347,10 +2349,16 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           digest: createHash("sha256").update(publication.bytes).digest("hex") };
         assertHeld();
         return canonicalJsonStringify({ document, observation, pending, operationIdentity: file.identity });
-      });
+      };
+      const read = (publication?: ProfilePublicationRead) => {
+        if (publication === undefined) return mutate(() => observe(readMachineRegistry(control, locator, false)));
+        const document = readProfilePublicationRegistry(publication);
+        publication.assertOperation(locator.stateRoot, operation.operationId);
+        return observe(document);
+      };
       const original = read();
-      return Object.freeze({ assertHeld() {
-        if (read() !== original) fail("profile-pending-logout-authority-changed");
+      return Object.freeze({ assertHeld(publication?: ProfilePublicationRead) {
+        if (read(publication) !== original) fail("profile-pending-logout-authority-changed");
       } });
     },
     publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument) { publishRegistry(expected, document); },
