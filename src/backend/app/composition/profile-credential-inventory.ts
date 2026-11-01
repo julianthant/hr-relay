@@ -237,7 +237,7 @@ export function composeStoppedControlCredentialInventory(input: Readonly<{ claim
           { kind: "stopped-control", claim: input.claim });
         if (assessment.backupPlaintext.length !== 0 || assessment.unknownFormats.length !== 0) throw new Error("credential-maintenance-copy-capture-incomplete");
         const login = countProfileCredentialLoginRows(membership.loginDataPaths);
-        if (typeof login !== "number" || login > 0) throw new Error("credential-maintenance-login-copy-present");
+        if (login === "unreadable" || typeof login === "number" && login > 0) throw new Error("credential-maintenance-login-copy-present");
         const database = join(admission.stateRoot, "state.db");
         for (const suffix of ["", "-wal", "-shm"]) {
           const path = `${database}${suffix}`;
