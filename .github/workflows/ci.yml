@@ -75,11 +75,11 @@ jobs:
               context.eventName === 'workflow_dispatch' || filters.shared === 'true' || filters[suite] === 'true'
             ]));
             const groups = [
-              { group: 1, suite: 'unit', parity: 0, shards: '1 9 15 17' },
-              { group: 2, suite: 'architecture', parity: 0, shards: '3 4 6 20' },
-              { group: 3, suite: 'parity', parity: 1, shards: '2 5 7 18' },
-              { group: 4, suite: 'parity', parity: 2, shards: '8 11 13' },
-              { group: 5, suite: 'integration', parity: 0, shards: '10 12 14 16 19' },
+              { group: 1, suite: 'unit', parity: 0, shards: '3 6 18 19' },
+              { group: 2, suite: 'architecture', parity: 0, shards: '5 8 11 12' },
+              { group: 3, suite: 'parity', parity: 1, shards: '4 14 17' },
+              { group: 4, suite: 'parity', parity: 2, shards: '1 7 13 20' },
+              { group: 5, suite: 'integration', parity: 0, shards: '2 9 10 15 16' },
             ].filter(group => selected.integration || selected[group.suite]);
             for (const suite of suites) core.setOutput(suite, String(selected[suite]));
             core.setOutput('groups', JSON.stringify({ include: groups }));
@@ -107,7 +107,7 @@ jobs:
       needs.changes.outputs.unit == 'true' || needs.changes.outputs.integration == 'true' ||
       needs.changes.outputs.architecture == 'true' || needs.changes.outputs.parity == 'true'
     runs-on: macos-15
-    # Groups need 22-29 minutes of test work; the budget only catches hangs.
+    # Shards are balanced on measured durations; each group needs about 22 minutes of test work, so the budget only catches hangs.
     timeout-minutes: 40
     strategy:
       fail-fast: false
