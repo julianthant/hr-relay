@@ -88,6 +88,7 @@ jobs:
           npm run test:integration --
           tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts
           tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts
+          tests/backend/runtime/workers/worker-supervisor.integration.test.ts
           --maxWorkers=1 --no-file-parallelism
       - name: Check the remaining integration shard
         if: ${{ !cancelled() }}

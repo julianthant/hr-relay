@@ -94,8 +94,8 @@ The worker default belongs to the root configuration so CLI limits apply to ever
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
 CI runs architecture files serially.
-The two native browser process-proof files run first and serially on integration shard 1, without
-competing test files. All four ordinary shards exclude those two files, so each file runs once.
+The three native browser process-proof files (`ISOLATED_INTEGRATION_FILES` in `vitest.config.ts`) run first and serially on integration shard 1, without
+competing test files. All four ordinary shards exclude those files (`RELAY_TEST_SKIP_ISOLATED=1`), so each file runs once.
 Remaining integration files, unit and parity use two workers. Unit, integration and parity job
 budgets are 30 minutes. CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
 Vitest test and hook limits, test wait helpers and the browser deadlines tests pass to product code by it.

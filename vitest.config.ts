@@ -17,6 +17,7 @@ export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/**/*.integration.test.ts
 const ISOLATED_INTEGRATION_FILES = [
   "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts",
   "tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts",
+  "tests/backend/runtime/workers/worker-supervisor.integration.test.ts",
 ];
 export const REBUILD_INTEGRATION_TEST_EXCLUDE = [
   "tests/**/*.local.integration.test.ts",
