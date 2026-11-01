@@ -1,10 +1,11 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { createRunIntegrationTestWorld } from "../../../support/helpers/run-integration-world.js";
 import assert from "node:assert/strict";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach,describe,it } from "vitest";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 
 
@@ -25,9 +26,12 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 const CLOCK = manualClock(new Date(LATER));
 const { roots, cleanup, WORKER_ID, CLAIM, openDatabase, startRunning, failure, failureAuthorization, resultRequest } =
-  createRunIntegrationTestWorld(CLOCK);
+  createRunIntegrationTestWorld(CLOCK, profileFixtures.create);
 
 afterEach(cleanup);
 

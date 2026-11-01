@@ -307,10 +307,10 @@ export function createClonedProfileFixtures() {
   };
 }
 
-export async function openBoundDatabaseFixture(migrationOwner: string, clock: Clock = systemClock, busyTimeoutMs = 250,
+export async function openBoundDatabaseFixture<Profile extends BoundProfileStorageFixture = Awaited<ReturnType<typeof createBoundProfileFixture>>>(migrationOwner: string, clock: Clock = systemClock, busyTimeoutMs = 250,
   writeHooks?: Parameters<typeof AuthorityDatabase.open>[2], terminalHooks?: Parameters<typeof AuthorityDatabase.open>[3],
-  lifecycleHooks?: Parameters<typeof AuthorityDatabase.open>[4]) {
-  const profile = await createBoundProfileFixture();
+  lifecycleHooks?: Parameters<typeof AuthorityDatabase.open>[4], profileFixture?: () => Promise<Profile>) {
+  const profile = await (profileFixture ?? createBoundProfileFixture)();
   try {
     const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs, migrationOwner }, clock, writeHooks, terminalHooks, lifecycleHooks);
     return { profile, database, path: profile.path, stateRoot: profile.stateRoot,

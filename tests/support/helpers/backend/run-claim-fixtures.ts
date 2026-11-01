@@ -3,7 +3,7 @@ import { isLiveWorker } from "../../../../src/models/run/worker.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
 
-import { createBoundProfileFixture } from "../admission-fixture.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 
 
 
@@ -25,10 +25,11 @@ export function createRunClaimFixtures(
   databases: AuthorityDatabase[],
   WORKER_START_REQUEST: typeof BASE_WORKER_START_REQUEST,
   WORKER_ID: string,
+  profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture,
 ) {
-  const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+  const profiles: BoundProfileStorageFixture[] = [];
   async function openDatabase(): Promise<AuthorityDatabase> {
-    const profile = await createBoundProfileFixture(); profiles.push(profile);
+    const profile = await profileFixture(); profiles.push(profile);
     const root = profile.stateRoot; roots.push(root);
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },

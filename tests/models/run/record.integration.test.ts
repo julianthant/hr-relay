@@ -1,46 +1,35 @@
-import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
+import { afterAll, describe, it, afterEach } from "vitest";
+import { createClonedProfileFixtures } from "../../support/helpers/admission-fixture.js";
 import { createRunClaimFixtures, heldClaim } from "../../support/helpers/backend/run-claim-fixtures.js";
 import { createRunIntegrationTestWorld } from "../../support/helpers/run-integration-world.js";
 import { default as assert } from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe } from "vitest";
-import { it } from "vitest";
 import { z } from "zod";
-import { RunRecordSchema } from "../../../src/models/run/record.js";
+import { RunRecordSchema, RunLifecycleSchema, runClaim, runTransitionViolation } from "../../../src/models/run/record.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { insertMeasuredSearchRun } from "../../support/helpers/backend/cross-date-search-harness.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import { afterEach } from "vitest";
 
 import { runRecordFromRow } from "../../../src/backend/storage/sqlite/run-record-row.js";
-import { RunLifecycleSchema } from "../../../src/models/run/record.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
 
 
 
 
-import { HASH_C } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { LATER as LATERImport2 } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { NOW } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { HASH_C, LATER as LATERImport2, NOW, UUID_7, HASH_A, UUID_1 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
-import { UUID_7 } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { RUN_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { WORKFLOW_ID } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { QUEUED_RUN, RUN_ID, WORKFLOW_ID, WORKER_START_REQUEST as BASE_WORKER_START_REQUEST } from "../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 import { summaryFixture } from "../../support/helpers/backend/served-database-surfaces-fixtures.js";
-import { id } from "../../support/helpers/database-foundation/fixtures.js";
-import { NOW as NOWImport2 } from "../../support/helpers/database-foundation/fixtures.js";
+import { id, NOW as NOWImport2 } from "../../support/helpers/database-foundation/fixtures.js";
 
 
-import { runClaim } from "../../../src/models/run/record.js";
-import { runTransitionViolation } from "../../../src/models/run/record.js";
 
-import { HASH_A } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { UUID_1 } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { WORKER_START_REQUEST as BASE_WORKER_START_REQUEST } from "../../support/fixtures/phase1f-run-fixtures.js";
+
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 
 {
 function corruptRunSource(raw: DatabaseSync, sql: string, ...values: (string | number | null)[]) {
@@ -53,7 +42,7 @@ function corruptRunSource(raw: DatabaseSync, sql: string, ...values: (string | n
 describe("cross-date search authority read", () => {
 
   it("refuses a strict run record whose authority order instant is foreign", async () => {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixtures.create();
     const databasePath = profile.path;
     const database = AuthorityDatabase.open(
       { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-malformed-test" },
@@ -96,7 +85,7 @@ describe("cross-date search authority read", () => {
 {
 const CLOCK = manualClock(new Date(LATERImport2));
 
-const { roots, openDatabase, startRunning, cleanup, failure, failureAuthorization, resultRequest } = createRunIntegrationTestWorld(CLOCK);
+const { roots, openDatabase, startRunning, cleanup, failure, failureAuthorization, resultRequest } = createRunIntegrationTestWorld(CLOCK, profileFixtures.create);
 
 const AFTER_LATER = "2026-07-31T17:02:00.000Z";
 
@@ -237,7 +226,7 @@ afterEach(cleanup);
 
 {
 it("contains operation members once and preserves protected titles and missing warning evidence", async () => {
-  const f = await summaryFixture();
+  const f = await summaryFixture(profileFixtures.create);
   try {
     const rootId = id(8870), memberId = id(8871);
     f.db.withAuthorityTransaction(() => {
@@ -281,7 +270,7 @@ const LATER = "2026-07-31T17:05:00.000Z";
 const MUCH_LATER = "2026-07-31T18:00:00.000Z";
 
 const { openDatabase, claimOne, cleanup: cleanupClaims } =
-  createRunClaimFixtures(CLOCK, roots, databases, WORKER_START_REQUEST, WORKER_ID);
+  createRunClaimFixtures(CLOCK, roots, databases, WORKER_START_REQUEST, WORKER_ID, profileFixtures.create);
 
 
 

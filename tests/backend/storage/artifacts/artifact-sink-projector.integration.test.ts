@@ -1,7 +1,8 @@
+import { afterAll, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { existsSync,readFileSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe,it } from "vitest";
 import { ArtifactSinkBusyError,createArtifactSinkProjector,type ArtifactSinkProjectorOptions } from "../../../../src/backend/storage/artifacts/artifact-sink-projector.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createXlsxRetentionSink,type PublicationFaultPoint } from "../../../../src/backend/storage/artifacts/xlsx-retention-sink.js";
@@ -9,8 +10,11 @@ import type { ArtifactRef } from "../../../../src/models/artifacts/artifacts.js"
 import { foundationFixture,id,NOW,update } from "../../../support/helpers/database-foundation/fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 async function fixture() {
-  const f = await foundationFixture();
+  const f = await foundationFixture({ profileFixture: profileFixtures.create });
   const artifacts = createContentAddressedArtifactWriter({ admission: f.profile.admission });
   await artifacts.ready;
   const path = join(f.root, "retention.xlsx");

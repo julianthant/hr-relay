@@ -1,5 +1,6 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
 import { checkParkedWrite } from "../../../../src/backend/runtime/writes/write-recovery.js";
 import { WorkerSessionClosureUnprovedError, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { createWorkerBrowserControl } from "../../../../src/backend/runtime/workers/worker-browser-control.js";
@@ -20,7 +21,6 @@ import { deriveIdempotencyKeyDigest, deriveWriteAuthorityReason, deriveWriteBind
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
-import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { ManualScheduler, recordingLogger } from "../../../support/helpers/phase1f-executor-harness.js";
 import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { testRunService, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -28,6 +28,9 @@ import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtu
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { UUID_5, UUID_6, UUID_7, UUID_8 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { WRITE_FIXTURE_NOW, WRITE_FIXTURE_FINGERPRINT, WRITE_FIXTURE_OBSERVATION, WRITE_FIXTURE_STAGED_STATE, writeFixtureQueuedRun } from "../../../support/fixtures/write-sequencer-fixtures.js";
+
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 
 const NOW = WRITE_FIXTURE_NOW;
 const TARGET = UcpathTerminationTargetSchema.parse({ emplId: "10800000", expectedName: "Synthetic Person", emplRecord: "0", effectiveDate: "06/11/2026",
@@ -51,7 +54,7 @@ afterEach(async () => { for (const dispose of disposers.splice(0).reverse()) awa
 async function fixture(rows: number, workflowId: string = descriptor.id) {
   const active = workflowId === descriptor.id ? descriptor : heldDescriptor(workflowId);
   const clock = manualClock(new Date(NOW));
-  const opened = await openBoundDatabaseFixture("parked-read-check", clock);
+  const opened = await openBoundDatabaseFixture("parked-read-check", clock, undefined, undefined, undefined, undefined, profileFixtures.create);
   disposers.push(() => opened.close());
   const template = RunRecordSchema.parse(writeFixtureQueuedRun());
   const run = RunRecordSchema.parse({ ...template, envelope: { ...template.envelope, workflow: active.id, descriptorVersion: active.version,

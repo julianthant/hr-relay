@@ -1,5 +1,6 @@
+import { afterAll, afterEach, describe, it, vi } from "vitest";
+import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { afterEach,describe,it,vi } from "vitest";
 import { createOperatorRunDetail } from "../../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { buildRunDetail, buildRunSection } from "../../../../../src/backend/runs/queries/run-detail.js";
 import { projectRunLogs } from "../../../../../src/dashboard/state/run-wiring-adapter.js";
@@ -18,11 +19,14 @@ import { separationsModule } from "../../../../../src/backend/app/registries/wor
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { FailureRecordSchema } from "../../../../../src/models/trust/failure.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 const worlds: Awaited<ReturnType<typeof trustWorld>>[] = [];
 afterEach(async () => { for (const world of worlds.splice(0).reverse()) await world.dispose(); });
 
 async function fixture() {
-  const f = await trustWorld();
+  const f = await trustWorld(profileFixtures.create);
   worlds.push(f);
   const run = f.fail(f.create(301), 302);
   const failure = f.database.authority.failures.listByRun(run.envelope.runId).at(-1);

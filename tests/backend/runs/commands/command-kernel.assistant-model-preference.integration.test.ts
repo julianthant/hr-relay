@@ -1,3 +1,5 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from '../../../../src/backend/storage/sqlite/authority-database.js';
 import { resolveConfigWithProvenance } from '../../../../src/backend/app/config/resolve.js';
 import { readBootSettings } from '../../../../src/backend/runtime/settings/settings-runtime.js';
@@ -9,15 +11,16 @@ import { AssistantStoredCommandSchema } from "../../../../src/models/profiles/as
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, it } from "vitest";
-import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from "../../../../src/models/dashboard/assistant.js";
 import { AssistantModelPreferenceCommandRequestSchema, CommandIdentityConflictError } from "../../../../src/rules/commands/commands.js";
 import type { CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 const world = createCommandKernelTestWorld();
-const owners: { profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: Awaited<ReturnType<typeof world.createHarness>>["database"]; initializer?: Awaited<ReturnType<typeof world.createHarness>>['database']; harnessDatabases: typeof world.openDatabases; setupFailure?: Readonly<{ error: unknown }>; closeAttempted: boolean; closeError?: unknown }[] = [];
+const owners: { profile: Awaited<ReturnType<typeof profileFixtures.create>>; database?: Awaited<ReturnType<typeof world.createHarness>>["database"]; initializer?: Awaited<ReturnType<typeof world.createHarness>>['database']; harnessDatabases: typeof world.openDatabases; setupFailure?: Readonly<{ error: unknown }>; closeAttempted: boolean; closeError?: unknown }[] = [];
 afterEach(async () => {
   while (owners.length !== 0) {
     const owner = owners[0];
@@ -32,7 +35,7 @@ afterEach(async () => {
   }
 });
 async function harness(prepare?: CommandKernelDependencies["prepareAssistantModelPreference"]) {
-  const profile = await createBoundProfileFixture();
+  const profile = await profileFixtures.create();
   const owner: (typeof owners)[number] = { profile, harnessDatabases: world.openDatabases, closeAttempted: false };
   owners.push(owner);
   try {
