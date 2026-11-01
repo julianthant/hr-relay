@@ -37,14 +37,14 @@ export const MACOS_FILES = [
   "tests/backend/storage/sqlite/readonly-authority-snapshot.integration.test.ts",
   "tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts",
   "tests/scripts/dev/secure-env-bootstrap.backup.integration.test.ts",
-] as const;
+];
 
 // Native browser process proofs run on macOS one at a time, without competing files.
 export const SERIAL_FILES = [
   "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts",
   "tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts",
   "tests/backend/runtime/workers/worker-supervisor.integration.test.ts",
-] as const;
+];
 
 export type CiProject = "unit" | "integration";
 export type CiRunner = "ubuntu" | "macos" | "serial";
@@ -56,7 +56,7 @@ export function selectCiFiles(listed: readonly string[], project: CiProject, run
     .filter(file => projectOf(file) === project);
   const missing = pinned.filter(file => !listed.includes(file));
   if (missing.length > 0) throw new Error(`CI file lists name files Vitest does not list: ${missing.join(", ")}`);
-  const selected = runner === "ubuntu" ? listed.filter(file => !(pinned as readonly string[]).includes(file)) : pinned;
+  const selected = runner === "ubuntu" ? listed.filter(file => !pinned.includes(file)) : pinned;
   if (selected.length === 0) throw new Error(`No ${project} files selected for ${runner}.`);
   return selected;
 }

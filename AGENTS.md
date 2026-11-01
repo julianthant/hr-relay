@@ -103,9 +103,10 @@ The repository holds only the current version. No compatibility readers, old mig
   open pull requests and fixes red checks, real Bugbot findings and `merge-conflict` labels on the
   pull request branch; it is the only agent that pushes to an open pull request. The operator handles
   only pull requests labeled `needs-human`.
-- Pull requests into `staging` run static, privacy, unit and architecture checks; integration and
-  parity run on the release pull request into `main`, and a red release is fixed by a pull request
-  into `staging`. Run the integration tests related to your change locally before pushing.
+- Pull requests into `staging` run static, privacy, unit, integration and architecture checks;
+  parity runs on the release pull request into `main`, and a red release is fixed by a pull request
+  into `staging`. Run the tests related to your change locally before pushing, and parity
+  when the change touches a dashboard screen.
 - A pull request bundles a good amount of related work, so CI runs once per batch rather than after
   every small fix. Keep commits logical inside it; never mix unrelated features. Title and describe
   what changed and why. Pull a branch before continuing work on it.

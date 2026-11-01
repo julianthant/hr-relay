@@ -12,7 +12,7 @@ release pull request.
 
 | Branch | Required CI check names |
 | --- | --- |
-| `staging` | `static`, `privacy`, `unit (macos-15)`, `integration (macos-15)`, `architecture (macos-15)`, `parity` |
+| `staging` | `static`, `privacy`, `unit`, `integration`, `architecture`, `parity` |
 | `main` | the `staging` checks, plus `release` |
 
 `release` runs only on PRs targeting `main`, after the other checks. Its isolated runner builds the
@@ -41,12 +41,12 @@ session runs, red PRs wait; nothing red merges. The operator watches only `needs
 CI takes Node from `package.json` engines and caches npm. Routine test suites are macOS:
 required unit, integration, architecture and parity on `macos-15` Apple Silicon runners.
 Static, privacy and the four required suite summaries stay on Ubuntu. CI runs no Windows jobs.
-A full run uses five concurrent macOS groups: twenty integration shards distributed around unit,
-serial architecture and two parity shards. Each group runs its assigned suites in sequence.
-The release runner starts after these groups finish. This fits the five-job macOS limit without
-an extra runner wave; other workflows and GitHub runner availability can still cause queueing.
+Test suites run on Ubuntu runners, except files that need macOS: the native browser process proofs,
+the storage closure, backup and restore proofs, and Desktop parity. A pull request into `staging`
+uses at most twenty Ubuntu jobs and all five macOS jobs; a release pull request gives three of the
+macOS jobs to parity. The release runner starts after these jobs finish.
 
-PRs into `staging` run static, privacy, unit and architecture; PRs into `main` add integration,
+PRs into `staging` run static, privacy, unit, integration and architecture; PRs into `main` add
 parity and release. PR path filters select affected suites. Pushes to `staging` and `main` do not run CI: they only
 change through pull requests whose up-to-date result already passed. A manual run selects all routine
 suites. Markdown-only PRs run static and privacy without test runners. The required suite names
