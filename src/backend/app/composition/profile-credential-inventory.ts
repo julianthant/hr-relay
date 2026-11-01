@@ -426,7 +426,7 @@ export function composeProfileCredentialInventory(input: Readonly<{ machine: Run
         inspectEncrypted: path => inspectCredentialCopy(fields.credentials, path, fields.capturedSecrets),
         backupPaths: [], loginDataPaths: before.loginDataPaths, capturedSecrets: fields.capturedSecrets, capturedSecretsComplete: fields.capturedSecretsComplete });
       const backupPlaintext = [...inventory.backupPlaintext], unknownFormats = [...inventory.unknownFormats, ...before.unsupported];
-      const copies = assessProfileCredentialCopies(input.admission, before, prepared.backups,
+      const copies = assessProfileCredentialCopies(fields.admission, before, prepared.backups,
         { ...fields, containsKey: value => inspectCredentialKeyCopy(fields.credentials, value), keyScanOverlap: 4095,
           inspectEncrypted: path => inspectCredentialCopy(fields.credentials, path, fields.capturedSecrets) }, { kind: "ordinary" });
       backupPlaintext.push(...copies.backupPlaintext); unknownFormats.push(...copies.unknownFormats);

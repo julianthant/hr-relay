@@ -1,8 +1,9 @@
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach,describe,it } from "vitest";
+import { afterEach,describe,it,vi } from "vitest";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -86,17 +87,65 @@ async function fixture(ambiguous=false) {
     generation:active.generation,settingsRevision:active.settingsRevision,settingsFingerprint:active.settingsFingerprint,configFingerprint:active.configFingerprint}}));
   database.close();
   const issueOperation = () => profile.admission.acquireOfflineMaintenance();
-  const operation = issueOperation();
+  let operation: ReturnType<typeof issueOperation> | undefined;
   const service = new OfflineSpanRootRepairService(profileBrowserClosure, profile.admission,{
     stateRoot,
     authorityPath,
     processLockRoot,
     busyTimeoutMs: 500,
   }, clock);
-  return { repoRoot, stateRoot, authorityPath, processLockRoot, clock, run, plan, service, operation,issueOperation,admission:profile.admission };
+  return { repoRoot, stateRoot, authorityPath, processLockRoot, clock, run, plan, service, get operation() { return operation ??= issueOperation(); },issueOperation,admission:profile.admission };
 }
 
 describe("offline missing run.queued recovery", () => {
+  it("binds stopped repair opening to the exact authority path and operation", async () => {
+    const f = await fixture(), operation = f.operation;
+    const stopped = f.admission.forStoppedMaintenance(operation);
+    const options = { path: f.authorityPath, busyTimeoutMs: 500, migrationOwner: "repair-opening-test" };
+    try {
+      assert.throws(() => AuthorityDatabase.open(stopped, options, f.clock), /profile-bound-authority-required/u);
+      assert.throws(() => AuthorityDatabase.openStoppedSpanRootRepair(stopped, options, { ...operation }, f.clock));
+      assert.throws(() => AuthorityDatabase.openStoppedSpanRootRepair(stopped, { ...options, path: join(f.stateRoot, "other.db") }, operation, f.clock), /profile-span-root-repair-path-refused/u);
+      assert.throws(() => AuthorityDatabase.openStoppedSpanRootRepair(stopped, { ...options, openMode: "storage-doctor-read-only-no-migrate" }, operation, f.clock), /profile-span-root-repair-path-refused/u);
+      const database = AuthorityDatabase.openStoppedSpanRootRepair(stopped, options, operation, f.clock);
+      try { assert.equal(database.getMeta().profileId, f.admission.profileBinding.profileId); }
+      finally { database.close(); }
+      operation.release();
+      assert.throws(() => AuthorityDatabase.openStoppedSpanRootRepair(stopped, options, operation, f.clock));
+    } finally { stopped.release(); operation.release(); }
+  });
+
+  it("retains the exact stopped operation and database after an unproved close", async () => {
+    const f = await fixture(), operation = f.operation;
+    const open = AuthorityDatabase.openStoppedSpanRootRepair.bind(AuthorityDatabase);
+    const failure = new Error("repair-database-close-unproved");
+    let database: AuthorityDatabase | undefined, close: (() => void) | undefined;
+    const opening = vi.spyOn(AuthorityDatabase, "openStoppedSpanRootRepair").mockImplementation((...args) => {
+      database = open(...args);
+      close = database.close.bind(database);
+      database.close = () => { throw failure; };
+      return database;
+    });
+    try {
+      assert.throws(() => f.service.repair({ runId: f.run.envelope.runId }, operation), error => {
+        assert.ok(error instanceof AuthoritySourceClosureUnprovedError);
+        assert.ok(error.cause instanceof AuthoritySourceClosureUnprovedError);
+        assert.deepEqual(error.cause.errors, [failure]);
+        return true;
+      });
+      operation.assertHeld();
+      f.admission.assertLive();
+      f.admission.lifetime.assertHeld();
+      assert.ok(database); assert.ok(close);
+      database.close = close;
+      database.close();
+    } finally {
+      opening.mockRestore();
+      if (database !== undefined && close !== undefined) { database.close = close; database.close(); }
+      operation.release();
+    }
+  });
+
   it("appends one authority-derived marked SQLite root without changing prior records", async () => {
     const f = await fixture();
     const read = () => {

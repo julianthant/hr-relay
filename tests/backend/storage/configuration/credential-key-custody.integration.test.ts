@@ -279,7 +279,7 @@ it("migrates an original schema-1 key before supported stopped prior-control con
   const f = await createHistoricalIncompleteProfileFixture();
   try {
     const key = credentialKeyCustody.read(JSON.parse(readFileSync(f.keyPath, "utf8"))), legacy = Buffer.from(encodePrivate(key)), identity = statSync(f.keyPath);
-    writeStoppedProfileControlPredecessor(f, 1);
+    const currentRegistry = writeStoppedProfileControlPredecessor(f, 1);
     const current = z.looseObject({ erasures: z.array(z.looseObject({ credentialKey: z.looseObject({ file: z.looseObject({ digest: z.string() }) }) })) })
       .parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
     const { duo: _duo, completedRestores: _completedRestores, ...prior } = current;
@@ -288,7 +288,7 @@ it("migrates an original schema-1 key before supported stopped prior-control con
     writeFileSync(f.markerPath, JSON.stringify({ schemaVersion: 2 }));
     writeFileSync(f.keyPath, legacy);
     credentialKeyCustody.delete(key);
-    const before = [f.registryPath, f.verifierPath, f.protectedPath, f.databasePath].map(path => ({ path, bytes: readFileSync(path) }));
+    const before = [f.registryPath, f.verifierPath, f.protectedPath, f.databasePath].map(path => ({ path, bytes: path === f.registryPath ? currentRegistry : readFileSync(path) }));
     const control = readFileSync(f.controlPath), marker = readFileSync(f.markerPath);
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
     try {

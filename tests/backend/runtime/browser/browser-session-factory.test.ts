@@ -26,7 +26,7 @@ describe("browser current-owner fence", () => {
     signal: new AbortController().signal, duoCeremony: { withCeremony: async () => { throw new Error("fixture must not start a Duo ceremony"); } } } as const;
 
   function options(config: BrowserSessionFactoryOptions["config"], native: ReturnType<typeof fixtures.fakeLauncher>, assertCurrent: () => void): BrowserSessionFactoryOptions {
-    return { config, isolation: rebuildRuntimeIsolation, clock, scheduler, newSessionId: () => sessionId,
+    return { config: { ...config, paths: { ...config.paths, browserProfileRoot: config.paths.browserProfileRoot } }, isolation: rebuildRuntimeIsolation, clock, scheduler, newSessionId: () => sessionId,
       protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }),
       slotOrdinal: () => 1, assertCurrent, bindings: fixtures.recordingBindings(), launcher: native.launcher,
       admitProfile: profile => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...profile, profileRevision: 1, resetRequired: false })) };

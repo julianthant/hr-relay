@@ -1755,11 +1755,12 @@ export class AuthorityDatabase implements Disposable {
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
     credentials?: CredentialStore,
-    purpose: "ordinary" | "profile-initialization" | "stopped-restore-projection" = "ordinary",
+    purpose: "ordinary" | "profile-initialization" | "stopped-restore-projection" | "stopped-span-root-repair" = "ordinary",
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
-    this.#admission.assertAuthorityDatabase(options.path);
+    if (purpose === "stopped-span-root-repair") this.#admission.assertReadOnlyAuthorityDatabase(options.path);
+    else this.#admission.assertAuthorityDatabase(options.path);
     if (credentials !== undefined) assertCredentialStoreOwner(credentials, this.#admission);
     const binding = this.#admission.profileBinding;
     const existed = options.path !== ":memory:" && existsSync(options.path);
@@ -2042,6 +2043,13 @@ export class AuthorityDatabase implements Disposable {
     if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-restore-projection-schema-refused");
     admission.assertStoppedRestoreProjection(options.path);
     return new AuthorityDatabase(admission, options, clock, undefined, undefined, undefined, undefined, "stopped-restore-projection");
+  }
+
+  static openStoppedSpanRootRepair(admission: RuntimeAdmission, input: unknown, operation: OfflineMaintenanceOperation, clock: Clock = systemClock): AuthorityDatabase {
+    admission.assertStoppedProfile(operation);
+    const options = AuthorityDatabaseOptionsSchema.parse(input);
+    if (options.path !== join(admission.stateRoot, "state.db") || options.openMode !== "read-write") throw new Error("profile-span-root-repair-path-refused");
+    return new AuthorityDatabase(admission, options, clock, undefined, undefined, undefined, undefined, "stopped-span-root-repair");
   }
 
   static initializeProfile(admission: RuntimeAdmission, clock: Clock = systemClock): void {
@@ -3369,7 +3377,7 @@ export class AuthorityDatabase implements Disposable {
 
   #assertOpen(): void {
     if (this.#closed || !this.#database.isOpen) throw new Error("authority database is closed");
-    this.#admission.assertReadable();
+    this.#admission.assertLive();
     const expected = this.#admission.profileBinding;
     const actual = ProfileDatabaseBindingSchema.parse(this.#database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get());
     if (actual.installationId !== expected.installationId || actual.profileId !== expected.profileId) throw new Error("profile-database-binding-mismatch");

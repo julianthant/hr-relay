@@ -306,6 +306,7 @@ function restoreWorkspace(live: string, snapshot: string): void {
 
 function adoptAuthorityRoot(template: AuthorityTemplate): string {
   restoreWorkspace(template.profile.workspace, template.snapshotRoot);
+  template.profile.renewAfterRestore();
   return rememberProfile(template.profile, template.generation);
 }
 

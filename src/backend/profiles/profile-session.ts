@@ -916,6 +916,8 @@ export function createProfileSession(input: {
           }
           sessions.clear();
           store.migrateHistory({ operation, ...(migration?.kind === "replace-v3" ? { replacement: migration.entries } : {}) });
+          releaseOrdinary(row.profileId);
+          store = storeFor(row.profileId);
           operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operation?.operationId) ?? operation;
           if (mode === "replace-v3") {
             const entries = store.read().entries;

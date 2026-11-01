@@ -1,5 +1,5 @@
 import { inspectUnboundBackupFixture } from "../../../support/helpers/storage/backup-fixtures.js";
-import { withOfflineMaintenanceSync } from "../../../support/helpers/admission-fixture.js";
+import { withStoppedProfileMaintenanceSync } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
@@ -89,7 +89,7 @@ it("upgrades admitted setup schema 3 with an exact verified backup and preserves
     const before = storageTree(f.root);
     const context = f.admission.readInstallationContext(); assert.ok(context);
     const workspaceBefore = storageTree(context.workspace);
-    const source = withOfflineMaintenanceSync(f.admission, () => AuthorityDatabase.inspectStoppedUpgrade(f.admission, f.path, f.input.processLockRoot, f.clock));
+    const source = withStoppedProfileMaintenanceSync(f.admission, stopped => AuthorityDatabase.inspectStoppedUpgrade(stopped, f.path, f.input.processLockRoot, f.clock));
     assert.equal((await f.run(true)).state, "planned");
     assert.deepEqual(storageTree(f.root), before);
     assert.equal((await f.run()).state, "upgraded");

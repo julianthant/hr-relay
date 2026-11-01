@@ -1,4 +1,4 @@
-import { withOfflineMaintenanceSync, createBoundProfileFixture, readAuthenticatedCredentialFixture, rewriteAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
+import { withStoppedProfileMaintenanceSync, createBoundProfileFixture, readAuthenticatedCredentialFixture, rewriteAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -440,7 +440,7 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(storageTree(f.root), before);
     const applied = await f.profile.run();
     assert.equal(applied.credentials, "unchanged");
-    withOfflineMaintenanceSync(f.profile.admission, () => NativeAuthorityDatabase.inspectStoppedUpgrade(f.profile.admission, f.profile.path, f.input.processLockRoot, clock));
+    withStoppedProfileMaintenanceSync(f.profile.admission, stopped => NativeAuthorityDatabase.inspectStoppedUpgrade(stopped, f.profile.path, f.input.processLockRoot, clock));
     const database = new DatabaseSync(f.profile.path, { readOnly: true });
     try { assert.deepEqual(database.prepare("SELECT * FROM settings").all(), []); } finally { database.close(); }
     assert.equal(readFileSync(f.environmentFile, "utf8"), body);

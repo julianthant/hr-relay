@@ -9,7 +9,7 @@ import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { noSymlinkAncestry, statDirectory } from "../configuration/credential-safe-file.js";
-import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
+import { StoppedAuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -146,7 +146,7 @@ export async function backupFlatStorage(closure: StoppedBackupClosure, admission
   retainedStorageBackup(context.workspace, admission.locator.installationId);
   coupled.verifySource(); admission.assertLive();
   assertStoppedBackupClosure(closure, admission, admission.maintenanceOperation());
-  return { manifests: [AuthorityBackupManifestSchema.parse(JSON.parse(file(record.authorityManifest).bytes.toString("utf8")))],
+  return { manifests: [StoppedAuthorityBackupManifestSchema.parse(JSON.parse(file(record.authorityManifest).bytes.toString("utf8")))],
     coupledBackup: { backupPath: path, backupDigest: hash(bytes) } };
 }
 

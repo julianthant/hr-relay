@@ -84,21 +84,23 @@ export class OfflineSpanRootRepairService {
     this.#runtimeAdmission.assertOfflineMaintenance(admission);
     admission.consume();
     let outcome: { report: SpanRootRepairReport } | { error: unknown };
+    let stopped: RuntimeAdmission | undefined;
     try {
+      stopped = this.#runtimeAdmission.forStoppedMaintenance(admission);
       assertOfflineMaintenanceForProcessRoot(admission, this.#processLockRoot);
       const request = SpanRootRepairRequestSchema.parse(input);
-      assertStoppedProfileBrowsersClosed(this.#runtimeAdmission,this.#clock,this.#browserClosure);
+      assertStoppedProfileBrowsersClosed(stopped,this.#clock,this.#browserClosure);
 
       const before = AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(
-        this.#runtimeAdmission,
+        stopped,
         this.#authorityPath,
         this.#busyTimeoutMs,
       );
-      const database = AuthorityDatabase.open(this.#runtimeAdmission, {
+      const database = AuthorityDatabase.openStoppedSpanRootRepair(stopped, {
         path: this.#authorityPath,
         busyTimeoutMs: this.#busyTimeoutMs,
         migrationOwner: "span-root-repair",
-      }, this.#clock);
+      }, admission, this.#clock);
       try {
         outcome = { report: database.withAuthorityTransaction(() => {
         const run = database.authority.runs.get(request.runId);
@@ -200,13 +202,15 @@ export class OfflineSpanRootRepairService {
         return SpanRootRepairReportSchema.parse({ state: "repaired", runId: request.runId,
           workflow: queued.workflow, eventId, ...evidence });
         }) };
-      } finally { database.close(); }
+      } catch (error) { outcome = { error }; }
+      try { database.close(); }
+      catch (error) { throw retainAuthoritySourceClosure("error" in outcome ? [outcome.error, error] : [error], { database, admission: stopped, restore: admission }); }
     } catch (error) { outcome = { error }; }
     if ("error" in outcome && hasUnprovedSourceClosure(outcome.error)) {
-      throw retainAuthoritySourceClosure([outcome.error], { admission: this.#runtimeAdmission, restore: admission });
+      throw retainAuthoritySourceClosure([outcome.error], { admission: stopped ?? this.#runtimeAdmission, restore: admission });
     }
-    try { admission.release(); }
-    catch (cleanup) { throw retainAuthoritySourceClosure("error" in outcome ? [outcome.error, cleanup] : [cleanup], { admission: this.#runtimeAdmission, restore: admission }); }
+    try { if (stopped !== this.#runtimeAdmission) stopped?.release(); admission.release(); }
+    catch (cleanup) { throw retainAuthoritySourceClosure("error" in outcome ? [outcome.error, cleanup] : [cleanup], { admission: stopped ?? this.#runtimeAdmission, restore: admission }); }
     if ("error" in outcome) {
       if (outcome.error instanceof Error) throw outcome.error;
       throw new Error("span-root-repair-failed", { cause: outcome.error });

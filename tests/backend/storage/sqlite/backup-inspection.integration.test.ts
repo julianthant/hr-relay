@@ -64,6 +64,7 @@ try {
   const f = await fixture();
   const source = inspectAuthorityBackupReadOnly(f.admission, f.path), bytes = readFileSync(f.path);
   const held = f.admission.acquireOfflineMaintenance();
+  const stopped = f.admission.forStoppedMaintenance(held);
   try {
     held.assertHeld();
     assert.throws(() => f.admission.beginOfflineMaintenance(), /offline-maintenance-busy/u);
@@ -74,12 +75,12 @@ try {
     assert.equal(manifest.schemaVersion, source.schemaVersion);
     assert.equal(manifest.authorityGeneration, source.authorityGeneration);
     assert.equal(manifest.authorityContentFingerprint, source.authorityContentFingerprint);
-    const verified = await verifyBackupManifestAtPath(f.admission,
+    const verified = await verifyBackupManifestAtPath(stopped,
       join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`));
     assert.deepEqual(verified.manifest, manifest);
     held.assertHeld();
     assert.ok(held.operationId); assert.deepEqual(readFileSync(f.path), bytes);
-  } finally { held.release(); }
+  } finally { stopped.release(); held.release(); }
   assert.equal(existsSync(join(f.processLockRoot, "restore-admission.lock.json")), false);
 
 } finally {

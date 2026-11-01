@@ -154,7 +154,7 @@ export function createStorageRestoreTestWorld() {
           port, manifestPath: receipt.manifestPath, async closeRootListener() {
             assert.equal(heldRoot.kind, "inherited-child");
             const closed = nextMessage(); child.send({ state: "close-root-listener" });
-            assert.deepEqual((await closed)[0], { state: "root-listener-closed" });
+            assert.deepEqual((await closed)[0], { state: "root-listener-closing" });
           } });
         if (heldRoot.kind === "inherited-child") {
           const closed = nextMessage(); child.send({ state: "release-inherited" });

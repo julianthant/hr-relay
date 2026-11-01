@@ -234,12 +234,14 @@ if (process.argv[2] === "successor-renew-confirmed") {
     workerLease: lease });
   if (inherited !== undefined) {
     assert.deepEqual((await request)[0], { state: "close-root-listener" });
-    await lifetimeLock.close();
+    const closing = lifetimeLock.close();
+    lifetimeLock.assertHeld();
     const release = once(process, "message");
-    process.send({ state: "root-listener-closed" });
+    process.send({ state: "root-listener-closing" });
     assert.deepEqual((await release)[0], { state: "release-inherited" });
     inherited.send({ state: "release-inherited" });
     assert.deepEqual(await inheritedClose, [0, null]);
+    await closing;
     process.send({ state: "inherited-closed" });
   } else {
     z.never().parse((await request)[0]);

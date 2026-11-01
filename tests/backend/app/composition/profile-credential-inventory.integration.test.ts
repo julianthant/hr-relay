@@ -1,3 +1,4 @@
+import { StoppedAuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { withOfflineMaintenance, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
@@ -28,7 +29,7 @@ import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_V
 import { AuthorityUpgradeRecordSchema, type AuthorityUpgradeRecord } from "../../../../src/models/config/authority.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { AuthorityBackupService, parseBackupManifestFile } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -116,7 +117,7 @@ function retainedBackup(f: Awaited<ReturnType<typeof fixture>>) {
   const directory = join(f.stateRoot, "backups", "authority");
   const names = readdirSync(directory).filter(name => name.endsWith(".manifest.json")); assert.equal(names.length, 1);
   const name = names[0]; assert.ok(name);
-  const manifestPath = join(directory, name), manifest = parseBackupManifestFile(manifestPath);
+  const manifestPath = join(directory, name), manifest = StoppedAuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(manifestPath, "utf8")));
   return { manifestPath, manifest, path: join(directory, manifest.backupFileName) };
 }
 
@@ -184,7 +185,7 @@ it("refuses a genuine foreign bound7 copy even when its manifest claims the curr
     copyFileSync(foreign.path, target.path);
     writeFileSync(target.manifestPath, canonicalJsonStringify({ ...foreign.manifest,
       backupFileName: target.manifest.backupFileName, sourceDatabaseIdentity: target.manifest.sourceDatabaseIdentity }), { mode: 0o600 });
-    await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "profile-inventory-backup-binding-mismatch");
+    await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "backup-profile-binding-mismatch");
   } finally { await other.cleanup(); await f.cleanup(); }
 });
 
@@ -207,7 +208,7 @@ it("retains named refusal for an unbound6 upgrade backup rather than deriving an
   try {
     assert.equal(backup.manifest.schemaVersion, 6); assert.equal(backup.manifest.profileId, undefined); assert.equal(backup.manifest.installationId, undefined);
     const bytes = readFileSync(backup.path), credentials = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
-    await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "profile-inventory-backup-binding-mismatch");
+    await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "backup-profile-binding-required");
     assert.equal(readFileSync(backup.path).equals(bytes), true);
     assert.equal(readFileSync(join(f.stateRoot, "credentials", "protected.json")).equals(credentials), true);
   } finally { await f.cleanup(); }
