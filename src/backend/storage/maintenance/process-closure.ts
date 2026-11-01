@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 export const profileProcessQuery = { spawnSync };
 const refuse = (): never => { throw new Error("profile-process-closure-unproved"); };
@@ -29,10 +29,23 @@ export function proveProfileRootsUnused(roots: readonly string[]): void {
   if (processes.trim().length === 0 || processes.split("\n").filter(Boolean).some(line => !/^\s*\d+\s+\S/u.test(line))
     || roots.some(root => processes.includes(root))) refuse();
   for (const root of roots) requireRoot(root, true);
-  const fields = query("/usr/sbin/lsof", ["-nP", "-F", "pftn"]).split("\n");
+  // A descriptor that closes mid-census reads as unresolved; only a fully resolved snapshot proves absence.
+  for (let attempt = 0; attempt < DESCRIPTOR_CENSUS_ATTEMPTS; attempt++) {
+    if (descriptorsResolvedOutsideRoots(query("/usr/sbin/lsof", ["-nP", "-F", "pftn"]), roots)) return;
+  }
+  refuse();
+}
+
+const DESCRIPTOR_CENSUS_ATTEMPTS = 5;
+const FILESYSTEM_TYPES = ["", "VREG", "VDIR", "VLNK", "VCHR", "VBLK", "DIR", "REG", "CHR", "BLK", "LINK", "FIFO", "GDIR", "GREG"];
+
+/** Refuses a malformed census or a root match; returns false when a filesystem name is unresolved. */
+function descriptorsResolvedOutsideRoots(stdout: string, roots: readonly string[]): boolean {
+  const fields = stdout.split("\n");
   if (fields.pop() !== "" || fields.length === 0) refuse();
   let state: "process" | "file" | "type" | "name" | "complete" = "process";
   let fileType = "";
+  let resolved = true;
   for (const field of fields) {
     if (/^p[1-9]\d*$/u.test(field) && (state === "process" || state === "complete")) state = "file";
     else if (field.startsWith("f") && field.length > 1 && (state === "file" || state === "complete")) { fileType = ""; state = "type"; }
@@ -40,8 +53,11 @@ export function proveProfileRootsUnused(roots: readonly string[]): void {
     else if (field.startsWith("n") && (state === "name" || state === "type") && (field.length > 1 || ["NPOLICY", "NEXUS", "PIPE"].includes(fileType))) {
       const name = field.slice(1);
       if (roots.some(root => name === root || name.startsWith(`${root}${sep}`))) refuse();
+      if ((FILESYSTEM_TYPES.includes(fileType) || isAbsolute(name))
+        && (!isAbsolute(name) || resolve(name) !== name || name.includes("\0"))) resolved = false;
       state = "complete";
     } else refuse();
   }
   if (state !== "complete") refuse();
+  return resolved;
 }
