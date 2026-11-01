@@ -63,12 +63,12 @@ describe.skipIf(process.platform !== "darwin")("complete process and descriptor 
     } finally { rmSync(root, { recursive: true }); }
   });
 
-  it("does not inherit an empty-name type allowance from a preceding descriptor", () => {
+  it("refuses empty names regardless of a descriptor's own or preceding type", () => {
     for (const type of ["NPOLICY", "NEXUS", "PIPE"]) {
       const accepted = vi.spyOn(profileProcessQuery, "spawnSync");
       accepted.mockReturnValueOnce(result(" 123 synthetic-worker\n"))
         .mockReturnValueOnce(result(`p123\nf1\nt${type}\nn\n`));
-      proveProfileRootsUnused([]);
+      assert.throws(() => proveProfileRootsUnused([]), /closure-unproved/u);
       assert.equal(accepted.mock.calls.length, 2); accepted.mockRestore();
       const refused = vi.spyOn(profileProcessQuery, "spawnSync");
       refused.mockReturnValueOnce(result(" 123 synthetic-worker\n"))
@@ -77,6 +77,18 @@ describe.skipIf(process.platform !== "darwin")("complete process and descriptor 
       assert.equal(refused.mock.calls.length, 2); refused.mockRestore();
     }
   });
+
+  for (const type of ["", "tREG\n", "tPIPE\n"]) {
+    for (const target of ["vnode: FD unavailable", "can't identify protocol", "127.0.0.1:1234", "relative/target", "/synthetic/../other", "/synthetic//other", "/synthetic\0other"]) {
+      it(`refuses unresolved descriptor target ${JSON.stringify(target)} with ${type === "" ? "no type" : type.trim()}`, () => {
+        const query = vi.spyOn(profileProcessQuery, "spawnSync");
+        query.mockReturnValueOnce(result(" 123 synthetic-worker\n"))
+          .mockReturnValueOnce(result(`p123\nf1\ntDIR\nn/synthetic-other\nf99\n${type}n${target}\n`));
+        assert.throws(() => proveProfileRootsUnused([]), /profile-process-closure-unproved/u);
+        assert.equal(query.mock.calls.length, 2);
+      });
+    }
+  }
 
   it("refuses empty, missing, malformed or unframed untyped descriptor names", () => {
     for (const stdout of ["p123\nf1\nn\n", "p123\nf1\n", "p123\nf1\nn/other", "p123\nf1\nxunknown\nn/other\n",
