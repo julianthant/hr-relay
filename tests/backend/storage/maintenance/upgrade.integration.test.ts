@@ -1,6 +1,5 @@
 import { inspectUnboundBackupFixture } from "../../../support/helpers/storage/backup-fixtures.js";
 import { UnboundPredecessorBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
-import { z } from "zod";
 import { prepareStoppedBackupClosure, probeStoppedProfileBrowsersClosed } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { withOfflineMaintenanceSync, withOfflineMaintenance, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { profileBrowserClosure, BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
@@ -540,8 +539,7 @@ describe("stopped native upgrade admission",()=>{
   const restore=new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission,{authorityPath:f.path,suspectDirectory:join(f.root,"backups","suspects"),
    busyTimeoutMs:250,processLockRoot:f.input.processLockRoot},async()=>{throw new Error("unexpected projection rebuild");},clock,undefined,credentials);
   const before=storageTree(f.root);
-  await assert.rejects(restore.restore({ manifestPath }, operation), error => error instanceof z.ZodError
-   && error.issues.some(issue => issue.path.includes("manifestVersion")));
+  await assert.rejects(restore.restore({ manifestPath }, operation), /backup-profile-binding-required/u);
   assert.deepEqual(storageTree(f.root),before);
  });
  it("refuses constructing restore for a pending profile",async ()=>{
