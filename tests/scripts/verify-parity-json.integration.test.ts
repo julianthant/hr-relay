@@ -1,35 +1,57 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
-import { acquireSuiteLock, TestSuiteWaitTimeoutError } from "../../scripts/test/runner.js";
-import { runParityAndVerify } from "../../scripts/verify-parity-json.js";
+import { runChild } from "../../scripts/verify-parity-json.js";
 
-it("takes the suite lock before parity's report lock and skips it for one argument in both modes", async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-parity-entry-")));
-  const directory = join(root, "runs");
-  const lease = await acquireSuiteLock({ directory });
+function dead(pid: number): boolean {
   try {
-    for (const mode of ["assert", "update"] as const) {
-      const cwd = join(root, mode);
-      mkdirSync(cwd, { mode: 0o700 });
-      mkdirSync(join(cwd, "tests/parity"), { recursive: true, mode: 0o700 });
-      const marker = join(cwd, "child-started");
-      const options = {
-        cwd, env: {}, mode, command: process.execPath,
-        commandArgs: ["-e", `require('node:fs').writeFileSync(${JSON.stringify(marker)},'started');process.exitCode=23`, "--"],
-        suiteLockDirectory: directory, suiteLockRetryIntervalMs: 10, suiteLockWaitTimeoutMs: 50,
-      };
-      await assert.rejects(runParityAndVerify({ ...options, args: [] }), TestSuiteWaitTimeoutError);
-      assert.equal(existsSync(marker), false);
-      assert.equal(existsSync(join(cwd, ".tracker")), false, "report lock must follow shared suite acquisition");
-      const errors: string[] = [];
-      for (const args of [["proof.spec.ts"], ["--headed"]]) {
-        assert.equal(await runParityAndVerify({ ...options, args, writeError: (message) => { errors.push(message); } }), 23);
-      }
-      assert.equal(existsSync(marker), true);
-      assert.ok(errors.some((message) => message.includes("Playwright parity command failed first (exit 23)")));
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return true;
+    throw error;
+  }
+}
+
+it("kills an idle parity child's descendants before the child returns", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "hrt-parity-"));
+  const writer = join(directory, "writer.mjs");
+  const parent = join(directory, "parent.mjs");
+  const pidFile = join(directory, "pid");
+  const logFile = join(directory, "writes");
+  writeFileSync(writer, "import { appendFileSync } from 'node:fs';\nconst file = process.argv[2];\nappendFileSync(file, 'x');\nsetInterval(() => appendFileSync(file, 'x'), 30);\n");
+  writeFileSync(parent, "import { spawn } from 'node:child_process';\nimport { writeFileSync } from 'node:fs';\nconst child = spawn(process.execPath, [process.argv[2], process.argv[4]], { stdio: 'ignore' });\nwriteFileSync(process.argv[3], String(child.pid));\nsetInterval(() => {}, 1_000_000);\n");
+  const result = await runChild(process.execPath, [parent, writer, pidFile, logFile], directory, process.env, 1_000);
+  assert.equal(result.code, 1);
+  assert.match(result.detail, /no output for 1000ms/);
+  const pid = Number(readFileSync(pidFile, "utf8"));
+  const deadline = Date.now() + 2_000;
+  let size = -1;
+  while (Date.now() < deadline) {
+    const next = statSync(logFile).size;
+    if (dead(pid) && size === next && next > 0) return;
+    size = next;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
+  throw new Error(`descendant ${pid} kept writing after the idle timeout`);
+});
+
+it("keeps recreated parity output private without changing the parent umask", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "hrt-parity-mode-"));
+  const previousUmask = process.umask(0o022);
+  try {
+    const source = "import {mkdirSync,writeFileSync} from 'node:fs'; mkdirSync('output'); writeFileSync('output/results.json', '{}');";
+    const result = await runChild(process.execPath, ["--input-type=module", "-e", source], directory, process.env);
+    assert.equal(result.code, 0);
+    assert.equal(process.umask(), 0o022);
+    if (process.platform !== "win32") {
+      assert.equal(statSync(join(directory, "output")).mode & 0o777, 0o700);
+      assert.equal(statSync(join(directory, "output/results.json")).mode & 0o777, 0o600);
     }
-  } finally { await lease.release(); rmSync(root, { recursive: true, force: true }); }
+  } finally {
+    process.umask(previousUmask);
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

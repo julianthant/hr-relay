@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
-import { readPrivateFile, withPrivateFileLock, type PrivateFileLock } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+import { clearOperationProofSlots, revalidateOperationProof, outermostOperationProof, withOperationProof, readPrivateFile, withPrivateFileLock, type PrivateFileLock } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 
 for (const label of ["authority database", "managed data"] as const) {
   it(`reads retained 0644 ${label} bytes without changing mode or identity`, () => {
@@ -243,4 +243,89 @@ for (const stage of ["unproved-close", "proved-close-and-cleanup-failure"] as co
     throw error;
   }
   if (primary !== undefined) throw primary.error;
+});
+
+for (const asynchronous of [false, true]) it(`preserves operation and proof release failures (${asynchronous ? "async" : "sync"})`, async () => {
+  const primary = new Error("operation failed"), cleanup = new Error("proof release failed");
+  const body = () => {
+    const proof = outermostOperationProof();
+    assert.ok(proof);
+    proof.release.push(() => { throw cleanup; });
+    if (asynchronous) return Promise.reject(primary);
+    throw primary;
+  };
+  const check = (error: unknown) => {
+    assert.ok(error instanceof AggregateError);
+    assert.deepEqual(error.errors, [primary, cleanup]);
+    assert.equal(error.cause, cleanup);
+    return true;
+  };
+  if (asynchronous) await assert.rejects(() => withOperationProof(body), check);
+  else assert.throws(() => withOperationProof(body), check);
+  assert.equal(outermostOperationProof(), undefined);
+});
+
+it("retains proof resources when source closure is unproved", () => {
+  let releases = 0;
+  const failure = retainAuthoritySourceClosure([new Error("source still open")], { database: {} });
+  assert.throws(() => withOperationProof(() => {
+    const proof = outermostOperationProof();
+    assert.ok(proof);
+    proof.release.push(() => { releases++; });
+    throw failure;
+  }), error => error === failure);
+  assert.equal(releases, 0);
+  assert.equal(outermostOperationProof(), undefined);
+});
+
+it("starts a fresh proof when an async descendant outlives its operation", async () => {
+  let releases = 0;
+  const deferred = withOperationProof(() => {
+    const original = outermostOperationProof();
+    assert.ok(original);
+    original.slots.set("prior", "verified");
+    original.witnesses.set("retained", { assertUnchanged() {} });
+    original.release.push(() => { releases++; });
+    return { pending: new Promise<void>(resolve => { setImmediate(resolve); }).then(() => {
+      assert.equal(original.active, false);
+      assert.equal(original.slots.size, 0);
+      assert.equal(original.witnesses.size, 0);
+      assert.equal(outermostOperationProof(), undefined);
+      withOperationProof(() => {
+        const fresh = outermostOperationProof();
+        assert.ok(fresh);
+        assert.notEqual(fresh, original);
+        assert.equal(fresh.slots.size, 0);
+        assert.equal(fresh.witnesses.size, 0);
+        fresh.release.push(() => { releases++; });
+      });
+      assert.equal(outermostOperationProof(), undefined);
+    }) };
+  });
+  assert.equal(releases, 1);
+  await deferred.pending;
+  assert.equal(releases, 2);
+  assert.equal(outermostOperationProof(), undefined);
+});
+
+it("clears memos before revalidating retained witnesses and resets both at operation boundaries", () => {
+  let checks = 0;
+  withOperationProof(() => {
+    const proof = outermostOperationProof();
+    assert.ok(proof);
+    proof.slots.set("memo", true);
+    const witness = { assertUnchanged() { assert.equal(proof.slots.size, 0); checks++; } };
+    proof.witnesses.set("verified", witness);
+    revalidateOperationProof();
+    assert.equal(checks, 1);
+    assert.equal(proof.witnesses.get("verified"), witness);
+    proof.slots.set("memo", true);
+    clearOperationProofSlots();
+    assert.equal(proof.slots.size, 0);
+    assert.equal(proof.witnesses.size, 0);
+    const failure = new Error("changed evidence");
+    proof.witnesses.set("changed", { assertUnchanged() { throw failure; } });
+    assert.throws(revalidateOperationProof, error => error === failure);
+  });
+  assert.equal(outermostOperationProof(), undefined);
 });

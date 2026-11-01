@@ -19,6 +19,7 @@ describe("Sessions follows child-exit recovery", () => {
       f.observe(phase);
       const projection = createOperatorProjection({ database: f.database, reader: f.service,
         stateRoot: f.root, clock: f.clock, appVersion: "0.1.0", descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
+        ownsWorker: lease => lease.processId === f.old.pid && f.old.child.exitCode === null && f.old.child.signalCode === null,
         ledger: createTransactionHistory(f.database.authority), descriptors: { resolve: () => personLookupDescriptor } });
       const day = f.clock.now().toISOString().slice(0, 10);
       assert.equal(projection.buildDashboardDayWire(day).workerCards[0]?.state, phase);

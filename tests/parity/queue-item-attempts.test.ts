@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js";
 import { FIXTURE_DAY, FIXTURE_NOW } from "./helpers/fixture-identity.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { failOnPageErrors } from "./helpers/reference-harness.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 
@@ -12,7 +13,6 @@ import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js"
 test("a status-filtered item keeps sibling attempts and opens the exact selected run", {
   annotation: [{ type: "required-a11y-evidence", description: "queue-item-attempts.a11y.yml" }],
 }, async ({ page }) => {
-  ensureParityBundle();
   const errors = failOnPageErrors(page);
   await page.clock.setFixedTime(new Date(FIXTURE_NOW));
   await page.setViewportSize({ width: 1440, height: 900 });

@@ -5,7 +5,15 @@ import { deepFreeze } from "../../rules/validation/immutability.js";
 import { ordinarySettingsObject } from "./catalog.js";
 
 const UrlSchema = z.url();
-export const AbsolutePathSchema = z.string().min(1).refine((value) => value.startsWith("/"), "path must be absolute");
+
+/** Fully qualified path. Browser-safe: the dashboard imports this model. Drive-relative (`C:foo`) and a current-drive root (`\foo`) stay rejected. */
+function isAbsolutePath(value: string): boolean {
+  if (value.startsWith("/")) return true;
+  if (/^[A-Za-z]:[\\/]/u.test(value)) return true;
+  return value.startsWith("\\\\") && value.length > 2 && value[2] !== "\\" && value[2] !== "/";
+}
+
+export const AbsolutePathSchema = z.string().min(1).refine(isAbsolutePath, "path must be absolute");
 export const FiscalYearKeySchema = z.string().regex(/^FY\d{4}$/, "fiscal-year key must be FY<year>");
 export const UsDateSchema = z.string().regex(
   /^(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/\d{4}$/,

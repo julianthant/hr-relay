@@ -502,7 +502,7 @@ describe("the workflow explorer projection", () => {
     );
     assert.deepEqual(roles.get("separations"), { kind: "composition" });
     assert.equal(roles.has("separations-kuali-read"), false);
-    assert.deepEqual(roles.get("person-lookup"), { kind: "standalone" });
+    assert.deepEqual(roles.get("person-lookup"), { kind: "composition" });
     assert.deepEqual(
       wire.workflows.flatMap((workflow) =>
         workflow.nodes

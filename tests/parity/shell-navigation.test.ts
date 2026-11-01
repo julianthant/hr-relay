@@ -1,6 +1,7 @@
-import { expect,test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { ensureParityBundle,PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer,type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { startSeededServer,type SeededServer,SEEDED_COVERAGE_GAPS } from "./helpers/seeded-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -9,7 +10,6 @@ import { PARITY_THEMES,installTheme } from "./helpers/capture.js";
 let fixture:FixtureServer;
 let seeded:SeededServer;
 test.beforeAll(async()=>{
-  ensureParityBundle();
   fixture=await startFixtureServer({distDir:PARITY_DIST_DIR,bundle:{proof:"working-tree"}});
   seeded=await startSeededServer({distDir:PARITY_DIST_DIR,bundle:{proof:"working-tree"}});
 });

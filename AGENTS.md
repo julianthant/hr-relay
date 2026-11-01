@@ -96,13 +96,22 @@ The repository holds only the current version. No compatibility readers, old mig
 - The operator launches every task. Non-overlapping feature implementation may run in parallel.
   Workflow activation stays sequential: Person Lookup → Separations → OCR/Emergency Contact →
   OnBase → Onboarding, after each workflow's dry run and operator sign-off.
-- A verified feature enters `staging` through a PR with a merge commit, after required checks and
-  independent review, on the operator's go. The operator previews `staging` in the main checkout,
-  which owns the store, credentials and ports: stop the dashboard, switch to `staging`, start it.
-  A rejected feature is reverted on `staging`.
-- After operator sign-off and full checks, a release PR merges `staging` into `main` with a merge
-  commit, only on the operator's explicit go. Sync `main` back into `staging` afterward.
-  Push only on explicit instruction. Required check names are in [repository governance](docs/repository-governance.md).
+- Finish a feature on its branch. Run `npm run test:local`, `npm run typecheck` and `npm run lint`,
+  then push and open a ready (non-draft) pull request into `staging` with auto-merge on. It merges
+  with a merge commit once its required checks pass on a branch up to date with `staging`; the merge
+  train keeps it current, Cursor Bugbot reviews every push, and Cursor automations fix red checks and
+  merge conflicts. The operator handles only pull requests labeled `needs-human`.
+- A pull request bundles a good amount of related work, so CI runs once per batch rather than after
+  every small fix. Keep commits logical inside it; never mix unrelated features. Title and describe
+  what changed and why. Pull a branch before continuing work on it.
+- After the merge, GitHub deletes the remote branch; delete the local branch and remove its worktree
+  (save anything in `.work/` first), then report done.
+  The operator previews `staging` in the main checkout, which owns the store, credentials and
+  ports: stop the dashboard, switch to `staging`, start it. A rejected feature is reverted on `staging`.
+- A release pull request merges `staging` into `main` with a merge commit, only on the operator's
+  explicit go. Sync `main` back into `staging` afterward. Push feature branches only through this
+  pull-request flow; push nothing else without explicit instruction.
+  Required check names are in [repository governance](docs/repository-governance.md).
 - A `staging` with a store migration is previewed only after a verified `storage backup`.
 - Verify base, path and ownership before editing. Stage exact paths and commit by logical category.
   Never switch, reset or repurpose another checkout.
@@ -114,10 +123,13 @@ The repository holds only the current version. No compatibility readers, old mig
 ## Checks
 
 - During a task: focused tests for the changed behavior, `npm run lint`, and the affected static and
-  generated checks. Update tests when behavior changes, and say when none exist.
-- Before `staging` is promoted to `main`: `npm run typecheck`, `npm run lint`, `npm run web:build`,
-  `npm run test:parity`, then `npm run test:coverage` alone, then `npm run test:perf`. Coverage selects
-  the unit, integration and architecture suites without perf, so don't run those three separately.
+  generated checks. Run `npm run test:local` for tests that need this machine or its accounts.
+  Update tests when behavior changes, and say when none exist.
+- Before push: `npm run test:local`, `npm run typecheck` and `npm run lint`. Cloud runs unit,
+  integration and architecture on macOS and Windows, plus static, privacy and parity. A release
+  pull request then runs `npm run web:build`, `npm run test:coverage` alone, and `npm run test:perf`.
+  Coverage selects the unit, integration and architecture suites without perf, so don't run those
+  three separately.
 - A lint failure is a task failure. Keep assertions, test membership, isolation, coverage floors and
   timeouts. Never report an unrun check as passed.
 - Generate derived files at their source. Never hand-edit them.
@@ -167,7 +179,6 @@ The repository holds only the current version. No compatibility readers, old mig
 | Dev backend + Vite | `npm run dashboard` (Ctrl+C stops both) |
 | Production bundle and server | `npm run web:build`, then `npm run dashboard:prod` |
 | Workflow dry run | Sign in to the dashboard, use Run, and select Dry Run for a workflow that supports previews |
-| Remove leftover test runs | `npm run test:reap` |
 | Visual contract | `npm run test:parity` (desktop only) |
 | Workflow manifest | `npm run build:manifest`, then `npm run build:manifest:check` |
 | Store catalog | `npm run stores:catalog`, then `npm run stores:catalog:check` |

@@ -1,4 +1,4 @@
-import { createBoundProfileFixture } from "../admission-fixture.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
 import { explorerEditCommandFingerprint } from "../../../../src/models/dashboard/explorer-override.js";
@@ -38,7 +38,7 @@ type AuthorityTransactionWrap = <Result>(
 ) => Result;
 
 interface HarnessOptions {
-  readonly profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>;
+  readonly profile?: BoundProfileStorageFixture;
   readonly prepareAssistantModelPreference?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["prepareAssistantModelPreference"];
   readonly failureResolution?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["failureResolution"];
   readonly explorerEdits?: ExplorerEditExecutor;
@@ -58,11 +58,11 @@ export interface Harness {
   readonly explorerCalls: unknown[];
 }
 
-export function createCommandKernelTestWorld() {
+export function createCommandKernelTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
   const roots: string[] = [];
 
   const openDatabases: AuthorityDatabase[] = [];
-  const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+  const profiles: BoundProfileStorageFixture[] = [];
 
   function databasePath(name: string): string {
     const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-command-kernel-"));
@@ -182,7 +182,7 @@ export function createCommandKernelTestWorld() {
     const settingsOverride = settingsInputOrOptions !== undefined && "applyOrdinary" in settingsInputOrOptions
       ? settingsInputOrOptions : undefined;
     const clock = manualClock(new Date(NOW));
-    const created = options.profile === undefined ? await createBoundProfileFixture() : undefined;
+    const created = options.profile === undefined ? await profileFixture() : undefined;
     const profile = options.profile ?? created;
     if (profile === undefined) throw new Error("kernel fixture profile missing");
     const path = profile.path;
@@ -192,7 +192,6 @@ export function createCommandKernelTestWorld() {
       clock,
     );
     if (created !== undefined) {
-      roots.push(created.workspace);
       profiles.push(created);
     }
     openDatabases.push(database);

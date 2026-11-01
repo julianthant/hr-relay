@@ -108,7 +108,7 @@ export async function checkParkedWrite(input: Readonly<{
   let evidence: Extract<WorkerEffectAcknowledgement, { kind: "parked-write-check" }>["evidence"];
   let state: ParkedWriteCheckResult["state"] = "unavailable";
   let code: ParkedWriteCheckResult["code"] = "PARKED_CHECK_UNAVAILABLE";
-  if (supported && run.envelope.workflow === "separations" && intent.bindingProof.kind === "subject-match" && instance !== undefined
+  if (supported && intent.bindingProof.kind === "subject-match" && instance !== undefined
     && task?.contract.effect === "read" && task.impl.sessions.length === 1 && task.impl.sessions[0]?.access === "read"
     && task.impl.sessions[0].system === intent.system && task.contract.input.safeParse(commitInput).success) {
     await input.sessions.closeAll("parked");

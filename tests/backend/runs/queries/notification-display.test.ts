@@ -20,25 +20,27 @@ const checkpoint = (overrides: Record<string, unknown> = {}) => RunCheckpointRec
   writtenAt: "2026-10-02T16:59:00.000Z", ...overrides,
 });
 const descriptor = { ...separationsDescriptor, version: run.envelope.descriptorVersion, label: "Person lookup", contractFingerprint: HASH_A, subjectProjection: { nodeId: "identify", fieldPath: "person.name" } };
-const deps = async (records: ReturnType<typeof checkpoint>[], current = descriptor) => {
-  const world = await makeWorld();
-  worlds.push(world);
+const deps = async (records: ReturnType<typeof checkpoint>[], current = descriptor, world?: DashboardWorld) => {
+  const owned = world ?? await makeWorld();
+  if (world === undefined) worlds.push(owned);
   return {
     read: () => ({ state: "present" as const, disposition: "live" as const, run }),
     descriptor: () => current,
     receipt: () => undefined,
     checkpoints: { listByAttempt: () => records },
-    presentation: { timeline: world.timeline, authority: { listCheckpoints: () => records, listGateResults: () => [] } },
+    presentation: { timeline: owned.timeline, authority: { listCheckpoints: () => records, listGateResults: () => [] } },
   };
 };
 
 it("uses only the linked run's compatible declared subject checkpoint", async () => {
-  assert.deepEqual(notificationDisplayContext(row, await deps([checkpoint(), checkpoint({ runId: "33333333-3333-4333-8333-333333333333", output: { schemaHash: HASH_A, value: { person: { name: "Other" } } } })])),
+  const world = await makeWorld();
+  worlds.push(world);
+  assert.deepEqual(notificationDisplayContext(row, await deps([checkpoint(), checkpoint({ runId: "33333333-3333-4333-8333-333333333333", output: { schemaHash: HASH_A, value: { person: { name: "Other" } } } })], descriptor, world)),
     { state: "available", workflow: "Person lookup", subject: "Alice" });
-  assert.deepEqual(notificationDisplayContext(row, await deps([checkpoint({ attempt: 3, output: { schemaHash: HASH_A, value: { person: { name: "Later" } } } })])), { state: "workflow-only", workflow: "Person lookup" });
-  assert.deepEqual(notificationDisplayContext(row, await deps([checkpoint({ contractFingerprint: HASH_B })])), { state: "workflow-only", workflow: "Person lookup" });
-  assert.deepEqual(notificationDisplayContext(row, await deps([checkpoint()], { ...descriptor, contractFingerprint: HASH_B })), { state: "unavailable" });
-  assert.deepEqual(notificationDisplayContext(row, await deps([])), { state: "workflow-only", workflow: "Person lookup" });
+  assert.deepEqual(notificationDisplayContext(row, await deps([checkpoint({ attempt: 3, output: { schemaHash: HASH_A, value: { person: { name: "Later" } } } })], descriptor, world)), { state: "workflow-only", workflow: "Person lookup" });
+  assert.deepEqual(notificationDisplayContext(row, await deps([checkpoint({ contractFingerprint: HASH_B })], descriptor, world)), { state: "workflow-only", workflow: "Person lookup" });
+  assert.deepEqual(notificationDisplayContext(row, await deps([checkpoint()], { ...descriptor, contractFingerprint: HASH_B }, world)), { state: "unavailable" });
+  assert.deepEqual(notificationDisplayContext(row, await deps([], descriptor, world)), { state: "workflow-only", workflow: "Person lookup" });
 });
 
 it("does not reconstruct absent run context", async () => {

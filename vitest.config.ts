@@ -1,23 +1,39 @@
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 import { availableParallelism } from "node:os";
+import { scaledMs } from "./tests/support/time-scale.js";
 
 export const REBUILD_COVERAGE_INCLUDE = ["src/**/*.ts", "src/**/*.tsx"] as const;
 export const REBUILD_UNIT_TEST_INCLUDE = ["tests/**/*.test.ts"] as const;
 export const REBUILD_UNIT_TEST_EXCLUDE = [
   "tests/**/*.integration.test.ts",
+  "tests/**/*.local.test.ts",
   "tests/architecture/**",
   "tests/parity/**",
   "tests/perf/**",
 ] as const;
 export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/**/*.integration.test.ts"] as const;
-export const REBUILD_INTEGRATION_TEST_EXCLUDE = ["tests/perf/**"] as const;
+export const REBUILD_INTEGRATION_TEST_EXCLUDE = [
+  "tests/**/*.local.integration.test.ts",
+  "tests/perf/**",
+] as const;
 export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
   "tests/architecture/**/*.test.ts",
 ] as const;
-export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [] as const;
+export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [
+  "tests/**/*.local.test.ts",
+  "tests/**/*.local.integration.test.ts",
+] as const;
 export const REBUILD_PERF_TEST_INCLUDE = ["tests/perf/**/*.test.ts"] as const;
-export const REBUILD_PERF_TEST_EXCLUDE = [] as const;
+export const REBUILD_PERF_TEST_EXCLUDE = [
+  "tests/**/*.local.test.ts",
+  "tests/**/*.local.integration.test.ts",
+] as const;
+export const REBUILD_LOCAL_TEST_INCLUDE = [
+  "tests/**/*.local.test.ts",
+  "tests/**/*.local.integration.test.ts",
+] as const;
+export const REBUILD_LOCAL_TEST_EXCLUDE = ["tests/parity/**"] as const;
 export const REBUILD_TEST_PROJECTS = [
   { name: "unit", include: REBUILD_UNIT_TEST_INCLUDE, exclude: REBUILD_UNIT_TEST_EXCLUDE },
   { name: "integration", include: REBUILD_INTEGRATION_TEST_INCLUDE, exclude: REBUILD_INTEGRATION_TEST_EXCLUDE },
@@ -27,6 +43,7 @@ export const REBUILD_TEST_PROJECTS = [
     exclude: REBUILD_ARCHITECTURE_TEST_EXCLUDE,
   },
   { name: "perf", include: REBUILD_PERF_TEST_INCLUDE, exclude: REBUILD_PERF_TEST_EXCLUDE },
+  { name: "local", include: REBUILD_LOCAL_TEST_INCLUDE, exclude: REBUILD_LOCAL_TEST_EXCLUDE },
 ] as const;
 export const REBUILD_TEST_EXEC_ARGV = ["--no-experimental-webstorage"] as const;
 export const REBUILD_TEST_REPORTERS = ["verbose"] as const;
@@ -44,16 +61,18 @@ export const REBUILD_COVERAGE_FLOORS = {
   branches: { phase1ReportOnly: true, phase2Global: 50, phase2SafetyCritical: 70 },
 } as const;
 
-export default defineConfig({
+const sharedConfig = defineConfig({
   resolve: {
     alias: {
       "@": resolve(import.meta.dirname, "src/dashboard"),
     },
   },
   test: {
+    env: { TZ: "America/Los_Angeles" },
+    globalSetup: ["tests/support/private-temp-setup.ts"],
     setupFiles: ["tests/support/duo-ceremony-setup.ts"],
-    // Every named project, including architecture, must fail if its include or
-    // exclude leaves it empty; an empty lane proves no invariant.
+    // Cloud and perf projects fail when a selected run collects nothing. The
+    // local project may be empty; test:local passes --passWithNoTests=true.
     passWithNoTests: false,
     // One human stream for every Vitest entry point: project, file, suite and
     // full behavior/refusal title. Commands do not layer a second reporter on
@@ -67,21 +86,9 @@ export default defineConfig({
     // and module-level caches are per-file no matter the scheduling.
     pool: "forks",
     isolate: true,
-    // Full coverage at the CPU-derived default starves the fixture/guard
-    // checks on shared machines. Bound file concurrency, not their deadlines.
-    maxWorkers: Math.min(4, availableParallelism()),
-    projects: REBUILD_TEST_PROJECTS.map(({ name, include, exclude }) => ({
-      extends: true,
-      test: {
-        name,
-        include: [...include],
-        exclude: [...exclude],
-        fileParallelism: true,
-      },
-    })),
     globals: false,
-    testTimeout: 30_000,
-    hookTimeout: 30_000,
+    testTimeout: scaledMs(30_000),
+    hookTimeout: scaledMs(30_000),
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
@@ -141,5 +148,24 @@ export default defineConfig({
         "src/**/*projection*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
       },
     },
+  },
+});
+
+export default defineConfig({
+  ...sharedConfig,
+  test: {
+    ...sharedConfig.test,
+    // Keep the cap at the root so CLI limits also apply to named projects.
+    maxWorkers: Math.min(4, availableParallelism()),
+    projects: REBUILD_TEST_PROJECTS.map(({ name, include, exclude }) => ({
+      ...sharedConfig,
+      test: {
+        ...sharedConfig.test,
+        name,
+        include: [...include],
+        exclude: [...exclude],
+        fileParallelism: true,
+      },
+    })),
   },
 });

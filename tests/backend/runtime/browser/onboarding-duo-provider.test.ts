@@ -1,4 +1,4 @@
-import { onboardingProfileDirectory } from "../../../src/backend/runtime/browser/native-profile-probe.js";
+import { onboardingProfileDirectory } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -7,9 +7,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 import type { BrowserContext, Worker } from "playwright";
-import { manualClock } from "../../../src/rules/time/clock.js";
-import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../src/backend/profiles/onboarding-duo-provider.js";
-import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext } from "../../../src/backend/profiles/onboarding-duo.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
+import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
+import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext } from "../../../../src/backend/profiles/onboarding-duo.js";
 
 function world(method: "key" | "touch" = "key") {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "relay-onboarding-provider-")));
@@ -468,7 +468,9 @@ describe("draft Duo provider", () => {
       assert.deepEqual(w.failures, []);
       assert.ok(w.calls.includes("unknown"));
       assert.ok(!w.calls.includes("portal-accepted"));
+      assert.ok(existsSync(w.profile()), "context closure retains the profile until owner cleanup");
       assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "closed" });
+      assert.equal(existsSync(w.profile()), false);
       const retained = [...w.calls];
       await w.provider.showBrowser(w.owner);
       assert.equal(w.launches(), 2); assert.equal(w.portalPages(), 0);

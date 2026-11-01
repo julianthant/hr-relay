@@ -1,10 +1,10 @@
 import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
-import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { createClonedProfileFixtures, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
 import { readFileSync,rmSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterAll,afterEach,describe,it } from "vitest";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import {
 DiagnosticBundleBytesMissingError,
@@ -46,13 +46,15 @@ interface Fixture {
   readonly sourceReads: number[];
 }
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 const disposers: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
   for (const dispose of disposers.splice(0)) await dispose();
 });
 
 async function fixture(): Promise<Fixture> {
-  const profile = await createBoundProfileFixture();
+  const profile = await profileFixtures.create();
   const root = profile.stateRoot;
   let database: AuthorityDatabase;
   try {

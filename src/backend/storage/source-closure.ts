@@ -15,6 +15,7 @@ type RetainedSourceOwners = Readonly<{
   restore?: object;
   restoreCreation?: object;
   processLock?: object;
+  operationProof?: object;
 }>;
 const retainedSourceClosures = new WeakMap<AuthoritySourceClosureUnprovedError, RetainedSourceOwners>();
 

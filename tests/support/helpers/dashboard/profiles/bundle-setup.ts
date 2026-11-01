@@ -77,7 +77,9 @@ export function createBundleSetup({ PARITY_REPO_ROOT, PARITY_DIST_DIR, bundleBui
   function ensureParityBundle(input: ParityBundleInput = {}): ParityBundleStamp {
     const distDir = input.distDir ?? PARITY_DIST_DIR;
     const repoRoot = input.repoRoot ?? PARITY_REPO_ROOT;
-    if (parityBundleState({ distDir, repoRoot }).state === "stale") runBuildScript(repoRoot);
+    const result = parityBundleState({ distDir, repoRoot });
+    if (result.state === "current") return result.stamp;
+    runBuildScript(repoRoot);
     return assertParityBundleIsCurrent({ distDir, repoRoot });
   }
 

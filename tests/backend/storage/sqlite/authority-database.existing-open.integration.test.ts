@@ -10,8 +10,8 @@ import { COMMAND_FIXTURES, UUID_1 } from "../../../support/fixtures/phase1c-cont
 
 const boundary = vi.hoisted(() => ({
   beforeOpen: undefined as ((location: string | Buffer | URL) => void) | undefined,
-  temporaryRoot: undefined as string | undefined,
 }));
+vi.hoisted(() => vi.resetModules());
 vi.mock("node:sqlite", async importOriginal => {
   const actual = await importOriginal<typeof import("node:sqlite")>();
   return { ...actual, DatabaseSync: class extends actual.DatabaseSync {
@@ -21,11 +21,7 @@ vi.mock("node:sqlite", async importOriginal => {
     }
   } };
 });
-vi.mock("node:os", async importOriginal => {
-  const actual = await importOriginal<typeof import("node:os")>();
-  return { ...actual, tmpdir: () => boundary.temporaryRoot ?? actual.tmpdir() };
-});
-afterEach(() => { boundary.beforeOpen = undefined; boundary.temporaryRoot = undefined; });
+afterEach(() => { boundary.beforeOpen = undefined; });
 
 function open(fixture: Awaited<ReturnType<typeof createBoundProfileFixture>>) {
   return AuthorityDatabase.open(fixture.admission, { path: fixture.path, busyTimeoutMs: 250, migrationOwner: "existing-open-test" },
@@ -108,11 +104,10 @@ it("keeps existing writable WAL and canonical binding at a URI-sensitive filesys
   const parent = realpathSync(mkdtempSync(join(tmpdir(), "authority-uri-")));
   const special = join(parent, "literal % ? #");
   mkdirSync(special, { mode: 0o700 });
-  boundary.temporaryRoot = special;
   let f: Awaited<ReturnType<typeof createBoundProfileFixture>> | undefined;
   try {
-    f = await createBoundProfileFixture();
-    boundary.temporaryRoot = undefined;
+    f = await createBoundProfileFixture({ workspace: special });
+
     assert.ok(f.path.startsWith(`${special}/`));
     const database = open(f);
     const generation = database.getMeta().authorityGeneration;
@@ -131,5 +126,5 @@ it("keeps existing writable WAL and canonical binding at a URI-sensitive filesys
     const reopened = open(f);
     try { assert.deepEqual(reopened.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]); }
     finally { reopened.close(); }
-  } finally { boundary.temporaryRoot = undefined; await f?.close(); rmSync(parent, { recursive: true, force: true }); }
+  } finally { await f?.close(); rmSync(parent, { recursive: true, force: true }); }
 });

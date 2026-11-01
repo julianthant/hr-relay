@@ -1,7 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY, uuidOf } from "./helpers/fixture-identity.js";
 import { FIXTURE_DAY_WIRE } from "./helpers/fixture-queue.js";
@@ -10,7 +11,6 @@ import { FIXTURE_DAY_WIRE } from "./helpers/fixture-queue.js";
 for (const theme of ["light", "dark"] as const) {
 
 test(`workflow batches: separate rows for either served preference, ${theme}`, async ({ page }, _testInfo) => {
-    ensureParityBundle();
     await page.setViewportSize({ width: 1440, height: 900 });
     const chosen = FIXTURE_DAY_WIRE.queueSurfaces.filter((row) => row.containment === "root" && (row.surfaceKind === "single" || row.surfaceKind === "preview")).slice(0, 3);
     expect(chosen).toHaveLength(3);

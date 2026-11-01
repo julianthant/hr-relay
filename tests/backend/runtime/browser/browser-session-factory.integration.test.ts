@@ -28,7 +28,7 @@ type BrowserDeadlineScheduler
 } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 
 import type {
-AuthenticatedApplicationEvidence
+AuthenticatedApplicationEvidence, SystemLoginContext
 } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import type { Config } from "../../../../src/models/config/schema.js";
 
@@ -70,9 +70,15 @@ const OPEN_INPUT_BASE = {
   exclusive: false,
   signal: new AbortController().signal,
 } as const;
-let OPEN_INPUT: typeof OPEN_INPUT_BASE & { readonly duoCeremony: Awaited<ReturnType<typeof fixtureDuoCeremonyGate>> };
-beforeEach(async () => {
-  OPEN_INPUT = { ...OPEN_INPUT_BASE, duoCeremony: await fixtureDuoCeremonyGate("ucpath", WORKER_ID, CLOCK) };
+let OPEN_INPUT: typeof OPEN_INPUT_BASE & { readonly duoCeremony: SystemLoginContext["duoCeremony"] };
+beforeEach(() => {
+  let ceremony: ReturnType<typeof fixtureDuoCeremonyGate> | undefined;
+  OPEN_INPUT = { ...OPEN_INPUT_BASE, duoCeremony: {
+    async withCeremony(run) {
+      const gate = await (ceremony ??= fixtureDuoCeremonyGate("ucpath", WORKER_ID, CLOCK));
+      return gate.withCeremony(run);
+    },
+  } };
 });
 
 describe("worker browser session factory", () => {

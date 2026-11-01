@@ -5,10 +5,10 @@ import type { RuntimeAdmission } from "../../../src/backend/storage/admission/ad
 import { createChatGptAccountService, type ChatGptAuthorization } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 
-import { createBoundProfileFixture } from "./admission-fixture.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "./admission-fixture.js";
 
-export async function chatGptFixture(ownedAdmission?: RuntimeAdmission) {
-  const profile = ownedAdmission === undefined ? await createBoundProfileFixture() : undefined;
+export async function chatGptFixture(ownedAdmission?: RuntimeAdmission, profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  const profile = ownedAdmission === undefined ? await profileFixture() : undefined;
   const admission = ownedAdmission ?? profile?.admission;
   if (admission === undefined) throw new Error("actual profile fixture admission required");
   const root = admission.stateRoot;

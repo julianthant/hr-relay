@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
-import { chromium } from "playwright";
-import { it } from "vitest";
+import { chromium, type Browser } from "playwright";
+import { afterAll, beforeAll, it } from "vitest";
 import { submitOnboardingSsoCredentials } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
 
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const form = (action = SSO) => `<form action="${action}" method="post"><input id="ssousername" name="username"><input id="ssopassword" type="password" name="password"><button name="_eventId_proceed">Sign in</button></form>`;
 
+let browser: Browser;
+beforeAll(async () => { browser = await chromium.launch({ channel: "chromium", headless: true }); });
+afterAll(async () => { await browser?.close(); });
+
 it("submits the exact UCSD form once and refuses wrong origin, action, fields and authority before secrets", async () => {
-  const browser = await chromium.launch({ channel: "chromium", headless: true });
   const context = await browser.newContext();
   let html = form(), acquisitions = 0, submissions = 0, current = true;
   await context.route("**/*", async route => {
@@ -49,11 +52,10 @@ it("submits the exact UCSD form once and refuses wrong origin, action, fields an
     html = form(); await page.goto(SSO); current = false;
     await assert.rejects(submitOnboardingSsoCredentials(page, acquire, assertCurrent, 1000));
     assert.equal(acquisitions, 1); assert.equal(submissions, 1);
-  } finally { await browser.close(); }
+  } finally { await context.close(); }
 });
 
 it("refuses replacement, navigation and generation changes during acquisition and a changed form before the password fill", async () => {
-  const browser = await chromium.launch({ channel: "chromium", headless: true });
   const context = await browser.newContext();
   await context.route("**/*", route => route.fulfill({ contentType: "text/html", body: form() }));
   const page = await context.newPage();
@@ -78,5 +80,5 @@ it("refuses replacement, navigation and generation changes during acquisition an
     });
     await assert.rejects(submitOnboardingSsoCredentials(page, async () => ({ userId: "synthetic-user", password: "synthetic-password" }), assertCurrent, 1000));
     assert.equal(await page.locator("#ssopassword").inputValue(), "");
-  } finally { await browser.close(); }
+  } finally { await context.close(); }
 });

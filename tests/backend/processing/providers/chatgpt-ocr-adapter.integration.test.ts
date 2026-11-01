@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Readable } from "node:stream";
-import { afterEach, it, vi } from "vitest";
+import { afterAll, afterEach, it, vi } from "vitest";
 import { z } from "zod";
 import { pdf } from "pdf-to-img";
 import * as pdfReader from "pdf-to-img";
 import { createChatGptAccountService } from "../../../../src/backend/accounts/chatgpt-account-service.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { join } from "node:path";
 import { chatGptFixture, completedOcrStream } from "../../../support/helpers/chatgpt-account-fixtures.js";
 import { createCapabilityWiringTestWorld } from "../../../support/helpers/backend/capability-wiring-world.js";
@@ -35,6 +35,9 @@ import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.
 import { flow } from "../../../../src/workflow-kit/flow.js";
 
 vi.mock("pdf-to-img", async importOriginal => ({ ...await importOriginal<typeof import("pdf-to-img")>() }));
+
+const profiles = createClonedProfileFixtures();
+afterAll(() => profiles.close());
 
 const world = createCapabilityWiringTestWorld();
 afterEach(world.cleanup);
@@ -67,7 +70,7 @@ for (const [formType, pageKind, control] of [
 ] as const) it(control === "undeclared" ? "refuses a genuinely undeclared OCR observation before checkpoint completion"
   : control === "inconsistent" ? "refuses an OCR observation that contradicts its returned value before checkpoint completion"
   : `persists an admitted ${formType}/${pageKind} checkpoint after subscription transport`, async () => {
-  const f = await chatGptFixture();
+  const f = await chatGptFixture(undefined, profiles.create);
   try {
     await f.connected();
     const artifacts = createContentAddressedArtifactWriter({ admission: f.admission });
@@ -185,7 +188,7 @@ for (const [formType, pageKind, control] of [
 });
 
 for (const change of ["hash", "form", "page", "provider", "model", "date", "json", "bytes"] as const) it(`refuses ${change} mismatch without exposing source output`, async () => {
-  const f = await chatGptFixture();
+  const f = await chatGptFixture(undefined, profiles.create);
   try {
     await f.connected(); const answer = submission(f.clock.now().toISOString());
     if (change === "hash") answer.sourceSha256 = "b".repeat(64);
@@ -201,7 +204,7 @@ for (const change of ["hash", "form", "page", "provider", "model", "date", "json
   } finally { await f.cleanup(); }
 });
 for (const state of ["disconnected", "disabled", "cancelled", "expired", "quota", "malformed", "incomplete", "refused"] as const) it(`fails closed for ${state}`, async () => {
-  const f = await chatGptFixture();
+  const f = await chatGptFixture(undefined, profiles.create);
   try {
     if (state !== "disconnected") await f.connected(state !== "disabled");
     if (state === "expired") { f.clock.advanceWall(3_600_000); f.setTokenStatus(400); }
@@ -217,7 +220,7 @@ for (const state of ["disconnected", "disabled", "cancelled", "expired", "quota"
 });
 
 it("runs the actual extraction task through the subscription adapter and admits its complete result", async () => {
-  const f = await chatGptFixture(); try {
+  const f = await chatGptFixture(undefined, profiles.create); try {
     await f.connected(); f.setSse(completedOcrStream(JSON.stringify(submission(f.clock.now().toISOString()))));
     const config = ConfigSchema.parse({ paths: defaultRuntimePaths() }), id = randomUUID(), fingerprint = sha256Hex(canonicalJsonStringify(config));
     let deadline = 0;
@@ -266,7 +269,7 @@ function buildTwoPagePdf(): Buffer {
 
 for (const pageCount of [1, 2] as const)
   it(`requires a singleton PDF before subscription extraction: ${pageCount} pages`, async () => {
-    const f = await chatGptFixture(); try {
+    const f = await chatGptFixture(undefined, profiles.create); try {
       await f.connected();
       const documentBytes = pageCount === 1
         ? readFileSync(new URL("../../../support/fixtures/documents/synthetic-sample.pdf", import.meta.url)) : buildTwoPagePdf();

@@ -15,6 +15,7 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { probeRestoreProfileBrowsersClosed, ProfileRestoreBrowserCustodyUnprovedError } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { scaledMs } from "../../../support/time-scale.js";
 
 function fileIdentity(path: string) {
   const stat = lstatSync(path);
@@ -96,8 +97,8 @@ for (const changed of [false, true]) it(`probes every physical browser directory
   const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot);
   const profileRoot = join(fixture.stateRoot, "browsers"), paths = [join(profileRoot, "w17", "ucpath"), join(profileRoot, "w23", "onbase")];
   const nativeProbe = profileBrowserClosure.probeClosed.bind(profileBrowserClosure);
-  const native = vi.spyOn(profileBrowserClosure, "probeClosed").mockImplementation(async (...args) => {
-    await nativeProbe(...args);
+  const native = vi.spyOn(profileBrowserClosure, "probeClosed").mockImplementation(async (profiles, timing, ...rest) => {
+    await nativeProbe(profiles, { launchTimeoutMs: scaledMs(timing.launchTimeoutMs), closeProofMs: scaledMs(timing.closeProofMs) }, ...rest);
     if (changed) mkdirSync(join(profileRoot, "w31", "ucpath"), { recursive: true, mode: 0o700 });
   });
   let restore: OfflineMaintenanceOperation | undefined;

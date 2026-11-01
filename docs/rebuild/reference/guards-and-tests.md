@@ -26,6 +26,7 @@ helpers that hide test registrations behind a helper-style name.
 | Types | `tests/types/`; `npm run typecheck` | Type inference and illegal calls pinned with `@ts-expect-error` and positive controls. |
 | Parity | `tests/parity/`; `npm run test:parity` | Desktop pixels, accessibility, focus, keyboard, loading, and interaction behavior with mock values. |
 | Performance | `tests/perf/**/*.test.ts`; Vitest `perf` via `npm run test:perf`. `tests/perf/dashboard-benchmark.ts` via `npm run perf:dashboard`. | Fixture performance checks outside coverage, deterministic structural counters, and separately reported host-dependent timings. |
+| Local | `<module>.local.test.ts` and `<module>.local.integration.test.ts`; Vitest `local` via `npm run test:local`. | Tests that need the operator's machine or accounts: a live dry run against UCPath, Kuali, CRM or Duo, the real login Keychain, or the real store. The topic name `local` is that marker. |
 
 A test that opens a database, including `:memory:`, starts a process or socket, drives a browser,
 or executes a composed workflow belongs in integration unless it is a repository-wide architecture
@@ -46,17 +47,24 @@ answers remain independent of the producer under test. Tests never rewrite track
 or parity references in place. Generator behavior is exercised in scratch directories so parallel
 readers cannot observe temporary corruption or silently repaired inputs.
 
+Vitest fixtures and desktop parity use `America/Los_Angeles` explicitly. Parity browser contexts
+use the same zone, so reviewed local dates and times do not depend on the host's time zone.
+
 ## 2. Vitest selection and commands
 
-`vitest.config.ts` defines four named projects. `guard-manifest.test.ts` audits exact includes,
-excludes, reporters, and single ownership of the offline test corpus. Empty projects fail.
+`vitest.config.ts` defines five named projects. `guard-manifest.test.ts` audits exact includes,
+excludes, reporters, and single ownership of the test corpus. Unit, integration, architecture and
+perf fail when empty. The local project may be empty: that is the absence of an operator-machine
+test, and `npm run test:local` passes `--passWithNoTests=true` for it. Cloud runs select unit,
+integration and architecture only. Coverage stays on those three and does not select local.
 
 | Project | Include | Exclude |
 | --- | --- | --- |
-| `unit` | `tests/**/*.test.ts` | `tests/**/*.integration.test.ts`, `tests/architecture/**`, `tests/parity/**`, `tests/perf/**` |
-| `integration` | `tests/**/*.integration.test.ts` | `tests/perf/**` |
-| `architecture` | `tests/architecture/**/*.test.ts` | None. |
-| `perf` | `tests/perf/**/*.test.ts` | None. |
+| `unit` | `tests/**/*.test.ts` | `tests/**/*.integration.test.ts`, `tests/**/*.local.test.ts`, `tests/architecture/**`, `tests/parity/**`, `tests/perf/**` |
+| `integration` | `tests/**/*.integration.test.ts` | `tests/**/*.local.integration.test.ts`, `tests/perf/**` |
+| `architecture` | `tests/architecture/**/*.test.ts` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` |
+| `perf` | `tests/perf/**/*.test.ts` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` |
+| `local` | `tests/**/*.local.test.ts`, `tests/**/*.local.integration.test.ts` | `tests/parity/**` |
 
 `tests/parity/` is outside Vitest. There is no scenario project or current `tests/scenario/`
 corpus. Scenario declarations retained in workflow/contracts are graph metadata, not execution
@@ -64,18 +72,17 @@ results. Role-derived scenario paths do not prove that a file exists.
 
 | Command | Exact package script or purpose |
 | --- | --- |
-| `npm run test -- <paths>` | `tsx scripts/test/runner.ts run`; filters the all-project run. |
-| `npm run test:unit -- <paths>` | `tsx scripts/test/runner.ts unit`; selects only `unit`. |
-| `npm run test:integration -- <paths>` | `tsx scripts/test/runner.ts integration`; selects only `integration`. |
-| `npm run test:architecture -- <paths>` | `tsx scripts/test/runner.ts run --project architecture --passWithNoTests=false`. |
-| `npm run test:coverage` | `tsx scripts/test/runner.ts run --coverage --project unit --project integration --project architecture && tsx scripts/test/suite-size.ts`. |
-| `npm run test:perf` | `tsx scripts/test/runner.ts run --project perf --passWithNoTests=false`. |
-| `npm run test:watch` | Direct interactive `vitest`; outside batch scratch containment. |
-| `npm run test:reap` | `tsx scripts/test/runner.ts --reap`; explicitly reclaims eligible runner scratch. |
+| `npm run test -- <paths>` | `vitest run --project unit --project integration --project architecture --project perf`. A bare run does not select `local`. |
+| `npm run test:unit -- <paths>` | `vitest run --project unit --passWithNoTests=false`. |
+| `npm run test:integration -- <paths>` | `vitest run --project integration --passWithNoTests=false`. |
+| `npm run test:architecture -- <paths>` | `vitest run --project architecture --passWithNoTests=false`. |
+| `npm run test:local -- <paths>` | `vitest run --project local --passWithNoTests=true`. |
+| `npm run test:coverage` | `vitest run --coverage --project unit --project integration --project architecture && tsx scripts/test/suite-size.ts`. |
+| `npm run test:perf` | `vitest run --project perf --passWithNoTests=false`. |
+| `npm run test:watch` | Interactive `vitest` on unit, integration, architecture and perf. |
 | `npm run perf:dashboard` | `TZ=UTC tsx tests/perf/dashboard-benchmark.ts`. |
 
-The `unit` and `integration` runner modes accept positional filters only. Empty filters, option
-arguments, and NUL bytes refuse. They cannot override the selected project or config.
+Package scripts pass extra arguments through to Vitest.
 `scripts/test/project-policy.ts` rejects empty, duplicate, orphaned, and multiply owned listings;
 `tests/architecture/tooling/guard-manifest.test.ts` applies that policy to the real corpus and
 injected violations.
@@ -83,69 +90,76 @@ injected violations.
 Vitest uses isolated forks, file parallelism, `maxWorkers: Math.min(4, availableParallelism())`,
 `globals: false`, and one `verbose` reporter. Test and hook timeouts remain **30,000 ms**. Worker
 arguments include `--no-experimental-webstorage`, avoiding process-global Node localStorage.
+The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
+CI runs five macOS groups. The matrix in `.github/workflows/ci.yml` assigns twenty ordinary
+integration shards around one unit run, one architecture run with two file workers and two parity shards.
+The three native browser process-proof files (browser control, onboarding Duo provider, worker supervisor) run first and serially in group 5, without competing
+test files. Ordinary shards discover integration files through Vitest, remove those three paths,
+then pass the remaining paths explicitly. Vitest 4.1.11's CLI exclusions do not reach these named
+projects. Selection refuses if any native file is missing or no ordinary files remain.
+Remaining integration files, unit and parity use two workers. Groups have 40-minute budgets (hang guards; groups need 22-29 minutes), and Spotlight indexing is off on every group and its RAM disk;
+architecture runs `npm run test:architecture -- --maxWorkers=2` within its 15-minute budget.
+CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
+Vitest test and hook limits, test wait helpers and the browser deadlines tests pass to product code by it.
+Local runs use 1. Product defaults are unchanged. Remaining-file steps run after a failed proof
+unless the workflow is cancelled, preserving failure visibility. An integration shard failure
+does not stop its group's remaining shards, and any shard failure fails the group.
 
-## 3. Batch runner and scratch
+PR filtering uses these rules. Static and privacy always run.
 
-`scripts/test/runner.ts` launches the installed Vitest CLI and propagates its failure exit.
-`runTestProcess` contains Vitest and parity children in a detached POSIX process group.
-It refuses Windows because this ownership model requires POSIX groups.
+| Changed paths | Routine suites selected |
+| --- | --- |
+| Markdown only | None. |
+| Source, scripts, configuration, dependencies, shared test helpers or fixtures, unknown non-Markdown paths | All four. |
+| Unit test files only | Unit and architecture. |
+| Integration test files only | Integration and architecture. |
+| Architecture test files only | Architecture. |
+| Parity test files or references only | Parity and architecture. |
+| Parity helpers, fixtures or entrypoints | All four; unit and integration also import these. |
+| Local or perf test files only | Architecture; local remains machine-only and perf remains release-only. |
 
-Unfiltered `run`, `unit`, and `integration` invocations take a shared suite lock before starting a
-child or inactivity watchdog. Vitest's `parseCLI` identifies positional test-file and spec filters
-as focused runs. Those filters bypass the suite lock. Parity `assert` and `update` take the same
-lock only when no argument follows the mode. Any argument skips the suite lock. Wrapper-owned
-parity policy validation still applies. The interactive `test:watch` command remains outside this
-lock.
+Mixed changes select the union. Machine-readable inputs under `docs/`, including the guard
+inventory, count as configuration. A manual run (workflow_dispatch) bypasses filtering and selects all four suites; pushes to protected branches do not run CI, since their pull request already passed up to date.
+Required summaries always run on Ubuntu, including when no macOS group was selected. They require
+successful change detection and either an explicit omission or successful scheduled groups.
+Failure or cancellation of any scheduled group fails each selected suite's summary.
 
-The lock is the mode-0600 `suite.lock` file under `testRunsDirectory()`, shared across this user's
-worktrees in the private mode-0700 directory. `/usr/bin/lockf -s -k -t 0` holds it while a piped
-`cat` waits for EOF. The holder has its own process group so terminal signals cannot release the
-lock while tests drain. The runner waits for the holder's `held` marker before starting the suite. The
-runner passes the holder's stdin pipe to the detached test group leader as fd 3. The pipe reaches
-EOF only after both the runner and group leader exit, so the kernel releases the lock without
-stale-lock or PID-reuse logic. Normal release occurs only after the child's whole process group is
-absent.
-The lock carries no worktree, branch, session, or result data.
+Membership verification compares an unsharded `vitest list --filesOnly --json` for unit,
+integration and architecture with the union of the exact CI selections. Unit and architecture
+are unsharded; each native file is selected once. For every ordinary integration shard, use
+`vitest list --project integration <ordinary paths> --shard=N/20 --json=/absolute/shard-N.json`
+with the same discovered path array as CI. Deduplicate test rows into files within each shard, then require
+no duplicate files across shards, no missing files and no extra files against the baseline.
+Vitest 4.1.11's `list --filesOnly` does not apply sharding, so it cannot prove shard membership.
+Parity retains its two Playwright shards; their `--list --reporter=json` test identities must
+also form the unsharded listing exactly once. Coverage, perf and local selection are unchanged.
 
-Contention retries every **5 seconds**, with one line when waiting starts and once per minute:
+## 3. Private test temporary directory
 
-```text
-[test-run] waiting for another Relay test suite (since HH:MM)
-```
+`tests/support/private-temp-setup.ts` is Vitest's global setup. It creates one directory with
+`fs.mkdtemp` under `os.tmpdir()` (mode `0700` on POSIX; the per-user temp on Windows), points
+`TMPDIR`, `TMP`, and `TEMP` at it for the workers, and removes it when the run ends.
+`KEEP_TEST_TMP=1` keeps the directory. `tests/support/private-temp.test.ts` checks the directory
+the workers see.
 
-After **45 minutes**, `TestSuiteWaitTimeoutError` produces exit 1 without starting a child:
-"Another Relay test suite is still running; this run waited 45 minutes and did not start."
-Tests can supply shorter retry and wait budgets. Package commands use the defaults.
+On macOS, `scripts/test/ram-tmp.sh <mebibytes>` formats an APFS RAM disk with `newfs_apfs` as
+the current user, enables volume ownership with `sudo -n /usr/sbin/diskutil enableOwnership`,
+sets the volume root to mode `755`, creates a `0700` directory on it, and prints that path. The
+script fails if that volume still shows `noowners` or is not owned by the current user. The CI
+mount step also fails if the volume still shows `noowners`. Point `TMPDIR` at the printed path
+before Vitest; the private-temp setup still nests its own directory underneath and keeps its
+checks. Eject with `scripts/test/ram-tmp.sh eject` and the volume path (the parent of the
+printed directory). CI macOS test jobs mount 2048 MiB and export `TMPDIR` before the suite.
+The mount logs physical memory, CPU count and requested disk size. Test jobs use 7 GB Apple Silicon
+runners. Keep room for Node and Chromium;
+raise the disk size only after a measured peak no longer fits.
 
-Every child invocation creates `run-*` under canonical `/tmp/hrt-<uid>` with directory mode `0700`.
-`owner.json` has mode `0600`, a UUID, and the child group ID. The child inherits a private `tmp/`
-through `TMPDIR`, `TMP`, and `TEMP`, with file-creation mask `077`. The short root protects macOS
-UNIX socket path lengths.
+Parity launches Playwright directly. After 180 seconds without output it kills that child and
+its descendants, and only then releases the command lock. It does not take a suite lock. The
+command lock remains the private file under `.tracker/data/locks`.
 
-The runner streams child stdout/stderr while retaining the last **16,384 characters**. Successful
-scratch is removed only after the whole child group is absent. Failure writes `failure.txt` with the
-exit/signal or interruption detail and output tail. When the whole group is gone, it then removes
-`tmp/`; a live group keeps both for `npm run test:reap`. A leader exiting while a descendant remains
-makes the result fail. A suite-locked run stops that remaining group and waits for its absence
-before releasing the lock. SIGINT/SIGTERM sends TERM to the owned group, then KILL after **3,000 ms** if
-needed. A parent SIGKILL leaves the recorded group protected until it exits.
-
-`reapTestRuns` leaves `suite.lock` in place and validates the canonical base, direct owned private
-directories, run names, and strict ownership records. It refuses symlinks, wrong owners/modes, malformed records, unknown
-entries, or uncertain liveness. An owner with `groupId: null` or a live group remains retained.
-A dead group is removed only after rereading the same owner UUID. On Darwin, an EPERM signal probe
-requires an independently validated complete `ps` group listing before absence can be concluded.
-
-There is one age-based exception: an ownerless directory older than **10 minutes** may be removed
-only when it is empty, or contains exactly an owned mode-0700 empty `tmp/`. Removal uses `rmdirSync`
-and retains a directory that becomes nonempty. A fresh startup remains protected. This exception
-does not reclaim nonempty ownerless directories or other historical scratch paths.
-
-`tests/scripts/test/runner.integration.test.ts` owns real child success/failure, interruption,
-parent/child death, silent stalls, descendant preservation, suite-lock waiting and bypass, and
-reclamation refusal proofs. Parity's entry tests cover filtered bypass and unfiltered acquisition.
 `scripts/test/artifact-policy.ts` and its architecture owner keep generated coverage/test output
 untracked and ignored. Accepted task evidence belongs in the main checkout's ignored `.work/`
 folder; the artifact policy's external-evidence-root check covers its injected listing, not that
@@ -203,7 +217,6 @@ reruns add no acceptance evidence for unchanged inputs. The brief may additional
 require `npm run build:manifest:check`, `npm run stores:catalog:check`, or other affected freshness
 checks. Derived output is regenerated at its source before its freshness check.
 
-The suite lock enforces no overlapping whole-suite run among the batch entry points above.
 Before coverage, the operator gate still requires free memory, no swap pressure, and no listener
 on port 3938:
 

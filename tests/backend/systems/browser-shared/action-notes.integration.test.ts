@@ -87,14 +87,10 @@ afterEach(cleanupOriginalFixture);
 
 {
 
-const { readPersistedNotes, disposers, executorHarness, enqueueAndClaim, SIGNAL } = createRunExecutorTestWorld();
-
-const cleanupOriginalFixture = async () => {
-  for (const dispose of disposers.splice(0)) await dispose();
-};
+const { readPersistedNotes, executorHarness, enqueueAndClaim, SIGNAL, cleanup } = createRunExecutorTestWorld();
 
 describe("person-lookup full walk", () => {
-afterEach(cleanupOriginalFixture);
+afterEach(cleanup);
 
   it("records every completed browser gesture on the task span", async () => {
     const sessions = sessionFactoryHarness({

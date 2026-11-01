@@ -33,10 +33,12 @@ function sourceBytes(f: Awaited<ReturnType<typeof priorFormatFixture>>) {
 it("converts only stopped machine-control format while keeping an incomplete historical profile held", async () => {
   const f = await priorFormatFixture(), original = sourceBytes(f);
   const controlBytes = readFileSync(f.controlPath), markerBytes = readFileSync(f.markerPath);
-  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  let maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const plan = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
   assert.deepEqual(plan, { state: "planned", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
   assert.equal(readFileSync(f.controlPath).equals(controlBytes), true); assert.equal(readFileSync(f.markerPath).equals(markerBytes), true);
+  maintenance.release();
+  maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
   assert.equal(upgraded.state, "upgraded"); assert.equal(upgraded.runtimeAccess, "onboarding-incomplete"); assert.equal(upgraded.profileCount, 1);
   assert.equal(typeof upgraded.receiptId, "string");
@@ -46,6 +48,8 @@ it("converts only stopped machine-control format while keeping an incomplete his
   assert.equal(readdirSync(backup).filter(name => name.endsWith(".receipt.json")).length, 1);
   assert.equal(z.looseObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.controlPath, "utf8"))).schemaVersion, 3);
   assert.equal(z.strictObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.markerPath, "utf8"))).schemaVersion, 4);
+  maintenance.release();
+  maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
   assert.deepEqual(current, { state: "current", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
   assert.throws(() => maintenance.admitProfile(maintenance.issueRegisteredProfileClaim(f.profileId)), /profile-storage-claim-unavailable/u);
@@ -114,9 +118,11 @@ it("retains the runtime hold through a cold machine-control format publication r
   assert.equal(fired, true);
   assert.equal(existsSync(join(f.workspace, ".tracker", "control", "profile-control-upgrade.json")), true);
   maintenance.release();
-  const cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  let cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const recovered = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
   assert.equal(recovered.state, "upgraded"); assert.equal(recovered.runtimeAccess, "onboarding-incomplete"); assert.equal(recovered.profileCount, 1);
+  cold.release();
+  cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const current = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
   assert.deepEqual(current, { state: "current", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
   assert.throws(() => cold.admitProfile(cold.issueRegisteredProfileClaim(f.profileId)), /profile-storage-claim-unavailable/u);

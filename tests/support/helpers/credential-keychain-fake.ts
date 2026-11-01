@@ -19,7 +19,7 @@ export class FakeKeyringEntry {
 export { FakeKeyringEntry as Entry };
 
 export function credentialKeychainTestEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const preload = new URL("./credential-keychain-process-preload.ts", import.meta.url).href;
+  const preload = new URL("./credential-keychain-process-preload.mjs", import.meta.url).href;
   return { ...environment, NODE_OPTIONS: `${environment.NODE_OPTIONS ?? ""} --import=${preload}`,
     RELAY_TEST_KEYCHAIN: JSON.stringify(FakeKeyringEntry.snapshot()) };
 }

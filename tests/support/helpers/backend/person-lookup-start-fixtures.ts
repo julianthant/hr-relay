@@ -1,4 +1,4 @@
-import { createBoundProfileFixture } from "../admission-fixture.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { CONFIG_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
@@ -10,10 +10,11 @@ export function createPersonLookupStartFixtures(
   profiles: { close(): Promise<void> }[],
   clock: NonNullable<Parameters<typeof AuthorityDatabase.open>[1]>,
   planTtlMs: number,
+  profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture,
 ) {
   void roots;
   async function openDatabase(): Promise<AuthorityDatabase> {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixture();
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
       clock,

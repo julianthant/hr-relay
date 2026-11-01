@@ -180,7 +180,7 @@ const probe = String.raw`
   import { AuthorityDatabase } from './tests/support/helpers/synthetic-storage-admission.ts';
   import { localDatePart } from './src/rules/time/clock.ts';
   const [instant, localDay, cutoff, retained] = process.argv.slice(1);
-  const f = resolutionFixture();
+  const f = await resolutionFixture();
   const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
   try {
     f.clock.setWall(new Date(instant));
@@ -216,7 +216,7 @@ const probe = String.raw`
     const other = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: 'retention-reopen' }, f.clock);
     try { assert.deepEqual(other.authority.timelineEvents.page({}), f.db.authority.timelineEvents.page({})); }
     finally { other.close(); }
-  } finally { f.dispose(); }
+  } finally { await f.dispose(); }
 `;
 
 for (const [label, tz, instant, localDay, cutoff, retained] of [
