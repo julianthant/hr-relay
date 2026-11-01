@@ -528,15 +528,21 @@ The runtime owns spans, observed data, and failure diagnostics. §4 owns confirm
 Every declared browser task boundary requires capture before its checkpoint. Browser read
 implementations can declare `screenshots: "task"` to place captures through
 `ctx.captureScreenshot(): Promise<void>` at their own boundaries. Other browser tasks capture
-when they finish. The capability exposes no bytes or paths and cannot outlive its lease.
+when they finish. A task-owned implementation that returns without a successful capture also
+captures at finish; a failed task-owned capture always refuses completion. The capability exposes no bytes or paths and cannot outlive its lease.
 Required captures run regardless of `captureBrowserScreenshots`. Unavailable capture is retained
 explicitly where possible, logs a warning, and fails with `BROWSER_SCREENSHOT_CAPTURE_FAILED`.
 A failed capture or Screenshot action persistence prevents the read checkpoint.
 
-Transactions capture before the durable fence and after the commit callback settles. Pre-submit
-capture failure prevents both fence and click. Post-submit capture failure still reaches saved-effect
-verification: valid proof settles the write, and unknown proof parks the original attempt without
-another click. Captures retain the node, run attempt, physical browser session, and boundary.
+Owned-run transactions capture after the probe and prepare, before the durable fence, after the commit
+callback settles, and after the saved-effect verifier. Pre-submit capture failure prevents both
+fence and click. Post-submit capture failure still reaches saved-effect verification, then parks
+the original held attempt even with valid proof. A failed verifier capture also parks; neither
+failure writes a transaction checkpoint or authorizes another click. Only typed write resolution
+can release the parked attempt. Standalone recovery and held-only diagnostic checks retain their
+existing read behavior; required probe capture awaits truthful action-note scope and retained-run
+activity authority on those paths. Transaction Screenshot actions persist inside the required
+capture boundary, before settlement; other action notes drain after callback settlement. Captures retain the node, run attempt, physical browser session, and boundary.
 
 The worker persists screenshots through `RunBrowserScreenshotCapture` as restricted diagnostic
 attachments. Logs joins each Screenshot action to its verified artifact reference.

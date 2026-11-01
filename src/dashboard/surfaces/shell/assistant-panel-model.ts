@@ -9,7 +9,7 @@ import { MOCK_WORKFLOWS } from '../workflows/mocks/workflow-mock-catalog.js';
 import type { ComposerValue } from './composer-model.js';
 
 export interface AssistantFile { readonly id: string; readonly name: string; readonly status: 'Attached' | 'Updated' | 'Generated'; readonly workbook?: EditableWorkbook }
-export type AssistantScene = 'new' | 'conversation' | 'ask-read' | 'ask-write' | 'permission-changed' | 'auto' | 'working' | 'cancelling' | 'done' | 'failed' | 'handoff' | 'destructive' | 'delete-working' | 'resolved' | 'declined';
+export type AssistantScene = 'new' | 'conversation' | 'ask-read' | 'ask-write' | 'permission-changed' | 'working' | 'cancelling' | 'done' | 'failed' | 'handoff' | 'destructive' | 'delete-working' | 'resolved' | 'declined';
 export interface AssistantMessage { readonly role: 'operator' | 'assistant'; readonly text: string }
 export interface AssistantRow { readonly sheet: string; readonly row: number; readonly person: string; readonly values: Readonly<Record<string, string>>; readonly issue: string | null }
 export interface AssistantWorkflow { readonly workflowId: string; readonly label: string; readonly file: AssistantFile; readonly rows: readonly AssistantRow[]; readonly state: 'review' | 'running' | 'complete' | 'uncertain' | 'failed'; readonly outputs: readonly AssistantFile[]; readonly message?: string }

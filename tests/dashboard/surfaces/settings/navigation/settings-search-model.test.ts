@@ -37,6 +37,11 @@ describe("Settings field search", () => {
     assert.deepEqual(searchSettings(index, "this setting does not exist"), []);
   });
 
+  it("finds the confirmation policy without offering retired permission modes", () => {
+    assert.equal(searchSettings(index, "ask before every action")[0]?.target, "assistant.permission");
+    for (const query of ["ask before submits", "without asking"]) assert.deepEqual(searchSettings(index, query), []);
+  });
+
   it("never searches or serializes current values, secrets, or source paths", () => {
     const value = "DO_NOT_INDEX_THIS_PRIVATE_VALUE";
     const copy = structuredClone(document);

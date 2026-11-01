@@ -10,7 +10,7 @@ document.documentElement.dataset.demoTheme=params.get('theme')||'dark';
 document.documentElement.dataset.motion=params.get('motion')||'on';
 const client=createDashboardClient({baseUrl:location.origin});
 const noop=()=>{};
-const scenes = ['new', 'conversation', 'ask-read', 'ask-write', 'permission-changed', 'auto', 'working', 'cancelling', 'done', 'failed', 'handoff', 'destructive', 'delete-working', 'resolved', 'declined'] as const;
+const scenes = ['new', 'conversation', 'ask-read', 'ask-write', 'permission-changed', 'working', 'cancelling', 'done', 'failed', 'handoff', 'destructive', 'delete-working', 'resolved', 'declined'] as const;
 const scene = scenes.find(scene => scene === (params.get('scene') || 'ask-write'));
 if (!scene) throw new Error('Unknown assistant fixture scene');
 const identity={chatId:'00000000-0000-4000-8000-000000000001',actionId:'00000000-0000-4000-8000-000000000002',revision:1};
