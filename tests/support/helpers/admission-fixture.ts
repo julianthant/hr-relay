@@ -12,10 +12,10 @@ import { systemClock, type Clock } from "../../../src/rules/time/clock.js";
 import { createProfileVerifiers } from "../../../src/backend/storage/configuration/verifier-store.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { tmpdir } from "node:os";
-import { execFileSync } from "node:child_process";
 import { createProfileSession } from "../../../src/backend/profiles/profile-session.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statfsSync, statSync, writeFileSync } from "node:fs";
+import { constants, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cp } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -264,21 +264,9 @@ export type BoundProfileStorageFixture = Pick<Awaited<ReturnType<typeof createBo
 
 export function createClonedProfileFixtures() {
   const seeds: { profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; snapshot: string; active: boolean }[] = [];
-  let apfsType: number | undefined;
   return {
     async create(this: void): Promise<BoundProfileStorageFixture> {
       const root = realpathSync(tmpdir());
-      if (apfsType === undefined) {
-        if (process.platform !== "darwin") throw new Error("fixture-apfs-required");
-        const device = execFileSync("/bin/df", ["-P", root], { encoding: "utf8" }).trim().split("\n").at(-1)?.trim().split(/\s+/u)[0];
-        if (device === undefined) throw new Error("fixture-apfs-volume-unavailable");
-        const info = execFileSync("/usr/sbin/diskutil", ["info", "-plist", device]);
-        const filesystem = execFileSync("/usr/bin/plutil", ["-extract", "FilesystemType", "raw", "-o", "-", "-"],
-          { input: info, encoding: "utf8" }).trim();
-        if (filesystem !== "apfs") throw new Error("fixture-apfs-required");
-        apfsType = statfsSync(root).type;
-      }
-      if (statfsSync(root).type !== apfsType) throw new Error("fixture-apfs-required");
       let seed = seeds.find(candidate => !candidate.active);
       if (seed === undefined) {
         const profile = await createBoundProfileFixture();
@@ -286,17 +274,16 @@ export function createClonedProfileFixtures() {
         seed = { profile, snapshot: join(directory, "profile"), active: true };
         seeds.push(seed);
         if (statSync(profile.stateRoot).dev !== statSync(directory).dev) throw new Error("fixture-clone-device-mismatch");
-        execFileSync("/bin/cp", ["-cR", profile.stateRoot, seed.snapshot]);
+        await cp(profile.stateRoot, seed.snapshot, { recursive: true, mode: constants.COPYFILE_FICLONE });
       }
       const current = seed;
       const profile = current.profile;
-      if (statfsSync(current.snapshot).type !== apfsType || statfsSync(dirname(profile.stateRoot)).type !== apfsType) throw new Error("fixture-apfs-required");
       if (statSync(current.snapshot).dev !== statSync(dirname(profile.stateRoot)).dev) throw new Error("fixture-clone-device-mismatch");
       current.active = true;
       assertBoundFixtureWorkersReleased(profile.admission);
       profile.admission.release();
       rmSync(profile.stateRoot, { recursive: true });
-      execFileSync("/bin/cp", ["-cR", current.snapshot, profile.stateRoot]);
+      await cp(current.snapshot, profile.stateRoot, { recursive: true, mode: constants.COPYFILE_FICLONE });
       profile.renewAfterRestore();
       const admission = profile.admission;
       let closed = false;
