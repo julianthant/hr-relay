@@ -106,11 +106,14 @@ jobs:
       needs.changes.outputs.unit == 'true' || needs.changes.outputs.integration == 'true' ||
       needs.changes.outputs.architecture == 'true' || needs.changes.outputs.parity == 'true'
     runs-on: macos-15
-    timeout-minutes: 30
+    # Groups need 22-29 minutes of test work; the budget only catches hangs.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.groups) }}
     steps:
+      # Spotlight indexing competes with the tests for the runner's three CPUs.
+      - run: sudo mdutil -a -i off
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -135,6 +138,7 @@ jobs:
           case "$(mount | grep -F " on ${vol} " || true)" in
             *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
           esac
+          sudo mdutil -i off "$vol"
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
       - name: Unit
         if: ${{ !cancelled() && matrix.suite == 'unit' && needs.changes.outputs.unit == 'true' }}

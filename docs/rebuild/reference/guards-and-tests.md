@@ -99,7 +99,7 @@ The three native browser process-proof files (browser control, onboarding Duo pr
 test files. Ordinary shards discover integration files through Vitest, remove those three paths,
 then pass the remaining paths explicitly. Vitest 4.1.11's CLI exclusions do not reach these named
 projects. Selection refuses if any native file is missing or no ordinary files remain.
-Remaining integration files, unit and parity use two workers. Groups have 30-minute budgets;
+Remaining integration files, unit and parity use two workers. Groups have 40-minute budgets (hang guards; groups need 22-29 minutes), and Spotlight indexing is off on every group and its RAM disk;
 the architecture step retains its 15-minute budget. CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
 Vitest test and hook limits, test wait helpers and the browser deadlines tests pass to product code by it.
 Local runs use 1. Product defaults are unchanged. Remaining-file steps run after a failed proof
