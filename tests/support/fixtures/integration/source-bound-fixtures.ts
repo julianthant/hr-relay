@@ -8,7 +8,7 @@ import { workflowProjections, type AnyWorkflowDescriptor } from "../../../../src
 import { testAdmittedWorker } from '../run-lifecycle-fixtures.js';
 import assert from "node:assert/strict";
 
-import { createBoundProfileFixture } from "../../helpers/admission-fixture.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../../helpers/admission-fixture.js";
 import { duoCeremonyGatesOver } from "../../helpers/duo-ceremony-fixtures.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService, workerRunLifecyclePort, runContinuationPort, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -33,11 +33,12 @@ import { writeFixtureDescriptor, createWriteFixtureWorld, buildWriteFixtureRegis
 
 const retainedSourceBoundFixtureOwners = new Set<object>();
 
-export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig, protectedSecrets?: ProtectedSecretSource) {
-  const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; primary?: unknown } = {};
+export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig, protectedSecrets?: ProtectedSecretSource,
+  profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  const held: { profile?: BoundProfileStorageFixture; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; primary?: unknown } = {};
   retainedSourceBoundFixtureOwners.add(held);
   try {
-  const profile = await createBoundProfileFixture();
+  const profile = await profileFixture();
   held.profile = profile;
 
   const clock = manualClock(new Date(NOW));

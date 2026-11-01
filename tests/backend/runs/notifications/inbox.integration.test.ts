@@ -1,3 +1,5 @@
+import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { createClonedProfileFixtures, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { runInheritedRuntimeChild } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createNotificationInboxTestWorld } from "../../../support/helpers/backend/notification-inbox-world.js";
 
@@ -6,7 +8,6 @@ import { createNotificationInboxTestWorld } from "../../../support/helpers/backe
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
 
 import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
 
@@ -15,11 +16,13 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { NOW, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 
 {
 
-const { _afterEachFixture0, record, harness, command } = createNotificationInboxTestWorld();
+const { _afterEachFixture0, record, harness, command } = createNotificationInboxTestWorld(profileFixtures.create);
 
 describe("notification collection commands", () => {
   afterEach(_afterEachFixture0);
@@ -333,7 +336,7 @@ afterEach(_afterEachFixture0);
 }
 
 describe("committed publication signal", () => {
-  const world = createNotificationInboxTestWorld();
+  const world = createNotificationInboxTestWorld(profileFixtures.create);
   afterEach(world._afterEachFixture0);
   const event = { kind: "storage-degraded", concern: "disk-space", state: "degraded", diagnosticFingerprint: "a".repeat(64) };
   it("emits created and folded exactly once after the outer commit, excluding replay and state commands", async () => {

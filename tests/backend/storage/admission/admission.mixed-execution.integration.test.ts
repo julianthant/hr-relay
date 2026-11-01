@@ -1,3 +1,4 @@
+import { createNominatimWorkerAdapter } from "../../../../src/backend/processing/providers/nominatim-owner.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -39,7 +40,7 @@ it("browser launch forwards retained display and mode through a headless custody
   const acquisitionId = held.processLock.acquisitionId;
   const account=await chatGptFixture(admission);cleanups.push(()=>account.cleanup());
   const ocr=createChatGptOcrAdapter({account:account.service,artifacts,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
-  const factory = createRunResourcesFactory({ ocr,assertBrowserRoot: root=>assertProfileBrowserRoot(admission,root), assertProfileOwner: workerId => {
+  const factory = createRunResourcesFactory({nominatim:createNominatimWorkerAdapter(systemClock), ocr,assertBrowserRoot: root=>assertProfileBrowserRoot(admission,root), assertProfileOwner: workerId => {
     assert.equal(workerId, held.workerId);
     assertWorkerProcessCustody({ processLockRoot:join(f.root,"locks"), acquisitionId, pid: process.pid, workerId, authorityPath: f.path });
   },  authority: f.database.authority, artifacts, clock: systemClock,

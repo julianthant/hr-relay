@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import { chromium, type Page } from "playwright";
+import { chromium, type Browser, type Page } from "playwright";
 import { PNG } from "pngjs";
-import { describe, it } from "vitest";
+import { afterAll, beforeAll, describe, it } from "vitest";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { fixtureDuoCeremonyGate } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -17,9 +17,12 @@ const fixtures = createBrowserSessionFactoryFixtures(clock, "00000000-0000-4000-
 const content = '<div style="height:1000px;background:rgb(210,20,30)"></div><div style="height:1000px;background:rgb(20,210,30)"></div><div style="height:1000px;background:rgb(20,30,210)"></div>';
 const html = (body: string) => `<style>html,body{margin:0}*{box-sizing:border-box}</style>${body}`;
 
+let browser: Browser;
+beforeAll(async () => { browser = await chromium.launch({ headless: true }); });
+afterAll(async () => { await browser?.close(); });
+
 async function withPage(body: string, check: (page: Page, resource: WorkerBrowserResource) => Promise<void>, authenticated = true) {
   await fixtures.withTempRuntime(async ({ config }) => {
-    const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
     const page = await context.newPage();
     await page.setContent(html(body));
@@ -29,7 +32,7 @@ async function withPage(body: string, check: (page: Page, resource: WorkerBrowse
     const factory = fixtures.factoryFor(config, harness, fixtures.recordingBindings({ verify: fixtures.verifierFor({ authenticated }).verify }));
     const resource = await factory.open({ workerId, workflowId: WorkflowIdSchema.parse("person-lookup"), system: "ucpath", instance: "prod", configFingerprint: FingerprintSchema.parse("ab".repeat(32)), acceptDownloads: false, exclusive: false, signal: new AbortController().signal, duoCeremony: await fixtureDuoCeremonyGate("ucpath", workerId, clock) });
     try { await check(page, resource); }
-    finally { await resource.close({ reason: "worker-stop" }); await browser.close(); }
+    finally { await resource.close({ reason: "worker-stop" }); }
   });
 }
 

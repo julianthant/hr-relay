@@ -2,9 +2,9 @@ import { createBoundProfileFixture } from "../../support/helpers/admission-fixtu
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../../support/helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import {
   deriveIdempotencyKeyDigest,
@@ -34,14 +34,26 @@ function commitHistory(database: AuthorityDatabase, input: unknown, checkpoint: 
 }
 
 const CLOCK = manualClock(new Date(NOW));
-const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const databases: AuthorityDatabase[] = [];
 const paths = new WeakMap<AuthorityDatabase, string>();
+let template: { profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; snapshot: Buffer } | undefined;
 
 async function databasePath(): Promise<string> {
-  const profile = await createBoundProfileFixture();
-  profiles.push(profile);
-  return profile.path;
+  if (template === undefined) {
+    const profile = await createBoundProfileFixture();
+    const primed = AuthorityDatabase.open(
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "atomic-write-test" },
+      CLOCK,
+    );
+    primed.close();
+    template = { profile, snapshot: readFileSync(profile.path) };
+  }
+  for (const suffix of ["-wal", "-shm"]) {
+    const companion = `${template.profile.path}${suffix}`;
+    if (existsSync(companion)) rmSync(companion);
+  }
+  writeFileSync(template.profile.path, template.snapshot);
+  return template.profile.path;
 }
 
 function open(path: string, hooks?: AuthorityWriteCommitHooks): AuthorityDatabase {
@@ -66,10 +78,13 @@ function fence(database: AuthorityDatabase): void {
   assert.equal(result.state, "fenced");
 }
 
-afterEach(async () => {
+afterEach(() => {
   for (const database of databases) releaseSeededWriteOwners(database, NOW);
   for (const database of databases.splice(0)) database.close();
-  for (const profile of profiles.splice(0)) await profile.close();
+});
+
+afterAll(async () => {
+  await template?.profile.close();
 });
 describe("atomic write authority commit", () => {
   it.each(["written-at", "output"] as const)("refuses a mismatched confirmation checkpoint %s before settlement", async (field) => {

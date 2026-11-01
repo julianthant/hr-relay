@@ -1,3 +1,4 @@
+import { runClaim } from "../../../models/run/record.js";
 import { prepareStoppedBackupClosure, StorageBackupClosureUnprovedError, type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
 import { isOfflineMaintenanceOperationActive, OfflineMaintenanceOperationUnavailableError, type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { type AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
@@ -73,7 +74,16 @@ export function composeProfileActivity(input: Readonly<{
       if (reservation === undefined || reservation.reservationCommandId !== slot.reservationCommandId) throw new Error("profile-worker-reservation-authority-unavailable");
       if (reservation.state === "pending") busy = true;
       const lease = before.leases.find(value => value.workerId === slot.workerId);
-      if (lease === undefined && slot.retiredAt === null) throw new Error("profile-worker-lifetime-unavailable");
+      if (lease === undefined && slot.retiredAt === null) {
+        const plan = before.controls.find(control => control.commandId === slot.reservationCommandId);
+        if (reservation.state !== "settled" || plan?.request.type !== "plan-worker-count"
+          || plan.phase.state !== "succeeded" || plan.auditedAt === undefined
+          || !plan.roster?.selected.some(member => member.workerId === slot.workerId)
+          || before.controls.some(control => control.request.type === "spawn-worker" && control.request.payload.workerId === slot.workerId)
+          || before.browsers.some(browser => browser.workerId === slot.workerId)
+          || before.runs.some(run => runClaim(run)?.workerId === slot.workerId)
+          || before.duoLeases.some(lease => lease.holder.workerId === slot.workerId)) throw new Error("profile-worker-lifetime-unavailable");
+      }
       if (lease !== undefined && lease.lifecycle.state !== "stopped") busy = true;
       if (slot.retiredAt !== null) continue;
       if ("state" in input.supervisor) throw new Error("profile-worker-supervisor-custody-unavailable");

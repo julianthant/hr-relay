@@ -1,10 +1,11 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { singleAppliedRunId } from "../../../../support/fixtures/operator-command-fixtures.js";
 
 import assert from "node:assert/strict";
 import { mkdirSync,readFileSync,rmSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
 import { createDiagnosticCaptureService } from "../../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../../../src/backend/storage/sqlite/storage-records.js";
@@ -16,6 +17,9 @@ import { fixtureDescriptor } from "../../../../support/fixtures/descriptor-fixtu
 import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it.each([
@@ -26,7 +30,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     mutation,
     leakedBytes,
   ) => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const bundle = await captureDiagnosticBundle(h);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -57,7 +61,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses indexed content whose stored media type disagrees with authority", async () => {
-    const h = await harness({
+    const h = await harness({ profileFixture: profileFixtures.create,
       diagnosticBundles: (real) => ({
         ...real,
         authority: {
@@ -92,7 +96,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("normalizes diagnostic attachment authority failure without leaking its storage path", async () => {
     const localPath = "/private/operator/.tracker/state.sqlite";
-    const h = await harness({
+    const h = await harness({ profileFixture: profileFixtures.create,
       diagnosticBundles: (real) => ({
         ...real,
         authority: {
@@ -118,7 +122,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("returns typed missing bytes when authority indexes an artifact whose physical object is missing", async () => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const bundle = await captureDiagnosticBundle(h);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -139,7 +143,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     "reports a local reader filesystem failure on the %s route as path-free internal failure",
     async (profile) => {
       let sabotaged = false;
-      const h = await harness({ diagnosticBundles: (real) => ({
+      const h = await harness({ profileFixture: profileFixtures.create, diagnosticBundles: (real) => ({
         ...real,
         artifactReader: beforeArtifactReaderOperation(real.artifactReader, (_operation, ref) => {
           if (sabotaged) return;
@@ -171,7 +175,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   );
 
   it("verifies a ranged artifact before refusing partial delivery", async () => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const bundle = await captureDiagnosticBundle(h);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -190,7 +194,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ["mutated", false],
     ["missing", true],
   ] as const)("returns a typed path-free failure when a real diagnostic artifact is %s", async (_case, removeArtifact) => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const bundle = await captureDiagnosticBundle(h);
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
@@ -213,7 +217,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("returns typed corruption when the diagnostic repository returns a foreign bundle id", async () => {
     const foreignBundleId = DiagnosticBundleIdSchema.parse("00000000-0000-4000-8000-000000000999");
-    const h = await harness({
+    const h = await harness({ profileFixture: profileFixtures.create,
       diagnosticBundles: (real) => ({
         ...real,
         authority: {
@@ -242,7 +246,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("reuses exact-ref verification within one captures request and re-verifies on the next request", async () => {
     const syntheticBundles: DiagnosticBundle[] = [];
-    const h = await harness({
+    const h = await harness({ profileFixture: profileFixtures.create,
       runCaptureAuthority: (real) => Object.freeze({
         ...real,
         get(bundleId: string) {
@@ -414,7 +418,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("serves the timeline for task spans committed through another authority connection", async () => {
 
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const plan = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
       headers: OPERATOR_JSON_HEADERS,
@@ -475,7 +479,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses an unavailable run-detail section by name and serves failure only when real", async () => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const planResponse = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
       headers: OPERATOR_JSON_HEADERS,

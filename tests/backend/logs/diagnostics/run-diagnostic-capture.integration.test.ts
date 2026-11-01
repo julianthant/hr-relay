@@ -17,7 +17,7 @@ import { SearchPersonOrg } from "../../../../src/models/systems/ucpath/search-pe
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { defineBrowserStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
-import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
+import { duoCeremonyGatesOver } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { FIXTURE_SESSION_ACQUIRE_MS } from "../../../support/helpers/phase1f-executor-harness.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { withBrowserActionNotes } from "../../../../src/backend/systems/browser-shared/action-notes.js";
@@ -508,7 +508,7 @@ describe("task screenshot persistence before checkpoint", () => {
             return { state: "available" as const, sessionId: resource.sessionId, pageVersion: 1, observedAt: clock.now().toISOString(), bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 };
           } };
         } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-        duoCeremony: await fixtureDuoCeremonyGates(clock), browserScreenshotCapture: failure === "persist" ? { capture: async context => { if (context.system === "ucpath") throw new TypeError("private persistence content"); await capture.capture(context); } } : capture,
+        duoCeremony: duoCeremonyGatesOver(database, clock), browserScreenshotCapture: failure === "persist" ? { capture: async context => { if (context.system === "ucpath") throw new TypeError("private persistence content"); await capture.capture(context); } } : capture,
       });
       sessions.bindRunConfigFingerprint(FingerprintSchema.parse(claimed.run.envelope.configFingerprint), "headless", { runId: claimed.run.envelope.runId,
         descriptorFingerprint: claimed.run.envelope.contractFingerprint, captureBrowserScreenshots: false });
@@ -623,7 +623,7 @@ describe("Person Lookup final capture points", () => {
               acquired.push(pages.get(input.system) ?? "unexpected-page");
               return { state: "available" as const, sessionId: resource.sessionId, pageVersion: 1, observedAt: clock.now().toISOString(), bytes: new Uint8Array([137,80,78,71]), width: 1280, height: 720 };
             } };
-          } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: await fixtureDuoCeremonyGates(clock),
+          } }, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS, duoCeremony: duoCeremonyGatesOver(database, clock),
           browserScreenshotCapture: { capture: async context => { await capture.capture(context); persisted.push(pages.get(context.system) ?? "unexpected-page"); } },
         });
         sessions.bindRunConfigFingerprint(FingerprintSchema.parse(claimed.run.envelope.configFingerprint), "headless", { runId: claimed.run.envelope.runId,

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -271,8 +272,9 @@ it("migrates an original schema-1 key before supported stopped prior-control con
   const f = await createHistoricalIncompleteProfileFixture();
   try {
     const key = credentialKeyCustody.read(JSON.parse(readFileSync(f.keyPath, "utf8"))), legacy = Buffer.from(encodePrivate(key)), identity = statSync(f.keyPath);
-    const current = JSON.parse(readFileSync(f.controlPath, "utf8")) as { schemaVersion: number; duo?: unknown; erasures: { credentialKey: { file: { digest: string } } }[] };
-    const { duo: _duo, ...prior } = current;
+    const current = z.looseObject({ erasures: z.array(z.looseObject({ credentialKey: z.looseObject({ file: z.looseObject({ digest: z.string() }) }) })) })
+      .parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
+    const { duo: _duo, completedRestores: _completedRestores, ...prior } = current;
     for (const row of prior.erasures) row.credentialKey.file.digest = createHash("sha256").update(legacy).digest("hex");
     writeFileSync(f.controlPath, JSON.stringify({ ...prior, schemaVersion: 1 }));
     writeFileSync(f.markerPath, JSON.stringify({ schemaVersion: 2 }));
@@ -298,5 +300,27 @@ it("migrates an original schema-1 key before supported stopped prior-control con
       } finally { cold.release(); }
       for (const source of before) assert.equal(readFileSync(source.path).equals(source.bytes), true);
     } finally { maintenance.release(); }
+  } finally { await f.close(); }
+});
+
+
+it("refuses a changed legacy key witness during stopped prior-control admission without effects", async () => {
+  const f = await createHistoricalIncompleteProfileFixture();
+  try {
+    const key = credentialKeyCustody.read(JSON.parse(readFileSync(f.keyPath, "utf8")));
+    const legacy = Buffer.from(encodePrivate(key));
+    const current = z.looseObject({ erasures: z.array(z.looseObject({ credentialKey: z.looseObject({ file: z.looseObject({ digest: z.string() }) }) })) })
+      .parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
+    const { duo: _duo, completedRestores: _completedRestores, ...prior } = current;
+    for (const row of prior.erasures) row.credentialKey.file.digest = "0".repeat(64);
+    writeFileSync(f.controlPath, JSON.stringify({ ...prior, schemaVersion: 1 }));
+    writeFileSync(f.markerPath, JSON.stringify({ schemaVersion: 2 }));
+    writeFileSync(f.keyPath, legacy);
+    credentialKeyCustody.delete(key);
+    const paths = [f.controlPath, f.markerPath, f.keyPath, f.registryPath, f.verifierPath, f.protectedPath, f.databasePath];
+    const before = paths.map(path => readFileSync(path)), entries = FakeKeyringEntry.snapshot();
+    assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime), { code: "CREDENTIAL_KEYCHAIN_MISMATCH" });
+    assert.deepEqual(paths.map(path => readFileSync(path)), before);
+    assert.deepEqual(FakeKeyringEntry.snapshot(), entries);
   } finally { await f.close(); }
 });

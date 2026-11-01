@@ -1,8 +1,8 @@
+import { afterAll, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { existsSync,readFileSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe,it } from "vitest";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { ArtifactSinkBusyError,createArtifactSinkProjector,type ArtifactSinkProjectorOptions } from "../../../../src/backend/storage/artifacts/artifact-sink-projector.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createXlsxRetentionSink,type PublicationFaultPoint } from "../../../../src/backend/storage/artifacts/xlsx-retention-sink.js";
@@ -10,9 +10,12 @@ import type { ArtifactRef } from "../../../../src/models/artifacts/artifacts.js"
 import { foundationFixture,id,NOW,update } from "../../../support/helpers/database-foundation/fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 async function fixture() {
-  const f = await foundationFixture();
-  const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(f.root, ".tracker"), join(f.root, ".tracker/data/artifacts")) });
+  const f = await foundationFixture({ profileFixture: profileFixtures.create });
+  const artifacts = createContentAddressedArtifactWriter({ admission: f.profile.admission });
   await artifacts.ready;
   const path = join(f.root, "retention.xlsx");
   const make = (db = f.db, fault?: (point: PublicationFaultPoint) => void | Promise<void>, settlementFault?: ArtifactSinkProjectorOptions["fault"], destination = path) => createArtifactSinkProjector({
@@ -177,7 +180,7 @@ describe("G ordered publication and durable intent", () => {
     try {
       const old = await f.seed();
       f.db.authority.artifactOutbox.insert(update(2));
-      const objectPath = join(f.root, ".tracker/data/artifacts", `${old.ref.sha256}.artifact`);
+      const objectPath = join(f.profile.admission.artifactRoot, `${old.ref.sha256}.artifact`);
       const object = readFileSync(objectPath);
       if (damage === "missing") rmSync(objectPath); else writeFileSync(objectPath, "corrupt");
       await assert.rejects(f.make().projectOutbox([id(2)]));
@@ -198,7 +201,7 @@ describe("G ordered publication and durable intent", () => {
       const old = await f.seed(); f.db.authority.artifactOutbox.insert(update(2)); await f.make().projectOutbox([id(2)]);
       assert.deepEqual(await f.read(old.ref), old.bytes);
       assert.deepEqual(f.file().versions[0], { state: "verified", artifact: old.ref });
-      const storedPath = join(f.root, ".tracker/data/artifacts", `${old.ref.sha256}.artifact`);
+      const storedPath = join(f.profile.admission.artifactRoot, `${old.ref.sha256}.artifact`);
       const stored = readFileSync(storedPath); writeFileSync(storedPath, "corrupt");
       await assert.rejects(f.read(old.ref));
       writeFileSync(storedPath, stored); assert.deepEqual(await f.read(old.ref), old.bytes);

@@ -1,3 +1,4 @@
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { type RunDetailDescriptorView } from "../../../../src/backend/runs/queries/run-detail.js";
 import { makeWorld, runRecordOf, uuidOf, type DashboardWorld } from "./dashboard-harness.js";
 import { z } from "zod";
@@ -12,11 +13,11 @@ import { sqliteRunReader } from "../canonical-run-reader.js";
 
 
 
-export function createRunDetailTestWorld() {
+export function createRunDetailTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
   const worlds: DashboardWorld[] = [];
 
   async function world(): Promise<DashboardWorld> {
-    const created = await makeWorld();
+    const created = await makeWorld({ profileFixture });
     worlds.push(created);
     return created;
   }

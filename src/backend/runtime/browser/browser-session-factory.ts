@@ -206,7 +206,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       const lifecycle = observeContextLifecycle(previous);
       this.#owned.set(profileDirectory, { context: previous, lifecycle });
       try {
-        await this.#closeWithProof(previous, lifecycle, system, "fresh-boundary");
+        await this.#closeWithProof(previous, lifecycle, system, "profile-reset");
         this.#releaseProfile(profileDirectory);
       } catch (error) {
         throw new BrowserSessionClosureUnprovedError([error], `${system} browser profile reset did not close its launch probe`, { cause: error });

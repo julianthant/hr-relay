@@ -1,5 +1,6 @@
 import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import { ProtectedSettingsCommandRequestSchema } from "../../src/rules/commands/
 import { EditableSettingsWireSchema } from "../../src/models/dashboard/settings-editor.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
 import { startSettingsActivationServer } from "./helpers/fixture-settings-activation.js";
-import { ensureParityBundle } from "./helpers/bundle.js";
+
 import { PARITY_THEMES, installTheme, assertThemeApplied } from "./helpers/capture.js";
 import { registerReferenceServers } from "./helpers/reference-harness.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -71,7 +72,7 @@ for (const theme of PARITY_THEMES) for (const scene of scenes) test(`settings ca
 for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exact retry and dirty exits @ ${theme.name}`, {
   annotation: [{ type: "required-a11y-evidence", description: `settings-catalog-real-${theme.name}.a11y.yml` }],
 }, async ({ page }) => {
-  ensureParityBundle(); const server = await startSettingsActivationServer();
+  const server = await startSettingsActivationServer();
   const secret = "synthetic-browser-credential-sentinel";
   const errors: string[] = []; const logs: string[] = [];
   page.on("pageerror", error => errors.push(error.message)); page.on("console", message => logs.push(message.text()));

@@ -1171,6 +1171,9 @@ export function defineWorkflowDescriptor<
   ): WorkflowTerminalResultExecution["dependencies"] => Object.freeze(
     nodeIds.map((nodeId) => {
       const node = nodeByIdOrThrow(id, nodes, nodeId, purpose);
+      if (node.kind === "child-run" && node.cardinality !== "one" && purpose === "terminal result" && terminalDependsOn.includes(nodeId)) {
+        throw new Error(`${id}: ${purpose} dependency ${nodeId} owns no output schema`);
+      }
       const evidenceBinding = terminalEvidenceOf(node);
       if (evidenceBinding === undefined) {
         throw new Error(`${id}: ${purpose} dependency ${nodeId} owns no output schema`);

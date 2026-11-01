@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { releaseSeededWriteOwners } from "./timeline-write-fixture.js";
 import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 import { ProtectedStoreRecordSchema } from "../../../src/models/config/protected-settings.js";
 import { ProtectedInputBindingSchema } from "../../../src/models/write-safety/protected-input.js";
@@ -503,7 +504,7 @@ export async function finalizationHarness(
       if (held.failure !== undefined) throw held.failure;
       if (closeAttempted) return;
       closeAttempted = true;
-      try { database.close(); await profile.close(); retainedFinalizationOwners.delete(held); }
+      try { releaseSeededWriteOwners(database, clock.now().toISOString()); database.close(); await profile.close(); retainedFinalizationOwners.delete(held); }
       catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
     },
   };

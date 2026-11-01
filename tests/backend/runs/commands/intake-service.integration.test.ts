@@ -1,4 +1,4 @@
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import Excel from "exceljs";
 import { composeIntake } from "../../../../src/backend/app/composition/dashboard/intake.js";
 import { readArtifactBytes } from "../../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
@@ -15,7 +15,7 @@ import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.j
 import assert from "node:assert/strict";
 import { readFileSync,rmSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterAll,afterEach,describe,it } from "vitest";
 import { descriptorSetHash } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createIntakeParser } from "../../../../src/backend/processing/spreadsheet/intake-parser.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -51,7 +51,9 @@ const ROSTER_CSV = [
   "",
 ].join("\n");
 
-const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+const profiles: BoundProfileStorageFixture[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
@@ -81,7 +83,7 @@ interface Surface {
 }
 
 async function surface(): Promise<Surface> {
-  const profile = await createBoundProfileFixture(); profiles.push(profile);
+  const profile = await profileFixtures.create(); profiles.push(profile);
   const root = profile.stateRoot;
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(

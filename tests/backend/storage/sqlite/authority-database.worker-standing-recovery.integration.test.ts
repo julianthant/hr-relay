@@ -292,7 +292,7 @@ it.each(["absent", "current"] as const)("dispatches one public failed Stop with 
     const record = f.database.authority.workerControls.get(command.commandId);
     if (record?.reset === undefined || record.lifecycle?.operation.kind !== "retry") throw new Error("missing admitted original Stop");
     await new Promise<void>(resolve => { setImmediate(resolve); });
-    await actual.birth();
+    const replacement = await actual.birth();
     expect(() => f.database.authority.runs.claimNext({ workerId: f.slot.workerId, workflow: f.slot.workflow,
       workerLifetime: { membershipRevision: f.slot.membershipRevision, leaseGeneration: old.leaseGeneration + 1 }, now: f.now })).toThrow();
     expect(() => f.database.completeFailedWorkerReset(record.commandId, personLookupDescriptor, f.now)).toThrow();
@@ -353,7 +353,8 @@ it.each(["absent", "current"] as const)("dispatches one public failed Stop with 
     expect(f.database.authority.workerControls.get(record.commandId)).toEqual(confirmation);
     const running = f.database.authority.workerLeases.get(f.slot.workerId);
     if (running === undefined || confirmation === undefined) throw new Error("missing confirmed running authority");
-    const card = workerCardOf({ lease: running, member: f.slot, ownerAlive: f.old.child.exitCode === null && f.old.child.signalCode === null,
+    expect(running.processId).toBe(replacement.pid);
+    const card = workerCardOf({ lease: running, member: f.slot, ownerAlive: replacement.child.exitCode === null && replacement.child.signalCode === null,
       owned: true, fold: undefined, operations: [confirmation], observations: [], resolveRun: id => f.database.authority.runs.get(id) });
     expect(card.state).toBe("running");
     expect(card.controls?.operation).toMatchObject({ commandId: record.commandId, type: "stop-worker", state: "succeeded", unresolved: false });

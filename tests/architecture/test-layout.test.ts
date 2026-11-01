@@ -6,7 +6,7 @@ import { describe, it } from "vitest";
 import ts from "typescript";
 import { gitVisibleFiles, REPO_ROOT } from "./support/helpers/guard-files.js";
 
-const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".css", ".html"]);
+const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".css", ".html", ".sh"]);
 const MAPPING_EXCEPTIONS = /^tests\/(?:architecture|parity|perf|types|support)\//u;
 const TEST_SUFFIX = /(?:^|\/)(?:test|spec)\.[^/]+$|[._-](?:tests?|spec)(?:-d)?\.[^/]+$/u;
 const TEST_PREFIX = /(?:^|\/)(?:test|spec)[_-][^/]+\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/u;
@@ -97,7 +97,7 @@ const TRACKED_CANARY_SOURCES = [
   "src/backend/a/thing.ts", "src/backend/a/test-thing.ts", "src/backend/a/thing-test.ts",
   "src/backend/a/thing.test.detail.ts", "src/backend/a/thing.integration.test.detail.ts",
   "src/dashboard/ds/theme/tokens.css", "src/example.ts",
-  "scripts/test/runner.ts", "duo-autopilot/src/sign-count.js", "vite.dashboard.config.ts",
+  "scripts/test/artifact-policy.ts", "duo-autopilot/src/sign-count.js", "vite.dashboard.config.ts",
   "src/example.detail.ts",
 ];
 
@@ -114,12 +114,13 @@ describe("test layout", () => {
   it("accepts source paths, retained full paths, CSS and dotted module topics", () => {
     assert.deepEqual(testLayoutViolations([
       "tests/backend/a/thing.test.ts", "tests/backend/a/thing.integration.test.ts",
+      "tests/backend/a/thing.local.test.ts", "tests/backend/a/thing.local.integration.test.ts",
       "tests/backend/a/thing.topic.test.ts", "tests/dashboard/ds/theme/tokens.test.ts",
       "tests/backend/a/test-thing.test.ts", "tests/backend/a/test-thing.topic.integration.test.ts",
       "tests/backend/a/thing-test.test.ts", "tests/backend/a/thing-test.topic.integration.test.ts",
       "tests/backend/a/thing.test.detail.test.ts", "tests/backend/a/thing.test.detail.topic.integration.test.ts",
       "tests/backend/a/thing.integration.test.detail.test.ts", "tests/backend/a/thing.integration.test.detail.topic.test.ts",
-      "tests/scripts/test/runner.test.ts", "tests/duo-autopilot/src/sign-count.test.ts",
+      "tests/scripts/test/artifact-policy.test.ts", "tests/duo-autopilot/src/sign-count.test.ts",
       "tests/vite.dashboard.config.test.ts", "tests/vite.dashboard.config.topic.integration.test.ts",
       "tests/example.detail.topic.test.ts",
     ], TRACKED_CANARY_SOURCES), []);
@@ -129,7 +130,7 @@ describe("test layout", () => {
     for (const [path, expected] of [
       ["tests/unit/backend/a/thing.test.ts", "tests/backend/a/thing.test.ts"],
       ["tests/integration/backend/a/thing.integration.test.ts", "tests/backend/a/thing.integration.test.ts"],
-      ["tests/runner.test.ts", "tests/scripts/test/runner.test.ts"],
+      ["tests/artifact-policy.test.ts", "tests/scripts/test/artifact-policy.test.ts"],
       ["tests/sign-count.test.ts", "tests/duo-autopilot/src/sign-count.test.ts"],
       ["tests/tokens.test.ts", "tests/dashboard/ds/theme/tokens.test.ts"],
       ["tests/unit/example.detail.topic.test.ts", "tests/example.detail.test.ts"],

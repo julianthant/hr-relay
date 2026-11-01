@@ -11,7 +11,7 @@ import { composeDashboardApplication, type DashboardComposeInput } from "../../.
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { storageTree } from "../../../../support/helpers/integration/storage-recovery-fixture.js";
 import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
-import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
 import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
 import { spawnSync } from "node:child_process";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../../src/backend/storage/sqlite/migrations.js";
@@ -184,19 +184,38 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     try {
       vi.mocked(readFileSync).mockClear();
       application = await composeDashboardApplication({ lifetimeLock: controllerLock, admission: machine, isolation: rebuildRuntimeIsolation,
-        repoRoot, backendPortOverride: 0, frontendPortOverride: 0, env: {} });
+        repoRoot, backendPortOverride: 0, frontendPortOverride: 0, env: {}, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu") });
       assert.equal(existsSync(join(machine.stateRoot, "state.db")), false);
       assert.equal(machine.readProfileRegistry().profiles.length, 0);
       assert.equal(vi.mocked(readFileSync).mock.calls.filter(([path]) => typeof path === "string" && path.includes("/credentials/")).length, 0);
       const origin = `http://127.0.0.1:${String(application.port)}`;
       const response = await fetch(`${origin}/api/v1/profile/sign-up`, { method: "POST", headers: { origin, "content-type": "application/json" },
         body: JSON.stringify({ firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" }) });
-      const active = PublicProfileStateSchema.parse(await response.json()); assert.equal(active.state, "active");
+      const draft = PublicProfileStateSchema.parse(await response.json()); assert.equal(draft.state, "onboarding");
+      if (draft.state !== "onboarding") throw new Error("actual onboarding required");
+      let cookie = response.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+      const onboarding = async (path: string, body: unknown) => {
+        assert.ok(cookie);
+        const result = await fetch(`${origin}/api/v1/profile/onboarding/${path}`, { method: "POST",
+          headers: { origin, cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+        assert.equal(result.status, 200);
+        cookie = result.headers.get("set-cookie")?.split(";", 1)[0] ?? cookie;
+        return PublicProfileStateSchema.parse(await result.json());
+      };
+      for (const method of ["key", "touch"] as const) {
+        const started = await onboarding("duo/start", { operationId: draft.operationId, method });
+        assert.equal(started.state, "onboarding");
+        if (started.state !== "onboarding") throw new Error("onboarding method did not start");
+        const attemptId = started.methods[method].attemptId; assert.ok(attemptId);
+        const confirmed = await onboarding("duo/confirm", { operationId: draft.operationId, method, attemptId, operatorConfirmed: true });
+        assert.equal(confirmed.state, "onboarding");
+      }
+      const active = await onboarding("complete", { operationId: draft.operationId }); assert.equal(active.state, "active");
       if (active.state !== "active") throw new Error("actual signup required");
       assert.equal(machine.readProfileRegistry().profiles.length, 1);
       assert.equal(existsSync(join(machine.stateRoot, "profiles", active.profileId, "state.db")), true);
       assert.equal(existsSync(join(machine.stateRoot, "state.db")), false);
-      const cookie = response.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+      assert.ok(cookie);
       assert.equal((await fetch(`${origin}/api/v1/bootstrap`, { headers: { cookie } })).status, 200);
     } finally { await application?.stop(); machine.release(); rmSync(repoRoot, { recursive: true, force: true }); }
   });

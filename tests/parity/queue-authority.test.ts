@@ -1,6 +1,7 @@
 import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 import { createHash } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { chromium, type Worker } from "playwright";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

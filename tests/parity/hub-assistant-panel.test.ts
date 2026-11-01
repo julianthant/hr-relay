@@ -1,18 +1,15 @@
-import { test, expect } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from "./helpers/fixtures.js";
 import { z } from 'zod';
 import { createServer as createHttpServer } from 'node:http';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { build, preview, type PreviewServer } from 'vite';
-import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
+import { preview, type PreviewServer } from 'vite';
 import { attachShellA11y } from './helpers/shell-proof.js';
 import { captureParityPair } from './helpers/capture.js';
 import { FIXTURE_APP_VERSION, FIXTURE_DESCRIPTOR_HASH, FIXTURE_DAY } from './helpers/fixture-identity.js';
 
 let server: PreviewServer;
 let baseUrl: string;
-const root = resolve('.work/HUB-WIRE-1B/parity');
 const bff = createHttpServer((request, response) => {
   response.setHeader('access-control-allow-origin', '*');
   if (request.method !== 'GET' || request.url !== '/api/v1/settings/chatgpt-account') { response.writeHead(404).end(); return; }
@@ -22,40 +19,15 @@ const bff = createHttpServer((request, response) => {
 test.beforeAll(async () => {
   await new Promise<void>(done => bff.listen(0, '127.0.0.1', done));
   const address = bff.address(); if (!address || typeof address === 'string') throw Error('assistant-fixture-address');
-  await mkdir(root, { recursive: true });
-  await writeFile(resolve(root, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="data:,"></head><body><div id="fixture" style="position:fixed;right:32px;bottom:132px;width:420px;height:min(700px,calc(100dvh - 180px))"></div><script type="module" src="./entry.tsx"></script></body></html>');
-  await writeFile(resolve(root, 'fixture.css'), `@import '${resolve('src/dashboard/app/index.css')}';\n@source '${resolve('src/dashboard')}';`);
-  await writeFile(resolve(root, 'entry.tsx'), `
-import React from 'react';
-import {createRoot} from 'react-dom/client';
-import './fixture.css';
-import {AssistantPanel} from '${resolve('src/dashboard/surfaces/shell/assistant-panel.tsx')}';
-import {createAssistantMockProducer} from '${resolve('src/dashboard/surfaces/shell/assistant-panel-model.ts')}';
-import {createDashboardClient} from '${resolve('src/dashboard/client/index.ts')}';
-import {useAssistantController} from '${resolve('src/dashboard/surfaces/assistant/assistant-controller-model.ts')}';
-import {ChatGptAccountContext,createServedChatGptAccountPort} from '${resolve('src/dashboard/surfaces/settings/general/chatgpt-account-model.ts')}';
-const params=new URLSearchParams(location.search);
-document.documentElement.dataset.demoTheme=params.get('theme')||'dark';
-document.documentElement.dataset.motion=params.get('motion')||'on';
-const client=createDashboardClient({baseUrl:'http://127.0.0.1:${address.port}'});
-const noop=()=>{};
-const identity={chatId:'00000000-0000-4000-8000-000000000001',actionId:'00000000-0000-4000-8000-000000000002',revision:1};
-const servedClient={async assistantRespond(){if(params.get('respondLost')==='1')throw Error('synthetic lost automatic response');if(params.get('autoUnknown')==='1')return {state:'unknown',actionId:identity.actionId,action:{...identity,expiresAt:'2099-01-01T00:00:00Z',label:'Mark 25 current notifications read',targetLabel:'25 current notifications',subject:'none',effect:'local-write'}};return {state:'action-proposal',proposal:{...identity,expiresAt:'2099-01-01T00:00:00Z',label:'Mark a notification read',targetLabel:'Local notification',subject:'none',effect:'local-write'}};},async assistantDecide(input){document.body.dataset.decisions=String(Number(document.body.dataset.decisions||0)+1);if(params.get('lost')==='1')throw Error('synthetic lost response');return {state:'applied',actionId:input.actionId};}};
-function Served(){const served=useAssistantController(servedClient,1,undefined,false);return <AssistantPanel producer={createAssistantMockProducer('new')} accountClient={client} served={served} title="Action proof"/>;}
-
-const mount=createRoot(document.getElementById('fixture'));
-if(params.get('served')==='1'){const preview=createServedChatGptAccountPort(client);preview.refresh().then(()=>mount.render(<ChatGptAccountContext.Provider value={{...preview,mode:'live'}}><Served/></ChatGptAccountContext.Provider>));}
-else mount.render(<AssistantPanel producer={createAssistantMockProducer(params.get('scene')||'ask-write')} accountClient={client} onClose={noop} onRename={noop} onChats={noop} onOpenChatFile={async()=>null} initialText={params.get('text')||''} onRegisterSpreadsheet={async file=>{document.body.dataset.registered=file.name;}} onRunWorkflow={async request=>{if(request.dryRun!==true)throw Error('fixture-refuses-live');document.body.dataset.run=JSON.stringify(request);return {state:'complete',source:'mock',files:[{...request.file,id:'updated',name:'Updated.csv',status:'Updated'},{...request.file,id:'generated',name:'Results.csv',status:'Generated'}]};}}/>);
-`);
-  await build({ configFile: false, root, plugins: [react(), tailwindcss()], logLevel: 'warn', build: { outDir: resolve(root, 'dist'), emptyOutDir: true } });
-  server = await preview({ configFile: false, root, logLevel: 'warn', build: { outDir: resolve(root, 'dist') }, preview: { host: '127.0.0.1', port: 0, strictPort: true } });
+  server = await preview({ configFile: false, root: resolve('tests/parity/fixtures/hub-assistant'), logLevel: 'warn',
+    build: { outDir: resolve('dist/parity-components/hub-assistant') },
+    preview: { host: '127.0.0.1', port: 0, strictPort: true, proxy: { '/api': `http://127.0.0.1:${address.port}` } } });
   const http = server.httpServer.address(); if (!http || typeof http === 'string') throw Error('assistant-fixture-address');
   baseUrl = `http://127.0.0.1:${http.port}`;
 });
 test.afterAll(async () => {
   if (server) await new Promise<void>((done, reject) => server.httpServer.close(error => error ? reject(error) : done()));
   await new Promise<void>((done, reject) => bff.close(error => error ? reject(error) : done()));
-  await rm(root, { recursive: true, force: true });
 });
 test.describe.configure({ mode: 'serial' });
 test('assistant composer and workflow ports', { annotation: [{ type: 'required-a11y-evidence', description: 'hub-assistant.a11y.yml' }] }, async ({ page }, info) => {

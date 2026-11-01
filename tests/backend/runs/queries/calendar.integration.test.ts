@@ -69,8 +69,11 @@ it("refuses invalid queries and unavailable/corrupt publications instead of repo
       assert.throws(() => query.read({ month: "2026-08", day: "2026-08-03" }), /rebuild-required/u);
       raw.prepare("UPDATE runs SET version=? WHERE id=?").run(f.run.version, f.run.envelope.runId);
       assert.ok(query.read({ month: "2026-08", day: "2026-08-03" }).firstDay);
+      const publication = raw.prepare("SELECT * FROM run_search WHERE run_id=?").get(f.run.envelope.runId); assert.ok(publication);
       raw.prepare("DELETE FROM run_search WHERE run_id=?").run(f.run.envelope.runId);
       assert.throws(() => query.read({ month: "2026-08", day: "2026-08-03" }), /rebuild-required/u);
+      const columns = Object.keys(publication);
+      raw.prepare(`INSERT INTO run_search(${columns.join(",")}) VALUES(${columns.map(() => "?").join(",")})`).run(...Object.values(publication));
     } finally { raw.close(); }
   } finally { await f.dispose(); }
 });

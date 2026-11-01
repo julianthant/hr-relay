@@ -14,6 +14,7 @@ import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { createHistoricalIncompleteProfileFixture } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
+import { scaledMs } from "../../support/time-scale.js";
 
 function ownedBrowserExited(pid:number):boolean {
   try{process.kill(pid,0);return false;}
@@ -76,4 +77,4 @@ it("refuses a canonical Chromium orphan after owner SIGKILL before erasure, then
   }
   if(cleanupErrors.length!==0)throw new AggregateError(primary===undefined?cleanupErrors:[primary.error,...cleanupErrors],"native-orphan-fixture-cleanup-failed");
   if(primary!==undefined)throw primary.error;
-},60000);
+}, scaledMs(60000));

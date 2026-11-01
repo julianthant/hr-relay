@@ -5,7 +5,8 @@ import { personLookupQueuedRun } from "../../support/helpers/phase1f-executor-ha
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 import { NotificationTriggerEventSchema, deriveNotificationDedupeFingerprint, notificationDeliverability, projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
@@ -19,6 +20,10 @@ afterEach(async () => {
   for (const dispose of disposers.splice(0)) await dispose();
 });
 
+afterAll(async () => {
+  await template?.profile.close();
+});
+
 function sequentialIds(lane = "0"): { uuid: () => string } {
   let index = 0;
   return {
@@ -29,21 +34,33 @@ function sequentialIds(lane = "0"): { uuid: () => string } {
   };
 }
 
+let template: { profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; snapshot: Buffer } | undefined;
+
 async function openDatabase(): Promise<AuthorityDatabase> {
-  const profile = await createBoundProfileFixture();
+  if (template === undefined) {
+    const profile = await createBoundProfileFixture();
+    const primed = AuthorityDatabase.open(
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "notification-durability" },
+      manualClock(new Date(NOW)),
+    );
+    primed.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    primed.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_2 }));
+    const separations = RunRecordSchema.parse(personLookupQueuedRun({ runId: UUID_4 }));
+    primed.authority.runs.enqueue(RunRecordSchema.parse({ ...separations,
+      envelope: { ...separations.envelope, workflow: "separations" } }));
+    primed.close();
+    template = { profile, snapshot: readFileSync(profile.path) };
+  }
+  for (const suffix of ["-wal", "-shm"]) {
+    const companion = `${template.profile.path}${suffix}`;
+    if (existsSync(companion)) rmSync(companion);
+  }
+  writeFileSync(template.profile.path, template.snapshot);
   const database = AuthorityDatabase.open(
-    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "notification-durability" },
+    { path: template.profile.path, busyTimeoutMs: 250, migrationOwner: "notification-durability" },
     manualClock(new Date(NOW)),
   );
-  disposers.push(async () => {
-    database.close();
-    await profile.close();
-  });
-  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_2 }));
-  const separations = RunRecordSchema.parse(personLookupQueuedRun({ runId: UUID_4 }));
-  database.authority.runs.enqueue(RunRecordSchema.parse({ ...separations,
-    envelope: { ...separations.envelope, workflow: "separations" } }));
+  disposers.push(() => { database.close(); });
   return database;
 }
 

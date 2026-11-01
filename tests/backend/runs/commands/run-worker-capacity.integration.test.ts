@@ -1,3 +1,4 @@
+import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -51,8 +52,8 @@ describe("automatic worker admission and retained capacity commands", () => {
     const active = h.database.authority.runtimeConfig.get(); assert.ok(active);
     const runtimeConfig = { generation: active.generation, settingsRevision: active.settingsRevision,
       settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint };
-    const first = requireLifecycleApplied(lifecycle.claimNext({ commandId: nextCommandId(), workflow: WORKFLOW, workerId: WORKER_1, runtimeConfig }));
-    const busy = lifecycle.claimNext({ commandId: nextCommandId(), workflow: WORKFLOW, workerId: WORKER_1, runtimeConfig });
+    const first = requireLifecycleApplied(lifecycle.claimNext({ commandId: nextCommandId(), workflow: WORKFLOW, workerId: WORKER_1, workerLifetime: testWorkerLifetime(h.database, WORKFLOW, 1).workerLifetime, runtimeConfig }));
+    const busy = lifecycle.claimNext({ commandId: nextCommandId(), workflow: WORKFLOW, workerId: WORKER_1, workerLifetime: testWorkerLifetime(h.database, WORKFLOW, 1).workerLifetime, runtimeConfig });
     assert.ok(busy.state === "refused" && busy.refusal.reason === "worker-busy");
     const pool = h.database.authority.workerPools.get(WORKFLOW); assert.ok(pool);
     assert.equal((await h.kernel.executeWorkerPool({ ...envelope(h), type: "plan-worker-count",
@@ -61,7 +62,7 @@ describe("automatic worker admission and retained capacity commands", () => {
     const spawned = h.kernel.executeWorkerPool({ ...envelope(h), type: "spawn-worker",
       target: { workflowId: WORKFLOW, expectedVersion: pool.version + 1 }, payload: { workerId: member.workerId } });
     await proveLaunchBirth(h); assert.equal((await spawned).state, "applied");
-    const second = requireLifecycleApplied(lifecycle.claimNext({ commandId: nextCommandId(), workflow: WORKFLOW, workerId: member.workerId, runtimeConfig }));
+    const second = requireLifecycleApplied(lifecycle.claimNext({ commandId: nextCommandId(), workflow: WORKFLOW, workerId: member.workerId, workerLifetime: testWorkerLifetime(h.database, WORKFLOW, member.poolIndex).workerLifetime, runtimeConfig }));
     assert.notEqual(second.envelope.runId, first.envelope.runId);
     assert.equal(h.database.authority.runs.get(first.envelope.runId)?.lifecycle.state, "claimed");
     assert.equal(h.database.authority.runs.listByWorkflow(WORKFLOW).filter(run => run.lifecycle.state === "queued").length, 0);
@@ -97,7 +98,7 @@ describe("automatic worker admission and retained capacity commands", () => {
     assert.notEqual(lease.processId, h.children[0]?.pid);
     const active = h.database.authority.runtimeConfig.get(); assert.ok(active);
     const lifecycle = new RunRecordService({ database: h.database, clock: h.clock, ids: sequentialIdFactory("c"), publishQueued: () => {} });
-    const claimed = requireLifecycleApplied(lifecycle.claimNext({ commandId: nextCommandId(), workflow: WORKFLOW, workerId: WORKER_1,
+    const claimed = requireLifecycleApplied(lifecycle.claimNext({ commandId: nextCommandId(), workflow: WORKFLOW, workerId: WORKER_1, workerLifetime: testWorkerLifetime(h.database, WORKFLOW, 1).workerLifetime,
       runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
         settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } }));
     assert.ok(claimed.lifecycle.state === "claimed");

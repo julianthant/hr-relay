@@ -1,7 +1,8 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Page, type TestInfo } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { resolve } from "node:path";
 import { routeUrl } from "./helpers/app-driver.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, captureParityPair, installTheme, PARITY_THEMES, type ParityTheme } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH, FIXTURE_NOW } from "./helpers/fixture-identity.js";
@@ -36,7 +37,6 @@ async function capture(page: Page, info: TestInfo, theme: ParityTheme, width: nu
 for (const theme of PARITY_THEMES) for (const width of [1280]) {
   const label = `${theme.name} ${String(width)}`;
   test(`frozen session populations ${label}`, annotation(evidence("sessions", theme, width)), async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await prepare(page, theme, width);
@@ -65,7 +65,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
 
   for (const outcome of ["normal", "refused", "uncertain"] as const) {
     test(`frozen session command ${outcome} ${label}`, annotation(evidence(`command-${outcome}`, theme, width)), async ({ page }, info) => {
-      ensureParityBundle();
       const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
       try {
         await prepare(page, theme, width);
@@ -125,7 +124,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
   }
 
   test(`frozen shell search and destination ${label}`, annotation(evidence("search", theme, width)), async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await prepare(page, theme, width);
@@ -153,7 +151,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
   });
 
   test(`frozen notifications ${label}`, annotation(evidence("notifications", theme, width)), async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await prepare(page, theme, width);
@@ -224,7 +221,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
   });
 
   test(`frozen analytics reports ${label}`, annotation(evidence("analytics", theme, width)), async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await prepare(page, theme, width);
@@ -249,7 +245,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
   });
 
   test(`frozen analytics drilldowns ${label}`, annotation(evidence("analytics-runs", theme, width)), async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await prepare(page, theme, width);
@@ -295,7 +290,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
   });
 
   test(`frozen storage doctor lifecycle ${label}`, annotation(evidence("storage", theme, width)), async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     let releaseLatest: (() => void) | undefined;
     let releaseDoctor: (() => void) | undefined;

@@ -5,10 +5,10 @@ import { formatErrorCatalogFailure, createErrorCatalogFailure } from '../../../.
 import { afterEach,describe,it,vi } from 'vitest';
 import { mountSettingsHarness,syntheticSettingsAuthority } from '../../../../support/helpers/dashboard/settings-harness.js';
 
-const cleanups: (() => void)[] = [];
-afterEach(() => { vi.useRealTimers(); for (const close of cleanups.splice(0).reverse()) close(); });
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { vi.useRealTimers(); for (const close of cleanups.splice(0).reverse()) await close(); });
 async function setup() {
-  const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+  const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
   const mounted = await mountSettingsHarness(authority); cleanups.push(mounted.close);
   vi.useFakeTimers();
   return { ...mounted, authority };

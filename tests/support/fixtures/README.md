@@ -88,11 +88,11 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/write-sequencer-fixtures.ts` | write sequencer fixtures |
 | `helpers/admission-fixture.ts` | admission fixture |
 | `helpers/credential-keychain-fake.ts` | process-local fake keychain and child custody snapshots |
-| `helpers/credential-keychain-process-preload.ts` | resolves keyring imports to the fake before child fixture evaluation |
+| `helpers/credential-keychain-process-preload.mjs` | resolves keyring imports to the fake before child fixture evaluation |
 | `helpers/caching-compiler-host.ts` | content-checked shared parsed compiler sources and fresh Programs |
 | `helpers/backend/cross-date-search-harness.ts` | cross date search harness |
 | `helpers/backend/dashboard-harness.ts` | dashboard harness |
-| `helpers/backend/failure-resolution-peer.ts` | failure resolution peer |
+| `processes/failure-resolution-peer.ts` | failure resolution peer |
 | `helpers/backend/http-route-harness.ts` | http route harness |
 | `helpers/backend/served-database-surfaces-fixtures.ts` | served database surfaces fixtures |
 | `helpers/backend/settings-activation-fixture.ts` | settings activation fixture |
@@ -158,6 +158,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/dashboard/served-fixtures/seeded-services.ts` | seeded services |
 | `helpers/dashboard/settings-harness.tsx` | settings harness |
 | `helpers/database-foundation/fixtures.ts` | fixtures |
+| `helpers/duo-ceremony-cleanup.ts` | shared Duo fixture cleanup queue and reverse-order drain |
 | `helpers/duo-ceremony-fixtures.ts` | duo ceremony fixtures |
 | `helpers/failure-resolution/fixtures.ts` | fixtures |
 | `helpers/geocode/nominatim-client.ts` | nominatim client |
@@ -179,7 +180,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/separations-composition-fixtures.ts` | separations composition fixtures |
 | `helpers/settings-storage-doctor-fixtures.ts` | settings storage reports and resize observer fixture |
 | `helpers/storage/native-authority/retained-database-fixture.ts` | retained database fixture |
-| `helpers/storage/storage-relocation-fixture.ts` | storage relocation fixture |
 | `helpers/storage/synchronous-mutex-deadline.ts` | scoped 5,000 ms manual-clock mutex polling |
 | `helpers/storage/transaction-history-fixture.ts` | transaction history fixture |
 | `helpers/synthetic-database-admission.ts` | synthetic database admission |

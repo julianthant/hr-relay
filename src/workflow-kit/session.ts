@@ -27,6 +27,7 @@ export interface BrowserSessionCloseProof {
 
 export type BrowserSessionCloseReason =
   | "fresh-boundary"
+  | "profile-reset"
   | "poisoned"
   | "parked"
   | "worker-stop"

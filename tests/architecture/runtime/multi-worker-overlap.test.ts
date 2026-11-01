@@ -140,11 +140,11 @@ describe("two live worker loops drain one queue", () => {
       enqueued.push(runIdOf(record.record));
     }
 
-    const first = await workerHarness(authority, "1", "a", {
+    const first = workerHarness(authority, "1", "a", {
       onSpan: observer.sample,
       sessions: gatedUcpathSessions({ onCall: observer.sample }),
     });
-    const second = await workerHarness(authority, "2", "b", {
+    const second = workerHarness(authority, "2", "b", {
       onSpan: observer.sample,
       sessions: gatedUcpathSessions({ onCall: observer.sample }),
     });
@@ -202,7 +202,7 @@ describe("a live loop's row is invisible to every other claimer", () => {
     const driverStarted = new Promise<void>((resolve) => {
       markStarted = resolve;
     });
-    const harness = await workerHarness(authority, "1", "a", {
+    const harness = workerHarness(authority, "1", "a", {
       sessions: gatedUcpathSessions({ gate, started: () => markStarted() }),
     });
     const looping = runWorkerLoop(harness.deps);
@@ -246,7 +246,7 @@ describe("interrupted-run recovery overlaps a live heartbeat", () => {
     const driverStarted = new Promise<void>((resolve) => {
       markStarted = resolve;
     });
-    const harness = await workerHarness(authority, "1", "a", {
+    const harness = workerHarness(authority, "1", "a", {
       sessions: gatedUcpathSessions({ gate, started: () => markStarted() }),
     });
     const looping = runWorkerLoop(harness.deps);
@@ -317,7 +317,7 @@ describe("a heartbeat that lost its row never renews it", () => {
       }),
       crm: () => healthyCrmDriver(),
     });
-    const harness = await workerHarness(authority, "1", "a", { sessions });
+    const harness = workerHarness(authority, "1", "a", { sessions });
     const looping = runWorkerLoop(harness.deps);
     await driverStarted;
 

@@ -1,9 +1,9 @@
+import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { mkdirSync,mkdtempSync,rmSync,writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach,describe,it,vi } from "vitest";
+import { afterAll,afterEach,describe,it,vi } from "vitest";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { AuthorityDatabase as ProductionAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../../../src/models/dashboard/storage.js";
@@ -15,11 +15,13 @@ import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures
 import { DAY,makeWorld,queuedEventOf,uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { AuthorityDatabase,doctorAuthorityStorage,summarizeSpanAuthorityReconciliation } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const roots: string[] = [];
+const profiles = createClonedProfileFixtures();
+const heldProfiles: BoundProfileStorageFixture[] = [];
+afterAll(() => profiles.close());
 const clock = manualClock(new Date(NOW));
 
-afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+afterEach(async () => {
+  for (const profile of heldProfiles.splice(0)) await profile.close();
 });
 
 function currentRun(runId = UUID_1, itemId = UUID_4, traceId = "pl-120000-0000"): RunRecord {
@@ -33,13 +35,12 @@ function currentRun(runId = UUID_1, itemId = UUID_4, traceId = "pl-120000-0000")
   });
 }
 
-function fixture(
+async function fixture(
   runs: readonly RunRecord[] = [currentRun()],
   after?: (database: AuthorityDatabase) => void,
 ) {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-span-authority-"));
-  roots.push(root);
-  const authorityPath = join(root, "state.db");
+  const profile = await profiles.create(); heldProfiles.push(profile);
+  const root = profile.stateRoot, authorityPath = profile.path;
   const database = AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs: 500, migrationOwner: "span-authority-test" }, clock);
   try {
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
@@ -99,7 +100,7 @@ function taskStartedBeforeRoot(change: Readonly<Record<string, unknown>> = {}) {
 
 describe("storage doctor span/authority reconciliation", () => {
   it("names a missing current root and rejects an unowned event before persistence", async () => {
-    const f = fixture([currentRun(), currentRun(UUID_2, UUID_5, "pl-120001-0000")]);
+    const f = await fixture([currentRun(), currentRun(UUID_2, UUID_5, "pl-120001-0000")]);
     f.emit(rootEvent());
     assert.throws(() => f.emit(rootEvent(currentRun(UUID_3, UUID_6, "pl-120002-0000"))), /timeline-event-owner-missing/u);
     const report = await f.read();
@@ -111,7 +112,7 @@ describe("storage doctor span/authority reconciliation", () => {
   });
 
   it("withholds mixed-snapshot reconciliation after a concurrent authority commit", async () => {
-    const f = fixture();
+    const f = await fixture();
     f.emit(rootEvent());
     const inspect = ProductionAuthorityDatabase.inspectSpanRunAuthorityReadOnly.bind(ProductionAuthorityDatabase);
     let committed = false;
@@ -130,7 +131,7 @@ describe("storage doctor span/authority reconciliation", () => {
   });
 
   it("withholds a transient history replacement even when its generation and final bytes are unchanged", async () => {
-    const f = fixture();
+    const f = await fixture();
     f.emit(rootEvent());
     f.emit({ t: "span.started", kind: "worker", ts: NOW, workflow: "person-lookup",
       workerId: "snapshot-worker", spanPath: "worker/snapshot-worker", name: "Original" });
@@ -163,7 +164,7 @@ describe("storage doctor span/authority reconciliation", () => {
   });
 
   it("names every missing current root in an existing empty span directory", async () => {
-    const f = fixture();
+    const f = await fixture();
     mkdirSync(join(f.root, "spans"));
     assert.deepEqual(await f.read(), {
       state: "degraded", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [],
@@ -172,7 +173,7 @@ describe("storage doctor span/authority reconciliation", () => {
   });
 
   it("withholds absence claims when current authority is malformed", async () => {
-    const f = fixture([currentRun(), currentRun(UUID_2, UUID_5, "pl-120001-0000")]);
+    const f = await fixture([currentRun(), currentRun(UUID_2, UUID_5, "pl-120001-0000")]);
     f.emit(rootEvent());
     const raw = new DatabaseSync(f.authorityPath);
     try { raw.prepare("UPDATE runs SET envelope_json = '{}' WHERE id = ?").run(UUID_1); }
@@ -185,7 +186,7 @@ describe("storage doctor span/authority reconciliation", () => {
   });
 
   it("ignores malformed retired files and names only missing SQLite roots", async () => {
-    const f = fixture();
+    const f = await fixture();
     mkdirSync(join(f.root, "spans"));
     writeFileSync(join(f.root, "spans", "person-lookup-2026-08-28.jsonl"), "{not-json}\n");
     const report = await f.read();
@@ -195,7 +196,7 @@ describe("storage doctor span/authority reconciliation", () => {
   });
 
   it("refuses corrupt SQLite evidence without exposing payload or inventing absence", async () => {
-    const f = fixture();
+    const f = await fixture();
     f.emit(rootEvent());
     const raw = new DatabaseSync(f.authorityPath);
     try {
@@ -209,7 +210,7 @@ describe("storage doctor span/authority reconciliation", () => {
   });
 
   it("names duplicate run.queued roots instead of reconciling the run-id set", async () => {
-    const f = fixture();
+    const f = await fixture();
     f.emit(rootEvent());
     const raw = new DatabaseSync(f.authorityPath);
     try {
@@ -223,7 +224,7 @@ describe("storage doctor span/authority reconciliation", () => {
   });
 
   it("rejects a root tuple that conflicts with its exact current authority row", async () => {
-    const f = fixture();
+    const f = await fixture();
     assert.throws(() => f.emit({ ...rootEvent(), itemId: UUID_5 }), /timeline-event-owner-mismatch/u);
     const report = await f.read();
     assert.equal(report.state, "degraded");
@@ -235,7 +236,7 @@ describe("storage doctor span/authority reconciliation", () => {
     const run = RunRecordSchema.parse({
       ...currentRun(), envelope: { ...currentRun().envelope, resolvedInstance: { crm: "prod", ucpath: "test" } },
     });
-    const f = fixture([run]);
+    const f = await fixture([run]);
     f.emit({ ...rootEvent(run), resolvedInstance: { ucpath: "test", crm: "prod" } });
     assert.deepEqual(await f.read(), {
       state: "reconciled", streamRunCount: 1, liveRunCount: 1, archived: [], deleted: [],
@@ -248,7 +249,7 @@ describe("storage doctor span/authority reconciliation", () => {
     ["foreign skipped allocation", 3, "ucpath-person-search", false],
   ] as const)("reconciles %s requeue allocation against exact authority", async (_name, nextAttempt, workflow, healthy) => {
     const run = RunRecordSchema.parse({ ...currentRun(), envelope: { ...currentRun().envelope, attempt: nextAttempt } });
-    const f = fixture([run]);
+    const f = await fixture([run]);
     f.emit(rootEvent());
     const requeue = { t: "run.requeued", ts: NOW, workflow, runId: UUID_1, attempt: 1,
       traceId: "pl-120000-0000", spanPath: "pl-120000-0000", cause: "recovery", nextAttempt };
@@ -273,7 +274,7 @@ describe("storage doctor span/authority reconciliation", () => {
     ["foreign task root", { t: "span.started", kind: "task", spanPath: "pl-120001-0000/searching#1", parentSpanPath: "pl-120001-0000", name: "searching" }, /spanPath/u],
     ["task end before start", { t: "span.ended", kind: "task", spanPath: "pl-120000-0000/searching#1", parentSpanPath: "pl-120000-0000", outcome: "done" }, /matching start/u],
   ] as const)("names %s instead of accepting a matching run-id set", async (_name, change, detail) => {
-    const f = fixture();
+    const f = await fixture();
     f.emit(rootEvent());
     const event = { ts: NOW, workflow: "person-lookup", runId: UUID_1, attempt: 1,
       traceId: "pl-120000-0000", spanPath: "pl-120000-0000", ...change };
@@ -290,7 +291,7 @@ describe("storage doctor span/authority reconciliation", () => {
   });
 
   it("rejects a queued root whose span path is not its exact trace root", async () => {
-    const f = fixture();
+    const f = await fixture();
     f.emit({ ...rootEvent(), spanPath: "pl-120000-0000/not-root" });
     const report = await f.read();
     assert.equal(report.state, "degraded");
@@ -301,7 +302,7 @@ describe("storage doctor span/authority reconciliation", () => {
   it.each([undefined, "pl-120000-0000/nested"])(
     "requires the exact run-root task parent rather than %s",
     async (parentSpanPath) => {
-      const f = fixture();
+      const f = await fixture();
       f.emit(rootEvent());
       f.emit({
         t: "span.started", kind: "task", ts: NOW, workflow: "person-lookup",
@@ -316,7 +317,7 @@ describe("storage doctor span/authority reconciliation", () => {
   );
 
   it("names the absent ordinary root when only later SQLite events survive", async () => {
-    const f = fixture();
+    const f = await fixture();
     f.emit({
       t: "span.started", kind: "task", ts: NOW, workflow: "person-lookup", runId: UUID_1, attempt: 1,
       traceId: "pl-120000-0000", spanPath: "pl-120000-0000/searching#1", parentSpanPath: "pl-120000-0000", name: "searching",
@@ -328,7 +329,7 @@ describe("storage doctor span/authority reconciliation", () => {
   });
 
   it("reconciles a late queued root only when it carries authority-reconstruction evidence", async () => {
-    const f = fixture();
+    const f = await fixture();
     f.emit(taskStartedBeforeRoot());
     f.emit({ ...rootEvent(), repair: AUTHORITY_RECONSTRUCTION });
     assert.deepEqual(await f.read(), {
@@ -337,7 +338,7 @@ describe("storage doctor span/authority reconciliation", () => {
   });
 
   it("keeps an unmarked late queued root malformed", async () => {
-    const f = fixture();
+    const f = await fixture();
     f.emit(taskStartedBeforeRoot());
     f.emit(rootEvent());
     const report = await f.read();
@@ -346,8 +347,8 @@ describe("storage doctor span/authority reconciliation", () => {
     assert.match(JSON.stringify(report.problems), /authority-reconstruction repair/u);
   });
 
-  it("refuses a malformed authority-reconstruction marker before persistence", () => {
-    const f = fixture();
+  it("refuses a malformed authority-reconstruction marker before persistence", async () => {
+    const f = await fixture();
     assert.throws(() => f.emit({ ...rootEvent(), repair: { ...AUTHORITY_RECONSTRUCTION, sourceAuthorityGeneration: -1 } }), /timeline-span-invalid/u);
   });
 
@@ -359,7 +360,7 @@ describe("storage doctor span/authority reconciliation", () => {
       traceId: "pl-120000-0000", spanPath: "pl-120000-0000/searching#1", parentSpanPath: "pl-120000-0000", outcome: "done",
     }, /ends before its matching start/u],
   ] as const)("replays pre-root %s defects against a repaired queued root", async (_name, event, detail) => {
-    const f = fixture();
+    const f = await fixture();
     if (_name === "identity") {
       assert.throws(() => f.emit(event), /timeline-event-owner-mismatch/u);
       return;
@@ -373,7 +374,7 @@ describe("storage doctor span/authority reconciliation", () => {
   });
 
   it("names malformed authority with no queued root before classifying absence", async () => {
-    const f = fixture();
+    const f = await fixture();
     mkdirSync(join(f.root, "spans"));
     const raw = new DatabaseSync(f.authorityPath);
     try {
@@ -405,7 +406,7 @@ describe("storage doctor span/authority reconciliation", () => {
 
   it("deletes timeline roots with their owner and ignores surviving retired files", async () => {
     const run = currentRun();
-    const f = fixture([run]);
+    const f = await fixture([run]);
     f.emit(rootEvent(run));
     const database = AuthorityDatabase.open({ path: f.authorityPath, busyTimeoutMs: 500, migrationOwner: "delete-test" }, clock);
     try { deleteRun(run)(database); } finally { database.close(); }
@@ -422,14 +423,14 @@ describe("storage doctor span/authority reconciliation", () => {
     ["foreign trace", { traceId: "zz-120000-0000", spanPath: "zz-120000-0000" }],
   ] as const)("refuses new timeline history for %s after deletion", async (_name, change) => {
     const run = currentRun();
-    const f = fixture([run], deleteRun(run));
+    const f = await fixture([run], deleteRun(run));
     assert.throws(() => f.emit({ ...rootEvent(run), ...change }), /timeline-event-owner-missing/u);
     assert.equal((await f.read()).state, "reconciled");
   });
 
-  it("refuses an orphan event without resurrecting a deleted run", () => {
+  it("refuses an orphan event without resurrecting a deleted run", async () => {
     const run = currentRun();
-    const f = fixture([run], deleteRun(run));
+    const f = await fixture([run], deleteRun(run));
     assert.throws(() => f.emit(rootEvent(currentRun(UUID_2, UUID_5, "pl-120001-0000"))), /timeline-event-owner-missing/u);
   });
 

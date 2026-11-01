@@ -1,7 +1,8 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
 import { CreateRunRequestSchema } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -10,9 +11,12 @@ import { sourceBoundHarness } from "../../../support/fixtures/integration/source
 import { sourceBoundReadDescriptor,sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
 import { absentProbeEvidence,buildWriteFixtureRegistry,writeFixtureDescriptor,writeFixtureDocumentDescriptor,writeFixtureMemoDescriptor,writeFixtureOmittableDescriptor,writeFixtureParallelDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 const disposers: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose(); });
-async function harness(parallel = false) { const h = await sourceBoundHarness(parallel ? writeFixtureParallelDescriptor : writeFixtureDescriptor); disposers.push(h.dispose); return h; }
+async function harness(parallel = false) { const h = await sourceBoundHarness(parallel ? writeFixtureParallelDescriptor : writeFixtureDescriptor, undefined, undefined, undefined, profileFixtures.create); disposers.push(h.dispose); return h; }
 async function completed(h: Awaited<ReturnType<typeof harness>>) {
   const run = h.start(h.proposal());
   h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
@@ -29,7 +33,7 @@ function effects(h: Awaited<ReturnType<typeof harness>>) {
 
 describe("source-bound repeat through planner, kernel, service and interpreter", () => {
   it("keeps protected source proof and key digests out of serialized rerun warnings", async () => {
-    const documentHarness = async () => { const h = await sourceBoundHarness(writeFixtureDocumentDescriptor); disposers.push(h.dispose); return h; };
+    const documentHarness = async () => { const h = await sourceBoundHarness(writeFixtureDocumentDescriptor, undefined, undefined, undefined, profileFixtures.create); disposers.push(h.dispose); return h; };
     const original = await documentHarness(); const completedSource = await completed(original);
     const { sessionId: _sessionId, completion: _completion, ...sourceWithoutSession } = completedSource;
     const originalIntent = original.database.authority.writeIntents.listByRun(completedSource.envelope.runId)[0];
@@ -197,7 +201,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it("retains acknowledgment across changed/cleared non-key values while keeping submitted input authoritative", async () => {
-    const h = await sourceBoundHarness(writeFixtureMemoDescriptor); disposers.push(h.dispose);
+    const h = await sourceBoundHarness(writeFixtureMemoDescriptor, undefined, undefined, undefined, profileFixtures.create); disposers.push(h.dispose);
     const sourceRun = h.start(h.proposal(undefined, undefined, false, undefined, "old memo"));
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
     assert.equal((await h.execute(sourceRun)).state, "done");
@@ -296,7 +300,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it("executes selected reads from submitted cleared values and preserves source checkpoints", async () => {
-    const h = await sourceBoundHarness(sourceBoundReadDescriptor, sourceBoundReadStores); disposers.push(h.dispose);
+    const h = await sourceBoundHarness(sourceBoundReadDescriptor, sourceBoundReadStores, undefined, undefined, profileFixtures.create); disposers.push(h.dispose);
     const first = h.start(h.proposal(undefined, undefined, false, undefined, "old memo"));
     const outcome = await h.execute(first);
     assert.equal(outcome.state, "done", JSON.stringify(outcome.state === "failed" ? h.database.authority.failures.get(outcome.failureId) : outcome)); const source = h.fresh(first);
@@ -311,7 +315,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
   });
 
   it("derives a fresh item without false retry lineage when submitted match key changes", async () => {
-    const h = await sourceBoundHarness(sourceBoundReadDescriptor, sourceBoundReadStores); disposers.push(h.dispose);
+    const h = await sourceBoundHarness(sourceBoundReadDescriptor, sourceBoundReadStores, undefined, undefined, profileFixtures.create); disposers.push(h.dispose);
     const first = h.start(h.proposal()); assert.equal((await h.execute(first)).state, "done");
     const source = h.fresh(first);
     const repeat = h.start(h.proposal(source, undefined, false, "10812346"));
@@ -326,7 +330,7 @@ describe("source-bound repeat through planner, kernel, service and interpreter",
     const h = await sourceBoundHarness(writeFixtureOmittableDescriptor, (world) => {
       const write = buildWriteFixtureRegistry(world); const read = sourceBoundReadStores(world);
       return defineTaskStoreRegistry([...write.stores, ...read.stores], { scenarioIds: [...write.corpus.scenarioIds, ...read.corpus.scenarioIds], tasks: [...write.corpus.tasks, ...read.corpus.tasks] });
-    }); disposers.push(h.dispose);
+    }, undefined, undefined, profileFixtures.create); disposers.push(h.dispose);
     const source = await completed(h); const before = effects(h); h.world.events.length = 0;
     const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: false,
       selectedStepKeys: ["reading"], stepOmissions: [{ step: "write", facts: { reason: "operator omission" } }],

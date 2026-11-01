@@ -42,6 +42,7 @@ import { OfflineAuthorityRestoreService, OfflineRestoreFailure, settleInterrupte
 import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
+import { scaledMs } from "../../../support/time-scale.js";
 
 async function world(clock: Clock = systemClock) {
   const fixture = await createBoundProfileFixture();
@@ -100,7 +101,7 @@ function childJob(script: string) {
   return { child, done, output: () => output };
 }
 async function waitForFile(path: string) {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + scaledMs(10_000);
   while (!existsSync(path)) {
     if (Date.now() > deadline) throw new Error("synthetic-child-barrier-unreached");
     await new Promise(resolve => setTimeout(resolve, 10));

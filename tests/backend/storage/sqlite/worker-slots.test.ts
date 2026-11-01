@@ -1,6 +1,3 @@
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { createCommandKernel, type WorkerRuntimeContext } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -20,17 +17,20 @@ import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_2, UUID_5, UUID_6, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
 {
 
-const cleanups: (() => void)[] = [];
-const _afterEachFixture0 = () => { for (const cleanup of cleanups.splice(0)) cleanup(); };
-function fixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "relay-native-roster-"))), path = join(root, "authority.sqlite");
-  const admission = RuntimeAdmission.syntheticFixture(path);
-  const open = () => AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-test" });
+const cleanups: (() => Promise<void>)[] = [];
+const _afterEachFixture0 = async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); };
+async function rosterFixture() {
+  const profile = await createBoundProfileFixture();
+  const path = profile.path;
+  const admission = profile.admission;
+  const credentials = boundProfileCredentials(admission);
+  const open = () => AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-test" }, undefined, undefined, undefined, undefined, credentials);
   let db = open(); db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
-  cleanups.push(() => { db.close(); rmSync(root, { recursive: true, force: true }); });
+  cleanups.push(async () => { db.close(); await profile.close(); });
   let effects = 0;
   let effect: (context: WorkerRuntimeContext) => unknown = context => {
     const roster = context.roster; if (roster === undefined) throw new Error("missing roster");
@@ -66,7 +66,7 @@ describe("native command-bound worker roster", () => {
 afterEach(_afterEachFixture0);
 
   it("admits zero desired workers without inventing members and replays without effects", async () => {
-    const f = fixture(), request = f.request(UUID_5, 0, 0);
+    const f = await rosterFixture(), request = f.request(UUID_5, 0, 0);
     expect((await f.kernel().executeWorkerPool(request)).state).toBe("applied");
     expect(f.db.authority.workerSlots.list()).toEqual([]);
     expect(f.db.authority.workerPools.get(fixtureDescriptor.id)?.version).toBe(1);
@@ -75,7 +75,7 @@ afterEach(_afterEachFixture0);
     expect(f.effects()).toBe(1); expect(f.db.getMeta().authorityGeneration).toBe(generation);
   });
   it("admits four members and retires all to zero without changing retained identities", async () => {
-    const f = fixture();
+    const f = await rosterFixture();
     expect((await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 4))).state).toBe("applied");
     const members = f.db.authority.workerSlots.list();
     expect(members.map(slot => slot.poolIndex)).toEqual([1, 2, 3, 4]);
@@ -88,7 +88,7 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.workerSlots.list()).toHaveLength(4);
   });
   it("refuses inconsistent historical declarations before allocating or invoking effects", async () => {
-    const f = fixture();
+    const f = await rosterFixture();
     f.db.authority.workerPools.plan({ workflow: fixtureDescriptor.id, expectedVersion: 0, desiredWorkers: 2,
       requestedBy: "local-operator", now: NOW });
     await expect(f.kernel().executeWorkerPool(f.request(UUID_5, 1, 4))).rejects.toThrow(/roster-authority-unavailable/u);
@@ -109,7 +109,7 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.workerControls.get(UUID_6)).toBeUndefined();
   });
   it("rolls back primitive retirement until the same transaction updates its declaration", async () => {
-    const f = fixture();
+    const f = await rosterFixture();
     await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 1));
     const slot = f.db.authority.workerSlots.list()[0];
     if (slot === undefined) throw new Error("missing admitted slot");
@@ -125,8 +125,8 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.workerSlots.get(slot.workerId)?.retirementCommandId).toBe(UUID_6);
     expect(f.db.authority.workerPools.get(fixtureDescriptor.id)?.desiredWorkers).toBe(0);
   });
-  it("restores changed membership tracking when a nested allocation rolls back", () => {
-    const f = fixture();
+  it("restores changed membership tracking when a nested allocation rolls back", async () => {
+    const f = await rosterFixture();
     f.db.authority.workerPools.plan({ workflow: "fixture-child", expectedVersion: 0, desiredWorkers: 2,
       requestedBy: "local-operator", now: NOW });
     f.db.withAuthorityTransaction(repositories => {
@@ -141,11 +141,10 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.workerSlots.list("fixture-child")).toEqual([]);
     expect(f.db.authority.workerSlots.list(fixtureDescriptor.id)).toHaveLength(1);
   });
-  it("persists genuine direct CLI admission and its original global slot without authorizing a process effect", () => {
-    const f = fixture();
+  it("persists genuine direct CLI admission and its original global slot without authorizing a process effect", async () => {
+    const f = await rosterFixture();
     const request = { commandId: UUID_5, workflow: fixtureDescriptor.id, poolIndex: 2,
-      expectedPoolVersion: 0, processId: 4100, processAcquisitionId: UUID_6,
-      authorityPath: "/offline/native/state.db", processLockRoot: "/offline/native/locks", now: NOW };
+      expectedPoolVersion: 0, processId: 4100, now: NOW };
     const first = f.db.withAuthorityTransaction(repositories => admitDirectWorker(repositories, request, UUID_7));
     expect(first).toMatchObject({ ordinal: 1, poolIndex: 2, reservationCommandId: UUID_5 });
     expect(f.db.authority.workerLeases.get(first.workerId)).toBeUndefined();
@@ -154,10 +153,10 @@ afterEach(_afterEachFixture0);
     f.restart(); const generation = f.db.getMeta().authorityGeneration;
     expect(f.db.withAuthorityTransaction(repositories => admitDirectWorker(repositories, request, UUID_7))).toEqual(first);
     expect(f.db.getMeta().authorityGeneration).toBe(generation); expect(f.effects()).toBe(0);
-    expect(() => f.db.withAuthorityTransaction(repositories => admitDirectWorker(repositories, { ...request }, UUID_7))).toThrow(/divergent/u);
+    expect(() => f.db.withAuthorityTransaction(repositories => admitDirectWorker(repositories, { ...request, processId: 4101 }, UUID_7))).toThrow(/divergent/u);
   });
   it("admits supervised launch only for the exact executing original command and current membership", async () => {
-    const f = fixture(); await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 1));
+    const f = await rosterFixture(); await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 1));
     const slot = f.db.authority.workerSlots.list()[0]; if (slot === undefined) throw new Error("missing reserved slot");
     const member = workerPoolMember(slot);
     const request = CommandRequestSchema.parse({ commandId: UUID_6, family: "worker-browser", type: "spawn-worker",
@@ -178,7 +177,7 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.workerLeases.get(member.workerId)).toBeUndefined();
   });
   it("retains an admitted pre-effect crash without promoting it to execution on restart", async () => {
-    const f = fixture(), request = f.request(UUID_5, 0, 2);
+    const f = await rosterFixture(), request = f.request(UUID_5, 0, 2);
     if (request.type !== "plan-worker-count") throw new Error("wrong fixture request");
     f.db.withAuthorityTransaction(repositories => {
       repositories.commands.insert(request);
@@ -195,7 +194,7 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.workerControls.get(UUID_5)?.phase.state).toBe("admitted");
   });
   it("retains original reservation after the first effect fails and never executes it again after restart", async () => {
-    const f = fixture(), request = f.request(UUID_5, 0, 2);
+    const f = await rosterFixture(), request = f.request(UUID_5, 0, 2);
     f.setEffect(context => {
       expect(context.roster?.selected).toHaveLength(2);
       expect(f.db.authority.workerPools.get(fixtureDescriptor.id)?.version).toBe(1);
@@ -210,7 +209,7 @@ afterEach(_afterEachFixture0);
     expect(f.effects()).toBe(1); expect(canonicalJsonStringify(f.db.authority.workerSlots.list())).toBe(original);
   });
   it("retains count and every excess identity if shrink effects become uncertain", async () => {
-    const f = fixture(); expect((await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 3))).state).toBe("applied");
+    const f = await rosterFixture(); expect((await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 3))).state).toBe("applied");
     const original = f.db.authority.workerSlots.list();
     f.setEffect(context => {
       expect(context.roster?.selected.map(slot => slot.workerId)).toEqual([original[0]?.workerId]);
@@ -226,7 +225,7 @@ afterEach(_afterEachFixture0);
     expect(f.effects()).toBe(2);
   });
   it("retires only proved excess slots atomically with the lower count, preserving survivors and ordinals", async () => {
-    const f = fixture(); await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 3));
+    const f = await rosterFixture(); await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 3));
     const original = f.db.authority.workerSlots.list(), shrink = f.request(UUID_6, 1, 1);
     expect((await f.kernel().executeWorkerPool(shrink)).state).toBe("applied");
     expect(f.db.authority.workerPools.get(fixtureDescriptor.id)).toMatchObject({ desiredWorkers: 1, version: 2 });
@@ -238,7 +237,7 @@ afterEach(_afterEachFixture0);
     expect(f.db.authority.workerSlots.list().filter(slot => slot.retiredAt === null).map(slot => slot.ordinal)).toEqual([1, 4, 5]);
   });
   it("replays the original settled roster after an audit-publication crash without repeating effects or retirement", async () => {
-    const f = fixture(); await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 3));
+    const f = await rosterFixture(); await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 3));
     const shrink = f.request(UUID_6, 1, 1); f.auditFault(true);
     await expect(f.kernel().executeWorkerPool(shrink)).rejects.toThrow("audit-publication-fault");
     expect(f.db.authority.workerControls.get(UUID_6)?.phase.state).toBe("succeeded");
@@ -253,7 +252,7 @@ afterEach(_afterEachFixture0);
     expect(f.db.getMeta().authorityGeneration).toBe(generation); expect(f.effects()).toBe(2);
   });
   it("rolls back all retirement and count changes on a missing or forged second closure proof", async () => {
-    const f = fixture(); await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 3));
+    const f = await rosterFixture(); await f.kernel().executeWorkerPool(f.request(UUID_5, 0, 3));
     const original = f.db.authority.workerSlots.list();
     f.setEffect(context => ({ state: "accepted", workerIds: context.roster?.selected.map(slot => slot.workerId),
       retirements: context.roster?.excess.map((slot, index) => ({ workerId: slot.workerId,

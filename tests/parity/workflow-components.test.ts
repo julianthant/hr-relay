@@ -1,8 +1,9 @@
 import { installFrozenMonotonic, moveAssistantLauncherAboveFooter } from "./helpers/app-driver.js";
 
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -11,7 +12,7 @@ import { attachShellA11y } from "./helpers/shell-proof.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`complete Explorer workflow contracts @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `explorer-work-study-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
-    ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET" || /\/api\/v1\/explorer/u.test(new URL(request.url()).pathname)) writes.push(request.url()); });
@@ -43,7 +44,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } finally { await server.close(); }
   });
   test(`PDF review and independent person outcomes @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `contact-review-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
-    ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message)); page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
     try {
@@ -143,7 +144,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 }
 
 for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme.attribute}`, { annotation: [{ type: "required-a11y-evidence", description: `ocr-Oath Upload-${theme.attribute}.a11y.yml` }] }, async ({ page }, info) => {
-  ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+  const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   const writes: string[] = []; page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
   try {
     await page.setViewportSize({ width: 1440, height: 1000 }); await installFrozenMonotonic(page); await installTheme(page, theme); await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
@@ -172,7 +173,7 @@ for (const theme of PARITY_THEMES) test(`delegated OCR form workspaces @ ${theme
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`focused records, canonical rows and keyboard links @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `focused-records-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
-    ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message)); page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
     try {
@@ -240,7 +241,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 }
 
 for (const theme of PARITY_THEMES) test(`every local workflow uses canonical queue and log views @ ${theme.attribute}`, { annotation: [{ type: "required-a11y-evidence", description: `canonical-onboarding-${theme.attribute}.a11y.yml` }] }, async ({ page }, info) => {
-  ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+  const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   const errors: string[] = [], writes: string[] = [];
   page.on("pageerror", error => errors.push(error.message)); page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
   try {

@@ -1,10 +1,14 @@
+import { afterAll } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
 import { UUID_5, UUID_6 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const {executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, actionBindingQueuedRun, actionBindingSessions, cleanup } = createRunExecutorTestWorld();
+const profiles = createClonedProfileFixtures();
+afterAll(() => profiles.close());
+const {executorHarness, enqueueAndClaim, SIGNAL, ACTION_BINDING_WORKFLOW_ID, actionBindingCompiled, actionBindingQueuedRun, actionBindingSessions, cleanup } = createRunExecutorTestWorld(profiles.create);
 
 afterEach(cleanup);
 

@@ -22,6 +22,7 @@ import { systemClock } from "../../../../../src/rules/time/clock.js";
 
 
 import { AuthorityDatabase } from '../../../../../src/backend/storage/sqlite/authority-database.js';
+import { scaledMs } from "../../../../support/time-scale.js";
 
 const { stubLaunch, PL, STUB_CLI_PATH, required, nextCommandId, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase } = createDashboardChildTestWorld(() => releaseAdmissionFixtures(), root => releaseAdmissionFixture(root));
 
@@ -128,7 +129,7 @@ describe("real processes: two children supervised concurrently through the compo
       }
     }
     if (failures.length > 0) throw new AggregateError(failures, 'worker-process-fixture-cleanup-failed', { cause: failures[0] });
-  }, 30_000);
+  }, scaledMs(30_000));
 
   async function openRealHarness(launchCommandOverride?: string): Promise<RealHarness> {
     const profile = await createBoundProfileFixture({ sharedMachine: true });
@@ -245,7 +246,7 @@ describe("real processes: two children supervised concurrently through the compo
         for (const [record, index] of [[record1, 1], [record2, 2]] as const) {
           assert.equal(record.command, process.execPath);
           assert.deepEqual([...record.argv], [
-            "--import", "tsx", STUB_CLI_PATH, harness.dbPath, harness.lockRoot, "installed",
+            "--import", "tsx", STUB_CLI_PATH, String(harness.profile.lifetime.port), harness.dbPath, harness.lockRoot, "installed",
             "worker", "person-lookup", "--pool-index", String(index),
             "--worker-id", record.member.workerId, "--ordinal", String(record.member.ordinal),
             "--membership-revision", String(record.member.membershipRevision), "--launch-command-id", index === 1 ? spawn1Id : spawn2Id,
