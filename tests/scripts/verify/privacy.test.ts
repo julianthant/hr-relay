@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -142,7 +143,7 @@ describe("public repository privacy check", () => {
   it("fails closed without forwarding Git diagnostics when the index cannot be read", () => {
     const cwd = mkdtempSync(join(tmpdir(), "relay-privacy-unreadable-"));
     try {
-      const result = spawnSync(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), fileURLToPath(new URL("../../../scripts/verify/privacy.ts", import.meta.url))], { cwd, encoding: "utf8" });
+      const result = spawnSync(process.execPath, ["--import", testProcessImport(), fileURLToPath(new URL("../../../scripts/verify/privacy.ts", import.meta.url))], { cwd, encoding: "utf8" });
       assert.equal(result.status, 1);
       assert.equal(result.stdout, "");
       assert.equal(result.stderr, "Privacy check failed: scan-error.\n");
@@ -165,7 +166,7 @@ describe("public repository privacy check", () => {
         { path: "a/note.txt", rule: "eid" }, { path: "a/note.txt", rule: "ssn" },
         { path: "z.txt", rule: "eid" }, { path: "z.txt", rule: "ssn" },
       ]);
-      const result = spawnSync(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), fileURLToPath(new URL("../../../scripts/verify/privacy.ts", import.meta.url))], { cwd, encoding: "utf8" });
+      const result = spawnSync(process.execPath, ["--import", testProcessImport(), fileURLToPath(new URL("../../../scripts/verify/privacy.ts", import.meta.url))], { cwd, encoding: "utf8" });
       assert.equal(result.status, 1, result.stderr);
       assert.equal(result.stderr, findings.map(({ path, rule }) => `${JSON.stringify(path)}: ${rule}\n`).join(""));
       assert.ok(!`${result.stdout}${result.stderr}`.includes(unknownEid));

@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../compiled-process.js";
 import { fork } from "node:child_process";
 import { createNominatimGeocodeAdapter } from "../../../../src/backend/processing/providers/geocode-adapters.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
@@ -7,7 +8,7 @@ const owner = createNominatimGeocodeAdapter({ clock: systemClock, fetchFn: async
   process.send?.({ kind: "fetch-start" });
   return new Promise<Response>((_done, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("cancelled")), { once: true }));
 } });
-const child = fork(join(import.meta.dirname, "nominatim-client.ts"), ["report-stdout"], { execArgv: ["--import", "tsx"], stdio: ["ignore", "inherit", "inherit", "ipc"] });
+const child = fork(join(import.meta.dirname, "nominatim-client.ts"), ["report-stdout"], { execArgv: ["--import", testProcessImport()], stdio: ["ignore", "inherit", "inherit", "ipc"] });
 owner.attach(child);
 child.on("message", value => {
   if (typeof value === "object" && value !== null && "kind" in value && value.kind === "ready") process.send?.({ kind: "ready" });

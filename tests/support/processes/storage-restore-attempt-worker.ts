@@ -1,3 +1,4 @@
+import { testProcessImport } from "../compiled-process.js";
 import type { WorkerLeaseRecord } from "../../../src/models/run/worker.js";
 import { RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { randomUUID } from "node:crypto";
@@ -215,7 +216,7 @@ if (process.argv[2] === "successor-renew-confirmed") {
   let inherited: ReturnType<typeof spawn> | undefined;
   let inheritedClose: Promise<unknown[]> | undefined;
   if (process.argv[3] === "inherited-child") {
-    inherited = spawn(process.execPath, ["--import", "tsx", import.meta.filename, "worker", String(lifetimeLock.port), profile.workspace, profile.admission.profileBinding.profileId],
+    inherited = spawn(process.execPath, ["--import", testProcessImport(), import.meta.filename, "worker", String(lifetimeLock.port), profile.workspace, profile.admission.profileBinding.profileId],
       { stdio: ["ignore", "ignore", "pipe", "ipc"] });
     inherited.stderr?.resume();
     inheritedClose = once(inherited, "close");

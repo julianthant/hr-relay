@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../../support/compiled-process.js";
 import type { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import assert from "node:assert/strict";
 import { execFileSync,spawn,type ChildProcess } from "node:child_process";
@@ -125,7 +126,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     assert.equal(existsSync(join(machine.stateRoot, "state.db")), false);
     phase = 'boot-runtime';
     const dashboard = await composeDashboardRuntime({ lifetimeLock, admission: machine, profile: { runtime: profile, token }, preflightRunnerFactory: healthyRuntimePreflightRunners,isolation:rebuildRuntimeIsolation,backendPortOverride:0,frontendPortOverride:0,env:{},repoRoot:root,
-    workerProcess:{launch:{environment:{},command:process.execPath,prefixArgs:["--import","tsx",join(process.cwd(),"tests/support/processes/worker-browser-control-cli.ts"),root],cwd:process.cwd()},spawn:spawnWorker,birth:{pollMs:25,timeoutMs:scaledMs(20_000)},faultSink:line=>faults.push(line)}});
+    workerProcess:{launch:{environment:{},command:process.execPath,prefixArgs:["--import",testProcessImport(),join(process.cwd(),"tests/support/processes/worker-browser-control-cli.ts"),root],cwd:process.cwd()},spawn:spawnWorker,birth:{pollMs:25,timeoutMs:scaledMs(20_000)},faultSink:line=>faults.push(line)}});
     return { dashboard, machine: bootMachine };
   };
   const failures: unknown[]=[];

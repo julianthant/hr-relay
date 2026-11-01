@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../compiled-process.js";
 import { vi } from "vitest";
 import * as workerLoops from "../../../../src/backend/runtime/workers/worker-loop.js";
 import type { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
@@ -267,7 +268,7 @@ export function createWorkerCompositionTestWorld() {
     try {
       const lifetimeLock = fixture.lifetime;
       for (const index of [1, 2, 3]) {
-        const child = spawn(process.execPath, ["--import", "tsx", join(process.cwd(), "tests/support/processes/worker-composition-child.ts"),
+        const child = spawn(process.execPath, ["--import", testProcessImport(), join(process.cwd(), "tests/support/processes/worker-composition-child.ts"),
           repoRoot, String(index), clock.now().toISOString(), String(lifetimeLock.port)], { cwd: process.cwd(), stdio: ["ignore", "ignore", "ignore", "ipc"] });
         children.push(child);
         closes.push(once(child, "close"));

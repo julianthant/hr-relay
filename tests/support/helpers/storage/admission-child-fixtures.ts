@@ -1,8 +1,9 @@
+import { testProcessImport } from "../../compiled-process.js";
 import { spawn, type ChildProcess } from "node:child_process";
 
 export function createAdmissionChildFixtures(children: ChildProcess[]) {
   function launch(code: string, root: string): { child: ChildProcess; next: () => Promise<{ state: string; detail?: string }> } {
-    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, root],
+    const child = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", code, root],
       { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe", "ipc"] });
     children.push(child);
     const queued: { state: string; detail?: string }[] = [];

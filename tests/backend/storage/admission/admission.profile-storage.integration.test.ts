@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { deriveProfileNames, SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { finishProfileOnboarding, readyProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
@@ -324,7 +325,7 @@ it.each(["held", "released"] as const)("observes healthy profile evidence across
   const f = await createBoundProfileFixture({ sharedMachine: true });
   const ready = join(f.workspace, "peer-ready"), finish = join(f.workspace, "peer-finish"), done = join(f.workspace, "peer-done");
   const profilesPath = join(f.machine.stateRoot, "machine", "profiles.json"), mutex = join(f.workspace, ".tracker", "control", ".installation-mutation.lock");
-  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+  const child = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", `
     import fs from "node:fs";
     import { join } from "node:path";
     import { WorkerRuntimeLifetimeLock } from "./src/backend/storage/admission/lifetime-lock.ts";

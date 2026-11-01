@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../compiled-process.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
@@ -133,7 +134,7 @@ import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 export async function resolutionPeer(path: string, lifetime: RuntimeLifetimeLock) {
-  const child = fork(fileURLToPath(new URL("../../../support/processes/failure-resolution-peer.ts", import.meta.url)), [path, String(lifetime.port)], { execArgv: ["--import", "tsx"], silent: true });
+  const child = fork(fileURLToPath(new URL("../../../support/processes/failure-resolution-peer.ts", import.meta.url)), [path, String(lifetime.port)], { execArgv: ["--import", testProcessImport()], silent: true });
   let failure = "";
   child.stderr?.on("data", chunk => { failure += String(chunk); });
   const exited = new Promise<void>((resolve, reject) => {

@@ -144,6 +144,14 @@ also form the unsharded listing exactly once. Coverage, perf and local selection
 `KEEP_TEST_TMP=1` keeps the directory. `tests/support/private-temp.test.ts` checks the directory
 the workers see.
 
+`compiled-process-setup.ts` transpiles source, scripts and shared test fixtures once into that
+private directory. Test child commands use `testProcessImport()` instead of tsx. Its Node hook
+loads cached JavaScript while retaining source URLs, direct-execution checks, IPC and scratch
+checkout resolution. Each module is keyed by its TypeScript/TSX loader and source bytes; changed
+or test-created sources are compiled on first use. A new run rebuilds the cache with the current
+compiler and configuration. Product launch commands and the explicit tsx serialization test keep
+tsx. Parity's global setup shares the same preparation and cleanup.
+
 On macOS, `scripts/test/ram-tmp.sh <mebibytes>` formats an APFS RAM disk with `newfs_apfs` as
 the current user, enables volume ownership with `sudo -n /usr/sbin/diskutil enableOwnership`,
 sets the volume root to mode `755`, creates a `0700` directory on it, and prints that path. The

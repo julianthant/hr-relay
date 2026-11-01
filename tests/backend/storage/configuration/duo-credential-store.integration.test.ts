@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createHistoricalIncompleteProfileFixture } from '../../../support/fixtures/storage/historical-incomplete-profile-fixture.js';
@@ -422,7 +423,7 @@ const DuoChildEventSchema = z.discriminatedUnion("type", [
 async function duoChild(f: Awaited<ReturnType<typeof setup>>) {
   const child = fork(fileURLToPath(new URL("../../../support/processes/duo-credential-store-worker.ts", import.meta.url)),
     [f.workspace, f.admission.profileBinding.profileId, f.input.credentialId, f.clock.now().toISOString(), String(f.lifetime.port)],
-    { execArgv: ["--import", "tsx"], stdio: ["ignore", "ignore", "pipe", "ipc"] });
+    { execArgv: ["--import", testProcessImport()], stdio: ["ignore", "ignore", "pipe", "ipc"] });
   const held: { fixture: typeof f; child: typeof child; events?: object; closure?: object; primary?: { error: unknown }; failures: unknown[] } = { fixture: f, child, failures: [] };
   retainedPublicationRecoveryOwners.add(held);
   let closing: Promise<void> | undefined;
@@ -638,7 +639,7 @@ it("finishes one interrupted Duo publication after the producing process exits a
     const profileId = f.admission.profileBinding.profileId;
     child = fork(fileURLToPath(new URL("../../../support/processes/duo-credential-store-worker.ts", import.meta.url)),
       [f.workspace, profileId, f.input.credentialId, f.clock.now().toISOString(), String(f.lifetime.port)],
-      { execArgv: ["--import", "tsx"], detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
+      { execArgv: ["--import", testProcessImport()], detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
     retained.child = child;
     const closeEvent = once(child, "close");
     closed = closeEvent;

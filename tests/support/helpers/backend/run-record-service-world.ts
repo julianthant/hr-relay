@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../compiled-process.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { randomUUID } from "node:crypto";
 import { detachBoundFixtureWorkers } from "../synthetic-database-admission.js";
@@ -195,7 +196,7 @@ export function createRunRecordServiceTestWorld() {
 
   async function raceConnection(data: Serializable, lifetime: RuntimeLifetimeLock) {
     const worker = fork(new URL("../../../support/processes/run-record-race-worker.ts", import.meta.url), [String(lifetime.port)], {
-      execArgv: ["--import", "tsx"], stdio: ["pipe", "pipe", "pipe", "ipc"],
+      execArgv: ["--import", testProcessImport()], stdio: ["pipe", "pipe", "pipe", "ipc"],
     });
     worker.stdout?.resume(); worker.stderr?.resume();
     const events = on(worker, "message");

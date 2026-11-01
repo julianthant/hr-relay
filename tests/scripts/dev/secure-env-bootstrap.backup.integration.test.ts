@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -72,7 +73,7 @@ async function installation(options: { pending?: "storage" } = {}) {
   return { workspace, get lifetime() { return lifetime; }, stateRoot, profileId, backupDirectory: join(stateRoot, "backups", "authority"),
     async run(ownership: "stopped" | "held" = "stopped") {
       if (ownership === "stopped") await lifetime.close();
-      const result = spawnSync(process.execPath, ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup"],
+      const result = spawnSync(process.execPath, ["--import", testProcessImport(), "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup"],
         { cwd: workspace, encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(process.env) });
       assert.equal(result.error, undefined); assert.equal(result.signal, null); assert.notEqual(result.status, null);
       if (ownership === "stopped") { lifetime = await RuntimeLifetimeLock.acquire(port); lifetimes.push(lifetime); }
@@ -262,7 +263,7 @@ it("runs the unchanged explicit CLI backup on a stopped adopted flat source with
     calibrateFixtureLockPort(f.workspace, f.lifetime.port);
     const paths = [f.databasePath, f.protectedPath, f.artifact, f.reportPath], before = paths.map(path => readFileSync(path));
     await f.lifetime.close();
-    const result = spawnSync(process.execPath, ["--import", "tsx", "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup"],
+    const result = spawnSync(process.execPath, ["--import", testProcessImport(), "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup"],
       { cwd: f.workspace, encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(process.env) });
     assert.equal(result.error, undefined); assert.equal(result.signal, null);
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);

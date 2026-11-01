@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../support/compiled-process.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createBoundProfileFixture } from '../../support/helpers/admission-fixture.js';
 import { RuntimeAdmission as CanonicalRuntimeAdmission, acquireRecoveryRuntimeRestore, type RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -80,7 +81,7 @@ export async function storageRecoveryTarget() {
       }}, credentials);
     await restore.restore({ manifestPath }, operation);
   `;
-  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, repoRoot, profileId, String(port)],
+  const child = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", code, repoRoot, profileId, String(port)],
     { detached: true,cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe", "ipc"]});
   held.child = child;
   const childClosed = new Promise<void>(resolve => child.once('close', () => resolve()));
