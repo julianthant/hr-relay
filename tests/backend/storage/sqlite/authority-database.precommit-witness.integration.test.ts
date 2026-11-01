@@ -65,6 +65,12 @@ const changes: readonly [string, (fixture: ProfileFixture) => () => void][] = [
   ["control upgrade", f => addFile(join(f.workspace, ".tracker", "control"), "profile-control-upgrade.json")],
   ["device recertification", f => addFile(join(f.workspace, ".tracker", "control"), "device-recertification.json")],
   ["source fence", f => addFile(f.machine.stateRoot, ".runtime-source-fence.json")],
+  ["control permissions", f => {
+    const path = join(f.workspace, ".tracker", "control");
+    fs.chmodSync(path, 0o744);
+    return () => fs.chmodSync(path, 0o700);
+  }],
+  ["control symlink", f => symlinkDirectory(join(f.workspace, ".tracker", "control"))],
   ["profile root symlink", f => symlinkDirectory(f.stateRoot)],
   ["profile ancestor symlink", f => symlinkDirectory(dirname(f.stateRoot))],
   ["artifact root symlink", f => symlinkDirectory(f.machine.artifactRoot)],
@@ -139,6 +145,7 @@ for (const mode of ["transaction", "read snapshot"] as const) {
       };
       const beforeCommit = mode === "transaction" ? database.withAuthorityTransaction(work) : database.withAuthorityReadSnapshot(work);
       assert.equal(reads, beforeCommit);
+      assert.equal(beforeCommit, 1);
     } finally {
       vi.restoreAllMocks(); syncBuiltinESMExports();
       database.close(); await f.close();
