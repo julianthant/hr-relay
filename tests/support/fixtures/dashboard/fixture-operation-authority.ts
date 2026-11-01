@@ -1,7 +1,7 @@
 import { retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { duoCeremonyGatesOver } from "../../helpers/duo-ceremony-fixtures.js";
-import { EXECUTOR_WORKER_ID, EXECUTOR_WORKFLOW_ID, FIXTURE_SESSION_ACQUIRE_MS } from "../../helpers/phase1f-executor-harness.js";
+import { FIXTURE_SESSION_ACQUIRE_MS } from "../../helpers/phase1f-executor-harness.js";
 import { canonicalChildExecution } from "../../helpers/backend/canonical-child-execution.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
@@ -78,13 +78,18 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
     if (active === undefined) throw new Error("fixture active settings missing");
     const configSnapshotId = active.configSnapshotId, fingerprint = active.configFingerprint;
     const scheduler = new ManualScheduler(clock);
-    const sessions = new WorkerSessionManager({ workerId: EXECUTOR_WORKER_ID, workflowId: EXECUTOR_WORKFLOW_ID,
+    const rootWorkflow = separation ? plan1SeparationWorkflow : mode === "browser" ? plan1BrowserWorkflow : plan1Parent;
+    testWorkerPorts(database, clock, { path: harness.path, descriptor: rootWorkflow.descriptor, poolIndex: 1 });
+    const rootMember = database.authority.workerSlots.list(rootWorkflow.descriptor.id)
+      .find(slot => slot.retiredAt === null && slot.poolIndex === 1);
+    if (rootMember === undefined) throw new Error("operation-fixture-root-member-missing");
+    const sessions = new WorkerSessionManager({ workerId: rootMember.workerId, workflowId: rootMember.workflow,
       stores, factory: sessionFactoryHarness({ ucpath: () => separation ? separationDrivers.ucpath : fictionalFormDriver(),
         kuali: () => separationDrivers.kuali }).factory, clock, scheduler, acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
       duoCeremony: duoCeremonyGatesOver(database, clock, scheduler) });
     held.sessions = sessions;
     sessions.bindRunConfigFingerprint(active.configFingerprint);
-    const deps: RunExecutorDependencies = { lifecycle: testRunLifecycle(database, clock), descriptor: plan1Parent.descriptor,
+    const deps: RunExecutorDependencies = { lifecycle: testRunLifecycle(database, clock), descriptor: rootWorkflow.descriptor,
       stores, authority: database, sessions, emitter: createTimelineEmitter({ repository: database.authority.timelineEvents, clock }),
       clock, ids: sequentialIdFactory("b"), scheduler: new ManualScheduler(clock), taskDeadlineMs: 60_000,
       log: recordingLogger().log, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 }) };
@@ -115,7 +120,6 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
       return result;
     };
     const canonical = canonicalChildExecution(deps, database, harness.path, resolve);
-    const rootWorkflow = separation ? plan1SeparationWorkflow : mode === "browser" ? plan1BrowserWorkflow : plan1Parent;
     const input = { emplId: "10800000", text: "synthetic", mode: mode === "separation-failed" ? "fail" : mode === "separation-ambiguous" ? "repeat" : "confirmed" };
     const root = mode === "local" ? canonical.start(rootWorkflow.descriptor, input, { dryRun: false }) : createRun(rootWorkflow, input);
     if (mode === "local") {

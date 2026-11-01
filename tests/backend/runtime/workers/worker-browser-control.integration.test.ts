@@ -1,6 +1,7 @@
+import { afterAll, describe, it } from "vitest";
+import { createClonedProfileFixtures, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { describe,it } from "vitest";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { createWorkerBrowserControl } from "../../../../src/backend/runtime/workers/worker-browser-control.js";
 import { WorkerSessionManager,type WorkerBrowserSessionFactory } from "../../../../src/backend/runtime/workers/worker-sessions.js";
@@ -9,10 +10,12 @@ import { BrowserSessionIdSchema,FingerprintSchema,WorkerIdSchema,WorkflowIdSchem
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { seedSyntheticRuntimeConfig } from "../../../support/fixtures/operator-command-fixtures.js";
 import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
-import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { CommandRequestSchema, ParkedWriteCheckResultSchema } from "../../../../src/rules/commands/commands.js";
+
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 
 const NOW = "2026-09-18T18:00:00.000Z";
 const WORKER = WorkerIdSchema.parse("person-lookup-worker-1");
@@ -125,7 +128,7 @@ describe("exact worker browser controls", () => {
 describe("durable worker control admission", () => {
   it("survives heartbeat changes, consumes a basis once across connections, and retains exact request/outcome", async () => {
     const clock = manualClock(new Date(NOW));
-    const opened = await openBoundDatabaseFixture("worker-control", clock), first = opened.database;
+    const opened = await openBoundDatabaseFixture("worker-control", clock, undefined, undefined, undefined, undefined, profileFixtures.create), first = opened.database;
     const second = AuthorityDatabase.open({ path: opened.path, busyTimeoutMs: 250, migrationOwner: "test" }, clock);
     try {
       seedSyntheticRuntimeConfig(first);
@@ -152,7 +155,7 @@ describe("durable worker control admission", () => {
   });
 
   it("executes a ready exact-session request once and retains its result after another connection loses acknowledgement", async () => {
-    const h = await harness(), opened = await openBoundDatabaseFixture("worker-channel", h.clock), db = opened.database;
+    const h = await harness(), opened = await openBoundDatabaseFixture("worker-channel", h.clock, undefined, undefined, undefined, undefined, profileFixtures.create), db = opened.database;
     try {
       const sessionId = await h.warm();
       seedSyntheticRuntimeConfig(db);
@@ -176,7 +179,7 @@ describe("durable worker control admission", () => {
 
 describe("worker delivery fencing", () => {
   it.each(["observed", "busy", "lifetime", "late-revision", "closure"] as const)("keeps a parked read %s fenced and delivers it at most once", async scenario => {
-    const h = await harness(), opened = await openBoundDatabaseFixture("worker-parked-check", h.clock), db = opened.database;
+    const h = await harness(), opened = await openBoundDatabaseFixture("worker-parked-check", h.clock, undefined, undefined, undefined, undefined, profileFixtures.create), db = opened.database;
     try {
       seedSyntheticRuntimeConfig(db);
       db.authority.workerPools.plan({ workflow: WORKFLOW, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: NOW });
@@ -217,7 +220,7 @@ describe("worker delivery fencing", () => {
   });
   it.each(["expired", "generation", "revision", "busy", "replaced", "effect-failure"] as const)("retains %s evidence and cannot deliver a deferred or duplicate effect", async scenario => {
     const h=await harness(); let bound = false;
-    const opened=await openBoundDatabaseFixture("worker-fence",h.clock),db=opened.database;
+    const opened=await openBoundDatabaseFixture("worker-fence",h.clock, undefined, undefined, undefined, undefined, profileFixtures.create),db=opened.database;
     try {
       const sessionId=await h.warm();
       seedSyntheticRuntimeConfig(db);

@@ -1,6 +1,6 @@
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
-import { createBoundProfileFixture, boundProfileCredentials } from "../../helpers/admission-fixture.js";
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { createBoundProfileFixture, boundProfileCredentials, type BoundProfileStorageFixture } from "../../helpers/admission-fixture.js";
+import { copyFileSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
@@ -25,8 +25,8 @@ export function populatedProtectedRecord(omitted?: string) {
 }
 
 /** Fresh private inputs; the executable factory, strict authority and SQLite doctor are production code. */
-export async function runtimeFixture(capabilities: readonly RuntimeCapability[]) {
-  const profile = await createBoundProfileFixture();
+export async function runtimeFixture(capabilities: readonly RuntimeCapability[], profileFixture?: () => Promise<BoundProfileStorageFixture>) {
+  const profile = await (profileFixture ?? createBoundProfileFixture)();
   const root = profile.workspace, stateRoot = profile.stateRoot, artifactRoot = profile.admission.artifactRoot;
   const clock = manualClock(new Date("2026-09-19T12:00:00.000Z"));
   const databasePath = join(stateRoot, "state.db");
@@ -58,5 +58,8 @@ export async function runtimeFixture(capabilities: readonly RuntimeCapability[])
     const runners = createRuntimePreflightRunners(input);
     return createPreflightAuthority({...input.scope, runners: transform === undefined ? runners : transform(runners), clock, scheduler:createTimeoutDeadlineScheduler(clock)}).refresh(new AbortController().signal);
   };
-  return {root, credentials: boundProfileCredentials(profile.admission), admission: profile.admission, stateRoot, artifactRoot, databasePath, doctorOptions, clock, input, executable, report, setProtected(next: typeof record) {record=next;}, async close() {await profile.close();}};
+  return {root, credentials: boundProfileCredentials(profile.admission), admission: profile.admission, stateRoot, artifactRoot, databasePath, doctorOptions, clock, input, executable, report, setProtected(next: typeof record) {record=next;}, async close() {
+    if (profileFixture !== undefined) for (const name of ["package.json", "package-lock.json", "extension", "credential.json", "chromium"]) rmSync(join(root, name), { recursive: true });
+    await profile.close();
+  }};
 }

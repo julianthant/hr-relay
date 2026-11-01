@@ -21,19 +21,19 @@ const DOCUMENT = FIXTURE_EDITABLE_SETTINGS;
 const STORAGE = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-08-28T17:00:00.000Z" });
 let root: Root | undefined;
 let host: HTMLElement | undefined;
-const authorities: ReturnType<typeof syntheticSettingsAuthority>[] = [];
+const authorities: Awaited<ReturnType<typeof syntheticSettingsAuthority>>[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   if (root !== undefined) act(() => { root?.unmount(); });
   host?.remove();
   vi.useRealTimers();
-  for (const authority of authorities.splice(0)) authority.close();
+  for (const authority of authorities.splice(0)) await authority.close();
   root = undefined;
   host = undefined;
 });
 
-function settingsClient(applied: unknown[], mode: "confirmed" | "held" | "lost" = "confirmed") {
-  const authority = syntheticSettingsAuthority();
+async function settingsClient(applied: unknown[], mode: "confirmed" | "held" | "lost" = "confirmed") {
+  const authority = await syntheticSettingsAuthority();
   authorities.push(authority);
   let stored = false;
   let release!: () => void;
@@ -92,7 +92,7 @@ describe("editable Settings surface", () => {
   it("guards retained workflow credentials before leaving after an unconfirmed write", async () => {
     let guard: ((proceed: () => void) => void) | undefined;
     let exited = 0;
-    const transport = settingsClient([], "lost");
+    const transport = await settingsClient([], "lost");
     host = await mountSettingsPage(transport.client, "credentials", next => { guard = next; });
     const input = host.querySelector<HTMLInputElement>('input[name="ucpathUserId"]');
     assert.ok(input);
@@ -124,7 +124,7 @@ describe("editable Settings surface", () => {
     const applied: unknown[] = [];
     let closeCount = 0;
     let exitGuard: ((proceed: () => void) => void) | undefined;
-    const transport = settingsClient(applied, "held");
+    const transport = await settingsClient(applied, "held");
     host = await mountSettingsPage(transport.client, "performance", guard => { exitGuard = guard; });
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-28T18:00:00.000Z"));
@@ -174,7 +174,7 @@ describe("editable Settings surface", () => {
     const applied: unknown[] = [];
     let closeCount = 0;
     let exitGuard: ((proceed: () => void) => void) | undefined;
-    const transport = settingsClient(applied);
+    const transport = await settingsClient(applied);
     host = await mountSettingsPage(transport.client, "performance", guard => { exitGuard = guard; });
     vi.useFakeTimers();
     const ocrDisclosure = [...(host?.querySelectorAll(".settings-performance-disclosure button") ?? [])].find(candidate => candidate.textContent?.includes("OCR processing"));
@@ -202,7 +202,7 @@ describe("editable Settings surface", () => {
 
   it("uses the shared segmented job-end date picker and keeps incomplete edits unsent", async () => {
     const applied: unknown[] = [];
-    const transport = settingsClient(applied);
+    const transport = await settingsClient(applied);
     host = await mountSettingsPage(transport.client, "general");
     vi.useFakeTimers();
     const datePath = `annualDates.FY${String(DOCUMENT.currentFiscalYear)}.jobEndDate`;
@@ -222,7 +222,7 @@ describe("editable Settings surface", () => {
 
   it("autosaves valid production routes after 700 ms but retains invalid partial URLs", async () => {
     const applied: unknown[] = [];
-    const transport = settingsClient(applied);
+    const transport = await settingsClient(applied);
     host = await mountSettingsPage(transport.client, "routes");
     assert.match(host.textContent ?? "", /Routes/u);
     assert.doesNotMatch(host.textContent ?? "", /Test routes/u);

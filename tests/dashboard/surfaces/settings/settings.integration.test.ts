@@ -6,9 +6,9 @@ import { afterEach,describe,it,vi } from "vitest";
 import { ProtectedSettingsNameSchema } from "../../../../src/models/config/protected-settings.js";
 import { ProtectedSettingsCommandRequestSchema,SettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { mountSettingsHarness,settingsAction,syntheticSettingsAuthority } from "../../../support/helpers/dashboard/settings-harness.js";
-const cleanups: (() => void)[] = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
-async function setup() { const authority = syntheticSettingsAuthority(); cleanups.push(authority.close); const mounted = await mountSettingsHarness(authority, "protected-store"); cleanups.push(mounted.close); return { ...mounted, authority }; }
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
+async function setup() { const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close); const mounted = await mountSettingsHarness(authority, "protected-store"); cleanups.push(mounted.close); return { ...mounted, authority }; }
 function savedText(host: HTMLElement): string {
   const copy = host.cloneNode(true) as HTMLElement;
   copy.querySelectorAll("input").forEach(input => input.remove());
@@ -52,6 +52,16 @@ describe("independent protected Settings surface", () => {
   });
   it("starts empty, validates all five names, and shows saved values after save", async () => {
     const h = await setup(); const ordinary = h.authority.read();
+    const before = h.authority.credentials.read();
+    assert.equal(h.authority.protectedApply({
+      ucpathUserId: { clear: true }, ucpathPassword: { clear: true }, timekeeperName: { clear: true },
+    }, before.revision).state, "applied");
+    await settingsAction(() => h.controller().reload());
+    const emptied = h.authority.credentials.read();
+    assert.equal(emptied.revision, before.revision + 1);
+    assert.equal(emptied.entries.ucpathUserId, undefined);
+    assert.equal(emptied.entries.ucpathPassword, undefined);
+    assert.equal(emptied.entries.timekeeperName, undefined);
     assert.equal(h.host.querySelectorAll('input[type="password"]').length, 2);
     assert.doesNotMatch(h.host.textContent ?? "", /SharePoint onboarding roster URL/u);
     assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.value === ""));
@@ -69,6 +79,7 @@ describe("independent protected Settings surface", () => {
     assert.doesNotMatch(savedText(h.host), /synthetic-(?:password|url|sentinel)/u);
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "applied"); assert.equal(h.controller().protectedEditor.dirtyCount, 0);
+    assert.equal(h.authority.credentials.read().revision, emptied.revision + 1);
     for (const [name, expected] of [["UCPath username", values.ucpathUserId], ["Timekeeper name", values.timekeeperName]] as const) {
       const label = [...h.host.querySelectorAll<HTMLLabelElement>("label")].find(node => node.textContent === name);
       assert.ok(label);
@@ -89,21 +100,21 @@ describe("independent protected Settings surface", () => {
     assert.doesNotMatch(h.host.textContent ?? "", /show password|reveal|restart required/iu);
   });
   it("ordinary and credential drafts, revisions and outcomes are independent; Clear is explicit", async () => {
-    const h = await setup();
+    const h = await setup(); const credentialRevision = h.authority.credentials.read().revision;
     await settingsAction(() => h.controller().update("actor.label", "Ordinary draft"));
     await settingsAction(() => h.controller().protectedEditor.update("ucpathPassword", "synthetic-separate-sentinel"));
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().dirtyCount, 1); assert.equal(h.authority.read().revision, 1);
     await settingsAction(() => h.controller().protectedEditor.clear("ucpathPassword"));
     await settingsAction(() => h.controller().submit());
-    assert.equal(h.controller().protectedEditor.dirtyCount, 1); assert.equal(h.authority.credentials.read().revision, 2);
+    assert.equal(h.controller().protectedEditor.dirtyCount, 1); assert.equal(h.authority.credentials.read().revision, credentialRevision + 1);
     await settingsAction(() => h.controller().protectedEditor.submit());
     const clear = ProtectedSettingsCommandRequestSchema.parse(h.commands[2]); assert.deepEqual(clear.payload.entries, { ucpathPassword: { clear: true } });
     assert.equal(h.authority.credentials.read().entries.ucpathPassword, undefined); assert.equal(h.authority.read().revision, 2);
     assert.equal(SettingsCommandRequestSchema.parse(h.commands[1]).target.expectedRevision, 1);
   });
   it("refreshes protected conflict presence while retaining the draft for deliberate resubmission", async () => {
-    const h = await setup();
+    const h = await setup(); const credentialRevision = h.authority.credentials.read().revision;
     await settingsAction(() => h.controller().protectedEditor.update("ucpathPassword", "retained-secret-sentinel"));
     assert.equal(h.authority.protectedApply({ timekeeperName: { set: "competing-name-sentinel" } }).state, "applied");
     const before = structuredClone(h.controller().protectedEditor.draft);
@@ -113,10 +124,10 @@ describe("independent protected Settings surface", () => {
     const current = h.controller().editor;
     assert.equal(current.state, "loaded");
     if (current.state !== "loaded" || current.document.protectedSettings.state !== "available") throw new Error("protected-conflict-readback-unavailable");
-    assert.equal(current.document.protectedSettings.readback.revision, 2);
+    assert.equal(current.document.protectedSettings.readback.revision, credentialRevision + 1);
     assert.equal(current.document.protectedSettings.entries.timekeeperName?.value, "competing-name-sentinel");
     await settingsAction(() => h.controller().protectedEditor.submit());
-    assert.equal(ProtectedSettingsCommandRequestSchema.parse(h.commands[1]).target.expectedRevision, 2);
+    assert.equal(ProtectedSettingsCommandRequestSchema.parse(h.commands[1]).target.expectedRevision, credentialRevision + 1);
     assert.equal(h.controller().protectedEditor.save.state, "applied");
   });
   for (const failure of ["lost-response", "failed-readback", "failed-audit", "intervening-writer", "foreign-result", "legacy-readback"] as const) {
@@ -146,27 +157,30 @@ describe("independent protected Settings surface", () => {
     });
   }
   it("recovers definitive write-id reuse with new identity and the unchanged draft", async () => {
-    const h = await setup(); h.ports.execute = input => ({ state: "rejected", commandId: ProtectedSettingsCommandRequestSchema.parse(input).commandId, code: "write-id-reused", message: "raw-secret-sentinel" });
+    const h = await setup(); const credentialRevision = h.authority.credentials.read().revision;
+    h.ports.execute = input => ({ state: "rejected", commandId: ProtectedSettingsCommandRequestSchema.parse(input).commandId, code: "write-id-reused", message: "raw-secret-sentinel" });
     await settingsAction(() => h.controller().protectedEditor.update("ucpathPassword", "retained-value-sentinel")); await settingsAction(() => h.controller().protectedEditor.submit());
-    assert.equal(h.controller().protectedEditor.save.state, "refused"); assert.equal(h.authority.credentials.read().revision, 1);
+    assert.equal(h.controller().protectedEditor.save.state, "refused"); assert.equal(h.authority.credentials.read().revision, credentialRevision);
     h.ports.execute = h.authority.execute;
     await settingsAction(() => h.controller().protectedEditor.submit());
     const first = ProtectedSettingsCommandRequestSchema.parse(h.commands[0]); const second = ProtectedSettingsCommandRequestSchema.parse(h.commands[1]);
     assert.notEqual(first.commandId, second.commandId); assert.notEqual(first.payload.writeId, second.payload.writeId); assert.deepEqual(first.payload.entries, second.payload.entries);
     assert.equal(h.controller().protectedEditor.save.state, "applied");
+    assert.equal(h.authority.credentials.read().revision, credentialRevision + 1);
   });
   it("distinguishes a typed request refusal before effect from an unknown transport failure", async () => {
-    const h = await setup();
+    const h = await setup(); const credentialRevision = h.authority.credentials.read().revision;
     h.ports.response = () => new Response(JSON.stringify({ state: "error", code: "OPERATOR_MUTATION_ORIGIN_REFUSED", message: "raw-secret-sentinel", retryable: false }), { status: 403 });
     await settingsAction(() => h.controller().protectedEditor.update("ucpathPassword", "retained-secret-sentinel"));
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "refused");
-    assert.equal(h.authority.credentials.read().revision, 1);
+    assert.equal(h.authority.credentials.read().revision, credentialRevision);
     assert.equal(h.controller().protectedEditor.dirtyCount, 1);
     assert.doesNotMatch(savedText(h.host), /secret-sentinel/u);
     h.ports.response = () => undefined;
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "applied");
+    assert.equal(h.authority.credentials.read().revision, credentialRevision + 1);
   });
   it("keeps unavailable store as unknown with disabled inputs, never as missing", async () => {
     const h = await setup(); const document = h.authority.read();

@@ -1,3 +1,4 @@
+import { clearOperationProofSlots, revalidateOperationProof, outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
 import { assertOfflineMaintenanceForProcessRoot, type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
@@ -1016,13 +1017,13 @@ function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRe
     const request = z.record(z.string(),z.unknown()).parse(command.request);
     const lifecycle = request.lifecycle === undefined ? undefined : z.record(z.string(),z.unknown()).parse(request.lifecycle);
     const declaredOutcome = command.operation === "transition" ? lifecycle?.outcome : "cancelled";
-    const declaredEndedAt = command.operation === "transition" ? lifecycle?.endedAt : command.operation === "requeue" ? audit.result.kind === "run" ? audit.result.terminal?.endedAt : undefined : request.endedAt;
+    const declaredEndedAt = command.operation === "transition" ? lifecycle?.endedAt : command.operation === "requeue" ? audit.result.kind === "run" ? audit.result.terminal?.endedAt : undefined : command.operation === "recover-crash" ? request.now : request.endedAt;
     if (request.runId !== record.runId || request.expectedVersion !== evidence.appliedVersion - 1
       || declaredOutcome !== evidence.outcome || declaredEndedAt !== record.createdAt
       || audit.result.kind !== "run" || audit.result.terminal?.outcome !== evidence.outcome
       || audit.result.terminal.endedAt !== record.createdAt
-      || (command.operation === "requeue" && run.cancelRequested !== true)
-      || (command.operation !== "transition" && command.operation !== "terminalize" && command.operation !== "requeue")
+      || ((command.operation === "requeue" || command.operation === "recover-crash") && run.cancelRequested !== true)
+      || (command.operation !== "transition" && command.operation !== "terminalize" && command.operation !== "requeue" && command.operation !== "recover-crash")
       || audit.result.kind !== "run" || audit.result.runId !== record.runId || audit.result.appliedVersion !== evidence.appliedVersion
       || command.requestFingerprint !== evidence.requestFingerprint || audit.auditId !== CommandAuditIdSchema.parse(evidence.commandId)
       || z.object({outcome_json:z.string()}).parse(commandRaw).outcome_json !== canonicalJsonStringify(audit)
@@ -1117,10 +1118,11 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
 
 function authorityContentFingerprint(database: DatabaseSync): string {
   const hash = createHash("sha256");
+  const rowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null()]));
   for (const table of migrationTableNames(readIntPragma(database, "user_version"))) {
     hash.update(canonicalJsonStringify(table));
     for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
-      hash.update(canonicalJsonStringify(z.record(z.string(),z.union([z.string(),z.number(),z.null()])).parse(row)));
+      hash.update(canonicalJsonStringify(rowSchema.parse(row)));
     }
   }
   return hash.digest("hex");
@@ -1803,21 +1805,26 @@ export class AuthorityDatabase implements Disposable {
       }
       if (readOnlyNoMigrate) {
         this.#configureReadOnlyConnection();
-        this.#validateReadOnlyNoMigrateDatabase(existingVersion);
       } else {
         if (!existed && purpose !== "stopped-restore-projection") this.#initializeSchema(existingVersion, options.migrationOwner);
         this.#configureConnection();
         if (existed && purpose === "ordinary") this.#initializeSchema(existingVersion, options.migrationOwner);
-        this.#validateDatabase();
       }
+      this.#database.exec("BEGIN");
+      if (readOnlyNoMigrate) this.#validateReadOnlyNoMigrateDatabase(existingVersion);
+      else this.#validateDatabase();
       readAppSettings(this.#database);
+      this.#database.exec("COMMIT");
       this.#credentialCommandIds = commandId => {
         if (credentials === undefined) throw new CredentialContextRequiredError();
         assertCredentialStoreOwner(credentials, this.#admission);
         return credentials.ownsCommandId(commandId);
       };
     } catch (error) {
-      this.#database.close();
+      try { this.#database.close(); }
+      catch (closeError) {
+        throw retainAuthoritySourceClosure([error, closeError], { database: this.#database, admission: this.#admission });
+      }
       if (error instanceof AuthoritySchemaVersionError) throw error;
       throw new Error(`failed to open authority database ${options.path}: ${errorMessage(error)}`, { cause: error });
     }
@@ -2049,33 +2056,37 @@ export class AuthorityDatabase implements Disposable {
   }
 
   static inspectExistingReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
-    requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
-    return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
+    return withOperationProof(() => {
+      requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
+      return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
+    });
   }
 
   static inspectStoppedUpgrade(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock) {
-    requireStoppedUpgradeSource(admission, path, processLockRoot, clock, true);
-    const snapshot = createReadonlyAuthoritySnapshot(path);
-    let database: DatabaseSync | undefined;
-    let result: ReturnType<typeof inspectNativeAuthority> | undefined;
-    let primary: { error: unknown } | undefined;
-    try {
-      database = new DatabaseSync(snapshot.path, { enableForeignKeyConstraints: true });
-      result = inspectNativeAuthority(database, readIntPragma(database, "user_version"));
-    } catch (error) { primary = { error }; }
-    const failures: unknown[] = [];
-    try { database?.close(); }
-    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { snapshot, ...(database === undefined ? {} : { database }) }); }
-    try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
-    try { snapshot.dispose(); }
-    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [...failures, error] : [primary.error, ...failures, error], { snapshot }); }
-    if (failures.length !== 0) {
-      if (primary !== undefined) throw new AggregateError([primary.error, ...failures], "authority-source-validation-failed", { cause: primary.error });
-      throw failures[0];
-    }
-    if (primary !== undefined) throw primary.error;
-    if (result === undefined) throw new Error("profile-stopped-upgrade-inspection-unavailable");
-    return result;
+    return withOperationProof(() => {
+      requireStoppedUpgradeSource(admission, path, processLockRoot, clock, true);
+      const snapshot = createReadonlyAuthoritySnapshot(path);
+      let database: DatabaseSync | undefined;
+      let result: ReturnType<typeof inspectNativeAuthority> | undefined;
+      let primary: { error: unknown } | undefined;
+      try {
+        database = new DatabaseSync(snapshot.path, { enableForeignKeyConstraints: true });
+        result = inspectNativeAuthority(database, readIntPragma(database, "user_version"));
+      } catch (error) { primary = { error }; }
+      const failures: unknown[] = [];
+      try { database?.close(); }
+      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { snapshot, ...(database === undefined ? {} : { database }) }); }
+      try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
+      try { snapshot.dispose(); }
+      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [...failures, error] : [primary.error, ...failures, error], { snapshot }); }
+      if (failures.length !== 0) {
+        if (primary !== undefined) throw new AggregateError([primary.error, ...failures], "authority-source-validation-failed", { cause: primary.error });
+        throw failures[0];
+      }
+      if (primary !== undefined) throw primary.error;
+      if (result === undefined) throw new Error("profile-stopped-upgrade-inspection-unavailable");
+      return result;
+    });
   }
 
   static upgradeStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string, expectedSourceDatabaseIdentity: string) => VerifiedBackup) {
@@ -2788,7 +2799,7 @@ export class AuthorityDatabase implements Disposable {
       if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome === "done" || run.lifecycle.outcome === "failed" || run.lifecycle.outcome === "interrupted") return;
       if (run.version !== audit.result.appliedVersion) throw new Error("terminal-evidence-run-version-mismatch");
       const request = z.record(z.string(), z.unknown()).parse(command.request);
-      if (request.runId !== run.envelope.runId || (command.operation !== "transition" && command.operation !== "terminalize" && command.operation !== "requeue")) throw new Error("terminal-evidence-command-target-mismatch");
+      if (request.runId !== run.envelope.runId || (command.operation !== "transition" && command.operation !== "terminalize" && command.operation !== "requeue" && command.operation !== "recover-crash")) throw new Error("terminal-evidence-command-target-mismatch");
       const result = createRunTerminalEvidenceResult(run, {
         kind: "lifecycle-evidence", outcome: run.lifecycle.outcome,
         commandId: command.commandId, auditId: audit.auditId,
@@ -3451,87 +3462,101 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #withTransaction<Result>(mode: "authority" | "projection", work: () => Result, searchValidation: "all" | "progress" | "none" = "all"): Result {
-    this.#assertOpen();
-    if (this.#transactionDepth > 0) {
-      if (this.#transactionMode === "read") throw new Error(`${mode} mutation cannot run inside an authority read snapshot`);
-      if (this.#transactionMode === "projection" && mode === "authority") throw new Error("authority mutation cannot run inside a projection transaction");
-      const savepoint = `authority_nested_${String(this.#savepointSequence += 1)}`;
-      const dirtyBefore = this.#authorityDirty;
-      const workerMembershipBefore = new Set(this.#workerMembershipChanges);
-      const callbacksBefore = this.#authorityCommitCallbacks.length;
-      this.#database.exec(`SAVEPOINT ${savepoint}`);
-      this.#transactionDepth += 1;
-      try {
-        const result = work();
-        this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
-        return result;
-      } catch (error) {
-        this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
-        this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
-        this.#authorityDirty = dirtyBefore;
-        this.#workerMembershipChanges = workerMembershipBefore;
-        this.#authorityCommitCallbacks.splice(callbacksBefore);
-        throw error;
-      } finally { this.#transactionDepth -= 1; }
-    }
-    this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
-    this.#database.exec("BEGIN IMMEDIATE");
-    this.#transactionDepth = 1;
-    this.#transactionMode = mode;
-    this.#authorityDirty = false;
-    this.#workerMembershipChanges.clear();
-    let result: Result;
-    try {
-      this.#validateExternalQuerySources("mutation", searchValidation);
-      const search = createRunSearchIndex(this.#database);
-      const priorSearch = search.publication();
-      result = work();
-      for (const workflow of this.#workerMembershipChanges) requireWorkerPoolRoster(this.authority, workflow);
-      if (this.#authorityDirty) {
-        const update = this.#database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,updated_at=?,search_state='invalid',search_generation=NULL WHERE id=1").run(this.#now());
-        if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation singleton is missing");
-        search.publishChanges(this.getMeta().authorityGeneration, this.#now(), priorSearch);
+    return withOperationProof(() => {
+      if (this.#transactionDepth === 0) clearOperationProofSlots();
+      this.#assertOpen();
+      if (this.#transactionDepth > 0) {
+        if (this.#transactionMode === "read") throw new Error(`${mode} mutation cannot run inside an authority read snapshot`);
+        if (this.#transactionMode === "projection" && mode === "authority") throw new Error("authority mutation cannot run inside a projection transaction");
+        const savepoint = `authority_nested_${String(this.#savepointSequence += 1)}`;
+        const dirtyBefore = this.#authorityDirty;
+        const workerMembershipBefore = new Set(this.#workerMembershipChanges);
+        const callbacksBefore = this.#authorityCommitCallbacks.length;
+        this.#database.exec(`SAVEPOINT ${savepoint}`);
+        this.#transactionDepth += 1;
+        try {
+          const result = work();
+          this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
+          return result;
+        } catch (error) {
+          this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+          this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
+          this.#authorityDirty = dirtyBefore;
+          this.#workerMembershipChanges = workerMembershipBefore;
+          this.#authorityCommitCallbacks.splice(callbacksBefore);
+          throw error;
+        } finally { this.#transactionDepth -= 1; }
       }
-      this.#database.exec("COMMIT");
-      if (searchValidation === "none") this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
-    } catch (error) {
-      this.#database.exec("ROLLBACK");
-      this.#authorityCommitCallbacks.splice(0);
-      throw error;
-    } finally {
-      this.#transactionDepth = 0;
-      this.#transactionMode = undefined;
-      this.#snapshotExternalDataVersion = undefined;
+      const witnesses = new Map(outermostOperationProof()?.witnesses);
+      this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
+      this.#database.exec("BEGIN IMMEDIATE");
+      this.#transactionDepth = 1;
+      this.#transactionMode = mode;
       this.#authorityDirty = false;
       this.#workerMembershipChanges.clear();
-    }
-    const callbacks = this.#authorityCommitCallbacks.splice(0);
-    for (const callback of callbacks) callback();
-    return result;
+      let result: Result;
+      try {
+        this.#validateExternalQuerySources("mutation", searchValidation);
+        const search = createRunSearchIndex(this.#database);
+        const priorSearch = search.publication();
+        result = work();
+        for (const workflow of this.#workerMembershipChanges) requireWorkerPoolRoster(this.authority, workflow);
+        if (this.#authorityDirty) {
+          const update = this.#database.prepare("UPDATE database_states SET authority_generation=authority_generation+1,updated_at=?,search_state='invalid',search_generation=NULL WHERE id=1").run(this.#now());
+          if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation singleton is missing");
+          search.publishChanges(this.getMeta().authorityGeneration, this.#now(), priorSearch);
+        }
+        revalidateOperationProof(witnesses);
+        this.#assertOpen();
+        this.#database.exec("COMMIT");
+        if (searchValidation === "none") this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
+      } catch (error) {
+        this.#database.exec("ROLLBACK");
+        this.#authorityCommitCallbacks.splice(0);
+        throw error;
+      } finally {
+        clearOperationProofSlots();
+        this.#transactionDepth = 0;
+        this.#transactionMode = undefined;
+        this.#snapshotExternalDataVersion = undefined;
+        this.#authorityDirty = false;
+        this.#workerMembershipChanges.clear();
+      }
+      const callbacks = this.#authorityCommitCallbacks.splice(0);
+      for (const callback of callbacks) callback();
+      return result;
+    });
   }
 
   #withReadSnapshot<Result>(read: () => Result): Result {
-    this.#assertOpen();
-    if (this.#transactionDepth > 0) return read();
+    return withOperationProof(() => {
+      if (this.#transactionDepth === 0) clearOperationProofSlots();
+      this.#assertOpen();
+      if (this.#transactionDepth > 0) return read();
 
-    this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
-    this.#database.exec("BEGIN");
-    this.#transactionDepth = 1;
-    this.#transactionMode = "read";
-    this.#authorityDirty = false;
-    try {
-      const result = read();
-      this.#database.exec("COMMIT");
-      return result;
-    } catch (error) {
-      this.#database.exec("ROLLBACK");
-      throw error;
-    } finally {
-      this.#transactionDepth = 0;
-      this.#transactionMode = undefined;
-      this.#snapshotExternalDataVersion = undefined;
+      const witnesses = new Map(outermostOperationProof()?.witnesses);
+      this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
+      this.#database.exec("BEGIN");
+      this.#transactionDepth = 1;
+      this.#transactionMode = "read";
       this.#authorityDirty = false;
+      try {
+        const result = read();
+        revalidateOperationProof(witnesses);
+        this.#assertOpen();
+        this.#database.exec("COMMIT");
+        return result;
+      } catch (error) {
+        this.#database.exec("ROLLBACK");
+        throw error;
+      } finally {
+        clearOperationProofSlots();
+        this.#transactionDepth = 0;
+        this.#transactionMode = undefined;
+        this.#snapshotExternalDataVersion = undefined;
+        this.#authorityDirty = false;
       }
+    });
   }
 
   #authorityWrite<Outcome extends Readonly<{ result: unknown; changes: number }>>(

@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, beforeAll, describe, it } from "vitest";
 import { z } from "zod";
 import { ActionCommandKeySchema } from "../../../src/models/dashboard/actions.js";
 import {
@@ -52,7 +52,7 @@ import {
 } from "./helpers/wire-connectivity.js";
 
 const worlds: DashboardWorld[] = [];
-afterEach(async () => {
+afterAll(async () => {
   for (const world of worlds.splice(0)) await world.dispose();
 });
 
@@ -274,12 +274,14 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
 /* ── the tests ───────────────────────────────────────────────────────────── */
 
 describe("wire connectivity — declared arms, served arms, and the manifest between them", () => {
+  let sectionCensus: Awaited<ReturnType<typeof reachableSections>>;
+  beforeAll(async () => { sectionCensus = await reachableSections(); });
 
-  it("has every run-detail section arm either reachable or declared", async () => {
+  it("has every run-detail section arm either reachable or declared", () => {
     const arms = discriminantValues(RunDetailSectionResponseSchema, "section");
     assert.ok(arms.length > 0, "the section union introspection found no arms at all");
 
-    const { reachable, statesSwept } = await reachableSections();
+    const { reachable, statesSwept } = sectionCensus;
     // The sweep is only evidence if it covered every state the schema allows.
     assert.deepEqual(
       [...statesSwept].sort(),
@@ -396,13 +398,13 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
   });
 
 
-  it("catches a synthesized orphan arm, a synthesized bad command key, and an unserved path", async () => {
+  it("catches a synthesized orphan arm, a synthesized bad command key, and an unserved path", () => {
     const orphanUnion = RunDetailSectionResponseSchema.options[0]?.extend({});
     assert.ok(orphanUnion !== undefined);
 
     // (a) an arm the introspection sees but the reachable set does not.
     const arms = [...discriminantValues(RunDetailSectionResponseSchema, "section"), "invented-section"];
-    const { reachable } = await reachableSections();
+    const { reachable } = sectionCensus;
     assert.ok(!reachable.has("invented-section"));
     assert.ok(arms.some((arm) => !reachable.has(arm) && arm === "invented-section"));
 

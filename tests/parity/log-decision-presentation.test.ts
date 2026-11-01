@@ -1,8 +1,9 @@
 import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { logDecisionExamples } from "../../src/dashboard/surfaces/run-detail/logs/log-decision-fixture.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
@@ -12,7 +13,6 @@ import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const evidence = `log-decisions-${theme.attribute}-${width}.a11y.yml`;
   test(`approved log decisions and viewer @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidence }] }, async ({ page }, _info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], effects: string[] = [];
     page.on("pageerror", error => errors.push(error.message));

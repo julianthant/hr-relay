@@ -193,17 +193,11 @@ async function pipeResponse(
     while (true) {
       const chunk = await reader.read();
       if (chunk.done) break;
-      if (res.destroyed) {
-        await cancellation.cancel(new DashboardResponseClosedError("dashboard response closed before body write"));
-        return;
-      }
+      if (res.destroyed) throw new DashboardResponseClosedError("dashboard response closed before body write");
       const canContinue = res.write(chunk.value);
       if (!canContinue) await waitForDrain(res);
     }
-    if (res.destroyed) {
-      await cancellation.cancel(new DashboardResponseClosedError("dashboard response closed before finish"));
-      return;
-    }
+    if (res.destroyed) throw new DashboardResponseClosedError("dashboard response closed before finish");
     await endResponse(res);
     await cancellation.settle();
   } catch (error: unknown) {

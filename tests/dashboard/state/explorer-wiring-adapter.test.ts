@@ -184,19 +184,15 @@ it("mounts a served entry without a fictional preview through the injected-clien
   const catalog: WorkflowCatalogEntry[] = [{ id: served.id, label: served.label, categoryId: "uncategorized", role: { kind: "standalone" }, source: "served", launch: { state: "served" } }];
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(WorkflowExplorer, { catalog, client }) })));
-    assert.equal(calls, 0);
-    const recovery = [...host.querySelectorAll("button")].find(button => button.textContent === "Open Separations");
-    assert.ok(recovery);
-      await act(async () => recovery.click());
-      assert.equal(calls, 1);
-      assert.ok(host.textContent?.includes("No run values are available."));
-      assert.deepEqual([...host.querySelectorAll('[aria-label="Workflow steps"] h2')].map(node => node.textContent), served.nodes.map(node => node.label));
-      assert.equal(host.querySelector('[data-disclosure="1-declared-presentation"]'), null);
-      assert.ok(host.textContent?.includes("Declared source purpose"));
-      assert.doesNotMatch(host.textContent ?? "", /source-node|destination-node|Invocation outcome|input ·|Unresolved source anchor/u);
-      assert.equal(host.querySelector('[aria-label="Show source for input · direct"]'), null);
-      assert.ok(served.operationStructure.state === "declared");
-      assert.equal(served.operationStructure.definition.invocations[0].outcomes[0].label, "Source declared result");
+    assert.equal(calls, 1);
+    assert.ok(host.textContent?.includes("No run values are available."));
+    assert.deepEqual([...host.querySelectorAll('[aria-label="Workflow steps"] h2')].map(node => node.textContent), served.nodes.map(node => node.label));
+    assert.equal(host.querySelector('[data-disclosure="1-declared-presentation"]'), null);
+    assert.ok(host.textContent?.includes("Declared source purpose"));
+    assert.doesNotMatch(host.textContent ?? "", /source-node|destination-node|Invocation outcome|input ·|Unresolved source anchor/u);
+    assert.equal(host.querySelector('[aria-label="Show source for input · direct"]'), null);
+    assert.ok(served.operationStructure.state === "declared");
+    assert.equal(served.operationStructure.definition.invocations[0].outcomes[0].label, "Source declared result");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
@@ -207,9 +203,6 @@ it("keeps a selected served workflow unavailable without an injected client inst
   const catalog: WorkflowCatalogEntry[] = [{ id: served.id, label: served.label, categoryId: "uncategorized", role: { kind: "standalone" }, source: "served", launch: { state: "served" } }];
   try {
     await act(async () => root.render(createElement(WorkflowExplorer, { catalog })));
-    const recovery = [...host.querySelectorAll("button")].find(button => button.textContent === "Open Separations");
-    assert.ok(recovery);
-    await act(async () => recovery.click());
     assert.ok(host.textContent?.includes("Registered workflow data is unavailable because the dashboard client is not connected."));
     assert.equal(host.textContent?.includes("Separation filed and Kuali document verified"), false);
     assert.equal(host.textContent?.includes("Source contract"), false);

@@ -25,7 +25,7 @@ import { ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfileOnboardin
   CancelProfileOnboardingDuoRequestSchema, PublicProfileStateSchema, type PublicProfileState } from "../../../../models/profiles/public-profile.js";
 import { ConfigSchema } from "../../../../models/config/schema.js";
 import { ensureChildDirectory } from "../../../storage/configuration/credential-safe-file.js";
-import { createProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo-provider.js";
+import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
 import type { ProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo.js";
 import { consumeAuthenticatedProfileUpgrade, type ActiveProfileSession, type AuthenticatedProfileUpgrade, type ProfileUpgradeRequired } from "../../../profiles/profile-session.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";

@@ -39,7 +39,7 @@ for (const entry of ['service', 'command'] as const) it(`retains actual stopped 
   AuthorityDatabase.initializeProfile(f.admission, systemClock);
   const root = join(f.workspace, rebuildRuntimeIsolation.processLockRoot), before = fs.readFileSync(f.path);
   const actualRemove = fs.rmSync, actualCreate = fs.mkdtempSync;
-  const snapshotPrefix = join(tmpdir(), "relay-readonly-authority-");
+  const snapshotPrefix = join(fs.realpathSync(tmpdir()), "relay-readonly-authority-");
   const injected = new Error('upgrade-snapshot-remove-refused');
   let snapshots = 0, directory: string | undefined, removals = 0;
   let restore: OfflineMaintenanceOperation | undefined = entry === "service" ? f.admission.acquireOfflineMaintenance() : undefined, proved = false;
@@ -65,8 +65,10 @@ for (const entry of ['service', 'command'] as const) it(`retains actual stopped 
     assert.equal(inspected.errors.length, 1); assert.equal(inspected.errors[0], inspected.cause);
     assert.ok(inspected.cause instanceof AuthoritySourceClosureUnprovedError);
     let sourceFailure: unknown = inspected.cause;
-    for (let depth = 0; depth < (entry === "command" ? 2 : 0); depth++) {
-      assert.ok(sourceFailure instanceof AuthoritySourceClosureUnprovedError);
+    const wrappers = new Set<AuthoritySourceClosureUnprovedError>();
+    while (sourceFailure instanceof AuthoritySourceClosureUnprovedError && sourceFailure.cause instanceof AuthoritySourceClosureUnprovedError) {
+      assert.equal(wrappers.has(sourceFailure), false);
+      wrappers.add(sourceFailure);
       assert.deepEqual(sourceFailure.errors, [sourceFailure.cause]);
       sourceFailure = sourceFailure.cause;
     }
@@ -92,7 +94,7 @@ for (const entry of ['service', 'command'] as const) it(`releases proved upgrade
   AuthorityDatabase.initializeProfile(f.admission, systemClock);
   const root = join(f.workspace, rebuildRuntimeIsolation.processLockRoot), before = fs.readFileSync(f.path);
   const actualCreate = fs.mkdtempSync, injected = new Error('upgrade-source-create-unavailable');
-  const snapshotPrefix = join(tmpdir(), "relay-readonly-authority-");
+  const snapshotPrefix = join(fs.realpathSync(tmpdir()), "relay-readonly-authority-");
   let snapshots = 0, refused = 0;
   const restore = entry === 'service' ? f.admission.acquireOfflineMaintenance() : undefined;
   const creation = vi.spyOn(fs, 'mkdtempSync').mockImplementation((...args) => {

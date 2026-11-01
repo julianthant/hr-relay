@@ -24,6 +24,7 @@ import { createCredentialStore } from "../../../src/backend/storage/configuratio
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { receiveRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createCredentialSecretSource, readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
+import { scaledMs } from "../time-scale.js";
 
 const [root, marker, ...workerArgs] = process.argv.slice(2);
 assert.equal(workerArgs.at(-2), "--fixture-lock-port");
@@ -51,7 +52,7 @@ try {
   assert.equal(resolvedConfig.paths.browserProfileRoot, join(child.stateRoot, "browsers"));
   const config = { ...resolvedConfig, paths: { ...resolvedConfig.paths, browserProfileRoot: join(child.stateRoot, "browsers") } };
   const protectedSecrets = createCredentialSecretSource({ read: () => { selected.assertCurrent(); return credentials.read(); } });
-  const trace = (event: Record<string, unknown>) => appendFileSync(join(root,`browser-${String(process.pid)}.jsonl`),`${JSON.stringify(event)}\n`);
+  const trace = (event: Record<string, unknown>) => appendFileSync(join(root,`browser-${String(process.pid)}.jsonl`),`${JSON.stringify({ ...event, at: new Date().toISOString() })}\n`);
   const binding = (system: "crm" | "ucpath"): BrowserSystemBinding => ({
     system,
     createDriver: page => {
@@ -63,7 +64,7 @@ try {
         return async (...values: unknown[]) => {
           if (await page.locator("[data-authenticated]").count() !== 1) throw new Error("fixture-driver-not-authenticated");
           trace({ event: "driver", system, method: String(key), pid: process.pid });
-          const deadline = systemClock.monotonicMs() + 20_000;
+          const deadline = systemClock.monotonicMs() + scaledMs(20_000);
           while (!existsSync(join(root,"release-drivers"))) {
             if (systemClock.monotonicMs() > deadline) throw new Error("fixture-driver-barrier-expired");
             await new Promise(resolve => setTimeout(resolve,25));
@@ -110,6 +111,7 @@ try {
     protectedSecrets,
     bindings: { crm: binding("crm"), ucpath: binding("ucpath") },
     launcher: { launch: async input => {
+      trace({ event: "launch-start", profileDirectory: input.profileDirectory });
       const context = await chromium.launchPersistentContext(input.profileDirectory, { channel: 'chromium', headless: input.headless,
         viewport: input.viewport, acceptDownloads: input.acceptDownloads, downloadsPath: input.downloadsPath,
         args: [`--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`] });

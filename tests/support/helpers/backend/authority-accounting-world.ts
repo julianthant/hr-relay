@@ -1,3 +1,13 @@
+import type { DuoCeremonyLeaseToken } from "../../../../src/workflow-kit/duo-ceremony-lease.js";
+import { createAssistantAuthorization } from "../../../../src/backend/assistant/authorization.js";
+import { createCommandKernel, executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
+import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
+import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from "../../../../src/models/dashboard/assistant.js";
+import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
+import { boundProfileAdmission, boundProfileCredentials } from "../admission-fixture.js";
 import { PERSON_LOOKUP_ACTIVE, personLookupTerminalIdentityEvidence } from "../run-integration-world.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { deriveRunEvidenceReceipt } from "../../../../src/backend/runs/provenance/evidence-receipt.js";
@@ -8,7 +18,7 @@ import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js
 import { projectNotificationTrigger } from "../../../../src/rules/notifications/notification-triggers.js";
 import { GATE_RESULT, NOTIFICATION, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
 import { RUN_SESSION, START_PLAN } from "../../fixtures/phase1f-run-fixtures.js";
-import { testRunService } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testRunService, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
 import { atomicWriteCheckpoint, releaseSeededWriteOwners, seedAtomicWriteOwner } from "../timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -232,7 +242,7 @@ export function createAuthorityAccountingTestWorld() {
 
   function prepareRunning(database: AuthorityDatabase) {
     const slot = prepareWorkerSlot(database);
-    assert.equal(database.authority.workerLeases.start({ ...WORKER_START_REQUEST, workerId: slot.workerId }).state, "started");
+    assert.equal(database.authority.workerLeases.start({ ...WORKER_START_REQUEST, workerId: slot.workerId, processId: process.pid }).state, "started");
     database.authority.runs.enqueue({
       ...QUEUED_RUN,
       envelope: {
@@ -249,13 +259,14 @@ export function createAuthorityAccountingTestWorld() {
         },
       },
     });
-    const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: slot.workerId, now: NOW });
+    const workerLifetime = testWorkerLifetime(database, WORKFLOW_ID, slot.poolIndex).workerLifetime;
+    const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: slot.workerId, workerLifetime, now: NOW });
     if (claimed.state !== "claimed") throw new Error("generation fixture did not claim a run");
     const validating = database.authority.runs.transition({
       runId: RUN_ID,
       expectedVersion: claimed.run.version,
       claim: { workerId: slot.workerId, claimGeneration: 1 },
-      lifecycle: { state: "validating", workerId: slot.workerId, claimedAt: NOW, heartbeatAt: NOW },
+      lifecycle: { state: "validating", workerId: slot.workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW },
       now: NOW,
     });
     if (validating.state !== "applied") throw new Error("generation fixture did not validate");
@@ -263,7 +274,7 @@ export function createAuthorityAccountingTestWorld() {
       runId: RUN_ID,
       expectedVersion: validating.run.version,
       claim: { workerId: slot.workerId, claimGeneration: 1 },
-      lifecycle: { state: "running", workerId: slot.workerId, claimedAt: NOW, heartbeatAt: NOW },
+      lifecycle: { state: "running", workerId: slot.workerId, workerLifetime, claimedAt: NOW, heartbeatAt: NOW },
       now: NOW,
     });
     if (running.state !== "applied") throw new Error("generation fixture did not run");
@@ -435,10 +446,54 @@ export type MutationCase = Readonly<{
     table: Exclude<AuthorityTableName, "database_states" | "database_upgrades">;
     prepare?: (database: AuthorityDatabase) => void;
     mutate: (database: AuthorityDatabase) => void | Promise<void>;
+    cleanup?: (database: AuthorityDatabase) => void;
   }>;
 
 export function authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT }: Pick<ReturnType<typeof createAuthorityAccountingTestWorld>, "prepareRunning" | "terminalFailureRequest" | "terminalSuccessRequest" | "terminalizeForTrust" | "DIAGNOSTIC_BUNDLE" | "FAILURE_RECORD" | "DRY_RUN_SCENARIO_RESULT" | "OPERATOR_XLSX_EXPORT" | "CLOCK" | "ATOMIC_WRITE_COMMIT" | "databasePaths" | "INTAKE_MANIFEST" | "OCR_EXTRACTION" | "prepareWorkerSlot" | "claimedWorkerId" | "prepareDelegationOwners" | "COMMAND_AUDIT" | "RUN_CHECKPOINT" | "OBSERVED_PRESENT_WRITE_INTENT">): readonly MutationCase[] {
+  function assistant(db: AuthorityDatabase) {
+    const path = databasePaths.get(db); assert.ok(path);
+    const admission = boundProfileAdmission(path), profileId = admission.profileBinding.profileId;
+    const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, { primaryDisplay: null }, CLOCK,
+      { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }), boundProfileCredentials(admission));
+    const unavailable = (): never => { throw new Error("unrequested accounting fixture effect"); };
+    const runtime = db.authority.runtimeConfig.get(); assert.ok(runtime);
+    const dependencies = { authority: db, clock: CLOCK, ids: { uuid: randomUUID }, settings, authorityProfileId: profileId };
+    const kernel = createCommandKernel({ ...dependencies, lifecycle: testRunService(db, CLOCK), appVersion: "0.1.0",
+      configIdentity: { configSnapshotId: runtime.configSnapshotId, configFingerprint: runtime.configFingerprint },
+      descriptors: { resolve: () => undefined }, intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
+      writeResolution: { recheck: unavailable, resolveAbsent: unavailable },
+      workerRuntime: { pool: { planPoolWorkerCount: unavailable, spawnPoolWorker: unavailable, stopPoolWorker: unavailable,
+        pausePoolWorker: unavailable, resumePoolWorker: unavailable, refreshPoolBrowser: unavailable, reopenPoolBrowser: unavailable } },
+      prepareAssistantModelPreference: async () => () => true });
+    const fixture = { profileId, kernel, authorization: createAssistantAuthorization({ database: db, kernel, clock: CLOCK,
+      current: () => ({ profileId, epoch: 1 }) }), grant() {
+      const result = executeSettingsCommand(dependencies, { family: "settings", type: "apply-settings", commandId: randomUUID(),
+        requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",
+        target: { expectedRevision: readSettings(db.authority).revision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } });
+      assert.equal(result.state, "applied");
+    } };
+    return fixture;
+  }
+  const duoTokens = new WeakMap<AuthorityDatabase, DuoCeremonyLeaseToken>();
+  const assistantActions = new WeakMap<AuthorityDatabase, { fixture: ReturnType<typeof assistant>; chat: ReturnType<ReturnType<typeof assistant>["authorization"]["createChat"]> }>();
   return [
+    { table: "assistant_grants", mutate: db => { assistant(db).grant(); } },
+    { table: "assistant_chats", mutate: db => { assistant(db).authorization.createChat(); } },
+    { table: "assistant_actions", prepare: db => { const fixture = assistant(db); fixture.grant(); assistantActions.set(db, { fixture, chat: fixture.authorization.createChat() }); }, mutate: db => {
+      const prepared = assistantActions.get(db); assert.ok(prepared);
+      const { fixture: { authorization }, chat } = prepared;
+      const patch = { "browser.headless": { set: false } };
+      db.withAuthorityTransaction(() => { authorization.prepare(chat, { family: "settings", type: "apply-settings", commandId: randomUUID(),
+        requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: readSettings(db.authority).revision },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint(patch), patch } }); });
+    } },
+    { table: "assistant_model_preference", mutate: async db => {
+      const { kernel, profileId } = assistant(db);
+      assert.equal((await kernel.executeAssistantModelPreference({ family: "assistant-model-preference", type: "set-assistant-model-preference",
+        commandId: randomUUID(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard", target: { profileId, epoch: 0, expectedRevision: 0 },
+        payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } })).state, "applied");
+    } },
     { table: "runs", mutate: (db) => { db.authority.runs.enqueue(QUEUED_RUN); } },
     {
       table: "run_failures",
@@ -509,17 +564,22 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     { table: "artifacts", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },
     { table: "worker_leases", prepare: db => { prepareWorkerSlot(db); }, mutate: db => {
       const slot = db.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
-      db.authority.workerLeases.start({ ...WORKER_START_REQUEST, workerId: slot.workerId });
+      db.authority.workerLeases.start({ ...WORKER_START_REQUEST, workerId: slot.workerId, processId: process.pid });
     } },
     {
       table: "auth_leases",
       prepare: db => { prepareRunning(db); },
       mutate: (db) => {
-        db.authority.duoCeremonyLeases.acquire({
+        const acquired = db.authority.duoCeremonyLeases.acquire({
           credentialKey: "ab".repeat(32), workerId: db.authority.workerSlots.list(WORKFLOW_ID)[0]?.workerId, system: "ucpath",
           now: "2026-08-21T10:00:00.000Z", ttlMs: 80_000,
         });
+        assert.equal(acquired.state, "acquired");
+        if (acquired.state !== "acquired") throw new Error("fixture-duo-lease-not-acquired");
+        duoTokens.set(db, acquired.token);
       },
+      cleanup: db => { const token = duoTokens.get(db); assert.ok(token);
+        assert.equal(db.authority.duoCeremonyLeases.release({ token, now: "2026-08-21T10:00:01.000Z" }).state, "released"); },
     },
     {
       table: "worker_pools",
@@ -593,6 +653,11 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
         sessionId: UUID_1, system: "crm", configFingerprint: HASH_A, signInFingerprint: HASH_B,
         browserMode: "headless", acceptDownloads: false, exclusive: false, health: "authenticated",
         openedAt: NOW, observedAt: NOW, profileRevision: 1 });
+    }, cleanup: db => {
+      const slot = db.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
+      for (const browser of db.authority.workerControls.browsers(slot.workerId)) {
+        db.authority.workerControls.observe({ ...browser, health: "closed", observedAt: NOW });
+      }
     } },
     { table: "gate_results", prepare: db => {
       db.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, runId: GATE_RESULT.runId } });

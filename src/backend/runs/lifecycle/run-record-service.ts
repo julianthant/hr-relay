@@ -568,7 +568,8 @@ export class RunRecordService {
       if (journal.state === "replay") return this.replayRun(journal.result);
       const current = this.read(request.runId);
       if (current.state !== "present") return refused({ reason: "lost" });
-      try { this.assertCurrentExecution({ runId: request.runId, claim: request.claim }); }
+      // Renewal retains callback custody while reset fences new work.
+      try { this.assertCurrentExecution({ runId: request.runId, claim: request.claim }, true); }
       catch (error) {
         if (error instanceof RunLifecycleRefusedError && error.outcome.state === "refused" && error.outcome.refusal.reason === "lost") return error.outcome;
         throw error;
@@ -627,6 +628,23 @@ export class RunRecordService {
       if (journal.state === "replay") return this.replayRun(journal.result);
       const previous = this.read(request.runId);
       if (previous.state !== "present") return refused({ reason: "lost" });
+      const held = runClaim(previous.run);
+      if (previous.run.version !== request.expectedVersion || held === undefined || held.workerId !== request.claim.workerId
+        || held.claimGeneration !== request.claim.claimGeneration || Date.parse(request.now) < Date.parse(previous.run.envelope.enqueuedAt)) {
+        throw new Error("crash-recovery-claim-changed");
+      }
+      if (previous.run.cancelRequested === true && repositories.writeIntents.listByRun(request.runId)
+        .every(intent => intent.status === "committed" || intent.status === "observed-present")) {
+        const identity = this.dependencies.database.crashRunRecoveryIdentity(request.runId);
+        if (canonicalJsonStringify(identity.workerLifetime) !== canonicalJsonStringify(request.workerLifetime)) {
+          throw new Error("crash-recovery-lifetime-changed");
+        }
+        const cancelled = this.cancelClaim(repositories, { kind: "cancelled", commandId: request.commandId,
+          runId: request.runId, expectedVersion: request.expectedVersion, claim: request.claim, endedAt: request.now });
+        if (cancelled.state !== "applied") return cancelled;
+        this.recordJournal(repositories, journal.command, journalRun(cancelled.run), previous.run.lifecycle);
+        return cancelled;
+      }
       const run = this.dependencies.database.recoverCrashedRun(request, lock);
       this.recordJournal(repositories, journal.command, journalRun(run), previous.run.lifecycle);
       return { state: "applied", run };
@@ -707,33 +725,42 @@ export class RunRecordService {
       });
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
       if (journal.state === "replay") return this.replayRun(journal.result);
-      const current = this.read(request.runId);
-      if (current.state !== "present") return refused({ reason: "lost" });
-      const held = runClaim(current.run);
-      if (held === undefined || held.workerId !== request.claim.workerId
-        || held.claimGeneration !== request.claim.claimGeneration || current.run.version !== request.expectedVersion) {
-        return refused({ reason: "lost" });
+      const outcome = this.cancelClaim(repositories, request);
+      if (outcome.state === "applied") {
+        this.recordJournal(repositories, journal.command, journalRun(outcome.run));
       }
-      if (request.cancellationSource !== undefined) {
-        if (!("kind" in request.cancellationSource)) throw new Error("delegation-cancellation-request-mismatch");
-        assertResetCancellationAdmission(repositories, current.run, request.cancellationSource, request);
-      }
-      if (current.run.cancelRequested !== true
-        || !["claimed", "validating", "running"].includes(current.run.lifecycle.state)
-        || repositories.writeIntents.listAttemptingByItem({ workflowId: current.run.envelope.workflow,
-          itemId: current.run.envelope.itemId }).length > 0) {
-        return refused({ reason: "illegal-transition", from: current.run.lifecycle.state, to: "terminal",
-          message: "cancellation requires admitted intent outside an unfinished write" });
-      }
-      const dependencyRefusal = terminalDependencyRefusal(repositories, request.runId, "cancel", this.dependencies.clock.now().toISOString());
-      if (dependencyRefusal !== undefined) return refused(dependencyRefusal);
-      const outcome = repositories.runs.transition({ runId: request.runId, expectedVersion: request.expectedVersion,
-        claim: request.claim, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: request.endedAt },
-        now: this.dependencies.clock.now().toISOString() });
-      if (outcome.state !== "applied") return refused({ reason: "lost" });
-      this.recordJournal(repositories, journal.command, journalRun(outcome.run));
-      return { state: "applied", run: outcome.run };
+      return outcome;
     });
+  }
+
+  private cancelClaim(repositories: AuthorityRepositories,
+    request: z.infer<typeof CanonicalCancellationTerminalizeRequestSchema>):
+    Readonly<{ state: "applied"; run: RunRecord }> | Extract<RunMutationOutcome, { state: "refused" }> {
+    const current = this.read(request.runId);
+    if (current.state !== "present") return refused({ reason: "lost" });
+    const held = runClaim(current.run);
+    if (held === undefined || held.workerId !== request.claim.workerId
+      || held.claimGeneration !== request.claim.claimGeneration || current.run.version !== request.expectedVersion) {
+      return refused({ reason: "lost" });
+    }
+    if (request.cancellationSource !== undefined) {
+      if (!("kind" in request.cancellationSource)) throw new Error("delegation-cancellation-request-mismatch");
+      assertResetCancellationAdmission(repositories, current.run, request.cancellationSource, request);
+    }
+    if (current.run.cancelRequested !== true
+      || !["claimed", "validating", "running"].includes(current.run.lifecycle.state)
+      || repositories.writeIntents.listAttemptingByItem({ workflowId: current.run.envelope.workflow,
+        itemId: current.run.envelope.itemId }).length > 0) {
+      return refused({ reason: "illegal-transition", from: current.run.lifecycle.state, to: "terminal",
+        message: "cancellation requires admitted intent outside an unfinished write" });
+    }
+    const dependencyRefusal = terminalDependencyRefusal(repositories, request.runId, "cancel", this.dependencies.clock.now().toISOString());
+    if (dependencyRefusal !== undefined) return refused(dependencyRefusal);
+    const outcome = repositories.runs.transition({ runId: request.runId, expectedVersion: request.expectedVersion,
+      claim: request.claim, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: request.endedAt },
+      now: this.dependencies.clock.now().toISOString() });
+    if (outcome.state !== "applied") return refused({ reason: "lost" });
+    return { state: "applied", run: outcome.run };
   }
 
   private terminalizeFailure(input: unknown, descriptor: AnyWorkflowDescriptor): RunMutationOutcome {

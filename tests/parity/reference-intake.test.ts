@@ -7,7 +7,7 @@ registerReferenceScenes(SCENES, () => servers.server, ANCHORS);
 // The parity wrapper requires a body-backed accessibility receipt as well as
 // the committed PNG/tree/provenance reference triples.
 import { createHash } from "node:crypto";
-import { test } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_INTAKE_IDS } from "../support/fixtures/dashboard/fixture-intake.js";

@@ -1,3 +1,4 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { join } from "node:path";
 import { deriveCanonicalPerson } from "../../../../src/backend/runs/projections/run-summary.js";
@@ -9,7 +10,7 @@ import { activityPersonPseudonymResultRecord,CURRENT_SEPARATIONS_RESULT } from "
 import { inMemoryRunReaderFake } from "../../../support/helpers/canonical-run-reader.js";
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { afterAll,afterEach,describe,it } from "vitest";
 import { ActivityReportWireSchema,type ActivityReportWire } from "../../../../src/models/dashboard/activity.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
@@ -51,13 +52,15 @@ function queuedEventOf(w: DashboardWorld, input: Parameters<typeof runRecordBase
   return event;
 }
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 const worlds: DashboardWorld[] = [];
 const canonicalResults = new WeakMap<DashboardWorld,Map<string,RunResultRecord>>();
 const deletedRuns = new WeakMap<DashboardWorld, Map<string, DeletedRunRecord>>();
 
 async function world(...args: Parameters<typeof makeWorld>): Promise<DashboardWorld> {
   const state = { records: new Map<string, RunRecord>(), deleted: new Map<string, DeletedRunRecord>(), generation: 0 };
-  const created = await makeWorld({ ...args[0], reader: inMemoryRunReaderFake(state) });
+  const created = await makeWorld({ ...args[0], profileFixture: () => profileFixtures.create(), reader: inMemoryRunReaderFake(state) });
   state.records = created.authority.records;
   deletedRuns.set(created, state.deleted);
   const results = new Map<string,RunResultRecord>();

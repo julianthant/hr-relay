@@ -55,65 +55,86 @@ describe("composition-reads-no-environment-leaf", () => {
   });
   it("production dashboard and worker resolve the same config under non-retired hostile noise", async () => {
     const configs: unknown[] = [];
-    for (const noisy of [false, true]) for (const role of ["dashboard", "worker"] as const) {
-      const f = await createBoundProfileFixture(), root = f.workspace;
-      const profileClock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
-      const profile = role === "dashboard" ? composeProfileRuntime({ admission: f.machine, clock: profileClock, hostFacts: { primaryDisplay: null } }) : undefined;
-      let context: ReturnType<typeof composeSelectedProfileStorage> | undefined;
-      let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
-      try {
-      const active = profile?.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: profileClock.now().toISOString() });
-      if (profile !== undefined && active?.state !== "active") throw new Error("environment-profile-sign-in-required");
-      context = profile !== undefined && active?.state === "active" ? profile.selectedContext(active.token)
-        : composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission, credentials: boundProfileCredentials(f.admission),
-          hostFacts: { primaryDisplay: null }, clock: profileClock });
-      for (const name of ["package.json", "package-lock.json"])
-        writeFileSync(join(root, name), readFileSync(join(REPO_ROOT, name)));
+    const prove = async (input: {
+      f: Awaited<ReturnType<typeof createBoundProfileFixture>>;
+      profileClock: ReturnType<typeof manualClock>;
+      profile: ReturnType<typeof composeProfileRuntime> | undefined;
+      active: { state: string; token?: string } | undefined;
+      context: ReturnType<typeof composeSelectedProfileStorage>;
+      noisy: boolean;
+      role: "dashboard" | "worker";
+    }) => {
+      const { f, profileClock, profile, active, context, noisy, role } = input;
       const hostile = environment("UNRELATED_HOSTILE_NOISE");
       const env = noisy ? hostile.env : {};
-      const common = { isolation: rebuildRuntimeIsolation, repoRoot: root, env, clock: profileClock };
-      if (profile !== undefined && active?.state === "active") dashboard = await composeDashboardRuntime({ lifetimeLock: f.lifetime, ...common, admission: f.machine, profile: { runtime: profile, token: active.token }, preflightRunnerFactory: healthyRuntimePreflightRunners, backendPortOverride: 0, frontendPortOverride: 0 });
-      const selectedContext = context;
-      const path = join(f.stateRoot, "state.db");
-      const readConfig = () => {
-        const database = AuthorityDatabase.open(selectedContext.admission, { path, busyTimeoutMs: 100, migrationOwner: "unit-test" }, profileClock, undefined, undefined, undefined, selectedContext.credentials);
-        try {
-          const active = database.authority.runtimeConfig.get(); assert.ok(active);
-          const snapshot = database.authority.configSnapshots.get(active.configSnapshotId); assert.ok(snapshot);
-          return { config: snapshot.config, provenance: snapshot.provenance, fingerprint: snapshot.fingerprint };
-        } finally { database.close(); }
-      };
-      const before = readConfig();
-      const database = AuthorityDatabase.open(selectedContext.admission, { path, busyTimeoutMs: 100, migrationOwner: "noise-resolution-proof" }, profileClock, undefined, undefined, undefined, selectedContext.credentials);
+      const common = { isolation: rebuildRuntimeIsolation, repoRoot: f.workspace, env, clock: profileClock };
+      let dashboard: Awaited<ReturnType<typeof composeDashboardRuntime>> | undefined;
       try {
-        const ordinary = readSettings(database.authority).settings;
-        const pair = { stateRoot: f.stateRoot, artifactRoot: join(f.stateRoot, "artifacts") };
-        const clean = resolveConfigWithProvenance(ordinary, hostConfigFacts({}), profileClock, pair);
-        const noisyResolution = resolveConfigWithProvenance(ordinary, hostConfigFacts(hostile.env), profileClock, pair);
-        assert.deepEqual(noisyResolution, clean);
-        assert.deepEqual(before, clean);
-      } finally { database.close(); }
-      if (role === "worker") {
-      const worker = await composeWorkerRuntime({ lifetimeLock: f.lifetime, ...common, admission: f.machine, preflightRunnerFactory: healthyRuntimePreflightRunners, args: ["person-lookup", "--pool-index", "1", "--drain"],
-        duoCeremony: duoCeremonyGatesOver(selectedContext.database, profileClock, new ManualScheduler(profileClock)),
-        sessionFactory: { probeProfile: async () => undefined, open: () => { throw new Error("no browser may open for idle proof"); } }, write: () => undefined });
-      assert.deepEqual(worker.outcomes, []);
-      assert.equal(worker.stopped, "idle");
-      }
-      assert.deepEqual(readConfig(), before);
-      assert.equal(hostile.reads(), 0);
-      assert.equal(before.config.paths.stateRoot, f.stateRoot);
-      assert.equal(before.config.paths.artifactRoot, join(f.stateRoot, "artifacts"));
-      assert.equal(before.config.paths.browserProfileRoot, join(f.stateRoot, "browsers"));
-      assert.equal(before.config.paths.duoCredential, join(f.stateRoot, "credentials", "duo-webauthn.json"));
-      configs.push({ config: { ...before.config, paths: { ...before.config.paths,
-        stateRoot: "owned-state-root", artifactRoot: "owned-artifact-root", browserProfileRoot: "owned-browser-root", duoCredential: "owned-duo-credential" } }, provenance: before.provenance });
-      } finally {
-        if (dashboard !== undefined) await dashboard.stop();
-        else if (profile !== undefined) await profile.close();
-        else if (context !== undefined) { await context.account.close(); context.database.close(); }
-        await f.close();
-      }
+        if (profile !== undefined && active?.state === "active" && active.token !== undefined) dashboard = await composeDashboardRuntime({ lifetimeLock: f.lifetime, ...common, admission: f.machine, profile: { runtime: profile, token: active.token }, preflightRunnerFactory: healthyRuntimePreflightRunners, backendPortOverride: 0, frontendPortOverride: 0 });
+        const path = join(f.stateRoot, "state.db");
+        const readConfig = () => {
+          const database = AuthorityDatabase.open(context.admission, { path, busyTimeoutMs: 100, migrationOwner: "unit-test" }, profileClock, undefined, undefined, undefined, context.credentials);
+          try {
+            const stored = database.authority.runtimeConfig.get(); assert.ok(stored);
+            const snapshot = database.authority.configSnapshots.get(stored.configSnapshotId); assert.ok(snapshot);
+            return { config: snapshot.config, provenance: snapshot.provenance, fingerprint: snapshot.fingerprint };
+          } finally { database.close(); }
+        };
+        const before = readConfig();
+        const database = AuthorityDatabase.open(context.admission, { path, busyTimeoutMs: 100, migrationOwner: "noise-resolution-proof" }, profileClock, undefined, undefined, undefined, context.credentials);
+        try {
+          const ordinary = readSettings(database.authority).settings;
+          const pair = { stateRoot: f.stateRoot, artifactRoot: join(f.stateRoot, "artifacts") };
+          const clean = resolveConfigWithProvenance(ordinary, hostConfigFacts({}), profileClock, pair);
+          const noisyResolution = resolveConfigWithProvenance(ordinary, hostConfigFacts(hostile.env), profileClock, pair);
+          assert.deepEqual(noisyResolution, clean);
+          assert.deepEqual(before, clean);
+        } finally { database.close(); }
+        if (role === "worker") {
+          const worker = await composeWorkerRuntime({ lifetimeLock: f.lifetime, ...common, admission: f.machine, preflightRunnerFactory: healthyRuntimePreflightRunners, args: ["person-lookup", "--pool-index", "1", "--drain"],
+            duoCeremony: duoCeremonyGatesOver(context.database, profileClock, new ManualScheduler(profileClock)),
+            sessionFactory: { probeProfile: async () => undefined, open: () => { throw new Error("no browser may open for idle proof"); } }, write: () => undefined });
+          assert.deepEqual(worker.outcomes, []);
+          assert.equal(worker.stopped, "idle");
+        }
+        assert.deepEqual(readConfig(), before);
+        assert.equal(hostile.reads(), 0);
+        assert.equal(before.config.paths.stateRoot, f.stateRoot);
+        assert.equal(before.config.paths.artifactRoot, join(f.stateRoot, "artifacts"));
+        assert.equal(before.config.paths.browserProfileRoot, join(f.stateRoot, "browsers"));
+        assert.equal(before.config.paths.duoCredential, join(f.stateRoot, "credentials", "duo-webauthn.json"));
+        const paths = { ...before.config.paths };
+        for (const key of Object.keys(paths) as Array<keyof typeof paths>) {
+          const value = paths[key];
+          if (typeof value === "string" && value.startsWith(`${f.workspace}/`)) paths[key] = `owned-${key}`;
+        }
+        configs.push({ config: { ...before.config, paths }, provenance: before.provenance });
+      } finally { if (dashboard !== undefined) await dashboard.stop(); }
+    };
+    for (const noisy of [false, true]) {
+      const f = await createBoundProfileFixture();
+      const profileClock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+      const profile = composeProfileRuntime({ admission: f.machine, clock: profileClock, hostFacts: { primaryDisplay: null } });
+      let context: ReturnType<typeof composeSelectedProfileStorage> | undefined;
+      try {
+        const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: profileClock.now().toISOString() });
+        if (active?.state !== "active") throw new Error("environment-profile-sign-in-required");
+        context = profile.selectedContext(active.token);
+        for (const name of ["package.json", "package-lock.json"]) writeFileSync(join(f.workspace, name), readFileSync(join(REPO_ROOT, name)));
+        await prove({ f, profileClock, profile, active, context, noisy, role: "dashboard" });
+      } finally { await f.close(); }
+    }
+    const f = await createBoundProfileFixture();
+    const profileClock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
+    const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission, credentials: boundProfileCredentials(f.admission),
+      hostFacts: { primaryDisplay: null }, clock: profileClock });
+    try {
+      for (const name of ["package.json", "package-lock.json"]) writeFileSync(join(f.workspace, name), readFileSync(join(REPO_ROOT, name)));
+      for (const noisy of [false, true]) await prove({ f, profileClock, profile: undefined, active: undefined, context, noisy, role: "worker" });
+    } finally {
+      await context.account.close();
+      context.database.close();
+      await f.close();
     }
     for (const config of configs.slice(1)) assert.deepEqual(config, configs[0]);
   });

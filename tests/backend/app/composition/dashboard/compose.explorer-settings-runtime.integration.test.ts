@@ -1,10 +1,8 @@
-import { workerPoolMember, type WorkerPoolMember } from "../../../../../src/models/run/worker-slot.js";
-import { spawn } from "node:child_process";
-import { once } from "node:events";
+import { createDashboardChildTestWorld } from "../../../../support/helpers/backend/dashboard-child-world.js";
+import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { createDashboardPortTestWorld } from "../../../../support/helpers/backend/dashboard-port-world.js";
 import { hostConfigFacts } from "../../../../../src/models/config/host-display.js";
 import { randomUUID } from "node:crypto";
-import { bindWorkerProcessAdmission } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
@@ -20,12 +18,10 @@ import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/r
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/protected-settings.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
-
-
 import { ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, WorkerBrowserCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
-import { manualClock } from "../../../../../src/rules/time/clock.js";
-import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
+import { manualClock, systemClock } from "../../../../../src/rules/time/clock.js";
 import { settingsSetOperations } from "../../../../support/fixtures/settings-operation-fixtures.js";
+import { scaledMs } from "../../../../support/time-scale.js";
 
 const { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, createProfileFixture, cleanup } = createDashboardPortTestWorld(() => {
       vi.mocked(fsyncSync).mockReset();
@@ -126,36 +122,28 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   });
 
   it("publishes a lease-only worker card from the real tail tick, before any span exists", async () => {
-    const profile = await createProfileFixture(manualClock(new Date("2026-08-28T12:00:00.000Z")));
+    const clock = systemClock;
+    const profile = await createProfileFixture(clock);
     const repoRoot = profile.workspace;
     const lifetimeLock = profile.lifetime;
-    const birth = Promise.withResolvers<{ child: ReturnType<typeof spawn>; member: WorkerPoolMember;
-      ready: Promise<unknown>; closed: Promise<{ code: number | null; signal: string | null }> }>();
+    const children = createDashboardChildTestWorld(() => {}, () => {});
+    const records: Parameters<typeof children.realStubSpawner>[0] = [];
     const runtime = await composeDashboardRuntime({ lifetimeLock,
+      frontendPortOverride: 0, preflightRunnerFactory: healthyRuntimePreflightRunners,
+      workerProcess: { launch: children.stubLaunch(join(profile.stateRoot, "state.db"),
+        join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "installed", process.execPath, lifetimeLock),
+        spawn: children.realStubSpawner(records, lifetimeLock), birth: { pollMs: 25, timeoutMs: 10_000 } },
       ...profile.dashboardInput,
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
-      clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
+      clock,
       repoRoot,
-      preflightRunnerFactory: healthyRuntimePreflightRunners,
-      workerProcess: { spawn: ({ member }) => {
-        const child = spawn(process.execPath, ["-e", 'process.on("message", () => { process.disconnect(); }); process.send("ready");'],
-          { detached: true, env: {}, stdio: ["ignore", "ignore", "ignore", "ipc"] });
-        const ready = once(child, "message").then(([message]: unknown[]) => message);
-        const closed = new Promise<{ code: number | null; signal: string | null }>(resolve => {
-          child.once("close", (code, signal) => resolve({ code, signal }));
-        });
-        birth.resolve({ child, member, ready, closed });
-        return { pid: child.pid, kill: signal => child.kill(signal),
-          onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
-      } },
     });
-    let releaseWorker: (() => Promise<void>) | undefined = undefined;
-    cleanups.push(async () => { await releaseWorker?.(); await runtime.stop(); });
+    cleanups.push(async () => { try { await runtime.stop(); } finally { await children.cleanup(); } });
 
     const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-    const day = "2026-08-28";
+    const day = clock.todayLocal();
     const initial = await client.dashboardDay(day);
     assert.deepEqual(initial.workerCards, []);
 
@@ -178,95 +166,28 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     await live;
     assert.equal(days.at(-1)?.workerCards.length, 0);
 
-    const envelope = () => ({ commandId: randomUUID(), requestedAt: "2026-08-28T12:00:00.000Z",
+    const envelope = () => ({ commandId: randomUUID(), requestedAt: clock.now().toISOString(),
       requestedBy: "local-operator", source: "dashboard", family: "worker-browser" });
     const planned = await client.executeCommand(WorkerBrowserCommandRequestSchema.parse({ ...envelope(), type: "plan-worker-count",
-      target: { workflowId: "person-lookup", expectedVersion: 0 }, payload: { desiredWorkers: 1 } }));
+      target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } }));
     assert.equal(planned.state, "applied");
     const spawnCommandId = randomUUID();
     const spawning = client.executeCommand(WorkerBrowserCommandRequestSchema.parse({ ...envelope(), commandId: spawnCommandId, type: "spawn-worker",
-      target: { workflowId: "person-lookup", expectedVersion: 1 }, payload: { workerId: "person-lookup-worker-1" } }))
+      target: { workflowId: personLookupDescriptor.id, expectedVersion: 1 }, payload: { workerId: "person-lookup-worker-1" } }))
       .then(result => ({ result }), (error: unknown) => ({ error }));
-    const { child, member, ready, closed } = await Promise.race([birth.promise, spawning.then(outcome => {
-      if ("error" in outcome) throw outcome.error;
-      throw new Error(`worker command settled before spawning: ${outcome.result.state}`);
-    })]);
-    // The supervisor owns the real child; only its lease changes, with no spans.
-    const pid = child.pid;
-    let settleLifetime: (() => void) | undefined;
-    let release: Promise<void> | undefined;
-    releaseWorker = async () => {
-      release ??= (async () => {
-        if (child.connected) {
-          await new Promise<void>((resolve, reject) => {
-            child.send("stop", error => { if (error === null) resolve(); else reject(error); });
-          });
-        }
-        assert.deepEqual(await closed, { code: 0, signal: null });
-        assert.ok(pid !== undefined);
-        assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
-        assert.throws(() => process.kill(-pid, 0), { code: "ESRCH" });
-        settleLifetime?.();
-      })();
-      return release;
-    };
-    assert.equal(await ready, "ready");
-    assert.ok(pid !== undefined);
-    const database = profile.openDatabase({
-      path: join(profile.stateRoot, "state.db"),
-      busyTimeoutMs: 250,
-      migrationOwner: "unit-test",
-    });
-    let binderCloseAttempted = false;
-    try {
-      const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
-      const authorityPath = join(profile.stateRoot, "state.db");
-      const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
-      const bound = bindWorkerProcessAdmission({ authorityPath, processLockRoot, clock, pid,
-        open: () => database, close: owned => {
-          binderCloseAttempted = true;
-          owned.close();
-        },
-        workerId: member.workerId,
-        admit: authority => authority.withAuthorityReadSnapshot(() => {
-          const slot = authority.authority.workerSlots.get(member.workerId); assert.ok(slot);
-          assert.deepEqual(workerPoolMember(slot), member);
-          return member.workerId;
-        }) });
-      settleLifetime = () => {
-        const owner = profile.openDatabase({ path: authorityPath, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
-        const failures: unknown[] = [];
-        try {
-          const lease = owner.authority.workerLeases.get(bound.workerId);
-          const slot = owner.authority.workerSlots.get(bound.workerId);
-          assert.ok(lease !== undefined && slot !== undefined);
-          assert.equal(lease.processId, pid);
-          assert.equal(child.exitCode, 0); assert.equal(child.signalCode, null);
-          const lifetime = { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt };
-          owner.settleInterruptedWorker(lifetimeLock, bound.workerId, lease.leaseGeneration, clock.now().toISOString());
-          assert.equal(owner.authority.workerLeases.get(bound.workerId)?.lifecycle.state, "stopped");
-          owner.assertWorkerLifecycleRelease(bound.workerId);
-          assert.ok(owner.authority.workerControls.browsers(bound.workerId).every(browser => browser.health === "closed"));
-          bound.processLock.release();
-          owner.assertStoppedWorkerLifetime(workerPoolMember(slot), lifetime);
-        } catch (error: unknown) { failures.push(error); }
-        try { owner.close(); } catch (error: unknown) { failures.push(error); }
-        if (failures.length > 1) throw new AggregateError(failures, "fixture-worker-settlement-failed", { cause: failures[0] });
-        if (failures.length === 1) throw failures[0];
-      };
-      assert.equal(database.authority.workerLeases.start({ commandId: spawnCommandId, workerId: bound.workerId, workflow: personLookupDescriptor.id,
-        browserSystems: ["crm", "ucpath"], processId: pid, requestedBy: "local-operator", now: clock.now().toISOString() }).state, "started");
-      const started = database.authority.workerLeases.get("person-lookup-worker-1");
-      assert.ok(started);
-      assert.equal(started.processId, pid);
-      assert.deepEqual(database.authority.timelineEvents.page({}).filter(record => record.payload.kind === "span"), []);
-    } finally {
-      if (!binderCloseAttempted) database.close();
-    }
 
     const outcome = await spawning;
     if ("error" in outcome) throw outcome.error;
     assert.equal(outcome.result.state, "applied");
+    assert.equal(records.length, 1);
+    assert.ok(records[0]?.pid !== undefined);
+    const database = profile.openDatabase({ path: join(profile.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
+    try {
+      const started = database.authority.workerLeases.get("person-lookup-worker-1");
+      assert.ok(started);
+      assert.equal(started.processId, records[0].pid);
+      assert.deepEqual(database.authority.timelineEvents.page({}).filter(record => record.payload.kind === "span"), []);
+    } finally { database.close(); }
     const deadline = setTimeout(() => {
       cardArrived.reject(new Error(`no worker-card snapshot within 5s; snapshots seen: ${String(days.length)}`));
     }, 5_000);
@@ -283,8 +204,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.deepEqual(card.controls.ownership, { state: "owned" });
     assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"] });
     assert.deepEqual(card?.browsers, []);
-    await releaseWorker();
-  }, 20_000);
+    assert.equal(records[0]?.exited, false);
+  }, scaledMs(20_000));
 
   it("plans new runs with saved settings without a dashboard restart", async () => {
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));

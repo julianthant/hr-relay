@@ -1,4 +1,4 @@
-import { createBoundProfileFixture } from "../admission-fixture.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
 import { join } from "node:path";
@@ -19,8 +19,8 @@ import { initialSettingsFileRecord } from "../../../../src/models/config/setting
 import { testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
 import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
-export async function foundationFixture(options:{input?:RunRecord["input"]}={}){
- const profile=await createBoundProfileFixture();
+export async function foundationFixture<Profile extends BoundProfileStorageFixture = Awaited<ReturnType<typeof createBoundProfileFixture>>>(options:{input?:RunRecord["input"];sharedMachine?:true;profileFixture?:()=>Promise<Profile>}={}){
+ const profile=await (options.profileFixture ?? (() => createBoundProfileFixture(options.sharedMachine===true?{sharedMachine:true}:{})))();
  const root=profile.stateRoot,path=profile.path;const clock=manualClock(new Date(NOW));
  const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock);
  const resolved=resolveConfigWithProvenance(initialSettingsFileRecord().settings,hostConfigFacts({}),clock,

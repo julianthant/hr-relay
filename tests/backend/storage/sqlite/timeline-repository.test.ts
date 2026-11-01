@@ -6,7 +6,7 @@ import { createTimelineEmitter } from "../../../../src/backend/storage/events/ti
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { testRunService, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { failure,foundationFixture,terminalizeFixtureFailure } from "../../../support/helpers/database-foundation/fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
@@ -82,16 +82,20 @@ it("preserves the actual lifecycle command's claimed and failed completion pair 
       claim: { workerId, claimGeneration: f.run.claimGeneration }, cause: "recovery", now: f.clock.now().toISOString() }).state, "applied");
     const service = testRunService(f.db, f.clock);
     const runtime = f.db.authority.runtimeConfig.get(); assert.ok(runtime);
+    const slot = f.db.authority.workerSlots.get(workerId); assert.ok(slot);
     assert.equal(service.claimNext({ commandId: randomUUID(), workflow: f.run.envelope.workflow, workerId,
+      workerLifetime: testWorkerLifetime(f.db, f.run.envelope.workflow, slot.poolIndex).workerLifetime,
       runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision,
         settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } }).state, "applied");
     let current = f.db.authority.runs.get(f.run.envelope.runId); assert.ok(current);
+    assert.ok(current.lifecycle.state === "claimed");
     const claim = { workerId, claimGeneration: current.claimGeneration }, now = f.clock.now().toISOString();
+    const workerLifetime = current.lifecycle.workerLifetime;
     const validating = f.db.authority.runs.transition({ runId: current.envelope.runId, expectedVersion: current.version,
-      claim, lifecycle: { state: "validating", workerId, claimedAt: now, heartbeatAt: now }, now });
+      claim, lifecycle: { state: "validating", workerId, workerLifetime, claimedAt: now, heartbeatAt: now }, now });
     assert.equal(validating.state, "applied"); if (validating.state !== "applied") throw new Error("validation refused");
     const running = f.db.authority.runs.transition({ runId: current.envelope.runId, expectedVersion: validating.run.version,
-      claim, lifecycle: { state: "running", workerId, claimedAt: now, heartbeatAt: now, currentNodeId: "searching" }, now });
+      claim, lifecycle: { state: "running", workerId, workerLifetime, claimedAt: now, heartbeatAt: now, currentNodeId: "searching" }, now });
     assert.equal(running.state, "applied"); if (running.state !== "applied") throw new Error("running refused");
     current = running.run;
     const record = failure();

@@ -27,6 +27,12 @@ import { AuthorityDatabase } from "../synthetic-database-admission.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 
+/** ESRCH: no such process. EPERM: the ID now belongs to another user's process, so our child is gone (CI reuses IDs quickly). */
+function isNotOurProcess(error: unknown): boolean {
+  const code = error instanceof Error && "code" in error ? error.code : undefined;
+  return code === "ESRCH" || code === "EPERM";
+}
+
 export interface DrillPaths {
   readonly repoRoot: string;
   readonly lifetime: RuntimeLifetimeLock;
@@ -167,8 +173,7 @@ export function createStorageRestoreTestWorld() {
         assert.deepEqual(result.value, [null, 'SIGKILL']);
       }
       for (const pid of [receipt.pid, -receipt.pid]) {
-        assert.throws(() => process.kill(pid, 0), (error: unknown) => error instanceof Error
-          && 'code' in error && error.code === 'ESRCH');
+        assert.throws(() => process.kill(pid, 0), isNotOurProcess);
       }
       const descriptors = spawnSync('lsof', ['-nP', '-t', '+D', receipt.workspace], { encoding: 'utf8' });
       assert.equal(descriptors.error, undefined);
@@ -296,8 +301,7 @@ export function createStorageRestoreTestWorld() {
         assert.deepEqual(closed.value, [0, null]);
       }
       assert.ok(successor.pid !== undefined);
-      for (const pid of [successor.pid, -successor.pid]) assert.throws(() => process.kill(pid, 0),
-        (error: unknown) => error instanceof Error && "code" in error && error.code === "ESRCH");
+      for (const pid of [successor.pid, -successor.pid]) assert.throws(() => process.kill(pid, 0), isNotOurProcess);
       const descriptors = spawnSync("lsof", ["-nP", "-t", "+D", paths.repoRoot], { encoding: "utf8" });
       assert.equal(descriptors.error, undefined); assert.equal(descriptors.status, 1);
       assert.equal(descriptors.stdout, ""); assert.equal(descriptors.stderr, "");
@@ -374,7 +378,7 @@ export function createStorageRestoreTestWorld() {
       process.kill(pid, 0);
       return { state: "present" };
     } catch (error) {
-      return { state: typeof error === "object" && error !== null && Reflect.get(error, "code") === "ESRCH" ? "absent" : "present" };
+      return { state: isNotOurProcess(error) ? "absent" : "present" };
     }
   }
   const cleanup = async () => {
@@ -382,8 +386,7 @@ export function createStorageRestoreTestWorld() {
       if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) process.kill(-child.pid, 'SIGKILL');
       await ending;
       if (child.pid !== undefined) for (const pid of [child.pid, -child.pid]) {
-        assert.throws(() => process.kill(pid, 0), (error: unknown) => error instanceof Error
-          && 'code' in error && error.code === 'ESRCH');
+        assert.throws(() => process.kill(pid, 0), isNotOurProcess);
       }
     }
     attemptChildren.clear();

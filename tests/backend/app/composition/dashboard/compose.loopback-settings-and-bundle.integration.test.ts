@@ -17,6 +17,7 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../.
 import { ProtectedSettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { settingsSetOperations } from "../../../../support/fixtures/settings-operation-fixtures.js";
+import { scaledMs } from "../../../../support/time-scale.js";
 
 const { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, createProfileFixture, cleanup } = createDashboardPortTestWorld(() => {
       vi.mocked(fsyncSync).mockReset();
@@ -226,7 +227,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     } finally {
       await restarted.stop();
     }
-  }, 20_000);
+  }, scaledMs(20_000));
 
   it("serves bootstrap, day, and SSE through a real ephemeral listener and releases it at teardown", async () => {
     const profile = await createProfileFixture(manualClock(new Date()));
@@ -321,7 +322,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
         cause: failures[0],
       });
     }
-  }, 20_000);
+  }, scaledMs(20_000));
   it("built-bundle mode refuses to compose without dist/dashboard/index.html, and serves the bundle beside the API when it exists", async () => {
     const profile = await createProfileFixture(manualClock(new Date("2026-08-28T12:00:00.000Z")));
     const repoRoot = profile.workspace;

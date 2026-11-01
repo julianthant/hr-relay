@@ -1,4 +1,4 @@
-import { testRunService, testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
+import { testRunService, testRunLifecycle, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
@@ -56,7 +56,10 @@ export function createFinalizationTerminalTestWorld() {
   }
 
   function claimQueued(value: FinalizationHarness) {
+    const member = value.database.authority.workerSlots.get(FINALIZATION_WORKER_ID);
+    if (member === undefined) throw new Error("fixture-claim-member-required");
     const claimed = value.database.authority.runs.claimNext({
+      workerLifetime: testWorkerLifetime(value.database, separationsKualiFinalizationDescriptor.id, member.poolIndex).workerLifetime,
       workflow: separationsKualiFinalizationDescriptor.id,
       workerId: FINALIZATION_WORKER_ID,
       now: value.clock.now().toISOString(),

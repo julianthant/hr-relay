@@ -1,3 +1,6 @@
+import { createBoundProfileFixture, createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { afterAll } from "vitest";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { authorityMutationCases, type MutationCase } from "../../../support/helpers/backend/authority-accounting-world.js";
@@ -13,13 +16,18 @@ import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../../support/he
 const { ATOMIC_WRITE_COMMIT, cleanup, databasePaths, CLOCK, BULK_COMMAND_ACCEPTANCE, OPERATOR_XLSX_EXPORT, FAILURE_RECORD, DIAGNOSTIC_BUNDLE, RUN_CHECKPOINT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, databasePath, openDatabase, claimedWorkerId, prepareWorkerSlot, prepareRunning, prepareDelegationOwners, terminalizeForTrust, terminalFailureRequest, terminalSuccessRequest, INTAKE_MANIFEST, OCR_EXTRACTION, DRY_RUN_SCENARIO_RESULT } = createAuthorityAccountingTestWorld();
 
 
-afterEach(cleanup);
+const profiles = createClonedProfileFixtures();
+const heldProfiles: BoundProfileStorageFixture[] = [];
+afterAll(() => profiles.close());
+afterEach(async () => { cleanup(); for (const profile of heldProfiles.splice(0)) await profile.close(); });
 
 describe("native SQLite authority schema", () => {
 
   it("creates a fresh authority at the current schema with one baseline journal row", async () => {
-    const path = await databasePath("fresh-v32.sqlite");
-    (await openDatabase(path)).close();
+    const profile = await createBoundProfileFixture({ pending: "storage" });
+    heldProfiles.push(profile);
+    NativeAuthorityDatabase.initializeProfile(profile.admission, CLOCK);
+    const path = profile.path;
 
     const raw = new DatabaseSync(path, { readOnly: true });
     try {
@@ -93,24 +101,29 @@ describe("native SQLite authority schema", () => {
 describe("authority generation accounting", () => {
   const cases: readonly MutationCase[] = authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT });
 
-  it("#16 enumerates every current deletion guard and each aborts without an admitted owner deletion", async () => {
-    const declarations = SQLITE_MIGRATIONS.flatMap(({ statements }) => statements.flatMap(statement =>
+  const declarations = SQLITE_MIGRATIONS.flatMap(({ statements }) => statements.flatMap(statement =>
       [...statement.matchAll(/CREATE TRIGGER\s+([a-z0-9_]+)\s+BEFORE DELETE ON "?([a-z0-9_]+)"?[\s\S]*?BEGIN SELECT RAISE\(ABORT,'([^']+)'\); END;?/gu)]
         .map(match => ({ name: match[1], tableName: match[2], message: match[3] }))));
-    const expected = [...new Map(declarations.map(trigger => [trigger.name, trigger])).values()];
+  const expected = [...new Map(declarations.map(trigger => [trigger.name, trigger])).values()];
+  it("#16 enumerates every current deletion guard and each aborts without an admitted owner deletion", async () => {
     assert.ok(expected.length > 0, "deletion guard census must not be empty");
-    const inventory = await openDatabase();
+    const profile = await profiles.create(); heldProfiles.push(profile);
+    const inventory = await openDatabase(profile.path);
     const inventoryPath = databasePaths.get(inventory); assert.ok(inventoryPath);
     const rawInventory = new DatabaseSync(inventoryPath);
     try {
       const actual = rawInventory.prepare("SELECT name FROM sqlite_schema WHERE type='trigger' AND sql LIKE '%BEFORE DELETE ON%' ORDER BY name").all();
       assert.deepEqual(actual.map(row => row.name), expected.map(trigger => trigger.name).sort());
     } finally { rawInventory.close(); }
-    for (const trigger of expected) {
+  });
+
+  it.each(expected)("#16 deletion guard $name aborts without an admitted owner deletion", async trigger => {
       assert.ok(trigger.tableName); assert.ok(trigger.message); assert.ok(trigger.name);
       assert.match(trigger.tableName, /^[a-z0-9_]+$/u);
-      const database = await openDatabase();
+      const profile = await profiles.create(); heldProfiles.push(profile);
+      const database = await openDatabase(profile.path);
       const path = databasePaths.get(database); assert.ok(path);
+      let mutation: MutationCase | undefined;
       if (trigger.name === "commands_bulk_retained") {
         database.authority.commands.acceptBulk(BULK_COMMAND_ACCEPTANCE);
       } else if (trigger.tableName === "timeline_events") {
@@ -123,7 +136,7 @@ describe("authority generation accounting", () => {
           sheets: [{ id: "sheet", name: "Sheet", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "retained" }] }] }],
         });
       } else if (trigger.tableName !== "database_upgrades") {
-        const mutation = cases.find(({ table }) => table === trigger.tableName);
+        mutation = cases.find(({ table }) => table === trigger.tableName);
         assert.ok(mutation, `${trigger.name} needs a current owner fixture`);
         if (mutation.table !== "settings" && mutation.table !== "settings_snapshots") database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
         mutation.prepare?.(database);
@@ -136,6 +149,6 @@ describe("authority generation accounting", () => {
         assert.throws(() => raw.exec(`DELETE FROM "${trigger.tableName}"`),
           error => error instanceof Error && error.message === trigger.message, trigger.name);
       } finally { raw.close(); }
-    }
+      mutation?.cleanup?.(database);
   });
 });

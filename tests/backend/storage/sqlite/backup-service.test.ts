@@ -30,6 +30,7 @@ import { ProtectedSettingsCommandRequestSchema } from "../../../../src/rules/com
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { scaledMs } from "../../../support/time-scale.js";
 const expectedTables = AUTHORITY_TABLE_REGISTRY.map(({name,classification})=>({name,classification}))
   .sort((left,right)=>left.name.localeCompare(right.name));
 const cleanups: (() => void | Promise<void>)[] = [];
@@ -359,5 +360,5 @@ describe("native authority backup", () => {
       }finally{held.release();recovery.admission.release();}
       expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime),fault).toThrow(/unfinished restoring/u);
     }
-  },30_000);
+  }, scaledMs(30_000));
 });

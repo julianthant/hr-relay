@@ -6,24 +6,21 @@ import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admi
 import { acquireInstallation } from "../../../../src/backend/storage/admission/installation.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-it("keeps registry entry lease freshness and scope refusal precedence", async () => {
+it("keeps registry entry admission freshness and scope refusal precedence", async () => {
   const profile = await createBoundProfileFixture({ sharedMachine: true });
   try {
-    const directory = join(profile.workspace, ".tracker", "control", "leases");
-    const before = new Set(readdirSync(directory));
+    const directory = join(profile.workspace, ".tracker", "control");
+    const before = readdirSync(directory);
     const lease = acquireInstallation(profile.workspace, "shared", profile.lifetime);
     const admission = RuntimeAdmission.fromInstallationLease(lease);
     try {
       assert.equal(admission.readProfileRegistry().profiles[0]?.profileId, profile.admission.profileBinding.profileId);
-      const added = readdirSync(directory).filter(name => !before.has(name));
-      assert.equal(added.length, 1);
-      const name = added[0];
-      assert.ok(name !== undefined);
-      const leasePath = join(directory, name);
+      assert.deepEqual(readdirSync(directory), before, "admission does not publish per-process lease files");
+      const leasePath = join(directory, "profile-registry.json");
       const leaseBytes = readFileSync(leasePath);
       try {
         chmodSync(leasePath, 0o644);
-        assert.throws(() => admission.readProfileRegistry(), /runtime-control: unsafe file/u);
+        assert.throws(() => admission.readProfileRegistry(), { message: "directory-integrity: credential lock permissions or identity are invalid" });
       } finally { chmodSync(leasePath, 0o600); }
       try {
         writeFileSync(leasePath, "{");

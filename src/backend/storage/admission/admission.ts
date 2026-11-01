@@ -1,5 +1,5 @@
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
-import { assertOfflineMaintenanceForProcessRoot, acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, prepareStoppedDeviceRecertification, type StoppedDeviceRecertification, type DeviceRecertificationAuthorization, assertStoppedMachineMaintenance, completeStoppedDuoPublicationRecovery as completeStoppedDuoRecoveryClaim, issueStoppedDuoPublicationRecovery as issueStoppedDuoRecoveryClaim, readIssuedDuoContinuity, requireStoppedControlProfileInventory, type DuoPublicationRecoveryClaim, type ExistingAuthorityEvidence, type InstallationLease, type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory, type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier, type RelocationVerifier, type RuntimeLocator, type RuntimePair, type ProfileRestoreContext, type ErasureRequestIdentity, type VerifiedSourceControlEntries, type AuthorityRestoreInput, type AuthorityRestoreVerifier, type CompletedRestoreCustody, type StoppedControlProfileInventory, type StoppedProfileControlUpgradeAdmission } from "./installation.js";
+import { PROFILE_CUSTODY_PROOF, assertOfflineMaintenanceForProcessRoot, acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, prepareStoppedDeviceRecertification, type StoppedDeviceRecertification, type DeviceRecertificationAuthorization, assertStoppedMachineMaintenance, completeStoppedDuoPublicationRecovery as completeStoppedDuoRecoveryClaim, issueStoppedDuoPublicationRecovery as issueStoppedDuoRecoveryClaim, readIssuedDuoContinuity, requireStoppedControlProfileInventory, type DuoPublicationRecoveryClaim, type ExistingAuthorityEvidence, type InstallationLease, type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory, type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier, type RelocationVerifier, type RuntimeLocator, type RuntimePair, type ProfileRestoreContext, type ErasureRequestIdentity, type VerifiedSourceControlEntries, type AuthorityRestoreInput, type AuthorityRestoreVerifier, type CompletedRestoreCustody, type StoppedControlProfileInventory, type StoppedProfileControlUpgradeAdmission } from "./installation.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, hasUnprovedSourceClosure } from "../source-closure.js";
@@ -16,7 +16,7 @@ import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { PreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { assertFinishedProfileOnboarding, SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation, type ProfileRegistryDocument, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
-import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
+import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, outermostOperationProof, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { assertLiveProfileDatabaseBinding, assertCanonicalProfileBinding, captureCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
@@ -724,8 +724,14 @@ export class RuntimeAdmission {
         this.#exclusiveInstallationLease().assertProfileRestoreHeld(restoreCustody.input, restoreCustody.restore);
         return;
       }
+      const proof = outermostOperationProof();
+      const verified = proof?.slots.get(PROFILE_CUSTODY_PROOF);
+      if (verified instanceof WeakSet && verified.has(claim)) return;
       if (!noSymlinkAncestry(root, ancestry)) throw new Error("profile-storage-root-disappeared");
       requireRegisteredProfileStorageClaim(claim, this, "custody");
+      if (proof === undefined) return;
+      if (verified instanceof WeakSet) verified.add(claim);
+      else proof.slots.set(PROFILE_CUSTODY_PROOF, new WeakSet([claim]));
     };
     const lease = this.#authority as InstallationLease;
     assertInstallationLease(lease);

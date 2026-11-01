@@ -6,7 +6,7 @@ import { createRunLogStreamStore } from "../../../../src/backend/logs/run-log-st
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createProtectedSettingsRuntimeReader } from "../../../../src/backend/runtime/settings/settings-runtime.js";
-import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
+import { createBoundProfileFixture, boundProfileCredentials, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { RunLogsStreamHub } from "../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -153,6 +153,7 @@ export const disposeHttpRouteHarness = async () => {
 };
 
 export async function harness(options: {
+  readonly profileFixture?: () => Promise<BoundProfileStorageFixture>;
   readonly protectedCommandAcceptedAt?: DashboardAppDeps["protectedCommandAcceptedAt"];
   readonly requestIdentity?: RequestIdentityCheckpoint;
   readonly intake?: IntakeService;
@@ -176,7 +177,7 @@ export async function harness(options: {
     real: DashboardAppDeps["commandJournal"],
   ) => DashboardAppDeps["commandJournal"];
 } = {}): Promise<Harness> {
-  const profile = await createBoundProfileFixture();
+  const profile = await (options.profileFixture ?? createBoundProfileFixture)();
   const root = profile.workspace, stateRoot = profile.stateRoot;
   const settingsPath = join(root, ".tracker", "settings", "settings.json");
   const clock = manualClock(AT);
@@ -185,8 +186,10 @@ export async function harness(options: {
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 1000, migrationOwner: "bff-flow-test" },
     clock,
   );
-  seedInitialSettingsRuntimeConfig(database, clock);
-  database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);
+  database.withAuthorityTransaction(repositories => {
+    seedInitialSettingsRuntimeConfig(database, clock);
+    repositories.configSnapshots.insert(CONFIG_SNAPSHOT);
+  });
   assert.equal("projections" in database, false, "the retired projection repositories have no database capability");
   const artifacts = createContentAddressedArtifactWriter({
     admission: profile.admission,

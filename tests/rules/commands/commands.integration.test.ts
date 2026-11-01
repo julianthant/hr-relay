@@ -1,11 +1,11 @@
-import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
+import { afterAll, afterEach, describe, it, onTestFinished } from "vitest";
+import { createClonedProfileFixtures } from "../../support/helpers/admission-fixture.js";
 import { createSettingsAuthorityTestWorld } from "../../support/helpers/backend/settings-authority-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it, onTestFinished } from "vitest";
 import { inspectOpenDatabase } from "../../../src/backend/storage/sqlite/backup-inspection.js";
 import { CanonicalClaimNextRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
@@ -30,13 +30,16 @@ import { failure, foundationFixture, HASH, id, NOW as FOUNDATION_NOW, terminaliz
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 {
-const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+const profiles: Awaited<ReturnType<typeof profileFixtures.create>>[] = [];
 const opened: AuthorityDatabase[] = [];
 const now = "2026-09-08T12:00:00.000Z";
 const clock = manualClock(new Date(now));
 async function fixture() {
-  const profile = await createBoundProfileFixture(); profiles.push(profile);
+  const profile = await profileFixtures.create(); profiles.push(profile);
   const { stateRoot, path } = profile;
   const open = () => { const db = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "command-group-test" }, clock); opened.push(db); return db; };
   return { path, stateRoot, open };
@@ -336,12 +339,12 @@ describe("F shared transactional storage contracts",()=>{
 }
 
 {
-const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+const profiles: Awaited<ReturnType<typeof profileFixtures.create>>[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 const CLOCK = manualClock(new Date(NOW));
 
 async function databasePath(): Promise<string> {
-  const profile = await createBoundProfileFixture();
+  const profile = await profileFixtures.create();
   profiles.push(profile);
   return profile.path;
 }

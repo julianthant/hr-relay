@@ -1,9 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './helpers/fixtures.js';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
-import { attachShellA11y } from './helpers/shell-proof.js';
+import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
+import { attachShellA11y } from './helpers/shell-proof.js';
 import { harness, disposeHttpRouteHarness } from '../support/helpers/backend/http-route-harness.js';
 
 const evidence = resolve('.work/HUB-WIRE-1-R2');
@@ -13,11 +14,10 @@ async function rectangles(page: Page) {
 }
 for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440, 1920, 2560]) for (const theme of ['light', 'dark']) {
   const name = `hub-integration-${engine}-${width}-${theme}`;
-  test(`HUB integration matrix ${engine} ${width} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `${name}.a11y.yml` }] }, async ({ playwright }, info) => {
-    ensureParityBundle(); mkdirSync(evidence, { recursive: true });
-    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
+  test(`HUB integration matrix ${engine} ${width} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `${name}.a11y.yml` }] }, async ({ browserFor, hubServer: server }, info) => {
+    mkdirSync(evidence, { recursive: true });
     const h = await harness();
-    const browser = await playwright[engine].launch(), page = await browser.newPage({ viewport: { width, height: width === 1440 ? 900 : width === 1920 ? 1080 : 1440 } });
+    const browser = await browserFor(engine), page = await browser.newPage({ viewport: { width, height: width === 1440 ? 900 : width === 1920 ? 1080 : 1440 } });
     const errors: string[] = [], writes: string[] = [], metrics: object[] = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -52,6 +52,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
         await expect(menu).toHaveCSS('transform', 'none');
         const after = await rectangles(page); expect(after).toEqual(before);
         const items = menu.locator('[role^=menuitem]');
+        if (label === 'Ask before every action') await expect(items).toHaveCount(1);
         await items.first().hover();
         const hover = await items.first().evaluate(node => ({ fill: getComputedStyle(node).backgroundColor, ink: getComputedStyle(node).color }));
         expect(hover.fill).toBe(theme === 'light' ? 'rgb(235, 235, 235)' : 'rgb(50, 50, 50)');
@@ -60,7 +61,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
         expect(focus.fill).toBe(theme === 'light' ? 'rgb(148, 148, 148)' : 'rgb(176, 176, 176)');
         await page.keyboard.press('End'); await expect(items.last()).toBeFocused();
         await page.keyboard.press('Home'); await expect(items.first()).toBeFocused();
-        await page.keyboard.press('ArrowDown'); await expect(items.nth(label === 'Voice input' ? 0 : 1)).toBeFocused();
+        await page.keyboard.press('ArrowDown'); await expect(items.nth(label === 'Voice input' || label === 'Ask before every action' ? 0 : 1)).toBeFocused();
         const menuBox = (await menu.boundingBox())!, triggerBox = (await trigger.boundingBox())!;
         expect(Math.abs(triggerBox.y - menuBox.y - menuBox.height - 8)).toBeLessThanOrEqual(0.5);
         expect(menuBox.x).toBeGreaterThanOrEqual(8); expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(width - 8);
@@ -169,17 +170,15 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
       expect(errors).toEqual([]); expect(writes).toHaveLength(3);
       expect(writes.every(path => /^\/api\/v1\/workbooks(?:\/[^/]+\/save)?$/u.test(path))).toBe(true);
       writeFileSync(resolve(evidence, `${name}.json`), JSON.stringify({ engine, width, theme, metrics, errors, writes }, null, 2));
-    } finally { await browser.close(); await server.close(); await disposeHttpRouteHarness(); }
+    } finally { await page.context().close(); await disposeHttpRouteHarness(); }
   });
 }
 
 for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440, 1920, 2560]) for (const theme of ['light', 'dark']) for (const finding of ['draft', 'ordinary title', 'workflow title'] as const) {
   const name = `hub-r2-${engine}-${width}-${theme}-${finding.replaceAll(' ', '-')}`;
-  test(`HUB R2 ${finding} survives mounted chat transitions ${engine} ${width} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `${name}.a11y.yml` }] }, async ({ playwright }, info) => {
-    ensureParityBundle();
-    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
+  test(`HUB R2 ${finding} survives mounted chat transitions ${engine} ${width} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `${name}.a11y.yml` }] }, async ({ browserFor, hubServer: server }, info) => {
     const h = await harness();
-    const browser = await playwright[engine].launch(), page = await browser.newPage({ viewport: { width, height: width === 1440 ? 900 : width === 1920 ? 1080 : 1440 } });
+    const browser = await browserFor(engine), page = await browser.newPage({ viewport: { width, height: width === 1440 ? 900 : width === 1920 ? 1080 : 1440 } });
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -253,12 +252,11 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
       mkdirSync(evidence, { recursive: true });
       await panel.screenshot({ path: resolve(evidence, `${name}.png`), animations: 'disabled' });
       expect(errors).toEqual([]);
-    } finally { await browser.close(); await server.close(); await disposeHttpRouteHarness(); }
+    } finally { await page.context().close(); await disposeHttpRouteHarness(); }
   });
 }
 
 test('HUB served product uses typed answers and refusals without sample execution or policy authority', { annotation: [{ type: 'required-a11y-evidence', description: 'hub-served.a11y.yml' }] }, async ({ page }, info) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
   const writes: string[] = [], errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));

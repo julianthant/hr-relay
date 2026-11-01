@@ -97,7 +97,7 @@ describe("complete operation display action binding", () => {
     assert.ok(snapshot);
     database.authority.runs.enqueue(queued);
     const authorityGeneration = database.getMeta().authorityGeneration;
-    database.close();
+    harness.authority.closeDatabase();
 
     const reopened = SyntheticAuthorityDatabase.open(
       { path, busyTimeoutMs: 250, migrationOwner: "operation-display-snapshot-reopen-test" },
@@ -117,7 +117,7 @@ describe("complete operation display action binding", () => {
     const harness = await executorHarness({ descriptor: actionBindingCompiled.descriptor });
     const { database, clock, path } = harness.authority;
     database.authority.runs.enqueue(actionBindingQueuedRun(clock.now().toISOString()));
-    database.close();
+    harness.authority.closeDatabase();
 
     const raw = new DatabaseSync(path);
     try {

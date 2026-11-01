@@ -1,10 +1,11 @@
+import { createHash } from "node:crypto";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import type { ExecutorSpanEvent, SpanEmitter } from "../../../../src/backend/logs/span-emitter.js";
 import type { WorkerLoopDependencies } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { sequentialIdFactory, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
 import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
-import { fixtureDuoCeremonyGates } from "../duo-ceremony-fixtures.js";
+import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import {
   happySessionHarness,
   ManualScheduler,
@@ -24,7 +25,7 @@ interface LoopHarness {
   readonly stop: AbortController;
 }
 
-export async function createWorkerLoopHarness(
+export function createWorkerLoopHarness(
   authority: AuthorityHarness,
   workerSuffix: string,
   idPrefix: string,
@@ -33,7 +34,7 @@ export async function createWorkerLoopHarness(
     onSpan?: () => void;
     exitWhenIdle?: boolean;
   }> = {},
-): Promise<LoopHarness> {
+): LoopHarness {
   const sessions = options.sessions ?? happySessionHarness();
   const scheduler = new ManualScheduler(authority.clock, 0);
   const stop = new AbortController();
@@ -63,7 +64,9 @@ export async function createWorkerLoopHarness(
       scheduler,
       taskDeadlineMs: 60_000,
       sessionAcquireMs: 20_000,
-      duoCeremony: await fixtureDuoCeremonyGates(authority.clock),
+      duoCeremony: duoCeremonyGatesOver(authority.database, authority.clock, scheduler, {
+        credentialKey: createHash("sha256").update(`worker-loop-duo:${workerSuffix}`).digest("hex"),
+      }),
       heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
       idleRepollMs: 1_000,
       log: recordingLogger().log,

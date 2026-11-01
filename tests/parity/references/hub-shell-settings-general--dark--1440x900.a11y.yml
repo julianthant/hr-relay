@@ -55,7 +55,7 @@
       - text: Animations Subtle motion. Your reduced-motion preference takes priority.
     - group "Assistant permission":
       - text: Assistant permission Choose when Relay asks before taking an action.
-      - button "Ask only before submits"
+      - button "Ask before every action"
     - heading "Employment" [level=2]
     - group "Employment":
       - text: Job end date (required)

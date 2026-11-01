@@ -1,10 +1,15 @@
+import { afterAll, it, vi } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
+import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { it,vi } from "vitest";
 import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
@@ -13,14 +18,16 @@ import { DiagnosticBundleSchema } from "../../../../src/models/trust/diagnostic.
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { failure,HASH,NOW } from "../../../support/helpers/database-foundation/fixtures.js";
 import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 async function fixture() {
-  const profile = await createBoundProfileFixture();
+  const profile = await profileFixtures.create();
   const root = profile.stateRoot, path = profile.path;
   const clock = manualClock(new Date("2026-09-21T12:00:00Z"));
   let db = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "search-test" }, clock);
@@ -29,7 +36,7 @@ async function fixture() {
     descriptors: { resolve: () => undefined }, authority: { readSnapshot: read => db.withAuthorityReadSnapshot(() => read({
       authorityGeneration: db.getMeta().authorityGeneration, searchRuns: input => db.authority.runs.search(input),
     })) } });
-  return { root, path, clock, get db(){return db;}, service, reopen(){db.close();db=AuthorityDatabase.open({path,busyTimeoutMs:500,migrationOwner:"search-reopen"},clock);}, async dispose() { db.close(); await profile.close(); } };
+  return { root, path, clock, get db(){return db;}, service, reopen(){releaseSeededWriteOwners(db, clock.now().toISOString());db.close();db=AuthorityDatabase.open({path,busyTimeoutMs:500,migrationOwner:"search-reopen"},clock);}, async dispose() { releaseSeededWriteOwners(db, clock.now().toISOString()); db.close(); await profile.close(); } };
 }
 
 it("searches registered and historical workflow metadata without exposing raw inputs or inventing actors", async () => {
@@ -144,10 +151,10 @@ it("publishes declared subject names, authentic recorded actors and typed failur
     assert.ok(claimed.state === "claimed");
     const claim = { workerId, claimGeneration: claimed.run.claimGeneration };
     const validating = f.db.authority.runs.transition({ runId: queued.envelope.runId, expectedVersion: claimed.run.version, claim, now: NOW,
-      lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW } });
+      lifecycle: { state: "validating", workerId, workerLifetime: testWorkerLifetime(f.db, "person-lookup", claimMember1.poolIndex).workerLifetime, claimedAt: NOW, heartbeatAt: NOW } });
     assert.ok(validating.state === "applied");
     const running = f.db.authority.runs.transition({ runId: queued.envelope.runId, expectedVersion: validating.run.version, claim, now: NOW,
-      lifecycle: { state: "running", workerId, claimedAt: NOW, heartbeatAt: NOW, currentNodeId: "searching" } });
+      lifecycle: { state: "running", workerId, workerLifetime: testWorkerLifetime(f.db, "person-lookup", claimMember1.poolIndex).workerLifetime, claimedAt: NOW, heartbeatAt: NOW, currentNodeId: "searching" } });
     assert.ok(running.state === "applied");
     const run = running.run, e = run.envelope;
     f.db.registerRunSearchDeclarations([{ workflow: e.workflow, version: e.descriptorVersion, contractFingerprint: e.contractFingerprint, subjectProjection: descriptor.subjectProjection }]);
@@ -232,7 +239,20 @@ it("selects each reachable lifecycle, shape, retained version and mode without n
           if(target!=="validating") {
             advance({state:"running",...ownership});
             if(target==="parked-gate")advance({state:target,gateId:"synthetic-review",parkedAt:queued.createdAt,resumeAt:"review"});
-            else if(target==="parked-write")advance({state:target,writeIntentId:queued.envelope.runId,intentGeneration:1,parkedAt:queued.createdAt,code:"unknown",message:"Synthetic unknown; do not retry"});
+            else if(target==="parked-write") {
+              const bindingProof = { ...WRITE_INTENT_ATTEMPTING.bindingProof, runId: queued.envelope.runId, attempt: queued.envelope.attempt,
+                afterPrepareSpanPath: `${queued.envelope.traceId}/termination/prepare` };
+              const bindingProofDigest = deriveWriteBindingProofDigest(bindingProof);
+              const intent = { ...WRITE_INTENT_ATTEMPTING, bindingProof, bindingProofDigest, writeIntentId: queued.envelope.runId,
+                workflowId: queued.envelope.workflow, itemId: queued.envelope.itemId,
+                runId: queued.envelope.runId, runAttempt: queued.envelope.attempt };
+              fenceWriteFixture(f.db, { intent, attempt: { ...WRITE_ATTEMPT,
+                writeIntentId: intent.writeIntentId, runId: intent.runId, runAttempt: intent.runAttempt, bindingProof, bindingProofDigest } });
+              f.db.authority.writeIntents.parkAttempt({ writeIntentId: intent.writeIntentId, generation: 1,
+                expectedVersion: 1, code: "unknown", message: "Synthetic unknown; do not retry",
+                authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "Synthetic unknown"), now: queued.createdAt });
+              advance({state:target,writeIntentId:intent.writeIntentId,intentGeneration:1,parkedAt:queued.createdAt,code:"unknown",message:"Synthetic unknown; do not retry"});
+            }
             else if(target!=="running")advance({state:"terminal",outcome:target,endedAt:queued.createdAt});
           }
         }

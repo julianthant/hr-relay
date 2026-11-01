@@ -75,6 +75,8 @@ export async function assertMonotonicFrozen(page: Page): Promise<void> {
 export async function gotoAppState(page: Page, baseUrl: string, route: AppRoute): Promise<void> {
   await installFrozenMonotonic(page);
   await page.goto(routeUrl(baseUrl, route), { waitUntil: "domcontentloaded" });
+  // Observe readiness each frame before the assertion's retry backoff.
+  await page.waitForFunction(() => document.querySelector("[data-parity-ready='true']") !== null, undefined, { timeout: 30_000 });
   await expect(page.locator("[data-parity-ready='true']")).toBeVisible({ timeout: 30_000 });
   // Enter transitions are one frame of opacity/translate; settle them so a
   // capture is of the resting state rather than of the animation.

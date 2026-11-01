@@ -14,6 +14,7 @@ import type { BrowserSystemId, WorkerId } from "../../../src/rules/identity/ids.
 import { AuthorityDatabase, syntheticDatabasePath } from "./synthetic-database-admission.js";
 import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "./registered-workflows.js";
+import { closeFixtures } from "./duo-ceremony-cleanup.js";
 
 export const FIXTURE_DUO_CREDENTIAL_KEY = FingerprintSchema.parse("d0".repeat(32));
 
@@ -26,15 +27,6 @@ const realScheduler: MonotonicDeadlineScheduler = {
     return { cancel: () => { clearTimeout(handle); } };
   },
 };
-
-const closeFixtures: (() => void | Promise<void>)[] = [];
-export async function closeDuoCeremonyFixtures(): Promise<void> {
-  const failures: unknown[] = [];
-  for (const close of closeFixtures.splice(0).reverse()) {
-    try { await close(); } catch (error) { failures.push(error); }
-  }
-  if (failures.length > 0) throw new AggregateError(failures, "Duo fixture cleanup failed");
-}
 
 export async function openDuoCeremonyLeaseDatabase(clock: Clock): Promise<AuthorityDatabase> {
   const profile = await createBoundProfileFixture();
@@ -58,11 +50,11 @@ export function duoCeremonyGatesOver(
   database: AuthorityDatabase,
   clock: Clock,
   scheduler: MonotonicDeadlineScheduler = realScheduler,
-  options: Readonly<{ sessionAcquireMs?: number; graceMs?: number; pollIntervalMs?: number }> = {},
+  options: Readonly<{ sessionAcquireMs?: number; graceMs?: number; pollIntervalMs?: number; credentialKey?: string }> = {},
 ): DuoCeremonyGateFactory {
   return createDuoCeremonyGateFactory({
     leases: database.authority.duoCeremonyLeases,
-    credentialKey: FIXTURE_DUO_CREDENTIAL_KEY,
+    credentialKey: options.credentialKey === undefined ? FIXTURE_DUO_CREDENTIAL_KEY : FingerprintSchema.parse(options.credentialKey),
     clock,
     scheduler,
     sessionAcquireMs: options.sessionAcquireMs ?? FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
@@ -82,11 +74,13 @@ export async function fixtureDuoCeremonyGate(
   testWorkerPorts(database, clock, { path, descriptor: personLookupDescriptor, poolIndex: 1 });
   const slot = database.authority.workerSlots.list(personLookupDescriptor.id).find(candidate => candidate.poolIndex === 1);
   assert.equal(slot?.workerId, workerId, "recipe gate must use its actually admitted worker");
-  return duoCeremonyGatesOver(database, clock, realScheduler).openGate({
+  const gate = duoCeremonyGatesOver(database, clock, realScheduler).openGate({
     workerId,
     system,
     envelopeDeadlineMonotonicMs: clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
     cancelCeremony: () => undefined,
     signal: new AbortController().signal,
   });
+  closeFixtures.push(() => { gate.dispose(); });
+  return gate;
 }

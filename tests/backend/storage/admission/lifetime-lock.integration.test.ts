@@ -18,6 +18,7 @@ import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admi
 import { runOfflineAuthorityRestoreRecovery } from "../../../../src/backend/app/composition/storage-compose.js";
 import { runOfflineStorageRelocation } from "../../../../src/backend/app/composition/storage/relocate.js";
 import { runOfflineQueuedRunCancellation } from "../../../../src/backend/storage/maintenance/cancel-queued-runs.js";
+import { scaledMs } from "../../../support/time-scale.js";
 
 const ReadySchema = z.strictObject({ kind: z.literal("held"), port: z.number().int().positive(), workerPid: z.number().int().positive() });
 
@@ -339,7 +340,7 @@ it("admits exactly one of sixteen kernel singleton contenders and retains it thr
     "kernel contention fixture closure unproved", { cause: primary?.error ?? failures[0] });
   await rm(directory, { recursive: true });
   if (primary !== undefined) throw primary.error;
-}, 30_000);
+}, scaledMs(30_000));
 
 for (const prior of ["valid", "malformed"] as const) it(`clears only authenticated ${prior} fixed locks during one root startup`, async () => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "runtime-fixed-lock-startup-")));

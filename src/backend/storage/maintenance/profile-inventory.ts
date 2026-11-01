@@ -34,10 +34,18 @@ export interface RetainedBrowserProfile {
   readonly cleanupCompleted: boolean;
 }
 
+function configuredBrowserRoots(root: string, custody: BrowserProfileCustody, savedBrowserRoot: string): string[] {
+  // Unreferenced historical snapshots carry paths, not custody of another profile's files.
+  const historical = custody.configSnapshots.map(snapshot => snapshot.config.paths.browserProfileRoot).filter(path => {
+    const child = relative(root, path);
+    return child !== "" && child !== ".." && !child.startsWith(`..${sep}`) && !isAbsolute(child);
+  });
+  return [...new Set([savedBrowserRoot, ...historical])];
+}
+
 export function retainedBrowserProfiles(root: string, custody: BrowserProfileCustody, savedBrowserRoot: string, browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">) {
   const profiles = new Map<string, RetainedBrowserProfile>();
-  const roots = [...new Set([...custody.configSnapshots.map(snapshot => snapshot.config.paths.browserProfileRoot), savedBrowserRoot])];
-  for (const path of roots) assertBrowserRoot(root, path);
+  for (const path of configuredBrowserRoots(root, custody, savedBrowserRoot)) assertBrowserRoot(root, path);
   for (const browser of custody.browsers) {
     const slot = custody.slots.find(value => value.workerId === browser.workerId);
     if (slot === undefined) throw new Error("profile-inventory-browser-membership-unavailable");
@@ -46,6 +54,7 @@ export function retainedBrowserProfiles(root: string, custody: BrowserProfileCus
       ? [...new Set(custody.configSnapshots.filter(snapshot => snapshot.fingerprint === browser.configFingerprint).map(snapshot => snapshot.config.paths.browserProfileRoot))]
       : [join(root, "scratch", "live-smoke", verification.profileRunId, "browsers")];
     const profileRoot = selectedRoots[0];
+    if (profileRoot !== undefined && verification === undefined) assertBrowserRoot(root, profileRoot);
     if (selectedRoots.length !== 1 || profileRoot === undefined || verification !== undefined && verification.system !== browser.system
       || browser.profileDirectory !== browserClosure.workerDirectory({profileRoot,slotOrdinal:slot.ordinal,system:browser.system})) throw new Error("profile-inventory-browser-membership-unavailable");
     const control = custody.controls.find(value => value.commandId === slot.retirementCommandId);
@@ -129,7 +138,7 @@ function stoppedBackupBrowserCensus(admission: RuntimeAdmission, clock: Clock, p
   layout: Pick<ProfileBrowserClosure, "workerDirectory">) {
   const { custody, config } = stoppedBrowserFacts(admission, clock, processLockRoot);
   const retained = retainedBrowserProfiles(admission.stateRoot, custody, config.paths.browserProfileRoot, layout);
-  const configuredRoots = new Set([config.paths.browserProfileRoot, ...custody.configSnapshots.map(row => row.config.paths.browserProfileRoot)]);
+  const configuredRoots = new Set(configuredBrowserRoots(admission.stateRoot, custody, config.paths.browserProfileRoot));
   const roots = [...new Set([...configuredRoots, ...retained.map(profile => profile.profileRoot)])].sort();
   const identities: Array<{ path: string; device: number; inode: number; mode: number; owner: number }> = [];
   const profiles = new Map<string, RetainedBrowserProfile>(retained.map(profile => [profile.profileDirectory, profile]));
@@ -372,8 +381,7 @@ function enumerateCredentialMembership<Custody extends CredentialMembershipCusto
   suspects: readonly Readonly<{ path: string; sha256: string; companion: boolean }>[],
   browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>) {
     const profiles = retainedBrowserProfiles(root, custody, savedBrowserRoot, browserClosure);
-    const browserRootPaths = [...new Set([...custody.configSnapshots.map(snapshot => snapshot.config.paths.browserProfileRoot), savedBrowserRoot,
-      ...profiles.map(profile => profile.profileRoot)])];
+    const browserRootPaths = [...new Set([...configuredBrowserRoots(root, custody, savedBrowserRoot), ...profiles.map(profile => profile.profileRoot)])];
     for (const path of browserRootPaths) assertPath(path);
     if (browserRootPaths.some(path => browserRootPaths.some(other => other !== path && path.startsWith(`${other}${sep}`)))) throw new Error("profile-inventory-browser-root-ambiguous");
     const identities: ReturnType<typeof inventoryFileIdentity>[] = [], copies: string[] = [], loginDataPaths: string[] = [], unsupported: string[] = [];

@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { ProfileDatabaseBindingSchema, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
+import { outermostOperationProof } from "../configuration/credential-safe-file.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isSupportedStoppedAuthoritySchemaVersion } from "./migrations.js";
 export function countUcsdLoginRows(path: string): number | "unreadable" | "absent" {
   const info = lstatSync(path, { throwIfNoEntry: false });
@@ -250,6 +251,10 @@ export function assertLiveProfileDatabaseBinding(path: string, expected: Profile
     || process.getuid !== undefined && before.uid !== BigInt(process.getuid())) throw new Error("profile-database-identity-invalid");
   const identity = (stats: BigIntStats) => [stats.dev, stats.ino, stats.mode, stats.uid, stats.nlink].join(":");
   const witness = identity(before);
+  const proof = outermostOperationProof();
+  const proofKey = `live-binding:${path}:${expected.installationId}:${expected.profileId}`;
+  const proofWitness = `${witness}:${before.size}:${before.mtimeNs}`;
+  if (proof?.slots.get(proofKey) === proofWitness) return;
   const observed = spawnSync(process.execPath, ["--input-type=commonjs", "-e", liveBindingScript, path, witness,
     String(CURRENT_AUTHORITY_SCHEMA_VERSION), String(AUTHORITY_APPLICATION_ID)],
   { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
@@ -265,4 +270,5 @@ export function assertLiveProfileDatabaseBinding(path: string, expected: Profile
   const after = lstatSync(path, { bigint: true, throwIfNoEntry: false });
   if (after === undefined || identity(after) !== witness) throw new Error("profile-database-identity-changed");
   if (result.binding.installationId !== expected.installationId || result.binding.profileId !== expected.profileId) throw new Error("profile-database-binding-mismatch");
+  if (`${identity(after)}:${after.size}:${after.mtimeNs}` === proofWitness) proof?.slots.set(proofKey, proofWitness);
 }

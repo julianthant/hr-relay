@@ -133,7 +133,7 @@ import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 export async function resolutionPeer(path: string, lifetime: RuntimeLifetimeLock) {
-  const child = fork(fileURLToPath(new URL("../backend/failure-resolution-peer.ts", import.meta.url)), [path, String(lifetime.port)], { execArgv: ["--import", "tsx"], silent: true });
+  const child = fork(fileURLToPath(new URL("../../../support/processes/failure-resolution-peer.ts", import.meta.url)), [path, String(lifetime.port)], { execArgv: ["--import", "tsx"], silent: true });
   let failure = "";
   child.stderr?.on("data", chunk => { failure += String(chunk); });
   const exited = new Promise<void>((resolve, reject) => {

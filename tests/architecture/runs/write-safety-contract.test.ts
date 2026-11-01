@@ -2,9 +2,11 @@ import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js"
 import { releaseSeededWriteOwners } from "../../support/helpers/timeline-write-fixture.js";
 import { deriveWriteAuthorityReason } from "../../../src/rules/write-safety/write-authority-reason.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
+import { duoCeremonyGatesOver } from "../../support/helpers/duo-ceremony-fixtures.js";
 import { testRunContinuation, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
@@ -116,24 +118,32 @@ describe("write-safety contract completeness (no escape hatch)", () => {
 });
 
 describe("crash recovery routes probe-first with evidence-qualified settlement", () => {
-  async function recoveryWorld() {
+  async function recoveryWorld(reuse?: { profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; snapshot: Buffer }) {
     const clock = manualClock(new Date("2026-08-03T09:00:00.000Z"));
-    const profile = await createBoundProfileFixture();
+    const profile = reuse?.profile ?? await createBoundProfileFixture();
+    if (reuse !== undefined) {
+      for (const suffix of ["-wal", "-shm"]) {
+        const companion = `${profile.path}${suffix}`;
+        if (existsSync(companion)) rmSync(companion);
+      }
+      writeFileSync(profile.path, reuse.snapshot);
+    }
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 250, migrationOwner: "write-safety-guard" },
       clock,
     );
     const world = createWriteFixtureWorld();
     const registry = buildWriteFixtureRegistry(world);
+    const scheduler = new ManualScheduler(clock);
     testWorkerPorts(database, clock, { path: profile.path, descriptor: writeFixtureDescriptor, poolIndex: 1 });
     const recovery = createWriteRecoveryService({
       continuation: testRunContinuation(database, clock),
       stores: registry,
       authority: database,
-      sessions: await writeFixtureSessionManager(writeFixtureSessions(world), registry, clock),
+      sessions: await writeFixtureSessionManager(writeFixtureSessions(world), registry, clock, duoCeremonyGatesOver(database, clock, scheduler)),
       clock,
       ids: sequentialIdFactory("c"),
-      scheduler: new ManualScheduler(clock),
+      scheduler,
       taskDeadlineMs: 60_000,
       operator: "local-operator",
       log: recordingLogger().log,
@@ -155,7 +165,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
         }
         releaseSeededWriteOwners(database, now);
         database.close();
-        await profile.close();
+        if (reuse === undefined) await profile.close();
       },
     };
   }
@@ -163,10 +173,19 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
   it("walks present→validated-backfill, early-absent→wait, stabilized→retryable, throw→park", async () => {
 
     const { parkedAttemptingWriteFixture } = await import("./helpers/write-guard-fixtures.js");
+    const profile = await createBoundProfileFixture();
+    const primed = AuthorityDatabase.open(
+      { path: profile.path, busyTimeoutMs: 250, migrationOwner: "write-safety-guard" },
+      manualClock(new Date("2026-08-03T09:00:00.000Z")),
+    );
+    primed.close();
+    const snapshot = readFileSync(profile.path);
+    const reuse = { profile, snapshot };
 
+    try {
     // present → the SAME proof parser beat ⑥ uses, then atomic backfill.
     {
-      const w = await recoveryWorld();
+      const w = await recoveryWorld(reuse);
       const { writeIntentId } = parkedAttemptingWriteFixture(w.database, w.clock);
       w.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
       const decision = await w.recovery.recover({
@@ -179,7 +198,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
     }
     // one early absence → wait; zero retry authority, zero durable change.
     {
-      const w = await recoveryWorld();
+      const w = await recoveryWorld(reuse);
       const { writeIntentId } = parkedAttemptingWriteFixture(w.database, w.clock);
       w.world.probeResults.push(absentProbeEvidence(w.clock.now().toISOString()));
       const decision = await w.recovery.recover({
@@ -191,7 +210,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
     }
     // stabilized same-key negative evidence → retryable (the ONLY retry path).
     {
-      const w = await recoveryWorld();
+      const w = await recoveryWorld(reuse);
       const { writeIntentId } = parkedAttemptingWriteFixture(w.database, w.clock);
       w.clock.advanceWall(31_000);
       const first = absentProbeEvidence(w.clock.now().toISOString(), "observation:55555555-5555-4555-8555-555555555555");
@@ -209,7 +228,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
     }
     // a throwing probe is unknown → park; never absent, never retry.
     {
-      const w = await recoveryWorld();
+      const w = await recoveryWorld(reuse);
       const { writeIntentId } = parkedAttemptingWriteFixture(w.database, w.clock);
       w.world.probeResults.push(new Error("target system unreachable"));
       const decision = await w.recovery.recover({
@@ -219,6 +238,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
       assert.equal(w.database.authority.writeIntents.get(writeIntentId)?.status, "parked");
       await w.dispose();
     }
+    } finally { await profile.close(); }
   });
 
   it("blocks a second fence for a permanent key in every non-retryable state", async () => {

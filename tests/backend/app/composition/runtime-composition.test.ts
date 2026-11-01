@@ -99,6 +99,7 @@ describe("isolated runtime composition", () => {
       stateRoot: ".tracker/data",
       artifactRoot: ".tracker/data/artifacts",
       backendPort: 3938,
+      lockPort: 3939,
       frontendPort: 5174,
       processLockRoot: ".tracker/data/locks",
       browserProfileRoot: ".tracker/data/browsers",
