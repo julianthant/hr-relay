@@ -18,7 +18,7 @@ export const historicalIncompleteProfileFields = Object.freeze({ firstName: "His
   email: "historical-fixture@ucsd.edu", password: "disposable-historical-fixture" });
 
 function assertClosedWorkspace(workspace: string): void {
-  const result = spawnSync("/usr/sbin/lsof", ["-nP", "+D", workspace, "-Fn"], { encoding: "utf8" });
+  const result = spawnSync("lsof", ["-nP", "+D", workspace, "-Fn"], { encoding: "utf8" });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 1, "historical fixture source closure unproved");
   assert.equal(result.stdout, ""); assert.equal(result.stderr, "");

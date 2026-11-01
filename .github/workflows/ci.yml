@@ -2,6 +2,8 @@ name: CI
 
 # Protected branches only change through pull requests whose up-to-date result already passed,
 # so pushes to them are not re-tested; run the workflow manually for a full check of a branch.
+# Pull requests into staging run static, privacy, unit, integration and architecture; pull requests
+# into main also run parity and the release job.
 on:
   pull_request:
     branches: [staging, main]
@@ -29,7 +31,8 @@ jobs:
       integration: ${{ steps.select.outputs.integration }}
       architecture: ${{ steps.select.outputs.architecture }}
       parity: ${{ steps.select.outputs.parity }}
-      groups: ${{ steps.select.outputs.groups }}
+      ubuntu: ${{ steps.select.outputs.ubuntu }}
+      macos: ${{ steps.select.outputs.macos }}
     steps:
       - uses: dorny/paths-filter@15192bc058cc28a13dbf6cde61f19e18988b7af6 # v3
         id: filter
@@ -71,18 +74,24 @@ jobs:
                 ['shared', ...suites].some(name => !['true', 'false'].includes(filters[name]))) {
               throw new Error('Path-filter outputs are incomplete or invalid.');
             }
+            const manual = context.eventName === 'workflow_dispatch';
+            const release = manual || context.payload.pull_request?.base.ref === 'main';
             const selected = Object.fromEntries(suites.map(suite => [suite,
-              context.eventName === 'workflow_dispatch' || filters.shared === 'true' || filters[suite] === 'true'
+              (suite !== 'parity' || release) && (manual || filters.shared === 'true' || filters[suite] === 'true')
             ]));
-            const groups = [
-              { group: 1, suite: 'unit', parity: 0, shards: '3 6 18 19' },
-              { group: 2, suite: 'architecture', parity: 0, shards: '5 8 11 12' },
-              { group: 3, suite: 'parity', parity: 1, shards: '4 14 17' },
-              { group: 4, suite: 'parity', parity: 2, shards: '1 7 13 20' },
-              { group: 5, suite: 'integration', parity: 0, shards: '2 9 10 15 16' },
-            ].filter(group => selected.integration || selected[group.suite]);
+            const jobs = (suite, shards) => Array.from({ length: shards }, (_, i) => ({ suite, shard: i + 1, shards }));
+            // scripts/test/ci-files.ts balances each suite's files across its jobs by measured duration.
+            // Release runs give three of the five macOS runners to parity.
+            const macosShards = selected.integration ? (selected.parity ? 2 : 5) : selected.unit ? 1 : 0;
+            const ubuntu = [
+              ...(selected.unit ? jobs('unit', 3) : []),
+              ...(selected.architecture ? jobs('architecture', 2) : []),
+              ...(selected.integration ? jobs('integration', 13) : []),
+            ];
+            const macos = [...(selected.parity ? jobs('parity', 3) : []), ...jobs('native', macosShards)];
             for (const suite of suites) core.setOutput(suite, String(selected[suite]));
-            core.setOutput('groups', JSON.stringify({ include: groups }));
+            core.setOutput('ubuntu', JSON.stringify({ include: ubuntu }));
+            core.setOutput('macos', JSON.stringify({ include: macos }));
 
   static:
     name: static
@@ -100,18 +109,58 @@ jobs:
       - run: npm run stores:catalog:check
       - run: npm run roadmap:check
 
-  macos:
-    name: macOS group ${{ matrix.group }}
+  ubuntu:
+    name: ubuntu ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.shards }}
     needs: changes
-    if: >-
-      needs.changes.outputs.unit == 'true' || needs.changes.outputs.integration == 'true' ||
-      needs.changes.outputs.architecture == 'true' || needs.changes.outputs.parity == 'true'
-    runs-on: macos-15
-    # Shards are balanced on measured durations; each group needs about 22 minutes of test work, so the budget only catches hangs.
-    timeout-minutes: 40
+    if: needs.changes.outputs.ubuntu != '{"include":[]}'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.groups) }}
+      matrix: ${{ fromJSON(needs.changes.outputs.ubuntu) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@v4
+        if: matrix.suite == 'integration'
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}
+      - name: Install Chromium and its system libraries
+        if: matrix.suite == 'integration'
+        run: npx playwright install --with-deps chromium
+      - run: npm run web:build
+        if: matrix.suite == 'integration'
+      - name: Put test temp on tmpfs
+        run: |
+          dir=$(mktemp -d /dev/shm/relay-tmp.XXXXXX)
+          printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
+      - name: Tests
+        env:
+          SUITE: ${{ matrix.suite }}
+          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=2
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: durations-ubuntu-${{ matrix.suite }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/durations/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  macos:
+    name: macOS ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.shards }}
+    needs: changes
+    if: needs.changes.outputs.macos != '{"include":[]}'
+    runs-on: macos-15
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.changes.outputs.macos) }}
     steps:
       # Spotlight indexing competes with the tests for the runner's three CPUs.
       - run: sudo mdutil -a -i off
@@ -123,15 +172,15 @@ jobs:
       - run: npm ci
       - uses: actions/cache@v4
         id: browsers
-        if: needs.changes.outputs.integration == 'true' || (matrix.parity > 0 && needs.changes.outputs.parity == 'true')
+        if: matrix.suite == 'parity' || needs.changes.outputs.integration == 'true'
         with:
           path: ~/Library/Caches/ms-playwright
-          key: ${{ runner.os }}-${{ runner.arch }}-macos-15-playwright-${{ matrix.parity > 0 && 'chromium-webkit' || 'chromium' }}-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-macos-15-playwright-${{ matrix.suite == 'parity' && 'chromium-webkit' || 'chromium' }}-${{ hashFiles('package-lock.json') }}
       - name: Install browsers on cache miss
         if: steps.browsers.outcome == 'success' && steps.browsers.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium ${{ matrix.parity > 0 && 'webkit' || '' }}
+        run: npx playwright install --with-deps chromium ${{ matrix.suite == 'parity' && 'webkit' || '' }}
       - run: npm run web:build
-        if: needs.changes.outputs.integration == 'true'
+        if: matrix.suite == 'native' && needs.changes.outputs.integration == 'true'
       - name: Mount test temp on a RAM disk
         run: |
           dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
@@ -141,15 +190,10 @@ jobs:
           esac
           sudo mdutil -i off "$vol"
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - name: Unit
-        if: ${{ !cancelled() && matrix.suite == 'unit' && needs.changes.outputs.unit == 'true' }}
-        run: npm run test:unit -- --maxWorkers=2
-      - name: Architecture
-        if: ${{ !cancelled() && matrix.suite == 'architecture' && needs.changes.outputs.architecture == 'true' }}
-        timeout-minutes: 15
-        run: npm run test:architecture -- --maxWorkers=2
       - name: Check native browser process proofs without competing files
-        if: ${{ !cancelled() && matrix.group == 5 && needs.changes.outputs.integration == 'true' }}
+        if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.integration == 'true' }}
+        env:
+          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
         # Samples machine state every 5s so a stalled proof shows whether memory, CPU or the RAM disk ran out.
         run: |
           ( while true; do
@@ -159,111 +203,95 @@ jobs:
             done ) &
           sampler=$!
           set +e
-          npm run test:integration -- \
-            tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts \
-            tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts \
-            tests/backend/runtime/workers/worker-supervisor.integration.test.ts \
-            --maxWorkers=1 --no-file-parallelism
+          scripts/test/ci-run.sh integration serial "$SLICE" --maxWorkers=1 --no-file-parallelism
           status=$?
           kill "$sampler"
           exit "$status"
-      - name: Integration shards
-        if: ${{ !cancelled() && needs.changes.outputs.integration == 'true' }}
+      - name: macOS-only unit files
+        if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.unit == 'true' }}
         env:
-          SHARDS: ${{ matrix.shards }}
-        run: |
-          npx vitest list --project integration --filesOnly --json="$RUNNER_TEMP/integration-files.json"
-          node --input-type=module - "$RUNNER_TEMP/integration-files.json" <<'NODE' > "$RUNNER_TEMP/integration-paths"
-          import { readFileSync } from 'node:fs';
-          import { relative } from 'node:path';
-          const serial = new Set([
-            'tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts',
-            'tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts',
-            'tests/backend/runtime/workers/worker-supervisor.integration.test.ts',
-          ]);
-          const listed = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-          const files = listed.map(({ file }) => relative(process.cwd(), file));
-          const ordinary = files.filter(file => !serial.has(file));
-          if ([...serial].some(file => !files.includes(file)) || ordinary.length === 0) {
-            throw new Error('Integration file selection is incomplete.');
-          }
-          process.stdout.write(ordinary.join('\0') + '\0');
-          NODE
-          files=()
-          while IFS= read -r -d '' file; do files+=("$file"); done < "$RUNNER_TEMP/integration-paths"
-          failed=0
-          for shard in $SHARDS; do
-            npm run test:integration -- "${files[@]}" --shard="$shard/20" --maxWorkers=2 || failed=1
-          done
-          exit "$failed"
-      - name: Desktop parity
-        if: ${{ !cancelled() && matrix.parity > 0 && needs.changes.outputs.parity == 'true' }}
-        run: npm run test:parity -- --shard=${{ matrix.parity }}/2 --workers=2
+          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: scripts/test/ci-run.sh unit macos "$SLICE" --maxWorkers=2
+      - name: macOS-only integration files
+        if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.integration == 'true' }}
+        env:
+          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: scripts/test/ci-run.sh integration macos "$SLICE" --maxWorkers=2
       - uses: actions/upload-artifact@v4
-        if: ${{ always() && matrix.parity > 0 && needs.changes.outputs.parity == 'true' }}
+        if: ${{ !cancelled() && matrix.suite == 'native' }}
         with:
-          name: parity-results-${{ matrix.parity }}
+          name: durations-macos-${{ matrix.shard }}
+          path: ${{ runner.temp }}/durations/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Desktop parity
+        if: ${{ !cancelled() && matrix.suite == 'parity' }}
+        run: npm run test:parity -- --shard=${{ matrix.shard }}/${{ matrix.shards }} --workers=2
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && matrix.suite == 'parity' }}
+        with:
+          name: parity-results-${{ matrix.shard }}
           path: tests/parity/.output/
           include-hidden-files: true
 
   unit:
-    name: unit (macos-15)
-    needs: [changes, macos]
+    name: unit
+    needs: [changes, ubuntu, macos]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Require the selected suite's runner groups
+      - name: Require the selected suite's runner jobs
         env:
           FILTER_RESULT: ${{ needs.changes.result }}
           SELECTED: ${{ needs.changes.outputs.unit }}
-          GROUP_RESULT: ${{ needs.macos.result }}
+          RUNNER_RESULTS: ${{ needs.ubuntu.result }} ${{ needs.macos.result }}
         run: |
           test "$FILTER_RESULT" = success
           if [ "$SELECTED" = false ]; then
-            echo "Suite omitted by path filters."
+            echo "Suite not selected for this pull request."
           else
             test "$SELECTED" = true
-            test "$GROUP_RESULT" = success
+            test "$RUNNER_RESULTS" = "success success"
           fi
 
   integration:
-    name: integration (macos-15)
-    needs: [changes, macos]
+    name: integration
+    needs: [changes, ubuntu, macos]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Require the selected suite's runner groups
+      - name: Require the selected suite's runner jobs
         env:
           FILTER_RESULT: ${{ needs.changes.result }}
           SELECTED: ${{ needs.changes.outputs.integration }}
-          GROUP_RESULT: ${{ needs.macos.result }}
+          RUNNER_RESULTS: ${{ needs.ubuntu.result }} ${{ needs.macos.result }}
         run: |
           test "$FILTER_RESULT" = success
           if [ "$SELECTED" = false ]; then
-            echo "Suite omitted by path filters."
+            echo "Suite not selected for this pull request."
           else
             test "$SELECTED" = true
-            test "$GROUP_RESULT" = success
+            test "$RUNNER_RESULTS" = "success success"
           fi
 
   architecture:
-    name: architecture (macos-15)
-    needs: [changes, macos]
+    name: architecture
+    needs: [changes, ubuntu]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Require the selected suite's runner groups
+      - name: Require the selected suite's runner jobs
         env:
           FILTER_RESULT: ${{ needs.changes.result }}
           SELECTED: ${{ needs.changes.outputs.architecture }}
-          GROUP_RESULT: ${{ needs.macos.result }}
+          RUNNER_RESULTS: ${{ needs.ubuntu.result }}
         run: |
           test "$FILTER_RESULT" = success
           if [ "$SELECTED" = false ]; then
-            echo "Suite omitted by path filters."
+            echo "Suite not selected for this pull request."
           else
             test "$SELECTED" = true
-            test "$GROUP_RESULT" = success
+            test "$RUNNER_RESULTS" = "success"
           fi
 
   parity:
@@ -272,18 +300,18 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Require the selected suite's runner groups
+      - name: Require the selected suite's runner jobs
         env:
           FILTER_RESULT: ${{ needs.changes.result }}
           SELECTED: ${{ needs.changes.outputs.parity }}
-          GROUP_RESULT: ${{ needs.macos.result }}
+          RUNNER_RESULTS: ${{ needs.macos.result }}
         run: |
           test "$FILTER_RESULT" = success
           if [ "$SELECTED" = false ]; then
-            echo "Suite omitted by path filters."
+            echo "Suite not selected for this pull request."
           else
             test "$SELECTED" = true
-            test "$GROUP_RESULT" = success
+            test "$RUNNER_RESULTS" = "success"
           fi
 
   privacy:

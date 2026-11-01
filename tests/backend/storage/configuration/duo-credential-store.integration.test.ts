@@ -551,7 +551,7 @@ function assertChildProcessReleased(pid: number): void {
     } else throw error;
   }
   if (!groupGone) throw new Error("duo-child-process-group-unproved");
-  const listed = spawnSync("/usr/sbin/lsof", ["-nP", "-a", "-p", String(pid)], { encoding: "utf8" });
+  const listed = spawnSync("lsof", ["-nP", "-a", "-p", String(pid)], { encoding: "utf8" });
   if (listed.error !== undefined || listed.signal !== null || listed.status !== 1) throw new Error("duo-child-fd-unproved", { cause: listed.error });
 }
 
