@@ -1,5 +1,7 @@
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
-import { readProfilePublicationRegistry, type ProfilePublicationRead, PROFILE_CUSTODY_PROOF, assertOfflineMaintenanceForProcessRoot, acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, prepareStoppedDeviceRecertification, type StoppedDeviceRecertification, type DeviceRecertificationAuthorization, assertStoppedMachineMaintenance, completeStoppedDuoPublicationRecovery as completeStoppedDuoRecoveryClaim, issueStoppedDuoPublicationRecovery as issueStoppedDuoRecoveryClaim, readIssuedDuoContinuity, requireStoppedControlProfileInventory, type DuoPublicationRecoveryClaim, type ExistingAuthorityEvidence, type InstallationLease, type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory, type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier, type RelocationVerifier, type RuntimeLocator, type RuntimePair, type ProfileRestoreContext, type ErasureRequestIdentity, type VerifiedSourceControlEntries, type AuthorityRestoreInput, type AuthorityRestoreVerifier, type CompletedRestoreCustody, type StoppedControlProfileInventory, type StoppedProfileControlUpgradeAdmission } from "./installation.js";
+import type { AuthorityBackupExpectedSource } from "../sqlite/database-identity.js";
+import { inspectAuthorityBackupReadOnly } from "../sqlite/backup-inspection.js";
+import { readProfilePublicationRegistry, type ProfilePublicationRead, PROFILE_CUSTODY_PROOF, assertOfflineMaintenanceForProcessRoot, acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, assertStoppedMachineMaintenance, completeStoppedDuoPublicationRecovery as completeStoppedDuoRecoveryClaim, issueStoppedDuoPublicationRecovery as issueStoppedDuoRecoveryClaim, readIssuedDuoContinuity, requireStoppedControlProfileInventory, type DuoPublicationRecoveryClaim, type ExistingAuthorityEvidence, type InstallationLease, type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory, type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier, type RelocationVerifier, type RuntimeLocator, type RuntimePair, type ProfileRestoreContext, type ErasureRequestIdentity, type VerifiedSourceControlEntries, type AuthorityRestoreInput, type AuthorityRestoreVerifier, type CompletedRestoreCustody, type StoppedControlProfileInventory, type StoppedProfileControlUpgradeAdmission } from "./installation.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, hasUnprovedSourceClosure } from "../source-closure.js";
@@ -409,6 +411,31 @@ export class RuntimeAdmission {
         throw new Error("profile-stopped-upgrade-source-changed");
       }
     }
+  }
+  authorityBackupExpectedSource(): AuthorityBackupExpectedSource {
+    this.assertReadable();
+    const path = join(this.#stateRoot, "state.db");
+    this.assertReadOnlyAuthorityDatabase(path);
+    if (this.#flatBackup !== undefined) {
+      const backup = this.#flatBackup, proof = backup.qualification.current;
+      if (backup.copyPath !== undefined || backup.sourceSchemaVersion !== 6 || proof.kind !== "qualified") throw new Error("authority-backup-source-unqualified");
+      this.assertAuthorityBackupSource(path, proof.sourceFingerprint);
+      return Object.freeze({ kind: "unbound-predecessor", schemaVersion: 6, authorityContentFingerprint: proof.sourceFingerprint });
+    }
+    if (this.#scope === "profile-upgrade") {
+      this.assertOfflineMaintenance(this.maintenanceOperation());
+      const observed = readProfileDatabaseBinding(path);
+      if (observed.state === "unbound") {
+        const inspection = inspectAuthorityBackupReadOnly(this, path, observed.schemaVersion);
+        this.assertReadable();
+        return Object.freeze({ kind: "unbound-predecessor", schemaVersion: observed.schemaVersion,
+          authorityContentFingerprint: inspection.authorityContentFingerprint });
+      }
+      if (this.#profileBinding === undefined || observed.binding.installationId !== this.#profileBinding.installationId
+        || observed.binding.profileId !== this.#profileBinding.profileId) throw new Error("authority-backup-profile-binding-mismatch");
+    }
+    if (this.#profileBinding === undefined) throw new Error("authority-backup-profile-binding-required");
+    return Object.freeze({ kind: "profile", binding: this.#profileBinding });
   }
   profileMaintenanceSchemaVersion(): 6 | 8 | 9 | 10 | 11 {
     const backup = this.#flatBackup ?? this.#readyUpgrade;
@@ -1178,7 +1205,7 @@ export class RuntimeAdmission {
   assertStorageRelocationSupported(): void {
     this.assertLive();
     const locator = this.#locator;
-    if (locator === undefined || existsSync(join(locator.stateRoot, "machine")) || existsSync(join(locator.stateRoot, "profiles"))) throw new ProfileStorageRelocationUnsupportedError();
+    if (this.#profileBinding === undefined || locator === undefined || existsSync(join(locator.stateRoot, "machine")) || existsSync(join(locator.stateRoot, "profiles"))) throw new ProfileStorageRelocationUnsupportedError();
   }
   beginRelocation(destination: RuntimePair, plan: RelocationPlanBinding,
     restore: OfflineMaintenanceOperation): RuntimeRelocationOperation {
@@ -1606,61 +1633,6 @@ export class RuntimeAdmission {
   recoverInterruptedDuoPublication(): { revision: number } {
     const claim = this.issueStoppedDuoPublicationRecovery();
     return this.completeStoppedDuoPublicationRecovery(claim);
-  }
-  static async prepareStoppedDeviceContinuityRecertification(workspace: string, lifetime: RuntimeLifetimeLock): Promise<StoppedDeviceRecertification & { release(): void }> {
-    const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
-    if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
-    lifetime.assertHeld();
-    const canonical = realpathSync(workspace);
-    if (canonical !== resolve(workspace)) throw new Error("device-recertification-workspace-invalid");
-    const restore = lifetime.beginOfflineMaintenance(canonical);
-    let lease: InstallationLease | undefined, closed = false, retained: AuthoritySourceClosureUnprovedError | undefined;
-    const retainUnclosed = (error: unknown): void => {
-      const pending: unknown[] = [error], seen = new Set<unknown>();
-      while (pending.length > 0) {
-        const value = pending.pop();
-        if (seen.has(value)) continue;
-        seen.add(value);
-        if (value instanceof AuthoritySourceClosureUnprovedError) {
-          retained = retainAuthoritySourceClosure([error], { admission: lease, restore }); throw retained;
-        }
-        if (value instanceof AggregateError) { const errors: readonly unknown[] = value.errors; pending.push(...errors); }
-        if (value instanceof Error && value.cause !== undefined) pending.push(value.cause);
-      }
-    };
-    const release = () => {
-      if (retained !== undefined) throw retained;
-      if (closed) return;
-      try { restore.release(); }
-      catch (error) { retained = retainAuthoritySourceClosure([error], { admission: lease, restore }); throw retained; }
-      try { lease?.release(); }
-      catch (error) { retained = retainAuthoritySourceClosure([error], { admission: lease, restore }); throw retained; }
-      closed = true;
-    };
-    try {
-      const held = acquireInstallation(canonical, "exclusive", lifetime, { offlineOperation: restore }); lease = held;
-      const prepared = prepareStoppedDeviceRecertification(held, restore, (profileId, assertHeld) => {
-        const root = join(held.locator.stateRoot, "profiles", profileId);
-        const admission = new RuntimeAdmission(issuanceToken, { assertHeld, release() {}, readInstallationContext: () => held.readInstallationContext() },
-          root, join(root, "artifacts"), [join(root, "state.db")], "stopped-incomplete-profile-inventory", "exclusive", held.locator,
-          { installationId: held.locator.installationId, profileId });
-        try {
-          if (!AuthorityDatabase.readIncompleteOnboardingInventory(admission).empty) throw new Error("profile-incomplete-activity-present");
-        } finally { admission.release(); }
-      });
-      return Object.freeze({ capture: prepared.capture, release,
-        recertify(authorization: DeviceRecertificationAuthorization) {
-          if (closed) throw new Error("device-recertification-closed");
-          if (retained !== undefined) throw retained;
-          try { prepared.recertify(authorization); }
-          catch (error) { retainUnclosed(error); throw error; }
-        } });
-    } catch (error) {
-      retainUnclosed(error);
-      try { release(); }
-      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: lease, restore }); }
-      throw error;
-    }
   }
   static acquireStoppedMachineControlMaintenance(workspace: string, lifetime: RuntimeLifetimeLock): RuntimeAdmission {
     if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");

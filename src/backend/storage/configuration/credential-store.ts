@@ -970,10 +970,6 @@ function incompleteProfileCredentialOrigin(machineRoot: string, row: z.infer<typ
   assertCredentialKeyWitness(keyPath, key, binding);
   return { source, request, verifier, verifierPath, verifiers, pepper };
 }
-export function inspectIncompleteProfileRecertification(machineRoot: string, row: z.infer<typeof ProfileRegistryDocumentSchema>["profiles"][number], key: CredentialKeyWitness) {
-  const { source } = incompleteProfileCredentialOrigin(machineRoot, row, key);
-  return { device: source.identity.device, inode: source.identity.inode, digest: createHash("sha256").update(source.bytes).digest("hex") };
-}
 export function captureIncompleteProfileDraft(machine: RuntimeAdmission, admission: RuntimeAdmission, assertEmpty: () => void): IncompleteProfileDraftWitness {
   admission.assertStoppedIncompleteProfileInventory();
   const binding = admission.profileBinding, registry = machine.readProfileRegistry(), row = registry.profiles.find(entry => entry.profileId === binding.profileId);

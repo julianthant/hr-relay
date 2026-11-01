@@ -34,7 +34,7 @@ async function inspectCoupledBackupSource(closure: StoppedBackupClosure, admissi
     const settings = sourceFacts.settingsAuthority.state === "initialized"
       ? sourceFacts.settingsAuthority.record.saved?.settings ?? sourceFacts.settingsAuthority.record.initialization.settings.settings : undefined;
     const membership = enumerateProfileCredentialMembership(admission, sourceFacts, settings?.paths?.browserProfileRoot ?? join(admission.stateRoot, "browsers"), layout);
-    const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path, AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db"))));
+    const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path));
     if (backups.length !== membership.backupPaths.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("existing-data-backup-source-membership-unproved");
     assertCoupledArtifacts(admission.artifactRoot, sourceFacts.artifactReferences);
   }
@@ -66,7 +66,7 @@ async function writeCoupledBackup(closure: StoppedBackupClosure, machine: Runtim
   const storageBackup = root === storageRoot ? undefined : retainedStorageBackup(context.workspace, machine.locator.installationId);
   if (flat && storageBackup !== undefined) {
     const retained = StorageBackupSchema.parse(JSON.parse(file(storageBackup.backupPath).bytes.toString("utf8")));
-    verifyStoppedBackupManifestAtPath(admission, retained.authorityManifest, AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db")));
+    verifyStoppedBackupManifestAtPath(admission, retained.authorityManifest);
     if (hash(file(retained.authorityManifest).bytes) !== retained.authorityDigest) throw new Error("storage-backup-authority-refused");
   }
   const profileRoot = admission.stateRoot;
@@ -80,8 +80,7 @@ async function writeCoupledBackup(closure: StoppedBackupClosure, machine: Runtim
   if (lstatSync(authorityDirectory, { throwIfNoEntry: false }) !== undefined) {
     for (const name of readdirSync(authorityDirectory).sort()) {
       if (!name.endsWith(".manifest.json")) continue;
-      const path = join(authorityDirectory, name), existing = verifyStoppedBackupManifestAtPath(admission, path,
-        AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db")));
+      const path = join(authorityDirectory, name), existing = verifyStoppedBackupManifestAtPath(admission, path);
       if (existing.manifest.authorityContentFingerprint === current.authorityContentFingerprint && existing.manifest.authorityGeneration === current.authorityGeneration) authorityManifest = path;
     }
   }
@@ -90,7 +89,7 @@ async function writeCoupledBackup(closure: StoppedBackupClosure, machine: Runtim
     if (backed.manifests.length !== 1 || backed.manifests[0] === undefined) throw new Error("existing-data-backup-single-authority-required");
     authorityManifest = join(authorityDirectory, `${backed.manifests[0].backupFileName}.manifest.json`);
   }
-  verifyStoppedBackupManifestAtPath(admission, authorityManifest, AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db")));
+  verifyStoppedBackupManifestAtPath(admission, authorityManifest);
   const afterBackup = AuthorityDatabase.inspectStoppedUpgrade(admission, join(admission.stateRoot, "state.db"), processLockRoot, clock);
   if (afterBackup.authorityContentFingerprint !== current.authorityContentFingerprint || afterBackup.authorityGeneration !== current.authorityGeneration) throw new StorageBackupSourceChangedError();
   const source = census();

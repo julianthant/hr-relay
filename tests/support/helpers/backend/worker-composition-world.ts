@@ -285,7 +285,7 @@ export function createWorkerCompositionTestWorld() {
         const result = message.parse((await reply)[0]); assert.equal(result.state, "report");
         const value = report.parse(JSON.parse(result.detail));
         assert.equal(value.pid, children[index]?.pid); assert.equal(value.profileId, fixture.admission.profileBinding.profileId);
-        assert.equal(value.databaseIdentity, AuthorityDatabase.sourceDatabaseIdentity(fixture.path));
+        assert.equal(value.databaseIdentity, AuthorityDatabase.sourceDatabaseIdentity(fixture.admission.authorityBackupExpectedSource()));
         assert.equal(value.device, expected.dev); assert.equal(value.inode, expected.ino);
         assert.equal(value.configFingerprint, active.configFingerprint); assert.equal(value.settingsRevision, settingsRevision);
         return value;

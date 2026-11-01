@@ -192,7 +192,7 @@ function assertCredentialBackupBinding(admission: RuntimeAdmission, backup: Awai
   upgrades: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>["upgrades"]) {
   const { manifest } = backup;
   if (manifest.profileId !== admission.profileBinding.profileId || manifest.installationId !== admission.profileBinding.installationId
-    || manifest.sourceDatabaseIdentity !== AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db"))) throw new Error("profile-inventory-backup-binding-mismatch");
+    || manifest.sourceDatabaseIdentity !== AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())) throw new Error("profile-inventory-backup-binding-mismatch");
   if (manifest.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return;
   if (manifest.schemaVersion !== 7 && manifest.schemaVersion !== 8 && manifest.schemaVersion !== 9 && manifest.schemaVersion !== 10) throw new Error("profile-inventory-backup-binding-mismatch");
   const matching = upgrades.filter(record => record.phase !== "baseline" && (record.backup.manifestPath === backup.manifestPath
@@ -237,8 +237,7 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
       const savedBrowserRoot = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
         { stateRoot: profileRoot, artifactRoot: admission.artifactRoot }).config.paths.browserProfileRoot;
       const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, profileBrowserClosure, writer);
-      const backups = membership.manifests.map(manifest => verifyStoppedBackupManifestAtPath(admission, manifest,
-        AuthorityDatabase.sourceDatabaseIdentity(join(profileRoot, "state.db"))));
+      const backups = membership.manifests.map(manifest => verifyStoppedBackupManifestAtPath(admission, manifest));
       if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("credential-maintenance-backup-membership-unproved");
       const assessment = assessProfileCredentialCopies(admission, membership, backups, copies, owner);
       if (assessment.backupPlaintext.length > 0 || assessment.unknownFormats.length > 0) throw new Error("credential-maintenance-copy-capture-incomplete");
@@ -395,8 +394,7 @@ export function composeProfileCredentialInventory(input: Readonly<{ machine: Run
       const before = enumerate();
       const backups: Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[] = [];
       for (const path of before.manifests) {
-        const sourceIdentity = input.database.getSourceDatabaseIdentity();
-        const verified = await verifyBackupManifestAtPath(input.admission, path, sourceIdentity);
+        const verified = await verifyBackupManifestAtPath(input.admission, path);
         assertCredentialBackupBinding(input.admission, verified, before.custody.upgrades);
         backups.push(verified);
       }

@@ -11,7 +11,7 @@ import {
   statDirectory,
 } from "../storage/configuration/credential-safe-file.js";
 import {
-  ProfileRegistryDocumentSchema,
+  advanceProfileRegistryDocument,
   ProfileRegistryRowSchema,
   type ProfileRegistryDocument,
   type ProfileRegistryRow,
@@ -95,7 +95,7 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
         const row = ProfileRegistryRowSchema.parse({ ...existing, ...patch });
         const profiles = current.profiles.slice();
         profiles[index] = row;
-        write({ ...current, profiles });
+        write(advanceProfileRegistryDocument(current, { profiles }));
         return row;
       }, ".profile-registry.lock");
     },
@@ -103,7 +103,7 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
       return withProfileLock(root, () => {
         const current = read();
         if (profileId !== null && !current.profiles.some(row => row.profileId === profileId)) throw new Error("profile selection is unavailable");
-        const next = ProfileRegistryDocumentSchema.parse({ ...current, activeProfileId: profileId, sessionGeneration: current.sessionGeneration + 1 });
+        const next = advanceProfileRegistryDocument(current, { activeProfileId: profileId, sessionGeneration: current.sessionGeneration + 1 });
         write(next);
         return next.sessionGeneration;
       }, ".profile-registry.lock");

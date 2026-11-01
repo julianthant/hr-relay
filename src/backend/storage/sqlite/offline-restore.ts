@@ -279,12 +279,12 @@ export class OfflineAuthorityRestoreService {
     const request = OfflineRestoreRequestSchema.parse(input);
     const profile = admission.captureProfileRestore(captureCredentialErasureHead(this.#credentialStore, restoreAdmission));
     assertProfileRestoreDatabaseBinding(this.#authorityPath, profile.binding);
-    const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(this.#authorityPath);
+    const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
     if (!existsSync(this.#authorityPath) || statSync(this.#authorityPath).size === 0) {
       throw new Error(`suspect authority database ${this.#authorityPath} is missing or empty`);
     }
 
-    const verified = await verifyBackupManifestAtPath(admission,request.manifestPath, sourceDatabaseIdentity);
+    const verified = await verifyBackupManifestAtPath(admission,request.manifestPath);
     requireSupportedRecoverySchema(verified.manifest.schemaVersion);
     if (verified.manifest.installationId !== profile.binding.installationId || verified.manifest.profileId !== profile.binding.profileId) throw new Error("profile-restore-backup-binding-mismatch");
     validateStorageRelocationRestoreCandidate({ admission: admission,
@@ -562,8 +562,9 @@ export async function settleInterruptedAuthorityRestore(input: Readonly<{
   assertOfflineMaintenanceForProcessRoot(input.restoreAdmission, input.processLockRoot);
   const binding = admission.readAuthorityRestore(input.operationId);
   if (resolve(input.manifestPath) !== binding.manifestPath) throw new Error("restore-recovery-manifest-binding-mismatch");
-  const verified = await verifyBackupManifestAtPath(admission, binding.manifestPath, binding.sourceDatabaseIdentity);
-  if (verified.backupPath !== binding.backupPath || verified.manifest.sha256 !== binding.backupSha256
+  const verified = await verifyBackupManifestAtPath(admission, binding.manifestPath);
+  if (verified.backupPath !== binding.backupPath || verified.manifest.sourceDatabaseIdentity !== binding.sourceDatabaseIdentity
+    || verified.manifest.sha256 !== binding.backupSha256
     || verified.manifest.authorityGeneration !== binding.authorityGeneration
     || verified.manifest.authorityContentFingerprint !== binding.authorityContentFingerprint) {
     throw new Error("restore-recovery-backup-authority-binding-mismatch");

@@ -222,19 +222,3 @@ for (const history of ["deleted", "unknown"] as const) {
     machine.release(); await f.close();
   });
 }
-
-for (const history of ["deleted", "unknown"] as const) {
-  it(`refuses device recertification of valid ${history} historical activity without changing its witnesses`, async () => {
-    const f = await historicalPrematureFixture();
-    try {
-      seedClosedHistoricalActivity(f, history);
-      const prior = JSON.parse(readFileSync(f.controlPath, "utf8")) as { device: number; erasures: { credentialKey: { file: { device: number } } }[] };
-      const key = prior.erasures[0]?.credentialKey; assert.ok(key); prior.device += 4; key.file.device += 4;
-      writeFileSync(f.controlPath, JSON.stringify(prior));
-      const control = readFileSync(f.controlPath), database = readFileSync(f.databasePath), credentials = readFileSync(f.protectedPath);
-      await assert.rejects(RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(f.root, f.lifetime), /profile-incomplete-activity-present/);
-      assert.equal(readFileSync(f.controlPath).equals(control), true); assert.equal(readFileSync(f.databasePath).equals(database), true);
-      assert.equal(readFileSync(f.protectedPath).equals(credentials), true); assert.equal(existsSync(join(f.root, ".tracker/control/device-recertification.json")), false);
-    } finally { await f.close(); }
-  });
-}

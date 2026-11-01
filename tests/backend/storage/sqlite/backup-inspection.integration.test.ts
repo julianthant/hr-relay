@@ -75,8 +75,7 @@ try {
     assert.equal(manifest.authorityGeneration, source.authorityGeneration);
     assert.equal(manifest.authorityContentFingerprint, source.authorityContentFingerprint);
     const verified = await verifyBackupManifestAtPath(f.admission,
-      join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`),
-      AuthorityDatabase.sourceDatabaseIdentity(f.path));
+      join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`));
     assert.deepEqual(verified.manifest, manifest);
     held.assertHeld();
     assert.ok(held.operationId); assert.deepEqual(readFileSync(f.path), bytes);

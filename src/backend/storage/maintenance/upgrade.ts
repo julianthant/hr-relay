@@ -104,7 +104,7 @@ export async function upgradeStorage(browserClosure: ProfileBrowserClosure, admi
         const backupReport=await backupStoppedAuthority(closure, admission,input.stateRoot,clock,input.processLockRoot,restore);
         const manifest=backupReport.manifests.at(-1);
         if(manifest===undefined)throw new Error("upgrade-verified-backup-required");
-        const backup=await verifyBackupManifestAtPath(admission,join(input.stateRoot,"backups","authority",`${manifest.backupFileName}.manifest.json`),AuthorityDatabase.sourceDatabaseIdentity(path));
+        const backup=verifyStoppedBackupManifestAtPath(admission,join(input.stateRoot,"backups","authority",`${manifest.backupFileName}.manifest.json`));
         AuthorityDatabase.upgradeStopped(admission,path,input.processLockRoot,clock,inspection.authorityContentFingerprint,backup,verifyStoppedBackupManifestAtPath);
         requireStopped(admission,input,clock);
         inspectAuthorityBackupReadOnly(admission,path);
@@ -227,9 +227,9 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
   const manifest = backed.manifests[0];
   if (manifest === undefined) throw new Error("upgrade-verified-backup-required");
   const manifestPath = join(owner.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`);
-  const produced = verifyStoppedBackupManifestAtPath(owner, manifestPath, AuthorityDatabase.sourceDatabaseIdentity(path));
+  const produced = verifyStoppedBackupManifestAtPath(owner, manifestPath);
   inventory = revalidate(produced);
-  const verified = await verifyBackupManifestAtPath(owner, manifestPath, AuthorityDatabase.sourceDatabaseIdentity(path));
+  const verified = await verifyBackupManifestAtPath(owner, manifestPath);
   revalidate(verified);
   AuthorityDatabase.upgradeStopped(owner, path, processLockRoot, clock, initial.authorityContentFingerprint, verified, verifyStoppedBackupManifestAtPath);
   const current = inspect();

@@ -600,7 +600,6 @@ describe("verified native online backups", () => {
     assert.equal(report.manifests[0].verification.authorityGeneration, baselineGeneration(root) + 1);
     const verified = await verifyBackupManifestAtPath(
       admissionFor(manifestPath), manifestPath,
-      database.getSourceDatabaseIdentity(),
     );
     assert.equal(verified.manifest.sha256.length, 64);
     assert.equal(verified.manifest.byteSize > 0, true);

@@ -209,9 +209,6 @@ export async function verifyRelocationBackupTree(input: Readonly<{ admission: Ru
   const witness = input.operation.verifiedSourceControlEntries();
   if (inventory.source.stateRoot !== input.stateRoot || witness.source.stateRoot !== input.stateRoot
     || input.admission.stateRoot !== input.stateRoot) throw new Error("relocation-inventory: backup source is not operation-bound");
-  const allowedSourceIdentities = new Set([inventory.source,
-    ...input.operation.readPriorReceipts().map((receipt) => receipt.source)]
-    .map((pair) => AuthorityDatabase.sourceDatabaseIdentity(join(pair.stateRoot, "state.db"))));
   const backups = join(input.stateRoot, "backups");
   if (lstatSync(backups, { throwIfNoEntry: false }) === undefined) return;
   assertOwned(backups, "directory");
@@ -224,9 +221,6 @@ export async function verifyRelocationBackupTree(input: Readonly<{ admission: Ru
   const expected = new Set<string>();
   for (const name of names.filter((candidate) => candidate.endsWith(".manifest.json"))) {
     const verified = await verifyBackupManifestAtPath(input.admission, join(root, name));
-    if (!allowedSourceIdentities.has(verified.manifest.sourceDatabaseIdentity)) {
-      throw new Error("relocation-inventory: backup belongs to an unrecognized source identity");
-    }
     expected.add(name);
     expected.add(verified.manifest.backupFileName);
   }

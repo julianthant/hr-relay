@@ -1,4 +1,5 @@
 import { testProcessImport } from "../../../support/compiled-process.js";
+import { writeStoppedProfileControlPredecessor } from "../../../support/fixtures/storage/stopped-profile-control-predecessor.js";
 import { type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createHistoricalIncompleteProfileFixture } from '../../../support/fixtures/storage/historical-incomplete-profile-fixture.js';
@@ -217,15 +218,12 @@ async function stoppedControlFixture(retainedCredential?: unknown) {
     const profileId = fixture.profileId;
     if (retainedCredential !== undefined) writeFileSync(join(fixture.profileRoot, "credentials", "duo-webauthn.json"), JSON.stringify(retainedCredential), { mode: 0o600 });
     const controlPath = fixture.controlPath;
-    const markerPath = fixture.markerPath;
     const current = JSON.parse(readFileSync(controlPath, "utf8")) as { schemaVersion: number; duo: Array<{ state: string }>; completedRestores: unknown[] };
-    assert.equal(current.schemaVersion, 3);
+    assert.equal(current.schemaVersion, 4);
     assert.deepEqual(current.completedRestores, []);
     assert.ok(current.duo.every(row => row.state === "never-initialized"));
     assert.deepEqual(current.duo, [{ profileId, state: 'never-initialized', revision: 0 }]);
-    const { duo: _duo, completedRestores: _completed, ...prior } = current;
-    writeFileSync(controlPath, JSON.stringify({ ...prior, schemaVersion: 1 }));
-    writeFileSync(markerPath, JSON.stringify({ schemaVersion: 2 }));
+    writeStoppedProfileControlPredecessor(fixture, 1);
     const restore = fixture.lifetime.beginOfflineMaintenance(fixture.workspace);
     held.restore = restore;
     const upgrade = acquireStoppedProfileControlUpgrade(fixture.workspace, restore, fixture.lifetime);
@@ -556,14 +554,15 @@ function assertChildProcessReleased(pid: number): void {
 }
 
 function downgradeStoppedControl(fixture: Pick<Awaited<ReturnType<typeof createHistoricalIncompleteProfileFixture>>,
-  "databasePath" | "controlPath" | "markerPath" | "processLockRoot" | "profileId">, markerVersion: 1 | 2, dropCredentialKey = false) {
+  "databasePath" | "registryPath" | "controlPath" | "markerPath" | "processLockRoot" | "profileId">, markerVersion: 1 | 2, dropCredentialKey = false) {
   const paths = { databasePath: fixture.databasePath, database: readFileSync(fixture.databasePath),
     controlPath: fixture.controlPath, markerPath: fixture.markerPath, processLockRoot: fixture.processLockRoot };
   const current = JSON.parse(readFileSync(paths.controlPath, "utf8")) as { schemaVersion: number; duo?: unknown; completedRestores: unknown[]; erasures?: Array<Record<string, unknown>> };
-  assert.equal(current.schemaVersion, 3);
+  assert.equal(current.schemaVersion, 4);
   assert.deepEqual(current.completedRestores, []);
   assert.deepEqual(current.duo, [{ profileId: fixture.profileId, state: 'never-initialized', revision: 0 }]);
-  const { duo: _duo, completedRestores: _completed, erasures, ...prior } = current;
+  writeStoppedProfileControlPredecessor(fixture, 1);
+  const { duo: _duo, completedRestores: _completed, erasures, ...prior } = JSON.parse(readFileSync(paths.controlPath, "utf8")) as typeof current;
   const nextErasures = dropCredentialKey === true ? (erasures ?? []).map((row) => { const { credentialKey: _key, ...rest } = row; return rest; }) : erasures;
   privateJson(paths.controlPath, { ...prior, ...(nextErasures === undefined ? {} : { erasures: nextErasures }), schemaVersion: 1 });
   privateJson(paths.markerPath, { schemaVersion: markerVersion });
@@ -857,11 +856,8 @@ it("admits only the finite stopped machine-control pair through maintenance admi
   const unsupportedPaths = downgradeStoppedControl(unsupported, 1);
   try {
     assert.throws(() => RuntimeAdmission.acquireMachine(unsupported.workspace, "exclusive", unsupported.lifetime));
-    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(unsupported.workspace, unsupported.lifetime);
-    try {
-      await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, upgradeClock(), composeStoppedControlCredentialInventory), /profile-control-upgrade-pending-conversion-unsupported/u);
-      assertUnchanged(unsupportedPaths);
-    } finally { maintenance.release(); }
+    assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(unsupported.workspace, unsupported.lifetime), /profile-control-upgrade-pending-conversion-unsupported/u);
+    assertUnchanged(unsupportedPaths);
   } finally { await unsupported.close(); }
   const missingKey = await createHistoricalIncompleteProfileFixture();
   const missingPaths = downgradeStoppedControl(missingKey, 2, true);
@@ -924,7 +920,7 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
     const mutated = Buffer.from(stageBytes);
     mutated[0] = mutated[0] === 0x7b ? 0x5b : 0x7b;
     writeFileSync(stagePath, mutated);
-    await assert.rejects(stoppedControlCommand(fixture, true), /profile-control-upgrade-recovery-required/u);
+    await assert.rejects(stoppedControlCommand(fixture, true), /profile-control-upgrade-publication-uncertain/u);
     await assert.rejects(stoppedControlCommand(fixture, false), /profile-control-upgrade-publication-uncertain/u);
     assert.equal(readFileSync(paths.controlPath).equals(paths.controlBytes), true);
     writeFileSync(stagePath, stageBytes);
@@ -935,7 +931,7 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
     const operationNames = names.filter((name) => name.endsWith(".control.before.json"));
     assert.equal(operationNames.length, 1);
     const operationId = operationNames[0]?.slice(0, -".control.before.json".length);
-    assert.deepEqual(names, [`${operationId}.control.before.json`, `${operationId}.marker.before.json`, `${operationId}.receipt.json`].sort());
+    assert.deepEqual(names, [`${operationId}.registry.before.json`, `${operationId}.control.before.json`, `${operationId}.marker.before.json`, `${operationId}.receipt.json`].sort());
     const controlBackup = readFileSync(join(backupDirectory, `${operationId}.control.before.json`));
     const markerBackup = readFileSync(join(backupDirectory, `${operationId}.marker.before.json`));
     assert.equal(controlBackup.equals(paths.controlBytes), true);
@@ -943,8 +939,8 @@ it("upgrades marker 2 through stopped maintenance, keeps exact backup bytes, and
     assert.equal(statSync(join(backupDirectory, `${operationId}.control.before.json`)).mode & 0o777, 0o600);
     assert.equal(statSync(join(backupDirectory, `${operationId}.marker.before.json`)).mode & 0o777, 0o600);
     assert.equal(createHash("sha256").update(controlBackup).digest("hex"), createHash("sha256").update(paths.controlBytes).digest("hex"));
-    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.markerPath, "utf8"))).schemaVersion, 4);
-    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.controlPath, "utf8"))).schemaVersion, 3);
+    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.markerPath, "utf8"))).schemaVersion, 5);
+    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.controlPath, "utf8"))).schemaVersion, 4);
     assert.equal(readFileSync(paths.databasePath).equals(paths.database), true);
     const current = await stoppedControlCommand(fixture, false);
     assert.equal(current.state, "current");
@@ -963,12 +959,12 @@ it("recovers a machine-control publication stopped between the control and marke
     execFileSync("/usr/bin/chflags", ["uchg", paths.markerPath]);
     await assert.rejects(stoppedControlCommand(fixture, false), /EPERM|operation not permitted|profile-control-upgrade-publication-uncertain/u);
     execFileSync("/usr/bin/chflags", ["nouchg", paths.markerPath]);
-    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.controlPath, "utf8"))).schemaVersion, 3);
+    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.controlPath, "utf8"))).schemaVersion, 4);
     assert.equal(readFileSync(paths.markerPath).equals(paths.markerBytes), true);
     const upgraded = await stoppedControlCommand(fixture, false);
     assert.equal(upgraded.state, "upgraded");
     assert.equal(upgraded.runtimeAccess, "onboarding-incomplete");
-    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.markerPath, "utf8"))).schemaVersion, 4);
+    assert.equal(SchemaVersionReadbackSchema.parse(JSON.parse(readFileSync(paths.markerPath, "utf8"))).schemaVersion, 5);
     const backupDirectory = join(fixture.workspace, ".tracker/control", "profile-control-upgrades");
     const controlName = readdirSync(backupDirectory).find((name) => name.endsWith(".control.before.json"));
     assert.equal(typeof controlName, "string");

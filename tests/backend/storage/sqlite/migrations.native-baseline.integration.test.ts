@@ -30,7 +30,6 @@ describe("current stopped authority initialization", () => {
       credentialTrap(f.root);
       const trapPath = join(f.root, "credentials", "protected.json"), trap = lstatSync(trapPath);
       const before = storageTree(f.root), locksBefore = storageTree(f.input.processLockRoot);
-      const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity(f.path);
       const source = withOfflineMaintenanceSync(f.admission, () => AuthorityDatabase.inspectStoppedUpgrade(f.admission, f.path, f.input.processLockRoot, f.clock));
       assert.deepEqual(await f.run(true), { state: "planned", fromSchemaVersion: 7,
         toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
@@ -41,7 +40,7 @@ describe("current stopped authority initialization", () => {
       const directory = join(f.root, "backups", "authority");
       const manifests = readdirSync(directory).filter(name => name.endsWith(".manifest.json"));
       assert.equal(manifests.length, 1);
-      const backup = await verifyBackupManifestAtPath(f.admission, join(directory, manifests[0]), sourceIdentity);
+      const backup = await verifyBackupManifestAtPath(f.admission, join(directory, manifests[0]));
       assert.equal(backup.manifest.schemaVersion, 7);
       assert.equal(backup.manifest.authorityGeneration, source.authorityGeneration);
       assert.equal(backup.manifest.authorityContentFingerprint, source.authorityContentFingerprint);

@@ -1,4 +1,5 @@
 import { testProcessImport } from "../../../support/compiled-process.js";
+import { advanceProfileRegistryDocument } from "../../../../src/models/profiles/profile.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { deriveProfileNames, SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
@@ -291,7 +292,7 @@ it("refuses a concurrent healthy observation change and performs healthy registr
         reads++;
         if (reads === 1 && !changed) {
           changed = true;
-          f.machine.publishProfileRegistry(current, { ...current, sessionGeneration: current.sessionGeneration + 1 });
+          f.machine.publishProfileRegistry(current, advanceProfileRegistryDocument(current, { sessionGeneration: current.sessionGeneration + 1 }));
         }
       }
       return realOpen(path, flags, mode);
@@ -317,7 +318,7 @@ it("refuses a concurrent healthy observation change and performs healthy registr
       return realOpen(path, flags, mode);
     });
     syncBuiltinESMExports();
-    f.machine.publishProfileRegistry(before, { ...before, sessionGeneration: before.sessionGeneration + 1 });
+    f.machine.publishProfileRegistry(before, advanceProfileRegistryDocument(before, { sessionGeneration: before.sessionGeneration + 1 }));
     assert.ok(writes > priorWrites);
   } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); await f.cleanup(); }
 });

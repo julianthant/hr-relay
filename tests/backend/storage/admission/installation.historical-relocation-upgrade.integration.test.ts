@@ -1,3 +1,4 @@
+import { inspectUnboundBackupFixture } from "../../../support/helpers/storage/backup-fixtures.js";
 import { withOfflineMaintenanceSync } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
@@ -8,7 +9,6 @@ import { afterEach, it } from "vitest";
 import { acquireInstallation, type RelocationCompletionReceipt, type VerifiedRelocationPreparation } from "../../../../src/backend/storage/admission/installation.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { storageRecoveryFixture, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
@@ -89,7 +89,6 @@ it("upgrades admitted setup schema 3 with an exact verified backup and preserves
     const before = storageTree(f.root);
     const context = f.admission.readInstallationContext(); assert.ok(context);
     const workspaceBefore = storageTree(context.workspace);
-    const identity = AuthorityDatabase.sourceDatabaseIdentity(f.path);
     const source = withOfflineMaintenanceSync(f.admission, () => AuthorityDatabase.inspectStoppedUpgrade(f.admission, f.path, f.input.processLockRoot, f.clock));
     assert.equal((await f.run(true)).state, "planned");
     assert.deepEqual(storageTree(f.root), before);
@@ -97,7 +96,7 @@ it("upgrades admitted setup schema 3 with an exact verified backup and preserves
     const directory = join(f.root, "backups", "authority");
     const manifests = readdirSync(directory).filter(name => name.endsWith(".manifest.json"));
     assert.equal(manifests.length, 1);
-    const backup = await verifyBackupManifestAtPath(f.admission, join(directory, manifests[0]), identity);
+    const backup = await inspectUnboundBackupFixture(f.admission, join(directory, manifests[0]));
     assert.equal(backup.manifest.schemaVersion, 3);
     assert.equal(backup.manifest.authorityGeneration, source.authorityGeneration);
     assert.equal(backup.manifest.authorityContentFingerprint, source.authorityContentFingerprint);

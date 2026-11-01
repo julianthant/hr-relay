@@ -93,11 +93,24 @@ function requireObservedBackupIdentity(
 }
 
 /** DB-only current writer shape. Credentials have no backup representation. */
-export const AuthorityBackupManifestV3Schema = AuthorityBackupManifestBaseSchema.extend({
-  manifestVersion: z.literal(3),
+export const AuthorityBackupManifestV4Schema = AuthorityBackupManifestBaseSchema.extend({
+  manifestVersion: z.literal(4),
+  schemaVersion: z.union([z.literal(7), z.literal(8), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  installationId: z.uuid(),
+  profileId: z.uuid(),
+  verification: BackupVerificationSchema.extend({ installationId: z.uuid(), profileId: z.uuid() }),
 }).superRefine(requireObservedBackupIdentity);
 
-export const AuthorityBackupManifestSchema = AuthorityBackupManifestV3Schema;
+export const UnboundPredecessorBackupManifestSchema = AuthorityBackupManifestBaseSchema.extend({
+  manifestVersion: z.literal(3),
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]),
+  installationId: z.undefined().optional(),
+  profileId: z.undefined().optional(),
+  verification: BackupVerificationSchema.extend({ installationId: z.undefined().optional(), profileId: z.undefined().optional() }),
+}).superRefine(requireObservedBackupIdentity);
+
+export const AuthorityBackupManifestSchema = AuthorityBackupManifestV4Schema;
+export const StoppedAuthorityBackupManifestSchema = z.union([AuthorityBackupManifestSchema, UnboundPredecessorBackupManifestSchema]);
 
 export const AuthorityBackupRequestSchema = z.strictObject({
   trigger: z.enum(["interval", "schema-migration", "external-write", "graceful-drain", "operator"]),
@@ -110,7 +123,7 @@ export const AuthorityBackupRunReportSchema = z.strictObject({
   finalGeneration: NonNegativeIntSchema,
   coalescedRequests: PositiveIntSchema,
   followUpPerformed: z.boolean(),
-  manifests: z.array(AuthorityBackupManifestSchema).min(1).max(2),
+  manifests: z.array(StoppedAuthorityBackupManifestSchema).min(1).max(2),
 });
 
 export const StorageHealthCauseSchema = z.strictObject({
@@ -425,7 +438,7 @@ export const OfflineRestoreReportSchema = z.strictObject({
 export type AuthorityPendingCounts = z.infer<typeof AuthorityPendingCountsSchema>;
 export type AuthorityCopyInspection = z.infer<typeof AuthorityCopyInspectionSchema>;
 export type AuthorityBackupManifest = z.infer<typeof AuthorityBackupManifestSchema>;
-export type AuthorityBackupManifestV3 = z.infer<typeof AuthorityBackupManifestV3Schema>;
+export type StoppedAuthorityBackupManifest = z.infer<typeof StoppedAuthorityBackupManifestSchema>;
 export type AuthorityBackupRequest = z.infer<typeof AuthorityBackupRequestSchema>;
 export type AuthorityBackupRunReport = z.infer<typeof AuthorityBackupRunReportSchema>;
 export type StorageHealthCause = z.infer<typeof StorageHealthCauseSchema>;

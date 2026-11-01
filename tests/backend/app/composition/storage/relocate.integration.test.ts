@@ -1,10 +1,13 @@
+import { acquireInstallation } from "../../../../../src/backend/storage/admission/installation.js";
+import { createHistoricalFlatProfileFixture } from "../../../../support/fixtures/storage/historical-flat-profile-fixture.js";
+import { storageTree } from "../../../../support/helpers/integration/storage-recovery-fixture.js";
 import { default as assert } from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "vitest";
-import { copyNativeSnapshot } from "../../../../../src/backend/app/composition/storage/relocate.js";
+import { copyNativeSnapshot, runOfflineStorageRelocation } from "../../../../../src/backend/app/composition/storage/relocate.js";
 import { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
 
 import { parseRelocationCommand } from "../../../../../src/backend/app/composition/storage/relocate.js";
@@ -49,3 +52,22 @@ describe("secure environment bootstrap", () => {
   });
 });
 }
+
+it("refuses an unbound installation relocation before maintenance and preserves pending bytes", async () => {
+  const f = await createHistoricalFlatProfileFixture();
+  const admission = RuntimeAdmission.fromInstallationLease(acquireInstallation(f.workspace, "exclusive", f.lifetime));
+  try {
+    assert.equal(existsSync(join(admission.stateRoot, "machine")), false);
+    assert.equal(existsSync(join(admission.stateRoot, "profiles")), false);
+    assert.throws(() => admission.assertStorageRelocationSupported(), { code: "PROFILE_STORAGE_RELOCATION_UNSUPPORTED" });
+    const journal = join(f.workspace, ".tracker", "control", "journal.json");
+    writeFileSync(journal, "retained unsupported pending relocation bytes", { mode: 0o600, flag: "wx" });
+    const before = storageTree(f.workspace);
+    for (const owner of [admission, undefined]) {
+      await assert.rejects(runOfflineStorageRelocation({ workspace: f.workspace, lifetime: f.lifetime,
+        ...(owner === undefined ? {} : { admission: owner }), command: { kind: "resume", id: randomUUID(), json: true } }),
+      { code: "PROFILE_STORAGE_RELOCATION_UNSUPPORTED" });
+      f.lifetime.assertRuntimeAvailable(); assert.deepEqual(storageTree(f.workspace), before);
+    }
+  } finally { admission.release(); await f.close(); }
+});

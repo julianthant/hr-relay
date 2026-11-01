@@ -185,7 +185,7 @@ it("confines the issued READY purpose and its verified backup copy to their exac
     assert.throws(() => issued.stoppedStagedAuthority(join(f.stateRoot, `.restore-${randomUUID()}.sqlite.tmp`)), { message: "profile-stopped-upgrade-exclusive-refused" });
     const backed = await prepareStoppedBackupClosure(profileBrowserClosure, issued, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, issued, f.stateRoot, systemClock, f.processLockRoot, restore));
     const manifest = backed.manifests[0]; assert.ok(manifest);
-    const verified = verifyStoppedBackupManifestAtPath(issued, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(f.path));
+    const verified = verifyStoppedBackupManifestAtPath(issued, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`));
     const copy = issued.verifiedReadOnlyCopy(verified.backupPath, verified.manifest.sha256);
     try {
       assert.equal(inspectAuthorityBackupReadOnly(copy, verified.backupPath, 8).schemaVersion, 8);
@@ -258,7 +258,7 @@ it("requires a real verified own backup before changing the ready source schema"
     assert.deepEqual(storageTree(f.stateRoot), before);
     const backed = await prepareStoppedBackupClosure(profileBrowserClosure, owner, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, owner, f.stateRoot, systemClock, f.processLockRoot, restore));
     const manifest = backed.manifests[0]; assert.ok(manifest);
-    const verified = verifyStoppedBackupManifestAtPath(owner, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(f.path));
+    const verified = verifyStoppedBackupManifestAtPath(owner, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`));
     const backedBefore = storageTree(f.stateRoot);
     assert.throws(() => AuthorityDatabase.upgradeStopped(owner, f.path, f.processLockRoot, systemClock,
       inspection.authorityContentFingerprint, { ...verified, manifest: { ...verified.manifest, sha256: FingerprintSchema.parse("0".repeat(64)) } }, verifyStoppedBackupManifestAtPath),
@@ -268,7 +268,7 @@ it("requires a real verified own backup before changing the ready source schema"
     try {
       const changed = Buffer.from(original); changed[0] = (changed[0] ?? 0) ^ 1;
       writeFileSync(verified.backupPath, changed);
-      assert.throws(() => verifyStoppedBackupManifestAtPath(owner, verified.manifestPath, AuthorityDatabase.sourceDatabaseIdentity(f.path)),
+      assert.throws(() => verifyStoppedBackupManifestAtPath(owner, verified.manifestPath),
         { message: "profile-maintenance-backup-digest-mismatch" });
       assert.deepEqual(rawEight(f.path), sourceBefore);
     } finally { writeFileSync(verified.backupPath, original); }
@@ -282,7 +282,7 @@ it("refuses changed source content inside the real migration transaction and can
     const inspection = AuthorityDatabase.inspectStoppedUpgrade(owner, f.path, f.processLockRoot, systemClock);
     const backed = await prepareStoppedBackupClosure(profileBrowserClosure, owner, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, owner, f.stateRoot, systemClock, f.processLockRoot, restore));
     const manifest = backed.manifests[0]; assert.ok(manifest);
-    const verified = verifyStoppedBackupManifestAtPath(owner, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(f.path));
+    const verified = verifyStoppedBackupManifestAtPath(owner, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`));
     const raw = new DatabaseSync(f.path);
     const original = raw.prepare("SELECT updated_at FROM database_states WHERE id=1").get()?.updated_at;
     assert.ok(typeof original === "string");

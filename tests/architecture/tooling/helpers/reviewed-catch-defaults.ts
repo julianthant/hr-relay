@@ -13,7 +13,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "2bdd7ea15a2570c1fabcbc9f34e42317aaec03184ddb5e06c44cdaf097ab6f24",
+    "sha256": "15c4bf21beb7d97129ba4ffc35a614e789ad9e28761df2e9d93d719e0f18e939",
     "reason": "Startup source-closure uncertainty records failed producer closure before unwind, retaining dependent database and admission custody. Selected-context open failure retains typed custody uncertainty and rethrows. Upgrade cleanup clears exclusiveOwner only after release. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and immediate stop promises, whose callers await and propagate failures before storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately. Required native browser closure failures follow the same upgrade rejection and custody-retention path."
   },
   {
@@ -33,12 +33,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/storage-doctor.ts",
-    "sha256": "4c4caa82a69ab726740576666d28eb766353953e9ad9c927a20e72bb07aee780",
-    "reason": "ENOENT alone denotes no backup directory; failed authority, credential, recovery or backup inspection publishes explicit unavailable, degraded or invalid health, and relocation-history verification failure makes restore unavailable."
+    "sha256": "33d005a81b249911e1aa17cb2c98c68942634da585755c62f8c12b68c559b671",
+    "reason": "ENOENT alone denotes no backup directory; failed authority, credential, recovery or backup inspection publishes explicit unavailable, degraded or invalid health, and failed logical backup identity verification makes restore unavailable."
   },
   {
     "path": "src/backend/app/composition/dashboard/notification-health.ts",
-    "sha256": "56ee76a497e98b2ea1c369b50d1ce84b70c6b33fd260315a775a9dab420996f0",
+    "sha256": "8daaad37d471b8375ffe38b3302b545baaaed4628c7e76c5c56466a52d859192",
     "reason": "Failure booleans trigger explicit failed health notifications; they never claim a healthy read."
   },
   {
@@ -68,7 +68,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "3bab8462c5a544464a43b1bc1a543b68c2c01a90b3744ecc5f586b606c2cbdee",
+      "sha256": "4a383fdbe939742839d66d0eb77ee70ee99e6d5a7a5b8508570bd3c8b0d10a40",
     "reason": "Only ENOENT returns explicit path absence; callers check it before creation or refusal, and other filesystem failures rethrow. Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
   },
   {
@@ -113,7 +113,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "507ca7066a5256607bcf0ab2ac0c0de27021759c3d01204c19d75a26f9ca7521",
+    "sha256": "b72a69f5e40ff2791c83a15702d6038e60b7f1b52986e2f09551b98a25c8ba59",
     "reason": "Failed constructor cleanup retains the actual native database and admission with both opening and close failures. Failed rollback retains database custody with the original failure; successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or named search refusal, never validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody releases; required native browser closure precedes cancellation."
   },
   {
@@ -123,7 +123,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
-    "sha256": "90151c45b1642df62d186a4df287f3a96d99e71e2e297d7edcaa39f6fc368c4a",
+    "sha256": "81da3e5033cbc122260b7faf349de37f927de8a583d98cdd1a3eaffc87c80de2",
     "reason": "Unproved startup proof source closure retains the original opened resource, admission and process handles before any dependent cleanup. Failed admission releases custody only after the opened resource closes successfully; close and release failures retain custody and original errors. Descriptor-bound worker/recovery reads aggregate any read and close failures, then rethrow; receipt absence alone preserves ordinary stale-owner refusal. Restore-publication cleanup preserves primary failures and refuses uncertain closure; failed worker handoff marks custody uncertain before any replacement release."
   },
   {
@@ -158,7 +158,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/backup-inspection.ts",
-    "sha256": "361392559d62ba18705f8baf9a3843d69cd9eccaa48c9bb269d09c877a109ef6",
+    "sha256": "b66b5731012aa0bbc9359a5e158b0978059eed93970b09a9e505dc9f35c1143c",
     "reason": "Snapshot and database cleanup failures accumulate and rethrow as source-closure uncertainty; the empty list is the accumulator, and the original inspection error is never dropped."
   },
 ] as const;

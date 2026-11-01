@@ -47,8 +47,8 @@ afterEach(_afterEachFixture0);
 
     const { report, manifest, manifestPath } = await takeBackup(world);
 
-    assert.equal(report.manifests.every((entry) => entry.manifestVersion === 3), true);
-    assert.equal(manifest.manifestVersion, 3);
+    assert.equal(report.manifests.every((entry) => entry.manifestVersion === 4), true);
+    assert.equal(manifest.manifestVersion, 4);
     assert.equal("files" in manifest, false);
     assert.equal("protectedSettings" in manifest, false);
     const entries = readdirSync(world.backupDirectory).sort();
@@ -69,7 +69,7 @@ afterEach(_afterEachFixture0);
       ...manifest,
       protectedSettings: { revision: 1, entries: [] },
     }).success, false);
-    await verifyBackupManifestAtPath(world.admission, manifestPath, world.database.getSourceDatabaseIdentity());
+    await verifyBackupManifestAtPath(world.admission, manifestPath);
   });
 });
 }

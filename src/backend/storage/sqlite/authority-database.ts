@@ -3,7 +3,7 @@ import { clearOperationProofSlots, revalidateOperationProof, outermostOperationP
 import { assertOfflineMaintenanceForProcessRoot, type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
-import { authoritySourceDatabaseIdentity } from "./database-identity.js";
+import { authoritySourceDatabaseIdentity, type AuthorityBackupExpectedSource } from "./database-identity.js";
 import { CanonicalCrashRecoveryRequestSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalClaimNextRequestSchema, WorkerStandingRecoveryRequestSchema, RunClaimOutcomeSchema, RunClaimRequestSchema, RunClaimTokenSchema, RunHeartbeatOutcomeSchema, RunHeartbeatRequestSchema, RunItemQuerySchema, RunPresentationRequestSchema, RunInjectPatchesRequestSchema, RunPriorityBumpRequestSchema, RunRequeueRequestSchema, RunResumeRequestSchema, RunTransitionRequestSchema, RunUpdateOutcomeSchema, StartPlanConsumeOutcomeSchema, StartPlanConsumeRequestSchema, WorkerControlRequestSchema, WorkerLifecycleRequestSchema, WorkerPoolPlanOutcomeSchema, WorkerPoolPlanRequestSchema, WorkerStartOutcomeSchema, WorkerStartRequestSchema, WorkerUpdateOutcomeSchema, type RunClaimOutcome, type RunHeartbeatOutcome, type RunUpdateOutcome, type StartPlanConsumeOutcome, type WorkerPoolPlanOutcome, type WorkerStartOutcome, type WorkerUpdateOutcome } from "./run-store-contracts.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
 import { retainAuthoritySourceClosure } from "../source-closure.js";
@@ -1331,7 +1331,7 @@ function readAuthorityUpgradeRecords(database: DatabaseSync) {
     .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
 }
 
-function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission: RuntimeAdmission, path: string, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string, expectedSourceDatabaseIdentity: string) => VerifiedBackup) {
+function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission: RuntimeAdmission, path: string, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string) => VerifiedBackup) {
   requireRuntimeAdmission(admission);
   const version = readIntPragma(database, "user_version");
   if (version === CURRENT_AUTHORITY_SCHEMA_VERSION) return inspectNormalAuthority(database);
@@ -1351,7 +1351,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
     if (backup === undefined || expectedFingerprint === undefined) throw new Error("upgrade-verified-backup-required");
     if (purpose === "ready") {
       if (verifyBackup === undefined) throw new Error("stopped-backup-verifier-required");
-      const verified = verifyBackup(admission, backup.manifestPath, AuthorityDatabase.sourceDatabaseIdentity(path));
+      const verified = verifyBackup(admission, backup.manifestPath);
       if (canonicalJsonStringify(verified) !== canonicalJsonStringify(backup)
         || verified.manifest.installationId !== binding.installationId || verified.manifest.profileId !== binding.profileId) throw new Error("profile-stopped-upgrade-backup-changed");
     }
@@ -2052,8 +2052,8 @@ export class AuthorityDatabase implements Disposable {
     database.close();
   }
 
-  static sourceDatabaseIdentity(path: string): string {
-    return authoritySourceDatabaseIdentity(path);
+  static sourceDatabaseIdentity(source: AuthorityBackupExpectedSource): string {
+    return authoritySourceDatabaseIdentity(source);
   }
 
   static inspectExistingReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
@@ -2090,7 +2090,7 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  static upgradeStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string, expectedSourceDatabaseIdentity: string) => VerifiedBackup) {
+  static upgradeStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string) => VerifiedBackup) {
     requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
     const before = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
     if (before.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return before;
@@ -2223,7 +2223,8 @@ export class AuthorityDatabase implements Disposable {
   }
 
   getSourceDatabaseIdentity(): string {
-    return AuthorityDatabase.sourceDatabaseIdentity(this.#path);
+    this.#assertOpen();
+    return AuthorityDatabase.sourceDatabaseIdentity(this.#admission.authorityBackupExpectedSource());
   }
 
   async onlineBackupTo(destinationPath: string): Promise<number> {

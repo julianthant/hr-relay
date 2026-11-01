@@ -16,14 +16,14 @@ function fileIdentity(stat: Stats) {
 }
 
 /** Stable evidence identity fences the doctor's awaited backup inspection. */
-export function inspectStorageRecovery(admission:RuntimeAdmission,sourceIdentity:string) {
+export function inspectStorageRecovery(admission: Readonly<Pick<RuntimeAdmission, "stateRoot" | "assertLive" | "authorityBackupExpectedSource">>, sourceIdentity: string) {
   admission.assertLive();
   const stateRoot=admission.stateRoot;
   const findings: {marker:"authority-restore" | "unowned-recovery-entry";state:"interrupted" | "unavailable"}[]=[];
   const identities:string[]=[sourceIdentity];
   try {
     requireDatabaseSourcePath(join(stateRoot,"state.db"));
-    if(sourceIdentity !== AuthorityDatabase.sourceDatabaseIdentity(join(stateRoot,"state.db")))throw new Error("recovery-source-identity-mismatch");
+    if(sourceIdentity !== AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource()))throw new Error("recovery-source-identity-mismatch");
     const root=lstatSync(stateRoot);
     if(!root.isDirectory())throw new Error("recovery-root-unavailable");
     const entries=readdirSync(stateRoot).sort();

@@ -3,7 +3,7 @@ import { lstatSync, readdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import { readPrivateFile, noSymlinkAncestry, statDirectory, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
-import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
+import { UnboundPredecessorBackupManifestSchema } from "../sqlite/recovery-contracts.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
@@ -84,7 +84,7 @@ export function retainedStorageBackup(workspace: string, installationId: string,
   const authorityDirectory = join(backup.sourceStateRoot, "backups", "authority");
   if (dirname(backup.authorityManifest) !== authorityDirectory) throw new Error("storage-backup-authority-refused");
   const copiedManifest = join(root, "files", "profile", "backups", "authority", basename(backup.authorityManifest));
-  const manifestBytes = file(copiedManifest).bytes, manifest = AuthorityBackupManifestSchema.parse(JSON.parse(manifestBytes.toString("utf8")));
+  const manifestBytes = file(copiedManifest).bytes, manifest = UnboundPredecessorBackupManifestSchema.parse(JSON.parse(manifestBytes.toString("utf8")));
   if (manifest.schemaVersion !== 6 || manifest.installationId !== undefined || manifest.profileId !== undefined
     || manifest.authorityContentFingerprint !== source.sourceFingerprint || manifest.authorityGeneration !== source.sourceGeneration
     || basename(backup.authorityManifest) !== `${manifest.backupFileName}.manifest.json` || hash(manifestBytes) !== backup.authorityDigest

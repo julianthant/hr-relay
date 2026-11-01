@@ -86,7 +86,7 @@ export function stopSyntheticDatabaseWorkers(input: Pick<Parameters<typeof regis
 export function registerBoundFixtureWorker(input: FixtureWorker & Readonly<{ path: string }>): void {
   const admission = boundProfileAdmission(input.path);
   const entry = boundProfiles.get(admission.stateRoot);
-  if (entry?.admission !== admission || input.database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(input.path)) {
+  if (entry?.admission !== admission || input.database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())) {
     throw new Error("fixture-worker-database-owner-mismatch");
   }
   if ([...entry.workers].some(worker => worker.workerId === input.workerId)) throw new Error("fixture-worker-owner-already-retained");
@@ -131,7 +131,7 @@ if (failures.length !== 0) throw new AggregateError(failures, "fixture-worker-cl
 
 export function boundFixtureWorker(database: RealAuthorityDatabase, path: string, workerId: string): boolean {
   const admission = boundProfileAdmission(path), entry = boundProfiles.get(admission.stateRoot);
-  if (entry?.admission !== admission || database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(path)) return false;
+  if (entry?.admission !== admission || database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())) return false;
   const owner = [...entry.workers].find(worker => worker.database === database && worker.workerId === workerId);
   if (owner === undefined) return false;
   const lease = database.authority.workerLeases.get(workerId), slot = database.authority.workerSlots.get(workerId);

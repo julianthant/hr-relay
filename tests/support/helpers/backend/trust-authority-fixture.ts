@@ -18,7 +18,7 @@ import { makeWorld, uuidOf } from "./dashboard-harness.js";
 /** Trust acceptance uses actual SQLite service reads; the empty projector supplies evidence only. */
 export async function trustWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
   const world = await makeWorld({ profileFixture });
-  const profile = await profileFixture();
+  const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(profile.admission, { path: profile.path,
     busyTimeoutMs: 250, migrationOwner: "trust-linkage-test" }, world.clock, undefined, undefined, undefined,
     boundProfileCredentials(profile.admission));

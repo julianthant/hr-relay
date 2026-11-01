@@ -45,6 +45,7 @@ try {
     heartbeatIntervalMs: 600_000,
     write: () => undefined });
   assert.equal(report.closure, "proved");
+  const databaseIdentity = database.getSourceDatabaseIdentity();
   database.close(); database = undefined;
   child.release(); child = undefined;
   machine.release(); proved = true;
@@ -53,7 +54,7 @@ try {
   assert.equal(descriptors.stderr, "");
   assert.equal(descriptors.stdout.split("\n").some(line => [selected.authorityPath, selected.authorityPath + "-wal", selected.authorityPath + "-shm"].some(path => line === "n" + path)), false);
   process.send?.({ state: "report", detail: JSON.stringify({ pid: process.pid, profileId: selected.profileId,
-    databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(selected.authorityPath), device: identity.dev, inode: identity.ino,
+    databaseIdentity, device: identity.dev, inode: identity.ino,
     configFingerprint: active.configFingerprint, settingsRevision, workerId: report.workerId,
     outcomes: report.outcomes.map(value => value.state), closure: report.closure, stopped: report.stopped }) });
 } catch (error) {

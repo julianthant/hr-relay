@@ -484,7 +484,7 @@ export function credentialCopyProcessCustody(input: Readonly<{ machine: RuntimeA
   const processLockRoot = join(installation.workspace, rebuildRuntimeIsolation.processLockRoot);
   machine.assertFixedProcessLockRoot(installation.workspace, processLockRoot);
   const locks = observeRuntimeLockSnapshot({ processLockRoot,
-    sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(profileRoot, "state.db")) }, input.clock);
+    sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource()) }, input.clock);
   const orphans = inspectRuntimeProcessOrphans(processLockRoot);
   if (Object.entries(locks.processLocks).some(([name, state]) => name !== "server" && state.state !== "stopped")
     || orphans.staleWorkerRecords > 0) throw new Error("credential-maintenance-process-custody-unproved");
@@ -521,8 +521,7 @@ export function readStoppedProfileUpgradeInventory(input: Readonly<{
   const savedBrowserRoot = probeConfig.paths.browserProfileRoot;
   const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, input.browserClosure);
   if (membership.unsupported.length !== 0) throw new Error("profile-stopped-upgrade-copy-custody-unproved");
-  const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path,
-    AuthorityDatabase.sourceDatabaseIdentity(join(admission.stateRoot, "state.db"))));
+  const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path));
   if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))
     || backups.some(backup => backup.manifest.installationId !== admission.profileBinding.installationId
       || backup.manifest.profileId !== admission.profileBinding.profileId)) throw new Error("profile-stopped-upgrade-backup-membership-unproved");

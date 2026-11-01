@@ -598,6 +598,7 @@ async function composeDashboardRuntimeStartup(
       liveGeneration = { state: "unavailable" };
     }
     return summarizeBackupHealth(
+      admission,
       { backupDirectory },
       liveGeneration.state === "known" ? liveGeneration.value : undefined,
       clock,

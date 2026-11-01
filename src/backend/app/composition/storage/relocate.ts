@@ -1,4 +1,4 @@
-import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
+import { ProfileStorageRelocationUnsupportedError, requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../../storage/source-closure.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
@@ -122,8 +122,9 @@ async function verifyPreparation(admission: RuntimeAdmission, evidence: Verified
     || digest(evidence.backupFilePath) !== evidence.backupFileSha256) {
     throw new Error("storage-relocation: prepared backup bytes changed");
   }
-  const verified = await verifyBackupManifestAtPath(admission, evidence.backupManifestPath, evidence.sourceDatabaseIdentity);
-  if (verified.backupPath !== evidence.backupFilePath || verified.manifest.sha256 !== evidence.backupFileSha256
+  const verified = await verifyBackupManifestAtPath(admission, evidence.backupManifestPath);
+  if (verified.backupPath !== evidence.backupFilePath || verified.manifest.sourceDatabaseIdentity !== evidence.sourceDatabaseIdentity
+    || verified.manifest.sha256 !== evidence.backupFileSha256
     || verified.manifest.authorityGeneration !== evidence.sourceAuthorityGeneration
     || verified.manifest.authorityContentFingerprint !== evidence.sourceAuthorityContentFingerprint
     || verified.manifest.schemaVersion !== evidence.sourceSchemaVersion) {
@@ -218,7 +219,7 @@ async function verifyStageEvidence(operation: RuntimeRelocationOperation, destin
   if (evidence.configSnapshotId !== intent.snapshot.configSnapshotId
     || evidence.configFingerprint !== intent.snapshot.fingerprint
     || evidence.finalDatabasePath !== intent.nativeDestinationPath
-    || evidence.databaseIdentity !== AuthorityDatabase.sourceDatabaseIdentity(intent.nativeDestinationPath)) {
+    || evidence.databaseIdentity !== AuthorityDatabase.sourceDatabaseIdentity(destination.authorityBackupExpectedSource())) {
     throw new Error("storage-relocation: saved stage identity differs from activation intent");
   }
   const stageManifestPath = physicalStagePath(operation, intent.stageAuthority.manifestPath);
@@ -227,8 +228,7 @@ async function verifyStageEvidence(operation: RuntimeRelocationOperation, destin
     || digest(stageBackupPath) !== intent.stageAuthority.backupSha256) {
     throw new Error("storage-relocation: retained stage authority changed");
   }
-  const stage = await verifyBackupManifestAtPath(destination, stageManifestPath,
-    AuthorityDatabase.sourceDatabaseIdentity(join(intent.source.stateRoot, "state.db")));
+  const stage = await verifyBackupManifestAtPath(destination, stageManifestPath);
   if (stage.backupPath !== stageBackupPath || stage.manifest.authorityGeneration !== intent.preAuthorityGeneration
     || stage.manifest.authorityContentFingerprint !== intent.preAuthorityContentFingerprint) {
     throw new Error("storage-relocation: retained stage backup differs from intent");
@@ -239,7 +239,7 @@ async function verifyStageEvidence(operation: RuntimeRelocationOperation, destin
   }
   const finalManifestPath = join(intent.destination.stateRoot, "backups", "authority",
     `${evidence.backupReceiptId}.manifest.json`);
-  const final = await verifyBackupManifestAtPath(destination, finalManifestPath, evidence.databaseIdentity);
+  const final = await verifyBackupManifestAtPath(destination, finalManifestPath);
   if (final.manifest.sha256 !== evidence.backupDigest
     || final.manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
     throw new Error("storage-relocation: final backup evidence differs");
@@ -275,6 +275,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
   }
   const clock = input.clock ?? systemClock;
   input.admission?.assertStorageRelocationSupported();
+  if (input.admission === undefined) throw new ProfileStorageRelocationUnsupportedError();
   const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
   let admission = input.admission;
   let ownedAdmission = false;
@@ -332,8 +333,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
         inspectRelocationFiles({ admission, source: inventory.source, destination: inventory.destination,
           fixedLockRoot: processLockRoot, operation });
         const manifestPath = join(inventory.source.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`);
-        const backup = await verifyBackupManifestAtPath(admission, manifestPath,
-          AuthorityDatabase.sourceDatabaseIdentity(sourcePath));
+        const backup = await verifyBackupManifestAtPath(admission, manifestPath);
         if (backup.manifest.authorityGeneration !== inspected.authorityGeneration
           || backup.manifest.authorityContentFingerprint !== inspected.authorityContentFingerprint) {
           throw new Error("storage-relocation: preparation backup is stale");
@@ -341,7 +341,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
         const evidence: VerifiedRelocationPreparation = {
           operationId: inventory.operationId, installationId: inventory.installationId,
           sourceGeneration: inventory.fromGeneration, source: inventory.source, destination: inventory.destination,
-          plan: inventory.plan, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(sourcePath),
+          plan: inventory.plan, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource()),
           sourceSchemaVersion: inspected.schemaVersion, sourceAuthorityGeneration: inspected.authorityGeneration,
           sourceAuthorityContentFingerprint: inspected.authorityContentFingerprint,
           backupReceiptId: manifest.backupFileName, backupManifestPath: backup.manifestPath,
@@ -445,7 +445,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
           finalDatabasePath: join(pending.destination.stateRoot, "state.db"),
           configSnapshotId: intent.snapshot.configSnapshotId, configFingerprint: intent.snapshot.fingerprint,
           authorityVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
-          databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(pending.destination.stateRoot, "state.db")),
+          databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(destination.authorityBackupExpectedSource()),
           managedStateEntries: pending.source.stateRoot === pending.destination.stateRoot ? [] : [...sourceFiles.stateEntries],
         };
         operation.recordVerifiedStage(() => {

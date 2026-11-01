@@ -67,7 +67,7 @@ export async function storageRecoveryTarget() {
     const backup = await new AuthorityBackupService(admission, database, {directory}).request({trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration});
     database.close();
     const manifestPath = join(directory, backup.manifests[0].backupFileName + ".manifest.json");
-    const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(path);
+    const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
 
     const operation = admission.acquireOfflineMaintenance();
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, {authorityPath: path, suspectDirectory: join(root, "backups", "suspects"),

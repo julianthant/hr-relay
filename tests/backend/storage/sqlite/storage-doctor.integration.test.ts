@@ -51,7 +51,7 @@ it("refuses profile relocation without changing current backup selection or sour
     assert.equal(before.backup.state, "current");
     assert.ok(before.restoreCandidates.some(candidate => candidate.state === "verified-compatible"));
     assert.equal(before.previousLocationBackups, undefined);
-    assert.equal(summarizeBackupHealth({backupDirectory:directory},0,clock),"current");
+    assert.equal(summarizeBackupHealth(f.admission,{backupDirectory:directory},0,clock),"current");
     const original = storageTree(f.workspace);
     await assert.rejects(runOfflineStorageRelocation({workspace:f.workspace,lifetime:f.lifetime,admission:f.admission,
       command:{kind:"plan",id:UUID_7,json:false},clock}),{code:"PROFILE_STORAGE_RELOCATION_UNSUPPORTED"});
@@ -62,7 +62,7 @@ it("refuses profile relocation without changing current backup selection or sour
     const after = await doctorAuthorityStorage(f.admission, options, clock);
     assert.equal(after.backup.state,"current");
     assert.deepEqual(after.restoreCandidates,before.restoreCandidates);
-    assert.equal(summarizeBackupHealth({backupDirectory:directory},0,clock),"current");
+    assert.equal(summarizeBackupHealth(f.admission,{backupDirectory:directory},0,clock),"current");
     const unrelated = join(directory,"unrelated.manifest.json");
     const sourceManifest = JSON.parse(readFileSync(join(directory,manifest.manifestFileName),"utf8")) as Record<string,unknown>;
     writeFileSync(unrelated,JSON.stringify({...sourceManifest,sourceDatabaseIdentity:"f".repeat(64)}));

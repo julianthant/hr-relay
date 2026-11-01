@@ -10,7 +10,7 @@ import { composeProfileRuntime } from "../../../../src/backend/app/composition/s
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createSyntheticVerifier } from "../../../../src/backend/storage/configuration/synthetic-verifier.js";
-import { deriveProfileNames, ProfileRegistryDocumentSchema, SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
+import { deriveProfileNames, advanceProfileRegistryDocument, ProfileRegistryDocumentSchema, SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 
@@ -50,7 +50,7 @@ export async function createHistoricalIncompleteProfileFixture() {
   assertClosedWorkspace(root);
 
   const priorRegistry = ProfileRegistryDocumentSchema.parse(JSON.parse(readFileSync(registryPath, "utf8")));
-  const registry = ProfileRegistryDocumentSchema.parse({ ...priorRegistry, sessionGeneration: priorRegistry.sessionGeneration + 1, activeProfileId: draft.profileId,
+  const registry = advanceProfileRegistryDocument(priorRegistry, { sessionGeneration: priorRegistry.sessionGeneration + 1, activeProfileId: draft.profileId,
     profiles: [{ profileId: draft.profileId, ...deriveProfileNames(fields.firstName, fields.lastName),
       registration: { operationId: operation.operationId, commandId: operation.commandId, writeId: operation.writeId, credentialRevision: original.revision },
       createdAt: operation.createdAt, lastSignedInAt: operation.createdAt, credentialState: "saved", duoState: "not-set-up", lifecycle: "ready" }] });
@@ -60,10 +60,10 @@ export async function createHistoricalIncompleteProfileFixture() {
   assert.equal(SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).operationId, operation.operationId);
   unlinkSync(operationPath);
   const keyPath = join(machineRoot, "credential-keys", `${draft.profileId}.json`), keyBytes = readFileSync(keyPath), key = JSON.parse(keyBytes.toString("utf8")) as { keyId: string };
-  const keyStat = statSync(keyPath), registryStat = statSync(registryPath), controlPath = join(root, ".tracker", "control", "profile-registry.json");
+  const keyStat = statSync(keyPath), controlPath = join(root, ".tracker", "control", "profile-registry.json");
   const control = JSON.parse(readFileSync(controlPath, "utf8")) as Record<string, unknown>;
   fixtureJson(controlPath, { ...control, digest: createHash("sha256").update(canonicalJsonStringify(registry)).digest("hex"),
-    device: registryStat.dev, inode: registryStat.ino, generation: registry.sessionGeneration, operations: [],
+    revision: registry.revision, generation: registry.sessionGeneration, operations: [],
     erasures: [{ profileId: draft.profileId, originOperationId: operation.operationId, head: { state: "never-erased", epoch: 0 },
       credentialKey: { keyId: key.keyId, binding: { installationId, profileId: draft.profileId },
         file: { device: keyStat.dev, inode: keyStat.ino, digest: createHash("sha256").update(keyBytes).digest("hex") } } }],
@@ -72,6 +72,6 @@ export async function createHistoricalIncompleteProfileFixture() {
   return { workspace: root, lifetime, stateRoot, machineRoot, profileRoot, profileId: draft.profileId, processLockRoot,
     operation: { operationId: operation.operationId, commandId: operation.commandId, writeId: operation.writeId },
     operationPath, registryPath, verifierPath, controlPath, markerPath: join(machineRoot, "profile-registry-version.json"),
-    keyPath, protectedPath, databasePath, schema: { control: 3, marker: 4 } as const,
+    keyPath, protectedPath, databasePath, schema: { control: 4, marker: 5 } as const,
     async close(): Promise<void> { assertClosedWorkspace(root); await lifetime.close(); rmSync(root, { recursive: true }); } };
 }
