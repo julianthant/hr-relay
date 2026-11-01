@@ -98,7 +98,6 @@ export const ConfigPathsSchema = z.strictObject({
   artifactRoot: AbsolutePathSchema,
   /** Every worker browser profile is namespaced BENEATH this root. */
   browserProfileRoot: AbsolutePathSchema,
-  duoCredential: AbsolutePathSchema,
   /** Fast Duo source folder staged for workflow browser sessions. */
   duoExtensionDir: AbsolutePathSchema,
 });

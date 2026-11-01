@@ -138,7 +138,7 @@ function resolveInternal(settingsInput: unknown, hostFactsInput: HostConfigFacts
   const defaults = ConfigSchema.parse({
     paths: { ...defaultRuntimePaths(), ...admittedPair,
       ...(admittedPair === undefined ? {} : { reportsDir: join(admittedPair.stateRoot, "files", "reports"), downloadsDir: join(admittedPair.stateRoot, "files", "downloads"),
-        onboardingDocsDir: join(admittedPair.stateRoot, "files", "onboarding"), i9CheckTrackerPath: join(admittedPair.stateRoot, "files", "reports", "i9-check-tracker.xlsx"), browserProfileRoot: join(admittedPair.stateRoot, "browsers"), duoCredential: join(admittedPair.stateRoot, "credentials", "duo-webauthn.json") }) }, display: hostFacts.primaryDisplay ?? DEFAULT_DISPLAY,
+        onboardingDocsDir: join(admittedPair.stateRoot, "files", "onboarding"), i9CheckTrackerPath: join(admittedPair.stateRoot, "files", "reports", "i9-check-tracker.xlsx"), browserProfileRoot: join(admittedPair.stateRoot, "browsers") }) }, display: hostFacts.primaryDisplay ?? DEFAULT_DISPLAY,
   });
   const config = mergeSettings(defaults, settings);
 

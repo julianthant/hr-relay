@@ -22,7 +22,7 @@ function fixture(capabilities: readonly RuntimeCapability[]) {
   const root = mkdtempSync(join(tmpdir(), "setup-detectors-")); roots.push(root);
   const clock = manualClock(new Date("2026-09-19T12:00:00.000Z"));
   const config = structuredClone(resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config);
-  config.paths.duoExtensionDir = join(root, "extension"); config.paths.duoCredential = join(root, "credential.json");
+  config.paths.duoExtensionDir = join(root, "extension");
   config.features.duoWebAuthn = true;
   const input: RuntimePreflightRunnerInput = {
     scope: PreflightAdmissionScopeSchema.parse({ configSnapshotId: "11111111-1111-4111-8111-111111111111", configFingerprint: "a".repeat(64), descriptorFingerprint: "b".repeat(64), requestedCapabilities: capabilities }),
@@ -105,14 +105,15 @@ describe("registered workflow detectors", () => {
     mkdirSync(f.config.paths.duoExtensionDir); writeFileSync(join(f.config.paths.duoExtensionDir, "workflow-manifest.json"), "{}");
     assert.match((await f.observe("browser.assets", true)).summary, /backend signing source.*unavailable/u);
     Reflect.set(f.input, "duo", fixtureDuoSigningSource());
-    writeFileSync(f.config.paths.duoCredential, "SYNTHETIC_PRIVATE_SECRET", { mode: 0o600 });
+    const credential = join(f.root, "credential.json");
+    writeFileSync(credential, "SYNTHETIC_PRIVATE_SECRET", { mode: 0o600 });
     assert.equal((await f.observe("browser.assets", true)).state, "healthy");
     Reflect.set(f.input, "duo", fixtureDuoSigningSource({ assertCurrent() { throw new Error("SYNTHETIC_PRIVATE_SECRET"); } }));
-    chmodSync(f.config.paths.duoCredential, 0o644);
+    chmodSync(credential, 0o644);
     const unsafe = await f.observe("browser.assets", true);
     assert.equal(unsafe.state, "unhealthy"); assert.doesNotMatch(JSON.stringify(unsafe), /SYNTHETIC_PRIVATE|setup-detectors-/u);
     Reflect.set(f.input, "duo", fixtureDuoSigningSource());
-    chmodSync(f.config.paths.duoCredential, 0o600);
+    chmodSync(credential, 0o600);
     assert.equal((await f.observe("browser.assets", true)).state, "healthy");
     assert.equal(launch.mock.calls.length, 0);
   });

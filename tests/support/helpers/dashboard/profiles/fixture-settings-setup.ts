@@ -40,7 +40,7 @@ FIXTURE_NOW: typeof FixtureIdentityTypes.FIXTURE_NOW;
         onboardingDocsDir: overrides.paths?.onboardingDocsDir ?? "/tmp/settings-fixture/onboarding",
         i9CheckTrackerPath: overrides.paths?.i9CheckTrackerPath ?? "/tmp/settings-fixture/i9.xlsx",
         stateRoot: "/tmp/settings-fixture/state", artifactRoot: "/tmp/settings-fixture/artifacts",
-        browserProfileRoot: "/tmp/settings-fixture/auth", duoCredential: "/tmp/settings-fixture/auth/duo-webauthn.json",
+        browserProfileRoot: "/tmp/settings-fixture/auth",
         duoExtensionDir: "/tmp/settings-fixture/duo-autopilot",
       } });
       return { ...resolved, config, fingerprint: FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(config))) };

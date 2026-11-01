@@ -3,7 +3,7 @@ import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import type { Config } from "../../../models/config/schema.js";
 import { defaultBrowserProfileRoot } from "../../app/config/runtime-paths.js";
 
-type PathKey = "paths.browserProfileRoot" | "paths.duoCredential" | "paths.duoExtensionDir";
+type PathKey = "paths.browserProfileRoot" | "paths.duoExtensionDir";
 
 export class OrdinaryPathValidationError extends Error {
   constructor(readonly key: PathKey, readonly reason: string) {
@@ -109,7 +109,6 @@ export function validateOrdinaryPathChanges(
   candidate: Config,
   installationDefault: () => string = defaultBrowserProfileRoot,
 ): void {
-  if (previous.paths.duoCredential !== candidate.paths.duoCredential) fail("paths.duoCredential", "retired-setting");
   if (previous.paths.browserProfileRoot !== candidate.paths.browserProfileRoot) {
     validateProfile(candidate.paths.browserProfileRoot, installationDefault(), candidate);
   }

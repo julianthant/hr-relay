@@ -20,7 +20,7 @@ function fixture() {
     manualClock(new Date("2026-09-26T12:00:00.000Z"))).config;
   const previous: Config = { ...current, paths: {
     ...current.paths, stateRoot: join(root, "state"), artifactRoot: join(root, "state", "artifacts"),
-    browserProfileRoot: join(root, "old-profile"), duoCredential: join(root, "old-duo.json"),
+    browserProfileRoot: join(root, "old-profile"),
     duoExtensionDir: join(root, "old-extension"),
   } };
   return { root, previous, candidate: (paths: Partial<Config["paths"]>): Config => ({
@@ -48,10 +48,7 @@ describe("ordinary browser paths", () => {
 
     const defaultRoot = join(f.root, "default");
     mkdirSync(defaultRoot); writeFileSync(join(defaultRoot, "existing"), "synthetic");
-    const reset = f.candidate({ browserProfileRoot: defaultRoot, duoCredential: join(defaultRoot, "duo-webauthn.json") });
-    // Retained configuration history does not make its credential path editable.
-    validateOrdinaryPathChanges({ ...f.previous, paths: { ...f.previous.paths, duoCredential: reset.paths.duoCredential } },
-      reset, () => defaultRoot);
+    validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: defaultRoot }), () => defaultRoot);
   });
 
   it("rejects writable, symlinked, overlapping, and nonempty arbitrary profile roots", () => {
@@ -71,11 +68,8 @@ describe("ordinary browser paths", () => {
       () => join(f.root, "default")), "paths.browserProfileRoot", "overlaps-runtime-location");
   });
 
-  it("refuses changes to the retired Duo path without reading it and still validates extension assets", () => {
+  it("validates extension assets", () => {
     const f = fixture();
-    for (const credential of [join(f.root, "absent.json"), join(f.root, "invalid.json")]) {
-      refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ duoCredential: credential })), "paths.duoCredential", "retired-setting");
-    }
     const extension = join(f.root, "extension"); mkdirSync(extension);
     writeFileSync(join(extension, "workflow-manifest.json"), "{}");
     refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ duoExtensionDir: extension })),

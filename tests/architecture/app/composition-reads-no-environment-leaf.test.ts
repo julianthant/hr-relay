@@ -102,7 +102,6 @@ describe("composition-reads-no-environment-leaf", () => {
         assert.equal(before.config.paths.stateRoot, f.stateRoot);
         assert.equal(before.config.paths.artifactRoot, join(f.stateRoot, "artifacts"));
         assert.equal(before.config.paths.browserProfileRoot, join(f.stateRoot, "browsers"));
-        assert.equal(before.config.paths.duoCredential, join(f.stateRoot, "credentials", "duo-webauthn.json"));
         const paths = { ...before.config.paths };
         for (const key of Object.keys(paths) as Array<keyof typeof paths>) {
           const value = paths[key];

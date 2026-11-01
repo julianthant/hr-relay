@@ -96,7 +96,7 @@ afterEach(_afterEachFixture0);
       runtimeStoragePair: pair, active: activeSettingsRuntimeIdentity });
     assert.deepEqual(reader.read().runtimeStatus, { state: "current", identity: settingsRuntimeIdentity(f.initial, resolved.fingerprint) });
     assert.equal(readSettings(f.database.authority).revision, f.initial.revision);
-    assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig).paths, { ...prior.paths, ...pair, browserProfileRoot: join_m0(pair.stateRoot, "browsers"), duoCredential: join_m0(pair.stateRoot, "credentials", "duo-webauthn.json"),
+    assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig).paths, { ...prior.paths, ...pair, browserProfileRoot: join_m0(pair.stateRoot, "browsers"),
       downloadsDir: join_m0(pair.stateRoot, "files", "downloads"), reportsDir: join_m0(pair.stateRoot, "files", "reports"),
       onboardingDocsDir: join_m0(pair.stateRoot, "files", "onboarding"), i9CheckTrackerPath: join_m0(pair.stateRoot, "files", "reports", "i9-check-tracker.xlsx") });
     assert.notDeepEqual(prior.paths, pair);

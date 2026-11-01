@@ -211,7 +211,7 @@ export function createBrowserSessionFactoryFixtures(
     const config: Config = {
       ...base,
       features: { ...base.features, duoWebAuthn: false },
-      paths: { ...base.paths, browserProfileRoot: profileRoot, duoExtensionDir: extensionDir, duoCredential: credential },
+      paths: { ...base.paths, browserProfileRoot: profileRoot, duoExtensionDir: extensionDir },
     };
     return Promise.resolve(body({ config, root })).finally(() => {
       rmSync(root, { recursive: true, force: true });

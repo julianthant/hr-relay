@@ -252,10 +252,9 @@ supplies the default browser root `<stateRoot>/browsers`. A saved browser root c
 | `paths.stateRoot` | Admitted installation root, initially `.tracker/data` |
 | `paths.artifactRoot` | Admitted installation root, initially `.tracker/data/artifacts` |
 | `paths.browserProfileRoot` | Admitted `<stateRoot>/browsers`, or the isolation default `.tracker/data/browsers` without an admitted pair |
-| `paths.duoCredential` | Retained deployment fact in accepted configuration snapshots; no credential reader or picker |
 | `paths.duoExtensionDir` | Absolute `fast-duo` source folder with `workflow-manifest.json` |
 
-The first four paths, browser root and extension path are ordinary settings. State and artifact roots use relocation authority. `paths.duoCredential` remains in the strict serialized configuration and catalog because accepted snapshots and their fingerprints retain that deployment fact. New edits refuse as a retired input; it grants no file access, picker or authentication authority. Removing the persisted field requires the complete snapshot forward conversion.
+The first four paths, browser root and extension path are ordinary settings. State and artifact roots use relocation authority. `paths.duoCredential` is not a configuration field. A journal patch that still names it parses and is refused. Duo credential material stays in the credential store.
 
 `ordinary-path-validator.ts` validates changed effective paths. Browser targets require a canonical absolute path, safe ancestry and ownership, no protected-root overlap, and an absent or empty target. The canonical default may reuse its existing safe directory. The extension requires an owned unpacked MV3 directory and manifest. `OrdinaryPathValidationError` becomes `invalid-value` before snapshot activation.
 

@@ -7,7 +7,7 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join,resolve as resolvePath } from "node:path";
 import { tsImport } from "tsx/esm/api";
@@ -162,7 +162,6 @@ describe("worker browser session factory", () => {
     // Assert production path derivation as a string; never create or remove a real runtime profile root.
     const production = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config.paths;
     assert.equal(production.browserProfileRoot, resolvePath(rebuildRuntimeIsolation.browserProfileRoot));
-    assert.equal(production.duoCredential, resolvePath(".tracker/data/credentials/duo-webauthn.json"));
 
     const profileRoot = join(tmpdir(), "hrauto-profile-derivation");
     const directory = workerProfileDirectory({ profileRoot: profileRoot, slotOrdinal: 1, system: "ucpath" });
@@ -414,23 +413,15 @@ describe("worker browser session factory", () => {
         /Fast Duo extension is not loadable/,
       );
 
-      const missingCredential: Config = {
-        ...config,
-        paths: { ...config.paths, duoCredential: join(root, "absent.json") },
-      };
       assert.throws(
-        () => { assertFastDuoReady({ ...missingCredential, features: { ...config.features, duoWebAuthn: true } }); },
+        () => { assertFastDuoReady({ ...config, features: { ...config.features, duoWebAuthn: true } }); },
         /Duo extension session provisioning could not be verified/,
       );
 
-      const loosePermissions = join(root, "loose.json");
-      writeFileSync(loosePermissions, "{}\n");
-      chmodSync(loosePermissions, 0o644);
       assert.throws(
         () => {
           assertFastDuoReady({
             ...config, features: { ...config.features, duoWebAuthn: true },
-            paths: { ...config.paths, duoCredential: loosePermissions },
           }, fixtureDuoSigningSource({ assertCurrent() { throw new DuoProvisioningError(); } }));
         },
         /Duo extension session provisioning could not be verified/,
@@ -643,8 +634,8 @@ describe("worker browser session factory", () => {
 
 describe("required profile custody admission", () => {
   it("names missing extension provisioning and proves its launched context closed", async () => {
-    await withTempRuntime(async ({ config }) => {
-      writeFileSync(config.paths.duoCredential, JSON.stringify({ rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" }));
+    await withTempRuntime(async ({ config, root }) => {
+      writeFileSync(join(root, "duo-webauthn.json"), JSON.stringify({ rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" }));
       const harness = fakeLauncher();
       const factory = factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings());
       await assert.rejects(factory.open(OPEN_INPUT), error => error instanceof DuoProvisioningError && error.code === "duo-extension-provisioning-unavailable");
@@ -652,9 +643,9 @@ describe("required profile custody admission", () => {
     });
   });
   it("provisions Fast Duo for the retained operator before exposing a login page", async () => {
-    await withTempRuntime(async ({ config }) => {
+    await withTempRuntime(async ({ config, root }) => {
       const credential = { rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" };
-      writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
+      writeFileSync(join(root, "duo-webauthn.json"), JSON.stringify(credential));
       const broker = fixtureWorkflowWorker();
       const serviceWorker = broker.worker;
       const resource = await factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, fakeLauncher({ serviceWorker }), recordingBindings()).open(OPEN_INPUT);
@@ -663,9 +654,9 @@ describe("required profile custody admission", () => {
     });
   });
   it("provisions Fast Duo from runtime-compiled source in an isolated worker scope", async () => {
-    await withTempRuntime(async ({ config }) => {
+    await withTempRuntime(async ({ config, root }) => {
       const credential = { rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" };
-      writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
+      writeFileSync(join(root, "duo-webauthn.json"), JSON.stringify(credential));
       const runtime = await tsImport("../../../../src/backend/runtime/browser/browser-session-factory.ts", import.meta.url) as
         typeof import("../../../../src/backend/runtime/browser/browser-session-factory.js");
       const broker = fixtureWorkflowWorker();
