@@ -25,7 +25,7 @@ export async function runCredentialSourceRetentionCase(scenario: CredentialSourc
   const setupNonce = scenario === "setup-protected-close" || scenario.startsWith("authenticated-upgrade-") ? randomUUID() : undefined;
   const setupWorkspace = setupNonce === undefined ? undefined : join(profile.workspace, `.${scenario}-${setupNonce}`);
   if (setupWorkspace !== undefined) mkdirSync(setupWorkspace, { mode: 0o700 });
-  const child = fork(fileURLToPath(new URL("../processes/credential-source-retention-worker.ts", import.meta.url)),
+  const child = fork(fileURLToPath(new URL("../../support/processes/credential-source-retention-worker.ts", import.meta.url)),
     [String(profile.lifetime.port), profile.workspace, profile.admission.profileBinding.profileId, scenario, ...(setupNonce === undefined ? [] : [setupNonce])],
     { execArgv: ["--import", testProcessImport()], env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "ignore", "pipe", "ipc"] });
   const held = { profile, child, setupWorkspace }; retainedChildren.add(held);
@@ -92,7 +92,7 @@ export async function runCredentialPublicationCrashCase(boundary: "before" | "af
     updatedAt: "2026-09-06T12:00:00.000Z", entries: { ucpathPassword: { set: "credential-store-private-one" } } });
   const scenario = `protected-crash-${boundary}`, nonce = randomUUID();
   const marker = join(profile.workspace, `.credential-publication-${nonce}.json`);
-  const child = fork(fileURLToPath(new URL("../processes/credential-source-retention-worker.ts", import.meta.url)),
+  const child = fork(fileURLToPath(new URL("../../support/processes/credential-source-retention-worker.ts", import.meta.url)),
     [String(profile.lifetime.port), profile.workspace, profile.admission.profileBinding.profileId, scenario, nonce],
     { execArgv: ["--import", testProcessImport()], env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "ignore", "pipe", "ipc"] });
   const held = { profile, child }; retainedChildren.add(held);
@@ -160,7 +160,7 @@ export async function runLogoutSettlementCase(boundary: LogoutSettlementCase): P
   const ownedSnapshots = new Set<string>();
   async function stage(scenario: string, crash: boolean): Promise<number> {
     childClosureProved = false;
-    const child = fork(fileURLToPath(new URL("../processes/credential-source-retention-worker.ts", import.meta.url)),
+    const child = fork(fileURLToPath(new URL("../../support/processes/credential-source-retention-worker.ts", import.meta.url)),
       [String(port), profile.workspace, profileId, scenario, nonce], { execArgv: ["--import", testProcessImport()],
         env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "ignore", "pipe", "ipc"] });
     const closed = once(child, "close");

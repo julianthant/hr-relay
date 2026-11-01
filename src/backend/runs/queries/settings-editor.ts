@@ -4,7 +4,7 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import { hostConfigFacts } from "../../../models/config/host-display.js";
 import { resolveConfigWithProvenance, type ResolvedConfig } from "../../app/config/resolve.js";
-import { derivePersistedSettingsFingerprint, SettingsRuntimeStatusSchema } from "../../../models/config/settings.js";
+import { derivePersistedSettingsFingerprint, isRetiredSettingsPath, SettingsRuntimeStatusSchema } from "../../../models/config/settings.js";
 import type { StoredConfig } from "../../../models/config/snapshot.js";
 import type { SettingsOverride } from "../../../models/config/schema.js";
 import { ProtectedSettingsNameSchema } from "../../../models/config/protected-settings.js";
@@ -56,7 +56,7 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
   const activeConfig = snapshot.activeConfig ?? (runtimeStatus.state === "current" ? resolved.config : undefined);
   if (activeConfig === undefined) throw new Error("settings-editor-active-snapshot-missing");
   if (sha256Hex(canonicalJsonStringify(activeConfig)) !== active.configFingerprint || sha256Hex(canonicalJsonStringify(resolved.config)) !== resolved.fingerprint) throw new Error("settings-editor-config-mismatch");
-  const ordinary = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings");
+  const ordinary = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && !isRetiredSettingsPath(row.key));
   const currentFiscalYear = deps.clock.fiscalYear();
   const currentFiscalYearKey = `FY${String(currentFiscalYear)}`;
   const leaf = (key: string, path = key) => {
@@ -71,7 +71,7 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
       ...(atPath(defaults, path) === undefined ? {} : { defaultValue: atPath(defaults, path) }),
       ...(settingsValue === undefined ? {} : { settingsValue }),
       source: settingsValue === undefined ? "default" : "settings", sourceClass: "ordinary-settings", sensitivity: "ordinary",
-      editable: key !== "paths.duoCredential", validity: effectiveValue === undefined ? "unset" : "valid",
+      editable: true, validity: effectiveValue === undefined ? "unset" : "valid",
       activationScope: key.startsWith("daemon.") ? "next-idle" : "new-runs",
       ...(control.input === "number" ? { minimum: control.minimum } : {}),
       ...(key.startsWith("display.") ? { unit: "px" } : {}),
