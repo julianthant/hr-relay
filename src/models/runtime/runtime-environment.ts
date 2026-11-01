@@ -126,7 +126,7 @@ const SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
 ] as const;
 
 const TEST_ONLY_ENVIRONMENT_KEYS = [
-  "PARITY_UPDATE", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN",
+  "PARITY_UPDATE", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN", "RELAY_TEST_TIME_SCALE",
   "TMPDIR", "TMP", "TEMP", "KEEP_TEST_TMP", "DEVELOPER_DIR",
 ] as const;
 
@@ -157,6 +157,7 @@ const DOCUMENTED_ENVIRONMENT_KEYS: ReadonlySet<string> = new Set();
 const TEST_ONLY_ENVIRONMENT_OWNERS = {
   NODE_OPTIONS: ["playwright.parity.config.ts", "tests/support/duo-ceremony-setup.ts", "tests/support/helpers/credential-keychain-fake.ts"],
   RELAY_TEST_KEYCHAIN: ["tests/support/helpers/credential-keychain-fake.ts"],
+  RELAY_TEST_TIME_SCALE: ["tests/support/time-scale.ts"],
   PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
   TMPDIR: [
     "tests/support/private-temp-setup.ts",
