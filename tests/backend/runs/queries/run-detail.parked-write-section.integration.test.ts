@@ -1,6 +1,7 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { availableSections, buildRunDetail, buildRunSection, type RunDetailQueryDeps, type RunDetailWriteContractView } from "../../../../src/backend/runs/queries/run-detail.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
@@ -10,7 +11,10 @@ import { FIXTURE_PARKED_WRITE_INTENT } from "../../../support/fixtures/dashboard
 import { IDEMPOTENCY_KEY, IDEMPOTENCY_KEY_DIGEST, NOW, SUBJECT_PROOF, UNSCOPED_PROOF } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { queuedEventOf, runRecordOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const {world, RUN_ID, cleanup } = createRunDetailTestWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
+const {world, RUN_ID, cleanup } = createRunDetailTestWorld(profileFixtures.create);
 
 afterEach(cleanup);
 const ITEM_ID = uuidOf(5001);

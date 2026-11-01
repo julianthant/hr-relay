@@ -1,6 +1,7 @@
+import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { readNotificationSources } from "../../../../../src/backend/app/composition/dashboard/notification-sources.js";
 import { createTrustNotifications } from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -12,7 +13,10 @@ import { cleanReceiptOf, failureRecordOf, runRecordOf } from "../../../../suppor
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 
-const { fixture, seedRun } = createNotificationCompositionTestWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
+const { fixture, seedRun } = createNotificationCompositionTestWorld(profileFixtures.create);
 
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;

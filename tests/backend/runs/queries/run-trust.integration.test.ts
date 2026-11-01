@@ -1,7 +1,8 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it, vi } from "vitest";
+import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { projectFailureResolution } from "../../../../src/backend/runs/queries/failure-resolution.js";
 import { buildRunSection } from "../../../../src/backend/runs/queries/run-detail.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -18,6 +19,9 @@ import { seedPersonLookupExitRun } from "../../../support/fixtures/receipt-run-f
 import { uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { foldTrustGate, trustWorld } from "../../../support/helpers/backend/trust-authority-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 
 {
 
@@ -91,7 +95,7 @@ it("corrupt protected annotation JSON fails by name without echoing private text
 {
 
 const worlds: Awaited<ReturnType<typeof trustWorld>>[] = [];
-async function fixture() { const value = await trustWorld(); worlds.push(value); return value; }
+async function fixture() { const value = await trustWorld(profileFixtures.create); worlds.push(value); return value; }
 const _afterEachFixture0 = async () => { vi.restoreAllMocks(); for (const value of worlds.splice(0).reverse()) await value.dispose(); };
 
 function inbox(value: Awaited<ReturnType<typeof trustWorld>>) {

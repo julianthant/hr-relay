@@ -1,3 +1,4 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import { SectionUnavailableError } from "../../../../src/backend/runs/commands/refusals.js";
 import { buildRunSection } from "../../../../src/backend/runs/queries/run-detail.js";
@@ -6,7 +7,7 @@ import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js
 import { foldTrustGate } from "../../../support/helpers/backend/trust-authority-fixture.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureDescriptorAfterUnrelatedEdit, writeFixtureDescriptorWithMovedKey } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { closePersonLookupReceiptDatabase, openPersonLookupReceiptDatabase } from "../../../support/helpers/backend/person-lookup-receipt-database.js";
 
@@ -20,6 +21,9 @@ import { kualiReceiptEvidence, seedPersonLookupExitRun } from "../../../support/
 import { personLookupDescriptor, separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 {
 const { cleanup, roundTrip, parkedIntent, nextCommandId, resolutionCommand } = createParkedWriteRoundTripTestWorld();
 
@@ -28,7 +32,7 @@ afterEach(cleanup);
 
   it("serves canonical parked-write evidence without a fold and refuses foreign intent membership", async () => {
     const h = await roundTrip(); await h.park();
-    const projection = await makeWorld();
+    const projection = await makeWorld({ profileFixture: profileFixtures.create });
     try {
       const deps = { stateRoot: projection.stateRoot, projection: projection.projection,
         runReader: createTrustRunReader(h.database, h.clock), timeline: h.database.authority.timelineEvents,

@@ -130,14 +130,14 @@ export function createWriteSequencerTestWorld() {
         manager,
         context.run.envelope.configFingerprint,
         () => sequencer.executeTransaction(context),
-        "headless", { runId: context.run.envelope.runId, descriptorFingerprint: context.run.envelope.contractFingerprint, captureBrowserScreenshots: false },
+        "headless", { runId: context.run.envelope.runId, descriptorFingerprint: context.run.envelope.contractFingerprint },
       );
     const executeDryRun = (context: WriteSequencerContext): Promise<TransactionDryRunPreview> =>
       withBoundRunConfigFingerprint(
         manager,
         context.run.envelope.configFingerprint,
         () => sequencer.executeDryRun(context),
-        "headless", { runId: context.run.envelope.runId, descriptorFingerprint: context.run.envelope.contractFingerprint, captureBrowserScreenshots: false },
+        "headless", { runId: context.run.envelope.runId, descriptorFingerprint: context.run.envelope.contractFingerprint },
       );
     const retain = (error: unknown): Error => {
       held.primary ??= { error };

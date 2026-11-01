@@ -1,4 +1,4 @@
-import { createBoundProfileFixture } from "../admission-fixture.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
@@ -17,8 +17,8 @@ export interface Fixture {
 
 
 
-export function createStepOmissionTestWorld() {
-  const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+export function createStepOmissionTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  const profiles: BoundProfileStorageFixture[] = [];
   const databases: AuthorityDatabase[] = [];
 
   const STEP = "crm-read";
@@ -32,7 +32,7 @@ export function createStepOmissionTestWorld() {
   const TYPED_FACT = "a1ZVr000004TypedMAC";
 
   async function openDatabase(): Promise<AuthorityDatabase> {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixture();
     profiles.push(profile);
     const clock = manualClock(new Date("2026-08-04T00:11:13.500Z"));
     const database = AuthorityDatabase.open(
@@ -59,7 +59,7 @@ export function createStepOmissionTestWorld() {
     dropAssertedDependency?: boolean;
   }>): Promise<Fixture> {
     const database = await openDatabase();
-    const seeded = seedPersonLookupExitRun(database);
+    const seeded = database.withAuthorityTransaction(() => seedPersonLookupExitRun(database));
     const storedResult = database.authority.runResults.get(EXIT_RUN_ID);
     assert.ok(storedResult !== undefined, "the seeded exit run must have a terminal result");
 

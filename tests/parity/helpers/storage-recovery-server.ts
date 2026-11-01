@@ -211,7 +211,7 @@ export async function storageRecoveryTarget() {
         }
         const target = new URL(path, fixtureUrl);
         if (!path.startsWith("/") || path.startsWith("//") || target.origin !== new URL(fixtureUrl).origin) { res.writeHead(400).end("Same-origin paths only"); return; }
-        const upstream = httpRequest(target, {method}, response => {
+        const upstream = httpRequest({hostname: new URL(fixtureUrl).hostname, port: new URL(fixtureUrl).port, path: target.pathname + target.search, method}, response => {
           res.writeHead(response.statusCode ?? 502, response.headers); response.pipe(res);
         });
         upstream.on("error", () => { if (!res.headersSent) res.writeHead(502); res.end(); });

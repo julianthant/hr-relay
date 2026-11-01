@@ -498,7 +498,7 @@ export async function finalizationHarness(
         manager,
         FINALIZATION_CONFIG_FINGERPRINT,
         work,
-        "headless", { runId: FINALIZATION_RUN_ID, descriptorFingerprint: separationsKualiFinalizationDescriptor.contractFingerprint, captureBrowserScreenshots: false },
+        "headless", { runId: FINALIZATION_RUN_ID, descriptorFingerprint: separationsKualiFinalizationDescriptor.contractFingerprint },
       ),
     dispose: async (): Promise<void> => {
       if (held.failure !== undefined) throw held.failure;
