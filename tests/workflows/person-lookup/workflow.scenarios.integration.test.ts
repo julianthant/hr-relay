@@ -348,8 +348,9 @@ describe("approved Person Lookup scenarios", () => {
     const sessions = new (await import("../../../src/backend/runtime/workers/worker-sessions.js")).WorkerSessionManager({
       workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: WorkflowIdSchema.parse("person-lookup"), stores: harness.deps.stores, factory, clock: harness.authority.clock, scheduler: harness.scheduler,
       acquireDeadlineMs: 60000, duoCeremony: duoCeremonyGatesOver(harness.authority.database, harness.authority.clock), onEvent: (event) => { events.push(event); },
+      browserScreenshotCapture: { capture: async () => undefined },
     });
-    sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint));
+    sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint), "headless", { runId: queued.envelope.runId, descriptorFingerprint: personLookupDescriptor.contractFingerprint });
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, queued, clock.now().toISOString());
     assert.equal((await executeClaimedRun({ ...harness.deps, sessions, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 }) }, { ...claimed, signal: world.SIGNAL })).state, "failed");
