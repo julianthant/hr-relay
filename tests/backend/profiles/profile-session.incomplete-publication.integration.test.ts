@@ -1,5 +1,3 @@
-import { upgradeStoppedMachineControl } from "../../../src/backend/storage/maintenance/upgrade.js";
-import { composeStoppedControlCredentialInventory } from "../../../src/backend/app/composition/profile-credential-inventory.js";
 import { ProfileVerifierDocumentSchema } from "../../../src/models/profiles/profile.js";
 import { DatabaseSync } from "node:sqlite";
 import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
@@ -33,13 +31,11 @@ import { composeProfileRuntime } from "../../../src/backend/app/composition/stor
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
-import { createHistoricalIncompleteProfileFixture, historicalIncompleteProfileFields } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
+import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture, historicalIncompleteProfileFields } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 
 async function historicalPrematureFixture() {
   const fixture = await createHistoricalIncompleteProfileFixture();
-  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace, fixture.lifetime);
-  try { await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock, composeStoppedControlCredentialInventory); }
-  finally { maintenance.release(); }
+  await convertHistoricalIncompleteProfileFixture(fixture);
   return { ...fixture, root: fixture.workspace, fields: historicalIncompleteProfileFields,
     keyBytes: readFileSync(fixture.keyPath), protectedBytes: readFileSync(fixture.protectedPath), databaseBytes: readFileSync(fixture.databasePath) };
 }

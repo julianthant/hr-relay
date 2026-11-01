@@ -9,7 +9,7 @@ import { createSettingsActivationRepositories } from "../../../../src/backend/st
 import { commandFromRow, insertNativeCommand, settleNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
-import { createHistoricalIncompleteProfileFixture } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
+import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { COMMAND_FIXTURES, CONFIG_SNAPSHOT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -85,6 +85,7 @@ it("keeps initialization counts visible and uses the same eligibility for stoppe
     const database = new DatabaseSync(f.databasePath);
     try { initialize(database); } finally { database.close(); }
     const before = readFileSync(f.databasePath);
+    await convertHistoricalIncompleteProfileFixture(f);
     const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
     try {
       const child = machine.forStoppedIncompleteProfileInventory(f.profileId);

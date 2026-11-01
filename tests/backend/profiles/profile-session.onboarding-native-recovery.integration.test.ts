@@ -28,7 +28,7 @@ import { ProfileOnboardingDuoProviderError } from "../../../src/backend/runtime/
 import { CanonicalCredentialHeadSchema } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { BrowserProfileStillClosingError, onboardingProfileDirectory } from "../../../src/backend/runtime/browser/native-profile-probe.js";
-import { createHistoricalIncompleteProfileFixture } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
+import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { scaledMs } from "../../support/time-scale.js";
 
 function ownedBrowserExited(pid:number):boolean {
@@ -42,6 +42,7 @@ async function requireOwnedBrowserExit(pid:number){
 it("refuses a canonical Chromium orphan after owner SIGKILL before erasure, then recovers only after native closure",async()=>{
   await runtimeLifetimeLock();
   const f=await createHistoricalIncompleteProfileFixture();
+  await convertHistoricalIncompleteProfileFixture(f);
   const maintenance=RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   await maintenance.reclassifyIncompleteProfileAsDraft(f.profileId);maintenance.release();
   const machine=acquireEntrypointAdmission(f.workspace,"exclusive", f.lifetime);

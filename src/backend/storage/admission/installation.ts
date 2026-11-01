@@ -2147,6 +2147,17 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     },
     readProfileRegistry() {
       assertHeld();
+      if (options?.stoppedControlForward === true
+        && readProfileEvidence(join(locator.stateRoot, "machine", "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() })).schemaVersion === 5) {
+        if (lstatMaybe(join(control, "profile-publication.json")) || lstatMaybe(join(control, "profile-control-upgrade.json"))) fail("profile-registry-publication-pending");
+        const before = profileObservation(control, locator);
+        const prior = readProfileEvidence(join(control, "profile-registry.json"), StoppedLogicalProfileContinuitySchema);
+        const document = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), ProfileRegistryDocumentSchema);
+        priorControlUpgradeEvidence(locator, prior, document);
+        assertHeld();
+        if (before !== profileObservation(control, locator)) fail("profile-registry-observation-changed");
+        return document;
+      }
       if (lstatMaybe(join(control, "profile-publication.json"))) {
         if (options?.readonlyControl === true) return readMachineRegistry(control, locator, false);
         return mutate(() => {

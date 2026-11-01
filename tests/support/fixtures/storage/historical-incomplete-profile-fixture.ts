@@ -16,7 +16,10 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpat
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeStoppedControlCredentialInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
+import { upgradeStoppedMachineControl } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createCanonicalCredentials, CanonicalCredentialHeadSchema } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { FakeKeyringEntry } from "../../helpers/credential-keychain-fake.js";
@@ -171,6 +174,12 @@ function historicalAuthorityArchive(profileRoot: string, binding: { installation
   writeFileSync(manifestPath, `${canonicalJsonStringify(manifest)}\n`, { mode: 0o600, flag: "wx", flush: true });
   assert.equal(createHash("sha256").update(readFileSync(primaryPath)).digest("hex"), primaryDigest);
   return Object.freeze({ path, manifestPath, manifest });
+}
+
+export async function convertHistoricalIncompleteProfileFixture(fixture: { workspace: string; lifetime: RuntimeLifetimeLock }): Promise<void> {
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace, fixture.lifetime);
+  try { await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock, composeStoppedControlCredentialInventory); }
+  finally { maintenance.release(); }
 }
 
 export function historicalPlaintextProtectedDocument(document: CredentialDocument, schemaVersion: 2 | 3) {
