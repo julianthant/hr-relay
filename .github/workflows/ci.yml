@@ -73,14 +73,6 @@ jobs:
       - run: npm ci
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      # macOS verifies a freshly downloaded Chromium.app on its first launches; pay that once here.
-      - name: Time cold and warm Chromium launches
-        run: >-
-          node --input-type=module -e "import { chromium } from 'playwright'; import { mkdtempSync } from 'node:fs';
-          import { tmpdir } from 'node:os'; import { join } from 'node:path';
-          for (const label of ['cold', 'warm']) { const started = performance.now();
-          const context = await chromium.launchPersistentContext(mkdtempSync(join(tmpdir(), 'warm-')), { channel: 'chromium', headless: true });
-          await context.close(); console.log(label + ' Chromium launch: ' + Math.round(performance.now() - started) + ' ms'); }"
       - run: npm run web:build
       - name: Mount test temp on a RAM disk
         run: |
@@ -99,10 +91,9 @@ jobs:
           --maxWorkers=1 --no-file-parallelism
       - name: Check the remaining integration shard
         if: ${{ !cancelled() }}
-        run: >-
-          npm run test:integration -- --shard=${{ matrix.shard }}/4 --maxWorkers=2
-          --exclude=tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts
-          --exclude=tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts
+        env:
+          RELAY_TEST_SKIP_ISOLATED: "1"
+        run: npm run test:integration -- --shard=${{ matrix.shard }}/4 --maxWorkers=2
 
   integration:
     name: integration (macos-15)
