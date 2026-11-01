@@ -1,3 +1,4 @@
+import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
 import { createAssistantWorkflowStarts } from "../../../assistant/workflow-start.js";
 import { readProfileDatabaseBinding } from "../../../storage/sqlite/profile-local-databases.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../storage/sqlite/migrations.js";
@@ -611,7 +612,7 @@ async function composeDashboardRuntimeStartup(
     resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,
   };
   const setHash = descriptorSetHash(DESCRIPTORS.map((descriptor) => descriptor.contractFingerprint));
-  const runtimePreflight = composeRuntimePreflight({ admission, credentials: context.credentials, database, clock, repoRoot, isolation: input.isolation,
+  const runtimePreflight = composeRuntimePreflight({ duo: createDuoCredentialStore(admission, machineAdmission, clock), admission, credentials: context.credentials, database, clock, repoRoot, isolation: input.isolation,
     descriptors, descriptorSetHash: setHash, protectedSecrets, environment: env,
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
   const lifecycle = new RunRecordService({ database, clock, ids,

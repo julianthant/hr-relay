@@ -23,6 +23,6 @@ export function defaultRuntimePaths(): ConfigPaths {
     artifactRoot: resolve(rebuildRuntimeIsolation.artifactRoot),
     browserProfileRoot: profileRoot,
     duoCredential: join(resolve(rebuildRuntimeIsolation.stateRoot), "credentials", "duo-webauthn.json"),
-    duoExtensionDir: resolve("duo-autopilot"),
+    duoExtensionDir: resolve("fast-duo"),
   });
 }

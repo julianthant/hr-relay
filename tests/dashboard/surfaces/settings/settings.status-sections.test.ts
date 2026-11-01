@@ -154,7 +154,7 @@ describe("System hosts page retirement", () => {
     assert.ok(text.includes("This build has no renderer for the served section “system-hosts”"), text);
     assert.equal(mounted().querySelector(".settings-host-row"), null);
     assert.ok(!text.includes("Production endpoints"), text);
-    assert.ok(!text.includes("https://kuali.example/prod"), text);
+    assert.doesNotMatch(text, /https:\/\/kuali\.example\/prod/u);
   });
 });
 

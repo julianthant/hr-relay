@@ -140,10 +140,15 @@ export function defineVerifiedLoginRecipe(input: Readonly<{
     }
     context.assertCurrent();
     await context.duoCeremony.withCeremony(async (token) => {
-      context.assertCurrent();
-      await input.ceremony(context, token);
-      context.assertCurrent();
-      await assertAuthenticatedApplication(input.system, context, input.verify);
+      const ceremony = async () => {
+        context.assertCurrent();
+        await input.ceremony(context, token);
+        context.assertCurrent();
+        await assertAuthenticatedApplication(input.system, context, input.verify);
+        context.assertCurrent();
+      };
+      if (context.withDuoSigningScope === undefined) await ceremony();
+      else await context.withDuoSigningScope(token, ceremony);
     });
     context.assertCurrent();
     return LoginResultSchema.parse("logged-in");

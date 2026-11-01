@@ -1,3 +1,4 @@
+import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 
 import { createHash, randomUUID } from "node:crypto";
 import type { DebugEvent } from "../../../models/events/timeline.js";
@@ -8,7 +9,6 @@ import type { Config } from "../../../models/config/schema.js";
 import type { DuoCeremonyLeaseRecord } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { BrowserSystemIdSchema, FingerprintSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 import type { BrowserSystemId, Fingerprint, WorkerId } from "../../../rules/identity/ids.js";
-import { resolveSecretFileIdentity } from "../../../models/config/secrets.js";
 import { DuoTerminalRefusalError } from "../../systems/browser-shared/login-contract.js";
 import type { DuoCeremonyLeaseRepository } from "../../storage/sqlite/authority-database.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
@@ -299,8 +299,8 @@ class Gate implements DuoCeremonyGateHandle {
 }
 
 // Credential identity follows configured mode; resolution failure cannot select a different identity.
-export function duoCeremonyCredentialKey(config: Config): Fingerprint {
-  if (config.features.duoWebAuthn) return resolveSecretFileIdentity("duoWebauthnCredential", config);
+export function duoCeremonyCredentialKey(config: Config, duo?: DuoSigningSource): Fingerprint {
+  if (config.features.duoWebAuthn) { if (duo === undefined) throw new Error("duo-signing-source-required"); duo.assertCurrent(); return duo.identity(); }
   return FingerprintSchema.parse(createHash("sha256")
     .update("hrauto:duo-credential-identity:v1\0hands-on\0")
     .update(config.actor.id)
@@ -310,6 +310,7 @@ export function duoCeremonyCredentialKey(config: Config): Fingerprint {
 /** The production composition: the one place the key, the leaves and the poll cadence meet. */
 export function composeDuoCeremonyGateFactory(input: Readonly<{
   config: Config;
+  duo?: DuoSigningSource;
   leases: DuoCeremonyLeaseRepository;
   clock: Clock;
   scheduler: MonotonicDeadlineScheduler;
@@ -317,7 +318,7 @@ export function composeDuoCeremonyGateFactory(input: Readonly<{
 }>): DuoCeremonyGateFactory {
   return createDuoCeremonyGateFactory({
     leases: input.leases,
-    credentialKey: duoCeremonyCredentialKey(input.config),
+    credentialKey: duoCeremonyCredentialKey(input.config, input.duo),
     clock: input.clock,
     scheduler: input.scheduler,
     sessionAcquireMs: input.config.timeouts.sessionAcquireMs,

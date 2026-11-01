@@ -25,7 +25,7 @@ export function settingsSearchIndex(groups: readonly SettingsNavGroup[], documen
   for (const group of groups) for (const entry of group.entries) add(entry.id, entry.label, undefined, group.heading, group.heading);
   add("performance", "Performance", undefined, "Advanced");
   add("general", "Animations", "appearance.animations", "Appearance subtle motion reduced motion");
-  add("general", "Assistant permission", "assistant.permission", "Ask before every action submits");
+  add("general", "Assistant permission", "assistant.permission", "Ask before every action");
   add("general", "Browser window", "browser.window", "Browser width height size");
   add("general", "Dark theme", "appearance.theme", "Appearance dashboard color light dark");
   add("general", "ChatGPT account", "chatgpt.account", "OpenAI sign in login subscription plan OCR manage usage");

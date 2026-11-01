@@ -1,3 +1,4 @@
+import { fixtureDuoSigningSource } from "../../../support/helpers/browser/duo-signing.js";
 import assert from "node:assert/strict";
 import { chmodSync,mkdirSync,mkdtempSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -101,13 +102,16 @@ describe("registered workflow detectors", () => {
     assert.match((await f.observe("browser.assets", true)).summary, /Chromium.*unavailable/u);
     writeFileSync(executable, "synthetic executable", { mode: 0o700 });
     assert.match((await f.observe("browser.assets", true)).summary, /manifest.*unavailable/u);
-    mkdirSync(f.config.paths.duoExtensionDir); writeFileSync(join(f.config.paths.duoExtensionDir, "manifest.json"), "{}");
-    assert.match((await f.observe("browser.assets", true)).summary, /duoWebauthnCredential.*unavailable/u);
+    mkdirSync(f.config.paths.duoExtensionDir); writeFileSync(join(f.config.paths.duoExtensionDir, "workflow-manifest.json"), "{}");
+    assert.match((await f.observe("browser.assets", true)).summary, /backend signing source.*unavailable/u);
+    Reflect.set(f.input, "duo", fixtureDuoSigningSource());
     writeFileSync(f.config.paths.duoCredential, "SYNTHETIC_PRIVATE_SECRET", { mode: 0o600 });
     assert.equal((await f.observe("browser.assets", true)).state, "healthy");
+    Reflect.set(f.input, "duo", fixtureDuoSigningSource({ assertCurrent() { throw new Error("SYNTHETIC_PRIVATE_SECRET"); } }));
     chmodSync(f.config.paths.duoCredential, 0o644);
     const unsafe = await f.observe("browser.assets", true);
     assert.equal(unsafe.state, "unhealthy"); assert.doesNotMatch(JSON.stringify(unsafe), /SYNTHETIC_PRIVATE|setup-detectors-/u);
+    Reflect.set(f.input, "duo", fixtureDuoSigningSource());
     chmodSync(f.config.paths.duoCredential, 0o600);
     assert.equal((await f.observe("browser.assets", true)).state, "healthy");
     assert.equal(launch.mock.calls.length, 0);

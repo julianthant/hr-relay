@@ -1,3 +1,4 @@
+import type { DuoAssertion, DuoAssertionRequest } from "../storage/configuration/duo-signing.js";
 import type { DuoEnrollmentScope } from "../../models/config/duo-credential-store.js";
 import type { ProfileOnboardingMethod, ProfileOnboardingState } from "../../models/profiles/public-profile.js";
 
@@ -61,8 +62,7 @@ export interface DraftDuoCapability {
   readonly scope: DuoEnrollmentScope;
   assertCurrent(): void;
   persistPending(credential: DraftDuoPendingCredential): Promise<Readonly<{ revision: number }>>;
-  provision(credentialId: string): Promise<Readonly<DraftDuoPendingCredential & { highWater: number }>>;
-  reserveSignCount(input: Readonly<{ credentialId: string; attemptId: string }>): Promise<Readonly<{ count: number; revision: number }>>;
+  signAssertion(request: DuoAssertionRequest): Promise<DuoAssertion>;
   recordCeremony(receipt: DraftDuoCeremonyReceipt): Promise<void>;
   recordPortalAcceptance(receipt: DraftDuoPortalReceipt): Promise<void>;
   retainUnknown(): Promise<void>;

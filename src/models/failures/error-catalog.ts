@@ -199,7 +199,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   DUO_PROMPT_STALLED: catalogEntry(
-    "The Duo prompt never cleared; check that Duo Autopilot is loaded and its credential is current.",
+    "The Duo prompt never cleared; check that Fast Duo is loaded and its credential is current.",
     EmptyParametersSchema,
   ),
   DUO_REFUSAL_UNPROVEN: catalogEntry(
@@ -223,7 +223,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   DUO_TERMINAL_REFUSAL: catalogEntry(
-    "Duo refused the sign-in. Run it again; if it repeats, check Duo Autopilot.",
+    "Duo refused the sign-in. Run it again; if it repeats, check Fast Duo.",
     EmptyParametersSchema,
   ),
   UCPATH_SIGN_IN_FAILED: catalogEntry(

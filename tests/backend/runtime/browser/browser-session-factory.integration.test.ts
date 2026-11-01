@@ -1,6 +1,8 @@
+import { fixtureDuoSigningSource, fixtureWorkflowWorker } from "../../../support/helpers/browser/duo-signing.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 
 import assert from "node:assert/strict";
@@ -8,14 +10,12 @@ import { PNG } from "pngjs";
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join,resolve as resolvePath } from "node:path";
-import { runInNewContext } from "node:vm";
-import type { Worker } from "playwright";
 import { tsImport } from "tsx/esm/api";
 import { beforeEach, describe,it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import {
-assertDuoAutopilotReady,
+assertFastDuoReady,
 BrowserProfileAdmissionSchema,
 BrowserProfileStillClosingError,
 browserSignInFingerprint,
@@ -80,6 +80,10 @@ beforeEach(() => {
     },
   } };
 });
+
+// Browser and Duo broker closure failures arrive joined; match the exact underlying cause.
+const closureCause = (pattern: RegExp) => (error: unknown): boolean => error instanceof BrowserSessionClosureUnprovedError
+  && error.errors.some(cause => cause instanceof Error && pattern.test(cause.message));
 
 describe("worker browser session factory", () => {
   it("probes native availability without profile reset, credential reads, provisioning or login", async () => {
@@ -192,7 +196,8 @@ describe("worker browser session factory", () => {
       const resource = await factory.open(OPEN_INPUT);
       const launch = harness.launches()[0];
       assert.ok(launch);
-      assert.equal(launch.extensionDirectory, config.paths.duoExtensionDir);
+      assert.equal(launch.extensionDirectory, join(String(launch.profileDirectory), "relay-extension"));
+      assert.equal(launch.nativeOnly, true);
       assert.equal(launch.headless, config.browser.headless);
       assert.equal(launch.downloadsPath, config.paths.downloadsDir);
       assert.deepEqual(launch.viewport, {
@@ -405,8 +410,8 @@ describe("worker browser session factory", () => {
         paths: { ...config.paths, duoExtensionDir: join(root, "absent-extension") },
       };
       assert.throws(
-        () => { assertDuoAutopilotReady({ ...missingExtension, features: { ...config.features, duoWebAuthn: true } }); },
-        /Duo Autopilot extension is not loadable/,
+        () => { assertFastDuoReady({ ...missingExtension, features: { ...config.features, duoWebAuthn: true } }); },
+        /Fast Duo extension is not loadable/,
       );
 
       const missingCredential: Config = {
@@ -414,8 +419,8 @@ describe("worker browser session factory", () => {
         paths: { ...config.paths, duoCredential: join(root, "absent.json") },
       };
       assert.throws(
-        () => { assertDuoAutopilotReady({ ...missingCredential, features: { ...config.features, duoWebAuthn: true } }); },
-        /duoWebauthnCredential is unavailable/,
+        () => { assertFastDuoReady({ ...missingCredential, features: { ...config.features, duoWebAuthn: true } }); },
+        /Duo extension session provisioning could not be verified/,
       );
 
       const loosePermissions = join(root, "loose.json");
@@ -423,17 +428,17 @@ describe("worker browser session factory", () => {
       chmodSync(loosePermissions, 0o644);
       assert.throws(
         () => {
-          assertDuoAutopilotReady({
+          assertFastDuoReady({
             ...config, features: { ...config.features, duoWebAuthn: true },
             paths: { ...config.paths, duoCredential: loosePermissions },
-          });
+          }, fixtureDuoSigningSource({ assertCurrent() { throw new DuoProvisioningError(); } }));
         },
-        /duoWebauthnCredential is unavailable/,
+        /Duo extension session provisioning could not be verified/,
       );
 
       // Feature off is an explicit operator decision, not a silent skip.
       assert.doesNotThrow(() => {
-        assertDuoAutopilotReady({
+        assertFastDuoReady({
           ...missingExtension,
           features: { ...config.features, duoWebAuthn: false },
         });
@@ -586,7 +591,7 @@ describe("worker browser session factory", () => {
       const silentResource = await factoryFor(config, silent, recordingBindings()).open(OPEN_INPUT);
       await assert.rejects(
         silentResource.close({ reason: "worker-stop" }),
-        /never emitted its context close event/,
+        closureCause(/never emitted its context close event/u),
       );
 
       // A page that refuses to close is not "closed enough".
@@ -594,7 +599,7 @@ describe("worker browser session factory", () => {
       const stuckResource = await factoryFor({ ...config, paths: { ...config.paths, browserProfileRoot: `${config.paths.browserProfileRoot}-stuck` } }, stuck, recordingBindings()).open(OPEN_INPUT);
       await assert.rejects(
         stuckResource.close({ reason: "worker-stop" }),
-        /injected page close failure/,
+        closureCause(/injected page close failure/u),
       );
 
       // A close that hangs must hit its bounded proof deadline, not wait forever.
@@ -607,7 +612,7 @@ describe("worker browser session factory", () => {
       ).open(OPEN_INPUT);
       await assert.rejects(
         hangingResource.close({ reason: "worker-stop" }),
-        /did not complete within its .*proof deadline/,
+        closureCause(/did not complete within its .*proof deadline/u),
       );
     });
   });
@@ -646,51 +651,29 @@ describe("required profile custody admission", () => {
       assert.equal(harness.contextClosed(), true);
     });
   });
-  it("provisions only trusted session storage and verifies the injected credential", async () => {
+  it("provisions Fast Duo for the retained operator before exposing a login page", async () => {
     await withTempRuntime(async ({ config }) => {
       const credential = { rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" };
       writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
-      const calls: string[] = [];
-      let stored: unknown;
-      const serviceWorker = { url: () => `chrome-extension://${"a".repeat(32)}/src/background.js`,
-        evaluate: async (operation: (credentials: unknown) => Promise<void>, credentials: unknown) => {
-          const previous: unknown = Reflect.get(globalThis, "chrome");
-          Reflect.set(globalThis, "chrome", { storage: { local: { get: () => { calls.push("local:get"); return {}; } }, session: {
-            setAccessLevel: (value: unknown) => { assert.deepEqual(value, { accessLevel: "TRUSTED_CONTEXTS" }); calls.push("session:access"); },
-            set: (value: unknown) => { stored = value; calls.push("session:set"); }, get: () => stored,
-          } } });
-          try { await operation(credentials); } finally { if (previous === undefined) Reflect.deleteProperty(globalThis, "chrome"); else Reflect.set(globalThis, "chrome", previous); }
-        },
-      } as unknown as Worker;
-      const harness = fakeLauncher({ serviceWorker });
-      const resource = await factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings()).open(OPEN_INPUT);
-      try {
-        assert.deepEqual(calls, ["local:get", "session:access", "session:set"]);
-        assert.deepEqual(stored, { duoCredentials: [credential] });
-      } finally { await resource.close({ reason: "worker-stop" }); }
+      const broker = fixtureWorkflowWorker();
+      const serviceWorker = broker.worker;
+      const resource = await factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, fakeLauncher({ serviceWorker }), recordingBindings()).open(OPEN_INPUT);
+      try { assert.deepEqual(broker.installed.map(args => [...args]), [[]]); }
+      finally { await resource.close({ reason: "worker-stop" }); }
     });
   });
-  it("provisions Duo from the runtime-compiled source in an isolated scope whose storage sorts keys", async () => {
+  it("provisions Fast Duo from runtime-compiled source in an isolated worker scope", async () => {
     await withTempRuntime(async ({ config }) => {
       const credential = { rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" };
       writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
       const runtime = await tsImport("../../../../src/backend/runtime/browser/browser-session-factory.ts", import.meta.url) as
         typeof import("../../../../src/backend/runtime/browser/browser-session-factory.js");
-      let stored: unknown;
-      const sortedKeys = (value: object) => Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
-      const chrome = { storage: { local: { get: () => ({}) },
-        session: { setAccessLevel: () => undefined, set: (value: unknown) => { stored = value; },
-          get: () => ({ duoCredentials: (stored as { duoCredentials: object[] }).duoCredentials.map(sortedKeys) }) } } };
-      const serviceWorker = { url: () => `chrome-extension://${"a".repeat(32)}/src/background.js`,
-        evaluate: (operation: (credentials: unknown) => Promise<void>, credentials: unknown) =>
-          runInNewContext(`(${operation.toString()})(credentials)`, { chrome, credentials }) as Promise<void>,
-      } as unknown as Worker;
-      const duoConfig = { ...config, features: { ...config.features, duoWebAuthn: true } };
-      const resource = await factoryFor(duoConfig, fakeLauncher({ serviceWorker }), recordingBindings(), NEVER_SCHEDULER, undefined,
+      const broker = fixtureWorkflowWorker();
+      const serviceWorker = broker.worker;
+      const resource = await factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, fakeLauncher({ serviceWorker }), recordingBindings(), NEVER_SCHEDULER, undefined,
         runtime.PlaywrightWorkerSessionFactory).open(OPEN_INPUT);
-      try {
-        assert.equal(JSON.stringify(stored), JSON.stringify({ duoCredentials: [credential] }));
-      } finally { await resource.close({ reason: "worker-stop" }); }
+      try { assert.equal(JSON.stringify(broker.installed), "[[]]"); }
+      finally { await resource.close({ reason: "worker-stop" }); }
     });
   });
   it("separates sign-in identity from viewport, presentation and private values", async () => {

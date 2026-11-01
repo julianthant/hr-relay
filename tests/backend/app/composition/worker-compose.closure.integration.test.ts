@@ -35,7 +35,7 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
   let report: workerLoop.WorkerLoopReport | undefined, issued: RuntimeAdmission | undefined;
   const lifetimeLock = f.lifetime;
   const managers: WorkerSessionManager[] = [];
-  let launches = 0, launchFailure: Promise<never> | undefined;
+  let launches = 0, probes = 0, launchFailure: Promise<never> | undefined;
   let closedWorkerDatabase: AuthorityDatabase | undefined, launchedDirectory: string | undefined;
   let custodyOraclesProved = false, primary: unknown;
   const run = workerLoop.runWorkerLoop;
@@ -61,7 +61,12 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
     assert.equal(queued.state, "inserted");
     const nativeLaunch = chromium.launchPersistentContext.bind(chromium);
     vi.spyOn(chromium, "launchPersistentContext").mockImplementation((directory, options) => {
-      if (options?.args?.includes("--disable-extensions")) return nativeLaunch(directory, options);
+      assert.deepEqual(options?.args, ["--disable-extensions"]);
+      if (options?.timeout !== undefined) {
+        assert.equal(options.timeout, context.resolveSettings(context.settings.read().record.settings).config.timeouts.sessionAcquireMs);
+        probes += 1;
+        return nativeLaunch(directory, options);
+      }
       launches += 1; launchedDirectory = directory; launchFailure = Promise.reject(new Error("uncertain launch failure")); return launchFailure;
     });
   }
@@ -76,7 +81,7 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
     assert.ok(report); assert.equal(report.closure, "unproved");
     if (failure === "close") assert.deepEqual(report.outcomes, []);
     else {
-      assert.equal(launches, 1); assert.ok(launchedDirectory);
+      assert.ok(probes > 0); assert.equal(launches, 1); assert.ok(launchedDirectory);
       const root = context.resolveSettings(context.settings.read().record.settings).config.paths.browserProfileRoot;
       const contained = relative(root, launchedDirectory);
       assert.ok(contained.length > 0 && !contained.startsWith("..") && !isAbsolute(contained));

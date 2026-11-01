@@ -1,38 +1,42 @@
 import assert from "node:assert/strict";
-import { existsSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import { describe, it } from "vitest";
+import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { BrowserProfileAdmissionSchema, PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError, workerProfileDirectory, type BrowserSessionFactoryOptions } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
+import { BrowserProfileAdmissionSchema, PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError, workerProfileDirectory, DuoProvisioningError, assertFastDuoReady, type BrowserSessionFactoryOptions } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import { captureFullPage } from "../../../../src/backend/runtime/browser/full-page-capture.js";
+import { BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
+import { fixtureDuoSigningSource, fixtureWorkflowWorker } from "../../../support/helpers/browser/duo-signing.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 
-const clock = manualClock(new Date("2026-11-01T12:00:00Z"));
-const sessionId = "00000000-0000-4000-8000-000000000001";
-const scheduler = { schedule: () => ({ cancel() {} }) };
-const fixtures = createBrowserSessionFactoryFixtures(clock, sessionId, scheduler);
-const workerId = WorkerIdSchema.parse("person-lookup-worker-1");
-const input = { workerId, workflowId: WorkflowIdSchema.parse("person-lookup"), system: "ucpath", instance: "prod",
-  configFingerprint: FingerprintSchema.parse("ab".repeat(32)), acceptDownloads: false, exclusive: false,
-  signal: new AbortController().signal, duoCeremony: { withCeremony: async () => { throw new Error("fixture must not start a Duo ceremony"); } } } as const;
-
-function options(config: BrowserSessionFactoryOptions["config"], native: ReturnType<typeof fixtures.fakeLauncher>, assertCurrent: () => void): BrowserSessionFactoryOptions {
-  return { config, isolation: rebuildRuntimeIsolation, clock, scheduler, newSessionId: () => sessionId,
-    protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }),
-    slotOrdinal: () => 1, assertCurrent, bindings: fixtures.recordingBindings(), launcher: native.launcher,
-    admitProfile: profile => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...profile, profileRevision: 1, resetRequired: false })) };
-}
-
-function epoch() {
-  let current = true;
-  return { revoke: () => { current = false; }, assertCurrent: () => { if (!current) throw new ProfileCustodyUnavailableError(); } };
-}
-
 describe("browser current-owner fence", () => {
+  const clock = manualClock(new Date("2026-11-01T12:00:00Z"));
+  const sessionId = "00000000-0000-4000-8000-000000000001";
+  const scheduler = { schedule: () => ({ cancel() {} }) };
+  const fixtures = createBrowserSessionFactoryFixtures(clock, sessionId, scheduler);
+  const workerId = WorkerIdSchema.parse("person-lookup-worker-1");
+  const input = { workerId, workflowId: WorkflowIdSchema.parse("person-lookup"), system: "ucpath", instance: "prod",
+    configFingerprint: FingerprintSchema.parse("ab".repeat(32)), acceptDownloads: false, exclusive: false,
+    signal: new AbortController().signal, duoCeremony: { withCeremony: async () => { throw new Error("fixture must not start a Duo ceremony"); } } } as const;
+
+  function options(config: BrowserSessionFactoryOptions["config"], native: ReturnType<typeof fixtures.fakeLauncher>, assertCurrent: () => void): BrowserSessionFactoryOptions {
+    return { config, isolation: rebuildRuntimeIsolation, clock, scheduler, newSessionId: () => sessionId,
+      protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }),
+      slotOrdinal: () => 1, assertCurrent, bindings: fixtures.recordingBindings(), launcher: native.launcher,
+      admitProfile: profile => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...profile, profileRevision: 1, resetRequired: false })) };
+  }
+
+  function epoch() {
+    let current = true;
+    return { revoke: () => { current = false; }, assertCurrent: () => { if (!current) throw new ProfileCustodyUnavailableError(); } };
+  }
+
   it("refuses launch when ownership expires while profile admission resolves", async () => {
     await fixtures.withTempRuntime(async ({ config }) => {
       const owner = epoch(), native = fixtures.fakeLauncher();
@@ -177,4 +181,104 @@ describe("browser current-owner fence", () => {
     assert.equal(published, false);
   });
 
+});
+
+const clock = manualClock(new Date("2026-11-01T00:00:00Z"));
+const { withTempRuntime, fakeLauncher, recordingBindings, factoryFor } = createBrowserSessionFactoryFixtures(clock,
+  "00000000-0000-4000-8000-000000000001", { schedule: () => ({ cancel: () => undefined }) });
+const input = { workerId: WorkerIdSchema.parse("worker-1"), workflowId: WorkflowIdSchema.parse("person-lookup"), system: "ucpath", instance: "prod",
+  configFingerprint: FingerprintSchema.parse("a".repeat(64)), acceptDownloads: false, exclusive: false,
+  signal: new AbortController().signal, duoCeremony: { withCeremony: async () => { throw new Error("unit test must not authenticate"); } } } as const;
+const credential = { rpId: "duosecurity.com", credentialId: "synthetic-id", privateKey: "synthetic-key", signCount: 0, transport: "usb" };
+
+describe("workflow Fast Duo launch", () => {
+  for (const shape of [credential, [credential], { credentials: [credential] }]) it(`does not read or install retired credential shape ${Array.isArray(shape) ? "array" : "credentials" in shape ? "envelope" : "single"}`, async () => {
+    await withTempRuntime(async ({ config }) => {
+      writeFileSync(config.paths.duoCredential, JSON.stringify(shape));
+      const broker = fixtureWorkflowWorker();
+      const worker = broker.worker;
+      const harness = fakeLauncher({ serviceWorker: worker });
+      const resource = await factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings()).open(input);
+      try {
+        const launch = harness.launches()[0];
+        const extension = join(String(launch.profileDirectory), "relay-extension");
+        assert.equal(launch.extensionDirectory, extension);
+        assert.equal(launch.nativeOnly, undefined);
+        const manifest = z.object({ background: z.object({ service_worker: z.string() }) }).parse(JSON.parse(readFileSync(join(extension, "manifest.json"), "utf8")));
+        assert.equal(manifest.background.service_worker, "src/workflow-background.js");
+        assert.deepEqual(broker.installed.map(args => [...args]), [[]]);
+        assert.equal(JSON.stringify(broker.installed).includes("synthetic-key"), false);
+      } finally { await resource.close({ reason: "worker-stop" }); }
+    });
+  });
+
+  it("proves context closure when Fast Duo provisioning fails", async () => {
+    await withTempRuntime(async ({ config }) => {
+      writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
+      const harness = fakeLauncher();
+      await assert.rejects(factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings()).open(input), DuoProvisioningError);
+      assert.equal(harness.contextClosed(), true);
+    });
+  });
+
+  it("refuses old or missing extension assets before launch, while explicit manual mode loads no extension", async () => {
+    await withTempRuntime(async ({ config, root }) => {
+      assert.throws(() => assertFastDuoReady({ ...config, features: { ...config.features, duoWebAuthn: true },
+        paths: { ...config.paths, duoExtensionDir: root } }), /Fast Duo extension/);
+      const harness = fakeLauncher();
+      const resource = await factoryFor(config, harness, recordingBindings()).open(input);
+      assert.equal(harness.launches()[0].nativeOnly, true);
+      await resource.close({ reason: "worker-stop" });
+    });
+  });
+});
+
+it("opens credential-free before a ceremony and refuses restored-page signing without reserving", async () => {
+  await withTempRuntime(async ({ config }) => {
+    const broker = fixtureWorkflowWorker();
+    let didStop: () => void = () => { throw new Error("stop observer not bound"); };
+    const stopped = new Promise<void>(resolve => { didStop = resolve; });
+    const stop = broker.owner.stop.bind(broker.owner); broker.owner.stop = () => { stop(); didStop(); };
+    let signs = 0;
+    const source = fixtureDuoSigningSource({ async sign() { signs++; throw new Error("must not sign outside a lease"); } });
+    const harness = fakeLauncher({ serviceWorker: broker.worker });
+    const resource = await factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness,
+      recordingBindings(), undefined, undefined, undefined, source).open(input);
+    assert.equal(signs, 0); assert.equal(harness.contextClosed(), false);
+    broker.request({ id: randomUUID(), request: { requestId: randomUUID(), origin: "https://test.duosecurity.com", rpId: "duosecurity.com",
+      challenge: "AQID", allowCredentials: ["AQID"], accountNames: ["fixture-user"] } });
+    await stopped; assert.equal(signs, 0);
+    await resource.close({ reason: "worker-stop" }); assert.equal(harness.contextClosed(), true);
+  });
+});
+
+it("preserves both broker-stop and native-close failures and keeps the profile reserved", async () => {
+  await withTempRuntime(async ({ config }) => {
+    const broker = fixtureWorkflowWorker();
+    const stop = broker.owner.stop.bind(broker.owner); broker.owner.stop = () => { stop(); throw new Error("synthetic broker stop failure"); };
+    const harness = fakeLauncher({ serviceWorker: broker.worker, emitCloseEvent: false });
+    const factory = factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings());
+    const resource = await factory.open(input);
+    await assert.rejects(resource.close({ reason: "worker-stop" }), error => error instanceof BrowserSessionClosureUnprovedError && error.errors.length === 2);
+    await assert.rejects(factory.open(input), /custody is unavailable/u);
+  });
+});
+
+it("bounds a nonsettling broker stop while still proving native context closure", async () => {
+  await withTempRuntime(async ({ config }) => {
+    const broker = fixtureWorkflowWorker();
+    const stop = broker.owner.stop.bind(broker.owner);
+    broker.owner.stop = () => { stop(); return new Promise<never>(() => undefined); };
+    const deadlines: (() => void)[] = [];
+    const scheduler = { schedule: (_deadline: number, expire: () => void) => { deadlines.push(expire); return { cancel() {} }; } };
+    const harness = fakeLauncher({ serviceWorker: broker.worker });
+    const factory = factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings(), scheduler);
+    const resource = await factory.open(input);
+    const close = resource.close({ reason: "worker-stop" });
+    const rejected = assert.rejects(close, error => error instanceof BrowserSessionClosureUnprovedError
+      && error.errors.some(cause => cause instanceof Error && cause.message === "duo-broker-close-unproved"));
+    assert.ok(deadlines[0]); deadlines[0]();
+    await rejected; assert.equal(harness.contextClosed(), true);
+    await assert.rejects(factory.open(input), /custody is unavailable/u);
+  });
 });

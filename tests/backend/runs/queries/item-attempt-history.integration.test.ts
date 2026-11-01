@@ -1,5 +1,6 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { afterEach,describe,it,vi } from "vitest";
+import { afterAll, afterEach,describe,it,vi } from "vitest";
 import { createItemAttemptHistoryQuery } from "../../../../src/backend/runs/queries/item-attempt-history.js";
 import { DeletedRunRecordSchema } from "../../../../src/models/run/deleted-run.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
@@ -8,10 +9,13 @@ import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures
 import { makeWorld,runRecordOf,uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
-async function historyFixture(){const world=await makeWorld();world.database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);return world;}
+async function historyFixture(){const world=await makeWorld({ profileFixture: profileFixtures.create });world.database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);return world;}
 
 describe("same-item attempt history", () => {
   it("keeps attempt one selected while returning a later retry from the same item", async () => {

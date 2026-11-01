@@ -5,7 +5,7 @@ import { requireAnnualDates } from "../../../models/config/fiscal-year.js";
 import { CONFIG_ROUTE_SCHEMAS } from "../../../models/config/schema.js";
 import { PreflightObservationSchema, requiredPreflightChecks, type PreflightRunner } from "../../../models/preflight/preflight.js";
 import { PREFLIGHT_CHECKS, RUNTIME_DEPENDENCIES, SYSTEM_RUNTIME_SPECS } from "../../../models/runtime/runtime-dependencies.js";
-import { inspectSecret, requireSecretFile } from "../../../models/config/secrets.js";
+import { inspectSecret } from "../../../models/config/secrets.js";
 import type { RuntimePreflightRunnerInput } from "./runtime-runners.js";
 
 function result(check: PreflightRunner["check"], ready: boolean, summary: string) {
@@ -28,21 +28,21 @@ export function createWorkflowPreflightRunners(input: RuntimePreflightRunnerInpu
       } catch {
         return result(check, false, "Chromium executable is unavailable.");
       }
-      if (!input.config.features.duoWebAuthn) return result(check, true, "Chromium is installed; Duo Autopilot is disabled in the retained settings.");
+      if (!input.config.features.duoWebAuthn) return result(check, true, "Chromium is installed; Fast Duo is disabled in the retained settings.");
       try {
-        const manifest = join(input.config.paths.duoExtensionDir, "manifest.json");
+        const manifest = join(input.config.paths.duoExtensionDir, "workflow-manifest.json");
         if (!statSync(manifest).isFile()) return result(check, false, "Duo extension manifest is unavailable.");
         accessSync(manifest, constants.R_OK);
       } catch {
         return result(check, false, "Duo extension manifest is unavailable.");
       }
       try {
-        // Validate through the sole credential reader; never retain or publish its bytes.
-        requireSecretFile("duoWebauthnCredential", input.config);
+        if (input.duo === undefined) throw new Error("duo-signing-source-required");
+        input.duo.assertCurrent(); input.duo.credentials();
       } catch {
-        return result(check, false, "duoWebauthnCredential presence is unavailable.");
+        return result(check, false, "Duo backend signing source is unavailable.");
       }
-      return result(check, true, "Chromium, Duo extension and duoWebauthnCredential are present.");
+      return result(check, true, "Chromium, Duo extension and backend signing source are present.");
     };
     if (check === "fiscal.current") inspect = () => {
       const year = `FY${String(input.dashboard.clock.fiscalYear())}`;

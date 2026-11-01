@@ -280,7 +280,7 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
 }
 
 export type BoundProfileStorageFixture = Pick<Awaited<ReturnType<typeof createBoundProfileFixture>>,
-  "workspace" | "stateRoot" | "path" | "admission" | "close">;
+  "workspace" | "stateRoot" | "path" | "machine" | "admission" | "close">;
 
 export function createClonedProfileFixtures() {
   const seeds: { profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; snapshot: string; active: boolean }[] = [];
@@ -307,7 +307,7 @@ export function createClonedProfileFixtures() {
       profile.renewAfterRestore();
       const admission = profile.admission;
       let closed = false;
-      return { workspace: profile.workspace, stateRoot: profile.stateRoot, path: profile.path, admission,
+      return { workspace: profile.workspace, stateRoot: profile.stateRoot, path: profile.path, machine: profile.machine, admission,
         async close() {
           if (closed) return;
           assertBoundFixtureWorkersReleased(admission);

@@ -12,6 +12,7 @@ import { PROVIDER_ADAPTER_SPECS, SYSTEM_RUNTIME_SPECS, type RuntimeCapability } 
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createRuntimePreflightRunners, type RuntimePreflightRunnerInput } from "../../../../src/backend/app/preflight/runtime-runners.js";
 import { createTimeoutDeadlineScheduler } from "../../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
+import { createDuoCredentialStore } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
 
 export function populatedProtectedRecord(omitted?: string) {
   const names = ["ucpathUserId", "ucpathPassword", "timekeeperName", "sharepointOnboardingRosterUrl"];
@@ -29,6 +30,7 @@ export async function runtimeFixture(capabilities: readonly RuntimeCapability[],
   const profile = await (profileFixture ?? createBoundProfileFixture)();
   const root = profile.workspace, stateRoot = profile.stateRoot, artifactRoot = profile.admission.artifactRoot;
   const clock = manualClock(new Date("2026-09-19T12:00:00.000Z"));
+  const duo = createDuoCredentialStore(profile.admission, profile.machine, clock);
   const databasePath = join(stateRoot, "state.db");
   const database = AuthorityDatabase.open({ path: databasePath, busyTimeoutMs: 100, migrationOwner: "setup-corpus" }, clock);
   database.close();
@@ -37,8 +39,7 @@ export async function runtimeFixture(capabilities: readonly RuntimeCapability[],
   const config = structuredClone(resolveConfigWithProvenance({}, hostConfigFacts({}), clock, { stateRoot, artifactRoot }).config);
   config.paths.duoExtensionDir = join(root, "extension"); config.paths.duoCredential = join(root, "credential.json");
   config.features.duoWebAuthn = true;
-  mkdirSync(config.paths.duoExtensionDir); writeFileSync(join(config.paths.duoExtensionDir, "manifest.json"), "{}");
-  writeFileSync(config.paths.duoCredential, "private-marker", {mode: 0o600});
+  mkdirSync(config.paths.duoExtensionDir); writeFileSync(join(config.paths.duoExtensionDir, "workflow-manifest.json"), "{}");
   const executable = join(root, "chromium"); writeFileSync(executable, "synthetic executable asset", {mode: 0o700});
   config.annualDates.FY2027 = {jobEndDate:"6/30/2027", kronosDefaultStartDate:"7/1/2026", kronosDefaultEndDate:"6/30/2027"};
   for (const system of SYSTEM_RUNTIME_SPECS) Reflect.set(config.urls[system.configKey], "prod",
@@ -49,7 +50,7 @@ export async function runtimeFixture(capabilities: readonly RuntimeCapability[],
   }
   let record = populatedProtectedRecord();
   const doctorOptions = { stateRootTrustAnchor: root, stateRoot, authorityPath: databasePath, backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 100 };
-  const input: RuntimePreflightRunnerInput = { config, providerAvailability, protectedSecrets: { read: () => record }, browserExecutablePath: () => executable,
+  const input: RuntimePreflightRunnerInput = { config, duo, providerAvailability, protectedSecrets: { read: () => record }, browserExecutablePath: () => executable,
     scope: PreflightAdmissionScopeSchema.parse({configSnapshotId:"11111111-1111-4111-8111-111111111111", configFingerprint:"a".repeat(64), descriptorFingerprint:"b".repeat(64), requestedCapabilities:capabilities}),
     dashboard: {repoRoot:root, stateRoot, artifactRoot, backendPort:0, frontendPort:0, clock,
       authorityHealth: new AuthorityHealthPreflightRunner(profile.admission, doctorOptions, clock, boundProfileCredentials(profile.admission)) },
@@ -58,8 +59,8 @@ export async function runtimeFixture(capabilities: readonly RuntimeCapability[],
     const runners = createRuntimePreflightRunners(input);
     return createPreflightAuthority({...input.scope, runners: transform === undefined ? runners : transform(runners), clock, scheduler:createTimeoutDeadlineScheduler(clock)}).refresh(new AbortController().signal);
   };
-  return {root, credentials: boundProfileCredentials(profile.admission), admission: profile.admission, stateRoot, artifactRoot, databasePath, doctorOptions, clock, input, executable, report, setProtected(next: typeof record) {record=next;}, async close() {
-    if (profileFixture !== undefined) for (const name of ["package.json", "package-lock.json", "extension", "credential.json", "chromium"]) rmSync(join(root, name), { recursive: true });
+  return {root, duo, credentials: boundProfileCredentials(profile.admission), admission: profile.admission, stateRoot, artifactRoot, databasePath, doctorOptions, clock, input, executable, report, setProtected(next: typeof record) {record=next;}, async close() {
+    if (profileFixture !== undefined) for (const name of ["package.json", "package-lock.json", "extension", "chromium"]) rmSync(join(root, name), { recursive: true });
     await profile.close();
   }};
 }

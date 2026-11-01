@@ -87,4 +87,66 @@ describe.skipIf(process.platform !== "darwin")("complete process and descriptor 
       assert.equal(query.mock.calls.length, 2); query.mockRestore();
     }
   });
+
+  for (const type of ["", "VREG", "VDIR", "VLNK", "VCHR", "VBLK", "DIR", "REG", "CHR", "BLK", "LINK", "FIFO", "GDIR", "GREG"]) {
+    it(`requires normalized absolute filesystem names with ${type || "no type"}`, () => {
+      const empty = vi.spyOn(profileProcessQuery, "spawnSync");
+      empty.mockReturnValueOnce(result(" 123 synthetic-worker\n")).mockReturnValueOnce(result(`p123\nf99\n${type ? `t${type}\n` : ""}n\n`));
+      assert.throws(() => proveProfileRootsUnused([]), /profile-process-closure-unproved/u);
+      assert.equal(empty.mock.calls.length, 2); empty.mockRestore();
+      for (const target of ["vnode: FD unavailable", "relative/target", "/synthetic/../other", "/synthetic//other", "/synthetic\0other"]) {
+        const query = vi.spyOn(profileProcessQuery, "spawnSync");
+        query.mockReturnValueOnce(result(" 123 synthetic-worker\n"))
+          .mockReturnValue(result(`p123\nf99\n${type ? `t${type}\n` : ""}n${target}\n`));
+        assert.throws(() => proveProfileRootsUnused([]), /profile-process-closure-unproved/u);
+        assert.equal(query.mock.calls.length, 6); query.mockRestore();
+      }
+      const query = vi.spyOn(profileProcessQuery, "spawnSync");
+      query.mockReturnValueOnce(result(" 123 synthetic-worker\n"))
+        .mockReturnValueOnce(result(`p123\nf99\n${type ? `t${type}\n` : ""}n/synthetic-other\n`));
+      proveProfileRootsUnused([]);
+      assert.equal(query.mock.calls.length, 2);
+    });
+  }
+
+  for (const type of ["IPv4", "IPv6", "unix", "PIPE", "KQUEUE", "NPOLICY", "NEXUS", "systm"]) {
+    it(`preserves non-path ${type} descriptor handling`, () => {
+      const query = vi.spyOn(profileProcessQuery, "spawnSync");
+      query.mockReturnValueOnce(result(" 123 synthetic-worker\n"))
+        .mockReturnValueOnce(result(`p123\nf1\nt${type}\nn${type === "IPv4" ? "127.0.0.1:1234" : "synthetic endpoint"}\n`));
+      proveProfileRootsUnused([]);
+      assert.equal(query.mock.calls.length, 2);
+    });
+  }
+
+  it("validates path names even for other descriptor types", () => {
+    for (const target of ["/synthetic/../other", "/synthetic//other", "/synthetic\0other"]) {
+      const query = vi.spyOn(profileProcessQuery, "spawnSync");
+      query.mockReturnValueOnce(result(" 123 synthetic-worker\n"))
+        .mockReturnValue(result(`p123\nf1\ntunix\nn${target}\n`));
+      assert.throws(() => proveProfileRootsUnused([]), /profile-process-closure-unproved/u);
+      assert.equal(query.mock.calls.length, 6); query.mockRestore();
+    }
+  });
+
+  it("accepts the next fully resolved census after a descriptor closes mid-census", () => {
+    const query = vi.spyOn(profileProcessQuery, "spawnSync");
+    query.mockReturnValueOnce(result(" 123 synthetic-worker\n"))
+      .mockReturnValueOnce(result("p123\nf1\ntREG\nn/synthetic-other\nf99\nnvnode: FD unavailable\n"))
+      .mockReturnValueOnce(result("p123\nf1\ntREG\nn/synthetic-other\n"));
+    proveProfileRootsUnused([]);
+    assert.equal(query.mock.calls.length, 3);
+  });
+
+  it("refuses a root match in a later census even after an unresolved one", () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), "relay-process-closure-"));
+    try {
+      const query = vi.spyOn(profileProcessQuery, "spawnSync");
+      query.mockReturnValueOnce(result(" 123 synthetic-worker\n"))
+        .mockReturnValueOnce(result("p123\nf99\nnvnode: FD unavailable\n"))
+        .mockReturnValueOnce(result(`p123\nf2\ntREG\nn${join(root, "state.db")}\n`));
+      assert.throws(() => proveProfileRootsUnused([root]), /closure-unproved/u);
+      assert.equal(query.mock.calls.length, 3);
+    } finally { rmSync(root, { recursive: true }); }
+  });
 });

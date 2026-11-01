@@ -43,6 +43,11 @@ const admission = machine.admitProfile(profileId);
 const store = createDuoCredentialStore(admission, machine, manualClock(new Date(at)));
 process.on("message", (input: unknown) => { void command(input).catch(error => { process.stderr.write(`${String(error)}\n`); process.exitCode = 1; }); });
 async function command(input: unknown): Promise<void> {
+  if (typeof input === "object" && input !== null) {
+    const request = z.strictObject({ kind: z.literal("sign-then-crash"), requestId: z.uuid() }).parse(input);
+    await store.sign({ requestId: request.requestId, credentialId, rpId: "duosecurity.com", origin: "https://test.duosecurity.com", challenge: "AQID" });
+    process.exit(23);
+  }
   const command = z.enum(["reserve", "reserve-then-crash", "interrupt-publication", "close"]).parse(input);
   if (command === "interrupt-publication") {
     try { store.interruptReserve(credentialId); }

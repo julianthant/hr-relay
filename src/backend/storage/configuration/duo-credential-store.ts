@@ -1,4 +1,6 @@
 import { fsyncPath, writePrivateStage } from "../private-path.js";
+import { createDuoAssertion, DuoAssertionRequestSchema, type DuoAssertionRequest, type DuoPublicCredential } from "./duo-signing.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { createHash, createPrivateKey, createPublicKey, randomUUID } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
@@ -206,7 +208,39 @@ function createDuoStore(profile: RuntimeAdmission, machine: RuntimeAdmission, pu
     const origin = new URL(scope.origin);
     if (origin.hostname !== scope.rpId && !origin.hostname.endsWith(`.${scope.rpId}`)) throw new Error("duo-rp-origin-mismatch");
   }
+  function publicCredentials(): readonly DuoPublicCredential[] {
+    return transact(document => ({ result: document?.credentials.flatMap(row => row.state !== "ready" || row.scope.rpId !== "duosecurity.com" || row.authenticator === undefined ? []
+      : [{ credentialId: row.credentialId, rpId: "duosecurity.com" as const, ...row.authenticator }]) ?? [] }), "settle", "metadata");
+  }
+  function signAssertion(request: DuoAssertionRequest, inputScope?: DuoEnrollmentScope) {
+    const parsed = DuoAssertionRequestSchema.parse(request);
+    const scope = inputScope === undefined ? undefined : DuoEnrollmentScopeSchema.parse(inputScope);
+    if (scope !== undefined) assertScope(scope);
+    const reserved = transact(document => {
+      if (scope !== undefined) assertScope(scope);
+      const credential = document?.credentials.find(row => row.credentialId === parsed.credentialId);
+      if (document === undefined || credential?.state !== "ready" || credential.authenticator === undefined
+        || credential.scope.rpId !== parsed.rpId || scope !== undefined && (canonicalJsonStringify(credential.scope) !== canonicalJsonStringify(scope)
+          || parsed.origin !== scope.origin)) throw new Error("duo-ready-credential-required");
+      if (document.reservations.some(row => row.attemptId === parsed.requestId)) throw new Error("duo-attempt-reused");
+      const count = Math.max(credential.highWater + 1, Math.floor(clock.nowMs() / 1000));
+      if (!Number.isInteger(count) || count < 1 || count > 0xffff_ffff) throw new Error("duo-counter-exhausted");
+      const updated = next(document);
+      updated.credentials = updated.credentials.map(row => row.credentialId === credential.credentialId ? { ...row, highWater: count } : row);
+      updated.reservations.push({ attemptId: parsed.requestId, credentialId: credential.credentialId, count, reservedAt: clock.now().toISOString() });
+      return { document: updated, result: { material: { credentialId: credential.credentialId, privateKeyPkcs8: credential.privateKeyPkcs8, ...credential.authenticator }, count } };
+    });
+    // Publication is settled before crypto; failure never refunds this request or count.
+    const result = createDuoAssertion(reserved.material, parsed, reserved.count);
+    if (draftOperationId === undefined) profile.assertProfileRuntime(); else profile.assertProfileInitialization();
+    return result;
+  }
   return Object.freeze({
+    assertCurrent(): void { duoCredentialPurposeBinding(purpose); if (draftOperationId === undefined) profile.assertProfileRuntime(); else profile.assertProfileInitialization(); },
+    credentials: publicCredentials,
+    identity() { return FingerprintSchema.parse(createHash("sha256").update(canonicalJsonStringify({ ...binding, credentials: publicCredentials() })).digest("hex")); },
+    async sign(request: DuoAssertionRequest) { if (draftOperationId !== undefined) throw new Error("duo-runtime-purpose-required"); return signAssertion(request); },
+    async signForScope(request: DuoAssertionRequest, scope: DuoEnrollmentScope) { return signAssertion(request, scope); },
     read(): Readonly<{ state: "never-initialized" | "registered" | "erased"; revision: number; credentials: readonly PublicCredential[] }> {
       return transact(document => ({ result: { state: document === undefined ? "never-initialized" : document.credentials.length === 0 ? "erased" : "registered",
         revision: document?.revision ?? 0, credentials: document?.credentials.map(({ credentialId, state, highWater }) => ({ credentialId, state, highWater })) ?? [] } }), "settle", "metadata");
@@ -242,32 +276,6 @@ function createDuoStore(profile: RuntimeAdmission, machine: RuntimeAdmission, pu
         const updated = next(document);
         updated.credentials = updated.credentials.map(row => row.credentialId === credentialId ? { ...row, state: "ready", confirmedAt: clock.now().toISOString() } : row);
         return { document: updated, result: { revision: updated.revision } };
-      });
-    },
-    provision(credentialId: string, scope: DuoEnrollmentScope) {
-      assertScope(scope);
-      return transact(document => {
-        const credential = document?.credentials.find(row => row.credentialId === credentialId);
-        if (credential === undefined || credential.authenticator === undefined
-          || canonicalJsonStringify(credential.scope) !== canonicalJsonStringify(scope)) throw new Error("duo-provision-scope-mismatch");
-        return { result: { credentialId, privateKeyPkcs8: credential.privateKeyPkcs8, publicKeySpki: credential.publicKeySpki,
-          createdAt: credential.createdAt, highWater: credential.highWater, ...credential.authenticator } };
-      });
-    },
-    reserveForAttempt(credentialId: string, attemptId: string, scope: DuoEnrollmentScope): Readonly<{ count: number; revision: number }> {
-      z.uuid().parse(attemptId); assertScope(scope);
-      return transact(document => {
-        const credential = document?.credentials.find(row => row.credentialId === credentialId);
-        if (document === undefined || credential?.state !== "ready"
-          || canonicalJsonStringify(credential.scope) !== canonicalJsonStringify(scope)) throw new Error("duo-ready-credential-required");
-        const previous = document.reservations.find(row => row.attemptId === attemptId);
-        if (previous !== undefined) throw new Error("duo-attempt-reused");
-        const count = Math.max(credential.highWater + 1, Math.floor(clock.nowMs() / 1000));
-        if (!Number.isInteger(count) || count < 1 || count > 0xffff_ffff) throw new Error("duo-counter-exhausted");
-        const updated = next(document);
-        updated.credentials = updated.credentials.map(row => row.credentialId === credentialId ? { ...row, highWater: count } : row);
-        updated.reservations.push({ attemptId, credentialId, count, reservedAt: clock.now().toISOString() });
-        return { document: updated, result: { count, revision: updated.revision } };
       });
     },
     reserve(credentialId: string): Readonly<{ attemptId: string; count: number; revision: number }> {

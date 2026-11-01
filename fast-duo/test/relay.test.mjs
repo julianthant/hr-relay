@@ -1,3 +1,5 @@
+import { tsImport } from 'tsx/esm/api';
+const { createDuoAssertion } = await tsImport('../../src/backend/storage/configuration/duo-signing.ts', import.meta.url);
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createPrivateKey, createPublicKey } from 'node:crypto';
@@ -87,7 +89,7 @@ async function acknowledge(worker, kind, value) {
   return request;
 }
 
-test('real software engine waits for native pending ACK and ceremony ACK; session stores the only extension copy', async () => {
+test('real software engine waits for native pending ACK and ceremony ACK; session retains public descriptors', async () => {
   const w = world();
   await w.worker.install({ method: 'key', nowMs: 1000 });
   let settled = false;
@@ -118,17 +120,23 @@ test('real software engine waits for native pending ACK and ceremony ACK; sessio
     origin: ORIGIN, rpId: 'duosecurity.com', requestId: crypto.randomUUID(), challenge: CHALLENGE,
     allowCredentials: [credential.credentialId], usernames: ['alex@example.edu'],
   } }, SENDER);
-  const reserved = await acknowledge(w.worker, 'reserve', { count: 100 });
-  assert.equal(reserved.data.credentialId, persist.data.credentialId);
   const exact = await acknowledge(w.worker, 'exact-request', { observed: true });
   assert.equal(exact.data.credentialId, persist.data.credentialId);
+  const reserved = await w.worker.next();
+  assert.equal(reserved.kind, 'sign');
+  assert.equal(w.state().autopilotV1.credentials[0].status, 'ready');
+  w.worker.reply(reserved.id, { ok: true, value: createDuoAssertion({ ...persist.data, transport: 'usb' }, reserved.data, 100) });
+  assert.equal(reserved.data.credentialId, persist.data.credentialId);
   const assertion = await sign;
   assert.ok(assertion.signature);
   const portal = w.worker.receive({ type: 'RELAY_PORTAL_ACCEPTED', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId: message.request.requestId } }, SENDER);
   const accepted = await acknowledge(w.worker, 'portal-accepted', { observed: true });
   assert.equal(accepted.data.credentialId, persist.data.credentialId);
   await portal;
-  assert.equal(w.state().autopilotV1.credentials[0].signCount, 100);
+  assert.equal(Buffer.from(assertion.authenticatorData, 'base64').readUInt32BE(33), 100);
+  assert.equal(Object.hasOwn(w.state().autopilotV1.credentials[0], 'signCount'), false);
+  assert.equal(Object.hasOwn(w.state().autopilotV1.credentials[0], 'privateKey'), false);
+  assert.equal(w.state().autopilotV1.credentials[0].status, 'ready');
   await w.worker.stop();
   assert.equal(w.cleared(), true);
 });
@@ -210,14 +218,16 @@ test('counter reservation refusal releases no assertion and does not reuse a ses
   const signature = w.worker.receive({ type: 'DUO_AUTOPILOT_SIGN', request: { origin: ORIGIN, rpId: 'duosecurity.com',
     requestId: crypto.randomUUID(), challenge: CHALLENGE, allowCredentials: [credential.credentialId] } }, SENDER);
   const rejected = assert.rejects(signature, /ONBOARDING_DUO_REFUSED/);
+  await acknowledge(w.worker, 'exact-request', { observed: true });
   const reservation = await w.worker.next();
-  assert.equal(reservation.kind, 'reserve');
+  assert.equal(reservation.kind, 'sign');
   w.worker.reply(reservation.id, { ok: false });
   const invalidated = await w.worker.next();
   assert.equal(invalidated.kind, 'scope-lost');
   w.worker.reply(invalidated.id, { ok: false });
   await rejected;
-  assert.equal(w.state().autopilotV1.credentials[0].signCount, 0);
+  assert.equal(Object.hasOwn(w.state().autopilotV1.credentials[0], 'signCount'), false);
+  assert.equal(Object.hasOwn(w.state().autopilotV1.credentials[0], 'privateKey'), false);
   await w.worker.stop();
 });
 
@@ -242,7 +252,7 @@ test('Relay manifest import closure cannot load standalone bootstrap or persiste
   const { readFile } = await import('node:fs/promises');
   const manifest = JSON.parse(await readFile(new URL('../relay-manifest.json', import.meta.url), 'utf8'));
   const allowed = new Set(['src/relay-background.js', 'src/relay-content.js', 'src/relay-inpage.js',
-    'src/relay-native.js', 'src/service.js', 'src/crypto.js', 'src/accounts.js', 'src/sign-count.js', 'src/username.js']);
+    'src/relay-native.js', 'src/service.js', 'src/crypto.js', 'src/accounts.js', 'src/duo-origin.js', 'src/sign-count.js', 'src/username.js']);
   const discovered = new Set([manifest.background.service_worker, ...manifest.content_scripts.flatMap(script => script.js)]);
   for (const file of discovered) {
     assert.ok(allowed.has(file), `unexpected entrypoint ${file}`);
@@ -287,7 +297,7 @@ async function enrolled(w) {
   return { credential: await result, pending: pending.data, requestId: message.request.requestId };
 }
 
-test('two genuine engine SIGN requests consume distinct native counts; a request nonce replay cannot sign another challenge', async () => {
+test('two genuine engine SIGN requests return backend signatures; a request nonce replay cannot sign another challenge', async () => {
   const w = world();
   const { credential, pending } = await enrolled(w);
   const used = new Set();
@@ -296,12 +306,12 @@ test('two genuine engine SIGN requests consume distinct native counts; a request
     const requestId = crypto.randomUUID();
     const challenge = Buffer.from(`distinct challenge ${count}`).toString('base64');
     const operation = w.worker.receive({ type: 'DUO_AUTOPILOT_SIGN', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId, challenge, allowCredentials: [credential.credentialId] } }, SENDER);
+    await acknowledge(w.worker, 'exact-request', { observed: true });
     const request = await w.worker.next();
-    assert.equal(request.kind, 'reserve');
+    assert.equal(request.kind, 'sign');
     assert.equal(request.data.requestId, requestId);
     assert.equal(used.has(requestId), false); used.add(requestId);
-    w.worker.reply(request.id, { ok: true, value: { count } });
-    await acknowledge(w.worker, 'exact-request', { observed: true });
+    w.worker.reply(request.id, { ok: true, value: createDuoAssertion(pending, request.data, count) });
     const result = await operation;
     const authData = Buffer.from(result.authenticatorData, 'base64');
     assert.equal(authData.readUInt32BE(33), count);
@@ -324,21 +334,22 @@ test('two genuine engine SIGN requests consume distinct native counts; a request
   const replay = w.worker.receive({ type: 'DUO_AUTOPILOT_SIGN', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId: replayId,
     challenge: Buffer.from('different replay challenge').toString('base64'), allowCredentials: [credential.credentialId] } }, SENDER);
   const rejected = assert.rejects(replay, /ONBOARDING_DUO_REFUSED/);
+  await acknowledge(w.worker, 'exact-request', { observed: true });
   const reservation = await w.worker.next();
-  assert.equal(reservation.kind, 'reserve'); assert.equal(used.has(reservation.data.requestId), true);
+  assert.equal(reservation.kind, 'sign'); assert.equal(used.has(reservation.data.requestId), true);
   w.worker.reply(reservation.id, { ok: false });
   const unknown = await w.worker.next(); assert.equal(unknown.kind, 'scope-lost'); w.worker.reply(unknown.id, { ok: false });
   await rejected;
-  assert.equal(w.state().autopilotV1.credentials[0].signCount, 101);
+  assert.equal(Object.hasOwn(w.state().autopilotV1.credentials[0], 'signCount'), false);
   await w.worker.stop();
 });
 
-for (const kind of ['bind', 'persist', 'software-created', 'reserve', 'exact-request', 'native-created', 'portal-accepted']) {
+for (const kind of ['bind', 'persist', 'software-created', 'sign', 'exact-request', 'native-created', 'portal-accepted']) {
   for (const drift of ['document', 'navigation', 'account', 'account-returned']) test(`rejects ${drift} drift during ${kind} ACK without output`, async () => {
     const w = world();
     const touch = kind === 'native-created';
     let operation;
-    if (['reserve', 'exact-request', 'portal-accepted'].includes(kind)) {
+    if (['sign', 'exact-request', 'portal-accepted'].includes(kind)) {
       const { credential, requestId } = await enrolled(w);
       operation = kind === 'portal-accepted'
         ? w.worker.receive({ type: 'RELAY_PORTAL_ACCEPTED', request: { origin: ORIGIN, rpId: 'duosecurity.com', requestId } }, SENDER)
@@ -356,13 +367,13 @@ for (const kind of ['bind', 'persist', 'software-created', 'reserve', 'exact-req
     let request;
     do {
       request = await w.worker.next();
-      if (request.kind !== kind) w.worker.reply(request.id, { ok: true, value: request.kind === 'bind' ? { accountId: ACCOUNT } : request.kind === 'reserve' ? { count: 12 } : { revision: 1 } });
+      if (request.kind !== kind) w.worker.reply(request.id, { ok: true, value: request.kind === 'bind' ? { accountId: ACCOUNT } : request.kind === 'sign' ? { credentialId: request.data.credentialId, signature: 'AQID' } : { revision: 1 } });
     } while (request.kind !== kind);
     if (drift === 'document') w.scope.documentId = crypto.randomUUID().replaceAll('-', '');
     if (drift === 'navigation') w.scope.url = `${ORIGIN}/other`;
     if (drift === 'account') { w.scope.accountNames = ['other@example.edu']; w.scope.accountRevision++; }
     if (drift === 'account-returned') w.scope.accountRevision += 2;
-    w.worker.reply(request.id, { ok: true, value: kind === 'bind' ? { accountId: ACCOUNT } : kind === 'reserve' ? { count: 12 } : { revision: 1 } });
+    w.worker.reply(request.id, { ok: true, value: kind === 'bind' ? { accountId: ACCOUNT } : kind === 'sign' ? { credentialId: request.data.credentialId, signature: 'AQID' } : { revision: 1 } });
     const unknown = await w.worker.next(); assert.equal(unknown.kind, 'scope-lost'); w.worker.reply(unknown.id, { ok: false });
     await rejected;
     await w.worker.stop();
@@ -503,4 +514,19 @@ for (const invalid of ['origin', 'challenge', 'type', 'attachment', 'rpHash']) t
   assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_CREATED').length, 0);
   assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_FAILED').length, 1);
   assert.equal(w.output.at(-1).success, false);
+});
+
+test('failed exact acceptance never reaches backend signing or confirms the local descriptor', async () => {
+  const w = world();
+  const { credential } = await enrolled(w);
+  const operation = w.worker.receive({ type: 'DUO_AUTOPILOT_SIGN', request: { origin: ORIGIN, rpId: 'duosecurity.com',
+    requestId: crypto.randomUUID(), challenge: CHALLENGE, allowCredentials: [credential.credentialId] } }, SENDER);
+  const rejected = assert.rejects(operation, /ONBOARDING_DUO_REFUSED/);
+  const proof = await w.worker.next(); assert.equal(proof.kind, 'exact-request');
+  assert.equal(w.state().autopilotV1.credentials[0].status, 'pending');
+  w.worker.reply(proof.id, { ok: false });
+  const failure = await w.worker.next(); assert.equal(failure.kind, 'scope-lost');
+  w.worker.reply(failure.id, { ok: false }); await rejected;
+  assert.equal(w.state().autopilotV1.credentials[0].status, 'pending');
+  await w.worker.stop();
 });

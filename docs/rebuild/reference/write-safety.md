@@ -142,7 +142,14 @@ Commit `recordData` batches are validated and timestamped at the call but delive
 
 `runMandatorySavedVerification` in `mandatory-saved-verification.ts` ensures a settled successful callback still reaches the saved-effect verifier when diagnostic delivery fails. Delivery failures are reported separately. A diagnostic program/schema failure remains a failure after verification. `completeProtectedWrite` settles validated proof before non-authoritative settled notifications.
 
-`captureProof` wraps verifier task lookup, input binding, span setup, execution, verdict parsing, and proof parsing within `PostFenceWriteFailure`. `parkAfterFence` persists intent uncertainty before the executor returns `parked-write`. Its closed codes are `unknown`, `ambiguous`, `present-proof-invalid`, `binding-invalid`, and `operator-required`.
+Required captures follow the owned-run probe and prepare and surround submit. A failed post-submit capture
+still reaches saved-effect verification, then refuses settlement and parks the original held attempt
+even when proof is valid. Missing required capture cannot create a transaction checkpoint or
+confirmed-operation history; resolution stays on the typed parked-write path. Standalone recovery
+and held-only diagnostic checks do not yet have required probe capture: their action-note scope
+and retained-run activity authority remain prerequisites.
+
+`captureProof` wraps verifier task lookup, input binding, span setup, execution, required step capture, verdict parsing, and proof parsing within `PostFenceWriteFailure`. `parkAfterFence` persists intent uncertainty before the executor returns `parked-write`. Its closed codes are `unknown`, `ambiguous`, `present-proof-invalid`, `binding-invalid`, and `operator-required`.
 
 ## Dry runs
 

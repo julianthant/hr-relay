@@ -20,7 +20,7 @@ function world(method: "key" | "touch" = "key") {
   writeFileSync(join(extensionDirectory, "LICENSE"), "synthetic license fixture");
   writeFileSync(join(extensionDirectory, "THIRD_PARTY_NOTICES.md"), "synthetic notices fixture");
   mkdirSync(join(extensionDirectory, "src", "icons"), { mode: 0o700 });
-  for (const name of ["options.html", "options.js", "popup.html", "popup.js", "relay-options.js", "styles.css", "icons/autopilot.svg", "icons/key-round.svg", "icons/plus.svg", "icons/shield-check.svg", "relay-background.js", "relay-content.js", "relay-inpage.js", "relay-native.js", "service.js", "crypto.js", "accounts.js", "sign-count.js", "username.js"]) writeFileSync(join(extensionDirectory, "src", name), "");
+  for (const name of ["options.html", "options.js", "popup.html", "popup.js", "relay-options.js", "styles.css", "icons/autopilot.svg", "icons/key-round.svg", "icons/plus.svg", "icons/shield-check.svg", "relay-background.js", "relay-content.js", "relay-inpage.js", "relay-native.js", "service.js", "crypto.js", "accounts.js", "duo-origin.js", "sign-count.js", "username.js"]) writeFileSync(join(extensionDirectory, "src", name), "");
   writeFileSync(join(extensionDirectory, "unlisted.txt"), "synthetic unlisted source");
   const clock = manualClock(new Date("2026-10-01T00:00:00.000Z"));
   const attempt: DraftDuoAttempt = { operationId: randomUUID(), profileId: randomUUID(), accountId: randomUUID(), generation: 1,
@@ -115,8 +115,8 @@ function world(method: "key" | "touch" = "key") {
         origin: input.origin, rpId: input.rpId, armedAt: clock.now().toISOString(), expiresAt: attempt.expiresAt },
       assertCurrent() { if (!current) throw new Error("synthetic revoked capability"); },
       async persistPending() { called("persist"); return { revision: 1 }; },
-      async provision(credentialId) { called("provision"); return { credentialId, privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic", transport: "usb", isResidentCredential: false, createdAt: clock.now().toISOString(), highWater: 4 }; },
-      async reserveSignCount() { called("reserve"); return { count: 5, revision: 2 }; },
+      async signAssertion(request) { called("sign"); called("sign-return"); return { credentialId: request.credentialId,
+        authenticatorData: "synthetic", clientDataJSON: "synthetic", signature: "synthetic", userHandle: null, transport: "usb", signCount: 5 }; },
       async recordCeremony(receipt) { called(receipt.mechanism); },
       async recordPortalAcceptance(receipt) { called(receipt.acceptance); },
       async retainUnknown() { calls.push("unknown"); },
@@ -184,9 +184,9 @@ describe("draft Duo provider", () => {
     try {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
       await w.send("bind", BIND);
-      await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+      await w.send("persist", { credentialId: "cHVibGljLWlk", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
         transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
-      await w.send("software-created", { credentialId: "public-id", requestId: randomUUID() });
+      await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId: randomUUID() });
       w.loseActiveStopAck(); if (proof === "missing-event") w.withholdCloseEvent();
       assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: proof === "proved" ? "closed" : "uncertain" });
       assert.ok(w.calls.includes("unknown")); assert.ok(!w.calls.includes("portal-accepted"));
@@ -239,9 +239,9 @@ describe("draft Duo provider", () => {
         async retainUnknown() { if (++unknowns > 1) throw new Error("synthetic late retention failure"); },
       }), w.reportFailure);
       await w.send("bind", BIND);
-      await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+      await w.send("persist", { credentialId: "cHVibGljLWlk", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
         transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
-      const ceremony = w.send("software-created", { credentialId: "public-id", requestId: randomUUID() });
+      const ceremony = w.send("software-created", { credentialId: "cHVibGljLWlk", requestId: randomUUID() });
       await dispatching; w.loseActiveStopAck();
       let settled = false;
       const closing = w.provider.closeBrowser(w.owner).then(result => { settled = true; return result; });
@@ -331,7 +331,7 @@ describe("draft Duo provider", () => {
         async retainUnknown() { throw retention; },
       }), w.reportFailure);
       assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
-      assert.deepEqual(await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+      assert.deepEqual(await w.send("persist", { credentialId: "cHVibGljLWlk", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
         transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() }), { ok: false });
       await assert.rejects(w.provider.cancel(w.attempt), error => {
         assert.ok(error instanceof ProfileOnboardingDuoProviderError);
@@ -365,12 +365,12 @@ describe("draft Duo provider", () => {
       assert.equal(w.observed()?.tabId, 7);
       assert.equal(w.observed()?.contextId, BIND.documentId);
       const requestId = randomUUID();
-      assert.deepEqual(await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+      assert.deepEqual(await w.send("persist", { credentialId: "cHVibGljLWlk", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
         transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() }), { ok: true, value: { revision: 1 } });
-      await w.send("software-created", { credentialId: "public-id", requestId });
-      await w.send("reserve", { credentialId: "public-id", requestId: randomUUID() });
-      await w.send("portal-accepted", { credentialId: "public-id", requestId });
-      assert.deepEqual(w.calls, ["persist", "fast-duo", "provision", "reserve", "portal-accepted"]);
+      await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId });
+      await w.send("sign", { credentialId: "cHVibGljLWlk", requestId: randomUUID(), origin: BIND.origin, rpId: "duosecurity.com", challenge: "AQID" });
+      await w.send("portal-accepted", { credentialId: "cHVibGljLWlk", requestId });
+      assert.deepEqual(w.calls, ["persist", "fast-duo", "sign", "sign-return", "portal-accepted"]);
       assert.deepEqual(await w.provider.cancel(w.attempt), { state: "closed" });
       assert.equal(existsSync(w.profile()), true);
       assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "closed" });
@@ -393,7 +393,7 @@ describe("draft Duo provider", () => {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
       await w.send("bind", BIND);
       if (reason === "expiry") w.clock.advanceWall(600001); else w.revoke();
-      assert.deepEqual(await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+      assert.deepEqual(await w.send("persist", { credentialId: "cHVibGljLWlk", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
         transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() }), { ok: false });
       assert.ok(!w.calls.includes("persist"));
     } finally { await w.cleanup(); }
@@ -460,9 +460,9 @@ describe("draft Duo provider", () => {
     try {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
       await w.send("bind", BIND);
-      await w.send("persist", { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+      await w.send("persist", { credentialId: "cHVibGljLWlk", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
         transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
-      await w.send("software-created", { credentialId: "public-id", requestId: randomUUID() });
+      await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId: randomUUID() });
       await w.closeBrowser();
       await new Promise<void>(resolve => setImmediate(resolve));
       assert.deepEqual(w.failures, []);
@@ -482,26 +482,26 @@ describe("draft Duo provider", () => {
 
 
 describe("draft document observations around native authority awaits", () => {
-  for (const boundary of ["persist", "provision", "reserve", "fast-duo", "portal-accepted"] as const) it(`withholds ACK when document changes during ${boundary}`, async () => {
+  for (const boundary of ["persist", "sign", "sign-return", "fast-duo", "portal-accepted"] as const) it(`withholds ACK when document changes during ${boundary}`, async () => {
     const w = world();
     try {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
       await w.send("bind", BIND);
       const requestId = randomUUID();
-      const pending = { credentialId: "public-id", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+      const pending = { credentialId: "cHVibGljLWlk", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
         transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() };
       if (boundary !== "persist") await w.send("persist", pending);
-      if (["provision", "reserve", "portal-accepted"].includes(boundary)) await w.send("software-created", { credentialId: "public-id", requestId });
+      if (["sign", "sign-return", "portal-accepted"].includes(boundary)) await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId });
       w.driftOn(boundary);
       const result = boundary === "persist" ? await w.send("persist", pending)
-        : boundary === "fast-duo" ? await w.send("software-created", { credentialId: "public-id", requestId })
-        : boundary === "portal-accepted" ? await w.send("portal-accepted", { credentialId: "public-id", requestId })
-        : await w.send("reserve", { credentialId: "public-id", requestId: randomUUID() });
+        : boundary === "fast-duo" ? await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId })
+        : boundary === "portal-accepted" ? await w.send("portal-accepted", { credentialId: "cHVibGljLWlk", requestId })
+        : await w.send("sign", { credentialId: "cHVibGljLWlk", requestId: randomUUID(), origin: BIND.origin, rpId: "duosecurity.com", challenge: "AQID" });
       assert.deepEqual(result, { ok: false });
       await w.provider.cancel(w.attempt);
       assert.ok(w.calls.includes("unknown"));
       assert.equal(w.failures.length, 1);
-      if (boundary === "provision") assert.equal(w.calls.includes("reserve"), false);
+      if (boundary === "sign" || boundary === "sign-return") assert.ok(w.calls.includes("sign"));
     } finally { await w.cleanup(); }
   });
 

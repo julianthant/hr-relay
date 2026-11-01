@@ -1,3 +1,4 @@
+import type { DuoSigningSource } from "../../../storage/configuration/duo-signing.js";
 import { preflightSessionFactory } from "../../preflight/worker-admission.js";
 import type { RuntimePreflight } from "../../preflight/runtime-admission.js";
 import type { ContentAddressedArtifactWriter } from "../../../../workflow-kit/artifacts.js";
@@ -25,6 +26,7 @@ import { selectRunSettings } from "../../../runs/settings/run-settings.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
+ duo?:DuoSigningSource;
  nominatim:NonNullable<NonNullable<WorkerRunResources["providers"]>["adapters"]["geocode.nominatim"]> & { stop():Promise<void> };
  ocr:NonNullable<NonNullable<WorkerRunResources["providers"]>["adapters"]["ocr.extract"]>;
  authority:AuthorityRepositories;artifacts:ContentAddressedArtifactWriter;clock:Clock;ids:IdFactory;
@@ -43,7 +45,7 @@ export function createRunResourcesFactory(input:Readonly<{
   return Object.freeze({
    sessionFactory:input.sessionFactory??input.createSessionFactory?.(profiles)??new PlaywrightWorkerSessionFactory({config,protectedSecrets:input.protectedSecrets,isolation:input.isolation,clock:input.clock,scheduler:input.scheduler,newSessionId:()=>input.ids.uuid(),
     ...profiles,...(input.onDebug===undefined?{}:{onDebug:(workerId,event)=>input.onDebug?.("session",workerId,event)})}),
-   duoCeremony:input.duoCeremony??composeDuoCeremonyGateFactory({config,leases:input.authority.duoCeremonyLeases,clock:input.clock,scheduler:input.scheduler,
+   duoCeremony:input.duoCeremony??composeDuoCeremonyGateFactory({config,...(input.duo===undefined?{}:{duo:input.duo}),leases:input.authority.duoCeremonyLeases,clock:input.clock,scheduler:input.scheduler,
     ...(input.onDebug===undefined?{}:{onDebug:(workerId,event)=>input.onDebug?.("duo",workerId,event)})}),
    taskDeadlineMs:config.timeouts.taskMs,sessionAcquireMs:config.timeouts.sessionAcquireMs,
    defaultBrowserMode:config.browser.headless?"headless":"headed",
@@ -67,10 +69,10 @@ export function createRunResourcesFactory(input:Readonly<{
  });
 }
 
-export type BrowserProfileAuthority = Pick<BrowserSessionFactoryOptions, "slotOrdinal" | "admitProfile" | "assertCurrent">;
-export function createBrowserProfileAuthority(input: Readonly<{authority:AuthorityRepositories;assertProfileOwner:(workerId:WorkerId)=>void}>): BrowserProfileAuthority {
+export type BrowserProfileAuthority = Pick<BrowserSessionFactoryOptions, "slotOrdinal" | "admitProfile" | "duo" | "assertCurrent">;
+export function createBrowserProfileAuthority(input: Readonly<{duo?:DuoSigningSource;authority:AuthorityRepositories;assertProfileOwner:(workerId:WorkerId)=>void}>): BrowserProfileAuthority {
  return {
-    assertCurrent: workerId => input.assertProfileOwner(workerId),
+    ...(input.duo===undefined?{}:{duo:input.duo}),assertCurrent:workerId=>input.assertProfileOwner(workerId),
     slotOrdinal:(workerId,system)=>{
      input.assertProfileOwner(workerId);
      const slot=input.authority.workerSlots.get(workerId);

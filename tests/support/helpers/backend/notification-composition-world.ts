@@ -4,7 +4,7 @@ import { CONFIG_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory, QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 import { testWorkerLifetime, testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
-import { openBoundDatabaseFixture } from "../admission-fixture.js";
+import { openBoundDatabaseFixture, createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { type RunRecord } from "../../../../src/models/run/record.js";
 
@@ -12,10 +12,10 @@ import { type RunRecord } from "../../../../src/models/run/record.js";
 
 
 
-export function createNotificationCompositionTestWorld() {
+export function createNotificationCompositionTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
   async function fixture() {
     const clock = manualClock(new Date("2026-09-10T20:00:00.000Z"));
-    const opened = await openBoundDatabaseFixture("notification-producers", clock);
+    const opened = await openBoundDatabaseFixture("notification-producers", clock, undefined, undefined, undefined, undefined, profileFixture);
     const db = opened.database;
     db.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     testWorkerPorts(db, clock, { path: opened.path, descriptor: personLookupDescriptor, poolIndex: 1 });

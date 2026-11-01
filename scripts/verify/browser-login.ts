@@ -1,6 +1,7 @@
+import { createDuoCredentialStore } from "../../src/backend/storage/configuration/duo-credential-store.js";
 import type { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
 import { captureSelectedProfileStorage, RuntimeCustodyUncertainError } from "../../src/backend/app/composition/storage-compose.js";
-import { AuthoritySourceClosureUnprovedError } from "../../src/backend/storage/source-closure.js";
+import { hasUnprovedSourceClosure } from "../../src/backend/storage/source-closure.js";
 import { reconcileStartupCrash } from "../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { RunRecordService } from "../../src/backend/runs/lifecycle/run-record-service.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../src/models/failures/error-catalog.js";
@@ -177,7 +178,7 @@ export async function withSmokeWorker(
   for (const gate of gates) {
     try { gate.dispose(errors[0]); } catch (error) { released = false; errors.push(error); }
   }
-  if (!released || errors.some(error => error instanceof SmokeSessionClosureError)) throw new RuntimeCustodyUncertainError(errors);
+  if (!released || errors.some(error => error instanceof SmokeSessionClosureError || hasUnprovedSourceClosure(error))) throw new RuntimeCustodyUncertainError(errors);
   try {
     const hold = database.authority.workerSlots.verification(slot.workerId);
     if (hold === undefined) throw new Error("live-smoke-verification-reservation-missing");
@@ -225,7 +226,7 @@ async function main(): Promise<void> {
   const lock = await acquireRuntimeLifetimeLock(rebuildRuntimeIsolation.lockPort);
   let retain = false;
   try { await runAdmittedSmoke(lock); }
-  catch (error) { retain = error instanceof RuntimeCustodyUncertainError || error instanceof AuthoritySourceClosureUnprovedError; throw error; }
+  catch (error) { retain = error instanceof RuntimeCustodyUncertainError || hasUnprovedSourceClosure(error); throw error; }
   finally { if (!retain) await lock.close(); }
 }
 
@@ -256,6 +257,7 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
     const record = database.withAuthorityTransaction(repositories => readSettings(repositories));
     const config = resolveConfigWithProvenance(record.settings, hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay)),
       systemClock, { stateRoot, artifactRoot: admission.artifactRoot }).config;
+    const duo = createDuoCredentialStore(profileAdmission, machine, systemClock);
     const profileRunId = randomUUID();
   await withSmokeWorker(openedDatabase, async (slot, gates) => {
   const { workerId, ordinal } = slot;
@@ -278,6 +280,13 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
   const evidence: AuthenticatedApplicationEvidence[] = [];
   const hops: string[] = [];
   const factory = new PlaywrightWorkerSessionFactory({
+    duo,
+    assertCurrent: requestedWorker => {
+      selected.assertCurrent(); profileAdmission.assertProfileRuntime(); lock.assertHeld();
+      const hold = openedDatabase.authority.workerSlots.verification(workerId);
+      if (requestedWorker !== workerId || hold === undefined || hold.slot.ordinal !== ordinal || hold.request.system !== system
+        || hold.request.profileRunId !== profileRunId || hold.request.credentialKey !== duoCeremonyCredentialKey(config, duo)) throw new Error("live-smoke-profile-owner-mismatch");
+    },
     config: { ...smokeConfig, browser: { ...config.browser, headless: !headed } },
     protectedSecrets: createCredentialSecretSource(credentials),
     isolation: rebuildRuntimeIsolation,
@@ -285,11 +294,6 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
     scheduler: realScheduler,
     newSessionId: () => randomUUID(),
     slotOrdinal: requestedWorker => { if (requestedWorker !== workerId) throw new Error("live-smoke-profile-owner-mismatch"); return ordinal; },
-    assertCurrent: requestedWorker => {
-      lock.assertHeld();
-      const hold = openedDatabase.authority.workerSlots.verification(workerId);
-      if (requestedWorker !== workerId || hold === undefined || hold.slot.ordinal !== ordinal || hold.request.system !== system) throw new Error("live-smoke-profile-custody-unavailable");
-    },
     admitProfile: createSmokeProfileAdmission({ database: openedDatabase, lock, stateRoot,
       workerId, ordinal, system, profileRoot: smokeProfileRoot }),
     onAuthenticationEvidence: (observed) => {
@@ -307,7 +311,7 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
   });
 
   const duoFactory = composeDuoCeremonyGateFactory({
-    config, leases: openedDatabase.authority.duoCeremonyLeases, clock: systemClock, scheduler: realScheduler,
+    config, duo, leases: openedDatabase.authority.duoCeremonyLeases, clock: systemClock, scheduler: realScheduler,
   });
 
   const started = systemClock.monotonicMs();
@@ -357,10 +361,10 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
   await closeSmokeSessions(sessions,
     () => { deleteOwnedBrowserProfile(smokeProfileRoot, join(smokeProfileRoot, `w${ordinal}`)); }, sessionErrors);
   write("[smoke] every session closed with proof");
-  }, systemClock, { lock, ...profileAdmission.profileBinding, profileRunId, system, credentialKey: duoCeremonyCredentialKey(config) });
+  }, systemClock, { lock, ...profileAdmission.profileBinding, profileRunId, system, credentialKey: duoCeremonyCredentialKey(config, duo) });
   } catch (error) { operationFailure = { error }; }
   try {
-    if (!(operationFailure?.error instanceof RuntimeCustodyUncertainError) && !(operationFailure?.error instanceof AuthoritySourceClosureUnprovedError)) {
+    if (!(operationFailure?.error instanceof RuntimeCustodyUncertainError) && !hasUnprovedSourceClosure(operationFailure?.error)) {
       database?.close(); admission?.release(); machine.release();
     }
   } catch (error) { throw new RuntimeCustodyUncertainError(operationFailure === undefined ? [error] : [operationFailure.error, error]); }

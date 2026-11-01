@@ -133,11 +133,8 @@ export function createProfileOnboarding(input: {
             transport: credential.transport, isResidentCredential: credential.isResidentCredential } });
         assertCurrent(); return { revision: result.revision };
       },
-      async provision(credentialId) { assertCurrent(); if (attempt.method !== "key") return unavailable();
-        const result = input.store(current(attempt).operation).provision(credentialId, scope); assertCurrent(); return result;
-      },
-      async reserveSignCount(request) { assertCurrent(); if (attempt.method !== "key" || request.attemptId === attempt.attemptId) return unavailable();
-        const result = input.store(current(attempt).operation).reserveForAttempt(request.credentialId, request.attemptId, scope);
+      async signAssertion(request) { assertCurrent(); if (attempt.method !== "key" || request.requestId === attempt.attemptId) return unavailable();
+        const result = await input.store(current(attempt).operation).signForScope(request, scope);
         assertCurrent(); return result;
       },
       async recordCeremony(proof) {

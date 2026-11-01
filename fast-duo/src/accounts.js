@@ -1,3 +1,4 @@
+export { isDuoOrigin } from './duo-origin.js';
 import { base64ToBytes, bytesEqual } from './crypto.js';
 
 export const normalizeUsername = (value) => typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -19,13 +20,7 @@ export function validateAccount(input, accounts = []) {
   return { id: input.id || crypto.randomUUID(), username, aliases, label, loginUrl, enabled: input.enabled !== false };
 }
 
-export function isDuoOrigin(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && !url.port && !url.username && !url.password &&
-      (url.hostname === 'duosecurity.com' || url.hostname.endsWith('.duosecurity.com'));
-  } catch { return false; }
-}
+
 
 /** Credential IDs are authoritative. A username can narrow them, never override them. */
 export function selectCredential(state, request) {

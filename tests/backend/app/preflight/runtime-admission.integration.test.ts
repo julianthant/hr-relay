@@ -453,7 +453,7 @@ async function harness(beforeCrmEndpoint?: () => Promise<void>) {
     config: resolved.config, provenance: resolved.provenance, revision: 1, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
   const descriptors = { resolve: (id: string) => id === personLookupDescriptor.id ? personLookupDescriptor : undefined };
   let probes=0;
-  const preflight=composeRuntimePreflight({ admission: f.admission, credentials: f.credentials,database,clock,repoRoot,isolation:rebuildRuntimeIsolation,descriptors,
+  const preflight=composeRuntimePreflight({ admission: f.admission, credentials: f.credentials,duo:f.duo,database,clock,repoRoot,isolation:rebuildRuntimeIsolation,descriptors,
     descriptorSetHash:personLookupDescriptor.contractFingerprint,protectedSecrets:f.input.protectedSecrets,environment:{},
     runnerFactory:input=>createRuntimePreflightRunners({...input,browserExecutablePath:()=>f.executable,dashboard:f.input.dashboard,providerAvailability:f.input.providerAvailability}).map(runner=>({...runner,run(context){probes++;return runner.check === "endpoint.crm.prod" && beforeCrmEndpoint !== undefined ? (beforeCrmEndpoint()).then(() => runner.run(context)) : runner.run(context);}}))});
   let publications = 0;
