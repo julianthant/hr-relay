@@ -17,9 +17,11 @@ it("accepts the Windows paths default runtime resolution produces and rejects re
     stateRoot,
     artifactRoot: win32.resolve(CHECKOUT, rebuildRuntimeIsolation.artifactRoot),
     browserProfileRoot: win32.resolve(CHECKOUT, rebuildRuntimeIsolation.browserProfileRoot),
+    duoCredential: win32.join(stateRoot, "credentials", "duo-webauthn.json"),
     duoExtensionDir: win32.resolve(CHECKOUT, "fast-duo"),
   });
   assert.equal(parsed.reportsDir, "D:\\a\\hr-relay\\hr-relay\\data\\reports");
+  assert.equal(parsed.duoCredential, "D:\\a\\hr-relay\\hr-relay\\.tracker\\data\\credentials\\duo-webauthn.json");
   assert.equal(AbsolutePathSchema.parse("/tmp/hrt"), "/tmp/hrt");
   assert.equal(AbsolutePathSchema.parse("\\\\server\\share\\data"), "\\\\server\\share\\data");
   const current = defaultRuntimePaths();

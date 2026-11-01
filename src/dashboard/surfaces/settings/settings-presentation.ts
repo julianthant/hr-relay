@@ -14,6 +14,7 @@ const TITLES: Readonly<Record<string, string>> = {
   "paths.onboardingDocsDir": "Documents",
   "paths.i9CheckTrackerPath": "I-9 check tracker",
   "paths.browserProfileRoot": "Browser profile folder",
+  "paths.duoCredential": "Duo credential file",
   "paths.duoExtensionDir": "Duo extension folder",
 };
 const NOTES: Readonly<Record<string, string>> = {
@@ -44,6 +45,7 @@ const NOTES: Readonly<Record<string, string>> = {
   "paths.onboardingDocsDir": "Onboarding documents.",
   "paths.i9CheckTrackerPath": "Workbook used to track I-9 checks.",
   "paths.browserProfileRoot": "Fresh folder for browser sessions in new runs.",
+  "paths.duoCredential": "Existing private Duo credential file; independent of the profile folder.",
   "paths.duoExtensionDir": "Unpacked Duo browser extension for new runs.",
 };
 

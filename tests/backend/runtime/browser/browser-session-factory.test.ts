@@ -193,8 +193,8 @@ const credential = { rpId: "duosecurity.com", credentialId: "synthetic-id", priv
 
 describe("workflow Fast Duo launch", () => {
   for (const shape of [credential, [credential], { credentials: [credential] }]) it(`does not read or install retired credential shape ${Array.isArray(shape) ? "array" : "credentials" in shape ? "envelope" : "single"}`, async () => {
-    await withTempRuntime(async ({ config, root }) => {
-      writeFileSync(join(root, "duo-webauthn.json"), JSON.stringify(shape));
+    await withTempRuntime(async ({ config }) => {
+      writeFileSync(config.paths.duoCredential, JSON.stringify(shape));
       const broker = fixtureWorkflowWorker();
       const worker = broker.worker;
       const harness = fakeLauncher({ serviceWorker: worker });
@@ -213,8 +213,8 @@ describe("workflow Fast Duo launch", () => {
   });
 
   it("proves context closure when Fast Duo provisioning fails", async () => {
-    await withTempRuntime(async ({ config, root }) => {
-      writeFileSync(join(root, "duo-webauthn.json"), JSON.stringify(credential));
+    await withTempRuntime(async ({ config }) => {
+      writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
       const harness = fakeLauncher();
       await assert.rejects(factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings()).open(input), DuoProvisioningError);
       assert.equal(harness.contextClosed(), true);

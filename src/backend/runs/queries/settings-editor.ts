@@ -71,7 +71,7 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
       ...(atPath(defaults, path) === undefined ? {} : { defaultValue: atPath(defaults, path) }),
       ...(settingsValue === undefined ? {} : { settingsValue }),
       source: settingsValue === undefined ? "default" : "settings", sourceClass: "ordinary-settings", sensitivity: "ordinary",
-      editable: true, validity: effectiveValue === undefined ? "unset" : "valid",
+      editable: key !== "paths.duoCredential", validity: effectiveValue === undefined ? "unset" : "valid",
       activationScope: key.startsWith("daemon.") ? "next-idle" : "new-runs",
       ...(control.input === "number" ? { minimum: control.minimum } : {}),
       ...(key.startsWith("display.") ? { unit: "px" } : {}),

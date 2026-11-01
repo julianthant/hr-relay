@@ -65,6 +65,7 @@ const CATALOG_ROWS = [
   {"key": "paths.stateRoot", "schema": "AbsolutePathSchema", "defaultKind": "runtime-path", "editability": "deployment", "sensitivity": "ordinary", "restartScope": "process", "sourceClass": "runtime-isolation", "consumers": [{"module": "src/backend/app/config/runtime-paths.ts", "purpose": "isolation default composition"}, {"module": "src/backend/app/config/resolve.ts", "purpose": "leaf supply (not overridable)"}], "currentSource": [{"kind": "code", "name": "code"}], "targetSource": {"kind": "code", "name": "code"}},
   {"key": "paths.artifactRoot", "schema": "AbsolutePathSchema", "defaultKind": "runtime-path", "editability": "deployment", "sensitivity": "ordinary", "restartScope": "process", "sourceClass": "runtime-isolation", "consumers": [{"module": "src/backend/app/config/runtime-paths.ts", "purpose": "isolation default composition"}, {"module": "src/backend/app/config/resolve.ts", "purpose": "leaf supply"}], "currentSource": [{"kind": "code", "name": "code"}], "targetSource": {"kind": "code", "name": "code"}},
   {"key": "paths.browserProfileRoot", "schema": "AbsolutePathSchema", "defaultKind": "runtime-path", "editability": "operator", "sensitivity": "ordinary", "restartScope": "generation", "sourceClass": "ordinary-settings", "consumers": [{"module": "src/backend/app/config/runtime-paths.ts", "purpose": "installation default"}, {"module": "src/backend/app/config/resolve.ts", "purpose": "new-run profile root"}], "currentSource": [{"kind": "code", "name": "code"}], "targetSource": {"kind": "document", "name": "settings.json"}},
+  {"key": "paths.duoCredential", "schema": "AbsolutePathSchema", "defaultKind": "runtime-path", "editability": "operator", "sensitivity": "ordinary", "restartScope": "generation", "sourceClass": "ordinary-settings", "consumers": [{"module": "src/backend/app/config/runtime-paths.ts", "purpose": "independent installation default"}, {"module": "src/backend/app/config/resolve.ts", "purpose": "new-run credential path"}], "currentSource": [{"kind": "code", "name": "code"}], "targetSource": {"kind": "document", "name": "settings.json"}},
   {"key": "paths.duoExtensionDir", "schema": "AbsolutePathSchema", "defaultKind": "runtime-path", "editability": "operator", "sensitivity": "ordinary", "restartScope": "generation", "sourceClass": "ordinary-settings", "consumers": [{"module": "src/backend/app/config/runtime-paths.ts", "purpose": "installation default"}, {"module": "src/backend/app/config/resolve.ts", "purpose": "new-run extension"}], "currentSource": [{"kind": "code", "name": "code"}], "targetSource": {"kind": "document", "name": "settings.json"}},
 ] as const;
 
@@ -106,7 +107,7 @@ export const SettingsCatalogRowSchema = z.strictObject({
   }
 });
 
-export const SettingsCatalogSchema = z.array(SettingsCatalogRowSchema).length(63).superRefine((rows, context) => {
+export const SettingsCatalogSchema = z.array(SettingsCatalogRowSchema).length(64).superRefine((rows, context) => {
   const keys = rows.map((row) => row.key);
   if (new Set(keys).size !== rows.length) {
     context.addIssue({ code: "custom", message: "settings catalog repeats a key" });

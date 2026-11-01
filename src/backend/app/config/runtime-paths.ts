@@ -1,5 +1,5 @@
 
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { rebuildRuntimeIsolation } from "./runtime-isolation.js";
 import { ConfigPathsSchema, type ConfigPaths } from "../../../models/config/schema.js";
 
@@ -22,6 +22,7 @@ export function defaultRuntimePaths(): ConfigPaths {
     stateRoot: resolve(rebuildRuntimeIsolation.stateRoot),
     artifactRoot: resolve(rebuildRuntimeIsolation.artifactRoot),
     browserProfileRoot: profileRoot,
+    duoCredential: join(resolve(rebuildRuntimeIsolation.stateRoot), "credentials", "duo-webauthn.json"),
     duoExtensionDir: resolve("fast-duo"),
   });
 }

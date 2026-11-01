@@ -20,14 +20,18 @@ afterEach(_afterEachFixture0);
     const old = f.create();
     const oldActive = selectActiveRunSettings(f.database.authority);
     const profile = join(f.root, "new-profile"); mkdirSync(profile);
+    const credential = join(f.root, "new-duo.json");
+    writeFileSync(credential, '{"rpId":"synthetic.example","credentialId":"synthetic-id","privateKey":"synthetic-key","signCount":0,"transport":"internal"}', { mode: 0o600 });
     const extension = join(f.root, "new-extension"); mkdirSync(extension);
     writeFileSync(join(extension, "workflow-manifest.json"), '{"manifest_version":3,"name":"Synthetic Duo"}');
-    const patch = { "paths.browserProfileRoot": { set: profile }, "paths.duoExtensionDir": { set: extension } };
+    const patch = { "paths.browserProfileRoot": { set: profile },
+      "paths.duoCredential": { set: credential }, "paths.duoExtensionDir": { set: extension } };
     const saved = f.save(patch); assert.equal(saved.state, "applied");
     if (saved.state !== "applied") return;
     assert.equal(saved.restartRequired, false);
     const active = selectActiveRunSettings(f.database.authority);
     assert.equal(active.config.paths.browserProfileRoot, profile);
+    assert.equal(active.config.paths.duoCredential, credential);
     assert.equal(active.config.paths.duoExtensionDir, extension);
     assert.equal(active.configSnapshotId === oldActive.configSnapshotId, false);
     assert.deepEqual(f.database.authority.configSnapshots.get(old.envelope.configSnapshotId), oldActive);
@@ -38,8 +42,8 @@ afterEach(_afterEachFixture0);
     const f = await settingsFixture(); cleanups.push(f.close);
     const before = selectActiveRunSettings(f.database.authority);
     const invalid = f.save({ "paths.duoCredential": { set: join(f.root, "missing.json") } });
-    assert.deepEqual(invalid, { state: "rejected", commandId: invalid.commandId, code: "not-editable",
-      message: "retired settings cannot be edited" });
+    assert.deepEqual(invalid, { state: "rejected", commandId: invalid.commandId, code: "invalid-value",
+      message: "paths.duoCredential: private-file-unavailable" });
     assert.deepEqual(selectActiveRunSettings(f.database.authority), before);
   });
 });

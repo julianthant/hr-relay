@@ -46,6 +46,7 @@ export function settingsFactLabel(key: string): string {
     "paths.stateRoot": "Runtime state folder",
     "paths.artifactRoot": "Artifact folder",
     "paths.browserProfileRoot": "Browser profile folder",
+    "paths.duoCredential": "Duo credential file",
     "paths.duoExtensionDir": "Duo extension folder",
     duoWebauthnCredential: "Duo WebAuthn credential file",
     entry: "Entry URL",

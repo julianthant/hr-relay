@@ -37,7 +37,7 @@ export async function runtimeFixture(capabilities: readonly RuntimeCapability[],
   copyFileSync(join(process.cwd(), "package.json"), join(root, "package.json"));
   copyFileSync(join(process.cwd(), "package-lock.json"), join(root, "package-lock.json"));
   const config = structuredClone(resolveConfigWithProvenance({}, hostConfigFacts({}), clock, { stateRoot, artifactRoot }).config);
-  config.paths.duoExtensionDir = join(root, "extension");
+  config.paths.duoExtensionDir = join(root, "extension"); config.paths.duoCredential = join(root, "credential.json");
   config.features.duoWebAuthn = true;
   mkdirSync(config.paths.duoExtensionDir); writeFileSync(join(config.paths.duoExtensionDir, "workflow-manifest.json"), "{}");
   const executable = join(root, "chromium"); writeFileSync(executable, "synthetic executable asset", {mode: 0o700});

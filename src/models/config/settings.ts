@@ -137,8 +137,9 @@ export const SettingsPatchSchema = z.record(z.string().min(1), SettingsLeafOpera
       }
       if ("set" in operation) {
         const leafSchema = ordinarySettingsLeafSchema(path);
-        const invalid = leafSchema === undefined ? !isRetiredSettingsPath(path) : !z.safeParse(leafSchema, operation.set).success;
-        if (invalid) context.addIssue({ code: "custom", path: [path], message: `settings path ${path} has an invalid value` });
+        if (leafSchema === undefined || !z.safeParse(leafSchema, operation.set).success) {
+          context.addIssue({ code: "custom", path: [path], message: `settings path ${path} has an invalid value` });
+        }
       }
     }
   });

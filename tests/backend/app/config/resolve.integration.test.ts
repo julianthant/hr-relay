@@ -63,6 +63,8 @@ describe("strict config resolution", () => {
     assert.equal(moved.config.paths.stateRoot, pair.stateRoot);
     assert.equal(moved.config.paths.artifactRoot, pair.artifactRoot);
     assert.equal(moved.config.paths.browserProfileRoot, "/tmp/profile");
+    assert.equal(moved.config.paths.duoCredential, "/tmp/relocated-state/credentials/duo-webauthn.json");
+    assert.equal(moved.provenance["paths.duoCredential"], "default");
     assert.equal(moved.provenance["paths.stateRoot"], "default");
     assert.equal(moved.provenance["paths.artifactRoot"], "default");
     assert.equal(moved.provenance["paths.browserProfileRoot"], "settings");
