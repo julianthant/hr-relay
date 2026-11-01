@@ -3,6 +3,7 @@ import "./tests/support/helpers/credential-keychain-process-preload.mjs";
 import { availableParallelism } from "node:os";
 import { defineConfig } from "@playwright/test";
 import { parityUpdateRequested } from "./tests/parity/helpers/reference-store.js";
+import { scaledMs } from "./tests/support/time-scale.js";
 
 const keychainPreload = new URL("./tests/support/helpers/credential-keychain-process-preload.mjs", import.meta.url).href;
 process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ""} --import=${keychainPreload}`;
@@ -15,10 +16,11 @@ export default defineConfig({
   fullyParallel: true,
   workers: Math.min(4, availableParallelism()),
   retries: 0,
-  timeout: 120_000,
+  timeout: scaledMs(120_000),
   // Refresh reference pairs only in explicit update mode.
   updateSnapshots: parityUpdateRequested() ? "changed" : "none",
   expect: {
+    timeout: scaledMs(5_000),
     toHaveScreenshot: {
       // Repeated captures counted zero differing pixels; allow none.
       maxDiffPixels: 0,
