@@ -56,7 +56,7 @@
         - heading "Verify employee" [level=3]
         - text: UCPath
         - time: 09:31:04
-        - paragraph: Search by EID 10773012
+        - paragraph: Search by EID 10777012
         - time: 09:31:09
         - paragraph: Read job record
     - group:
