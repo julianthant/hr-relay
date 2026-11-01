@@ -607,9 +607,10 @@ export function createProfileSession(input: {
         const pending = requireOnboarding(token, operationId);
         if (pending.onboarding === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
         if (pending.onboarding.finish === undefined) {
-          onboarding.verifyFinish(operationId);
-          writeOperation({ ...pending, phase: "publishing", onboarding: { ...pending.onboarding,
-            finish: { finishId: randomUUID(), finishedAt: IsoInstantSchema.parse((input.clock ?? systemClock).now().toISOString()) } } });
+          const candidate: SignUpOperation = { ...pending, phase: "publishing", onboarding: { ...pending.onboarding,
+            finish: { finishId: randomUUID(), finishedAt: IsoInstantSchema.parse((input.clock ?? systemClock).now().toISOString()) } } };
+          onboarding.verifyFinish(candidate);
+          writeOperation(candidate);
         }
         const operation = requireOnboarding(token, operationId), session = publishSignUp(operation);
         onboardingSessions.delete(token); completedOnboarding.set(token, { operationId, session });

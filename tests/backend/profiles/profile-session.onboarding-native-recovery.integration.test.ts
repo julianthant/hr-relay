@@ -350,6 +350,22 @@ it("holds tampered canonical abort source and preserves exact head and operation
   await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true });
 });
 
+it("keeps Finish unpublished when the ready canonical Duo credential cannot be verified", async () => {
+  const f = await readyFixture(), operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
+  const duoPath = join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`);
+  await f.profile.session.closeOnboarding();
+  const operation = readFileSync(operationPath), credential = readFileSync(duoPath);
+  writeFileSync(duoPath, "invalid encrypted credential", { mode: 0o600 });
+  try {
+    await assert.rejects(f.profile.session.completeOnboarding(f.draft.token, f.draft.operationId));
+    assert.deepEqual(readFileSync(operationPath), operation);
+    assert.equal(SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).onboarding?.finish, undefined);
+    assert.deepEqual(f.machine.readProfileRegistry().profiles, []);
+  } finally { writeFileSync(duoPath, credential, { mode: 0o600 }); }
+  assert.equal((await f.profile.session.completeOnboarding(f.draft.token, f.draft.operationId)).state, "active");
+  await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true });
+});
+
 it("limits finished publishing to value-free metadata and refuses key provisioning or mutation before exact Finish recovery", async () => {
   const f = await readyFixture(), operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`), rename = nativeFs.renameSync;
   let fired = false;
