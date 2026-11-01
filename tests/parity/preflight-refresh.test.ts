@@ -1,7 +1,8 @@
 
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { ensureParityBundle } from "./helpers/bundle.js";
+
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { startSetupPreflightServer } from "./helpers/fixture-setup-preflight.js";
@@ -38,7 +39,7 @@ async function holdRefresh(page: Page) {
   };
 }
 
-test.beforeAll(() => { ensureParityBundle(); });
+test.beforeAll(() => { });
 for (const scene of ["healthy", "secret-missing"] as const) for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`Preflight refresh preserves cards through command and readback ${scene} ${theme.name} ${String(width)}`, async ({ page }, info) => {
     const server = await startSetupPreflightServer(scene);

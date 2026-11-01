@@ -1,9 +1,10 @@
 
-import { expect,test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js";
 import { RunDetailSectionResponseSchema } from "../../src/models/dashboard/run-detail.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { readA11yTree } from "./helpers/capture.js";
 import { startFixtureServer,type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -21,7 +22,6 @@ test.afterEach(async () => {
 });
 
 test.beforeAll(async () => {
-  ensureParityBundle();
   fixture = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   seeded = await startSeededServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
 });

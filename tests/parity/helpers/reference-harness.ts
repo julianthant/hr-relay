@@ -1,4 +1,5 @@
-import { expect,test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./fixtures.js";
 import { resolve } from "node:path";
 import { PARITY_DIST_DIR } from "./bundle.js";
 import { startFixtureServer,type FixtureServer } from "../../support/helpers/dashboard/fixture-bff.js";

@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -14,7 +15,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const a11yName = `dashboard-${theme.attribute}-${width}.a11y.yml`;
 
 test(`approved mixed queue and navbar @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: a11yName }] }, async ({ page }, info) => {
-    ensureParityBundle();
     const errors = failOnPageErrors(page);
     const done = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.surfaceKind === "single" && row.status === "done");
     const running = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.surfaceKind === "single" && row.status === "running");

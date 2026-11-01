@@ -1,6 +1,7 @@
 
-import { expect, test } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
@@ -9,7 +10,6 @@ import { settingsSearchIndex } from "../../src/dashboard/surfaces/settings/navig
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`Settings search navigates and centers real controls @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -126,7 +126,6 @@ const indexedTargets = settingsSearchIndex(buildSettingsNav([], indexedDocument)
 for (const section of new Set(indexedTargets.map(result => result.entry.id))) {
 test(`Every indexed setting in ${section} resolves to a visible destination, including folded groups`, async ({ page }) => {
   test.setTimeout(90000);
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -142,7 +141,6 @@ test(`Every indexed setting in ${section} resolves to a visible destination, inc
 
 test("Setting targets retain reduced-motion and unavailable states", async ({ page }) => {
   test.setTimeout(90000);
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -159,7 +157,6 @@ test("Setting targets retain reduced-motion and unavailable states", async ({ pa
 void 0;
 
 test("A path target waits for its verified authority without a false unavailable warning", async ({ page }) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   let release: (() => void) | undefined;
   const pending = new Promise<void>(resolve => { release = resolve; });

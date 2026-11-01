@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { expect } from '@playwright/test';
-import { test } from './helpers/matrix-fixtures.js';
+import { test } from './helpers/fixtures.js';
 import { createServer, type ViteDevServer } from 'vite';
 import { captureA11yReference } from './helpers/capture.js';
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from './helpers/fixture-identity.js';

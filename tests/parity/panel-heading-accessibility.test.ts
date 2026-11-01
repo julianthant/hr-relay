@@ -1,7 +1,8 @@
 
-import { expect,test,type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer,type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_EXPLORER_WORKFLOW_ID } from "./helpers/fixture-explorer.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -14,7 +15,6 @@ async function expectPanelHeading(page: Page, name: string | RegExp): Promise<vo
 }
 
 test.beforeAll(async () => {
-  ensureParityBundle();
   server = await startFixtureServer({
     distDir: PARITY_DIST_DIR,
     bundle: { proof: "working-tree" },

@@ -1,7 +1,8 @@
 
 import { chooseSelect } from "./helpers/select-choice.js";
-import { expect, test, type Locator } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect, type Locator } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { startSetupPreflightServer } from "./helpers/fixture-setup-preflight.js";
@@ -21,7 +22,6 @@ async function assertHeadingActions(surface: Locator): Promise<void> {
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`Settings actions center on title-only and described headings @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -56,7 +56,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 
   test(`Storage actions stay beside the heading and retain readback @ ${theme.attribute} ${width}`, async ({ page }) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
@@ -98,7 +97,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 
   test(`Preflight scope stays beside the heading and Status rerun retains authority @ ${theme.attribute} ${width}`, async ({ page }) => {
-    ensureParityBundle();
     const server = await startSetupPreflightServer("unavailable");
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });

@@ -1,7 +1,8 @@
 
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, type Locator } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { createHash } from "node:crypto";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -57,7 +58,6 @@ async function attachTree(node: Locator, name: string) {
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`one neutral dashboard palette @ ${theme.attribute} ${width}`, { annotation: ["logs", "explorer", "activity", "settings", "dialog"].map(name => ({ type: "required-a11y-evidence", description: `palette-${name}-${theme.attribute}-${width}.a11y.yml` })) }, async ({ page }) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });

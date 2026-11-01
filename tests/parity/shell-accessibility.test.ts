@@ -1,6 +1,7 @@
-import { expect,test,type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { ensureParityBundle,PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer,type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
@@ -9,7 +10,7 @@ import { assertShellGeometry } from "./helpers/geometry.js";
 import { attachShellA11y,shellTextContrast } from "./helpers/shell-proof.js";
 
 let server:FixtureServer;
-test.beforeAll(async()=>{ensureParityBundle();server=await startFixtureServer({distDir:PARITY_DIST_DIR,bundle:{proof:"working-tree"}});});
+test.beforeAll(async()=>{server=await startFixtureServer({distDir:PARITY_DIST_DIR,bundle:{proof:"working-tree"}});});
 test.afterAll(async()=>server.close());
 async function assertPanels(page:Page){
   await assertShellGeometry(page,"shell desktop containment");
