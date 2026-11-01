@@ -1,7 +1,7 @@
 // Login requires positive application evidence and no sign-in form; shared hosts and redirects prove neither.
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 import type { Page } from "playwright";
-import type { DuoCeremonyGate } from "../../../workflow-kit/duo-ceremony-lease.js";
+import type { DuoCeremonyGate, DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import type { Config } from "../../../models/config/schema.js";
 import type { RuntimeInstance } from "../../../models/config/instance.js";
 import type { BrowserSystemId } from "../../../rules/identity/ids.js";
@@ -129,6 +129,7 @@ export interface SystemLoginContext extends AuthenticationVerificationContext {
   readonly credentials: Readonly<{ userId: string; password: string }>;
 
   readonly duoCeremony: DuoCeremonyGate;
+  readonly withDuoSigningScope?: <T>(token: DuoCeremonyLeaseToken, run: () => Promise<T>) => Promise<T>;
   readonly acquisitionRemainingMs?: () => number;
   readonly claimStaleRequestRecovery?: () => boolean;
 }

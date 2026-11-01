@@ -1,5 +1,6 @@
-import { createHash } from "node:crypto";
-import { closeSync, constants, fstatSync, openSync, readFileSync, lstatSync, mkdirSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
+import { DuoAssertionRequestSchema } from "../../storage/configuration/duo-signing.js";
+import { stageFastDuoExtension } from "./fast-duo-extension.js";
+import { lstatSync, mkdirSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { submitOnboardingSsoCredentials } from "../../systems/browser-shared/ucsd-sso.js";
 import type { BrowserContext, Page, Worker } from "playwright";
@@ -33,7 +34,7 @@ const BrokerRequestSchema = z.discriminatedUnion("kind", [
     documentId: BrowserDocumentIdSchema, tabId: z.number().int().nonnegative(), origin: z.url(), rpId: z.literal("duosecurity.com"), username: z.string().min(1).max(128),
   }) }),
   z.strictObject({ id: z.uuid(), kind: z.literal("persist"), data: PendingSchema }),
-  z.strictObject({ id: z.uuid(), kind: z.literal("reserve"), data: ReceiptSchema }),
+  z.strictObject({ id: z.uuid(), kind: z.literal("sign"), data: DuoAssertionRequestSchema }),
   z.strictObject({ id: z.uuid(), kind: z.enum(["native-failed", "scope-lost"]), data: z.strictObject({ requestId: z.uuid() }) }),
   ...(["software-created", "native-created", "portal-accepted", "exact-request"] as const).map(kind =>
     z.strictObject({ id: z.uuid(), kind: z.literal(kind), data: ReceiptSchema })),
@@ -60,36 +61,6 @@ async function workerCall(worker: Worker, method: "install" | "next" | "reply" |
   }, { method, args });
 }
 
-const RELAY_EXTENSION_FILES = ["relay-manifest.json", "LICENSE", "THIRD_PARTY_NOTICES.md", "src/relay-background.js", "src/relay-content.js", "src/relay-inpage.js", "src/relay-native.js",
-  "src/service.js", "src/crypto.js", "src/accounts.js", "src/sign-count.js", "src/username.js",
-  "src/options.html", "src/options.js", "src/popup.html", "src/popup.js", "src/relay-options.js", "src/styles.css", "src/icons/autopilot.svg", "src/icons/key-round.svg", "src/icons/plus.svg", "src/icons/shield-check.svg"] as const;
-
-function stageRelayExtension(sourceRoot: string, destination: string): void {
-  if (realpathSync(sourceRoot) !== sourceRoot) throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root");
-  mkdirSync(join(destination, "src", "icons"), { recursive: true, mode: 0o700 });
-  for (const name of RELAY_EXTENSION_FILES) {
-    const path = join(sourceRoot, name);
-    if (realpathSync(path) !== path) throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root");
-    const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    try {
-      const before = fstatSync(descriptor);
-      if (!before.isFile() || before.nlink !== 1 || before.uid !== process.getuid?.() || (before.mode & 0o022) !== 0) throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root");
-      const bytes = readFileSync(descriptor);
-      const after = fstatSync(descriptor);
-      const observed = lstatSync(path);
-      const check = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-      try {
-        const checked = fstatSync(check);
-        const hash = (value: Uint8Array): string => createHash("sha256").update(value).digest("hex");
-        if (before.ino !== after.ino || before.dev !== after.dev || before.size !== after.size || before.mtimeMs !== after.mtimeMs
-          || observed.ino !== after.ino || observed.dev !== after.dev || observed.isSymbolicLink() || observed.nlink !== 1
-          || checked.ino !== after.ino || checked.dev !== after.dev || checked.nlink !== 1 || !checked.isFile()
-          || hash(bytes) !== hash(readFileSync(check))) throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root");
-      } finally { closeSync(check); }
-      writeFileSync(join(destination, name === "relay-manifest.json" ? "manifest.json" : name), bytes, { flag: "wx", mode: 0o600 });
-    } finally { closeSync(descriptor); }
-  }
-}
 
 export function createProfileOnboardingDuoProvider(options: OnboardingDuoProviderOptions): ProfileOnboardingDuoProvider {
   const browserLauncher = options.launcher ?? DEFAULT_BROWSER_LAUNCHER;
@@ -148,15 +119,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       session.credentialId = request.data.credentialId;
       return result;
     }
-    if (request.kind === "reserve") {
+    if (request.kind === "sign") {
       if (session.attempt.method !== "key" || request.data.credentialId !== session.credentialId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-      const provisioned = await scoped(session, () => capability.provision(request.data.credentialId));
-      current(session);
-      if (provisioned.credentialId !== session.credentialId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-      const reservation = await scoped(session, () => capability.reserveSignCount({ credentialId: request.data.credentialId, attemptId: request.data.requestId }));
-      current(session);
-      if (!Number.isSafeInteger(reservation.count) || reservation.count <= provisioned.highWater || reservation.count >= 0xffffffff) throw new ProfileOnboardingDuoProviderError("unknown", "counter");
-      return reservation;
+      return scoped(session, () => capability.signAssertion(request.data));
     }
     if (!("credentialId" in request.data)) throw new ProfileOnboardingDuoProviderError("unknown", "provider");
     const { credentialId, requestId } = request.data;
@@ -357,7 +322,8 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       mkdirSync(join(session.profileDirectory, "Default"), { mode: 0o700 });
       writeFileSync(join(session.profileDirectory, "Default", "Preferences"), JSON.stringify({ credentials_enable_service: false, profile: { password_manager_enabled: false } }), { mode: 0o600, flag: "wx" });
       const extensionDirectory = join(session.profileDirectory, "relay-extension");
-      stageRelayExtension(options.extensionDirectory, extensionDirectory);
+      try { stageFastDuoExtension(options.extensionDirectory, extensionDirectory, "onboarding"); }
+      catch (error) { throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root", error); }
       session.launchStarted = true;
       session.launching = browserLauncher.launch({ profileDirectory: session.profileDirectory, headless: false,
         extensionDirectory, acceptDownloads: false, downloadsPath: session.profileDirectory, viewport: { width: 1100, height: 800 }, disablePasswordManager: true, defaultContextOptions: true }).then(context => {

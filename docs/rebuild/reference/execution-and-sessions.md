@@ -198,22 +198,30 @@ against Duo's rendered terminal refusal. The canceled-or-timed-out screen throws
 `DuoTerminalRefusalError`; the runtime does not click Try again or wait for the acquisition envelope
 to expire before reporting that outcome.
 
-The operator sentence is the catalog text for `DUO_TERMINAL_REFUSAL`. The refusal is almost never
-Duo hand-approval. It is a Duo Autopilot signCount regression: this browser profile's stored counter
-has fallen behind the value Duo has already observed for the shared credential. A counter that does
-not advance is a cloned-key signal, which happens when any other profile using the same credential
-signed more recently. Check the extension's stored signCount before changing
+The operator sentence is the catalog text for `DUO_TERMINAL_REFUSAL`. A nonadvancing WebAuthn
+count is a cloned-key signal. Check the backend's durable reservation lineage before changing
 `timeouts.duoApprovalSeconds` or `timeouts.sessionAcquireMs`.
 
-The WebAuthn counter belongs to the credential across profiles. `nextSignCount` in
-`duo-autopilot/src/sign-count.js` computes `max(stored + 1, nowSec)`. The extension serializes signs
-within its background worker and persists the advanced counter in `chrome.storage.session`.
-The credential-wide lease in section 10 serializes ceremonies across worker processes.
+The WebAuthn counter belongs to the credential across sessions. `duo-credential-store.ts`
+reserves `max(highWater + 1, nowSec)` in its existing encrypted native publication transaction.
+`duo-signing.ts` then produces the Node ECDSA assertion. Failed signing, unknown publication and
+crashes never refund a request ID or count. Signup uses the exact draft scope; ready workflow
+sessions use genuine machine/profile admissions. Standalone Fast Duo retains its local signer.
 
-The factory's `provisionDuoSession` writes credentials to the owned extension worker on each launch,
-restricts access to `TRUSTED_CONTEXTS`, and verifies every field. Persistent `duoCredentials` in
-`chrome.storage.local` refuses with `duo-extension-provisioning-unavailable`.
-No packaged credential copy is required.
+`fast-duo-extension.ts` stages an allowlisted runtime under the owned browser profile.
+Signup uses `relay-manifest.json`; workflow sessions use `workflow-manifest.json` and the
+credential-free workflow broker. The workflow extension has no storage permission, credential
+installation or local signing service. Native extension sender, Duo origin, tab/frame/document
+lifecycle and observed account are checked before and after signing and before reply. Public
+credential selection stays in the backend. Only an explicit valid no-software-match response
+hands off to native authentication; failures, cancellation and late replies reject.
+
+`defineVerifiedLoginRecipe` remains the only ceremony-gate caller. Its existing lease callback
+binds the actual token to the factory's signing scope. The broker may install and wait before a
+ceremony, but signing and reply require that current unretired token, matching worker/system and
+credential identity, unexpired TTL and current profile/worker ownership. Stop drains pending broker
+work alongside native context closure; either failure retains the profile reservation.
+Explicitly disabled `features.duoWebAuthn` launches Chromium with extensions disabled.
 
 ### 4.3 Acquisition deadline
 
@@ -252,7 +260,7 @@ transaction check is separate from authentication and browser reuse.
 
 `PlaywrightWorkerSessionFactory` launches full bundled Chromium with `channel: "chromium"` in a
 persistent context. The configured Duo extension needs that browser and context combination.
-`assertDuoAutopilotReady` checks the extension manifest and configured credential before launch
+`assertFastDuoReady` checks the workflow extension manifest and configured credential before launch
 when `features.duoWebAuthn` is enabled.
 
 The factory's `#closeWithProof` bounds page and context closure by `browser.closeProofMs`, whose
@@ -340,7 +348,7 @@ Tests mirror implementation under `tests/backend/runtime/` and `tests/backend/st
 `tests/architecture/runtime/` owns `authentication-proof-not-url`, `driver-lease-boundary`,
 `single-flight-login`, `fresh-session-boundary`, `bounded-task-deadline`, `duo-ceremony-lease`,
 `multi-worker-overlap`, and `worker-teardown-soak` in their named `.test.ts` files.
-`tests/duo-autopilot/src/sign-count.test.ts` checks cross-profile counter arithmetic.
+`tests/fast-duo/src/sign-count.test.ts` checks cross-profile counter arithmetic.
 `tests/backend/app/composition/dashboard/compose.worker-pool-parallel-proof.integration.test.ts`
 and `compose.worker-browser-control-process.integration.test.ts` exercise real children.
 A test's presence does not establish a current pass or external availability.
@@ -356,8 +364,8 @@ one active run per worker and simultaneous fleet work. Final counts cannot prove
 ### 10.1 Credential identity
 
 `duoCeremonyCredentialKey` in `src/backend/runtime/gates/duo-ceremony-gate.ts` resolves the public
-credential identity when `features.duoWebAuthn` is enabled. `resolveSecretFileIdentity` hashes the
-configured credential's public `rpId` and `credentialId` pairs. Missing identity fails composition;
+credential identity from the admitted backend `DuoSigningSource` when `features.duoWebAuthn` is
+enabled. Identity excludes changing reservation counts. A missing source fails composition;
 the key is not logged. With the feature disabled, the key derives from `config.actor.id` for
 hands-on approval. Neither mode is a fallback for the other.
 

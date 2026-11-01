@@ -112,8 +112,9 @@ describe("worker browser session factory", () => {
         (error: unknown) => error instanceof AggregateError
           && error.errors.some((failure: unknown) => failure instanceof Error
             && /ucpathUserId is missing/.test(failure.message))
-          && error.errors.some((failure: unknown) => failure instanceof Error
-            && /never emitted its context close event/.test(failure.message)),
+          && error.errors.some((failure: unknown) => failure instanceof BrowserSessionClosureUnprovedError
+            && failure.errors.some(cause => cause instanceof Error
+              && /never emitted its context close event/.test(cause.message))),
       );
       assert.deepEqual(manager.activeSystems(), ["ucpath"], "an unprovable cleanup stays owned");
       await assert.rejects(

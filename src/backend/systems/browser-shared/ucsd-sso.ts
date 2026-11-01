@@ -241,7 +241,6 @@ async function requireMatchedField(
   }
 }
 
-/** Clicks the SSO submit control. Duo Autopilot answers the prompt that follows. */
 export async function submitSsoForm(
   system: BrowserSystemId,
   context: SystemLoginContext,

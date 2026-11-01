@@ -1,3 +1,4 @@
+import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import { createProviderPreflightRunners } from "./provider-runners.js";
 import { createWorkflowPreflightRunners } from "./workflow-runners.js";
 import type { Config } from "../../../models/config/schema.js";
@@ -13,6 +14,7 @@ export interface RuntimePreflightRunnerInput {
   readonly config: Config;
   readonly dashboard: Omit<DashboardPreflightRunnerInput, "config">;
   readonly protectedSecrets: ProtectedSecretSource;
+  readonly duo?: DuoSigningSource;
   /** Read-only local asset lookup, independently injectable without launching Chromium. */
   readonly browserExecutablePath?: () => string;
   readonly providerAvailability: Readonly<Record<string, boolean>>;

@@ -1,6 +1,8 @@
+import { fixtureDuoSigningSource } from "./duo-signing.js";
+import type { DuoSigningSource } from "../../../../src/backend/storage/configuration/duo-signing.js";
 import { PNG } from "pngjs";
 import { runInNewContext } from "node:vm";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BrowserContext, Worker } from "playwright";
@@ -197,12 +199,12 @@ export function createBrowserSessionFactoryFixtures(
 
   // Confine every browser-factory filesystem effect to the test root.
   function withTempRuntime(body: (input: Readonly<{ config: Config; root: string }>) => void | Promise<void>): Promise<void> {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-browser-factory-"));
-    const extensionDir = join(root, "duo-autopilot");
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-browser-factory-")));
+    const extensionDir = join(root, "fast-duo");
     const credential = join(root, "duo-webauthn.json");
     const profileRoot = join(root, "profiles");
-    mkdirSync(extensionDir, { recursive: true });
-    writeFileSync(join(extensionDir, "manifest.json"), "{}\n");
+    mkdirSync(extensionDir);
+    for (const name of ["workflow-manifest.json", "LICENSE", "THIRD_PARTY_NOTICES.md", "src"]) cpSync(join(process.cwd(), "fast-duo", name), join(extensionDir, name), { recursive: true });
     writeFileSync(credential, "{\"credentials\":[]}\n");
     chmodSync(credential, 0o600);
     const base = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config;
@@ -226,9 +228,11 @@ export function createBrowserSessionFactoryFixtures(
       ucpathPassword: "fixture-value",
     }),
     Factory: typeof PlaywrightWorkerSessionFactory = PlaywrightWorkerSessionFactory,
+    duo: DuoSigningSource = fixtureDuoSigningSource(),
   ): PlaywrightWorkerSessionFactory {
     return new Factory({
       config,
+      duo,
       protectedSecrets,
       isolation: rebuildRuntimeIsolation,
       clock: CLOCK,

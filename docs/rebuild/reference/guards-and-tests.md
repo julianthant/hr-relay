@@ -8,7 +8,7 @@ it ran.
 ## 1. Test layers and ownership
 
 Tests mirror source once under `tests/`. A source path under `src/` drops that prefix. Tests for
-`scripts/`, `duo-autopilot/`, and root configurations retain the complete source path. For example,
+`scripts/`, `fast-duo/`, and root configurations retain the complete source path. For example,
 `src/backend/runs/start/enqueue.ts` maps to `tests/backend/runs/start/enqueue.test.ts`.
 Unit and integration files sit together, distinguished by suffix. Topic suffixes split large files
 without introducing a second module tree.

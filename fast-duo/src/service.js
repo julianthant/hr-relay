@@ -1,4 +1,4 @@
-import { base64ToBytes, bytesToBase64, createAssertion, createRegistration, importEcdsaPrivateKey } from './crypto.js';
+import { base64ToBytes, bytesToBase64, bytesToBase64url, createAssertion, createRegistration, importEcdsaPrivateKey } from './crypto.js';
 import { nextSignCount } from './sign-count.js';
 import { normalizeUsername, accountUsernames, validateAccount, validateCredentials, selectCredential, isDuoOrigin } from './accounts.js';
 
@@ -148,14 +148,23 @@ export function createService(storage, now = () => Date.now(), relay) {
         if (type === 'SIGN') {
           const { credential, reason } = selectCredential(state, data);
           if (!credential) { event(state, reason); await save(state); return { ok: false, reason }; }
-          credential.signCount = relay
-            ? await relay.reserveSignCount(credential.credentialId, data.requestId)
-            : nextSignCount(credential.signCount, Math.floor(now() / 1000));
+          if (relay) {
+            if (data.allowCredentials?.length) {
+              await relay.exactCredentialRequested(credential.credentialId, data.requestId);
+              credential.status = 'ready';
+              await save(state);
+            }
+            const assertion = await relay.signAssertion(bytesToBase64url(base64ToBytes(credential.credentialId)), data);
+            credential.lastUsedAt = now();
+            event(state, 'Answered a Duo key request.', credential.accountId);
+            await save(state);
+            return { ok: true, ...assertion, credentialId: bytesToBase64(base64ToBytes(assertion.credentialId)), toast: state.settings.toast };
+          }
+          credential.signCount = nextSignCount(credential.signCount, Math.floor(now() / 1000));
           if (credential.signCount >= 0xffffffff) throw new Error('Key counter exhausted. Enroll a new key.');
           credential.lastUsedAt = now();
           // Duo requesting this exact ID proves it knows the newly registered key.
           if (data.allowCredentials?.length) {
-            if (relay) await relay.exactCredentialRequested(credential.credentialId, data.requestId);
             credential.status = 'ready';
           }
           await save(state); // Persist the counter before releasing the assertion.
@@ -184,8 +193,8 @@ export function createService(storage, now = () => Date.now(), relay) {
         if (relay) await relay.persistPending({ credentialId, privateKeyPkcs8: bytesToBase64(reg.privateKeyPkcs8),
           publicKeySpki: bytesToBase64(reg.publicKeySpki), userHandle: data.userHandle, transport,
           isResidentCredential: !!data.residentKey, createdAt: new Date(now()).toISOString() });
-        state.credentials.push({ rpId: data.rpId, credentialId, privateKey: bytesToBase64(reg.privateKeyPkcs8),
-          userHandle: data.userHandle, signCount: 0, isResidentCredential: !!data.residentKey, transport,
+        state.credentials.push({ rpId: data.rpId, credentialId, ...(relay ? {} : { privateKey: bytesToBase64(reg.privateKeyPkcs8), signCount: 0 }),
+          userHandle: data.userHandle, isResidentCredential: !!data.residentKey, transport,
           accountId: account.id, status: 'pending', createdAt: now() });
         state.enrollment = null;
         if (relay) await relay.recordCeremony(credentialId, data.requestId);

@@ -99,7 +99,7 @@ export const ConfigPathsSchema = z.strictObject({
   /** Every worker browser profile is namespaced BENEATH this root. */
   browserProfileRoot: AbsolutePathSchema,
   duoCredential: AbsolutePathSchema,
-  /** The unpacked Duo Autopilot MV3 extension loaded into every browser session. */
+  /** Fast Duo source folder staged for workflow browser sessions. */
   duoExtensionDir: AbsolutePathSchema,
 });
 

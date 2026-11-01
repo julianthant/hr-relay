@@ -88,10 +88,10 @@ describe("ordinary browser paths", () => {
     refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ duoCredential: symlink })),
       "paths.duoCredential", "private-file-unavailable");
     const extension = join(f.root, "extension"); mkdirSync(extension);
-    writeFileSync(join(extension, "manifest.json"), "{}");
+    writeFileSync(join(extension, "workflow-manifest.json"), "{}");
     refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ duoExtensionDir: extension })),
       "paths.duoExtensionDir", "unpacked-manifest-required");
-    writeFileSync(join(extension, "manifest.json"), '{"manifest_version":3,"name":"Synthetic Duo"}');
+    writeFileSync(join(extension, "workflow-manifest.json"), '{"manifest_version":3,"name":"Synthetic Duo"}');
     validateOrdinaryPathChanges(f.previous, f.candidate({ duoExtensionDir: extension }));
   });
 });

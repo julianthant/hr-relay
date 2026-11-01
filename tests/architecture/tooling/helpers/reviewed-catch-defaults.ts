@@ -8,17 +8,17 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/browser/onboarding-duo-provider.ts",
-    "sha256": "4730bee5f4781cfcbdfffadfccad276d05537bca11de666dac614668b43be7c8",
+    "sha256": "2c63de7dc1a35ce450aebb8527533a58d3f408e56700ce7a740432edb3962820",
     "reason": "Failed UNKNOWN retention or failure-report callbacks retain both causes and leave attempt/browser closure unproved. Context or broker termination revokes the owner and settles the attempt; physical profile deletion waits for owner cleanup and keeps all private-path and native closure checks. Worker stop failure remains uncertain until pump/report settlement and enclosing browser closure are proved; replacement or relaunch remains refused after unproved cleanup."
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "2bdd7ea15a2570c1fabcbc9f34e42317aaec03184ddb5e06c44cdaf097ab6f24",
+    "sha256": "d496771af5a1bbc30ac767fe4ea70cd24c6aeac2625795c319efc91efc8e3fef",
     "reason": "Startup source-closure uncertainty records failed producer closure before unwind, retaining dependent database and admission custody. Selected-context open failure retains typed custody uncertainty and rethrows. Upgrade cleanup clears exclusiveOwner only after release. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and immediate stop promises, whose callers await and propagate failures before storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately. Required native browser closure failures follow the same upgrade rejection and custody-retention path."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "e61641f9f61f92a5ffcc563f806a41246221c5a5dd6c5252cebe97d7cbf5b16f",
+    "sha256": "5bd506d55727f8afac19bad81c28a6725a41362970d64fcdaddd70519995b5a2",
     "reason": "The bound native open validates authority in one SQLite snapshot before protected values are read. Failed opening cleanup retains the actual native database, issued admission and both original/close errors as custody uncertainty. Other open failures close the actual database before admission release and aggregate cleanup errors. Runtime cleanup releases admission only after proven database and browser closure. Maintenance failure stops rescheduling and signals the worker stop controller; composition surfaces the failure. Actual root or inherited lifetime custody remains held through shutdown."
   },
   {
@@ -73,7 +73,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runs/commands/ordinary-path-validator.ts",
-    "sha256": "b432a6baa55c9f3c585213166cd4537698978f69f7eee1241bc107d6390a3f20",
+    "sha256": "13963bc2cb917b8f775c9e819555abba435ee751e9e65852a1a802fec7b08c76",
     "reason": "Only an explicitly allowed missing directory with ENOENT returns false; safe parent validation follows, and other errors throw named refusal."
   },
   {
@@ -128,7 +128,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/systems/browser-shared/ucsd-sso.ts",
-    "sha256": "5a62f900a16060d06abe7166c0a3fa9b3469d8c5aec775e8eb5d159bc6b57bc6",
+    "sha256": "c3b38dbff40e3b3b1406f08e4cc230f97a71e820ac1b362859c823d5b6de1ca4",
     "reason": "The navigation rejection observer preserves the original promise raced by the training-reminder wait; the landing wait owns timeout and diagnosis. An empty diagnostic title accompanies LANDING_PROBE_UNAVAILABLE and a thrown BrowserLandingStallError with the original landing cause, never authenticated success. Probe uncertainty stays explicit; initiated clicks drain before settlement, and compound click, disposal and landing failures retain their causes."
   },
   {
@@ -153,7 +153,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/configuration/duo-credential-store.ts",
-    "sha256": "78357e8df2b393ec9bdff85ddea7ac1f765ec82e0ef7fc36644a71debdd1c6e0",
+    "sha256": "9870880d0a2bf0c71149f7b8a602e193585d94282497074458b934ef6a705bc0",
     "reason": "The census clears only parsed envelope metadata when arbitrary file bytes fail UTF-8, JSON or envelope validation; filesystem failures propagate. Matching canonical bytes or digest still classify the file unauthorized, and valid same-profile envelopes distinguish managed backups. Restore and erase refuse unauthorized copies; no canonical credential read or publication failure becomes success."
   },
   {

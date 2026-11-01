@@ -8,7 +8,7 @@ if (target === root || !target.startsWith(join(root,'dist')+'/')) throw new Erro
 await rm(target,{recursive:true,force:true});
 await mkdir(target,{recursive:true});
 // Explicit allowlist: adding a private file elsewhere cannot silently publish it.
-const files=['manifest.json','src/background.js','src/private-storage.js','src/accounts.js','src/service.js','src/crypto.js','src/sign-count.js','src/username.js','src/content.js','src/inpage.js','src/options.html','src/options.js','src/popup.html','src/popup.js','src/styles.css','src/icons/autopilot.svg','src/icons/plus.svg','src/icons/key-round.svg','src/icons/shield-check.svg','LICENSE','THIRD_PARTY_NOTICES.md',... [16,32,48,128].map(n=>`src/icons/autopilot-${n}.png`)];
+const files=['manifest.json','src/background.js','src/private-storage.js','src/accounts.js','src/duo-origin.js','src/service.js','src/crypto.js','src/sign-count.js','src/username.js','src/content.js','src/inpage.js','src/options.html','src/options.js','src/popup.html','src/popup.js','src/styles.css','src/icons/autopilot.svg','src/icons/plus.svg','src/icons/key-round.svg','src/icons/shield-check.svg','LICENSE','THIRD_PARTY_NOTICES.md',... [16,32,48,128].map(n=>`src/icons/autopilot-${n}.png`)];
 for(const file of files){await mkdir(resolve(target,file,'..'),{recursive:true});await copyFile(join(root,file),join(target,file));}
 await writeFile(join(target,'bootstrap.json'),JSON.stringify({accounts:[],credentialFile:null},null,2)+'\n');
 await copyFile(join(root,'INSTALL.md'),join(target,'README.md'));

@@ -1,3 +1,4 @@
+import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { assertCredentialStoreOwner } from "../../storage/configuration/credential-store.js";
 import { executePreflightRunner, requiredPreflightChecks } from "../../../models/preflight/preflight.js";
@@ -23,6 +24,7 @@ import { createRuntimePreflightRunners, type RuntimePreflightRunnerFactory } fro
 
 export function composeRuntimePreflight(input: Readonly<{
   admission?: RuntimeAdmission;
+  duo?: DuoSigningSource;
   credentials: CredentialStore;
   database: AuthorityDatabase; clock: Clock; repoRoot: string; isolation: RuntimeIsolation;
   descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
@@ -50,7 +52,7 @@ export function composeRuntimePreflight(input: Readonly<{
   const runners = (scope: PreflightAdmissionScope) => {
     const config = readConfig(scope);
     return (input.runnerFactory ?? createRuntimePreflightRunners)({
-      scope, config, protectedSecrets: input.protectedSecrets,
+      scope, config, protectedSecrets: input.protectedSecrets, ...(input.duo === undefined ? {} : { duo: input.duo }),
       providerAvailability: { "census/geocode.census": true, "nominatim/geocode.nominatim": true },
       dashboard: {
         repoRoot: input.repoRoot, stateRoot, artifactRoot: runtimeAdmission.artifactRoot,

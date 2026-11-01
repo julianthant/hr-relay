@@ -1,12 +1,12 @@
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import { nextSignCount } from "../../../duo-autopilot/src/sign-count.js";
+import { nextSignCount } from "../../../fast-duo/src/sign-count.js";
 
 const DUO_OBSERVED = 1_787_192_063;
 const FORCED_BEHIND = 1_787_191_000;
 
-describe("duo autopilot sign counter", () => {
+describe("fast-duo sign counter", () => {
   it("presents wall clock when the stored counter has fallen behind it", () => {
     assert.equal(nextSignCount(FORCED_BEHIND, DUO_OBSERVED), DUO_OBSERVED);
     assert.notEqual(nextSignCount(FORCED_BEHIND, DUO_OBSERVED), FORCED_BEHIND + 1);

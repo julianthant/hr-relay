@@ -253,7 +253,7 @@ supplies the default browser root `<stateRoot>/browsers`. A saved browser root c
 | `paths.artifactRoot` | Admitted installation root, initially `.tracker/data/artifacts` |
 | `paths.browserProfileRoot` | Admitted `<stateRoot>/browsers`, or the isolation default `.tracker/data/browsers` without an admitted pair |
 | `paths.duoCredential` | Absolute `<stateRoot>/credentials/duo-webauthn.json` |
-| `paths.duoExtensionDir` | Absolute `duo-autopilot` |
+| `paths.duoExtensionDir` | Absolute `fast-duo` source folder with `workflow-manifest.json` |
 
 The first four paths and the three browser/Duo paths are ordinary settings. State and artifact roots
 use relocation authority. Browser, Duo credential, and extension paths are independent; changing a
@@ -311,7 +311,8 @@ external machine/profile journals and credential writes retain strict storage ad
 established erasure authority refuses rather than becoming an empty journal.
 
 `<stateRoot>/credentials/` is the home for protected settings, the ChatGPT account, and the retained
-active-engine Duo key (`duo-webauthn.json`, read through `paths.duoCredential`).
+configured Duo credential file (`duo-webauthn.json`, validated through `paths.duoCredential`).
+Workflow authentication uses the admitted encrypted Duo store below; it does not provision this file into browsers.
 `src/backend/storage/configuration/` owns those private records.
 `credential-store.ts` exposes the protected-settings store and the ChatGPT account repository.
 Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 directories,
@@ -344,7 +345,9 @@ The new-purpose Duo document is separate. `duo-credential-store.ts` stores one e
 profile at `<machineRoot>/machine/duo-credentials/<profileId>.json`. Installation control owns its
 continuity row, physical witness, and publication. The profile credential key seals it. A count is
 reserved in that document before any later signature use; failed, crashed, and UNKNOWN attempts stay
-burned. Ordinary registry reads fail closed on a pending publication and do not finish it. The same
+burned. Both signup and workflow sessions use this store-backed Node signer; the workflow browser
+receives only public ceremony requests and assertion replies. Signing request UUIDs are durable,
+once-consumed reservations rather than replayable assertion caches. Ordinary registry reads fail closed on a pending publication and do not finish it. The same
 process can resume only the claim that started the publication. After that process exits,
 `storage recover-duo-publication` acquires stopped maintenance admission and finishes that one
 durable publication: it checks the pending intent, continuity, binding, purpose, revision, physical

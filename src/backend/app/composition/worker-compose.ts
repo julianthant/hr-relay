@@ -1,3 +1,4 @@
+import { createDuoCredentialStore } from "../../storage/configuration/duo-credential-store.js";
 import { createNominatimWorkerAdapter } from "../../processing/providers/nominatim-owner.js";
 import { createNominatimGeocodeAdapter } from "../../processing/providers/geocode-adapters.js";
 import { RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
@@ -531,7 +532,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     ports: input.gateSourcePorts ?? [],
     clock,
   });
-  const runtimePreflight = composeRuntimePreflight({ admission, credentials: protectedAuthority, database, clock, repoRoot, isolation: input.isolation,
+  const duo = createDuoCredentialStore(admission, machine, clock);
+  const runtimePreflight = composeRuntimePreflight({ duo, admission, credentials: protectedAuthority, database, clock, repoRoot, isolation: input.isolation,
     descriptors: { resolve: resolveDescriptor }, descriptorSetHash: descriptor.contractFingerprint,
     protectedSecrets, environment: env,
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
@@ -578,7 +580,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   ocrAccount = createChatGptAccountService({ admission, stateRoot, clock });
   accountClosureProven = false;
   const ocr = createChatGptOcrAdapter({ account: ocrAccount, artifacts, clock, model: CHATGPT_OCR_MODEL, assertCurrent });
-  resources = createRunResourcesFactory({ocr,nominatim:input.lifetimeLock instanceof RuntimeLifetimeLock ? createNominatimGeocodeAdapter({clock}) : createNominatimWorkerAdapter(clock),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+  resources = createRunResourcesFactory({duo,ocr,nominatim:input.lifetimeLock instanceof RuntimeLifetimeLock ? createNominatimGeocodeAdapter({clock}) : createNominatimWorkerAdapter(clock),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
     assertBrowserRoot,
     onDebug: (category, debugWorkerId, event) => {
       debugEvents.emit({ category, ...event }, { kind: "worker", workerId: debugWorkerId });

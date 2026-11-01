@@ -55,7 +55,7 @@ export const DEFAULT_BROWSER_LAUNCHER: PersistentContextLauncher = {
   async launch(input) {
     return chromium.launchPersistentContext(input.profileDirectory, {
       // The extension requires the full bundled Chromium; the headless shell
-      // cannot load one (duo-autopilot/README.md).
+      // cannot load one (fast-duo/README.md).
       channel: "chromium",
       headless: input.headless,
       ...(input.timeoutMs === undefined ? {} : { timeout: input.timeoutMs }),
