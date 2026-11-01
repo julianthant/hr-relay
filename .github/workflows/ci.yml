@@ -1,10 +1,11 @@
 name: CI
 
+# Protected branches only change through pull requests whose up-to-date result already passed,
+# so pushes to them are not re-tested; run the workflow manually for a full check of a branch.
 on:
   pull_request:
     branches: [staging, main]
-  push:
-    branches: [staging, main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -71,7 +72,7 @@ jobs:
               throw new Error('Path-filter outputs are incomplete or invalid.');
             }
             const selected = Object.fromEntries(suites.map(suite => [suite,
-              context.eventName === 'push' || filters.shared === 'true' || filters[suite] === 'true'
+              context.eventName === 'workflow_dispatch' || filters.shared === 'true' || filters[suite] === 'true'
             ]));
             const groups = [
               { group: 1, suite: 'unit', parity: 0, shards: '1 9 15 17' },
@@ -327,3 +328,14 @@ jobs:
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
       - run: npm run test:coverage
       - run: npm run test:perf
+
+  train:
+    name: merge train
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'staging' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [static, unit, integration, architecture, parity, privacy]
+    uses: ./.github/workflows/merge-train.yml
+    with:
+      pr: ${{ github.event.pull_request.number }}
+      conclusion: ${{ contains(needs.*.result, 'failure') && 'failure' || (contains(needs.*.result, 'cancelled') && 'cancelled' || 'success') }}
+    secrets:
+      TRAIN_TOKEN: ${{ secrets.TRAIN_TOKEN }}

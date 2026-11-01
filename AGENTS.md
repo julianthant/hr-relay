@@ -97,15 +97,15 @@ The repository holds only the current version. No compatibility readers, old mig
   Workflow activation stays sequential: Person Lookup → Separations → OCR/Emergency Contact →
   OnBase → Onboarding, after each workflow's dry run and operator sign-off.
 - Finish a feature on its branch. Run `npm run test:local`, `npm run typecheck` and `npm run lint`,
-  then push and open a draft pull request into `staging`. Fix red cloud checks while it is a draft.
-  When every check is green, mark it ready for review so Cursor Bugbot reviews it once, and enable
-  auto-merge. It merges with a merge commit when the checks and Bugbot are green.
-- One pull request per feature or fix, so Bugbot reviews one concern at a time. Never bundle
-  unrelated changes; split a large task into separate pull requests that each build and pass alone.
-  Title and describe what changed and why.
-- Stay with the pull request until it merges, fixing red checks and Bugbot findings. After the merge,
-  GitHub deletes the remote branch; delete the local branch and remove its worktree (save anything
-  in `.work/` first), then report done.
+  then push and open a ready (non-draft) pull request into `staging` with auto-merge on. It merges
+  with a merge commit once its required checks pass on a branch up to date with `staging`; the merge
+  train keeps it current, Cursor Bugbot reviews every push, and Cursor automations fix red checks and
+  merge conflicts. The operator handles only pull requests labeled `needs-human`.
+- A pull request bundles a good amount of related work, so CI runs once per batch rather than after
+  every small fix. Keep commits logical inside it; never mix unrelated features. Title and describe
+  what changed and why. Pull a branch before continuing work on it.
+- After the merge, GitHub deletes the remote branch; delete the local branch and remove its worktree
+  (save anything in `.work/` first), then report done.
   The operator previews `staging` in the main checkout, which owns the store, credentials and
   ports: stop the dashboard, switch to `staging`, start it. A rejected feature is reverted on `staging`.
 - A release pull request merges `staging` into `main` with a merge commit, only on the operator's

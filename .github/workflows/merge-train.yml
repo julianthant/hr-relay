@@ -1,0 +1,55 @@
+name: Merge train
+
+# Moves one auto-merge PR at a time onto the latest staging so CI tests the real combination.
+# Never checks out PR code; it only calls the GitHub API.
+# CI calls it as its final job (with the PR result); a push to staging also starts it.
+on:
+  push:
+    branches: [staging]
+  workflow_call:
+    inputs:
+      pr: {type: string, default: ""}
+      conclusion: {type: string, default: ""}
+    secrets:
+      TRAIN_TOKEN: {required: true}
+
+permissions: {}
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: merge-train
+      cancel-in-progress: false
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.TRAIN_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Label the PR whose CI finished
+        if: inputs.pr != ''
+        env:
+          CONCLUSION: ${{ inputs.conclusion }}
+          PR: ${{ inputs.pr }}
+        run: |
+          case "$CONCLUSION" in
+            failure) gh pr edit "$PR" --add-label train-failed ;;
+            success) gh pr edit "$PR" --remove-label train-failed || true ;;
+          esac
+
+      - name: Move the next PR onto staging
+        run: |
+          prs=$(gh pr list --base staging --state open --limit 100 \
+            --json number,isDraft,autoMergeRequest,labels,mergeStateStatus,headRepositoryOwner,createdAt \
+            --jq '[.[] | select(.isDraft == false and .autoMergeRequest != null
+                    and .headRepositoryOwner.login == "${{ github.repository_owner }}"
+                    and ([.labels[].name] | index("train-failed") == null and index("needs-human") == null and index("merge-conflict") == null))]
+                  | sort_by(.createdAt) | .[] | "\(.number) \(.mergeStateStatus)"')
+          # A PR already up to date (running CI or about to merge) holds the train.
+          inflight=$(grep -E '^[0-9]+ ' <<<"$prs" | grep -vE ' (BEHIND|DIRTY)$' | head -1 || true)
+          if [ -n "$inflight" ]; then echo "In flight: #$inflight"; exit 0; fi
+          grep -E '^[0-9]+ ' <<<"$prs" | while read -r number state; do
+            if [ "$state" = DIRTY ]; then gh pr edit "$number" --add-label merge-conflict; continue; fi
+            if gh api -X PUT "repos/$GH_REPO/pulls/$number/update-branch" >/dev/null; then echo "Updated #$number"; exit 0; fi
+            gh pr edit "$number" --add-label merge-conflict
+          done || true
