@@ -1,8 +1,9 @@
 import { attachShellA11y } from "./helpers/shell-proof.js";
 
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from "./helpers/fixtures.js";
 
-import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
+import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { moveAssistantLauncherAboveFooter } from './helpers/app-driver.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
@@ -12,7 +13,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`log jumps, dialog contrast, account and idle refresh @ ${theme.attribute}-${width}`, {
     annotation: captures.map(name => ({ type: 'required-a11y-evidence', description: `${name}-${theme.attribute}-${width}.a11y.yml` })),
   }, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
     const errors: string[] = [], writes: { method: string; url: string }[] = [], catalogRequests: string[] = [];
 

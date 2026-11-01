@@ -1,4 +1,5 @@
-import { expect,test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { createHash } from "node:crypto";
 import { gotoAppState,type AppRoute } from "./helpers/app-driver.js";
 import { PARITY_THEMES, PARITY_VIEWPORTS, assertThemeApplied, installTheme, type ParityTheme } from "./helpers/capture.js";

@@ -1,6 +1,7 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Page, type TestInfo } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { FIXTURE_DAY, FIXTURE_NOW } from "./helpers/fixture-identity.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
@@ -13,7 +14,6 @@ async function shot(page: Page, info: TestInfo, name: string) {
 for (const width of [1280, 1920, 2560]) test(`functional UI fixes at ${width}`, {
   annotation: [{ type: "required-a11y-evidence", description: `functional-ui-${width}.a11y.yml` }],
 }, async ({ page }, info) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   const height = width === 1280 ? 720 : width === 1920 ? 1080 : 1440;
   const attemptId = "00000000-0000-4000-8000-000000000099";

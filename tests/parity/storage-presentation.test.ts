@@ -1,8 +1,9 @@
 
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
 import { ERROR_CATALOG } from "../../src/models/failures/error-catalog.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_STORAGE_DOCTOR } from "./helpers/fixture-storage.js";
@@ -12,7 +13,6 @@ import { ProtectedSettingsNameSchema } from "../../src/models/config/protected-s
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const evidence = `storage-presentation-${theme.name}-${width}.a11y.yml`;
   test(`Storage keeps its card layout without run history @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidence }] }, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));

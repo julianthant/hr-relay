@@ -3,11 +3,12 @@ import { installFrozenMonotonic } from "./helpers/app-driver.js";
 
 import { createHash } from "node:crypto";
 import { chooseSelect } from "./helpers/select-choice.js";
-import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.js";
 import { manualReadFields, mockStepIsLocked, mockStepIsDependency } from "../../src/dashboard/surfaces/workflows/mocks/workflow-manual-model.js";
 import { seedMockRuns, mockOcrReadSteps, mockSelectableSteps, initialMockDraft } from "../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -31,7 +32,6 @@ async function advance(dialog: Locator) {
 }
 
 for (const theme of PARITY_THEMES) test(`OnBase document type selection and review @ ${theme.attribute}-1440`, { annotation: [{ type: "required-a11y-evidence", description: `onbase-types-${theme.attribute}.a11y.yml` }] }, async ({ page }, info) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: mockProfile });
   const errors: string[] = [], writes: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -100,7 +100,6 @@ for (const theme of PARITY_THEMES) test(`OnBase document type selection and revi
 
 for (const theme of PARITY_THEMES) for (const width of [1280]) {
   test(`all workflow previews, Run and Rerun @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `workflow-previews-${theme.attribute}-${width}.a11y.yml` }] }, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: mockProfile });
     const errors: string[] = [], writes: string[] = [], external: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -279,7 +278,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
 }
 
 for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attribute}`, async ({ page }) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: mockProfile });
   const writes: string[] = [];
   page.on("request", request => { if (request.method() !== "GET") writes.push(new URL(request.url()).pathname); });

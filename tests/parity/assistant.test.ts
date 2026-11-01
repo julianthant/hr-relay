@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from "./helpers/fixtures.js";
 import { resolve } from 'node:path';
 import type { PreviewServer } from 'vite';
 import { previewComponentFixture } from './helpers/component-fixtures.js';

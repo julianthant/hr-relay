@@ -1,7 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { PARITY_THEMES, installTheme } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -10,7 +11,6 @@ import { dismissWorkflowWindowOverQueue } from "./helpers/reference-harness.js";
 
 
 test("queue row renders one progress mark per served workflow step", async ({ page }, _info) => {
-  ensureParityBundle();
   const row = FIXTURE_DAY_WIRE.queueSurfaces.find((surface) => surface.status === "running" && surface.surfaceKind !== "operation");
   if (row === undefined) throw new Error("missing running queue fixture");
   const steps = [
