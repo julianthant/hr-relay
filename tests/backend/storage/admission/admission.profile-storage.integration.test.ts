@@ -286,7 +286,7 @@ it("refuses a concurrent healthy observation change and performs healthy registr
     vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
       if (path === profilePath && typeof flags === "number") {
         reads++;
-        if (reads === 2 && !changed) {
+        if (reads === 1 && !changed) {
           changed = true;
           f.machine.publishProfileRegistry(current, { ...current, sessionGeneration: current.sessionGeneration + 1 });
         }
@@ -398,7 +398,7 @@ it("refuses actual pending profile operation publication crossing a healthy obse
     const realOpen = fs.openSync;
     let reads = 0, changed = false;
     vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
-      if (path === profilesPath && ++reads === 2) {
+      if (path === profilesPath && ++reads === 1) {
         changed = true;
         f.machine.beginProfileSignUp({ firstName: "Second", lastName: "Fixture", createdAt: IsoInstantSchema.parse(f.fields.createdAt),
           emailKey, commandFingerprint: "b".repeat(64) });
@@ -411,6 +411,74 @@ it("refuses actual pending profile operation publication crossing a healthy obse
   } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); await f.cleanup(); }
 });
 
+
+it("refuses profile publication crossing the captured operations listing", async () => {
+  const f = await fixture();
+  try {
+    const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.equal(active.state, "active");
+    const directory = join(f.machine.stateRoot, "machine", "operations");
+    const emailKey = createProfileVerifiers(f.machine.stateRoot).emailKeyFor("second@example.edu");
+    const read = fs.readdirSync;
+    let changed = false;
+    vi.spyOn(fs, "readdirSync").mockImplementation((path, options) => {
+      const names = read(path, options);
+      if (path === directory && !changed) {
+        changed = true;
+        f.machine.beginProfileSignUp({ firstName: "Second", lastName: "Fixture", createdAt: IsoInstantSchema.parse(f.fields.createdAt),
+          emailKey, commandFingerprint: "b".repeat(64) });
+      }
+      return names;
+    });
+    syncBuiltinESMExports();
+    assert.throws(() => f.machine.readProfileRegistry(), /profile-registry-observation-changed/u);
+    assert.equal(changed, true);
+  } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); await f.cleanup(); }
+});
+
+for (const name of ["installation.json", "locator.json"]) it(`refuses changed ${name} during registry locator verification`, async () => {
+  const f = await createBoundProfileFixture();
+  const path = join(f.workspace, ".tracker", "control", name);
+  const before = fs.readFileSync(path), open = fs.openSync;
+  let changed = false;
+  try {
+    vi.spyOn(fs, "openSync").mockImplementation((target, flags, mode) => {
+      if (target === path && !changed) { changed = true; fs.appendFileSync(path, "\n"); }
+      return open(target, flags, mode);
+    });
+    syncBuiltinESMExports();
+    assert.throws(() => f.machine.readProfileRegistry(), /profile-registry-observation-changed/u);
+    assert.equal(changed, true);
+  } finally {
+    vi.restoreAllMocks(); syncBuiltinESMExports();
+    fs.writeFileSync(path, before);
+    await f.close();
+  }
+});
+
+it("refuses an ancestor symlink swapped during a healthy registry read", async () => {
+  const f = await createBoundProfileFixture();
+  const profiles = join(f.machine.stateRoot, "machine", "profiles.json");
+  const tracker = join(f.workspace, ".tracker"), retained = `${tracker}.held`;
+  const open = fs.openSync;
+  let changed = false;
+  try {
+    vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
+      if (path === profiles && !changed) {
+        changed = true;
+        fs.renameSync(tracker, retained);
+        fs.symlinkSync(retained, tracker, "dir");
+      }
+      return open(path, flags, mode);
+    });
+    syncBuiltinESMExports();
+    assert.throws(() => f.machine.readProfileRegistry(), /runtime-control: symlink in root path|directory-integrity: credential path ancestry contains a symbolic link/u);
+    assert.equal(changed, true);
+  } finally {
+    vi.restoreAllMocks(); syncBuiltinESMExports();
+    if (changed) { fs.unlinkSync(tracker); fs.renameSync(retained, tracker); }
+    await f.close();
+  }
+});
 
 it('retains genuine bound-profile setup custody after a native source close failure', async () => {
   const actualOpen = fs.openSync, actualClose = fs.closeSync;
@@ -436,7 +504,7 @@ it('retains genuine bound-profile setup custody after a native source close fail
       if (owned.workspace === undefined && typeof workspace === 'string') owned.workspace = realpathSync(workspace);
       const readOnly = flags === 'r' || typeof flags === 'number' && (flags & (fs.constants.O_WRONLY | fs.constants.O_RDWR)) === 0;
       if (owned.profile !== undefined && owned.machine !== undefined && owned.descriptor === undefined && readOnly && typeof source === 'string'
-        && owned.workspace !== undefined && source.startsWith(owned.workspace + '/') && !source.endsWith('.lock')) {
+        && owned.workspace !== undefined && source.startsWith(owned.workspace + '/') && source.endsWith('/credentials/protected.json')) {
         const identity = fs.fstatSync(descriptor);
         if (identity.isFile()) { owned.descriptor = descriptor; owned.source = source; owned.identity = identity; }
       }
