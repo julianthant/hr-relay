@@ -5,14 +5,14 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { createCommandKernel, type WriteResolutionContext } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService, runContinuationPort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createItemAttemptHistoryQuery } from "../../../../src/backend/runs/queries/item-attempt-history.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase, detachBoundFixtureWorkers, registerBoundFixtureWorker } from "../../../support/helpers/synthetic-database-admission.js";
 import { deletedRunFromRow } from "../../../../src/backend/storage/sqlite/deleted-run-row.js";
 import { reconstructConfirmedOperation } from "../../../../src/models/events/confirmed-operation.js";
@@ -37,13 +37,16 @@ import { AuthorityDatabase as AuthorityDatabase_m2 } from "../../../support/help
 
 import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-lookup/workflow.js";
 
+const profiles = createClonedProfileFixtures();
+afterAll(() => profiles.close());
+
 {
 
 const cleanups:(()=>void | Promise<void>)[]=[];
 const _afterEachFixture0 = async ()=>{for(const cleanup of cleanups.splice(0))await cleanup();};
 async function fixture(fault?:string) {
   let activeFault=fault;
-  const profile=await createBoundProfileFixture();
+  const profile=await profiles.create();
   const path=profile.path;const admission=profile.admission;
   const open=()=>AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"native-test"},undefined,undefined,undefined,
     {afterDeleteStep:({step})=>{if(step===activeFault)throw new Error("deletion-fault");},
@@ -161,7 +164,7 @@ const cleanups:(()=>void | Promise<void>)[]=[];
 const _afterEachFixture0 = async ()=>{for(const cleanup of cleanups.splice(0))await cleanup();};
 async function fixture(faultStep?:string) {
   let activeFault=faultStep;
-  const profile=await createBoundProfileFixture();
+  const profile=await profiles.create();
   const path=profile.path;
   mkdirSync(join(profile.stateRoot,"locks"),{recursive:true,mode:0o700});
   const open=()=>AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"native-test"},undefined,{afterStorageStep:step=>{if(step === activeFault)throw new Error("resolution-storage-fault");}});

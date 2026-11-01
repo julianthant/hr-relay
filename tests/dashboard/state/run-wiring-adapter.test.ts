@@ -22,9 +22,13 @@ import { IdentityApprovalResultSchema } from "../../../src/rules/separations/ide
 import { FIXTURE_FAILURE_SECTIONS } from "../../support/fixtures/dashboard/run-detail/receipts-failures.js";
 import { FIXTURE_RUN_DETAILS, FIXTURE_SECTIONS } from "../../parity/helpers/fixture-detail.js";
 import { FIXTURE_START_PICKER_DAY_WIRE } from "../../parity/helpers/fixture-start.js";
-import { FIXTURE_IDS } from "../../support/fixtures/dashboard/fixture-queue.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { FIXTURE_PARKED_WRITE } from "../../support/fixtures/dashboard/run-detail/gates-park.js";
-import { launchHarness } from "../../support/fixtures/run-launch-fixtures.js";
+import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
+import { NOW } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
+import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
+import { serverLocalDay } from "../../../src/dashboard/surfaces/shell/date-navigation-model.js";
 import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app/commands/command-executor.js";
 import { CommandResultSchema, CommandRequestSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
@@ -75,6 +79,21 @@ function identityFixtures(...args: Parameters<typeof createIdentityCeremonyFixtu
 }
 function clientFor(read: (path: string, signal?: AbortSignal | null) => unknown) {
   return createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (input, init) => Response.json(await read(new URL(String(input)).pathname, init?.signal)) });
+}
+function commandBindingFixture() {
+  const client = clientFor(() => { throw new Error("unprovided Logs fixture read"); });
+  const bootstrap = FrontendBootstrapWireSchema.parse({ ...FIXTURE_BOOTSTRAP, serverClock: { ...FIXTURE_BOOTSTRAP.serverClock, now: NOW, zone: "America/Los_Angeles" } });
+  const epoch = Object.freeze({ client, bootstrap });
+  const day = serverLocalDay(bootstrap.serverClock);
+  const dayWire = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, day });
+  const request = Object.freeze({ client, day, epoch, revision: 0 });
+  const scope = Object.freeze({ actorId: "local-operator", client, authority: epoch, dayRequest: request });
+  const binding: DashboardCommandBinding = { scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
+    authority: { epoch, catalog: [], nowIso: bootstrap.serverClock.now, today: day, day,
+      dayState: { subscribePublications: () => { throw new Error("fixture publications are not served"); }, request,
+        day: { state: "loaded", value: dayWire }, connection: { state: "connecting" }, refresh: () => undefined },
+      selection: { route: { start: false }, workflowId: "launch-proof" } } };
+  return { client, binding };
 }
 let root: Root | undefined;
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 0)); vi.stubGlobal("cancelAnimationFrame", clearTimeout); });
@@ -284,46 +303,44 @@ describe("served Logs wiring", () => {
       check: { state: "available", target: { ...target, runAttempt: target.runAttempt + 1 } } } }).success, false);
   });
   it("accepts the held-check command only after its exact readback settles", async () => {
-    const h = await launchHarness();
-    try {
-      const selected = { ...selection(), row: { ...selection().row, workflowId: WorkflowIdSchema.parse("separations") } };
-      const native = nativeOf(RUN, 40);
-      const target = { workerId: "separations-worker-1", workflowId: selected.row.workflowId, expectedVersion: 2,
-        controlBasis: { leaseGeneration: 1, controlRevision: 1 }, membershipRevision: 1, processId: 42, startedAt: AT,
-        installationId: OTHER, profileId: NOTE, itemId: OTHER, runId: RUN, runVersion: selected.row.rowRevision,
-        runAttempt: FIXTURE_PARKED_WRITE.runAttempt, traceId: native.traceId, nodeId: native.nodeId, writeIntentId: FIXTURE_PARKED_WRITE.writeIntentId,
-        intentVersion: 1, intentGeneration: FIXTURE_PARKED_WRITE.generation, writeAttemptId: NOTE, bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) };
-      const servedDetail = RunDetailWireSchema.parse({ ...detail(selected), availableSections: ["logs", "parked-write"] });
-      const sent: CommandRequest[] = [];
-      let lastCheck: unknown, release!: () => void;
-      const client: DashboardClient = { ...h.client, runDetail: async () => servedDetail,
-        runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section, payload: page() }
-          : { section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native, check: { state: "available", target },
-            ...(lastCheck === undefined ? {} : { lastCheck }) } }),
-        executeCommand: async raw => {
-          const envelope = CommandRequestSchema.parse(raw); sent.push(envelope);
-          await new Promise<void>(resolve => { release = resolve; });
-          lastCheck = { commandId: envelope.commandId, requestedBy: envelope.requestedBy, target, observedAt: AT, held: true,
-            provenance: "system-probe", state: "ambiguous", code: "PARKED_CHECK_OCCURRENCE_UNPROVED",
-            probeTaskId: "ucpath/match-existing-termination", evidenceDigest: "c".repeat(64) };
-          return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId,
-            affectedTargets: [{ family: "worker-browser", workerId: target.workerId }, { family: "run", runId: RUN }] });
-        } };
-      const request = CommandRequestSchema.parse({ commandId: NOTE, requestedBy: h.binding.scope.actorId, requestedAt: AT,
-        source: "run-detail", family: "worker-browser", type: "check-parked-write", target });
-      let settled = false;
-      const pending = client.executeCommand(request).then(async reply => {
-        const readback = await verifyShellCommandEffect(client, "2026-08-03", request, reply);
-        settled = true;
-        return readback;
-      });
-      assert.equal(sent.length, 1);
-      assert.equal(settled, false);
-      release();
-      assert.equal((await pending).state, "matched");
-      assert.equal(sent.length, 1);
-      assert.deepEqual(sent[0].target, target);
-    } finally { await h.dispose(); }
+    const h = commandBindingFixture();
+    const selected = { ...selection(), row: { ...selection().row, workflowId: WorkflowIdSchema.parse("separations") } };
+    const native = nativeOf(RUN, 40);
+    const target = { workerId: "separations-worker-1", workflowId: selected.row.workflowId, expectedVersion: 2,
+      controlBasis: { leaseGeneration: 1, controlRevision: 1 }, membershipRevision: 1, processId: 42, startedAt: AT,
+      installationId: OTHER, profileId: NOTE, itemId: OTHER, runId: RUN, runVersion: selected.row.rowRevision,
+      runAttempt: FIXTURE_PARKED_WRITE.runAttempt, traceId: native.traceId, nodeId: native.nodeId, writeIntentId: FIXTURE_PARKED_WRITE.writeIntentId,
+      intentVersion: 1, intentGeneration: FIXTURE_PARKED_WRITE.generation, writeAttemptId: NOTE, bindingProofDigest: "a".repeat(64), occurrenceKeyDigest: "b".repeat(64) };
+    const servedDetail = RunDetailWireSchema.parse({ ...detail(selected), availableSections: ["logs", "parked-write"] });
+    const sent: CommandRequest[] = [];
+    let lastCheck: unknown, release!: () => void;
+    const client: DashboardClient = { ...h.client, runDetail: async () => servedDetail,
+      runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section, payload: page() }
+        : { section: "parked-write", payload: { ...FIXTURE_PARKED_WRITE, runId: RUN, native, check: { state: "available", target },
+          ...(lastCheck === undefined ? {} : { lastCheck }) } }),
+      executeCommand: async raw => {
+        const envelope = CommandRequestSchema.parse(raw); sent.push(envelope);
+        await new Promise<void>(resolve => { release = resolve; });
+        lastCheck = { commandId: envelope.commandId, requestedBy: envelope.requestedBy, target, observedAt: AT, held: true,
+          provenance: "system-probe", state: "ambiguous", code: "PARKED_CHECK_OCCURRENCE_UNPROVED",
+          probeTaskId: "ucpath/match-existing-termination", evidenceDigest: "c".repeat(64) };
+        return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId,
+          affectedTargets: [{ family: "worker-browser", workerId: target.workerId }, { family: "run", runId: RUN }] });
+      } };
+    const request = CommandRequestSchema.parse({ commandId: NOTE, requestedBy: h.binding.scope.actorId, requestedAt: AT,
+      source: "run-detail", family: "worker-browser", type: "check-parked-write", target });
+    let settled = false;
+    const pending = client.executeCommand(request).then(async reply => {
+      const readback = await verifyShellCommandEffect(client, "2026-08-03", request, reply);
+      settled = true;
+      return readback;
+    });
+    assert.equal(sent.length, 1);
+    assert.equal(settled, false);
+    release();
+    assert.equal((await pending).state, "matched");
+    assert.equal(sent.length, 1);
+    assert.deepEqual(sent[0].target, target);
   });
   it("keeps failed-write uncertainty and failure identity separate from retry permission", async () => {
     const original = FIXTURE_FAILURE_SECTIONS[FIXTURE_IDS.failedRun].failure;
@@ -352,248 +369,236 @@ describe("served Logs wiring", () => {
     }
   });
   it("settles supported candidate approval only after matching readback and replays the same command", async () => {
-    const h = await launchHarness();
-    try {
-      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
-      const gate = fixtures.gateDetail(fixtures.CHOOSE);
-      const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
-      const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
-      let matched = false;
-      const sent: CommandRequest[] = [];
-      const feedback: CommandOutcome[] = [];
-      let refreshed = 0;
-      const client: DashboardClient = { ...h.client,
-        runDetail: async () => matched ? RunDetailWireSchema.parse({ ...open, rowRevision: 4, gate: { state: "resolved", gateId: NOTE, nodeId: gate.gateId,
-          label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 } }) : open,
-        runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page() }
-          : { section: "identity-gate", payload: { state: "available", value: gate } }),
-        executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope); return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId,
-          affectedTargets: [{ family: "gate", runId: RUN, gateId: gate.gateId }] }); },
-      };
-      const scope = { ...h.binding.scope, client };
-      const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { feedback.push(outcome); },
-        authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-      let state: ReturnType<typeof useRunWiring> | undefined;
-      function Probe() { state = useRunWiring(client, selected, binding); return null; }
-      await mount(createElement(Probe));
-      const approve = gateLogActions(gate)[0]; assert.ok(approve); assert.ok(state?.onDecision);
-      await act(async () => state?.onDecision?.(gate.gateId, approve, { candidate: gate.options[1].eid }));
-      assert.equal(sent.length, 1); assert.equal(state?.command?.state, "uncertain"); assert.equal(refreshed, 0);
-      assert.equal(feedback[0]?.kind, "uncertain"); assert.equal(state?.onDecision, undefined);
-      const envelope = sent[0]; assert.equal(envelope.family, "gate");
-      if (envelope.family === "gate") {
-        assert.deepEqual(envelope.target, { runId: RUN, gateId: gate.gateId, expectedVersion: 3 });
-        assert.deepEqual(envelope.payload.result.value, { decision: "approved", eid: gate.options[1].eid, chosenFrom: gate.options[1].chosenFrom, evidenceDigest: gate.evidenceDigest });
-      }
-      matched = true; assert.ok(state?.replay);
-      await act(async () => state?.replay?.());
-      assert.equal(sent.length, 2); assert.deepEqual(sent[1], envelope); assert.equal(feedback.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 1);
-    } finally { await h.dispose(); }
+    const h = commandBindingFixture();
+    const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+    const gate = fixtures.gateDetail(fixtures.CHOOSE);
+    const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
+    const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
+    let matched = false;
+    const sent: CommandRequest[] = [];
+    const feedback: CommandOutcome[] = [];
+    let refreshed = 0;
+    const client: DashboardClient = { ...h.client,
+      runDetail: async () => matched ? RunDetailWireSchema.parse({ ...open, rowRevision: 4, gate: { state: "resolved", gateId: NOTE, nodeId: gate.gateId,
+        label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 } }) : open,
+      runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page() }
+        : { section: "identity-gate", payload: { state: "available", value: gate } }),
+      executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope); return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId,
+        affectedTargets: [{ family: "gate", runId: RUN, gateId: gate.gateId }] }); },
+    };
+    const scope = { ...h.binding.scope, client };
+    const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { feedback.push(outcome); },
+      authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
+    let state: ReturnType<typeof useRunWiring> | undefined;
+    function Probe() { state = useRunWiring(client, selected, binding); return null; }
+    await mount(createElement(Probe));
+    const approve = gateLogActions(gate)[0]; assert.ok(approve); assert.ok(state?.onDecision);
+    await act(async () => state?.onDecision?.(gate.gateId, approve, { candidate: gate.options[1].eid }));
+    assert.equal(sent.length, 1); assert.equal(state?.command?.state, "uncertain"); assert.equal(refreshed, 0);
+    assert.equal(feedback[0]?.kind, "uncertain"); assert.equal(state?.onDecision, undefined);
+    const envelope = sent[0]; assert.equal(envelope.family, "gate");
+    if (envelope.family === "gate") {
+      assert.deepEqual(envelope.target, { runId: RUN, gateId: gate.gateId, expectedVersion: 3 });
+      assert.deepEqual(envelope.payload.result.value, { decision: "approved", eid: gate.options[1].eid, chosenFrom: gate.options[1].chosenFrom, evidenceDigest: gate.evidenceDigest });
+    }
+    matched = true; assert.ok(state?.replay);
+    await act(async () => state?.replay?.());
+    assert.equal(sent.length, 2); assert.deepEqual(sent[1], envelope); assert.equal(feedback.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 1);
   });
   it("shows exact one-click target and served basis before approval, then requires matched readback", async () => {
-    const h = await launchHarness();
-    try {
-      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
-      const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
-      const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3), title: "Generic run title" } };
-      const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
-      const sent: CommandRequest[] = [];
-      const outcomes: CommandOutcome[] = [];
-      let matched = false, refreshed = 0;
-      const client: DashboardClient = { ...h.client, runDetail: async () => matched ? RunDetailWireSchema.parse({ ...open, rowRevision: 4, gate: { state: "resolved", gateId: NOTE,
-        nodeId: gate.gateId, label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 } }) : open,
-        runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page() }
-          : { section: "identity-gate", payload: { state: "available", value: gate } }),
-        executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope);
-          return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: gate.gateId }] }); },
-      };
-      const scope = { ...h.binding.scope, client };
-      const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
-        authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-      await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
-        children: createElement(LogSample, { selection: selected }) }) }));
-      const block = document.querySelector('article[aria-label="Identity Approval"]'); assert.ok(block);
-      const text = block.textContent ?? "";
-      for (const target of [gate.options[0].eid, gate.options[0].displayName, gate.options[0].chosenFrom, gate.options[0].origin]) assert.ok(text.includes(target), target);
-      for (const comparison of gate.packet.comparisons) for (const basis of [comparison.documentValue, comparison.ucpathValue, comparison.note]) assert.ok(text.includes(basis), basis);
-      assert.equal(sent.length, 0); assert.equal(refreshed, 0);
-      const review = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Review"); assert.ok(review);
-      await act(async () => { review.click(); await new Promise(resolve => setTimeout(resolve, 10)); });
-      assert.ok(document.activeElement?.contains(block)); assert.equal(document.activeElement?.getAttribute("tabindex"), "-1");
-      assert.equal(sent.length, 0);
-      const approve = [...block.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label); assert.ok(approve); assert.equal(approve.disabled, false);
-      await act(async () => approve.click());
-      assert.equal(sent.length, 1); assert.equal(outcomes.at(-1)?.kind, "uncertain"); assert.equal(refreshed, 0);
-      const envelope = sent[0]; assert.equal(envelope.family, "gate");
-      if (envelope.family === "gate") assert.deepEqual(envelope.payload.result.value, { decision: "approved", eid: gate.options[0].eid, chosenFrom: gate.options[0].chosenFrom, evidenceDigest: gate.evidenceDigest });
-      matched = true;
-      const replay = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Replay exact decision"); assert.ok(replay);
-      await act(async () => replay.click());
-      assert.equal(outcomes.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 1); assert.deepEqual(sent[1], envelope);
-    } finally { await h.dispose(); }
+    const h = commandBindingFixture();
+    const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+    const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
+    const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3), title: "Generic run title" } };
+    const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
+    const sent: CommandRequest[] = [];
+    const outcomes: CommandOutcome[] = [];
+    let matched = false, refreshed = 0;
+    const client: DashboardClient = { ...h.client, runDetail: async () => matched ? RunDetailWireSchema.parse({ ...open, rowRevision: 4, gate: { state: "resolved", gateId: NOTE,
+      nodeId: gate.gateId, label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 } }) : open,
+      runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page() }
+        : { section: "identity-gate", payload: { state: "available", value: gate } }),
+      executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope);
+        return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: gate.gateId }] }); },
+    };
+    const scope = { ...h.binding.scope, client };
+    const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
+      authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
+    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+      children: createElement(LogSample, { selection: selected }) }) }));
+    const block = document.querySelector('article[aria-label="Identity Approval"]'); assert.ok(block);
+    const text = block.textContent ?? "";
+    for (const target of [gate.options[0].eid, gate.options[0].displayName, gate.options[0].chosenFrom, gate.options[0].origin]) assert.ok(text.includes(target), target);
+    for (const comparison of gate.packet.comparisons) for (const basis of [comparison.documentValue, comparison.ucpathValue, comparison.note]) assert.ok(text.includes(basis), basis);
+    assert.equal(sent.length, 0); assert.equal(refreshed, 0);
+    const review = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Review"); assert.ok(review);
+    await act(async () => { review.click(); await new Promise(resolve => setTimeout(resolve, 10)); });
+    assert.ok(document.activeElement?.contains(block)); assert.equal(document.activeElement?.getAttribute("tabindex"), "-1");
+    assert.equal(sent.length, 0);
+    const approve = [...block.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label); assert.ok(approve); assert.equal(approve.disabled, false);
+    await act(async () => approve.click());
+    assert.equal(sent.length, 1); assert.equal(outcomes.at(-1)?.kind, "uncertain"); assert.equal(refreshed, 0);
+    const envelope = sent[0]; assert.equal(envelope.family, "gate");
+    if (envelope.family === "gate") assert.deepEqual(envelope.payload.result.value, { decision: "approved", eid: gate.options[0].eid, chosenFrom: gate.options[0].chosenFrom, evidenceDigest: gate.evidenceDigest });
+    matched = true;
+    const replay = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Replay exact decision"); assert.ok(replay);
+    await act(async () => replay.click());
+    assert.equal(outcomes.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 1); assert.deepEqual(sent[1], envelope);
   });
   for (const transition of ["identical", "command-revision", "run-roundtrip", "keyed-run-roundtrip", "unmounted", "foreign-scope"] as const) it(`isolates pending command ownership and feedback through ${transition} replacement`, async () => {
-    const h = await launchHarness();
-    try {
-      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
-      const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
-      const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
-      const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
-      const resolved = RunDetailWireSchema.parse({ ...open, rowRevision: 4, availableSections: ["logs"], gate: { state: "resolved", gateId: NOTE, nodeId: gate.gateId,
-        label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 } });
-      let currentDetail = open, refreshed = 0;
-      const outcomes: CommandOutcome[] = [], sent: CommandRequest[] = [];
-      let release: (() => void) | undefined;
-      const client: DashboardClient = { ...h.client, runDetail: async () => currentDetail,
-        runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page() } : { section: "identity-gate", payload: { state: "available", value: gate } }),
-        executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope); await new Promise<void>(resolve => { release = resolve; });
-          return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: gate.gateId }] }); },
-      };
-      const scope = { ...h.binding.scope, client };
-      const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
-        authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-      const panel = (next: LogSelection, currentBinding = binding) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
-        children: createElement(LogSample, { selection: next, key: transition === "keyed-run-roundtrip" ? next.row.runId : undefined }) }) });
-      await mount(panel(selected));
-      const approve = () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label);
-      const first = approve(); assert.ok(first); await act(async () => first.click()); assert.equal(sent.length, 1);
-      assert.match(document.body.textContent ?? "", /Pending/);
-      const next = { ...selected, row: { ...selected.row, ...(transition === "command-revision" ? { rowRevision: RowRevisionSchema.parse(4) } : {}) } };
-      if (transition === "command-revision") currentDetail = resolved;
-      if (transition === "run-roundtrip" || transition === "keyed-run-roundtrip") {
-        await act(async () => root?.render(panel(selection(OTHER))));
-        assert.doesNotMatch(document.body.textContent ?? "", /Pending/);
-      }
-      const replacementBinding = transition === "foreign-scope" ? { ...binding, scope: { ...scope, actorId: "other-operator", authority: {} } } : binding;
-      await act(async () => root?.render(transition === "unmounted" ? null : panel(next, replacementBinding)));
-      if (transition === "foreign-scope" || transition === "unmounted") assert.doesNotMatch(document.body.textContent ?? "", /Pending/);
-      else assert.match(document.body.textContent ?? "", /Pending/);
-      assert.equal(sent.length, 1);
-      if (transition === "identical") { const control = approve(); assert.ok(control); assert.equal(control.disabled, true); await act(async () => control.click()); assert.equal(sent.length, 1); }
-      currentDetail = transition === "unmounted" ? open : resolved; assert.ok(release); await act(async () => release?.());
-      if (transition === "run-roundtrip" || transition === "keyed-run-roundtrip" || transition === "unmounted" || transition === "foreign-scope") {
-        assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
-        assert.doesNotMatch(document.body.textContent ?? "", /Decision confirmed/);
-      } else {
-        assert.equal(outcomes.at(-1)?.kind, "confirmed"); assert.equal(outcomes.length, 1); assert.equal(refreshed, 1);
-        assert.match(document.body.textContent ?? "", /Decision confirmed/); assert.doesNotMatch(document.body.textContent ?? "", /Pending/);
-      }
-      assert.equal(sent.length, 1);
-      if (transition === "unmounted") {
-        await act(async () => root?.render(panel(next)));
-        assert.match(document.body.textContent ?? "", /could not be confirmed/);
-        const replay = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Replay exact decision"); assert.ok(replay);
-        currentDetail = resolved;
-        await act(async () => replay.click());
-        assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
-        await act(async () => release?.());
-        assert.equal(outcomes.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 1);
-      }
-    } finally { await h.dispose(); }
+    const h = commandBindingFixture();
+    const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+    const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
+    const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
+    const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
+    const resolved = RunDetailWireSchema.parse({ ...open, rowRevision: 4, availableSections: ["logs"], gate: { state: "resolved", gateId: NOTE, nodeId: gate.gateId,
+      label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 } });
+    let currentDetail = open, refreshed = 0;
+    const outcomes: CommandOutcome[] = [], sent: CommandRequest[] = [];
+    let release: (() => void) | undefined;
+    const client: DashboardClient = { ...h.client, runDetail: async () => currentDetail,
+      runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page() } : { section: "identity-gate", payload: { state: "available", value: gate } }),
+      executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope); await new Promise<void>(resolve => { release = resolve; });
+        return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: gate.gateId }] }); },
+    };
+    const scope = { ...h.binding.scope, client };
+    const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
+      authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
+    const panel = (next: LogSelection, currentBinding = binding) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
+      children: createElement(LogSample, { selection: next, key: transition === "keyed-run-roundtrip" ? next.row.runId : undefined }) }) });
+    await mount(panel(selected));
+    const approve = () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label);
+    const first = approve(); assert.ok(first); await act(async () => first.click()); assert.equal(sent.length, 1);
+    assert.match(document.body.textContent ?? "", /Pending/);
+    const next = { ...selected, row: { ...selected.row, ...(transition === "command-revision" ? { rowRevision: RowRevisionSchema.parse(4) } : {}) } };
+    if (transition === "command-revision") currentDetail = resolved;
+    if (transition === "run-roundtrip" || transition === "keyed-run-roundtrip") {
+      await act(async () => root?.render(panel(selection(OTHER))));
+      assert.doesNotMatch(document.body.textContent ?? "", /Pending/);
+    }
+    const replacementBinding = transition === "foreign-scope" ? { ...binding, scope: { ...scope, actorId: "other-operator", authority: {} } } : binding;
+    await act(async () => root?.render(transition === "unmounted" ? null : panel(next, replacementBinding)));
+    if (transition === "foreign-scope" || transition === "unmounted") assert.doesNotMatch(document.body.textContent ?? "", /Pending/);
+    else assert.match(document.body.textContent ?? "", /Pending/);
+    assert.equal(sent.length, 1);
+    if (transition === "identical") { const control = approve(); assert.ok(control); assert.equal(control.disabled, true); await act(async () => control.click()); assert.equal(sent.length, 1); }
+    currentDetail = transition === "unmounted" ? open : resolved; assert.ok(release); await act(async () => release?.());
+    if (transition === "run-roundtrip" || transition === "keyed-run-roundtrip" || transition === "unmounted" || transition === "foreign-scope") {
+      assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
+      assert.doesNotMatch(document.body.textContent ?? "", /Decision confirmed/);
+    } else {
+      assert.equal(outcomes.at(-1)?.kind, "confirmed"); assert.equal(outcomes.length, 1); assert.equal(refreshed, 1);
+      assert.match(document.body.textContent ?? "", /Decision confirmed/); assert.doesNotMatch(document.body.textContent ?? "", /Pending/);
+    }
+    assert.equal(sent.length, 1);
+    if (transition === "unmounted") {
+      await act(async () => root?.render(panel(next)));
+      assert.match(document.body.textContent ?? "", /could not be confirmed/);
+      const replay = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Replay exact decision"); assert.ok(replay);
+      currentDetail = resolved;
+      await act(async () => replay.click());
+      assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
+      await act(async () => release?.());
+      assert.equal(outcomes.at(-1)?.kind, "confirmed"); assert.equal(refreshed, 1);
+    }
   });
   it("keeps a newer run's confirmed feedback and lock when the old command settles late", async () => {
-    const h = await launchHarness();
-    try {
-      const selected = [RUN, OTHER].map(runId => ({ ...selection(runId), row: { ...selection(runId).row, rowRevision: RowRevisionSchema.parse(3) } }));
-      const gates = [RUN, OTHER].map(runId => {
-        const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => runId);
-        return fixtures.gateDetail(fixtures.ONE_CLICK);
-      });
-      const resolved = new Set<string>(), releases = new Map<string, () => void>();
-      const sent: CommandRequest[] = [], outcomes: CommandOutcome[] = []; let refreshed = 0;
-      const client: DashboardClient = { ...h.client,
-        runDetail: async runId => {
-          const index = runId === RUN ? 0 : 1, gate = gates[index], isResolved = resolved.has(runId);
-          return RunDetailWireSchema.parse({ ...detail(selected[index]), rowRevision: isResolved ? 4 : 3,
-            gate: isResolved ? { state: "resolved", gateId: NOTE, nodeId: gate.gateId, label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 }
-              : { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
-        },
-        runSection: async (runId, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page(runId) }
-          : { section: "identity-gate", payload: { state: "available", value: gates[runId === RUN ? 0 : 1] } }),
-        executeCommand: async raw => {
-          const envelope = CommandRequestSchema.parse(raw); assert.equal(envelope.family, "gate");
-          if (envelope.family !== "gate") throw new Error("gate required");
-          sent.push(envelope); await new Promise<void>(resolve => releases.set(envelope.target.runId, resolve));
-          return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: envelope.target.runId, gateId: envelope.target.gateId }] });
-        },
-      };
-      const scope = { ...h.binding.scope, client };
-      const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
-        authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-      const panel = (index: number) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
-        children: createElement(LogSample, { selection: selected[index] }) }) });
-      const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gates[0].actions[0].label); assert.ok(control); return control; };
-      await mount(panel(0)); await act(async () => approve().click());
-      await act(async () => root?.render(panel(1))); await act(async () => approve().click()); assert.equal(sent.length, 2);
-      resolved.add(OTHER); await act(async () => releases.get(OTHER)?.());
-      assert.match(document.body.textContent ?? "", /Decision confirmed/); assert.equal(approve().disabled, true);
-      resolved.add(RUN); await act(async () => releases.get(RUN)?.());
-      assert.match(document.body.textContent ?? "", /Decision confirmed/); assert.equal(approve().disabled, true);
-      assert.equal(outcomes.length, 1); assert.equal(outcomes[0].commandId, sent[1].commandId); assert.equal(refreshed, 1); assert.equal(sent.length, 2);
-    } finally { await h.dispose(); }
+    const h = commandBindingFixture();
+    const selected = [RUN, OTHER].map(runId => ({ ...selection(runId), row: { ...selection(runId).row, rowRevision: RowRevisionSchema.parse(3) } }));
+    const gates = [RUN, OTHER].map(runId => {
+      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => runId);
+      return fixtures.gateDetail(fixtures.ONE_CLICK);
+    });
+    const resolved = new Set<string>(), releases = new Map<string, () => void>();
+    const sent: CommandRequest[] = [], outcomes: CommandOutcome[] = []; let refreshed = 0;
+    const client: DashboardClient = { ...h.client,
+      runDetail: async runId => {
+        const index = runId === RUN ? 0 : 1, gate = gates[index], isResolved = resolved.has(runId);
+        return RunDetailWireSchema.parse({ ...detail(selected[index]), rowRevision: isResolved ? 4 : 3,
+          gate: isResolved ? { state: "resolved", gateId: NOTE, nodeId: gate.gateId, label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 }
+            : { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
+      },
+      runSection: async (runId, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page(runId) }
+        : { section: "identity-gate", payload: { state: "available", value: gates[runId === RUN ? 0 : 1] } }),
+      executeCommand: async raw => {
+        const envelope = CommandRequestSchema.parse(raw); assert.equal(envelope.family, "gate");
+        if (envelope.family !== "gate") throw new Error("gate required");
+        sent.push(envelope); await new Promise<void>(resolve => releases.set(envelope.target.runId, resolve));
+        return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: envelope.target.runId, gateId: envelope.target.gateId }] });
+      },
+    };
+    const scope = { ...h.binding.scope, client };
+    const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
+      authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
+    const panel = (index: number) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+      children: createElement(LogSample, { selection: selected[index] }) }) });
+    const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gates[0].actions[0].label); assert.ok(control); return control; };
+    await mount(panel(0)); await act(async () => approve().click());
+    await act(async () => root?.render(panel(1))); await act(async () => approve().click()); assert.equal(sent.length, 2);
+    resolved.add(OTHER); await act(async () => releases.get(OTHER)?.());
+    assert.match(document.body.textContent ?? "", /Decision confirmed/); assert.equal(approve().disabled, true);
+    resolved.add(RUN); await act(async () => releases.get(RUN)?.());
+    assert.match(document.body.textContent ?? "", /Decision confirmed/); assert.equal(approve().disabled, true);
+    assert.equal(outcomes.length, 1); assert.equal(outcomes[0].commandId, sent[1].commandId); assert.equal(refreshed, 1); assert.equal(sent.length, 2);
   });
   it("retains uncertain feedback and the exact replay envelope through identical row replacement", async () => {
-    const h = await launchHarness();
-    try {
-      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
-      const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
-      const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
-      const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
-      let matched = false, refreshed = 0; const sent: CommandRequest[] = [];
-      const client: DashboardClient = { ...h.client, runDetail: async () => matched ? RunDetailWireSchema.parse({ ...open, rowRevision: 4, gate: { state: "resolved", gateId: NOTE, nodeId: gate.gateId,
-        label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 } }) : open,
-        runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page() } : { section: "identity-gate", payload: { state: "available", value: gate } }),
-        executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope); return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: gate.gateId }] }); },
-      };
-      const scope = { ...h.binding.scope, client };
-      const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
-        authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-      const panel = (next: LogSelection) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
-        children: createElement(LogSample, { selection: next }) }) });
-      await mount(panel(selected));
-      const approve = () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label);
-      const first = approve(); assert.ok(first); await act(async () => first.click()); assert.equal(sent.length, 1);
-      await act(async () => root?.render(panel({ ...selected, row: { ...selected.row } })));
-      assert.match(document.body.textContent ?? "", /could not be confirmed/); const blocked = approve(); assert.ok(blocked); assert.equal(blocked.disabled, true);
-      assert.equal(sent.length, 1); assert.equal(refreshed, 0);
-      const replay = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Replay exact decision"); assert.ok(replay);
-      matched = true; await act(async () => replay.click()); assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]); assert.equal(refreshed, 1);
-    } finally { await h.dispose(); }
+    const h = commandBindingFixture();
+    const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+    const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
+    const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
+    const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
+    let matched = false, refreshed = 0; const sent: CommandRequest[] = [];
+    const client: DashboardClient = { ...h.client, runDetail: async () => matched ? RunDetailWireSchema.parse({ ...open, rowRevision: 4, gate: { state: "resolved", gateId: NOTE, nodeId: gate.gateId,
+      label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 } }) : open,
+      runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page() } : { section: "identity-gate", payload: { state: "available", value: gate } }),
+      executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope); return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: gate.gateId }] }); },
+    };
+    const scope = { ...h.binding.scope, client };
+    const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
+      authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
+    const panel = (next: LogSelection) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+      children: createElement(LogSample, { selection: next }) }) });
+    await mount(panel(selected));
+    const approve = () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label);
+    const first = approve(); assert.ok(first); await act(async () => first.click()); assert.equal(sent.length, 1);
+    await act(async () => root?.render(panel({ ...selected, row: { ...selected.row } })));
+    assert.match(document.body.textContent ?? "", /could not be confirmed/); const blocked = approve(); assert.ok(blocked); assert.equal(blocked.disabled, true);
+    assert.equal(sent.length, 1); assert.equal(refreshed, 0);
+    const replay = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Replay exact decision"); assert.ok(replay);
+    matched = true; await act(async () => replay.click()); assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]); assert.equal(refreshed, 1);
   });
   for (const outcome of ["uncertain", "refused"] as const) it(`stabilizes restored ${outcome} command and replay inputs until state or scope changes`, async () => {
-    const h = await launchHarness();
-    try {
-      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
-      const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
-      const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
-      const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
-      let release: (() => void) | undefined; const sent: CommandRequest[] = [];
-      const client: DashboardClient = { ...h.client, runDetail: async () => open,
-        runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page() } : { section: "identity-gate", payload: { state: "available", value: gate } }),
-        executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope);
-          if (sent.length > 1) await new Promise<void>(resolve => { release = resolve; });
-          return CommandResultSchema.parse(outcome === "refused" || sent.length > 1 ? { state: "rejected", commandId: envelope.commandId, code: "policy-refused", message: "Refused" }
-            : { state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: gate.gateId }] }); },
-      };
-      const scope = { ...h.binding.scope, client };
-      const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
-        authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client } } };
-      let current: ReturnType<typeof useRunWiring> | undefined;
-      function Probe({ activeBinding }: { activeBinding: DashboardCommandBinding }) { current = useRunWiring(client, selected, activeBinding); return createElement("span", null, current.command?.feedback); }
-      await mount(createElement(Probe, { key: "first", activeBinding: binding }));
-      await act(async () => current?.onDecision?.(gate.gateId, gateLogActions(gate)[0], {})); assert.equal(sent.length, 1);
-      await act(async () => root?.render(createElement(Probe, { key: "restored", activeBinding: binding })));
-      const restored = current?.command, replay = current?.replay; assert.ok(restored); assert.equal(restored.state, outcome);
-      for (let tick = 0; tick < 2; tick++) await act(async () => root?.render(createElement(Probe, { key: "restored", activeBinding: binding })));
-      assert.equal(current?.command, restored); assert.equal(current?.replay, replay); assert.equal(sent.length, 1);
-      if (outcome === "uncertain") {
-        assert.ok(replay); await act(async () => replay()); assert.equal(current?.command?.state, "pending"); assert.notEqual(current?.command, restored); assert.equal(current?.replay, undefined);
-        assert.deepEqual(sent[1], sent[0]); await act(async () => release?.()); assert.equal(current?.command?.state, "refused"); assert.match(document.body.textContent ?? "", /The command was refused/);
-      } else assert.equal(replay, undefined);
-      const replacement = { ...binding, scope: { ...scope, actorId: "other-operator" } };
-      await act(async () => root?.render(createElement(Probe, { key: "restored", activeBinding: replacement })));
-      assert.equal(current?.command, undefined); assert.equal(current?.replay, undefined);
-    } finally { await h.dispose(); }
+    const h = commandBindingFixture();
+    const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+    const gate = fixtures.gateDetail(fixtures.ONE_CLICK);
+    const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
+    const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
+    let release: (() => void) | undefined; const sent: CommandRequest[] = [];
+    const client: DashboardClient = { ...h.client, runDetail: async () => open,
+      runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page() } : { section: "identity-gate", payload: { state: "available", value: gate } }),
+      executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope);
+        if (sent.length > 1) await new Promise<void>(resolve => { release = resolve; });
+        return CommandResultSchema.parse(outcome === "refused" || sent.length > 1 ? { state: "rejected", commandId: envelope.commandId, code: "policy-refused", message: "Refused" }
+          : { state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: gate.gateId }] }); },
+    };
+    const scope = { ...h.binding.scope, client };
+    const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
+      authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client } } };
+    let current: ReturnType<typeof useRunWiring> | undefined;
+    function Probe({ activeBinding }: { activeBinding: DashboardCommandBinding }) { current = useRunWiring(client, selected, activeBinding); return createElement("span", null, current.command?.feedback); }
+    await mount(createElement(Probe, { key: "first", activeBinding: binding }));
+    await act(async () => current?.onDecision?.(gate.gateId, gateLogActions(gate)[0], {})); assert.equal(sent.length, 1);
+    await act(async () => root?.render(createElement(Probe, { key: "restored", activeBinding: binding })));
+    const restored = current?.command, replay = current?.replay; assert.ok(restored); assert.equal(restored.state, outcome);
+    for (let tick = 0; tick < 2; tick++) await act(async () => root?.render(createElement(Probe, { key: "restored", activeBinding: binding })));
+    assert.equal(current?.command, restored); assert.equal(current?.replay, replay); assert.equal(sent.length, 1);
+    if (outcome === "uncertain") {
+      assert.ok(replay); await act(async () => replay()); assert.equal(current?.command?.state, "pending"); assert.notEqual(current?.command, restored); assert.equal(current?.replay, undefined);
+      assert.deepEqual(sent[1], sent[0]); await act(async () => release?.()); assert.equal(current?.command?.state, "refused"); assert.match(document.body.textContent ?? "", /The command was refused/);
+    } else assert.equal(replay, undefined);
+    const replacement = { ...binding, scope: { ...scope, actorId: "other-operator" } };
+    await act(async () => root?.render(createElement(Probe, { key: "restored", activeBinding: replacement })));
+    assert.equal(current?.command, undefined); assert.equal(current?.replay, undefined);
   });
   it("displays omitted evidence explicitly and never substitutes verified-empty actions", async () => {
     for (const supplied of [false, true]) {
@@ -611,168 +616,160 @@ describe("served Logs wiring", () => {
     }
   });
   it("retains supplied notes and locks decision controls when gate/capture authority is omitted", async () => {
-    const h = await launchHarness();
-    try {
-      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
-      const gate = fixtures.gateDetail(fixtures.CHOOSE);
-      const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
-      for (const omitted of ["node", "capture"] as const) {
-        const open = RunDetailWireSchema.parse({ ...detail(selected), captures: omitted === "capture" ? undefined : detail().captures,
-          gate: { state: "open", gateId: NOTE, ...(omitted === "node" ? {} : { nodeId: gate.gateId }), label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
-        let submissions = 0;
-        const client: DashboardClient = { ...h.client, runDetail: async () => open,
-          runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: { ...page(), confirmedActions: undefined } }
-            : { section: "identity-gate", payload: { state: "available", value: gate } }),
-          executeCommand: () => { submissions++; throw new Error("unbound decision"); },
-        };
-        const scope = { ...h.binding.scope, client };
-        const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client } } };
-        await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
-          children: createElement(LogSample, { selection: selected }) }) }));
-        assert.match(document.body.textContent ?? "", /Authoritative note 0/);
-        assert.match(document.body.textContent ?? "", omitted === "node" ? /Identity decision join not supplied/ : /Capture availability not supplied/);
-        assert.equal(document.querySelector('article[aria-label="Identity Approval"]')?.querySelectorAll("button").length, 0);
-        assert.equal(submissions, 0);
-        await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren();
-      }
-    } finally { await h.dispose(); }
-  });
-  it("keeps refusal feedback and permits only an explicit corrected approval in the mounted Logs panel", async () => {
-    const h = await launchHarness();
-    try {
-      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
-      const gate = fixtures.gateDetail(fixtures.CHOOSE);
-      const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
-      const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
-      const sent: CommandRequest[] = [];
+    const h = commandBindingFixture();
+    const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+    const gate = fixtures.gateDetail(fixtures.CHOOSE);
+    const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
+    for (const omitted of ["node", "capture"] as const) {
+      const open = RunDetailWireSchema.parse({ ...detail(selected), captures: omitted === "capture" ? undefined : detail().captures,
+        gate: { state: "open", gateId: NOTE, ...(omitted === "node" ? {} : { nodeId: gate.gateId }), label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
+      let submissions = 0;
       const client: DashboardClient = { ...h.client, runDetail: async () => open,
-        runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page() }
+        runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: { ...page(), confirmedActions: undefined } }
           : { section: "identity-gate", payload: { state: "available", value: gate } }),
-        executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope);
-          return CommandResultSchema.parse({ state: "rejected", commandId: envelope.commandId, code: "policy-refused", message: "Current decision refused" }); },
+        executeCommand: () => { submissions++; throw new Error("unbound decision"); },
       };
       const scope = { ...h.binding.scope, client };
-      const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
-        authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { throw new Error("refusal must not invent changed authority"); } } } };
+      const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client } } };
       await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
         children: createElement(LogSample, { selection: selected }) }) }));
-      const approve = () => { const node = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label); assert.ok(node); return node; };
-      async function choose(index: number) {
-        assert.equal(approve().disabled, false); await act(async () => approve().click());
-        const radio = document.querySelectorAll<HTMLInputElement>('input[name="candidate"]')[index]; assert.ok(radio);
-        await act(async () => radio.click());
-        const submit = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Continue run"); assert.ok(submit); assert.equal(submit.disabled, false);
-        await act(async () => submit.click());
-      }
-      await choose(0);
-      assert.equal(sent.length, 1); assert.match(document.body.textContent ?? "", /The command was refused/); assert.equal(approve().disabled, false);
-      await act(async () => {}); assert.equal(sent.length, 1);
-      await choose(1);
-      assert.equal(sent.length, 2); assert.notEqual(sent[0].commandId, sent[1].commandId);
-      for (const [index, envelope] of sent.entries()) {
-        assert.equal(envelope.family, "gate");
-        if (envelope.family === "gate") assert.deepEqual(envelope.payload.result.value, { decision: "approved", eid: gate.options[index].eid, chosenFrom: gate.options[index].chosenFrom, evidenceDigest: gate.evidenceDigest });
-      }
-    } finally { await h.dispose(); }
+      assert.match(document.body.textContent ?? "", /Authoritative note 0/);
+      assert.match(document.body.textContent ?? "", omitted === "node" ? /Identity decision join not supplied/ : /Capture availability not supplied/);
+      assert.equal(document.querySelector('article[aria-label="Identity Approval"]')?.querySelectorAll("button").length, 0);
+      assert.equal(submissions, 0);
+      await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren();
+    }
+  });
+  it("keeps refusal feedback and permits only an explicit corrected approval in the mounted Logs panel", async () => {
+    const h = commandBindingFixture();
+    const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+    const gate = fixtures.gateDetail(fixtures.CHOOSE);
+    const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
+    const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
+    const sent: CommandRequest[] = [];
+    const client: DashboardClient = { ...h.client, runDetail: async () => open,
+      runSection: async (_run, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page() }
+        : { section: "identity-gate", payload: { state: "available", value: gate } }),
+      executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope);
+        return CommandResultSchema.parse({ state: "rejected", commandId: envelope.commandId, code: "policy-refused", message: "Current decision refused" }); },
+    };
+    const scope = { ...h.binding.scope, client };
+    const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: () => undefined,
+      authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { throw new Error("refusal must not invent changed authority"); } } } };
+    await mount(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+      children: createElement(LogSample, { selection: selected }) }) }));
+    const approve = () => { const node = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label); assert.ok(node); return node; };
+    async function choose(index: number) {
+      assert.equal(approve().disabled, false); await act(async () => approve().click());
+      const radio = document.querySelectorAll<HTMLInputElement>('input[name="candidate"]')[index]; assert.ok(radio);
+      await act(async () => radio.click());
+      const submit = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Continue run"); assert.ok(submit); assert.equal(submit.disabled, false);
+      await act(async () => submit.click());
+    }
+    await choose(0);
+    assert.equal(sent.length, 1); assert.match(document.body.textContent ?? "", /The command was refused/); assert.equal(approve().disabled, false);
+    await act(async () => {}); assert.equal(sent.length, 1);
+    await choose(1);
+    assert.equal(sent.length, 2); assert.notEqual(sent[0].commandId, sent[1].commandId);
+    for (const [index, envelope] of sent.entries()) {
+      assert.equal(envelope.family, "gate");
+      if (envelope.family === "gate") assert.deepEqual(envelope.payload.result.value, { decision: "approved", eid: gate.options[index].eid, chosenFrom: gate.options[index].chosenFrom, evidenceDigest: gate.evidenceDigest });
+    }
   });
   it("releases a confirmed gate lock when the same run reaches its next authoritative gate", async () => {
-    const h = await launchHarness();
-    try {
-      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
-      const firstGate = fixtures.gateDetail(fixtures.ONE_CLICK);
-      const secondGate = fixtures.gateDetail(fixtures.ONE_CLICK, { gateId: "second-gate", expectedVersion: 5,
-        actions: firstGate.actions.map(action => ({ ...action, expectedVersion: 5 })) });
-      const gates = [firstGate, secondGate];
-      const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
-      let gateIndex = 0, resolved = false, refreshed = 0;
-      const sent: CommandRequest[] = [], outcomes: CommandOutcome[] = [];
-      const client: DashboardClient = { ...h.client,
-        runDetail: async () => { const gate = gates[gateIndex]; return RunDetailWireSchema.parse({ ...detail(selected), rowRevision: gate.expectedVersion + (resolved ? 1 : 0),
-          gate: resolved ? { state: "resolved", gateId: NOTE, nodeId: gate.gateId, label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: gateIndex * 2 + 2 }
-            : { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: gateIndex * 2 + 1 }, availableSections: ["logs", "identity-gate"] }); },
-        runSection: async (_run, name) => RunDetailSectionResponseSchema.parse(name === "logs" ? { section: "logs", payload: page() }
-          : { section: "identity-gate", payload: { state: "available", value: gates[gateIndex] } }),
-        executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); assert.equal(envelope.family, "gate");
-          if (envelope.family !== "gate") throw new Error("gate required"); sent.push(envelope); resolved = true;
-          return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: envelope.target.gateId }] }); },
-      };
-      const scope = { ...h.binding.scope, client };
-      const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
-        authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-      const panel = (next: LogSelection) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
-        children: createElement(LogSample, { selection: next }) }) });
-      const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === firstGate.actions[0].label); assert.ok(control); return control; };
-      await mount(panel(selected)); await act(async () => approve().click());
-      assert.equal(sent.length, 1); assert.equal(outcomes[0].kind, "confirmed"); assert.equal(refreshed, 1); assert.equal(approve().disabled, true);
-      gateIndex = 1; resolved = false;
-      await act(async () => root?.render(panel({ ...selected, row: { ...selected.row, rowRevision: RowRevisionSchema.parse(5) } })));
-      assert.equal(approve().disabled, false); assert.equal(sent.length, 1); assert.doesNotMatch(document.body.textContent ?? "", /Decision confirmed/);
-      await act(async () => approve().click());
-      assert.equal(sent.length, 2); assert.equal(outcomes[1].kind, "confirmed"); assert.equal(refreshed, 2); assert.notEqual(sent[0].commandId, sent[1].commandId);
-      for (const [index, envelope] of sent.entries()) { assert.equal(envelope.family, "gate"); if (envelope.family === "gate") assert.deepEqual(envelope.target,
-        { runId: RUN, gateId: gates[index].gateId, expectedVersion: index === 0 ? 3 : 5 }); }
-    } finally { await h.dispose(); }
+    const h = commandBindingFixture();
+    const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+    const firstGate = fixtures.gateDetail(fixtures.ONE_CLICK);
+    const secondGate = fixtures.gateDetail(fixtures.ONE_CLICK, { gateId: "second-gate", expectedVersion: 5,
+      actions: firstGate.actions.map(action => ({ ...action, expectedVersion: 5 })) });
+    const gates = [firstGate, secondGate];
+    const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
+    let gateIndex = 0, resolved = false, refreshed = 0;
+    const sent: CommandRequest[] = [], outcomes: CommandOutcome[] = [];
+    const client: DashboardClient = { ...h.client,
+      runDetail: async () => { const gate = gates[gateIndex]; return RunDetailWireSchema.parse({ ...detail(selected), rowRevision: gate.expectedVersion + (resolved ? 1 : 0),
+        gate: resolved ? { state: "resolved", gateId: NOTE, nodeId: gate.gateId, label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: gateIndex * 2 + 2 }
+          : { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: gateIndex * 2 + 1 }, availableSections: ["logs", "identity-gate"] }); },
+      runSection: async (_run, name) => RunDetailSectionResponseSchema.parse(name === "logs" ? { section: "logs", payload: page() }
+        : { section: "identity-gate", payload: { state: "available", value: gates[gateIndex] } }),
+      executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); assert.equal(envelope.family, "gate");
+        if (envelope.family !== "gate") throw new Error("gate required"); sent.push(envelope); resolved = true;
+        return CommandResultSchema.parse({ state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: envelope.target.gateId }] }); },
+    };
+    const scope = { ...h.binding.scope, client };
+    const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
+      authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
+    const panel = (next: LogSelection) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+      children: createElement(LogSample, { selection: next }) }) });
+    const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === firstGate.actions[0].label); assert.ok(control); return control; };
+    await mount(panel(selected)); await act(async () => approve().click());
+    assert.equal(sent.length, 1); assert.equal(outcomes[0].kind, "confirmed"); assert.equal(refreshed, 1); assert.equal(approve().disabled, true);
+    gateIndex = 1; resolved = false;
+    await act(async () => root?.render(panel({ ...selected, row: { ...selected.row, rowRevision: RowRevisionSchema.parse(5) } })));
+    assert.equal(approve().disabled, false); assert.equal(sent.length, 1); assert.doesNotMatch(document.body.textContent ?? "", /Decision confirmed/);
+    await act(async () => approve().click());
+    assert.equal(sent.length, 2); assert.equal(outcomes[1].kind, "confirmed"); assert.equal(refreshed, 2); assert.notEqual(sent[0].commandId, sent[1].commandId);
+    for (const [index, envelope] of sent.entries()) { assert.equal(envelope.family, "gate"); if (envelope.family === "gate") assert.deepEqual(envelope.target,
+      { runId: RUN, gateId: gates[index].gateId, expectedVersion: index === 0 ? 3 : 5 }); }
   });
   for (const authority of ["current", "new-revision", "new-gate", "foreign-actor", "foreign-authority"] as const) it(`projects keyed pending-to-refused recovery only for ${authority} gate authority`, async () => {
-    const h = await launchHarness();
-    try {
-      const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
-      const gate = fixtures.gateDetail(fixtures.CHOOSE);
-      const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
-      const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
-      let currentGate = gate, currentDetail = open, release: (() => void) | undefined;
-      const sent: CommandRequest[] = [], outcomes: CommandOutcome[] = []; let refreshed = 0;
-      const client: DashboardClient = { ...h.client,
-        runDetail: async runId => runId === RUN ? currentDetail : detail(selection(runId)),
-        runSection: async (runId, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page(runId) }
-          : { section: "identity-gate", payload: { state: "available", value: currentGate } }),
-        executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope); await new Promise<void>(resolve => { release = resolve; });
-          return CommandResultSchema.parse(sent.length === 1 ? { state: "rejected", commandId: envelope.commandId, code: "policy-refused", message: "Current decision refused" }
-            : { state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: gate.gateId }] }); },
-      };
-      const scope = { ...h.binding.scope, client };
-      const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
-        authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
-      const panel = (next: LogSelection, currentBinding = binding, nowIso = AT) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
-        children: createElement(LogSample, { key: next.row.runId, selection: next, nowIso }) }) });
-      const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label); assert.ok(control); return control; };
-      async function choose(index: number) {
-        assert.equal(approve().disabled, false); await act(async () => approve().click());
-        const radio = document.querySelectorAll<HTMLInputElement>('input[name="candidate"]')[index]; assert.ok(radio); await act(async () => radio.click());
-        const submit = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Continue run"); assert.ok(submit); await act(async () => submit.click());
-      }
-      await mount(panel(selected)); await choose(0); assert.equal(sent.length, 1);
-      await act(async () => root?.render(panel(selection(OTHER))));
-      await act(async () => root?.render(panel(selected)));
-      assert.match(document.body.textContent ?? "", /Pending/); assert.equal(approve().disabled, true);
-      await act(async () => release?.()); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
-      const next = { ...selected, row: { ...selected.row, ...(authority === "new-revision" ? { rowRevision: RowRevisionSchema.parse(4) } : {}) } };
-      if (authority === "new-revision") { currentGate = fixtures.gateDetail(fixtures.CHOOSE, { expectedVersion: 4, actions: gate.actions.map(action => ({ ...action, expectedVersion: 4 })) }); currentDetail = { ...open, rowRevision: RowRevisionSchema.parse(4) }; }
-      if (authority === "new-gate") {
-        const section = RunDetailSectionResponseSchema.parse({ section: "identity-gate", payload: { state: "available", value: { ...gate, gateId: "replacement-gate" } } });
-        assert.equal(section.section, "identity-gate"); if (section.section !== "identity-gate" || section.payload.state !== "available") throw new Error("gate required");
-        currentGate = section.payload.value;
-        currentDetail = RunDetailWireSchema.parse({ ...open, gate: { ...open.gate, nodeId: currentGate.gateId, revision: 2 } });
-      }
-      const nextBinding = authority === "foreign-actor" || authority === "foreign-authority" ? { ...binding, scope: { ...scope,
-        ...(authority === "foreign-actor" ? { actorId: "other-operator" } : { authority: {} }) } } : binding;
-      await act(async () => root?.render(panel(next, nextBinding, "2026-08-03T12:00:01.000Z")));
-      assert.equal(sent.length, 1); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
-      assert.doesNotMatch(document.body.textContent ?? "", /Pending/);
-      if (authority !== "current") { assert.doesNotMatch(document.body.textContent ?? "", /The command was refused/); return; }
-      assert.match(document.body.textContent ?? "", /The command was refused/); assert.equal(approve().disabled, false);
-      await act(async () => root?.render(panel(next, binding, "2026-08-03T12:00:02.000Z"))); assert.equal(sent.length, 1);
-      await choose(1); assert.equal(sent.length, 2); assert.notEqual(sent[1].commandId, sent[0].commandId);
-      for (const [index, envelope] of sent.entries()) { assert.equal(envelope.family, "gate"); if (envelope.family === "gate") assert.deepEqual(envelope.payload.result.value,
-        { decision: "approved", eid: gate.options[index].eid, chosenFrom: gate.options[index].chosenFrom, evidenceDigest: gate.evidenceDigest }); }
-      assert.match(document.body.textContent ?? "", /Pending/); assert.doesNotMatch(document.body.textContent ?? "", /The command was refused/); assert.equal(approve().disabled, true);
-      await act(async () => root?.render(panel(selection(OTHER)))); await act(async () => root?.render(panel(next)));
-      assert.match(document.body.textContent ?? "", /Pending/); assert.doesNotMatch(document.body.textContent ?? "", /The command was refused/);
-      currentDetail = RunDetailWireSchema.parse({ ...open, rowRevision: 4, gate: { state: "resolved", gateId: NOTE, nodeId: gate.gateId, label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 } });
-      await act(async () => release?.()); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
-      await act(async () => root?.render(panel(next, binding, "2026-08-03T12:00:03.000Z")));
-      assert.doesNotMatch(document.body.textContent ?? "", /The command was refused|Pending/); assert.equal(sent.length, 2);
-    } finally { await h.dispose(); }
+    const h = commandBindingFixture();
+    const fixtures = identityFixtures(AT, "10833507", "10203262", deriveSchemaHash(IdentityApprovalResultSchema, "output"), () => RUN);
+    const gate = fixtures.gateDetail(fixtures.CHOOSE);
+    const selected = { ...selection(), row: { ...selection().row, rowRevision: RowRevisionSchema.parse(3) } };
+    const open = RunDetailWireSchema.parse({ ...detail(selected), gate: { state: "open", gateId: NOTE, nodeId: gate.gateId, label: gate.label, openedAt: AT, revision: 1 }, availableSections: ["logs", "identity-gate"] });
+    let currentGate = gate, currentDetail = open, release: (() => void) | undefined;
+    const sent: CommandRequest[] = [], outcomes: CommandOutcome[] = []; let refreshed = 0;
+    const client: DashboardClient = { ...h.client,
+      runDetail: async runId => runId === RUN ? currentDetail : detail(selection(runId)),
+      runSection: async (runId, section) => RunDetailSectionResponseSchema.parse(section === "logs" ? { section: "logs", payload: page(runId) }
+        : { section: "identity-gate", payload: { state: "available", value: currentGate } }),
+      executeCommand: async raw => { const envelope = CommandRequestSchema.parse(raw); sent.push(envelope); await new Promise<void>(resolve => { release = resolve; });
+        return CommandResultSchema.parse(sent.length === 1 ? { state: "rejected", commandId: envelope.commandId, code: "policy-refused", message: "Current decision refused" }
+          : { state: "applied", commandId: envelope.commandId, affectedTargets: [{ family: "gate", runId: RUN, gateId: gate.gateId }] }); },
+    };
+    const scope = { ...h.binding.scope, client };
+    const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope), feedback: outcome => { outcomes.push(outcome); },
+      authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client }, dayState: { ...h.binding.authority.dayState, refresh: () => { refreshed++; } } } };
+    const panel = (next: LogSelection, currentBinding = binding, nowIso = AT) => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
+      children: createElement(LogSample, { key: next.row.runId, selection: next, nowIso }) }) });
+    const approve = () => { const control = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === gate.actions[0].label); assert.ok(control); return control; };
+    async function choose(index: number) {
+      assert.equal(approve().disabled, false); await act(async () => approve().click());
+      const radio = document.querySelectorAll<HTMLInputElement>('input[name="candidate"]')[index]; assert.ok(radio); await act(async () => radio.click());
+      const submit = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Continue run"); assert.ok(submit); await act(async () => submit.click());
+    }
+    await mount(panel(selected)); await choose(0); assert.equal(sent.length, 1);
+    await act(async () => root?.render(panel(selection(OTHER))));
+    await act(async () => root?.render(panel(selected)));
+    assert.match(document.body.textContent ?? "", /Pending/); assert.equal(approve().disabled, true);
+    await act(async () => release?.()); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
+    const next = { ...selected, row: { ...selected.row, ...(authority === "new-revision" ? { rowRevision: RowRevisionSchema.parse(4) } : {}) } };
+    if (authority === "new-revision") { currentGate = fixtures.gateDetail(fixtures.CHOOSE, { expectedVersion: 4, actions: gate.actions.map(action => ({ ...action, expectedVersion: 4 })) }); currentDetail = { ...open, rowRevision: RowRevisionSchema.parse(4) }; }
+    if (authority === "new-gate") {
+      const section = RunDetailSectionResponseSchema.parse({ section: "identity-gate", payload: { state: "available", value: { ...gate, gateId: "replacement-gate" } } });
+      assert.equal(section.section, "identity-gate"); if (section.section !== "identity-gate" || section.payload.state !== "available") throw new Error("gate required");
+      currentGate = section.payload.value;
+      currentDetail = RunDetailWireSchema.parse({ ...open, gate: { ...open.gate, nodeId: currentGate.gateId, revision: 2 } });
+    }
+    const nextBinding = authority === "foreign-actor" || authority === "foreign-authority" ? { ...binding, scope: { ...scope,
+      ...(authority === "foreign-actor" ? { actorId: "other-operator" } : { authority: {} }) } } : binding;
+    await act(async () => root?.render(panel(next, nextBinding, "2026-08-03T12:00:01.000Z")));
+    assert.equal(sent.length, 1); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
+    assert.doesNotMatch(document.body.textContent ?? "", /Pending/);
+    if (authority !== "current") { assert.doesNotMatch(document.body.textContent ?? "", /The command was refused/); return; }
+    assert.match(document.body.textContent ?? "", /The command was refused/); assert.equal(approve().disabled, false);
+    await act(async () => root?.render(panel(next, binding, "2026-08-03T12:00:02.000Z"))); assert.equal(sent.length, 1);
+    await choose(1); assert.equal(sent.length, 2); assert.notEqual(sent[1].commandId, sent[0].commandId);
+    for (const [index, envelope] of sent.entries()) { assert.equal(envelope.family, "gate"); if (envelope.family === "gate") assert.deepEqual(envelope.payload.result.value,
+      { decision: "approved", eid: gate.options[index].eid, chosenFrom: gate.options[index].chosenFrom, evidenceDigest: gate.evidenceDigest }); }
+    assert.match(document.body.textContent ?? "", /Pending/); assert.doesNotMatch(document.body.textContent ?? "", /The command was refused/); assert.equal(approve().disabled, true);
+    await act(async () => root?.render(panel(selection(OTHER)))); await act(async () => root?.render(panel(next)));
+    assert.match(document.body.textContent ?? "", /Pending/); assert.doesNotMatch(document.body.textContent ?? "", /The command was refused/);
+    currentDetail = RunDetailWireSchema.parse({ ...open, rowRevision: 4, gate: { state: "resolved", gateId: NOTE, nodeId: gate.gateId, label: gate.label, resolution: "approved", resolvedBy: "local-operator", resolvedAt: AT, revision: 2 } });
+    await act(async () => release?.()); assert.equal(outcomes.length, 0); assert.equal(refreshed, 0);
+    await act(async () => root?.render(panel(next, binding, "2026-08-03T12:00:03.000Z")));
+    assert.doesNotMatch(document.body.textContent ?? "", /The command was refused|Pending/); assert.equal(sent.length, 2);
   });
   it("mounts the served LogSample producer without fictional decision events", async () => {
     const client = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : detail());
@@ -826,28 +823,26 @@ describe("served Logs wiring", () => {
     assert.doesNotMatch(document.body.textContent ?? "", /Separation request verified/);
   });
   for (const replacement of ["day", "epoch", "day-request", "scope"] as const) it(`revokes stale reads after ${replacement} authority replacement`, async () => {
-    const h = await launchHarness();
-    try {
-      const pending: { signal?: AbortSignal | null; resolve: (value: unknown) => void }[] = [];
-      const client = clientFor((path, signal) => path.endsWith("/logs") ? { section: "logs", payload: page() }
-        : new Promise(resolve => pending.push({ signal, resolve })));
-      const binding: DashboardCommandBinding = { ...h.binding, scope: { ...h.binding.scope, client },
-        authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client } } };
-      const selected = selection();
-      let current: ReturnType<typeof useRunWiring> | undefined;
-      function Probe({ activeBinding }: { activeBinding: DashboardCommandBinding }) { current = useRunWiring(client, selected, activeBinding); return null; }
-      await mount(createElement(Probe, { activeBinding: binding }));
-      const next: DashboardCommandBinding = { ...binding,
-        scope: replacement === "scope" ? { ...binding.scope, actorId: "other-operator" } : binding.scope,
-        authority: { ...binding.authority, day: replacement === "day" ? "2026-08-04" : binding.authority.day,
-          epoch: replacement === "epoch" ? { ...binding.authority.epoch } : binding.authority.epoch,
-          dayState: replacement === "day-request" ? { ...binding.authority.dayState, request: {} } : binding.authority.dayState } };
-      await act(async () => root?.render(createElement(Probe, { activeBinding: next })));
-      assert.equal(pending.length, 2); assert.equal(pending[0].signal?.aborted, true);
-      await act(async () => pending[0].resolve(detail())); assert.equal(current?.state, "loading");
-      await act(async () => pending[1].resolve(detail())); assert.equal(current?.state, "loaded");
-      assert.equal(current?.snapshot?.detail.runId, RUN);
-    } finally { await h.dispose(); }
+    const h = commandBindingFixture();
+    const pending: { signal?: AbortSignal | null; resolve: (value: unknown) => void }[] = [];
+    const client = clientFor((path, signal) => path.endsWith("/logs") ? { section: "logs", payload: page() }
+      : new Promise(resolve => pending.push({ signal, resolve })));
+    const binding: DashboardCommandBinding = { ...h.binding, scope: { ...h.binding.scope, client },
+      authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client } } };
+    const selected = selection();
+    let current: ReturnType<typeof useRunWiring> | undefined;
+    function Probe({ activeBinding }: { activeBinding: DashboardCommandBinding }) { current = useRunWiring(client, selected, activeBinding); return null; }
+    await mount(createElement(Probe, { activeBinding: binding }));
+    const next: DashboardCommandBinding = { ...binding,
+      scope: replacement === "scope" ? { ...binding.scope, actorId: "other-operator" } : binding.scope,
+      authority: { ...binding.authority, day: replacement === "day" ? "2026-08-04" : binding.authority.day,
+        epoch: replacement === "epoch" ? { ...binding.authority.epoch } : binding.authority.epoch,
+        dayState: replacement === "day-request" ? { ...binding.authority.dayState, request: {} } : binding.authority.dayState } };
+    await act(async () => root?.render(createElement(Probe, { activeBinding: next })));
+    assert.equal(pending.length, 2); assert.equal(pending[0].signal?.aborted, true);
+    await act(async () => pending[0].resolve(detail())); assert.equal(current?.state, "loading");
+    await act(async () => pending[1].resolve(detail())); assert.equal(current?.state, "loaded");
+    assert.equal(current?.snapshot?.detail.runId, RUN);
   });
   it("revokes both stale A responses across A to B to A and client replacement", async () => {
     const pending: { path: string; signal?: AbortSignal | null; resolve: (value: unknown) => void }[] = [];
