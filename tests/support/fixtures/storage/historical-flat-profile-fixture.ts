@@ -120,7 +120,7 @@ export async function createHistoricalFlatProfileFixture(options: { unknownWrite
   assert.equal(machine.locator.stateRoot, stateRoot); machine.release();
   return { workspace, lifetime, stateRoot, artifactRoot, processLockRoot, databasePath, protectedPath, artifact, reportPath, record, request, browser,
     async close() {
-      const closed = spawnSync("/usr/sbin/lsof", ["-nP", "+D", workspace, "-Fn"], { encoding: "utf8" });
+      const closed = spawnSync("lsof", ["-nP", "+D", workspace, "-Fn"], { encoding: "utf8" });
       assert.equal(closed.error, undefined); assert.equal(closed.status, 1, "historical flat fixture closure unproved");
       assert.equal(closed.stdout, ""); assert.equal(closed.stderr, "");
       await lifetime.close();

@@ -501,7 +501,7 @@ for (const boundary of ["source-fsync", "protected-stage"] as const) {
     assert.equal(proof.pid, ready.pid); assert.deepEqual(proof.identity, identity.identity); assert.equal(observeProcessIdentity(ready.pid).state, "gone");
     const groups = execFileSync("/bin/ps", ["-axo", "pgid="], { encoding: "utf8" }).trim().split(/\s+/u);
     assert.equal(groups.includes(String(ready.pid)), false);
-    const fds = spawnSync("/usr/sbin/lsof", ["-nP", "-a", "-p", String(ready.pid)], { encoding: "utf8" });
+    const fds = spawnSync("lsof", ["-nP", "-a", "-p", String(ready.pid)], { encoding: "utf8" });
     assert.equal(fds.error, undefined); assert.equal(fds.signal, null); assert.equal(fds.status, 1); assert.equal(fds.stdout.trim(), "");
     const recoveryLifetime = await RuntimeLifetimeLock.acquire(port); retained.recoveryLifetime = recoveryLifetime;
     const machine = acquireEntrypointAdmission(f.root, "exclusive", recoveryLifetime), profile = composeProfileRuntime({ admission: machine,
