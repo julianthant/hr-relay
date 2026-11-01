@@ -1,13 +1,17 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { buildRunDetail, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
 import { terminalOutcomeText } from "../../../../src/dashboard/surfaces/run-detail/log-panel-model.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
 import { queuedEventOf, runEndedEventOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const {world, RUN_ID, cleanup } = createRunDetailTestWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
+const {world, RUN_ID, cleanup } = createRunDetailTestWorld(profileFixtures.create);
 
 afterEach(cleanup);
 const HASH = "a".repeat(64);

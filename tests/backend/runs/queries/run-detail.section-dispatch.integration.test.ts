@@ -1,13 +1,17 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { SectionUnavailableError } from "../../../../src/backend/runs/commands/refusals.js";
 import { buildRunSection, readRunSection, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { queuedEventOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const {world, cleanup } = createRunDetailTestWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
+const {world, cleanup } = createRunDetailTestWorld(profileFixtures.create);
 
 afterEach(cleanup);
 

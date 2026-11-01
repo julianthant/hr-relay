@@ -1,7 +1,8 @@
+import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { foreignOriginCases } from "../../../../support/helpers/backend/http-route-harness.js";
 import { Hono } from "hono";
 import assert from "node:assert/strict";
-import { it, afterEach, describe, expect, vi } from "vitest";
+import { afterAll, it, afterEach, describe, expect, vi } from "vitest";
 import { type DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { StartPlanWireSchema } from "../../../../../src/models/dashboard/start-plan.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
@@ -14,6 +15,9 @@ import { readTimelineRecords, timelineSpanLocation } from "../../../../../src/ba
 import { RunDetailSectionResponseSchema } from "../../../../../src/models/dashboard/run-detail.js";
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { OPERATOR_JSON_HEADERS, captureDiagnosticBundle, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
+
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 
 {
 it("shared Setup admission refuses a late fault without consuming review, then exact replay remains read-only", async () => {
@@ -53,7 +57,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 afterEach(cleanupOriginalFixture);
 
   it("round-trips an explicit headed browser presentation from the request through the queued run", async () => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const planResponse = await h.app.request("/api/v1/start-plans", {
       method: "POST",
       headers: OPERATOR_JSON_HEADERS,
@@ -98,7 +102,7 @@ afterEach(cleanupOriginalFixture);
   });
 
   it("plans, starts, projects, and serves the run through the one payload", async () => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
 
     const planResponse = await h.app.request("/api/v1/start-plans", {
       method: "POST",
@@ -239,6 +243,7 @@ afterEach(cleanupOriginalFixture);
     async (_label, headers) => {
       let plans = 0;
       const h = await harness({
+        profileFixture: profileFixtures.create,
         startPlans: (real) => ({ ...real, plan: (input) => { plans += 1; return real.plan(input); } }),
       });
       const request = new Request("http://localhost/api/v1/start-plans", {
@@ -262,6 +267,7 @@ afterEach(cleanupOriginalFixture);
   it("refuses a start plan whose JSON body rides text/plain, and admits the same body as JSON", async () => {
     let plans = 0;
     const h = await harness({
+        profileFixture: profileFixtures.create,
       startPlans: (real) => ({ ...real, plan: (input) => { plans += 1; return real.plan(input); } }),
     });
     const body = JSON.stringify({

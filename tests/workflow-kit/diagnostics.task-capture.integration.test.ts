@@ -1,5 +1,6 @@
+import { createClonedProfileFixtures } from "../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { afterAll, describe, it } from "vitest";
 import { WorkerSessionManager } from "../../src/backend/runtime/workers/worker-sessions.js";
 import { taskStoreRegistry } from "../../src/backend/app/registries/task-registry.js";
 import type { WorkerBrowserSessionFactory, BrowserScreenshotEvidence } from "../../src/workflow-kit/session.js";
@@ -9,6 +10,9 @@ import { BrowserSessionIdSchema, FingerprintSchema, WorkerIdSchema, WorkflowIdSc
 import { manualClock } from "../../src/rules/time/clock.js";
 import { fixtureDuoCeremonyGates } from "../support/helpers/duo-ceremony-fixtures.js";
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../support/helpers/phase1f-executor-harness.js";
+
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 
 const fingerprint = FingerprintSchema.parse("1".repeat(64));
 const need = { system: "ucpath", access: "read", session: "reuse-worker" } as const;
@@ -40,7 +44,7 @@ async function world(enabled: boolean, failure?: "unavailable" | "missing" | "pe
   const clock = manualClock(new Date("2026-08-02T18:00:00.000Z"));
   const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse("fixture-worker"), workflowId: WorkflowIdSchema.parse("person-lookup"),
     stores: taskStoreRegistry, factory, clock, scheduler: new ManualScheduler(clock), acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-    duoCeremony: await fixtureDuoCeremonyGates(clock), browserScreenshotCapture: { capture: async context => {
+    duoCeremony: await fixtureDuoCeremonyGates(clock, undefined, profileFixtures.create), browserScreenshotCapture: { capture: async context => {
       calls.push("persist"); if (failure === "persist") throw new Error("fixture persistence failed"); captures.push(context);
     } },
   });

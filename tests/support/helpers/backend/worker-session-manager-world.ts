@@ -1,3 +1,4 @@
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { type MonotonicDeadlineScheduler } from "../../../../src/backend/runtime/scheduling/deadline-scheduler.js";
 import { type BrowserSessionCloseProof, type WorkerBrowserSessionFactory, type WorkerSessionEvent, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
@@ -11,7 +12,7 @@ import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../phase1f-executor
 
 
 
-export function createWorkerSessionManagerTestWorld() {
+export function createWorkerSessionManagerTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
   const WORKER_ID = WorkerIdSchema.parse("worker-session-fixture");
 
   const WORKFLOW_ID = WorkflowIdSchema.parse("person-lookup");
@@ -134,7 +135,7 @@ export function createWorkerSessionManagerTestWorld() {
       clock,
       scheduler: options.scheduler ?? new ManualScheduler(clock),
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: await fixtureDuoCeremonyGates(clock),
+      duoCeremony: await fixtureDuoCeremonyGates(clock, undefined, profileFixture),
       onEvent: (event) => events.push(event),
       ...(options.browserScreenshotCapture === undefined
         ? { browserScreenshotCapture: { capture: async () => undefined } }
