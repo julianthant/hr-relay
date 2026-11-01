@@ -145,12 +145,23 @@ jobs:
         run: npm run test:architecture -- --no-file-parallelism
       - name: Check native browser process proofs without competing files
         if: ${{ !cancelled() && matrix.group == 5 && needs.changes.outputs.integration == 'true' }}
-        run: >-
-          npm run test:integration --
-          tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts
-          tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts
-          tests/backend/runtime/workers/worker-supervisor.integration.test.ts
-          --maxWorkers=1 --no-file-parallelism
+        # Samples machine state every 5s so a stalled proof shows whether memory, CPU or the RAM disk ran out.
+        run: |
+          ( while true; do
+              echo "[machine] $(date -u +%T) load=$(sysctl -n vm.loadavg) $(memory_pressure | tail -1) tmp-free=$(df -m "$TMPDIR" | awk 'NR==2{print $4}')MB"
+              ps -Ao pcpu=,rss=,comm= | sort -rn | head -4 | awk '{printf "[machine]   %s%% cpu %d MB %s\n", $1, $2/1024, $3}'
+              sleep 5
+            done ) &
+          sampler=$!
+          set +e
+          npm run test:integration -- \
+            tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts \
+            tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts \
+            tests/backend/runtime/workers/worker-supervisor.integration.test.ts \
+            --maxWorkers=1 --no-file-parallelism
+          status=$?
+          kill "$sampler"
+          exit "$status"
       - name: Integration shards
         if: ${{ !cancelled() && needs.changes.outputs.integration == 'true' }}
         env:
