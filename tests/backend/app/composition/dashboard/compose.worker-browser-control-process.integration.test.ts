@@ -41,7 +41,7 @@ async function waitFor(test: () => boolean, message: string, output: () => strin
   while (!test()) { if (systemClock.monotonicMs() > deadline) throw new Error(`${message}\n${output()}`); await new Promise(resolve => setTimeout(resolve,25)); }
 }
 
-it("real ingress, two real workers and Chromium: dry-run claims, exact controls, replay, replacement and proven cleanup", async () => {
+it("real ingress, two real workers and Chromium: read-only claims, exact controls, replay, replacement and proven cleanup", async () => {
   const diagnosticStartedAt = systemClock.monotonicMs();
   const fixture = await createBoundProfileFixture();
   const root = fixture.workspace;
@@ -183,7 +183,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     await waitFor(()=>[1,2].every(index=>db.authority.workerLeases.get(worker(index))?.lifecycle.state==="paused"),"workers did not observe pause",diagnostics);
     const active=db.authority.runtimeConfig.get(); assert.ok(active);
     for (const runId of runIds) {
-      const candidate=RunRecordSchema.parse(personLookupQueuedRun({runId,itemId:randomUUID(),dryRun:true}));
+      const candidate=RunRecordSchema.parse(personLookupQueuedRun({runId,itemId:randomUUID()}));
       const enqueuedAt = systemClock.now().toISOString();
       const run = RunRecordSchema.parse({...candidate,createdAt:enqueuedAt,updatedAt:enqueuedAt,envelope:{...candidate.envelope,traceId:deriveTraceId("pl",runId,systemClock),enqueuedAt,configSnapshotId:active.configSnapshotId,configFingerprint:active.configFingerprint}});
       db.withAuthorityTransaction(r => {
@@ -198,7 +198,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     }
     const claims=runIds.map(id=>db.authority.runs.get(id));
     assert.equal(new Set(claims.map(run=>run!==undefined && "workerId" in run.lifecycle ? run.lifecycle.workerId : undefined)).size,2);
-    assert.ok(claims.every(run=>run?.envelope.dryRun===true));
+    assert.ok(claims.every(run=>run?.envelope.dryRun===false));
     const liveSession=()=>db.authority.workerControls.browsers(worker(1)).find(value=>value.health!=="closed");
     phase = 'browser-session';
     await waitFor(()=>liveSession()!==undefined,"browser observation missing",diagnostics);
@@ -208,7 +208,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     assert.equal(db.authority.workerControls.get(busy.request.commandId),undefined);
     writeFileSync(join(root,"release-drivers"),"release\n");
     phase = 'run-completion';
-    await waitFor(()=>runIds.every(id=>{const state=db.authority.runs.get(id)?.lifecycle; return state?.state==="terminal"&&state.outcome==="done";}),"dry runs did not finish",diagnostics,30_000);
+    await waitFor(()=>runIds.every(id=>{const state=db.authority.runs.get(id)?.lifecycle; return state?.state==="terminal"&&state.outcome==="done";}),"read-only runs did not finish",diagnostics,30_000);
     phase = 'run-completion';
     await waitFor(()=>[1,2].every(index=>db.authority.workerLeases.get(worker(index))?.lifecycle.state==="idle"),"workers not idle",diagnostics);
     const original=liveSession(); assert.ok(original);
