@@ -50,33 +50,17 @@ li div, .intro { overflow-wrap: anywhere; }
 <section>
 <h2>Foundation</h2>
 
-<div class="counts" aria-label="Status counts"><span class="count done">done <strong>9</strong></span>
-<span class="count now">now <strong>1</strong></span>
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>8</strong></span>
+<span class="count now">now <strong>0</strong></span>
 <span class="count next">next <strong>1</strong></span>
 <span class="count later">later <strong>0</strong></span></div>
 <ul><li>
 <span class="pill done">done</span>
-<div><strong class="name">Approved mock dashboard frozen</strong><p class="description">the parity screenshots are the visual contract; unused UI removed.</p></div>
+<div><strong class="name">Approved mock dashboard frozen</strong><p class="description">parity screenshots define the visual contract.</p></div>
 </li>
 <li>
 <span class="pill done">done</span>
-<div><strong class="name">One combined codebase</strong><p class="description">frontend, backend and launch fixes merged onto one branch.</p></div>
-</li>
-<li>
-<span class="pill done">done</span>
-<div><strong class="name">Cleanup</strong><p class="description">old plans, history docs, decision log and CLAUDE.md removed; new AGENTS.md.</p></div>
-</li>
-<li>
-<span class="pill done">done</span>
-<div><strong class="name">AI providers removed</strong><p class="description">only the ChatGPT-subscription OCR entry point remains.</p></div>
-</li>
-<li>
-<span class="pill done">done</span>
-<div><strong class="name">Every check green</strong><p class="description">typecheck, lint, tests, screenshots and coverage pass; merged into master.</p></div>
-</li>
-<li>
-<span class="pill done">done</span>
-<div><strong class="name">Docs and comments describe the current system</strong><p class="description">no decision numbers, dates or history.</p></div>
+<div><strong class="name">One combined codebase</strong><p class="description">frontend, backend and launch fixes share one codebase.</p></div>
 </li>
 <li>
 <span class="pill done">done</span>
@@ -84,167 +68,103 @@ li div, .intro { overflow-wrap: anywhere; }
 </li>
 <li>
 <span class="pill done">done</span>
-<div><strong class="name">Dependency and startup fixes</strong><p class="description">patched packages and a crash-safe admission lock.</p></div>
+<div><strong class="name">AI limited to ChatGPT</strong><p class="description">OCR and the dashboard assistant use the operator&#39;s subscription.</p></div>
 </li>
 <li>
 <span class="pill done">done</span>
-<div><strong class="name">Legacy code removed</strong><p class="description">current version only, on a fresh stored state of 34 tables.</p></div>
+<div><strong class="name">Singleton app lock and held operations</strong><p class="description">one app owns the runtime and holds maintenance operations until they settle.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Person Lookup and Separations rerun readiness</strong><p class="description">reruns use the current inputs and readiness checks.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Settings Test OCR</strong><p class="description">the OCR test runs from Preflight.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Automatic PR flow</strong><p class="description">publish history, run cloud CI on Ubuntu with macOS for macOS-only tests, get Cursor Bugbot review and auto-merge into staging.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Functional spec</strong><p class="description">the charter owns product behaviour; reference docs own mechanisms.</p></div>
+</li></ul>
+</section>
+<section>
+<h2>Dashboard ready</h2>
+<p class="intro">Complete these in order.</p>
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>0</strong></span>
+<span class="count now">now <strong>3</strong></span>
+<span class="count next">next <strong>6</strong></span>
+<span class="count later">later <strong>0</strong></span></div>
+<ul><li>
+<span class="pill now">now</span>
+<div><strong class="name">Portable storage core</strong><p class="description">one database and settings per person, simpler safety checks on Mac, backup and same-person restore, with no folder relocation.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Sign-up and accounts</strong><p class="description">require Touch ID and a Duo security key, both added in Duo&#39;s device management at duo.ucpath.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Logout keeps credentials. Put Delete account in Settings &gt; General. An empty machine says to sign up first. Back up the old store, then start clean.</p></div>
 </li>
 <li>
 <span class="pill now">now</span>
-<div><strong class="name">Simplified source and one test tree</strong><p class="description">each concept said once; tests mirror the source.</p></div>
+<div><strong class="name">Workflow logins</strong><p class="description">use fast-duo for every workflow login and remove duo-autopilot before the dry runs.</p></div>
 </li>
 <li>
 <span class="pill next">next</span>
-<div><strong class="name">Reference docs and codebase review</strong><p class="description">docs match the code; approved review findings fixed.</p></div>
+<div><strong class="name">Runs</strong><p class="description">add Pause and Resume, &quot;Pause all and quit&quot; and reruns of failed items only. A crash parks items caught mid-submit as unknown.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Write safety</strong><p class="description">take screenshots at every browser step and before and after submit. Dry runs fill the whole workflow with sample values where needed, without submitting. UCPath shows transaction-list findings for the operator to decide. Kuali keeps its reload check.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">OCR and Emergency Contact on the new core</strong><p class="description">review OCR, save corrections as revisions and feed approved snapshots into Emergency Contact.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Dashboard cleanups</strong><p class="description">make Explorer read-only, have the assistant always ask before acting and propose workflow starts, save appearance preferences per person and put Backup/Restore in Settings.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Operator preview</strong><p class="description">complete the full test pass and verify a backup before preview.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Workflow sign-off</strong><p class="description">Person Lookup live read and sign-off, then Separations dry run and sign-off, then OCR to Emergency Contact dry run and sign-off, then real runs.</p></div>
 </li></ul>
 </section>
 <section>
-<h2>Wiring base</h2>
-<p class="intro">Every component connected to real backend data. Each workflow keeps its mock until its own step.</p>
-<div class="counts" aria-label="Status counts"><span class="count done">done <strong>0</strong></span>
-<span class="count now">now <strong>0</strong></span>
-<span class="count next">next <strong>13</strong></span>
-<span class="count later">later <strong>0</strong></span></div>
-<ul><li>
-<span class="pill next">next</span>
-<div><strong class="name">Shell, workflow catalog and Queue</strong><p class="description">real day, runs and row commands.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Run and Rerun</strong><p class="description">real start plans and command results.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Logs and decisions</strong><p class="description">real steps, actions and live updates.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Explorer</strong><p class="description">timelines generated from registered workflow definitions.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">OCR and Records</strong><p class="description">real records, corrections and approval.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Settings</strong><p class="description">saved values, credentials and storage paths.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">ChatGPT account</strong><p class="description">Sign in with ChatGPT so OCR runs on the operator&#39;s subscription.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Preflight and storage</strong><p class="description">real readiness checks.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Sessions and workers</strong><p class="description">real workers and controls.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Notifications and search</strong><p class="description">durable inbox and cross-day search.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Analytics and exports</strong><p class="description">real metrics, CSV and XLSX.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Spreadsheets and Intake</strong><p class="description">saved workbooks and roster imports.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Error codes</strong><p class="description">every failure shows its defined code and text.</p></div>
-</li></ul>
-</section>
-<section>
-<h2>Workflows</h2>
-<p class="intro">One at a time: dry run and operator sign-off before the next.</p>
-<div class="counts" aria-label="Status counts"><span class="count done">done <strong>0</strong></span>
-<span class="count now">now <strong>0</strong></span>
-<span class="count next">next <strong>1</strong></span>
-<span class="count later">later <strong>15</strong></span></div>
-<ul><li>
-<span class="pill next">next</span>
-<div><strong class="name">Person Lookup</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">Separations</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">OCR</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">Oath Signature</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">Oath Upload</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">Emergency Contact</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">OnBase Emergency Contact</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">I-9 Check</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">I-9 Lookup</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">Onboarding</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">Work-Study</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">Kronos Pay Rule</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">CRM Document Download</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">SharePoint Download</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">Old Kronos Reports</strong></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">Background Check</strong></div>
-</li></ul>
-</section>
-<section>
-<h2>Release</h2>
+<h2>After the dashboard is ready</h2>
 
 <div class="counts" aria-label="Status counts"><span class="count done">done <strong>0</strong></span>
 <span class="count now">now <strong>0</strong></span>
 <span class="count next">next <strong>0</strong></span>
-<span class="count later">later <strong>2</strong></span></div>
+<span class="count later">later <strong>6</strong></span></div>
 <ul><li>
 <span class="pill later">later</span>
-<div><strong class="name">Cutover</strong><p class="description">the rebuild replaces production in one switch.</p></div>
+<div><strong class="name">Shared-laptop access</strong><p class="description">add a login screen and profile menu.</p></div>
 </li>
 <li>
 <span class="pill later">later</span>
-<div><strong class="name">Desktop app</strong><p class="description">packaged local app.</p></div>
+<div><strong class="name">Windows support</strong><p class="description">portable storage and required Windows checks.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">Desktop app</strong><p class="description">package for Mac and Windows with updates.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">Remaining workflows, one at a time</strong><p class="description">Oath Signature, Oath Upload, OnBase Emergency Contact, I-9 Check, I-9 Lookup, Onboarding, Work-Study, Kronos Pay Rule, CRM Document Download, SharePoint Download, Old Kronos Reports and Background Check.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">Parked work</strong><p class="description">re-judge schema baseline, one UI library and bundled backend against the new core.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">Release and cutover</strong><p class="description">release staging to main and replace the old app.</p></div>
 </li></ul>
 </section>
 </main>
