@@ -104,8 +104,8 @@ these named projects. Selection refuses when a named file is no longer listed or
 | --- | --- | --- | --- |
 | unit | Ubuntu | 3 shards | unit files except `MACOS_FILES` |
 | architecture | Ubuntu | 1 | `npm run test:architecture -- --maxWorkers=2` |
-| integration | Ubuntu | 12 shards | integration files except `MACOS_FILES` and `SERIAL_FILES` |
-| native | macOS | 5 shards (2 when parity runs) | shard 1 runs the macOS unit files, then `SERIAL_FILES` serially without competing files; every shard runs its share of the macOS integration files |
+| integration | Ubuntu | 14 shards | integration files except `MACOS_FILES` and `SERIAL_FILES` |
+| native | macOS | 5 jobs (2 when parity runs) | job 1 runs the macOS unit files, then `SERIAL_FILES` serially without competing files; the other jobs split the macOS integration files |
 | parity | macOS | 3 shards | Desktop parity, release pull requests only |
 
 Unit, integration and parity use two workers. Ubuntu jobs put test temp on tmpfs and have 20-minute

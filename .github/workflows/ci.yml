@@ -80,12 +80,13 @@ jobs:
               (suite !== 'parity' || release) && (manual || filters.shared === 'true' || filters[suite] === 'true')
             ]));
             const jobs = (suite, shards) => Array.from({ length: shards }, (_, i) => ({ suite, shard: i + 1, shards }));
-            // Release runs use three macOS runners for parity, leaving two of the five for macOS-only files.
+            // Native job 1 runs the serial browser proofs and macOS unit files; the others split the macOS
+            // integration files. Release runs give three of the five macOS runners to parity.
             const macosShards = selected.integration ? (selected.parity ? 2 : 5) : selected.unit ? 1 : 0;
             const ubuntu = [
               ...(selected.unit ? jobs('unit', 3) : []),
               ...(selected.architecture ? jobs('architecture', 1) : []),
-              ...(selected.integration ? jobs('integration', 12) : []),
+              ...(selected.integration ? jobs('integration', 14) : []),
             ];
             const macos = [...(selected.parity ? jobs('parity', 3) : []), ...jobs('native', macosShards)];
             for (const suite of suites) core.setOutput(suite, String(selected[suite]));
@@ -219,15 +220,16 @@ jobs:
           kill "$sampler"
           exit "$status"
       - name: macOS-only integration shard
-        if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.integration == 'true' }}
+        if: ${{ !cancelled() && matrix.suite == 'native' && matrix.shard > 1 && needs.changes.outputs.integration == 'true' }}
         env:
-          SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ matrix.shards }}
         run: |
           npx vitest list --project integration --filesOnly --json="$RUNNER_TEMP/files.json"
           npx tsx scripts/test/ci-files.ts integration macos "$RUNNER_TEMP/files.json" > "$RUNNER_TEMP/paths"
           files=()
           while IFS= read -r -d '' file; do files+=("$file"); done < "$RUNNER_TEMP/paths"
-          npm run test:integration -- "${files[@]}" --shard="$SHARD" --maxWorkers=2
+          npm run test:integration -- "${files[@]}" --shard="$((SHARD - 1))/$((SHARDS - 1))" --maxWorkers=2
       - name: Desktop parity
         if: ${{ !cancelled() && matrix.suite == 'parity' }}
         run: npm run test:parity -- --shard=${{ matrix.shard }}/${{ matrix.shards }} --workers=2
