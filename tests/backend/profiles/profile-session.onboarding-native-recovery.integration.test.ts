@@ -500,7 +500,7 @@ it("removes an unfinished sign-up at startup through the existing cancellation p
   } finally { await profile.close(); machine.release(); rmSync(f.root, { recursive: true }); }
 });
 
-it("removes a sign-up interrupted before its profile or credentials were initialized", async () => {
+it.each([false, true])("removes an uninitialized sign-up only after native key absence is proved (unexpected key: %s)", async unexpectedKey => {
   const f = await privateDraftFixture();
   const original = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`), "utf8")));
   await f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId);
@@ -512,6 +512,15 @@ it("removes a sign-up interrupted before its profile or credentials were initial
   const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime);
   const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
   try {
+    if (unexpectedKey) {
+      const entry = new FakeKeyringEntry("Relay", `${machine.locator.installationId}:${draft.profileId}`), key = randomBytes(32).toString("base64");
+      entry.setPassword(key);
+      await assert.rejects(profile.session.recoverOnboarding(), { code: "CREDENTIAL_KEYCHAIN_MISMATCH" });
+      assert.equal(existsSync(join(machine.stateRoot, "profiles", draft.profileId)), false);
+      assert.equal(existsSync(join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`)), true);
+      assert.equal(entry.getPassword(), key);
+      entry.deletePassword();
+    }
     await profile.session.recoverOnboarding();
     assert.equal(existsSync(join(machine.stateRoot, "profiles", draft.profileId)), false);
     assert.equal(existsSync(join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`)), false);

@@ -87,7 +87,7 @@ const ProfilePublicationSchema = z.lazy(() => z.discriminatedUnion("kind", [
     priorDocument: ProfileRegistryDocumentSchema, document: ProfileRegistryDocumentSchema,
     priorVerifiers: ProfileVerifierDocumentSchema, verifiers: ProfileVerifierDocumentSchema }),
   z.strictObject({ kind: z.literal("draft-abort"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
-    capture: z.strictObject({ operation: SignUpOperationSchema, head: CanonicalCredentialPublicationSourceSchema.shape.head, membership: DraftMembershipSchema, databases: ProfileAuthorityFilesSchema }) }),
+    capture: z.strictObject({ operation: SignUpOperationSchema, head: CanonicalCredentialPublicationSourceSchema.shape.head.optional(), membership: DraftMembershipSchema, databases: ProfileAuthorityFilesSchema }) }),
   z.strictObject({ kind: z.literal("profile"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
     document: ProfileRegistryDocumentSchema, operation: ProfileOperationMutationSchema.optional() }),
 ]));
@@ -1381,12 +1381,18 @@ function prepareUnpublishedDraftAbort(control: string, locator: RuntimeLocator, 
     || document.activeProfileId !== null || document.profiles.some(row => row.profileId === operation.profileId)) fail("profile-draft-abort-invalid");
   const root = join(locator.stateRoot, "profiles", operation.profileId), operationPath = join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`),
     headPath = join(locator.stateRoot, "machine", "credential-keys", `${operation.profileId}.json`);
-  const headFile = readPrivateFile(headPath, { label: "lock", maxBytes: 25 * 1024 * 1024 });
-  if (headFile === undefined || canonicalJsonStringify({ ...headFile.identity, digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
-  const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(headFile.bytes)));
-  if (head.state !== "erased" || head.installationId !== locator.installationId || head.profileId !== operation.profileId
-    || head.key.installationId !== head.installationId || head.key.profileId !== head.profileId || head.key.keyId !== operation.credentials.keyId
-    || head.operationId !== abort.operationId || head.generation !== abort.generation) fail("profile-draft-abort-head-changed");
+  if (capture.head === undefined) {
+    if (operation.credentials.phase !== "planned" || operation.onboarding?.attempts.length !== 0 || capture.membership.length !== 0 || capture.databases.length !== 0
+      || lstatMaybe(root) || lstatMaybe(headPath)) fail("profile-draft-abort-uninitialized-source-changed");
+    credentialKeyCustody.assertAbsent({ installationId: locator.installationId, profileId: operation.profileId, keyId: operation.credentials.keyId });
+  } else {
+    const headFile = readPrivateFile(headPath, { label: "lock", maxBytes: 25 * 1024 * 1024 });
+    if (headFile === undefined || canonicalJsonStringify({ ...headFile.identity, digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
+    const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(headFile.bytes)));
+    if (head.state !== "erased" || head.installationId !== locator.installationId || head.profileId !== operation.profileId
+      || head.key.installationId !== head.installationId || head.key.profileId !== head.profileId || head.key.keyId !== operation.credentials.keyId
+      || head.operationId !== abort.operationId || head.generation !== abort.generation) fail("profile-draft-abort-head-changed");
+  }
   if (lstatMaybe(join(locator.stateRoot, "machine", "credential-operations", `${operation.profileId}.json`))
     || lstatMaybe(join(locator.stateRoot, "machine", "duo-credentials", `${operation.profileId}.json`))) fail("profile-draft-abort-credential-operation-pending");
   const current = profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document, prior.completedRestores);
@@ -2205,12 +2211,12 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           if (head === undefined) {
             const original = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), SignUpOperationSchema);
             if (canonicalJsonStringify(original) !== canonicalJsonStringify(operation) || operation.onboarding?.abort === undefined) fail("profile-draft-abort-operation-changed");
-            return false;
+            if (operation.credentials.phase !== "planned" || lstatMaybe(join(locator.stateRoot, "profiles", operation.profileId))) return false;
           }
           const root = join(locator.stateRoot, "profiles", operation.profileId);
-          assertCanonicalProfileBinding(join(root, "state.db"), { installationId: locator.installationId, profileId: operation.profileId });
+          if (head !== undefined) assertCanonicalProfileBinding(join(root, "state.db"), { installationId: locator.installationId, profileId: operation.profileId });
           intent = ProfilePublicationSchema.parse({ kind: "draft-abort", schemaVersion: 1, installationId: locator.installationId, prior,
-            capture: { operation, head, membership: unpublishedDraftAbortMembership(root), databases: profileAuthorityFileWitnesses(root) } });
+            capture: { operation, head, membership: head === undefined ? [] : unpublishedDraftAbortMembership(root), databases: head === undefined ? [] : profileAuthorityFileWitnesses(root) } });
           if (intent.kind !== "draft-abort") fail("profile-draft-abort-kind-invalid");
           prepareUnpublishedDraftAbort(control, locator, document, prior, intent);
           atomicJson(intentPath, intent);

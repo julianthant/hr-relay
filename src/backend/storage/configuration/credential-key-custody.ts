@@ -46,9 +46,12 @@ export function createCredentialKeyCustody(store: CredentialSecretStore = {
     if (digest(keyBytes(key)) !== metadata.data.keyDigest) throw new CredentialKeyCustodyError("CREDENTIAL_KEYCHAIN_MISMATCH");
     return { schemaVersion: 1 as const, installationId: metadata.data.installationId, profileId: metadata.data.profileId, keyId: metadata.data.keyId, key };
   }
-  function create(identity: z.infer<typeof IdentitySchema>, beforeSet: (metadata: KeyMetadata, key: Buffer) => void): KeyMetadata {
+  function assertAbsent(identity: z.infer<typeof IdentitySchema>): void {
     IdentitySchema.parse(identity);
     if (get(identity) !== null) throw new CredentialKeyCustodyError("CREDENTIAL_KEYCHAIN_MISMATCH");
+  }
+  function create(identity: z.infer<typeof IdentitySchema>, beforeSet: (metadata: KeyMetadata, key: Buffer) => void): KeyMetadata {
+    assertAbsent(identity);
     const key = randomBytes(32).toString("base64");
     const metadata = KeyMetadataSchema.parse({ schemaVersion: 2, ...identity, keyDigest: digest(keyBytes(key)) });
     beforeSet(metadata, keyBytes(key));
@@ -83,7 +86,7 @@ export function createCredentialKeyCustody(store: CredentialSecretStore = {
     read(metadata);
     return metadata;
   }
-  return Object.freeze({ create, resumeUnpublishedCreation, importStoppedLegacy, read, delete: remove });
+  return Object.freeze({ create, assertAbsent, resumeUnpublishedCreation, importStoppedLegacy, read, delete: remove });
 }
 
 export const credentialKeyCustody = createCredentialKeyCustody();

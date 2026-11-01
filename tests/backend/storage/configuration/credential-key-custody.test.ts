@@ -13,6 +13,17 @@ function fixture() {
   return { entries, store, identity, custody: createCredentialKeyCustody(store) };
 }
 
+it("proves an uninitialized native account is absent without changing an existing key", () => {
+  const f = fixture();
+  f.custody.assertAbsent(f.identity);
+  assert.equal(f.entries.size, 0);
+  const metadata = f.custody.create(f.identity, () => {}), before = [...f.entries];
+  assert.throws(() => f.custody.assertAbsent(f.identity), { code: "CREDENTIAL_KEYCHAIN_MISMATCH" });
+  assert.deepEqual([...f.entries], before);
+  f.custody.delete(metadata);
+  f.custody.assertAbsent(f.identity);
+});
+
 it("creates and reads exactly 32 random bytes under the installation/profile account, without a secret in metadata", () => {
   const f = fixture(), metadata = f.custody.create(f.identity, () => {});
   assert.deepEqual([...f.entries.keys()], [`${f.identity.installationId}:${f.identity.profileId}`]);
