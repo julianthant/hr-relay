@@ -39,8 +39,9 @@ Real HR data lives outside this repository. Personal credentials and browser pro
 Relay stages only the runtime files named by its provider with `relay-manifest.json`.
 This selects the separate Relay background and page bridge; standalone bootstrap,
 local storage and IndexedDB startup are never entered. The native draft owner must
-acknowledge pending-key persistence before enrollment output, and durable counter
-reservation before signing. Extension key copies use trusted session storage only.
+acknowledge pending-key persistence before enrollment output. Signup and workflow assertions
+are signed in the backend after the shared encrypted store durably reserves the count.
+The signup extension retains only public key descriptors after enrollment persistence.
 
 The Security key method captures the approved software credential. The Touch ID
 method disables software capture/signing, passes through to the native platform
@@ -55,10 +56,12 @@ prove a credential was never registered. Ready does not save a profile; Finish d
 ## Relay workflow login mode
 
 Relay stages `workflow-manifest.json` with `src/workflow-background.js` inside each owned
-worker browser profile. This runtime reuses the account selection, signing and counter service.
-Before opening a login page, the backend provisions the retained credential file and operator
-username into trusted session storage. Every write is read back and verified. Persistent key
-state refuses provisioning; workflow sessions have no enrollment or extension settings interface.
+worker browser profile. This runtime brokers validated public WebAuthn requests to the same
+backend signer as signup. It has no storage permission, installed credential list, private key,
+local signing service or counter state. The backend selects a matching ready credential for the
+observed account; an explicit no-match reply hands off to the native method. Signing errors,
+timeouts, cancellation and late replies reject without native retry. Native sender identity,
+frame, document and account observations are checked around signing and before reply.
 Standalone bootstrap and persistent storage files are excluded from staging.
 
 Workflow sessions require Playwright's full bundled Chromium (`channel: "chromium"`), including

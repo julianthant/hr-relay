@@ -152,7 +152,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
         assert.equal(providerActive, false); providerActive = true;
         const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
           accountName: "fixture@ucsd.edu", origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
-        const credentialId = attempt.method === "key" ? "fixture-software-key" : "fixture-native-touch";
+        const credentialId = attempt.method === "key" ? "Zml4dHVyZS1zb2Z0d2FyZS1rZXk" : "fixture-native-touch";
         if (attempt.method === "key") {
           keyCapture.capability = capability;
           const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
@@ -197,9 +197,10 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     if (confirmedKey.state !== "onboarding") throw new Error("fixture confirmed key draft required");
     assert.equal(confirmedKey.methods.key.state, "complete"); assert.equal(confirmedKey.methods.key.portalAccepted, false);
     assert.ok(keyCapture.capability);
-    const signAttempt = randomUUID(), reservation = await keyCapture.capability.reserveSignCount({ credentialId: "fixture-software-key", attemptId: signAttempt });
-    assert.ok(reservation.count > 0);
-    await assert.rejects(keyCapture.capability.reserveSignCount({ credentialId: "fixture-software-key", attemptId: signAttempt }), /duo-attempt-reused/u);
+    const request = { requestId: randomUUID(), credentialId: "Zml4dHVyZS1zb2Z0d2FyZS1rZXk", origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" as const, challenge: "AQID" };
+    const assertion = await keyCapture.capability.signAssertion(request);
+    assert.ok(assertion.signCount > 0);
+    await assert.rejects(keyCapture.capability.signAssertion(request), /duo-attempt-reused/u);
     const touch = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/onboarding/duo/start", { operationId: draft.operationId, method: "touch" }, draftCookie)).json());
     if (touch.state !== "onboarding" || touch.methods.touch.attemptId === undefined) throw new Error("fixture touch draft required");
     assert.equal(closedAttempts, 1);

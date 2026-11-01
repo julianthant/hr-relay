@@ -1,99 +1,125 @@
 import assert from "node:assert/strict";
-import { generateKeyPairSync, verify, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { describe, it } from "vitest";
-import { z } from "zod";
 
+interface Request { id: string; request: Record<string, unknown> }
 interface WorkflowWorker {
-  install(input: unknown): Promise<void>;
+  install(): void;
   receive(message: unknown, sender: unknown): Promise<Record<string, unknown>>;
+  next(): Promise<Request | null>;
+  assertContext(id: string): Promise<void>;
+  reply(id: string, result: unknown): Promise<void>;
+  stop(): void;
 }
 const { createWorkflowWorker } = await import(pathToFileURL(resolve("fast-duo/src/workflow-background.js")).href) as {
   createWorkflowWorker(this: void, api: unknown): WorkflowWorker;
 };
-const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-const credential = { rpId: "duosecurity.com", credentialId: Buffer.from("synthetic-id").toString("base64"),
-  privateKey: keys.privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"), signCount: 0, transport: "usb",
-  isResidentCredential: true, userHandle: Buffer.from("synthetic-user").toString("base64") };
 const origin = "https://test.duosecurity.com";
-const sender = { id: "owned", url: `${origin}/login`, origin };
-const sign = { type: "DUO_AUTOPILOT_SIGN", request: { rpId: "duosecurity.com", origin,
-  challenge: Buffer.from("synthetic-challenge").toString("base64"), allowCredentials: [credential.credentialId], usernames: ["alex"] } };
-
-function world(options: { persistent?: Record<string, unknown>; corrupt?: boolean; stale?: boolean } = {}) {
-  let saved: Record<string, unknown> = options.stale ? { autopilotV1: {} } : {};
-  const calls: string[] = [];
-  const api = { runtime: { id: "owned" }, storage: {
-    local: { get: () => { calls.push("local:get"); return options.persistent ?? {}; }, set: () => { throw new Error("persistent write"); } },
-    session: {
-      setAccessLevel: (value: unknown) => { assert.deepEqual(value, { accessLevel: "TRUSTED_CONTEXTS" }); calls.push("trusted"); },
-      clear: () => { if (!options.stale) saved = {}; },
-      get: (keys: string | string[] | null) => Object.fromEntries((keys === null ? Object.keys(saved) : Array.isArray(keys) ? keys : [keys]).filter(key => key in saved).map(key => {
-        const value = structuredClone(saved[key]);
-        return [key, value !== null && typeof value === "object" && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).reverse()) : value];
-      })),
-      set: (values: Record<string, unknown>) => { calls.push("session:set"); saved = options.corrupt ? {} : structuredClone(values); },
-      remove: (names: string[]) => { for (const name of names) delete saved[name]; },
-    },
-  } };
-  const worker = createWorkflowWorker(api);
-  return { worker, calls, state: () => saved,
-    install: () => worker.install({ username: "alex@ucsd.edu", credentials: [credential], nowMs: 1_800_000_000_000 }) };
+const sender = { id: "owned", url: `${origin}/login`, origin, tab: { id: 7 }, frameId: 0,
+  documentId: "a".repeat(32), documentLifecycle: "active" };
+const sign = () => ({ type: "DUO_AUTOPILOT_SIGN", request: { requestId: randomUUID(), rpId: "duosecurity.com", origin,
+  challenge: "AQID", allowCredentials: ["BAUG"] } });
+function world() {
+  const observation = { url: sender.url, origin, documentActive: true, accountRevision: 0, accountNames: ["alex"] };
+  const nativeFrame = { url: sender.url, documentId: sender.documentId, documentLifecycle: "active" };
+  let topUrl = sender.url;
+  let afterObservation: (() => void) | undefined;
+  const worker = createWorkflowWorker({ runtime: { id: "owned" },
+    get storage() { throw new Error("Workflow must never touch storage"); },
+    tabs: { get: async () => ({ id: 7, url: topUrl }), sendMessage: async () => { const value = structuredClone(observation); afterObservation?.(); return value; } },
+    webNavigation: { getFrame: async () => ({ ...nativeFrame }) },
+  });
+  return { worker, observation, nativeFrame, top: (url: string) => { topUrl = url; },
+    onObservation: (change: () => void) => { afterObservation = change; } };
 }
 
-describe("Fast Duo workflow session", () => {
-  it("provisions trusted session storage and signs with the shared Fast Duo service", async () => {
-    const w = world();
-    await w.install();
-    assert.deepEqual(w.calls.slice(0, 3), ["local:get", "trusted", "session:set"]);
-    assert.deepEqual(await w.worker.receive({ type: "DUO_SETTINGS" }, sender), { enabled: true, trustClick: true, toast: true });
-    const reply = await w.worker.receive(sign, sender);
-    assert.equal(reply.ok, true);
-    assert.equal(JSON.stringify(reply).includes(credential.privateKey), false);
-    const result = z.object({ authenticatorData: z.string(), clientDataJSON: z.string(), signature: z.string() }).parse(reply);
-    const auth = Buffer.from(result.authenticatorData, "base64");
-    assert.ok(verify("sha256", Buffer.concat([auth, createHash("sha256").update(Buffer.from(result.clientDataJSON, "base64")).digest()]), keys.publicKey, Buffer.from(result.signature, "base64")));
-    const state = z.object({ autopilotV1: z.object({ credentials: z.array(z.object({ signCount: z.number() })) }) }).parse(w.state());
-    assert.equal(state.autopilotV1.credentials[0].signCount, auth.readUInt32BE(33));
-    const second = await w.worker.receive(sign, sender);
-    assert.equal(Buffer.from(String(second.authenticatorData), "base64").readUInt32BE(33), auth.readUInt32BE(33) + 1);
-    assert.equal(w.calls.filter(call => call === "local:get").length, 1);
+describe("credential-free workflow broker", () => {
+  it("installs without storage and forwards only public ceremony data, selecting no browser credential", async () => {
+    const w = world(); w.worker.install();
+    const message = sign();
+    const result = w.worker.receive(message, sender);
+    const request = await w.worker.next(); assert.ok(request);
+    assert.deepEqual(request.request, { ...message.request, accountNames: ["alex"] });
+    assert.equal(/credentialId|privateKey|signCount|highWater/.test(JSON.stringify(request)), false);
+    await w.worker.reply(request.id, { ok: true, value: { ok: true, signature: "public-assertion" } });
+    assert.deepEqual(await result, { ok: true, signature: "public-assertion" });
+    w.worker.stop();
   });
 
-  it("fails before provisioning and refuses foreign senders, origins and enrollment", async () => {
-    const w = world();
-    await assert.rejects(w.worker.receive(sign, sender), /DUO_SESSION_UNAVAILABLE/);
-    await w.install();
-    await assert.rejects(w.worker.receive(sign, { ...sender, id: "foreign" }));
-    await assert.rejects(w.worker.receive(sign, { ...sender, url: "https://evil.invalid/" }));
-    await assert.rejects(w.worker.receive({ ...sign, request: { ...sign.request, origin: "https://evil.invalid" } }, sender));
+  it("refuses unavailable, foreign, inactive or malformed senders and enrollment", async () => {
+    const w = world(); await assert.rejects(w.worker.receive(sign(), sender)); w.worker.install();
+    for (const changed of [{ id: "foreign" }, { url: "https://evil.invalid/" }, { url: "https://test.duosecurity.com:444/login" },
+      { frameId: -1 }, { documentLifecycle: "cached" }, { documentId: "short" }, { tab: { id: -1 } }]) {
+      await assert.rejects(w.worker.receive(sign(), { ...sender, ...changed }));
+    }
     await assert.rejects(w.worker.receive({ type: "DUO_AUTOPILOT_ENROLL" }, sender));
-    await assert.rejects(w.install(), /ALREADY_INSTALLED/);
+    await assert.rejects(w.worker.receive({ ...sign(), request: { ...sign().request, origin: "https://evil.invalid" } }, sender));
+    assert.throws(() => w.worker.install(), /ALREADY_INSTALLED/u); w.worker.stop();
   });
 
-  it("requires exact keys and a matching account for discoverable requests", async () => {
-    const w = world(); await w.install();
-    for (const request of [
-      { ...sign.request, allowCredentials: [Buffer.from("other-key").toString("base64")] },
-      { ...sign.request, usernames: ["other-user"] },
-      { ...sign.request, allowCredentials: [], usernames: [] },
-      { ...sign.request, rpId: "evil.invalid" },
-    ]) assert.equal((await w.worker.receive({ ...sign, request }, sender)).ok, false);
-    assert.equal((await w.worker.receive({ ...sign, request: { ...sign.request, allowCredentials: [] } }, sender)).ok, true);
+  it("preserves the complete stable account snapshot independently of page-supplied usernames", async () => {
+    for (const names of [["invalid name"]]) {
+      const w = world(); w.worker.install(); w.observation.accountNames = names;
+      await assert.rejects(w.worker.receive(sign(), sender)); w.worker.stop();
+    }
+    const w = world(); w.worker.install();
+    const result = w.worker.receive({ ...sign(), usernames: ["forged"] }, sender);
+    const request = await w.worker.next(); assert.ok(request);
+    assert.deepEqual(request.request.accountNames, ["alex"]);
+    await w.worker.reply(request.id, { ok: true, value: { passThrough: true } });
+    assert.deepEqual(await result, { passThrough: true }); w.worker.stop();
   });
 
-  it("withholds assertions when advancing the session counter cannot be verified", async () => {
-    const options = { corrupt: false };
-    const w = world(options); await w.install(); options.corrupt = true;
-    await assert.rejects(w.worker.receive(sign, sender), /DUO_SESSION_UNVERIFIED/);
-  });
-
-  it("refuses persistent keys and unverified session writes without enabling signing", async () => {
-    for (const options of [{ persistent: { duoCredentials: [credential] } }, { persistent: { autopilotV1: {} } }, { corrupt: true }, { stale: true }]) {
-      const w = world(options);
-      await assert.rejects(w.install(), /DUO_(PERSISTENT_CREDENTIAL_REFUSED|SESSION_UNVERIFIED)/);
-      await assert.rejects(w.worker.receive(sign, sender));
+  it("rejects final document, URL, lifecycle, account and account-revision drift", async () => {
+    for (const mutate of [(w: ReturnType<typeof world>) => { w.observation.accountNames = ["other"]; },
+      (w: ReturnType<typeof world>) => { w.observation.accountNames = ["alex", "alex@ucsd.edu"]; },
+      (w: ReturnType<typeof world>) => { w.observation.accountRevision++; },
+      (w: ReturnType<typeof world>) => { w.nativeFrame.documentId = "b".repeat(32); },
+      (w: ReturnType<typeof world>) => { w.nativeFrame.documentLifecycle = "cached"; },
+      (w: ReturnType<typeof world>) => { w.top(`${origin}/changed`); },
+      (w: ReturnType<typeof world>) => { w.observation.documentActive = false; }]) {
+      const w = world(); w.worker.install();
+      const result = w.worker.receive(sign(), sender); const rejected = assert.rejects(result);
+      const request = await w.worker.next(); assert.ok(request); mutate(w);
+      await assert.rejects(w.worker.reply(request.id, { ok: true, value: { signature: "late" } }));
+      await rejected; w.worker.stop();
     }
   });
+
+  it("drains pending requests and rejects cancellations and late replies without storage cleanup", async () => {
+    const w = world(); w.worker.install(); const message = sign();
+    const result = w.worker.receive(message, sender); const rejected = assert.rejects(result);
+    const request = await w.worker.next(); assert.ok(request);
+    await w.worker.receive({ type: "DUO_WORKFLOW_ABORT", requestId: message.request.requestId }, sender);
+    await rejected;
+    await assert.rejects(w.worker.reply(request.id, { ok: true, value: { signature: "late" } }));
+    const next = w.worker.next(); w.worker.stop(); assert.equal(await next, null);
+    await assert.rejects(w.worker.receive(sign(), sender));
+  });
+
+  it("supports a legitimate Duo child frame without treating the parent URL as its origin", async () => {
+    const w = world(); w.worker.install(); w.top("https://sso.example.invalid/login");
+    const result = w.worker.receive(sign(), { ...sender, frameId: 2 });
+    const request = await w.worker.next(); assert.ok(request);
+    await w.worker.reply(request.id, { ok: true, value: { passThrough: true } });
+    assert.deepEqual(await result, { passThrough: true }); w.worker.stop();
+  });
+
+  it("refuses an observation which changes during the native sender checks", async () => {
+    const w = world(); w.worker.install(); w.onObservation(() => { w.observation.accountRevision++; });
+    await assert.rejects(w.worker.receive(sign(), sender)); w.worker.stop();
+  });
+});
+
+it("accepts empty and short/email alias snapshots for exact IDs and settings without preselecting credentials", async () => {
+  for (const names of [[], ["alex", "alex@ucsd.edu"]]) {
+    const w = world(); w.worker.install(); w.observation.accountNames = names;
+    assert.deepEqual(await w.worker.receive({ type: "DUO_SETTINGS" }, sender), { enabled: true, trustClick: true, toast: true });
+    const result = w.worker.receive(sign(), sender);
+    const request = await w.worker.next(); assert.ok(request);
+    assert.deepEqual(request.request.accountNames, names);
+    await w.worker.reply(request.id, { ok: true, value: { passThrough: true } }); await result; w.worker.stop();
+  }
 });

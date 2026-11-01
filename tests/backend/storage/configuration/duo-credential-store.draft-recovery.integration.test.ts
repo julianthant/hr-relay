@@ -26,7 +26,7 @@ import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admi
 import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDraftDuoCredentialStore } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
-import type { DraftDuoBrowserOwner, ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
+import type { DraftDuoBrowserOwner, DraftDuoCapability, ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
 import { ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { issueDraftDuoCredentialPurpose, openDuoCredentialDocument } from "../../../../src/backend/storage/configuration/credential-store.js";
@@ -467,8 +467,9 @@ it("limits finished publishing to value-free metadata and refuses key provisioni
   const admission = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(f.draft.profileId));
   const store = createDraftDuoCredentialStore(admission, f.machine, operation.operationId, draft.generation, systemClock);
   assert.deepEqual(store.readForScope(scope).map(entry => entry.credentialId), [credentialId]);
-  assert.throws(() => store.provision(credentialId, scope), /duo-finished-draft-purpose-refused/u);
-  assert.throws(() => store.reserveForAttempt(credentialId, randomUUID(), scope), /duo-finished-draft-purpose-refused/u);
+  const signingRequest = { credentialId: "AQID", requestId: randomUUID(), rpId: "duosecurity.com" as const, origin: scope.origin, challenge: "AQID" };
+  await assert.rejects(store.signForScope(signingRequest, scope), /duo-finished-draft-purpose-refused/u);
+  await assert.rejects(store.signForScope({ ...signingRequest, requestId: randomUUID() }, scope), /duo-finished-draft-purpose-refused/u);
   assert.throws(() => store.confirm(credentialId, scope), /duo-finished-draft-purpose-refused/u);
   const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   assert.throws(() => store.enroll({ credentialId: randomUUID(), scope: scope,
@@ -616,4 +617,44 @@ it("completes a recorded Finish at startup without reopening its draft", async (
     assert.equal(existsSync(join(machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`)), false);
     assert.equal(existsSync(join(machine.stateRoot, "profiles", f.draft.profileId, "credentials", "protected.json")), true);
   } finally { await profile.close(); machine.release(); rmSync(f.root, { recursive: true }); }
+});
+
+it("keeps a pending signup key unsigned until exact scoped proof confirms it, then burns failed signatures without undoing readiness", async () => {
+  let capability: DraftDuoCapability | undefined;
+  const credentialId = randomBytes(24).toString("base64url"), enrollmentId = randomUUID();
+  const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const provider: ProfileOnboardingDuoProvider = {
+    async showBrowser(owner) { owner.assertCurrent(); }, async openPortal(owner) { owner.assertCurrent(); },
+    async closeBrowser() { return { state: "closed" }; }, async cancel() { return { state: "closed" }; },
+    async start(attempt, bind) {
+      capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: 1, accountName: "draft-recovery",
+        origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
+      await capability.persistPending({ credentialId, privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
+        publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64"), transport: "usb", isResidentCredential: true,
+        userHandle: "AQID", createdAt: new Date().toISOString() });
+      await capability.recordCeremony({ credentialId, requestId: enrollmentId, mechanism: "fast-duo", softwareInterceptionDisabled: false });
+      assert.equal(attempt.method, "key");
+    },
+  };
+  const f = await privateDraftFixture(provider);
+  const admission = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(f.draft.profileId));
+  try {
+    await f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, "key");
+    assert.ok(capability);
+    const request = { requestId: randomUUID(), credentialId, rpId: "duosecurity.com" as const, origin: capability.scope.origin, challenge: "AQID" };
+    await assert.rejects(capability.signAssertion(request), /duo-ready-credential-required/u);
+    const store = createDraftDuoCredentialStore(admission, f.machine, f.draft.operationId, capability.attempt.generation, systemClock);
+    assert.deepEqual(store.readForScope(capability.scope).map(row => [row.state, row.highWater]), [["pending", 0]]);
+    await capability.recordPortalAcceptance({ credentialId, requestId: enrollmentId, acceptance: "exact-credential-request" });
+    assert.equal(f.profile.session.readOnboarding(f.draft.token, f.draft.operationId).methods.key.state, "complete");
+    assert.equal(store.readForScope(capability.scope)[0]?.state, "ready");
+    const signed = await capability.signAssertion(request);
+    const failed = { ...request, requestId: randomUUID(), challenge: Buffer.alloc(4097).toString("base64") };
+    await assert.rejects(capability.signAssertion(failed), /duo-challenge-invalid/u);
+    assert.equal(store.readForScope(capability.scope)[0]?.highWater, signed.signCount + 1);
+    await assert.rejects(capability.signAssertion({ ...failed, challenge: "AQID" }), /duo-attempt-reused/u);
+    await capability.retainUnknown();
+    assert.equal(f.profile.session.readOnboarding(f.draft.token, f.draft.operationId).methods.key.state, "complete");
+    assert.equal(store.readForScope(capability.scope)[0]?.state, "ready");
+  } finally { admission.release(); await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true }); }
 });

@@ -153,7 +153,7 @@ export function createRelayWorker(api) {
         remove: keys => session.remove(keys),
       };
       service = createService(verifiedSession, () => input.nowMs + (performance.now() - started), {
-        reserveSignCount: (credentialId, requestId) => checked(() => call('reserve', { credentialId, requestId })).then(result => result.count),
+        signAssertion: (credentialId, request) => checked(() => call('sign', { credentialId, requestId: request.requestId, rpId: request.rpId, challenge: request.challenge, origin: request.origin })),
         persistPending: credential => checked(() => call('persist', credential)),
         recordCeremony: (credentialId, requestId) => checked(() => call('software-created', { credentialId, requestId })),
         exactCredentialRequested: (credentialId, requestId) => checked(() => call('exact-request', { credentialId, requestId })),

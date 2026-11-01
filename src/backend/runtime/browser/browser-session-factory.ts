@@ -1,10 +1,11 @@
+import { provisionWorkflowDuo } from "./workflow-duo-provider.js";
+import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
 import { DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, BrowserProfileStillClosingError, ProfileCustodyUnavailableError,
   profileReservations, assertPrivateProfilePath, probeClosedBrowserProfile, closeContextWithProof, observeContextLifecycle,
   workerProfileDirectory, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-profile-probe.js";
 export { BrowserProfileStillClosingError, ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT, probeClosedBrowserProfile,
   workerProfileDirectory, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-profile-probe.js";
-import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
 import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
 import { z } from "zod";
@@ -20,7 +21,7 @@ import type {
   WorkerBrowserSessionFactory,
   BrowserScreenshotEvidence,
 } from "../../../workflow-kit/session.js";
-import type { DuoCeremonyGate } from "../../../workflow-kit/duo-ceremony-lease.js";
+import { assertDuoCeremonyLeaseToken, type DuoCeremonyLeaseToken, type DuoCeremonyGate } from "../../../workflow-kit/duo-ceremony-lease.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { RuntimeInstanceSchema, resolveSystemEntryUrl } from "../../../models/config/instance.js";
@@ -40,8 +41,6 @@ import {
 import type { BrowserSystemId, Fingerprint, WorkerId, WorkflowId } from "../../../rules/identity/ids.js";
 import {
   requireSecret,
-  requireSecretFile,
-  resolveSecretFileIdentity,
   type ProtectedSecretSource,
 } from "../../../models/config/secrets.js";
 import { assertAuthenticatedApplication } from "../../systems/browser-shared/authenticated-application.js";
@@ -66,6 +65,8 @@ export type BrowserProfileAdmission = z.infer<typeof BrowserProfileAdmissionSche
 
 export interface BrowserSessionFactoryOptions {
   readonly config: Config;
+  readonly duo?: DuoSigningSource;
+  readonly assertCurrent?: (workerId: WorkerId) => void;
   readonly protectedSecrets: ProtectedSecretSource;
   readonly isolation: RuntimeIsolation;
   readonly clock: Clock;
@@ -100,7 +101,7 @@ function browserModeFor(
 }
 
 
-export function assertFastDuoReady(config: Config): void {
+export function assertFastDuoReady(config: Config, duo?: DuoSigningSource): void {
   if (!config.features.duoWebAuthn) return;
   const manifest = join(config.paths.duoExtensionDir, "workflow-manifest.json");
   let isFile: boolean;
@@ -115,9 +116,9 @@ export function assertFastDuoReady(config: Config): void {
   if (!isFile) {
     throw new Error(`Fast Duo extension is not loadable: ${manifest} is not a regular file`);
   }
-  // `requireSecretFile` is the ONLY credential-file reader; it also enforces
-  // the 0600-or-stricter permission and size limits ref clock-config-secrets requires.
-  requireSecretFile("duoWebauthnCredential", config);
+  if (duo === undefined) throw new DuoProvisioningError();
+  duo.assertCurrent();
+  duo.credentials();
 }
 
 function bindingFor(bindings: BrowserSystemBindings, system: BrowserSystemId): BrowserSystemBinding {
@@ -134,7 +135,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
   readonly #options: BrowserSessionFactoryOptions;
   readonly #bindings: BrowserSystemBindings;
   readonly #launcher: PersistentContextLauncher;
-  readonly #owned = new Map<string, Readonly<{ context: BrowserContext; lifecycle: ContextLifecycle }>>();
+  readonly #owned = new Map<string, Readonly<{ context: BrowserContext; lifecycle: ContextLifecycle; duo?: Awaited<ReturnType<typeof provisionWorkflowDuo>> }>>();
 
   constructor(options: BrowserSessionFactoryOptions) {
     this.#options = options;
@@ -194,13 +195,13 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       profileRoot: config.paths.browserProfileRoot,
       slotOrdinal: this.#options.slotOrdinal(workerId, system), system,
     });
-    const signInFingerprint = browserSignInFingerprint(config, this.#options.protectedSecrets, system, instance);
+    const signInFingerprint = browserSignInFingerprint(config, this.#options.protectedSecrets, system, instance, this.#options.duo);
     const profileIdentity = { workerId, system, instance, configFingerprint, signInFingerprint, browserMode, profileDirectory };
     const { profileRevision, resetRequired, ...admittedIdentity } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(profileIdentity));
     if (canonicalJsonStringify(admittedIdentity) !== canonicalJsonStringify(profileIdentity)) throw new ProfileCustodyUnavailableError();
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
-    assertFastDuoReady(config);
+    assertFastDuoReady(config, this.#options.duo);
     profileReservations.add(profileDirectory);
     if (resetRequired) {
       const previous = await this.#launchProfile(profileDirectory, browserMode, input.acceptDownloads, system);
@@ -218,9 +219,22 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     const context = await this.#launchProfile(profileDirectory, browserMode, input.acceptDownloads, system);
 
     const lifecycle = observeContextLifecycle(context);
+    let signingToken: DuoCeremonyLeaseToken | undefined;
     try {
       this.#owned.set(profileDirectory, { context, lifecycle });
-      if (config.features.duoWebAuthn) await provisionDuo(context, config, this.#options.protectedSecrets, this.#options.clock);
+      if (config.features.duoWebAuthn) {
+        const source = this.#options.duo;
+        if (source === undefined) throw new DuoProvisioningError();
+        const duo = await provisionWorkflowDuo({ context, config, source, accountName: requireSecret("ucpathUserId", this.#options.protectedSecrets),
+          assertSigningScope: () => {
+            assertDuoCeremonyLeaseToken(signingToken, { system });
+            if (signingToken.holder.workerId !== workerId || signingToken.credentialKey !== source.identity()
+              || this.#options.clock.nowMs() >= Date.parse(signingToken.expiresAt)) throw new DuoProvisioningError();
+          },
+          assertOwner: () => { input.signal.throwIfAborted(); this.#options.assertCurrent?.(workerId);
+            if (lifecycle.closed() || this.#owned.get(profileDirectory)?.context !== context) throw new DuoProvisioningError(); } }).catch(error => { throw new DuoProvisioningError({ cause: error }); });
+        this.#owned.set(profileDirectory, { context, lifecycle, duo });
+      }
       const existing = context.pages();
       const page = existing[0] ?? await context.newPage();
       const diagnostics = attachBrowserDiagnostics(page, this.#options.clock);
@@ -305,12 +319,20 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
               credentials: readSsoCredentials(this.#options.protectedSecrets),
               recordEvidence: this.#recordEvidence,
               duoCeremony: input.duoCeremony,
+              withDuoSigningScope: async (token, run) => {
+                assertDuoCeremonyLeaseToken(token, { system });
+                if (signingToken !== undefined || token.holder.workerId !== workerId) throw new DuoProvisioningError();
+                signingToken = token;
+                try { return await run(); } finally { signingToken = undefined; }
+              },
               ...(input.claimStaleRequestRecovery === undefined ? {} : { claimStaleRequestRecovery: input.claimStaleRequestRecovery }),
               ...(input.acquisitionRemainingMs === undefined ? {} : { acquisitionRemainingMs: input.acquisitionRemainingMs }),
             };
             emit("started");
             try {
+              this.#owned.get(profileDirectory)?.duo?.assertCurrent();
               const result = await binding.login(loginContext);
+              this.#owned.get(profileDirectory)?.duo?.assertCurrent();
               emit("settled");
               return result;
             } catch (error) { emit("failed", "session-authentication-failed"); throw error; }
@@ -362,7 +384,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       system: input.system,
     });
     const instance = RuntimeInstanceSchema.parse(input.instance);
-    const identity = { ...input, instance, browserMode, profileDirectory, signInFingerprint: browserSignInFingerprint(config, this.#options.protectedSecrets, input.system, instance) };
+    const identity = { ...input, instance, browserMode, profileDirectory, signInFingerprint: browserSignInFingerprint(config, this.#options.protectedSecrets, input.system, instance, this.#options.duo) };
     const { profileRevision: _revision, resetRequired: _reset, ...admitted } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(identity));
     if (canonicalJsonStringify(admitted) !== canonicalJsonStringify(identity)) throw new ProfileCustodyUnavailableError();
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
@@ -442,8 +464,21 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     system: BrowserSystemId,
     reason: BrowserSessionCloseReason,
   ): Promise<void> {
-    return closeContextWithProof({ clock: this.#options.clock, scheduler: this.#options.scheduler,
-      closeProofMs: this.#options.config.browser.closeProofMs }, context, lifecycle, system, reason);
+    const duo = [...this.#owned.values()].find(owned => owned.context === context)?.duo;
+    let timer: ReturnType<BrowserDeadlineScheduler["schedule"]> | undefined;
+    const brokerClose = duo === undefined ? undefined : Promise.race([duo.stop(), new Promise<never>((_resolve, reject) => {
+      timer = this.#options.scheduler.schedule(this.#options.clock.monotonicMs() + this.#options.config.browser.closeProofMs,
+        () => reject(new Error("duo-broker-close-unproved")));
+    })]);
+    const results = await Promise.allSettled([
+      ...(brokerClose === undefined ? [] : [brokerClose]),
+      closeContextWithProof({ clock: this.#options.clock, scheduler: this.#options.scheduler,
+        closeProofMs: this.#options.config.browser.closeProofMs }, context, lifecycle, system, reason),
+    ]);
+    timer?.cancel();
+    const errors: unknown[] = [];
+    for (const result of results) if (result.status === "rejected") { const reason: unknown = result.reason; errors.push(reason); }
+    if (errors.length > 0) throw new BrowserSessionClosureUnprovedError(errors, `${system} browser and Duo broker closure is unproved`);
   }
 }
 
@@ -469,35 +504,17 @@ export function deleteOwnedBrowserProfile(profileRoot: string, profileDirectory:
 
 export class DuoProvisioningError extends Error {
   readonly code = "duo-extension-provisioning-unavailable";
-  constructor() { super("Duo extension session provisioning could not be verified."); this.name = "DuoProvisioningError"; }
+  constructor(options?: ErrorOptions) { super("Duo extension session provisioning could not be verified.", options); this.name = "DuoProvisioningError"; }
 }
 
-export function browserSignInFingerprint(config: Config, secrets: ProtectedSecretSource, system: BrowserSystemId, instance: RuntimeInstance): Fingerprint {
+export function browserSignInFingerprint(config: Config, secrets: ProtectedSecretSource, system: BrowserSystemId, instance: RuntimeInstance, duo?: DuoSigningSource): Fingerprint {
   const { entries } = ProtectedStoreRecordSchema.parse(secrets.read());
   const urls = system === "new-kronos" ? config.urls.newKronos : system === "old-kronos" ? config.urls.oldKronos : config.urls[system];
   return FingerprintSchema.parse(sha256Hex(canonicalJsonStringify({ system, instance, urls,
     credentialIds: { userId: entries.ucpathUserId?.valueId ?? null, password: entries.ucpathPassword?.valueId ?? null },
-    duo: { enabled: config.features.duoWebAuthn, credentialPath: config.paths.duoCredential,
-      extensionPath: config.paths.duoExtensionDir, publicIdentity: config.features.duoWebAuthn ? resolveSecretFileIdentity("duoWebauthnCredential", config) : null },
+    duo: { enabled: config.features.duoWebAuthn, extensionPath: config.paths.duoExtensionDir, publicIdentity: config.features.duoWebAuthn
+      ? (() => { if (duo === undefined) throw new DuoProvisioningError(); duo.assertCurrent(); return duo.identity(); })() : null },
   })));
-}
-
-async function provisionDuo(context: BrowserContext, config: Config, secrets: ProtectedSecretSource, clock: Clock): Promise<void> {
-  const ownedWorker = (url: string): boolean => /^chrome-extension:\/\/[a-p]{32}\/src\/workflow-background\.js$/u.test(url);
-  try {
-    const parsed = DuoCredentialFileSchema.parse(JSON.parse(requireSecretFile("duoWebauthnCredential", config).toString("utf8")));
-    const credentials = Array.isArray(parsed) ? parsed : "credentials" in parsed ? parsed.credentials : [parsed];
-    const current = context.serviceWorkers().filter(worker => ownedWorker(worker.url()));
-    if (current.length > 1) throw new DuoProvisioningError();
-    const worker = current[0] ?? await context.waitForEvent("serviceworker", { predicate: worker => ownedWorker(worker.url()), timeout: config.timeouts.navigationMs });
-    await worker.evaluate(async input => {
-      const owner: unknown = Reflect.get(globalThis, "relayWorkflow");
-      if (typeof owner !== "object" || owner === null) throw new Error("duo-session-unavailable");
-      const install: unknown = Reflect.get(owner, "install");
-      if (typeof install !== "function") throw new Error("duo-session-unavailable");
-      await Reflect.apply(install, owner, [input]);
-    }, { username: requireSecret("ucpathUserId", secrets), credentials, nowMs: clock.now().getTime() });
-  } catch { throw new DuoProvisioningError(); }
 }
 
 // UCSD systems share an SSO realm and credential pair, but hold distinct application sessions.

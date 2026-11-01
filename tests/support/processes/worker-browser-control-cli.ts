@@ -82,24 +82,16 @@ try {
       const authenticated = await page.locator("[data-authenticated]").count() === 1 && await page.locator("input[type=password]").count() === 0;
       trace({ event: "verify", system, authenticated, url: page.url() });
       if (config.features.duoWebAuthn) {
-        const workers = page.context().serviceWorkers().filter(worker => /^chrome-extension:\/\/[^/]+\/src\/background\.js$/.test(worker.url()));
+        const workers = page.context().serviceWorkers().filter(worker => /^chrome-extension:\/\/[^/]+\/src\/workflow-background\.js$/.test(worker.url()));
         assert.equal(workers.length, 1);
         const worker = workers[0]; assert.ok(worker);
-        const provisioned = await worker.evaluate(async () => {
-          const chrome: unknown = Reflect.get(globalThis, 'chrome');
-          if (typeof chrome !== 'object' || chrome === null) return false;
-          const storage: unknown = Reflect.get(chrome, 'storage');
-          if (typeof storage !== 'object' || storage === null) return false;
-          const session: unknown = Reflect.get(storage, 'session');
-          if (typeof session !== 'object' || session === null) return false;
-          const get: unknown = Reflect.get(session, 'get');
-          if (typeof get !== 'function') return false;
-          const stored: unknown = await Reflect.apply(get, session, ['duoCredentials']);
-          if (typeof stored !== 'object' || stored === null) return false;
-          const credentials: unknown = Reflect.get(stored, 'duoCredentials');
-          return Array.isArray(credentials) && credentials.length === 1;
+        const brokerOnly = await worker.evaluate(() => {
+          const owner: unknown = Reflect.get(globalThis, "relayWorkflow");
+          const chrome: unknown = Reflect.get(globalThis, "chrome");
+          return typeof owner === "object" && owner !== null && typeof Reflect.get(owner, "next") === "function"
+            && typeof chrome === "object" && chrome !== null && Reflect.get(chrome, "storage") === undefined;
         });
-        assert.equal(provisioned, true);
+        assert.equal(brokerOnly, true);
       }
       return authenticated ? { authenticated: true, evidence: { system, url: page.url(), positive: "isolated fixture session marker", negative: "no sign-in form" } }
         : { authenticated: false, reason: "fixture-neutral-state-missing" };

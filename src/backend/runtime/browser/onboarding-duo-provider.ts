@@ -1,3 +1,4 @@
+import { DuoAssertionRequestSchema } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
 import { lstatSync, mkdirSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
@@ -33,7 +34,7 @@ const BrokerRequestSchema = z.discriminatedUnion("kind", [
     documentId: BrowserDocumentIdSchema, tabId: z.number().int().nonnegative(), origin: z.url(), rpId: z.literal("duosecurity.com"), username: z.string().min(1).max(128),
   }) }),
   z.strictObject({ id: z.uuid(), kind: z.literal("persist"), data: PendingSchema }),
-  z.strictObject({ id: z.uuid(), kind: z.literal("reserve"), data: ReceiptSchema }),
+  z.strictObject({ id: z.uuid(), kind: z.literal("sign"), data: DuoAssertionRequestSchema }),
   z.strictObject({ id: z.uuid(), kind: z.enum(["native-failed", "scope-lost"]), data: z.strictObject({ requestId: z.uuid() }) }),
   ...(["software-created", "native-created", "portal-accepted", "exact-request"] as const).map(kind =>
     z.strictObject({ id: z.uuid(), kind: z.literal(kind), data: ReceiptSchema })),
@@ -118,15 +119,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       session.credentialId = request.data.credentialId;
       return result;
     }
-    if (request.kind === "reserve") {
+    if (request.kind === "sign") {
       if (session.attempt.method !== "key" || request.data.credentialId !== session.credentialId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-      const provisioned = await scoped(session, () => capability.provision(request.data.credentialId));
-      current(session);
-      if (provisioned.credentialId !== session.credentialId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-      const reservation = await scoped(session, () => capability.reserveSignCount({ credentialId: request.data.credentialId, attemptId: request.data.requestId }));
-      current(session);
-      if (!Number.isSafeInteger(reservation.count) || reservation.count <= provisioned.highWater || reservation.count >= 0xffffffff) throw new ProfileOnboardingDuoProviderError("unknown", "counter");
-      return reservation;
+      return scoped(session, () => capability.signAssertion(request.data));
     }
     if (!("credentialId" in request.data)) throw new ProfileOnboardingDuoProviderError("unknown", "provider");
     const { credentialId, requestId } = request.data;

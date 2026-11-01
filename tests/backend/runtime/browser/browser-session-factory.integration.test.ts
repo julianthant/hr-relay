@@ -1,3 +1,4 @@
+import { fixtureDuoSigningSource, fixtureWorkflowWorker } from "../../../support/helpers/browser/duo-signing.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
@@ -8,8 +9,6 @@ import { PNG } from "pngjs";
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join,resolve as resolvePath } from "node:path";
-import { runInNewContext } from "node:vm";
-import type { Worker } from "playwright";
 import { tsImport } from "tsx/esm/api";
 import { beforeEach, describe,it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -415,7 +414,7 @@ describe("worker browser session factory", () => {
       };
       assert.throws(
         () => { assertFastDuoReady({ ...missingCredential, features: { ...config.features, duoWebAuthn: true } }); },
-        /duoWebauthnCredential is unavailable/,
+        /Duo extension session provisioning could not be verified/,
       );
 
       const loosePermissions = join(root, "loose.json");
@@ -426,9 +425,9 @@ describe("worker browser session factory", () => {
           assertFastDuoReady({
             ...config, features: { ...config.features, duoWebAuthn: true },
             paths: { ...config.paths, duoCredential: loosePermissions },
-          });
+          }, fixtureDuoSigningSource({ assertCurrent() { throw new DuoProvisioningError(); } }));
         },
-        /duoWebauthnCredential is unavailable/,
+        /Duo extension session provisioning could not be verified/,
       );
 
       // Feature off is an explicit operator decision, not a silent skip.
@@ -649,13 +648,10 @@ describe("required profile custody admission", () => {
     await withTempRuntime(async ({ config }) => {
       const credential = { rpId: "duosecurity.com", credentialId: "fixture-public-id", privateKey: "fixture-private-key", signCount: 0, transport: "internal" };
       writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
-      let installed: unknown;
-      const serviceWorker = { url: () => `chrome-extension://${"a".repeat(32)}/src/workflow-background.js`,
-        evaluate: (operation: (input: unknown) => Promise<void>, input: unknown) =>
-          runInNewContext(`(${operation.toString()})(input)`, { input, relayWorkflow: { install: (value: unknown) => { installed = value; } } }) as Promise<void>,
-      } as unknown as Worker;
+      const broker = fixtureWorkflowWorker();
+      const serviceWorker = broker.worker;
       const resource = await factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, fakeLauncher({ serviceWorker }), recordingBindings()).open(OPEN_INPUT);
-      try { assert.deepEqual(JSON.parse(JSON.stringify(installed)), { username: "fixture-user", credentials: [credential], nowMs: CLOCK.now().getTime() }); }
+      try { assert.deepEqual(broker.installed.map(args => [...args]), [[]]); }
       finally { await resource.close({ reason: "worker-stop" }); }
     });
   });
@@ -665,14 +661,11 @@ describe("required profile custody admission", () => {
       writeFileSync(config.paths.duoCredential, JSON.stringify(credential));
       const runtime = await tsImport("../../../../src/backend/runtime/browser/browser-session-factory.ts", import.meta.url) as
         typeof import("../../../../src/backend/runtime/browser/browser-session-factory.js");
-      let installed: unknown;
-      const serviceWorker = { url: () => `chrome-extension://${"a".repeat(32)}/src/workflow-background.js`,
-        evaluate: (operation: (input: unknown) => Promise<void>, input: unknown) =>
-          runInNewContext(`(${operation.toString()})(input)`, { input, relayWorkflow: { install: (value: unknown) => { installed = value; } } }) as Promise<void>,
-      } as unknown as Worker;
+      const broker = fixtureWorkflowWorker();
+      const serviceWorker = broker.worker;
       const resource = await factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, fakeLauncher({ serviceWorker }), recordingBindings(), NEVER_SCHEDULER, undefined,
         runtime.PlaywrightWorkerSessionFactory).open(OPEN_INPUT);
-      try { assert.equal(JSON.stringify(installed), JSON.stringify({ username: "fixture-user", credentials: [credential], nowMs: CLOCK.now().getTime() })); }
+      try { assert.equal(JSON.stringify(broker.installed), "[[]]"); }
       finally { await resource.close({ reason: "worker-stop" }); }
     });
   });

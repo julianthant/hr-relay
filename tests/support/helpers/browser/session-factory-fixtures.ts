@@ -1,3 +1,5 @@
+import { fixtureDuoSigningSource } from "./duo-signing.js";
+import type { DuoSigningSource } from "../../../../src/backend/storage/configuration/duo-signing.js";
 import { PNG } from "pngjs";
 import { runInNewContext } from "node:vm";
 import { chmodSync, cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -226,9 +228,11 @@ export function createBrowserSessionFactoryFixtures(
       ucpathPassword: "fixture-value",
     }),
     Factory: typeof PlaywrightWorkerSessionFactory = PlaywrightWorkerSessionFactory,
+    duo: DuoSigningSource = fixtureDuoSigningSource(),
   ): PlaywrightWorkerSessionFactory {
     return new Factory({
       config,
+      duo,
       protectedSecrets,
       isolation: rebuildRuntimeIsolation,
       clock: CLOCK,

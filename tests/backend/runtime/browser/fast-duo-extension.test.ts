@@ -24,7 +24,11 @@ describe("Fast Duo extension staging", () => {
       for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.md"]) assert.equal(readFileSync(join(staged, name), "utf8"), readFileSync(join("fast-duo", name), "utf8"));
       assert.equal(statSync(join(staged, "manifest.json")).mode & 0o777, 0o600);
       for (const name of ["bootstrap.json", "credentials", "src/background.js", "src/private-storage.js"]) assert.equal(existsSync(join(staged, name)), false);
-      if (mode === "workflow") assert.deepEqual(readdirSync(join(staged, "src")).filter(name => /options|popup|relay-/u.test(name)), []);
+      if (mode === "workflow") {
+        assert.deepEqual(readdirSync(join(staged, "src")).filter(name => /options|popup|relay-|service|crypto|sign-count/u.test(name)), []);
+        const permissions = JSON.parse(readFileSync(join(staged, "manifest.json"), "utf8")) as { permissions: string[] };
+        assert.equal(permissions.permissions.includes("storage"), false);
+      }
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 

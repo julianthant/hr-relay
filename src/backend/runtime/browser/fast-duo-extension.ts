@@ -7,10 +7,10 @@ class FastDuoExtensionError extends Error {
 }
 
 const WORKFLOW_EXTENSION_FILES = ["workflow-manifest.json", "LICENSE", "THIRD_PARTY_NOTICES.md", "src/workflow-background.js",
-  "src/inpage.js", "src/content.js", "src/username.js", "src/service.js", "src/crypto.js", "src/accounts.js", "src/sign-count.js"] as const;
+  "src/workflow-inpage.js", "src/workflow-content.js", "src/username.js", "src/duo-origin.js"] as const;
 
 const RELAY_EXTENSION_FILES = ["relay-manifest.json", "LICENSE", "THIRD_PARTY_NOTICES.md", "src/relay-background.js", "src/relay-content.js", "src/relay-inpage.js", "src/relay-native.js",
-  "src/service.js", "src/crypto.js", "src/accounts.js", "src/sign-count.js", "src/username.js",
+  "src/service.js", "src/crypto.js", "src/accounts.js", "src/duo-origin.js", "src/sign-count.js", "src/username.js",
   "src/options.html", "src/options.js", "src/popup.html", "src/popup.js", "src/relay-options.js", "src/styles.css", "src/icons/autopilot.svg", "src/icons/key-round.svg", "src/icons/plus.svg", "src/icons/shield-check.svg"] as const;
 
 export function stageFastDuoExtension(sourceRoot: string, destination: string, mode: "onboarding" | "workflow"): void {
