@@ -41,7 +41,7 @@ export function createWriteSequencerTestWorld() {
   const disposers: (() => void | Promise<void>)[] = [];
 
   async function harness(options: Readonly<{
-    captureFailure?: "before-submit" | "after-submit";
+    captureFailure?: "before-submit" | "after-submit" | "probe" | "prepare" | "verify";
     hooks?: WriteSequencerHooks;
     commitHooks?: AuthorityWriteCommitHooks;
     emitterThrowsOn?: "data.observed" | "failed-task-span" | "transaction.fenced" | "verify-start";
@@ -80,7 +80,9 @@ export function createWriteSequencerTestWorld() {
       capture: async context => {
         if (context.trigger.kind !== "task-point") return;
         if (options.captureFailure !== undefined) world.events.push(`capture:${context.trigger.boundary}`);
-        if (context.trigger.boundary === options.captureFailure) throw new Error("synthetic capture failure");
+        const role = world.events.includes("verify") ? "verify" : world.events.includes("prepare") ? "prepare" : "probe";
+        if (context.trigger.boundary === options.captureFailure
+          || context.trigger.boundary === "step" && role === options.captureFailure) throw new Error("synthetic capture failure");
       },
     }); held.manager = manager;
     const emitter = recordingEmitter();

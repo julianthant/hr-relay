@@ -1202,12 +1202,19 @@ export async function executeClaimedRun(
                 Promise.resolve().then(() => withBrowserActionBinding(
                   declaredActionBinder,
                   async () => {
+                    let captured = false;
+                    let captureFailure: Readonly<{ error: unknown }> | undefined;
+                    const requiredCapture = async (): Promise<void> => {
+                      try { await captureScreenshot(); captured = true; }
+                      catch (error) { captureFailure = { error }; throw error; }
+                    };
                     const output = await run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver,
-                      captureScreenshot: task.impl.screenshots === "task" ? captureScreenshot : () => Promise.reject(new TaskError(
+                      captureScreenshot: task.impl.screenshots === "task" ? requiredCapture : () => Promise.reject(new TaskError(
                         contract.id, "BROWSER_SCREENSHOT_CAPTURE_FAILED", "Task screenshot capture requires declared task ownership",
                       )),
                     } });
-                    if (task.impl.screenshots !== "task") await captureScreenshot();
+                    if (captureFailure !== undefined) throw captureFailure.error;
+                    if (!captured) await requiredCapture();
                     return output;
                   },
                 )),
@@ -1827,7 +1834,8 @@ export async function executeClaimedRun(
                 confirmedForRole: (role, taskId, parsedInput) => confirmedRole(role, taskId, parsedInput)?.actions,
                 ...(trackedBinders === undefined ? {} : { operationActionBinders: trackedBinders }),
                 ...(operationReadBinder === undefined ? {} : { operationReadBinder }),
-              }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions)));
+              }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions.filter(action => action.kind !== "screenshot")),
+                action => { if (action.kind === "screenshot") drainBrowserActions(runSpanIdentity.spanPath, [action], node.commit.uses.id); }));
             } catch (error) {
               if (error instanceof RunAbandonedError) throw error;
               return await failNode(node, node.commit.uses.id, error);
@@ -1861,7 +1869,8 @@ export async function executeClaimedRun(
               onDiagnosticDeliveryFailure: () => { deps.confirmedActionPublisher?.reportAppendFailure(); },
               ...(trackedBinders === undefined ? {} : { operationActionBinders: trackedBinders }),
                 ...(operationReadBinder === undefined ? {} : { operationReadBinder }),
-            }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions));
+            }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions.filter(action => action.kind !== "screenshot")),
+                action => { if (action.kind === "screenshot") drainBrowserActions(runSpanIdentity.spanPath, [action], node.commit.uses.id); });
             const OutcomeSchema = z.strictObject({
               disposition: z.enum(["committed", "already-present"]),
               proofSource: z.enum([
