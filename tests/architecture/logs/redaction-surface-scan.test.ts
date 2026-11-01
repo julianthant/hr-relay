@@ -58,6 +58,18 @@ function pathCoveredBy(candidate: string, owned: readonly string[]): boolean {
 
 describe("redaction surface scan — the declaration audit", () => {
 
+  it("keeps nullable booleans closed while retaining nullable text and open JSON origins", () => {
+    assert.deepEqual(surfaceLeaves(z.strictObject({
+      readback: z.boolean().nullable(),
+      note: z.string().nullable(),
+      payload: z.unknown(),
+    })), [
+      { path: "note", kind: "free-text" },
+      { path: "payload", kind: "open-json" },
+      { path: "readback", kind: "closed" },
+    ]);
+  });
+
   it("dispositions every free-text and open-JSON leaf of every registered surface", () => {
     const violations = auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS);
     assert.deepEqual(violations, [], `redaction surface audit:\n  ${violations.join("\n  ")}`);

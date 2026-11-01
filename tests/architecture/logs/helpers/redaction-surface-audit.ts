@@ -194,6 +194,11 @@ function collectLeaves(node: unknown, path: string, out: SurfaceLeaf[]): void {
     out.push({ path, kind: "open-json" });
     return;
   }
+  if (Array.isArray(schema.type) && schema.type.length > 0) {
+    const types: readonly unknown[] = schema.type;
+    for (const type of types) collectLeaves({ ...schema, type }, path, out);
+    return;
+  }
   if (schema.type === "object" || schema.properties !== undefined) {
     const properties = asNode(schema.properties) ?? {};
     const keys = Object.keys(properties).sort();

@@ -219,12 +219,12 @@ afterEach(_afterEachFixture0);
           const parsed = SpanEventWireSchema.safeParse(invalid);
           assert.equal(parsed.success, false);
           if (parsed.success) throw new Error("the invalid record key must be refused");
-          const [union] = parsed.error.issues;
-          assert.ok(union?.code === "invalid_union");
-          assert.deepEqual(union.errors[0]?.map(({ code, path }) => ({ code, path })), [
-            { code: "invalid_key", path: ["resolvedInstance", marker] },
-          ], "the otherwise-valid queued arm must fail at the marker-bearing nested record key");
-          assert.deepEqual(union.path, [], "the union itself has a root path; it does not flatten nested key paths");
+          const [issue] = parsed.error.issues;
+          assert.ok(issue?.code === "unrecognized_keys");
+          assert.deepEqual(parsed.error.issues.map(({ code, path }) => ({ code, path })), [
+            { code: "unrecognized_keys", path: ["resolvedInstance"] },
+          ], "the otherwise-valid queued arm must fail only at the nested record");
+          assert.deepEqual(issue.keys, [marker], "the issue must identify exactly the rejected record key");
         }
         const raw = new DatabaseSync(authorityPath);
         try {
