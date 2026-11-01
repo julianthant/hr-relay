@@ -2,6 +2,7 @@ import { fixtureDuoSigningSource, fixtureWorkflowWorker } from "../../../support
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
+import { BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 
 import assert from "node:assert/strict";
@@ -79,6 +80,10 @@ beforeEach(() => {
     },
   } };
 });
+
+// Browser and Duo broker closure failures arrive joined; match the exact underlying cause.
+const closureCause = (pattern: RegExp) => (error: unknown): boolean => error instanceof BrowserSessionClosureUnprovedError
+  && error.errors.some(cause => cause instanceof Error && pattern.test(cause.message));
 
 describe("worker browser session factory", () => {
   it("probes native availability without profile reset, credential reads, provisioning or login", async () => {
@@ -584,7 +589,7 @@ describe("worker browser session factory", () => {
       const silentResource = await factoryFor(config, silent, recordingBindings()).open(OPEN_INPUT);
       await assert.rejects(
         silentResource.close({ reason: "worker-stop" }),
-        /never emitted its context close event/,
+        closureCause(/never emitted its context close event/u),
       );
 
       // A page that refuses to close is not "closed enough".
@@ -592,7 +597,7 @@ describe("worker browser session factory", () => {
       const stuckResource = await factoryFor({ ...config, paths: { ...config.paths, browserProfileRoot: `${config.paths.browserProfileRoot}-stuck` } }, stuck, recordingBindings()).open(OPEN_INPUT);
       await assert.rejects(
         stuckResource.close({ reason: "worker-stop" }),
-        /injected page close failure/,
+        closureCause(/injected page close failure/u),
       );
 
       // A close that hangs must hit its bounded proof deadline, not wait forever.
@@ -605,7 +610,7 @@ describe("worker browser session factory", () => {
       ).open(OPEN_INPUT);
       await assert.rejects(
         hangingResource.close({ reason: "worker-stop" }),
-        /did not complete within its .*proof deadline/,
+        closureCause(/did not complete within its .*proof deadline/u),
       );
     });
   });
