@@ -1,3 +1,4 @@
+import type { BoundProfileStorageFixture } from "../admission-fixture.js";
 import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { testWorkerPorts, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
@@ -15,9 +16,9 @@ import { personLookupQueuedRun } from "../phase1f-executor-harness.js";
 import { makeWorld, uuidOf } from "./dashboard-harness.js";
 
 /** Trust acceptance uses actual SQLite service reads; the empty projector supplies evidence only. */
-export async function trustWorld() {
-  const world = await makeWorld();
-  const profile = await createBoundProfileFixture();
+export async function trustWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  const world = await makeWorld({ profileFixture });
+  const profile = await profileFixture();
   const database = AuthorityDatabase.open(profile.admission, { path: profile.path,
     busyTimeoutMs: 250, migrationOwner: "trust-linkage-test" }, world.clock, undefined, undefined, undefined,
     boundProfileCredentials(profile.admission));

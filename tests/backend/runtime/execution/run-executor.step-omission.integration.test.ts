@@ -1,9 +1,10 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
 import { testWorkerLifetime, testRunLifecycle,testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
 import { z } from "zod";
 import { taskSpanPath } from "../../../../src/backend/logs/span-emitter.js";
 import { deriveGateResultCheckpointFingerprint } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -29,6 +30,9 @@ openAuthorityHarness,
 recordingLogger,
 sessionManagerFor,
 } from "../../../support/helpers/phase1f-executor-harness.js";
+
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 
 const disposers: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
@@ -202,7 +206,7 @@ const registry = defineTaskStoreRegistry([defineServiceStore("ocr", { fixture: f
 });
 
 async function harnessFor(descriptor: AnyWorkflowDescriptor) {
-  const authority = await openAuthorityHarness();
+  const authority = await openAuthorityHarness(profileFixtures.create);
   disposers.push(authority.dispose);
   testWorkerPorts(authority.database, authority.clock, { path: authority.path, descriptor, poolIndex: 1 });
   const emitter = {

@@ -1,15 +1,15 @@
+import { afterAll, it, vi } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
-import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { it,vi } from "vitest";
 import { createCrossDateSearchService } from "../../../../src/backend/runs/queries/search.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
@@ -18,14 +18,16 @@ import { DiagnosticBundleSchema } from "../../../../src/models/trust/diagnostic.
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { failure,HASH,NOW } from "../../../support/helpers/database-foundation/fixtures.js";
 import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 async function fixture() {
-  const profile = await createBoundProfileFixture();
+  const profile = await profileFixtures.create();
   const root = profile.stateRoot, path = profile.path;
   const clock = manualClock(new Date("2026-09-21T12:00:00Z"));
   let db = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "search-test" }, clock);

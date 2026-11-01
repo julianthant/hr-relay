@@ -10,7 +10,7 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatc
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { boundProfileCredentials, createBoundProfileFixture } from "../admission-fixture.js";
+import { boundProfileCredentials, createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { activeSettingsRuntimeIdentity } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { composeSettings } from "../../../../src/backend/app/composition/dashboard/settings.js";
 import { buildSettingsEditor } from "../../../../src/backend/runs/queries/settings-editor.js";
@@ -22,8 +22,8 @@ import { SettingsAuthoritySection } from "../../../../src/dashboard/surfaces/set
 import { RoutesSection } from "../../../../src/dashboard/surfaces/settings/routes/settings-routes.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-export async function syntheticSettingsAuthority() {
-  const profile = await createBoundProfileFixture();
+export async function syntheticSettingsAuthority(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  const profile = await profileFixture();
   const clock = manualClock(new Date("2026-09-13T12:00:00.000Z"));
   const admission = profile.admission;
   const credentials = boundProfileCredentials(admission);

@@ -1,3 +1,5 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { runRecordColumns } from "../../../../../src/backend/storage/sqlite/run-record-row.js";
 
 import assert from "node:assert/strict";
@@ -5,7 +7,6 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import readXlsxFile from "read-excel-file/node";
-import { afterEach, describe, it } from "vitest";
 import { ActivityReportSelectionSchema } from "../../../../../src/models/dashboard/activity-selection.js";
 import { CrossDateSearchPageSchema } from "../../../../../src/models/dashboard/search.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
@@ -14,6 +15,9 @@ import { seedSeparationsRunAuthority } from "../../../../support/fixtures/integr
 import { insertMeasuredSearchRun } from "../../../../support/helpers/backend/cross-date-search-harness.js";
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
+
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 
 function restoreSearchRun(h: Awaited<ReturnType<typeof harness>>, run: RunRecord): void {
   const raw = new DatabaseSync(join(h.stateRoot, "state.db"));
@@ -31,7 +35,7 @@ function restoreSearchRun(h: Awaited<ReturnType<typeof harness>>, run: RunRecord
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("serves strict cross-date search from durable run authority", async () => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"), seed: 77, enqueuedAt: "2026-08-28T15:00:00.000Z" });
 
     const response = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
@@ -61,7 +65,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("serves an exact People count from persisted current Separations standalone and member evidence only", async () => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const standalone = currentSeparationsRun({ seed: 310, shape: "single" });
     const operation = currentSeparationsRun({ seed: 311, shape: "operation" });
     const firstMember = currentSeparationsRun({ seed: 312, shape: "operation-member", parent: operation });
@@ -85,7 +89,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses corrupt current terminal evidence instead of reporting a verified People count", async () => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const evidenced = currentSeparationsRun({ seed: 320, shape: "single" });
     const missing = currentSeparationsRun({ seed: 321, shape: "single" });
     seedCurrentSeparationsRun(h, evidenced);
@@ -104,7 +108,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("serves canonical People from both current result owners", async () => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const first = currentSeparationsRun({ seed: 330, shape: "single" });
     const second = currentSeparationsRun({ seed: 331, shape: "single" });
 
@@ -170,7 +174,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ];
 
     for (const [index, corpusCase] of cases.entries()) {
-      const h = await harness();
+      const h = await harness({ profileFixture: profileFixtures.create });
       const run = insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"),
         seed: 80 + index,
         enqueuedAt: "2026-08-28T15:00:00.000Z",
@@ -217,7 +221,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("refuses corrupt search authority without exposing its sensitive bytes", async () => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const run = insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"), seed: 78, enqueuedAt: "2026-08-28T15:00:00.000Z" });
     const sensitiveNodeId = "ssn-902-48-1357-eid-10873698";
     const sensitivePatch = {
@@ -246,7 +250,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("serves one dedicated XLSX download only after its exact evidence is durable", async () => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const activityReport = ActivityReportSelectionSchema.parse(
       await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
     );
@@ -316,7 +320,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       code: "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED",
     },
   ])("refuses XLSX $label before durable effects", async ({ headers, status, code }) => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     const activityReport = ActivityReportSelectionSchema.parse(
       await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
     );
@@ -335,7 +339,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("exports every page of one real signed cross-date search selection as evidenced XLSX", async () => {
-    const h = await harness();
+    const h = await harness({ profileFixture: profileFixtures.create });
     insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"), seed: 201, enqueuedAt: "2026-08-28T15:00:00.000Z" });
     insertMeasuredSearchRun(h.database, { authorityPath: join(h.stateRoot, "state.db"), seed: 202, enqueuedAt: "2026-08-28T14:00:00.000Z" });
 
@@ -385,7 +389,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
 
   it("serves /events/v1 through the demand-driven bridge: an unread client is bounded to one reset-required and cancel closes the hub connection", async () => {
-    const h = await harness({ maxPending: 2 });
+    const h = await harness({ profileFixture: profileFixtures.create, maxPending: 2 });
     const response = await h.app.request(`http://localhost/events/v1?topics=dashboard-day:${DAY}`, {
       headers: { host: "localhost" },
     });

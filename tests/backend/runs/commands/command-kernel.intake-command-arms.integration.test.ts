@@ -1,12 +1,12 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { insertImportedArtifact } from "../../../../src/backend/storage/sqlite/imported-artifacts.js";
 import { importedArtifact } from "../../../../src/models/intake/imported-artifact.js";
 import { reviewedIntakeFixture } from "../../../support/fixtures/intake-kernel-seams.js";
 
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach,describe,it } from "vitest";
 import { deriveIntakeParse } from "../../../../src/backend/processing/spreadsheet/intake-parser.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { detectColumns,headerFingerprint } from "../../../../src/models/intake/mapping.js";
@@ -32,9 +32,11 @@ UUID_3,
 UUID_7,
 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN,sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
-import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 
 /* ── the source file, as a grid the shared edge would have produced ──────── */
+
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 
 const SHEET = "Cohort A";
 const GRID: readonly (readonly string[])[] = [
@@ -83,11 +85,9 @@ const fixtureParser: IntakeParser = Object.freeze({
 
 /* ── harness ─────────────────────────────────────────────────────────────── */
 
-const roots: string[] = [];
 const openFixtures: Awaited<ReturnType<typeof openBoundDatabaseFixture>>[] = [];
 afterEach(async () => {
   for (const fixture of openFixtures.splice(0)) await fixture.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
 let commandSequence = 0;
@@ -98,10 +98,9 @@ function commandId(): string {
 
 async function harness(sessionOverrides: Record<string, unknown> = {}, preReservation = false) {
   const clock = manualClock(new Date(NOW));
-  const opened = await openBoundDatabaseFixture("intake-arms-test", clock);
+  const opened = await openBoundDatabaseFixture("intake-arms-test", clock, undefined, undefined, undefined, undefined, profileFixtures.create);
   const database = opened.database;
   const path = opened.path;
-  roots.push(opened.profile.workspace);
   openFixtures.push(opened);
   // The config identity an intake fan-out stamps must name a stored snapshot.
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
