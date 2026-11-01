@@ -28,9 +28,9 @@ export function createWorkflowPreflightRunners(input: RuntimePreflightRunnerInpu
       } catch {
         return result(check, false, "Chromium executable is unavailable.");
       }
-      if (!input.config.features.duoWebAuthn) return result(check, true, "Chromium is installed; Duo Autopilot is disabled in the retained settings.");
+      if (!input.config.features.duoWebAuthn) return result(check, true, "Chromium is installed; Fast Duo is disabled in the retained settings.");
       try {
-        const manifest = join(input.config.paths.duoExtensionDir, "manifest.json");
+        const manifest = join(input.config.paths.duoExtensionDir, "workflow-manifest.json");
         if (!statSync(manifest).isFile()) return result(check, false, "Duo extension manifest is unavailable.");
         accessSync(manifest, constants.R_OK);
       } catch {

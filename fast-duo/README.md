@@ -51,3 +51,17 @@ transport or user-verification flag alone does not establish a biometric operati
 Cancelling closes the owned setup browser after draining its bridge. Unknown remote
 enrollment preserves pending custody in the native draft owner; closure does not
 prove a credential was never registered. Ready does not save a profile; Finish does.
+
+## Relay workflow login mode
+
+Relay stages `workflow-manifest.json` with `src/workflow-background.js` inside each owned
+worker browser profile. This runtime reuses the account selection, signing and counter service.
+Before opening a login page, the backend provisions the retained credential file and operator
+username into trusted session storage. Every write is read back and verified. Persistent key
+state refuses provisioning; workflow sessions have no enrollment or extension settings interface.
+Standalone bootstrap and persistent storage files are excluded from staging.
+
+Workflow sessions require Playwright's full bundled Chromium (`channel: "chromium"`), including
+headless sessions. The headless shell cannot load extensions. Login recipes still own the
+credential-wide Duo ceremony lease and authenticated landing proof. A failed or uncertain login
+never authorizes a retry of an HR submission.

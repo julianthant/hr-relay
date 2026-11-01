@@ -31,7 +31,7 @@ before forming a theory.
 
 ## 2 · Selector / page-state repair (the loop — no shortcuts)
 1. Read the run's failure record (`npm run cli -- explain run <id>`) and the store's screenshots under `.tracker/artifacts/…`; quote the exact error and the step.
-2. `playwright-cli -s=dbg open "<url>"` headless with Duo Autopilot (`channel: chromium`); log in with `.env` creds; `playwright-cli --raw snapshot > /tmp/s.yml`; find the TRUE anchor.
+2. `playwright-cli -s=dbg open "<url>"` headless through the Fast Duo workflow session (`channel: chromium`); use the registered protected credential source; `playwright-cli --raw snapshot > /tmp/s.yml`; find the TRUE anchor.
 3. Fix in the store driver / selector registry: **structural anchors first (`id`, `name`, role+accessible name), observed labels behind them; a no-match must refuse by NAME, never fall through** (`.or()` is a union under strict mode — it asserts the arms are exclusive; prefer `.first()`-settle + a pure verdict function, D213).
 4. Port from legacy only with `// ported from hr-automation@<sha> <path>`; re-verify LIVE (D150 — live beats diffing legacy).
 5. Re-run the failing step live; then the focused unit or architecture check that covers it. If scenario-test evidence is needed, record the gap for operator-led design; run `npm run build:manifest` if a descriptor closure moved.

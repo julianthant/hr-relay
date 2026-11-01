@@ -101,7 +101,7 @@ describe("registered workflow detectors", () => {
     assert.match((await f.observe("browser.assets", true)).summary, /Chromium.*unavailable/u);
     writeFileSync(executable, "synthetic executable", { mode: 0o700 });
     assert.match((await f.observe("browser.assets", true)).summary, /manifest.*unavailable/u);
-    mkdirSync(f.config.paths.duoExtensionDir); writeFileSync(join(f.config.paths.duoExtensionDir, "manifest.json"), "{}");
+    mkdirSync(f.config.paths.duoExtensionDir); writeFileSync(join(f.config.paths.duoExtensionDir, "workflow-manifest.json"), "{}");
     assert.match((await f.observe("browser.assets", true)).summary, /duoWebauthnCredential.*unavailable/u);
     writeFileSync(f.config.paths.duoCredential, "SYNTHETIC_PRIVATE_SECRET", { mode: 0o600 });
     assert.equal((await f.observe("browser.assets", true)).state, "healthy");

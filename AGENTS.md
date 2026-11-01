@@ -37,7 +37,7 @@ The repository holds only the current version. No compatibility readers, old mig
   unused exports.
 - Add a layer only when it has a second real use. Prefer one cohesive module over many tiny files.
 - Tests mirror source once under tests/: drop src/; keep full paths for scripts/,
-  duo-autopilot/ and root configs.
+  fast-duo/ and root configs.
   Unit <module>.test.ts and integration <module>.integration.test.ts sit together;
   split files over about 800 lines by topic. Architecture/parity/perf/types stay in
   their own trees; fixtures and helpers live in tests/support/.
@@ -153,8 +153,8 @@ The repository holds only the current version. No compatibility readers, old mig
 - Read-only selectors, login checks, collectors and dry runs are pre-authorized. Transaction
   verification uses `dryRun=true`: no UCPath submit, no Kuali finalization. A transaction-free
   live read creates no transactions and no durable effects. Never retry an UNKNOWN submit.
-- Browser work uses playwright-cli, headless by default. Snapshot before choosing locators. Duo
-  Autopilot needs full Chromium (`duo-autopilot/README.md`). Close only your own sessions, and skip a
+- Browser work uses playwright-cli, headless by default. Snapshot before choosing locators.
+  Fast Duo needs full Chromium (`fast-duo/README.md`). Close only your own sessions, and skip a
   system that is down while continuing with the rest.
 
 ## Read by task

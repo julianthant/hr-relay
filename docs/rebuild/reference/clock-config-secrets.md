@@ -253,7 +253,7 @@ supplies the default browser root `<stateRoot>/browsers`. A saved browser root c
 | `paths.artifactRoot` | Admitted installation root, initially `.tracker/data/artifacts` |
 | `paths.browserProfileRoot` | Admitted `<stateRoot>/browsers`, or the isolation default `.tracker/data/browsers` without an admitted pair |
 | `paths.duoCredential` | Absolute `<stateRoot>/credentials/duo-webauthn.json` |
-| `paths.duoExtensionDir` | Absolute `duo-autopilot` |
+| `paths.duoExtensionDir` | Absolute `fast-duo` source folder with `workflow-manifest.json` |
 
 The first four paths and the three browser/Duo paths are ordinary settings. State and artifact roots
 use relocation authority. Browser, Duo credential, and extension paths are independent; changing a

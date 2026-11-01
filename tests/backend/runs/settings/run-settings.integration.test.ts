@@ -23,7 +23,7 @@ afterEach(_afterEachFixture0);
     const credential = join(f.root, "new-duo.json");
     writeFileSync(credential, '{"rpId":"synthetic.example","credentialId":"synthetic-id","privateKey":"synthetic-key","signCount":0,"transport":"internal"}', { mode: 0o600 });
     const extension = join(f.root, "new-extension"); mkdirSync(extension);
-    writeFileSync(join(extension, "manifest.json"), '{"manifest_version":3,"name":"Synthetic Duo"}');
+    writeFileSync(join(extension, "workflow-manifest.json"), '{"manifest_version":3,"name":"Synthetic Duo"}');
     const patch = { "paths.browserProfileRoot": { set: profile },
       "paths.duoCredential": { set: credential }, "paths.duoExtensionDir": { set: extension } };
     const saved = f.save(patch); assert.equal(saved.state, "applied");

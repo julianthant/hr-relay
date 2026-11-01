@@ -37,7 +37,7 @@ export async function runtimeFixture(capabilities: readonly RuntimeCapability[],
   const config = structuredClone(resolveConfigWithProvenance({}, hostConfigFacts({}), clock, { stateRoot, artifactRoot }).config);
   config.paths.duoExtensionDir = join(root, "extension"); config.paths.duoCredential = join(root, "credential.json");
   config.features.duoWebAuthn = true;
-  mkdirSync(config.paths.duoExtensionDir); writeFileSync(join(config.paths.duoExtensionDir, "manifest.json"), "{}");
+  mkdirSync(config.paths.duoExtensionDir); writeFileSync(join(config.paths.duoExtensionDir, "workflow-manifest.json"), "{}");
   writeFileSync(config.paths.duoCredential, "private-marker", {mode: 0o600});
   const executable = join(root, "chromium"); writeFileSync(executable, "synthetic executable asset", {mode: 0o700});
   config.annualDates.FY2027 = {jobEndDate:"6/30/2027", kronosDefaultStartDate:"7/1/2026", kronosDefaultEndDate:"6/30/2027"};

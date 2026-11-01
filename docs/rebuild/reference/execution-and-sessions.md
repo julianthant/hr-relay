@@ -199,21 +199,28 @@ against Duo's rendered terminal refusal. The canceled-or-timed-out screen throws
 to expire before reporting that outcome.
 
 The operator sentence is the catalog text for `DUO_TERMINAL_REFUSAL`. The refusal is almost never
-Duo hand-approval. It is a Duo Autopilot signCount regression: this browser profile's stored counter
+Duo hand-approval. It is a Fast Duo signCount regression: this browser profile's stored counter
 has fallen behind the value Duo has already observed for the shared credential. A counter that does
 not advance is a cloned-key signal, which happens when any other profile using the same credential
 signed more recently. Check the extension's stored signCount before changing
 `timeouts.duoApprovalSeconds` or `timeouts.sessionAcquireMs`.
 
 The WebAuthn counter belongs to the credential across profiles. `nextSignCount` in
-`duo-autopilot/src/sign-count.js` computes `max(stored + 1, nowSec)`. The extension serializes signs
+`fast-duo/src/sign-count.js` computes `max(stored + 1, nowSec)`. The extension serializes signs
 within its background worker and persists the advanced counter in `chrome.storage.session`.
 The credential-wide lease in section 10 serializes ceremonies across worker processes.
 
-The factory's `provisionDuoSession` writes credentials to the owned extension worker on each launch,
-restricts access to `TRUSTED_CONTEXTS`, and verifies every field. Persistent `duoCredentials` in
-`chrome.storage.local` refuses with `duo-extension-provisioning-unavailable`.
-No packaged credential copy is required.
+`fast-duo-extension.ts` stages an allowlisted runtime under the owned browser profile.
+Signup uses `relay-manifest.json`; workflow sessions use `workflow-manifest.json` and
+`src/workflow-background.js`, sharing Fast Duo's credential selection and signing service.
+Neither runtime stages standalone bootstrap, packaged credentials or persistent key storage.
+
+The factory installs the retained credentials and operator username in the owned workflow worker
+before handing a page to a login recipe. The worker restricts session storage to
+`TRUSTED_CONTEXTS`, verifies each write and binds keys to that operator account. Persistent
+`duoCredentials` or `autopilotV1` in local storage refuses with
+`duo-extension-provisioning-unavailable`. Enrollment is unavailable in workflow sessions.
+Explicitly disabled `features.duoWebAuthn` launches Chromium with extensions disabled.
 
 ### 4.3 Acquisition deadline
 
@@ -252,7 +259,7 @@ transaction check is separate from authentication and browser reuse.
 
 `PlaywrightWorkerSessionFactory` launches full bundled Chromium with `channel: "chromium"` in a
 persistent context. The configured Duo extension needs that browser and context combination.
-`assertDuoAutopilotReady` checks the extension manifest and configured credential before launch
+`assertFastDuoReady` checks the workflow extension manifest and configured credential before launch
 when `features.duoWebAuthn` is enabled.
 
 The factory's `#closeWithProof` bounds page and context closure by `browser.closeProofMs`, whose
@@ -335,7 +342,7 @@ Tests mirror implementation under `tests/backend/runtime/` and `tests/backend/st
 `tests/architecture/runtime/` owns `authentication-proof-not-url`, `driver-lease-boundary`,
 `single-flight-login`, `fresh-session-boundary`, `bounded-task-deadline`, `duo-ceremony-lease`,
 `multi-worker-overlap`, and `worker-teardown-soak` in their named `.test.ts` files.
-`tests/duo-autopilot/src/sign-count.test.ts` checks cross-profile counter arithmetic.
+`tests/fast-duo/src/sign-count.test.ts` checks cross-profile counter arithmetic.
 `tests/backend/app/composition/dashboard/compose.worker-pool-parallel-proof.integration.test.ts`
 and `compose.worker-browser-control-process.integration.test.ts` exercise real children.
 A test's presence does not establish a current pass or external availability.

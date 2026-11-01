@@ -97,7 +97,7 @@ const TRACKED_CANARY_SOURCES = [
   "src/backend/a/thing.ts", "src/backend/a/test-thing.ts", "src/backend/a/thing-test.ts",
   "src/backend/a/thing.test.detail.ts", "src/backend/a/thing.integration.test.detail.ts",
   "src/dashboard/ds/theme/tokens.css", "src/example.ts",
-  "scripts/test/artifact-policy.ts", "duo-autopilot/src/sign-count.js", "vite.dashboard.config.ts",
+  "scripts/test/artifact-policy.ts", "fast-duo/src/sign-count.js", "vite.dashboard.config.ts",
   "src/example.detail.ts",
 ];
 
@@ -120,7 +120,7 @@ describe("test layout", () => {
       "tests/backend/a/thing-test.test.ts", "tests/backend/a/thing-test.topic.integration.test.ts",
       "tests/backend/a/thing.test.detail.test.ts", "tests/backend/a/thing.test.detail.topic.integration.test.ts",
       "tests/backend/a/thing.integration.test.detail.test.ts", "tests/backend/a/thing.integration.test.detail.topic.test.ts",
-      "tests/scripts/test/artifact-policy.test.ts", "tests/duo-autopilot/src/sign-count.test.ts",
+      "tests/scripts/test/artifact-policy.test.ts", "tests/fast-duo/src/sign-count.test.ts",
       "tests/vite.dashboard.config.test.ts", "tests/vite.dashboard.config.topic.integration.test.ts",
       "tests/example.detail.topic.test.ts",
     ], TRACKED_CANARY_SOURCES), []);
@@ -131,7 +131,7 @@ describe("test layout", () => {
       ["tests/unit/backend/a/thing.test.ts", "tests/backend/a/thing.test.ts"],
       ["tests/integration/backend/a/thing.integration.test.ts", "tests/backend/a/thing.integration.test.ts"],
       ["tests/artifact-policy.test.ts", "tests/scripts/test/artifact-policy.test.ts"],
-      ["tests/sign-count.test.ts", "tests/duo-autopilot/src/sign-count.test.ts"],
+      ["tests/sign-count.test.ts", "tests/fast-duo/src/sign-count.test.ts"],
       ["tests/tokens.test.ts", "tests/dashboard/ds/theme/tokens.test.ts"],
       ["tests/unit/example.detail.topic.test.ts", "tests/example.detail.test.ts"],
       ["tests/unit/backend/a/thing-test.test.ts", "tests/backend/a/thing-test.test.ts"],

@@ -61,7 +61,7 @@ async function inject(f: Awaited<ReturnType<typeof runtimeFixture>>, entry: Case
   }
   if (id === "browser.chromium" || id === "browser.duo-extension" || id === "path.artifact") {
     const path = id === "browser.chromium" ? f.executable : id === "path.artifact" ? f.artifactRoot
-      : entry.variant === "extension" ? join(f.input.config.paths.duoExtensionDir,"manifest.json") : f.input.config.paths.duoCredential;
+      : entry.variant === "extension" ? join(f.input.config.paths.duoExtensionDir,"workflow-manifest.json") : f.input.config.paths.duoCredential;
     renameSync(path,`${path}.parked`); return()=>{renameSync(`${path}.parked`,path);};
   }
   if (id === "config.resolved") {

@@ -115,7 +115,7 @@ function validateExtension(path: string): void {
   const key = "paths.duoExtensionDir";
   requiredPath(key, path);
   ownedDirectory(key, path, false);
-  const manifestPath = join(path, "manifest.json");
+  const manifestPath = join(path, "workflow-manifest.json");
   try {
     const metadata = lstatSync(manifestPath);
     if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > 64_000) fail(key, "unpacked-manifest-required");

@@ -285,7 +285,7 @@ export function requireSecretFile(
   }
 }
 
-/** The credential file is Duo Autopilot's own format (one object, an array, or `{credentials: [...]}`), so its identity fields are read by type guard rather than an open record. */
+/** The credential file is Fast Duo's credential format (one object, an array, or `{credentials: [...]}`), so its identity fields are read by type guard rather than an open record. */
 function isUnknownArray(value: unknown): value is readonly unknown[] {
   return Array.isArray(value);
 }

@@ -24,9 +24,8 @@ node_modules/
 .playwright-cli/
 .playwright/
 
-# Duo Autopilot extension — NEVER commit the enrolled WebAuthn private keys
-duo-autopilot/credentials/
-duo-autopilot/node_modules/
+# Enrollment credentials — NEVER commit WebAuthn private keys
+credentials/
 
 # Rebuild runtime state + artifacts (isolated roots, see config/runtime-isolation.json)
 .tracker/

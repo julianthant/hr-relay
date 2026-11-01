@@ -14,7 +14,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `docs/rebuild/guard-inventory.json` | Guard owners and reasons. |
 | `docs/roadmap/roadmap.md` | Roadmap content. |
 | `docs/roadmap/index.html` | Generated roadmap site. |
-| `duo-autopilot/` | Duo signing with a backend-provisioned session credential. |
+| `fast-duo/` | Shared software authenticator, isolated signup runtime, and session-provisioned workflow login runtime. |
 | `scripts/build/` | Workflow manifest generation and checks. |
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. |
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
@@ -68,7 +68,7 @@ Paths in this table are relative to `src/backend/`.
 | `runs/` | Commands, start plans, lifecycle, recovery, queries, projections, exports, provenance, notifications, settings, explanation, and trust readers. |
 | `runs/commands/command-refusal.ts` | Shared command rejection construction; runtime recovery imports it directly. |
 | `runs/trust/` | Canonical run readers and receipt services. |
-| `runtime/` | Browser sessions, checkpoints, execution, gates, policies, preflight, scheduling, settings, workers, and writes. `browser/native-profile-probe.ts` owns the shared native launcher, finite credential-free probe child, canonical worker/onboarding profile paths, verified context/page closure, and the real `profileBrowserClosure` port with private-path validation and synchronous/asynchronous retained-profile probing. `browser/browser-session-factory.ts` owns authenticated session acquisition and reuse. `browser/onboarding-duo-provider.ts` owns browser enrollment for the profile onboarding contract. |
+| `runtime/` | Browser sessions, checkpoints, execution, gates, policies, preflight, scheduling, settings, workers, and writes. `browser/native-profile-probe.ts` owns the shared native launcher, finite credential-free probe child, canonical worker/onboarding profile paths, verified context/page closure, and the real `profileBrowserClosure` port with private-path validation and synchronous/asynchronous retained-profile probing. `browser/browser-session-factory.ts` owns authenticated session acquisition and reuse. `browser/onboarding-duo-provider.ts` owns browser enrollment for the profile onboarding contract. `browser/fast-duo-extension.ts` stages their allowlisted extension files. |
 | `storage/` | Admission, artifacts, configuration, events, maintenance, and SQLite persistence. |
 | `storage/configuration/` | Settings and private credential persistence, including opaque committed-replay witnesses. `credential-store.ts` exposes the protected-settings and ChatGPT account records under `<stateRoot>/credentials/`, which also holds the retained active-engine Duo key; `duo-credential-store.ts` owns the per-profile encrypted Duo purpose document under machine control. `credential-key-custody.ts` owns OS keychain entries, non-secret key metadata and startup key migration. Both private records use `credential-safe-file.ts` for file safety and strict physical directory membership. |
 | `storage/events/` | Native timeline writers, readers, and emitters. |
@@ -132,7 +132,7 @@ tests/
 ├── architecture/{app,dashboard,logs,models,processing,runs,runtime,storage,support,systems,tooling,workflow-kit}/
 ├── backend/{app,logs,processing,runs,runtime,storage,systems,transports}/
 ├── dashboard/{app,client,ds,lib,state,surfaces}/
-├── duo-autopilot/src/
+├── fast-duo/src/
 ├── {models,rules,scripts,workflow-kit,workflows}/
 ├── parity/
 ├── perf/

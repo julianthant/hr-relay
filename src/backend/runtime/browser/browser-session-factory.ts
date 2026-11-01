@@ -1,9 +1,10 @@
+import { stageFastDuoExtension } from "./fast-duo-extension.js";
 import { DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, BrowserProfileStillClosingError, ProfileCustodyUnavailableError,
   profileReservations, assertPrivateProfilePath, probeClosedBrowserProfile, closeContextWithProof, observeContextLifecycle,
   workerProfileDirectory, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-profile-probe.js";
 export { BrowserProfileStillClosingError, ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT, probeClosedBrowserProfile,
   workerProfileDirectory, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-profile-probe.js";
-import { DuoCredentialSchema, DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
+import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
 import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
 import { z } from "zod";
@@ -99,20 +100,20 @@ function browserModeFor(
 }
 
 
-export function assertDuoAutopilotReady(config: Config): void {
+export function assertFastDuoReady(config: Config): void {
   if (!config.features.duoWebAuthn) return;
-  const manifest = join(config.paths.duoExtensionDir, "manifest.json");
+  const manifest = join(config.paths.duoExtensionDir, "workflow-manifest.json");
   let isFile: boolean;
   try {
     isFile = statSync(manifest).isFile();
   } catch (error) {
     throw new Error(
-      `Duo Autopilot extension is not loadable: ${manifest} is unreadable. Duo cannot clear unattended without it; place the unpacked extension there or set features.duoWebAuthn=false and expect a manual prompt.`,
+      `Fast Duo extension is not loadable: ${manifest} is unreadable. Duo cannot clear unattended without it; place the unpacked extension there or set features.duoWebAuthn=false and expect a manual prompt.`,
       { cause: error },
     );
   }
   if (!isFile) {
-    throw new Error(`Duo Autopilot extension is not loadable: ${manifest} is not a regular file`);
+    throw new Error(`Fast Duo extension is not loadable: ${manifest} is not a regular file`);
   }
   // `requireSecretFile` is the ONLY credential-file reader; it also enforces
   // the 0600-or-stricter permission and size limits ref clock-config-secrets requires.
@@ -199,7 +200,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     if (canonicalJsonStringify(admittedIdentity) !== canonicalJsonStringify(profileIdentity)) throw new ProfileCustodyUnavailableError();
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
-    assertDuoAutopilotReady(config);
+    assertFastDuoReady(config);
     profileReservations.add(profileDirectory);
     if (resetRequired) {
       const previous = await this.#launchProfile(profileDirectory, browserMode, input.acceptDownloads, system);
@@ -219,7 +220,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     const lifecycle = observeContextLifecycle(context);
     try {
       this.#owned.set(profileDirectory, { context, lifecycle });
-      if (config.features.duoWebAuthn) await provisionDuo(context, config);
+      if (config.features.duoWebAuthn) await provisionDuo(context, config, this.#options.protectedSecrets, this.#options.clock);
       const existing = context.pages();
       const page = existing[0] ?? await context.newPage();
       const diagnostics = attachBrowserDiagnostics(page, this.#options.clock);
@@ -371,10 +372,21 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
 
   async #launchProfile(profileDirectory: string, browserMode: BrowserPresentationMode, acceptDownloads: boolean, system: BrowserSystemId, timeoutMs?: number): Promise<BrowserContext> {
     const { config } = this.#options;
+    const extensionDirectory = join(profileDirectory, "relay-extension");
     try {
       mkdirSync(dirname(profileDirectory), { recursive: true, mode: 0o700 });
-      return await this.#launcher.launch({ profileDirectory, headless: browserMode === "headless",
-        extensionDirectory: config.paths.duoExtensionDir, acceptDownloads, downloadsPath: config.paths.downloadsDir,
+      if (config.features.duoWebAuthn) {
+        mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
+        deleteOwnedBrowserProfile(config.paths.browserProfileRoot, extensionDirectory);
+        stageFastDuoExtension(config.paths.duoExtensionDir, extensionDirectory, "workflow");
+      }
+    } catch (error) {
+      profileReservations.delete(profileDirectory);
+      throw error;
+    }
+    try {
+      return await this.#launcher.launch({ profileDirectory, ...(config.features.duoWebAuthn ? {} : { nativeOnly: true }), headless: browserMode === "headless",
+        extensionDirectory, acceptDownloads, downloadsPath: config.paths.downloadsDir,
         viewport: { width: config.display.screenWidth, height: config.display.screenHeight },
         ...(timeoutMs === undefined ? {} : { timeoutMs }) });
     } catch (error) {
@@ -469,44 +481,22 @@ export function browserSignInFingerprint(config: Config, secrets: ProtectedSecre
   })));
 }
 
-async function provisionDuo(context: BrowserContext, config: Config): Promise<void> {
-  const ownedWorker = (url: string): boolean => /^chrome-extension:\/\/[a-p]{32}\/src\/background\.js$/u.test(url);
+async function provisionDuo(context: BrowserContext, config: Config, secrets: ProtectedSecretSource, clock: Clock): Promise<void> {
+  const ownedWorker = (url: string): boolean => /^chrome-extension:\/\/[a-p]{32}\/src\/workflow-background\.js$/u.test(url);
   try {
     const parsed = DuoCredentialFileSchema.parse(JSON.parse(requireSecretFile("duoWebauthnCredential", config).toString("utf8")));
     const credentials = Array.isArray(parsed) ? parsed : "credentials" in parsed ? parsed.credentials : [parsed];
     const current = context.serviceWorkers().filter(worker => ownedWorker(worker.url()));
     if (current.length > 1) throw new DuoProvisioningError();
     const worker = current[0] ?? await context.waitForEvent("serviceworker", { predicate: worker => ownedWorker(worker.url()), timeout: config.timeouts.navigationMs });
-    await worker.evaluate(provisionDuoSession, credentials);
+    await worker.evaluate(async input => {
+      const owner: unknown = Reflect.get(globalThis, "relayWorkflow");
+      if (typeof owner !== "object" || owner === null) throw new Error("duo-session-unavailable");
+      const install: unknown = Reflect.get(owner, "install");
+      if (typeof install !== "function") throw new Error("duo-session-unavailable");
+      await Reflect.apply(install, owner, [input]);
+    }, { username: requireSecret("ucpathUserId", secrets), credentials, nowMs: clock.now().getTime() });
   } catch { throw new DuoProvisioningError(); }
-}
-
-interface ExtensionStorageArea {
-  get?: (key: string) => unknown;
-  set?: (items: Record<string, unknown>) => unknown;
-  setAccessLevel?: (options: { accessLevel: string }) => unknown;
-}
-
-// Playwright runs this from its source text inside the extension worker, so it declares no inner functions:
-// the runtime compiler wraps those in a module helper the worker does not have.
-async function provisionDuoSession(credentials: readonly z.infer<typeof DuoCredentialSchema>[]): Promise<void> {
-  const storage = (globalThis as { chrome?: { storage?: { session?: ExtensionStorageArea; local?: ExtensionStorageArea } } }).chrome?.storage;
-  const session = storage?.session, local = storage?.local;
-  if (typeof session?.get !== "function" || typeof session.set !== "function" || typeof session.setAccessLevel !== "function"
-    || typeof local?.get !== "function") throw new Error("duo-session-storage-unavailable");
-  const persistent: unknown = await local.get("duoCredentials");
-  if (persistent !== null && typeof persistent === "object" && "duoCredentials" in persistent) throw new Error("duo-persistent-credential-refused");
-  await session.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
-  await session.set({ duoCredentials: credentials });
-  const stored: unknown = await session.get("duoCredentials");
-  const copies: unknown = stored !== null && typeof stored === "object" && "duoCredentials" in stored ? stored.duoCredentials : undefined;
-  if (!Array.isArray(copies) || copies.length !== credentials.length) throw new Error("duo-session-provisioning-unverified");
-  // Chrome storage returns object keys sorted, so compare field by field.
-  for (const [index, original] of credentials.entries()) {
-    const copy: unknown = copies[index];
-    if (copy === null || typeof copy !== "object" || Object.keys(copy).length !== Object.keys(original).length) throw new Error("duo-session-provisioning-unverified");
-    for (const [key, value] of Object.entries(original)) if (Reflect.get(copy, key) !== value) throw new Error("duo-session-provisioning-unverified");
-  }
 }
 
 // UCSD systems share an SSO realm and credential pair, but hold distinct application sessions.

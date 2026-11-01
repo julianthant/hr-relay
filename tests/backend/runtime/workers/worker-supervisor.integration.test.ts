@@ -160,7 +160,7 @@ it("retires a real worker only after its opened Chromium profile closes, custody
       privateKey: generated.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'), signCount: 0, transport: 'internal' })));
     assert.equal(statSync(duoDirectory).mode & 0o777, 0o700);
     assert.equal(statSync(duoCredential).mode & 0o777, 0o600);
-    const origin = `http://127.0.0.1:${String(runtime.port)}`, patch = { "daemon.idleRepollMs": { set: 100 }, "browser.headless": { set: true }, 'paths.duoCredential': { set: duoCredential }, 'paths.duoExtensionDir': { set: join_m1(process.cwd(), 'duo-autopilot') } };
+    const origin = `http://127.0.0.1:${String(runtime.port)}`, patch = { "daemon.idleRepollMs": { set: 100 }, "browser.headless": { set: true }, 'paths.duoCredential': { set: duoCredential }, 'paths.duoExtensionDir': { set: join_m1(process.cwd(), 'fast-duo') } };
     const settings = await fetch(`${origin}/api/v1/commands`, { method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ commandId: randomUUID(), family: "settings", type: "apply-settings", target: { expectedRevision: world.readRuntimeSettingsRevision(profile) }, source: "dashboard", requestedBy: "local-operator", requestedAt: systemClock.now().toISOString(), payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }) });
     assert.equal(CommandResultSchema.parse(await settings.json()).state, "applied");
     const db = profile.openDatabase({ path: join_m1(profile.stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "native-retirement-proof" }, systemClock); database = db;
@@ -213,7 +213,7 @@ it("retires a real worker only after its opened Chromium profile closes, custody
     assert.equal(activeSnapshot.fingerprint, active.configFingerprint);
     assert.equal(activeSnapshot.config.features.duoWebAuthn, true);
     assert.equal(activeSnapshot.config.paths.duoCredential, duoCredential);
-    assert.equal(activeSnapshot.config.paths.duoExtensionDir, join_m1(process.cwd(), 'duo-autopilot'));
+    assert.equal(activeSnapshot.config.paths.duoExtensionDir, join_m1(process.cwd(), 'fast-duo'));
     const runId = randomUUID(), at = systemClock.now().toISOString();
     runIds.push(runId);
     const candidate = RunRecordSchema.parse(personLookupQueuedRun({ runId, itemId: randomUUID(), dryRun: true }));

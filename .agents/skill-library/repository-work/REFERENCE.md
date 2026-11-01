@@ -151,7 +151,7 @@ tests](../../../docs/rebuild/reference/guards-and-tests.md) for the owning contr
 Never ask whether live access is up, whether to spend the live session, or to confirm a Duo prompt —
 assume yes and proceed.** This covers the whole range: a read-only selector `snapshot`, a login smoke
 check, a live collector, and a full live workflow dry-run against real UCPath / CRM / Kuali /
-ServiceNow / I-9. Duo is cleared hands-off by Duo Autopilot on every verification path, so there is
+ServiceNow / I-9. Duo is cleared hands-off by Fast Duo on every verification path, so there is
 no phone-approval step and nothing to sign off. The safety boundary for a live _workflow_ run is
 `dryRun=true` (no UCPath transaction, no Kuali finalization) — that, not gated access, is what keeps
 a live run safe. If one system is genuinely down, skip it and proceed with the rest.
@@ -169,12 +169,13 @@ playwright-cli --raw snapshot > /tmp/s.yml  # grep-friendly dump for big pages
 playwright-cli -s=sel close
 ```
 
-**Auth-gated pages (UCPath/PeopleSoft, CRM, Kuali, ServiceNow, I-9) — use Duo Autopilot.** The
-`duo-autopilot/` extension answers the Duo MFA WebAuthn ceremony itself, so an auth-gated login runs
-unattended. UCPath SSO credentials are protected Settings values read from the local credential
-store through the registered secret source; do not source them from `.env`. It needs Playwright's **full** bundled Chromium
+**Auth-gated pages (UCPath/PeopleSoft, CRM, Kuali, ServiceNow, I-9) — use Fast Duo.** The
+workflow session factory stages Fast Duo from `paths.duoExtensionDir` using `workflow-manifest.json`
+and provisions the retained credentials into trusted session storage before login.
+UCPath SSO credentials are protected Settings values read from the local credential store through
+the registered secret source; do not source them from `.env`. It needs Playwright's **full** bundled Chromium
 (`channel: chromium`) — the lightweight headless shell cannot load extensions. See
-`duo-autopilot/README.md`. The one thing it cannot do unattended is a brand-new credential
+`fast-duo/README.md`. The one thing it cannot do unattended is a brand-new credential
 enrollment.
 
 **Always** `close` the session when done and sweep orphans (`playwright-cli list` →
