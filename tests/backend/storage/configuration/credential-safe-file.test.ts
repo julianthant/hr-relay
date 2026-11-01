@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
-import { clearOperationProofSlots, revalidateOperationProof, outermostOperationProof, withOperationProof, readPrivateFile, withPrivateFileLock, type PrivateFileLock } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+import { clearOperationProofSlots, revalidateOperationProof, outermostOperationProof, withOperationProof, readPrivateFile, removeExactPath, unpublishedDraftAbortMembership, withPrivateFileLock, type PrivateFileLock } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 
 for (const label of ["authority database", "managed data"] as const) {
   it(`reads retained 0644 ${label} bytes without changing mode or identity`, () => {
@@ -61,6 +61,57 @@ for (const label of ["protected.json", "lock", "ChatGPT", "Duo credential", "era
     } finally { fs.rmSync(root, { recursive: true }); }
   });
 }
+
+it("refuses a protected.json owned by someone else without modifying it", () => {
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "safe-owner-")), path = join(root, "protected.json");
+  fs.writeFileSync(path, "private fixture", { mode: 0o600 });
+  try {
+    assert.equal(readPrivateFile(path, { label: "protected.json", maxBytes: 64 })?.bytes.toString(), "private fixture");
+    const lstat = fs.lstatSync;
+    vi.spyOn(fs, "lstatSync").mockImplementation((target, options) => {
+      const status = lstat(target, options);
+      if (status !== undefined && target === path) status.uid = (process.getuid?.() ?? 1000) + 1;
+      return status;
+    });
+    syncBuiltinESMExports();
+    assert.throws(() => readPrivateFile(path, { label: "protected.json", maxBytes: 64 }), /private regular file/u);
+    assert.equal(fs.statSync(path).mode & 0o7777, 0o600);
+    assert.equal(fs.readFileSync(path, "utf8"), "private fixture");
+  } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); fs.rmSync(root, { recursive: true }); }
+});
+
+it("removes only the exact owned file", () => {
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "safe-remove-")), path = join(root, "file");
+  try {
+    fs.writeFileSync(path, "retained fixture", { mode: 0o600 });
+    const info = fs.lstatSync(path), identity = { device: info.dev, inode: info.ino };
+    assert.throws(() => removeExactPath(path, { ...identity, inode: identity.inode + 1 }, false, "exact-path-changed"), /exact-path-changed/u);
+    const link = join(root, "link");
+    fs.symlinkSync(path, link);
+    assert.throws(() => removeExactPath(link, identity, false, "exact-path-changed"), /exact-path-changed/u);
+    assert.equal(fs.readFileSync(path, "utf8"), "retained fixture");
+    assert.equal(removeExactPath(path, identity, false, "exact-path-changed"), true);
+    assert.equal(fs.existsSync(path), false);
+    assert.equal(removeExactPath(path, identity, true, "exact-path-changed"), false);
+    assert.throws(() => removeExactPath(path, identity, false, "exact-path-changed"), /exact-path-changed/u);
+  } finally { fs.rmSync(root, { recursive: true }); }
+});
+
+it("records exact draft members and refuses missing or writable members without cleanup", () => {
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "safe-draft-")), draft = join(root, "draft"), note = join(draft, "note");
+  try {
+    assert.throws(() => unpublishedDraftAbortMembership(draft), (error: NodeJS.ErrnoException) => error.code === "ENOENT");
+    fs.mkdirSync(draft, { mode: 0o700 });
+    fs.writeFileSync(note, "retained fixture", { mode: 0o600 });
+    const info = fs.lstatSync(note), recorded = unpublishedDraftAbortMembership(draft);
+    assert.deepEqual(recorded.map(entry => entry.path), ["", "note"]);
+    assert.deepEqual(recorded[1], { path: "note", directory: false, device: info.dev, inode: info.ino,
+      size: info.size, mode: info.mode, modified: info.mtimeMs, changed: info.ctimeMs });
+    fs.chmodSync(note, 0o666);
+    assert.throws(() => unpublishedDraftAbortMembership(draft), /profile-draft-abort-membership-unsafe/u);
+    assert.equal(fs.readFileSync(note, "utf8"), "retained fixture");
+  } finally { fs.rmSync(root, { recursive: true }); }
+});
 
 it("retains distinct synchronous locks and expires the exact held witness", () => {
   const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "safe-lock-"));

@@ -316,6 +316,8 @@ active-engine Duo key (`duo-webauthn.json`, read through `paths.duoCredential`).
 `credential-store.ts` exposes the protected-settings store and the ChatGPT account repository.
 Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 directories,
 0600 files, no-follow reads, fsync, atomic replacement, and lock-file safety.
+`storage/private-path.ts` owns their privacy policies, including trusted sticky ancestors and
+distinct private-file and managed-data permissions. Unavailable ownership evidence refuses access.
 Each record retains its own transaction and recovery contract.
 
 The same private-file primitive serializes installation mutation at

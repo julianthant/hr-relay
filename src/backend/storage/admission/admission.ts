@@ -17,6 +17,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import type { PreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { assertFinishedProfileOnboarding, SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation, type ProfileRegistryDocument, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { readPrivateFile, noSymlinkAncestry, ensureChildDirectory, outermostOperationProof, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
+import { privatePathRejects } from "../private-path.js";
 import { assertLiveProfileDatabaseBinding, assertCanonicalProfileBinding, captureCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
@@ -63,7 +64,7 @@ function assertSyntheticDirectory(path: string): void {
   while (ancestor !== temp) {
     const info = lstatSync(ancestor, { throwIfNoEntry: false });
     if (info !== undefined && (!info.isDirectory() || info.isSymbolicLink()
-      || (process.getuid && info.uid !== process.getuid()) || (info.mode & 0o022) !== 0)) {
+      || privatePathRejects(ancestor, info, "group-write"))) {
       throw new Error("runtime-admission: unsafe synthetic fixture ancestor");
     }
     if (lstatSync(join(ancestor, ".tracker/control"), { throwIfNoEntry: false }) !== undefined
@@ -84,7 +85,7 @@ function assertActiveRootSafe(path: string): void {
     if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("runtime-admission: storage root path changed shape");
   }
   const root = lstatSync(path);
-  if ((process.getuid && root.uid !== process.getuid()) || (root.mode & 0o022) !== 0) {
+  if (privatePathRejects(path, root, "group-write")) {
     throw new Error("runtime-admission: storage root ownership changed");
   }
 }
@@ -1678,7 +1679,7 @@ export class RuntimeAdmission {
       assertSyntheticDirectory(dirname(databasePath));
       const file = lstatSync(databasePath, { throwIfNoEntry: false });
       if (file !== undefined && (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1
-        || (process.getuid && file.uid !== process.getuid()) || (file.mode & 0o022) !== 0)) {
+        || privatePathRejects(databasePath, file, "group-write"))) {
         throw new Error("runtime-admission: unsafe synthetic fixture database");
       }
       const components = databasePath.split(/[\\/]/u);
