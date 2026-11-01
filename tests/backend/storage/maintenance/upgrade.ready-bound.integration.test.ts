@@ -438,7 +438,7 @@ it.each([9, 10] as const)("upgrades supported schema %s to the current version w
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows);
     }
-    const fresh = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(f.binding.profileId));
+    const fresh = f.machine.admitProfile(f.binding.profileId);
     try { assert.equal(fresh.profileMaintenanceSchemaVersion(), CURRENT_AUTHORITY_SCHEMA_VERSION); }
     finally { fresh.release(); }
   } finally { await f.close(); }

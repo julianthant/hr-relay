@@ -274,6 +274,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
     }, { labels: options.sampleLabels ?? [], width: image.width });
     sampleBannerOwned = true;
     await assertSafe();
+    assertCurrent();
     const banner = PNG.sync.read(await page.locator("#relay-dry-run-sample-banner").screenshot({ type: "png" }));
     await assertSafe();
     const source = PNG.sync.read(Buffer.from(image.bytes));

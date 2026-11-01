@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { BrowserContext } from "playwright";
+import type { BrowserContext, Page } from "playwright";
 import { describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { BrowserProfileAdmissionSchema, PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError, workerProfileDirectory, type BrowserSessionFactoryOptions } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
+import { captureFullPage } from "../../../../src/backend/runtime/browser/full-page-capture.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
@@ -140,6 +141,40 @@ describe("browser current-owner fence", () => {
       await resource.close({ reason: "worker-stop" });
       assert.equal(native.contextClosed(), true);
     });
+  });
+
+  it("refuses the label screenshot after the safety check settles stale and still removes its owned banner", async () => {
+    const page = fixtures.fakePage(), owner = epoch(), evaluate = page.evaluate;
+    let bannerOwned = false, captures = 0, removals = 0, published = false;
+    page.evaluate = async (callback, arg) => {
+      if (callback.toString().includes('document.createElement("div")')) {
+        bannerOwned = true;
+        return undefined as never;
+      }
+      return evaluate(callback, arg);
+    };
+    const frame = page.mainFrame(), evaluateFrame = frame.evaluate;
+    frame.evaluate = async (callback, arg) => {
+      const result = await evaluateFrame(callback, arg);
+      if (bannerOwned && callback.toString().includes("return state.seen")) queueMicrotask(() => queueMicrotask(owner.revoke));
+      return result;
+    };
+    page.locator = () => ({ count: async () => 0,
+      screenshot: async () => { captures++; throw new Error("stale label screenshot must not run"); },
+      evaluate: async () => { bannerOwned = false; removals++; },
+    });
+    await assert.rejects(async () => {
+      await captureFullPage(page as unknown as Page, {
+        assertCurrent: owner.assertCurrent,
+        assertSafe: async () => {}, sampleLabels: ["synthetic dry run"], mask: () => [],
+        secretControls: "input[type=password]", afterCapture: async () => {},
+      });
+      published = true;
+    }, ProfileCustodyUnavailableError);
+    assert.equal(captures, 0);
+    assert.equal(removals, 1);
+    assert.equal(bannerOwned, false);
+    assert.equal(published, false);
   });
 
 });

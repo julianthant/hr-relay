@@ -24,6 +24,18 @@ describe("current and stopped predecessor backup formats", () => {
     }
   });
 
+  it.each([7, 8, 9, 10, CURRENT_AUTHORITY_SCHEMA_VERSION])("accepts registered schema %i with matching observed binding", schemaVersion => {
+    const candidate = { ...manifest, schemaVersion, verification: { ...manifest.verification, schemaVersion } };
+    expect(AuthorityBackupManifestSchema.parse(candidate)).toEqual(candidate);
+    expect(AuthorityBackupManifestSchema.safeParse({ ...candidate, manifestVersion: 3 }).success).toBe(false);
+  });
+
+  it("refuses a future schema even when its copy observations agree", () => {
+    const schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION + 1;
+    expect(AuthorityBackupManifestSchema.safeParse({ ...manifest, schemaVersion,
+      verification: { ...manifest.verification, schemaVersion } }).success).toBe(false);
+  });
+
   it("keeps native6 unbound v3 exclusively in the stopped predecessor format", () => {
     const predecessor = { ...manifest, manifestVersion: 3, schemaVersion: 6, installationId: undefined, profileId: undefined,
       sourceDatabaseIdentity: "c".repeat(64), verification: { ...manifest.verification, schemaVersion: 6, installationId: undefined, profileId: undefined } };

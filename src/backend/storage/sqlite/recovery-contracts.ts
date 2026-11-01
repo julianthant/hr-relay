@@ -95,7 +95,7 @@ function requireObservedBackupIdentity(
 /** DB-only current writer shape. Credentials have no backup representation. */
 export const AuthorityBackupManifestV4Schema = AuthorityBackupManifestBaseSchema.extend({
   manifestVersion: z.literal(4),
-  schemaVersion: z.union([z.literal(7), z.literal(8), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  schemaVersion: z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   installationId: z.uuid(),
   profileId: z.uuid(),
   verification: BackupVerificationSchema.extend({ installationId: z.uuid(), profileId: z.uuid() }),
