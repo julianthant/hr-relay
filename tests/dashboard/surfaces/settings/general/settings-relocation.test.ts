@@ -51,7 +51,7 @@ describe("storage relocation Paths controls", () => {
     assert.equal(fields.length, 2);
     assert.deepEqual(fields.map(input => input.value), [SOURCE.stateRoot, SOURCE.artifactRoot]);
     assert.ok(fields.every(input => input.readOnly));
-    assert.equal(surface.host.querySelectorAll("button").length, 0);
+    assert.deepEqual([...surface.host.querySelectorAll("button")].map(button => button.getAttribute("aria-label") ?? button.textContent), ["Copy data path", "Copy evidence path"]);
     await idle();
     assert.deepEqual(commands, []); assert.deepEqual(picks, []);
     assert.deepEqual(surface.notices, []); assert.equal(surface.controller().dirtyCount, 0);
@@ -66,7 +66,7 @@ describe("storage relocation Paths controls", () => {
       requestFingerprint: planned.payload.requestFingerprint,
     } });
     const surface = await mount({ storageRelocationPlans: () => Promise.resolve(view) } as unknown as DashboardClient);
-    assert.match(surface.host.textContent ?? "", /recorded plan has not moved these folders/u);
+    assert.match(surface.host.textContent ?? "", /The folder plan is not applied\. These locations are unchanged\./u);
     assert.equal(surface.host.querySelector('input[aria-label="Relocation command"]'), null);
     assert.equal(surface.host.querySelector('button[aria-label="Copy relocation command"]'), null);
     assert.deepEqual([...surface.host.querySelectorAll("input")].map(input => input.value), [SOURCE.stateRoot, SOURCE.artifactRoot]);
@@ -85,15 +85,15 @@ describe("storage relocation Paths controls", () => {
       return Promise.resolve({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "storage-relocation", revision: 1 }] });
     } } as unknown as DashboardClient;
     const surface = await mount(client);
-    assert.equal(surface.host.querySelectorAll("button").length, 0);
+    assert.deepEqual([...surface.host.querySelectorAll("button")].map(button => button.getAttribute("aria-label") ?? button.textContent), ["Copy data path", "Copy evidence path"]);
     assert.equal(surface.host.querySelectorAll("input[readonly]").length, 2);
     await edit("Runtime state folder", "/tmp/new-state"); await idle();
     assert.equal(commands.length, 1);
     const request = StorageRelocationCommandRequestSchema.parse(commands[0]);
     if (request.type !== "plan-storage-relocation") throw new Error("expected plan");
     assert.deepEqual(request.payload.desiredPair, { stateRoot: "/tmp/new-state", artifactRoot: SOURCE.artifactRoot });
-    assert.match(surface.host.textContent ?? "", /recorded plan has not moved these folders/u);
-    assert.match(surface.host.textContent ?? "", /Folder relocation is unavailable/u);
+    assert.match(surface.host.textContent ?? "", /The folder plan is not applied\. These locations are unchanged\./u);
+    assert.deepEqual([...surface.host.querySelectorAll("input")].map(input => input.value), [SOURCE.stateRoot, SOURCE.artifactRoot]);
     assert.equal(view.sourcePair.stateRoot, SOURCE.stateRoot);
     assert.equal(surface.controller().dirtyCount, 0);
   });
@@ -137,7 +137,7 @@ describe("storage relocation Paths controls", () => {
     const surface = await mount(client);
     await edit("Artifact folder", "/tmp/other-artifacts"); await idle();
     assert.equal(surface.controller().save.state, "conflict"); assert.equal(surface.controller().dirtyCount, 1);
-    assert.equal(surface.host.querySelectorAll("button").length, 0);
+    assert.deepEqual([...surface.host.querySelectorAll("button")].map(button => button.getAttribute("aria-label") ?? button.textContent), ["Copy data path", "Copy evidence path"]);
     mode = "divergent";
     await act(async () => surface.controller().submit()); await act(async () => undefined);
     assert.equal(surface.controller().save.state, "unconfirmed"); assert.equal(surface.controller().dirtyCount, 1);
@@ -148,7 +148,10 @@ describe("storage relocation Paths controls", () => {
     const client = { storageRelocationPlans: () => Promise.reject(new Error("no reader")), executeCommand: () => { throw new Error("unexpected write"); } } as unknown as DashboardClient;
     const surface = await mount(client);
     assert.equal(surface.host.querySelectorAll("input").length, 0);
-    assert.match(surface.host.textContent ?? "", /No location is inferred/u);
+    assert.match(surface.host.textContent ?? "", /App-data locations couldn’t be read\./u);
+    assert.equal(surface.controller().read.state, "unavailable");
+    assert.equal(surface.host.querySelectorAll("button").length, 1);
+    assert.equal(surface.host.querySelector("button")?.textContent, "Try again");
   });
   it("cancels a settled plan through an audited command while active paths stay unchanged", async () => {
     const planned = planRelocationCommand(INITIAL, { stateRoot: "/tmp/next-state", artifactRoot: SOURCE.artifactRoot }, "local-operator", "2026-08-03T12:00:00.000Z");
@@ -163,14 +166,14 @@ describe("storage relocation Paths controls", () => {
       return Promise.resolve({ state: "applied", commandId: command.commandId, affectedTargets: [{ family: "storage-relocation", revision: 2 }] });
     } } as unknown as DashboardClient;
     const surface = await mount(client);
-    assert.equal(surface.host.querySelectorAll("button").length, 0);
+    assert.deepEqual([...surface.host.querySelectorAll("button")].map(button => button.getAttribute("aria-label") ?? button.textContent), ["Copy data path", "Copy evidence path"]);
     await act(async () => surface.controller().cancel()); await act(async () => undefined);
     assert.equal(commands.length, 1);
     const command = StorageRelocationCommandRequestSchema.parse(commands[0]);
     assert.equal(command.type, "cancel-storage-relocation");
     assert.equal(view.pending, null);
     assert.deepEqual(view.sourcePair, SOURCE);
-    assert.doesNotMatch(surface.host.textContent ?? "", /Prior folder plan is not applied/u);
+    assert.doesNotMatch(surface.host.textContent ?? "", /The folder plan is not applied/u);
   });
   it("keeps the last verified source visible but blocks edits on stale or divergent reads", async () => {
     let view: StorageRelocationPlanView = INITIAL;
@@ -181,7 +184,7 @@ describe("storage relocation Paths controls", () => {
     assert.equal(surface.controller().readProblem, true);
     assert.equal((surface.host.querySelector('[data-settings-path="paths.stateRoot"] input') as HTMLInputElement).value, SOURCE.stateRoot);
     assert.equal((surface.host.querySelector('[data-settings-path="paths.stateRoot"] input') as HTMLInputElement).readOnly, true);
-    assert.match(surface.host.textContent ?? "", /Current app-data locations unavailable/u);
+    assert.match(surface.host.textContent ?? "", /Current app-data locations couldn’t be read\./u);
   });
   it("rejects a global plan revision rewind even when source generation advances", async () => {
     const current = StorageRelocationPlanViewSchema.parse({ ...INITIAL, revision: 2 });
@@ -197,7 +200,7 @@ describe("storage relocation Paths controls", () => {
     if (read.state !== "available") throw new Error("last verified view disappeared");
     assert.deepEqual(read.view, current);
     assert.equal((surface.host.querySelector('[data-settings-path="paths.stateRoot"] input') as HTMLInputElement).value, SOURCE.stateRoot);
-    assert.equal(surface.host.querySelectorAll("button").length, 0);
+    assert.deepEqual([...surface.host.querySelectorAll("button")].map(button => button.getAttribute("aria-label") ?? button.textContent), ["Copy data path", "Copy evidence path", "Try again"]);
   });
   it("lets an invalid local field be undone without issuing a command", async () => {
     const commands: unknown[] = [];
