@@ -8,7 +8,6 @@ import {
   readAssistantAuthority,
   type AssistantApprovalBinding,
   type AssistantDecision,
-  type AssistantPermissionMode,
   type AssistantRefusalCode,
   type AssistantStaleField,
 } from "../../models/profiles/assistant-permissions.js";
@@ -17,7 +16,6 @@ import {
   commandEffectIsWeaker,
   deriveSettingsCommandFingerprint,
   storageRelocationRequestFingerprint,
-  type CommandEffectClass,
   type CommandRequest,
 } from "../../rules/commands/commands.js";
 import { FingerprintSchema, PositiveIntSchema, WorkerIdSchema } from "../../rules/identity/ids.js";
@@ -120,12 +118,6 @@ function configDescriptor(command: CommandRequest): z.infer<typeof AssistantConf
   return AssistantConfigDescriptorSchema.parse({ kind: "present", ...present });
 }
 
-function assistantPromptRequired(mode: AssistantPermissionMode, effect: CommandEffectClass): boolean {
-  if (mode === "every-action") return true;
-  if (mode === "without-asking") return false;
-  return effect === "external-submit" || effect === "destructive";
-}
-
 function staleField(required: AssistantApprovalBinding, presented: AssistantApprovalBinding): AssistantStaleField | undefined {
   if (presented.profileId !== required.profileId) return "profile";
   if (presented.accountSessionEpoch !== required.accountSessionEpoch) return "epoch";
@@ -224,7 +216,6 @@ export function checkAssistantAction(input: unknown): AssistantDecision {
       if (prior.code === undefined) return refusal(phase, "ASSISTANT_AUTHORITY_INVALID");
       return refusal(phase, prior.code, prior.field);
     }
-    return finish(prior.outcome, phase, "retained", binding);
   }
   if (body.data.approval !== undefined) {
     const approval = AssistantApprovalBindingSchema.safeParse(body.data.approval);
@@ -232,8 +223,8 @@ export function checkAssistantAction(input: unknown): AssistantDecision {
     const field = staleField(binding, approval.data);
     if (field !== undefined) return refusal(phase, "ASSISTANT_BINDING_STALE", field);
   }
-  if (assistantPromptRequired(authority.authority.policy.mode, entry.classification) && body.data.approval === undefined) {
+  if (body.data.approval === undefined) {
     return finish("approval-required", phase, "fresh", binding);
   }
-  return finish("assistant-clear", phase, "fresh", binding);
+  return finish("assistant-clear", phase, prior.state === "retained" && sameJson(prior.binding, binding) ? "retained" : "fresh", binding);
 }

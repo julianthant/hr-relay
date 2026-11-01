@@ -173,7 +173,7 @@ it("preserves unavailable credentials, upgrade history and counts beside corrupt
 
 });
 
-for (const state of ["current", "stale", "missing", "invalid"] as const) it(`omits ${state} backup data from storage checks`, async () => {
+for (const state of ["current", "stale", "missing", "invalid"] as const) it(`keeps ${state} backup facts out of unavailable backup controls`, async () => {
   const candidate = {state: "verified-compatible", selection: "single-database", schemaVersion: 51,
     restoreEligibility: {state: "unavailable", reason: "Live custody inspection unavailable"},
     manifestFileName: "exact.sqlite.manifest.json", backupFileName: "exact.sqlite", createdAt: HEALTHY.checkedAt,
@@ -181,7 +181,14 @@ for (const state of ["current", "stale", "missing", "invalid"] as const) it(`omi
   const backup = state === "current" || state === "stale" ? {state, latest: candidate, ...(state === "stale" ? {cause: {code: "backup-stale", summary: "Synthetic stale backup"}} : {})}
     : {state, cause: {code: `backup-${state}`, summary: `Synthetic ${state} backup`}};
   const dom = await mountDoctor(StorageDoctorWireSchema.parse({...HEALTHY, backup, restoreCandidates: [candidate]}));
-  assert.doesNotMatch(dom.textContent ?? "", /backup|restore|generation gap|manifest/iu);
+  const controls = dom.querySelector('[role="group"][aria-label="Backup and restore"]');
+  assert.ok(controls);
+  assert.match(controls.textContent ?? "", /Backups are unavailable\. Try again when connected\./u);
+  assert.match(controls.textContent ?? "", /Restore is unavailable\. Try again when connected\./u);
+  const buttons = controls.querySelectorAll("button");
+  assert.equal(buttons.length, 2);
+  for (const button of buttons) assert.equal(button.disabled, true);
+  assert.doesNotMatch(dom.textContent ?? "", /generation gap|manifest|exact\.sqlite|Synthetic (?:stale|missing|invalid) backup|Live custody inspection unavailable|Live generation unavailable|Last backup|Backup complete and verified/iu);
 });
 
 it("shows every useful check before running and keeps Preflight separate", async () => {

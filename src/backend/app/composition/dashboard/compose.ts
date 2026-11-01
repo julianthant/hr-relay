@@ -1,3 +1,6 @@
+import { createAssistantWorkflowStarts } from "../../../assistant/workflow-start.js";
+import { readProfileDatabaseBinding } from "../../../storage/sqlite/profile-local-databases.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../storage/sqlite/migrations.js";
 import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { reconcileStartupCrash, reconcileExitedWorker } from "../../../runs/lifecycle/startup-crash-recovery.js";
@@ -789,7 +792,7 @@ async function composeDashboardRuntimeStartup(
   const trustReads = createTrustReadDependencies({ database, artifactReader, reader: lifecycle });
   const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, ownsWorker, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? stepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
-  const explorerBoundary = composeExplorer({ database, clock, descriptorSetHash: setHash });
+  const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
 
   const workflowSources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredWorkflowSources);
 
@@ -837,25 +840,10 @@ async function composeDashboardRuntimeStartup(
         assistantAuthorization.assertEffect(command.commandId, command);
     },
     storageRelocationPlans,
-    explorerEdits: explorerBoundary.executor,
   });
 
   const assistantAuthorization = composeProfileAssistantAuthorization(profile.runtime, profile.token, kernel, clock);
   const knowledge = assistantKnowledgeArtifact(DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served").map(descriptor => ({ id: descriptor.id, label: descriptor.label })));
-  const assistantTools = createProductionAssistantTools({ database, kernel, authorization: assistantAuthorization, knowledge,
-    actorId: resolved.config.actor.id, clock, assertCurrent });
-  const assistant = createAssistantService({ account: { ...chatGptAccount, ...context.accountAuthority },
-    context: () => loadProductionAssistantContext(repoRoot, knowledge),
-    runtime: () => { assertCurrent(); return knowledge.policy; },
-    modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
-    readModelPreference: () => captureSelectedModel().view,
-    verifySelectedModel: async signal => {
-      const captured = captureSelectedModel();
-      await chatGptAccount.verifyAssistantCapability(captured.view.preference, captured.assertPreferenceCurrent, signal);
-      captured.assertPreferenceCurrent();
-    },
-    clock, ...assistantTools,
-  });
 
 
   const commands = createDashboardCommandService({
@@ -882,6 +870,25 @@ async function composeDashboardRuntimeStartup(
     configSnapshotId,
     plannedBy: LOCAL_OPERATOR_ACTOR_ID,
   });
+
+  const workflowStarts = createAssistantWorkflowStarts({ database, runs: lifecycle, plans: startPlans, commands,
+    authorization: assistantAuthorization, descriptors, served: workflowId => workflowSources[workflowId] === "served",
+    actorId: resolved.config.actor.id, clock, assertCurrent });
+  const assistantTools = createProductionAssistantTools({ database, kernel, authorization: assistantAuthorization, knowledge,
+    actorId: resolved.config.actor.id, clock, assertCurrent, workflowStarts });
+  const assistant = createAssistantService({ account: { ...chatGptAccount, ...context.accountAuthority },
+    context: () => loadProductionAssistantContext(repoRoot, knowledge),
+    runtime: () => { assertCurrent(); return knowledge.policy; },
+    modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
+    readModelPreference: () => captureSelectedModel().view,
+    verifySelectedModel: async signal => {
+      const captured = captureSelectedModel();
+      await chatGptAccount.verifyAssistantCapability(captured.view.preference, captured.assertPreferenceCurrent, signal);
+      captured.assertPreferenceCurrent();
+    },
+    clock, ...assistantTools,
+  });
+
 
   const intake = composeIntake({ database, artifacts, parser: intakeParser, projections: intakeProjections, descriptors, clock, ids });
   const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock });
@@ -954,7 +961,7 @@ async function composeDashboardRuntimeStartup(
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
     ...settingsBoundary.routes,
     ...composeStorage({ credentials: context.credentials, admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
-    ...explorerBoundary.routes,
+    ...explorerBoundary,
     activity,
     activityPopulation,
   });
@@ -1057,8 +1064,9 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       exclusiveOwner = exclusive;
       try {
         const claim = consumeAuthenticatedProfileUpgrade(authorization, exclusive);
+        const sourceVersion = readProfileDatabaseBinding(join(exclusive.stateRoot, "profiles", claim.profileId, "state.db")).schemaVersion;
         const report = await upgradeReadyProfileStorage(profileBrowserClosure, exclusive, claim, { plan: false, hostFacts: facts }, clock);
-        if (report.state !== "upgraded" || report.fromSchemaVersion !== 8 || report.toSchemaVersion !== 9) throw new Error("profile-upgrade-readback-unproved");
+        if (report.state !== "upgraded" || report.fromSchemaVersion !== sourceVersion || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-upgrade-readback-unproved");
       } catch (error) {
         if (!(error instanceof AuthoritySourceClosureUnprovedError)) {
           try { exclusive.release(); exclusiveOwner = undefined; }

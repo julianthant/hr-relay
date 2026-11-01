@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { onboardingProfileDirectory } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
@@ -485,7 +486,7 @@ for (const boundary of ["source-fsync", "protected-stage"] as const) {
     const f = await privateDraftFixture(); retainDraftBrowserDirectory(f); await f.profile.close(); f.machine.release();
     const port = f.lifetime.port; await f.lifetime.close();
     const child = fork(fileURLToPath(new URL("../../../support/processes/profile-onboarding-abort-worker.ts", import.meta.url)), [f.root, boundary, String(port)],
-      { execArgv: ["--disable-warning=ExperimentalWarning", "--import", "tsx"], detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
+      { execArgv: ["--disable-warning=ExperimentalWarning", "--import", testProcessImport()], detached: true, stdio: ["ignore", "ignore", "pipe", "ipc"] });
     const retained: { root: string; child: typeof child; recoveryLifetime?: RuntimeLifetimeLock } = { root: f.root, child }; retainedProcessLossFixtures.add(retained);
     const closed = once(child, "close"); let stderrBytes = 0; child.stderr?.on("data", (bytes: Buffer) => { stderrBytes += bytes.length; });
     const ready = z.object({ type: z.literal("ready"), pid: z.number().int().positive(), keychain: z.array(z.tuple([z.string(), z.string()])) }).parse((await once(child, "message"))[0]);

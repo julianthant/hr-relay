@@ -253,22 +253,33 @@ authority-supplied attempt greater than the current attempt.
 
 `dryRun` is envelope state, not workflow input. `workflowDryRunSupport` derives support from all
 transaction nodes. A graph with no transaction refuses preview as `no-transaction-node`; a graph
-with an unsupported transaction refuses as `node-declares-unsupported`. Otherwise `stopsAt` names
-the first transaction. `supportsDryRun` on an input-run surface is derived and cannot be authored.
+with an unsupported transaction refuses as `node-declares-unsupported`. Otherwise `firstTransactionNodeId` names
+the first preparation boundary. `supportsDryRun` on an input-run surface is derived and cannot be authored.
 
 ### 2.1 Preview terminal result
 
-`executeClaimedRun` in `src/backend/runtime/execution/run-executor.ts` ends a preview at the first
-transaction and stores `RunDryRunPreviewResult`, not the authored terminal derive.
-`src/backend/runtime/writes/write-sequencer.ts` runs the durable lookup and applicable read probe
-before prepare. Its `already-present` preview reports existing evidence without settling a new
-write. Its `would-prepare` preview includes staged output and the subject observation.
+`executeClaimedRun` traverses the declared graph and stores `RunDryRunPreviewResult`, independently
+of the authored terminal derive. Every node has exercised, transaction-preview, unavailable or
+not-run accounting. Each transaction prepares, verifies and captures without invoking commit.
+Existing completion may be observed at the durable lookup or read probe without restaging a form.
 
-The run settles `done` with `externalCommit: "none"`. `buildPreview` in
-`src/workflow-kit/workflow.ts` binds the preview schema and that transaction's dependencies, and
-refuses a non-preview envelope or another node. A preview creates no write intent or submit fence.
-`src/backend/runs/provenance/evidence-receipt.ts` reports `DRY_RUN_PREVIEW` and an unknown terminal
-workflow result. A preview does not prove a completed HR transaction.
+A transaction may declare `previewBind` for dependencies whose real output does not exist until
+submit. It returns separately schema-checked prepare/commit inputs and labelled sample provenance.
+Samples never appear as ordinary upstream outputs or receipts. Reads that require an unsubmitted
+result remain unavailable. Separations uses a labelled transaction-number sample to stage Kuali
+finalization while its receipt and filing-presence checks remain unavailable. Its real submission
+still requires the fresh filing-presence proof.
+
+The terminal record retains every stage and authenticates actual read checkpoints through its
+dependencies. No transaction checkpoint, write intent, submit fence, mutation capability or
+successful-write receipt is created. Sample-derived preparations produce no confirmed-action
+write authority. Sample values are labelled in Logs, served stage accounting and captured images;
+real writes reject preview bindings, preview scope and reserved sample values before browser work.
+
+Receipt derivation reports `DRY_RUN_PREVIEW`, empty workflow output and unknown write completion.
+Full coverage means every declared node is accounted for; it does not mean every stage was
+exercised. The partial-coverage arm explicitly represents a historical first-boundary preview
+whose later stages were not recorded. It does not infer their membership from the current graph.
 
 ## 3. Graph execution
 
@@ -495,7 +506,7 @@ The result uses `active-status` in Search mode. In Match mode, it derives the ou
 
 `unselectedCrmRecords` is nullable. `crm-results` runs for an array, including `[]`, and skips when the field is `null`. Its bind builds the same query as `cross-verify`. The task reads the current CRM results and compares them with the discovered records. If they differ, it fails with `PERSON_LOOKUP_CRM_RESULTS_CHANGED`. `crm-results` returns unresolved rows without treating a row as the selected CRM record. When `crmRecord` is present, `crm-selected-record` reopens the record and verifies its current identity and facts. `crm-results` skips on this branch.
 
-`searching`, `matching`, `crm-selected-record`, and `crm-results` own the task-point screenshot captures. `captureBrowserScreenshots` gates image capture. With the option off, `crm-results` still reads and compares the CRM records, but its screenshot call is a no-op. Checkpoint replay restores task output and does not invoke capture or create a new Screenshot action.
+`searching`, `matching`, `crm-selected-record`, and `crm-results` own the task-point screenshot captures. These workflow captures are required even when `captureBrowserScreenshots` is false. A failed or unavailable required capture prevents the task checkpoint. Checkpoint replay restores task output and does not invoke capture or create a new Screenshot action.
 
 The workflow has no transaction, gate, parallel, or delegation node. Its dry-run preview refuses because the graph contains no transaction. Its declaration is not evidence of a current live run or completed dashboard wiring.
 

@@ -16,18 +16,6 @@ const UCPATH_REUSE = {
 
 describe("worker browser sessions", () => {
 
-  it("does not capture a historical or explicitly disabled browser lease", async () => {
-    const harness = sessionFactory();
-    const captured: unknown[] = [];
-    const sessions = await manager(harness, [], {
-      captureBrowserScreenshots: false,
-      browserScreenshotCapture: { async capture(context) { captured.push(context); } },
-    });
-    await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "ok");
-    assert.equal(harness.screenshots(), 0);
-    assert.deepEqual(captured, []);
-  });
-
   it("preserves a task failure with its selected screenshot failure and still poison-closes", async () => {
     const harness = sessionFactory({ screenshotFailure: true });
     const sessions = await manager(harness, [], {

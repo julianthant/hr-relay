@@ -7,7 +7,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | Path | Contents |
 | --- | --- |
 | `AGENTS.md` | Repository instructions. Nearer instructions own backend, registry, system, and dashboard constraints. |
-| `.agents/` and `.claude/` | Repository skills and operating references. |
+| `.agents/` | Project agent data: skill entrypoints in `skills/`, with canonical operating references in `skill-library/`. |
 | `config/` | Runtime isolation and test-data configuration. |
 | `docs/rebuild/reference/` | Current contracts and this map. |
 | `docs/rebuild/guides/` | Workflow authoring guide. |
@@ -55,7 +55,7 @@ Paths in this table are relative to `src/backend/`.
 
 | Path | Ownership |
 | --- | --- |
-| `assistant/` | Finite local intent and opaque-reference tools, bounded generated plain knowledge, private profile-token authorization and once-consumable canonical actions. Profile SQLite owns grants, chats and action records. `context.ts` owns the safe knowledge projection; `scripts/build/generate-assistant-knowledge.ts` writes and checks its artifact. |
+| `assistant/` | Finite local intent and opaque-reference tools, bounded generated plain knowledge, private profile-token authorization and once-consumable canonical actions. Profile SQLite owns grants, chats and action records. `workflow-start.ts` binds selected-run workflow proposals to canonical plans and confirmed dashboard command dispatch. `context.ts` owns the safe knowledge projection; `scripts/build/generate-assistant-knowledge.ts` writes and checks its artifact. |
 | `accounts/` | ChatGPT OAuth, verified account and usage state, and the shared Responses OCR/assistant transport. Account-specific model catalogs and bounded strict namespaced function turns use the same selected-account owner; production functions require their current canonical availability and authorization gates; absent verified model policy refuses inference. Browser-safe account and sign-in lifecycle schemas live in `models/dashboard/chatgpt-account.ts`; HTTP routes own the latest account attempt. |
 | `app/` | Bootstrap, configuration, host admission, preflight, rehearsal manifest validation, and application composition. |
 | `app/composition/` | Storage, dashboard, and worker dependency assembly. `profile-credential-inventory.ts` composes credential maintenance assessment, including stopped machine-control inventory; `storage/maintenance/profile-inventory.ts` owns canonical copy/resource membership and retained browser-root validation shared with stopped READY-profile upgrade. Its required `ProfileBrowserClosure` port receives native work from composition; storage never imports runtime. `storage/maintenance/upgrade.ts` runs profile SQLite upgrade and the separate stopped machine-control upgrade. `storage/maintenance/existing-data-backup.ts` owns the shared verified SQLite and private coupled-copy writer for the startup flat-store migration and stopped flat native6 CLI backups,. `storage/maintenance/existing-data-backup-files.ts` owns backup manifests and file verification without opening authority databases. `storage/maintenance/cancel-queued-runs.ts` owns digest-bound offline cancellation of never-claimed flat native6 queues, using the finite `AuthorityDatabase.cancelQueuedRunsNative6` transaction and shared run transition/row-update primitives; `storage/maintenance/process-closure.ts` supplies the current startup and offline process/open-file/cwd absence checks. `storage/admission/bootstrap-admission.ts` runs the verified flat-store start-clean migration before profile composition; `installation.ts` owns its durable deletion intent and empty-registry publication. |
@@ -95,6 +95,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/` | Browser-safe schemas, contracts, and API shapes. System and workflow task contracts live under `systems/` and `workflows/`; canonical fields live under `fields/`. `failures/error-catalog.ts` owns task-code normalization for durable failures and their served recovery declarations. |
 | `src/models/dashboard/activity-population.ts` | Canonical Analytics population, selected browse, export and AP1 snapshot schemas. `activity-selection.ts` owns the nested AS1 report selection used by summary and XLSX exports. |
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. |
+| `src/models/workflow/dry-run.ts` | Browser-safe preview stage accounting, typed sample provenance and reserved sample detection. |
 | `src/models/workflow/build-manifest.ts` | Pure build-manifest path, schemas, types and parser shared by generation and runtime validation. `workflow-kit/validation/build-manifest.ts` owns the eagerly validated checked-in manifest and fingerprint resolvers. |
 | `src/models/events/` | Timeline, confirmed action, declared step result, and confirmation-proof schemas. |
 | `src/models/trust/` | Failure, diagnostic, receipt, and scenario schemas. |
@@ -147,9 +148,13 @@ tests/
 Architecture, parity, performance, type, and support trees are exempt from source mirroring.
 Architecture fixtures and helpers stay beside their owning guard families.
 Shared fixtures, fresh-authority builders, and child-process entrypoints live under `tests/support/`.
+`tests/support/helpers/dashboard/controls/` owns the UI control preview fixtures, loaded by
+fixture name from `tests/parity/app-entry.tsx`.
 - `tests/support/duo-ceremony-setup.ts` registers the shared Duo fixture cleanup for every Vitest project; the fixture owner stays process-safe.
 Shared composition setup lives in `tests/support/helpers/backend/{capability-wiring-world,write-recovery-world,dashboard-child-world,worker-loop-world}.ts`
 and `tests/support/helpers/dashboard/mounted-rerun-world.ts`; each test owns its allocation, hooks, and cleanup.
+`tests/support/compiled-process{,-setup,-loader}.ts` owns test child JavaScript preparation,
+launch imports and content-addressed loading; `guards-and-tests.md` owns its cache contract.
 `tests/support/helpers/backend/runtime-lifetime.ts` owns temporary kernel listeners for tests;
 `tests/backend/runs/lifecycle/run-record-service.write-parking.integration.test.ts` owns write-park journal and event atomicity.
 

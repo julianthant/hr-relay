@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
 import assert from "node:assert/strict";
@@ -327,7 +328,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     for (let index = 0; index < contenderCount; index += 1) {
       const child = spawn(process.execPath, [
         "--import",
-        "tsx",
+        testProcessImport(),
         fixturePath,
         paths.processLockRoot,
         readyDirectory,

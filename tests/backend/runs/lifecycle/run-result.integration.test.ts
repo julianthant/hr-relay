@@ -17,7 +17,7 @@ function terminalRun(database: AuthorityDatabase) {
   return record;
 }
 
-describe("a dry run previews its transaction node and ends there", () => {
+describe("a dry run retains transaction preview accounting", () => {
 
   it("refuses to build a preview result for a run the operator did not ask to preview", async () => {
     const h = await harness();

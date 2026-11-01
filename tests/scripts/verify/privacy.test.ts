@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -16,7 +17,7 @@ describe("public repository privacy check", () => {
     for (const path of ["roster.csv", "staff.xlsx", "packet.pdf", "tests/support/fixtures/new.pdf", "tests/roster.tsv"]) {
       assert.deepEqual(inspectTrackedFile(path, text("")), [{ path, rule: "private-document" }]);
     }
-    for (const path of [".env", ".env.local", "nested/.env.example"]) {
+    for (const path of [".env", ".env.local", ".env.example", "nested/.env.example"]) {
       assert.deepEqual(inspectTrackedFile(path, text("")), [{ path, rule: "environment-file" }]);
     }
     for (const path of ["credentials.json", "config/secrets.json", ".netrc", ".git-credentials", "config/test-data.local.json", "keys/operator.pem", ".aws/config", "tests/credentials/token.txt"]) {
@@ -25,12 +26,11 @@ describe("public repository privacy check", () => {
     assert.deepEqual(inspectTrackedFile(".local-private/note.txt", text("")), [{ path: ".local-private/note.txt", rule: "private-directory" }]);
   });
 
-  it("allows only named binary fixtures and the root environment example", () => {
-    for (const path of ["tests/support/fixtures/documents/synthetic-sample.pdf", "tests/support/fixtures/spreadsheet/color-filtered-roster.xlsx", "tests/support/helpers/dashboard/color-filtered-roster.xlsx"]) {
+  it("allows only named binary fixtures", () => {
+    for (const path of ["tests/support/fixtures/documents/synthetic-sample.pdf", "tests/support/fixtures/spreadsheet/color-filtered-roster.xlsx"]) {
       assert.deepEqual(inspectTrackedFile(path, readFileSync(new URL(`../../../${path}`, import.meta.url))), []);
       assert.deepEqual(inspectTrackedFile(path, Buffer.from([0, 1, 2])), [{ path, rule: "private-document" }]);
     }
-    assert.deepEqual(inspectTrackedFile(".env.example", text("placeholder")), []);
   });
 
   it("recognizes current PNG and WebP assets by signature", () => {
@@ -128,7 +128,10 @@ describe("public repository privacy check", () => {
   it("never lets synthetic allowances bypass credential detection", () => {
     const credential = ["ghp_", "a".repeat(36)].join("");
     for (const path of ["tests/new.test.ts", ".env.example", "src/models/systems/crm/read-onboarding-dates.ts"]) {
-      assert.deepEqual(inspectTrackedFile(path, text(credential)), [{ path, rule: "credential-value" }]);
+      assert.deepEqual(inspectTrackedFile(path, text(credential)), [
+        { path, rule: "credential-value" },
+        ...(path === ".env.example" ? [{ path, rule: "environment-file" }] : []),
+      ]);
     }
     for (const path of ["tests/architecture/runs/evidence-receipt.test.ts", "tests/rules/redaction/redaction.test.ts"]) {
       const existing = readFileSync(new URL(`../../../${path}`, import.meta.url));
@@ -142,7 +145,7 @@ describe("public repository privacy check", () => {
   it("fails closed without forwarding Git diagnostics when the index cannot be read", () => {
     const cwd = mkdtempSync(join(tmpdir(), "relay-privacy-unreadable-"));
     try {
-      const result = spawnSync(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), fileURLToPath(new URL("../../../scripts/verify/privacy.ts", import.meta.url))], { cwd, encoding: "utf8" });
+      const result = spawnSync(process.execPath, ["--import", testProcessImport(), fileURLToPath(new URL("../../../scripts/verify/privacy.ts", import.meta.url))], { cwd, encoding: "utf8" });
       assert.equal(result.status, 1);
       assert.equal(result.stdout, "");
       assert.equal(result.stderr, "Privacy check failed: scan-error.\n");
@@ -165,7 +168,7 @@ describe("public repository privacy check", () => {
         { path: "a/note.txt", rule: "eid" }, { path: "a/note.txt", rule: "ssn" },
         { path: "z.txt", rule: "eid" }, { path: "z.txt", rule: "ssn" },
       ]);
-      const result = spawnSync(process.execPath, ["--import", fileURLToPath(import.meta.resolve("tsx")), fileURLToPath(new URL("../../../scripts/verify/privacy.ts", import.meta.url))], { cwd, encoding: "utf8" });
+      const result = spawnSync(process.execPath, ["--import", testProcessImport(), fileURLToPath(new URL("../../../scripts/verify/privacy.ts", import.meta.url))], { cwd, encoding: "utf8" });
       assert.equal(result.status, 1, result.stderr);
       assert.equal(result.stderr, findings.map(({ path, rule }) => `${JSON.stringify(path)}: ${rule}\n`).join(""));
       assert.ok(!`${result.stdout}${result.stderr}`.includes(unknownEid));

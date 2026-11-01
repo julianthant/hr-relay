@@ -8,17 +8,16 @@ import { buildUiTaskLinks } from "../../../src/backend/systems/ui-task-links.js"
 import { type ExplorerNodeWire } from "../../../src/models/dashboard/explorer.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
-import { explorerAuthorityFixture } from "../../support/fixtures/explorer-authority.js";
+import { buildWorkflowExplorer } from "../../../src/backend/runs/queries/explorer.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
 import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
 
-const FIRST = "11111111-1111-4111-8111-111111111111";
 
 describe("Explorer registered graph and service acceptance", () => {
   it("matches each runtime dependency, condition and dry-run boundary and resolves all printed sources", async () => {
-    const f = await explorerAuthorityFixture();
-    try {
-      const query = explorerQueryDeps(f.clock, FingerprintSchema.parse("b".repeat(64)));
-      const wire = f.read();
+
+      const query = explorerQueryDeps(manualClock(new Date("2026-09-13T10:00:00Z")), FingerprintSchema.parse("b".repeat(64)));
+      const wire = buildWorkflowExplorer(query);
       const uiTaskLinks = buildUiTaskLinks();
       assert.deepEqual(wire.workflows.map(w => w.id), query.modules.map(m => m.descriptor.id));
       let conditional = 0;
@@ -61,9 +60,5 @@ describe("Explorer registered graph and service acceptance", () => {
         }
       }
       assert.ok(conditional > 0 && transactions > 0, "must exercise actual conditional and transaction nodes");
-      assert.deepEqual(f.database.authority.explorerOverrides.readAll(), []);
-      assert.equal(f.database.authority.commands.get(FIRST), undefined);
-      assert.equal(f.database.authority.commandAudits.findByCommand(FIRST), undefined);
-    } finally { await f.dispose(); }
   });
 });

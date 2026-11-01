@@ -1,8 +1,9 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, RotateCcw, Square, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import type { BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
 import {
+  DialogBody,
   ActionBar,
   BareButton,
   Button,
@@ -454,4 +455,39 @@ export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelec
         </div>
       )}
   </>;
+}
+
+export function RunPauseControl({ runLabel, state, onAction }: {
+  runLabel: string;
+  state: "running" | "pause-pending" | "paused" | "resume-pending" | "unavailable";
+  onAction?: (action: "pause" | "resume") => void;
+}) {
+  const resumable = state === "paused";
+  const pending = state === "pause-pending" || state === "resume-pending";
+  return <div className="flex items-center gap-2" aria-label={`${runLabel} pause controls`}>
+
+    <Button size="sm" variant="secondary" disabled={pending || state === "unavailable" || onAction === undefined} onClick={() => onAction?.(resumable ? "resume" : "pause")}>{state === "pause-pending" ? "Pausing…" : state === "resume-pending" ? "Resuming…" : resumable ? "Resume" : "Pause"}</Button>
+    {(pending || resumable || state === "unavailable") && <span className="sr-only" role="status">{state === "pause-pending" ? "Finishing the current step; a submit is never interrupted. Pause is not yet recorded." : resumable ? "Pause recorded. Resume explicitly after restart." : state === "resume-pending" ? "Validating finished work. Resume is not yet confirmed." : "Run pause authority is unavailable."}</span>}
+  </div>;
+}
+
+export function PauseAllQuitControls({ state, activeCount, runs, onPauseAll, onPauseAndQuit, quitRequested = false, onQuitDismiss }: {
+  state: "ready" | "pausing" | "paused" | "blocked" | "unavailable";
+  activeCount: number;
+  runs?: readonly { label: string; detail: string; id: string }[];
+  quitRequested?: boolean;
+  onQuitDismiss?: () => void;
+  onPauseAll?: () => void;
+  onPauseAndQuit?: () => void;
+}) {
+  const pauseAll = useRef<HTMLButtonElement>(null);
+  const enabled = state === "ready" && activeCount > 0;
+  return <div className="flex flex-col gap-[var(--ds-space-cozy)]">
+    <div className="flex items-center gap-2"><Button ref={pauseAll} size="sm" variant="secondary" disabled={!enabled || !onPauseAll} onClick={onPauseAll}>Pause all</Button></div>
+    {state !== "ready" && <p role="status" className="sr-only">{state === "pausing" ? "Finishing current steps; pauses and shutdown are not yet confirmed." : state === "paused" ? "All runs paused. Resume them next time." : state === "blocked" ? "Closure is unknown. Keep Relay open and check active runs." : "Pause all is unavailable. Check the connection."}</p>}
+    <Dialog open={quitRequested && enabled} onOpenChange={open => { if (!open) onQuitDismiss?.(); }}><DialogContent size="sm" title="Pause all and quit?" description="Each run finishes its current step, then pauses. Resume them next time." onCloseAutoFocus={event => { event.preventDefault(); pauseAll.current?.focus(); }}>
+      <DialogBody>{runs ? <div className="divide-y divide-ui-stroke">{runs.map(run => <div key={run.id} className="flex items-center justify-between gap-4 py-[var(--ds-space-cozy)]"><div><strong className={dsText.ui}>{run.label}</strong><p className={`${dsText.meta} text-ui-muted`}>{run.detail}</p></div><span className={`${dsText.meta} font-mono text-ui-muted`}>{run.id}</span></div>)}</div> : <p>{activeCount} active {activeCount === 1 ? "run" : "runs"} will pause before Relay quits.</p>}</DialogBody>
+      <DialogFooter><Button variant="secondary" autoFocus onClick={onQuitDismiss}>Keep working</Button><Button disabled={!onPauseAndQuit} onClick={() => { onQuitDismiss?.(); onPauseAndQuit?.(); }}>Pause all and quit</Button></DialogFooter>
+    </DialogContent></Dialog>
+  </div>;
 }

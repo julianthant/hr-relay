@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
@@ -17,7 +19,7 @@ describe("assistant model preference additive schema", () => {
       for (const statement of ninth.statements) database.exec(statement);
       for (const value of prior) { assert.ok(typeof value.name === "string"); assert.deepEqual(database.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name=?").get(value.name), value); }
       assert.deepEqual(tables.map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), rows);
-      assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 9);
+      assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 11);
       assert.deepEqual(migrationTableNames(9).filter(table => !tables.includes(table)), ["assistant_model_preference"]);
       assert.equal(tableClassification("assistant_model_preference"), 'authority');
       assert.deepEqual(database.prepare("SELECT * FROM assistant_model_preference").all(), []);
@@ -33,7 +35,15 @@ describe("assistant model preference additive schema", () => {
     assert.equal(deriveAuthorityUpgradePlanDigest(8, fingerprint), deriveAuthorityUpgradePlanDigest(8, fingerprint, CURRENT_AUTHORITY_SCHEMA_VERSION));
   });
 
-  it.each([[7, 7], [7, 10], [8, 8], [6, 8], [7, '8'], [7, null], [7, Number.NaN]])(
+  it.each([[7, 8], [7, 9], [8, 9], [9, 10]] as const)("retains the exact historical %s-to-%s upgrade digest", (from, to) => {
+    const fingerprint = "1".repeat(64);
+    const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > from && migration.version <= to).flatMap(migration => migration.statements);
+    const expected = createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion: from, toSchemaVersion: to, sourceContentFingerprint: fingerprint, statements })).digest("hex");
+    assert.equal(deriveAuthorityUpgradePlanDigest(from, fingerprint, to), expected);
+    assert.notEqual(deriveAuthorityUpgradePlanDigest(from, fingerprint), expected);
+  });
+
+  it.each([[7, 7], [7, 12], [8, 8], [6, 8], [7, '8'], [7, null], [7, Number.NaN]])(
     'refuses an unsupported historical plan target %s to %s', (from, to) => {
       assert.throws(() => { Reflect.apply(deriveAuthorityUpgradePlanDigest, undefined, [from, '1111111111111111111111111111111111111111111111111111111111111111', to]); },
         { message: 'authority-upgrade-plan-target-unsupported' });

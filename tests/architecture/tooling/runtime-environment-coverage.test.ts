@@ -6,38 +6,12 @@ import { auditRuntimeEnvironmentInventory, COMPUTED_ENVIRONMENT_READERS, EXACT_E
 import { ENVIRONMENT_SOURCE_EXTENSIONS, inventoryEnvironmentAccesses, type EnvironmentAccessOccurrence } from "../runtime/helpers/environment-read-audit.js";
 import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
 
-interface ExampleEnvironmentInventory {
-  readonly keys: readonly string[];
-  readonly violations: readonly string[];
-}
-
-
 function repositoryOccurrences(): readonly EnvironmentAccessOccurrence[] {
   const scannable = (path: string): boolean =>
     ENVIRONMENT_SOURCE_EXTENSIONS.some((extension) => path.endsWith(extension));
   return gitVisibleFiles(["."])
     .filter(scannable)
     .flatMap((path) => inventoryEnvironmentAccesses(path, readFileSync(resolve(REPO_ROOT, path), "utf8")));
-}
-
-function parseExampleEnvironment(content: string): ExampleEnvironmentInventory {
-  const keys: string[] = [];
-  const violations: string[] = [];
-  const assignment = /^\s*(?:#\s*)?(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=\s*(?:(?:"(?:[^"\\]|\\.)*")|(?:'(?:[^'\\]|\\.)*')|(?:[^#\r\n]*?))(?:\s+#.*)?\s*$/;
-  const candidate = /^\s*(?:#\s*)?(?:export\s+)?[A-Z][A-Z0-9_]*\s*=/;
-
-  for (const [index, line] of content.split(/\r?\n/).entries()) {
-    if (!line.trim() || (/^\s*#/.test(line) && !candidate.test(line))) continue;
-    const match = assignment.exec(line);
-    if (!match) {
-      if (candidate.test(line) || !/^\s*#/.test(line)) violations.push(`line ${index + 1}: malformed environment assignment`);
-      continue;
-    }
-    keys.push(match[1]);
-  }
-  const duplicates = keys.filter((key, index) => keys.indexOf(key) !== index);
-  if (duplicates.length > 0) violations.push(`duplicate .env.example keys: ${[...new Set(duplicates)].join(", ")}`);
-  return { keys, violations };
 }
 
 /** Test-lane paths on either side, which own their own environment reads. */
@@ -163,29 +137,6 @@ describe("runtime environment inventory coverage", () => {
         exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.filter(candidate => candidate.key !== spec.key) };
       assert.match(auditRuntimeEnvironmentInventory(restored).join("\n"), /is not explicitly refused/u, spec.key);
     }
-  });
-
-  it("parses .env.example grammar without ever retaining values and pins documented exactness", () => {
-    const actual = parseExampleEnvironment(readFileSync(resolve(REPO_ROOT, ".env.example"), "utf8"));
-    assert.deepEqual(actual.violations, []);
-    assert.deepEqual(
-      [...actual.keys].sort(),
-      RUNTIME_ENVIRONMENT_FAMILIES
-        .filter(({ disposition }) => disposition === "active")
-        .map(({ prefix }) => prefix)
-        .sort(),
-    );
-    assert.deepEqual(parseExampleEnvironment([
-      "export ALPHA = value # explanation",
-      " # BRAVO='quoted empty is allowed'",
-      "CHARLIE=\"value with # hash\"",
-      "DELTA=",
-      "# prose is ignored",
-    ].join("\n")), { keys: ["ALPHA", "BRAVO", "CHARLIE", "DELTA"], violations: [] });
-    assert.deepEqual(parseExampleEnvironment("ALPHA=x\nALPHA=y\nBROKEN KEY=x").violations, [
-      "line 3: malformed environment assignment",
-      "duplicate .env.example keys: ALPHA",
-    ]);
   });
 
   it("keeps the current family inventory empty and unknown keys unregistered", () => {

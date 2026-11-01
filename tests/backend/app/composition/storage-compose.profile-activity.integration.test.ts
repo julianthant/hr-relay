@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { WireErrorSchema } from "../../../../src/models/dashboard/primitives.js";
 import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { isDeepStrictEqual } from "node:util";
@@ -291,7 +292,7 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
     dashboard = await composeDashboardRuntime({ lifetimeLock, admission: f.machine, profile: { runtime: profile, token: active.token },
       clock, isolation: rebuildRuntimeIsolation, repoRoot: f.workspace, env: {}, backendPortOverride: 0, frontendPortOverride: 0,
       preflightRunnerFactory: healthyRuntimePreflightRunners, workerProcess: {
-        launch: { command: process.execPath, prefixArgs: ["--import", "tsx", join(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), f.workspace],
+        launch: { command: process.execPath, prefixArgs: ["--import", testProcessImport(), join(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), f.workspace],
           environment: {}, cwd: process.cwd() },
         spawn: request => {
           const child = spawn(request.command, [...request.args, "--fixture-lock-port", String(lifetimeLock.port)], { cwd: request.cwd, detached: true, stdio: ["ignore", "pipe", "pipe", "ipc"] });

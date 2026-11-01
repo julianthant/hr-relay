@@ -430,24 +430,17 @@ context and commit capability.
 `src/backend/systems/ui-task-links.ts` derives Explorer links from the semantic registries.
 There is no generated UI catalog, catalog endpoint, or selector-search command.
 `src/backend/runs/queries/explorer.ts` projects registered descriptors, compiled definitions,
-sealed contracts, source manifests, semantic links, and presentation overrides. It reports unresolved
+sealed contracts, source manifests, and semantic links. It reports unresolved
 source links explicitly and does not infer live run observations. Missing `tests/scenario` sources
 remain unresolved references rather than fabricated replacements.
 
-## 5.4 Explorer edits
+## 5.4 Read-only Explorer
 
-`src/backend/runs/commands/explorer-edit-service.ts` validates strict drafts against descriptor
-version, fingerprint, and override revision. Its current compile attestation says `held` for the
-builder/schema/graph/guard checks and registered scenario-declaration equivalence. It does not claim
-that validation executes tests or requires every scenario source to resolve.
-
-Hot apply accepts only existing-workflow label, icon, and category overrides. The command kernel
-writes the override, command outcome, and audit in the same SQLite transaction through
-`authority.explorerOverrides`. Revision conflicts and divergent replay refuse. Each read captures
-one current override view. It does not maintain a second JSON-file authority or a cross-request
-cache. Policy and Edit Data changes produce a reviewed code-change brief; mixed hot-apply/source
-changes refuse. Arbitrary code, selectors, proof logic, identity rules, secrets, and new workflows
-remain outside the hot-apply protocol.
+Explorer has one generated definition query. Its labelled fictional examples and local branch controls
+change only the preview. There is no edit validation endpoint, edit command, hot override repository,
+or source-change draft generator. Workflow labels, icons, categories and policy remain definition-owned.
+The forward migration removes editor-only override rows and exact Explorer edit command/audit history,
+while foreign-key references from retained data refuse the migration transaction.
 
 ## Not built yet
 

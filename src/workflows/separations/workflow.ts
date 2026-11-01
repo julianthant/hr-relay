@@ -1,3 +1,6 @@
+import { DRY_RUN_TRANSACTION_NUMBER } from "../../models/workflow/dry-run.js";
+import type { WorkflowEntryScope } from "../../workflow-kit/workflow-definition.js";
+import { NodeIdSchema } from "../../rules/identity/ids.js";
 /** `separations` — one Kuali separation document → one terminated employee across three systems; reads before writes, gated by operator approval. */
 import { z } from "zod";
 import { EID_PATTERN, EidSchema } from "../../rules/identity/ids.js";
@@ -638,12 +641,12 @@ export const separationsWorkflow = defineWorkflow({
     {
       nodeId: "clear-pending",
       purpose: "Sweeps any pending termination already sitting on the subject's record, so the filing below is "
-        + "not the second one. It probes before it fences, and a dry run stops after staging.",
+        + "not the second one. It probes before it fences, and a dry run stages without submitting.",
     },
     {
       nodeId: "file-termination",
       purpose: "Files the termination through the UCPath Smart HR wizard — the real write. It probes for a "
-        + "filing that already exists, fences before the click, and a dry run stops after staging.",
+        + "filing that already exists, fences before the click, and a dry run stages without submitting.",
     },
     {
       nodeId: "finalize-kuali",
@@ -885,11 +888,8 @@ export const separationsWorkflow = defineWorkflow({
       observedSet: outputs[PENDING_SET_NODE],
     }),
     });
-    const fileTermination = transaction(
-      fileTerminationNode,
-      [approval, terminationType, employment, dates, clearPending],
-      {
-    prepareBind: ({ outputs }) => ({
+    const terminationDependencies = [approval, terminationType, employment, dates, clearPending] as const;
+    const terminationTarget = ({ outputs }: WorkflowEntryScope<typeof SeparationsCanonicalInput, typeof terminationDependencies>) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
       emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
@@ -898,19 +898,12 @@ export const separationsWorkflow = defineWorkflow({
       reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
       lastDateWorked: outputs[DATES_NODE].lastDayWorked,
       initiatorComments: outputs[DATES_NODE].terminationComments,
-    }),
-    commitBind: ({ outputs }) => ({
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-      emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
-      effectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-      template: outputs[TERMINATION_TYPE_NODE].template,
-      reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
-      lastDateWorked: outputs[DATES_NODE].lastDayWorked,
-      initiatorComments: outputs[DATES_NODE].terminationComments,
-    }),
-      },
-    );
+    });
+    const fileTermination = transaction(fileTerminationNode, terminationDependencies, {
+      prepareBind: terminationTarget,
+      commitBind: terminationTarget,
+      previewBind: scope => ({ prepare: terminationTarget(scope), commit: terminationTarget(scope), samples: [] }),
+    });
     const receipt = task(receiptNode, [approval, dates, fileTermination], ({ outputs }) => ({
       // A transaction node's scope value is the typed outcome envelope;
       // `output` is the COMMIT contract's own bare output.
@@ -921,11 +914,11 @@ export const separationsWorkflow = defineWorkflow({
     }));
     const filingPresence = task(filingPresenceNode, [receipt], ({ outputs }) =>
       outputs[RECEIPT_NODE]);
-    const finalizeKuali = transaction(
-      finalizeKualiNode,
-      [approval, action, document, plan, employment, departmentOption, dates, receipt, filingPresence],
-      {
-    prepareBind: ({ input, outputs, protectedInputBindings }) => ({
+    const finalizationDependencies = [approval, action, document, plan, employment, departmentOption, dates, receipt, filingPresence] as const;
+    const finalizationTarget = (
+      { input, outputs, protectedInputBindings }: WorkflowEntryScope<typeof SeparationsCanonicalInput, typeof finalizationDependencies>,
+      transactionNumber: string,
+    ) => ({
       ...(protectedInputBindings === undefined ? {} : { protectedBindings: [...protectedInputBindings] }),
       actionId: outputs[ACTION_NODE].actionId,
       documentNumber: input.documentNumber,
@@ -939,47 +932,36 @@ export const separationsWorkflow = defineWorkflow({
         lastDayWorked: outputs[DATES_NODE].lastDayWorked,
         separationDate: outputs[DATES_NODE].separationDate,
         terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-        transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
+        transactionNumber,
         timekeeperComments: buildFinalizationComments({
           existingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
           dateChangeComments: outputs[DATES_NODE].dateChangeComments,
           documentNumber: input.documentNumber,
-          transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
+          transactionNumber,
           initials: separationInitials(input.timekeeperName),
           asOfDate: outputs[PLAN_NODE].asOfDate,
         }),
         observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
       },
-    }),
-    // The commit target is bound from input and folds, keeping the key stable.
-    commitBind: ({ input, outputs, protectedInputBindings }) => ({
-      ...(protectedInputBindings === undefined ? {} : { protectedBindings: [...protectedInputBindings] }),
-      actionId: outputs[ACTION_NODE].actionId,
-      documentNumber: input.documentNumber,
-      emplId: outputs[APPROVAL_NODE].approved.emplId,
-      variables: {
-        department: outputs[DEPARTMENT_NODE].option,
-        payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
-        payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
-        timekeeperName: input.timekeeperName,
-        // §4e's amendment, bound identically to the prepare's.
-        lastDayWorked: outputs[DATES_NODE].lastDayWorked,
-        separationDate: outputs[DATES_NODE].separationDate,
-        terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-        transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
-        timekeeperComments: buildFinalizationComments({
-          existingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
-          dateChangeComments: outputs[DATES_NODE].dateChangeComments,
-          documentNumber: input.documentNumber,
-          transactionNumber: outputs[FILING_PRESENCE_NODE].transactionId,
-          initials: separationInitials(input.timekeeperName),
-          asOfDate: outputs[PLAN_NODE].asOfDate,
-        }),
-        observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
+    });
+    const finalizeKuali = transaction(finalizeKualiNode, finalizationDependencies, {
+      prepareBind: scope => finalizationTarget(scope, scope.outputs[FILING_PRESENCE_NODE].transactionId),
+      commitBind: scope => finalizationTarget(scope, scope.outputs[FILING_PRESENCE_NODE].transactionId),
+      previewBind: scope => {
+        const source = scope.dryRun?.transactions.find(step => step.nodeId === TERMINATION_NODE);
+        if (source === undefined) return undefined;
+        if (source.preview.outcome.state === "would-prepare") {
+          const value = finalizationTarget(scope, DRY_RUN_TRANSACTION_NUMBER);
+          return { prepare: value, commit: value, samples: [{ label: "dry-run sample", sourceNodeId: NodeIdSchema.parse(TERMINATION_NODE),
+            field: "UCPath transaction number", value: DRY_RUN_TRANSACTION_NUMBER }] };
+        }
+        const probe = source.preview.probe;
+        if (probe.state !== "present" && probe.state !== "durable-intent") return undefined;
+        const observed = UcpathCreateTermination.output.parse(probe.output.value);
+        const value = finalizationTarget(scope, observed.receipt.transactionId);
+        return { prepare: value, commit: value, samples: [] };
       },
-    }),
-      },
-    );
+    });
 
     return {
       steps: [

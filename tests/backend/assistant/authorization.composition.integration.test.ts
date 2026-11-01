@@ -61,19 +61,20 @@ it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s aut
       const response = await fetch(`${origin}/api/v1/commands`, { method: "POST", headers: { "Content-Type": "application/json", Origin: origin }, body: JSON.stringify(request) });
       return CommandResultSchema.parse(await response.json());
     };
-    const grant = async (mode: "without-asking" | "every-action") => {
+    const grant = async (mode: "every-action") => {
       const patch = {};
       return post({ ...envelope(), family: "settings", type: "apply-settings", target: { expectedRevision: currentContext.settings.read().record.revision },
         payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint(patch), patch,
           assistantPermission: { expectedPolicyRevision: currentContext.database.authority.assistantAuthorization.grant()?.policy.revision ?? 0, mode } } });
     };
     assert.equal(currentContext.database.withAuthorityReadSnapshot(() => currentContext.database.authority.assistantAuthorization.grant()), undefined);
-    assert.equal((await grant("without-asking")).state, "applied");
+    assert.equal((await grant("every-action")).state, "applied");
     assert.equal((await post({ ...envelope(), family: "worker-browser", type: "plan-worker-count", target: { workflowId: "person-lookup", expectedVersion: 0 }, payload: { desiredWorkers: 1 } })).state, "applied");
     const slot = currentContext.database.authority.workerSlots.list("person-lookup")[0]; assert.ok(slot);
     const command = CommandRequestSchema.parse({ ...envelope(), family: "worker-browser", type: "spawn-worker",
       target: { workflowId: "person-lookup", expectedVersion: currentContext.database.authority.workerPools.get("person-lookup")?.version }, payload: { workerId: slot.workerId } });
     const chat = authorization.createChat(), proposal = authorization.prepare(chat, command);
+    authorization.approve(chat, proposal.id, proposal.revision);
     execution = authorization.consumeAsync(chat, proposal.id);
     const observed = execution.then(() => ({ state: "succeeded" as const, error: undefined }), (error: unknown) => ({ state: "failed" as const, error }));
     await Promise.race([waiting, observed.then(() => { throw new Error("assistant preflight prerequisite failed before barrier"); })]);

@@ -1,0 +1,67 @@
+# run-pause-resume-pending--graphite-warm--1280x720
+# adapter: fixture
+# fixture: run-pause
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- complementary "Workspace":
+  - heading "Relay" [level=2]
+  - button "Notifications, 0 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup …
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup …
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations …
+      - listitem:
+        - button "I-9 Check": I-9 Check …
+- main:
+  - region "Queue":
+    - text: ACTIVE · 2
+    - button "Pause all"
+    - strong: Alex Morgan
+    - text: Resuming
+    - paragraph: Verifying employee
+    - text: "9:31 AM #1 PL04236388"
+    - strong: EID 10777012
+    - text: Paused
+    - paragraph: Paused after Submit termination
+    - text: "9:20 AM #1 SP99300911"
+  - region "Selected run logs":
+    - heading "Alex Morgan" [level=2]
+    - text: Resuming
+    - button "Resuming…" [disabled]
+    - status: Validating finished work. Resume is not yet confirmed.
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Read request · Completed · 14s" [disabled]: Read request 14s
+        - listitem:
+          - button "Verify employee · In progress": Verify employee In progress
+        - listitem:
+          - button "Read timecard · Upcoming" [disabled]: Read timecard
+        - listitem:
+          - button "Record result · Upcoming" [disabled]: Record result
+    - region "Run logs":
+      - region "Verify employee":
+        - time: 09:31:00
+        - heading "Verify employee" [level=3]
+        - text: UCPath
+        - time: 09:31:04
+        - paragraph: Search by EID 10777012
+        - time: 09:31:09
+        - paragraph: Read job record
+    - group:
+      - searchbox "Search logs"
+    - status: 2 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"

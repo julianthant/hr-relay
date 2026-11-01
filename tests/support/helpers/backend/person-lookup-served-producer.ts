@@ -24,7 +24,7 @@ export async function personLookupServedProducer(person?: SearchPersonOrgOutput)
   const harness=await world.executorHarness({sessions});
   const {database,clock,stateRoot}=harness.authority;
   try {
-    const claimed=world.enqueueAndClaim(database,personLookupQueuedRun({includeCrmDates:true,dryRun:true}),clock.now().toISOString());
+    const claimed=world.enqueueAndClaim(database,personLookupQueuedRun({includeCrmDates:true}),clock.now().toISOString());
     createTimelineEmitter({repository:database.authority.timelineEvents,clock}).emit(runQueuedSpanEvent({run:claimed.run,actorId:LOCAL_OPERATOR_ACTOR_ID,title:personLookupModule.descriptor.label}));
     const outcome=await executeClaimedRun({...harness.deps,taskNotes:createNoteTimelineWriter({repository:database.authority.timelineEvents,clock})},{...claimed,signal:world.SIGNAL});
     if(outcome.state!=="done")throw new Error(`synthetic Person Lookup producer outcome ${outcome.state}`);

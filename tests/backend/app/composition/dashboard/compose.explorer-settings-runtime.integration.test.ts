@@ -6,21 +6,19 @@ import { randomUUID } from "node:crypto";
 import { releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
-import { fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { fsyncSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { afterEach, describe, it, vi } from "vitest";
 import { productionWorkerLaunch } from "../../../../../src/backend/app/composition/dashboard/compose.js";
-import * as explorerComposition from "../../../../../src/backend/app/composition/dashboard/explorer.js";
+
 import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
+
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/protected-settings.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
-import { explorerEditCommandFingerprint } from "../../../../../src/models/dashboard/explorer-override.js";
-import { ExplorerEditApplyRequestSchema, ExplorerWorkflowOverrideSchema } from "../../../../../src/models/dashboard/explorer.js";
-import { CommandAuditRecordSchema, CommandResultSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
+import { ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, WorkerBrowserCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
 import { manualClock, systemClock } from "../../../../../src/rules/time/clock.js";
 import { settingsSetOperations } from "../../../../support/fixtures/settings-operation-fixtures.js";
 import { scaledMs } from "../../../../support/time-scale.js";
@@ -95,74 +93,6 @@ vi.mock("node:fs", async (importOriginal) => {
 
 afterEach(cleanup);
 
-async function committedExplorer() {
-  const descriptor = DESCRIPTORS.find(({ id }) => String(id) === "person-lookup");
-  assert.ok(descriptor !== undefined);
-  const request = ExplorerEditApplyRequestSchema.parse({
-    commandId: "13131313-1313-4313-8313-131313131313",
-    requestedAt: "2026-08-28T12:00:00.000Z",
-    requestedBy: "local-operator",
-    source: "dashboard",
-    reason: "Apply the reviewed presentation label",
-    family: "explorer",
-    type: "apply-explorer-edit",
-    target: {
-      workflowId: descriptor.id,
-      expectedVersion: descriptor.version,
-      contractFingerprint: descriptor.contractFingerprint,
-      expectedOverrideRevision: 0,
-    },
-    payload: { changes: [{ kind: "workflow-label", value: "Recovered people search" }] },
-  });
-  const profile = await createProfileFixture(manualClock(new Date(request.requestedAt)));
-  const repoRoot = profile.workspace;
-  const path = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "explorer-overrides.json");
-  const override = ExplorerWorkflowOverrideSchema.parse({
-    overrideVersion: 1,
-    workflowId: descriptor.id,
-    descriptorVersion: descriptor.version,
-    contractFingerprint: descriptor.contractFingerprint,
-    revision: 1,
-    appliedCommandId: request.commandId,
-    commandFingerprint: explorerEditCommandFingerprint(request),
-    presentation: { label: "Recovered people search" },
-  });
-  mkdirSync(dirname(path), { recursive: true });
-  return { profile, repoRoot, path, request, override };
-}
-
-function explorerAudit(request: Awaited<ReturnType<typeof committedExplorer>>["request"]) {
-  const target = { family: "explorer", workflowId: request.target.workflowId, revision: 1 } as const;
-  return CommandAuditRecordSchema.parse({
-    auditId: "99999999-9999-4999-8999-999999999999",
-    request,
-    result: { state: "applied", commandId: request.commandId, affectedTargets: [target] },
-    completedAt: "2026-08-28T12:00:01.000Z",
-    versionChanges: [{ target, before: 0, after: 1 }],
-    affectedDependencyIds: [],
-  });
-}
-
-function journalExplorer(
-  fixture: Awaited<ReturnType<typeof committedExplorer>>,
-  request = fixture.request,
-  audit: ReturnType<typeof explorerAudit> | null = explorerAudit(fixture.request),
-): void {
-  const database = fixture.profile.openDatabase({
-    path: join(fixture.profile.stateRoot, "state.db"),
-    busyTimeoutMs: 5000, migrationOwner: "explorer-startup-test",
-  });
-  try {
-    database.withAuthorityTransaction((repositories) => {
-      repositories.commands.insert(request);
-      repositories.explorerOverrides.replace(request, fixture.override);
-      if (audit !== null) repositories.commandAudits.insert(audit);
-    });
-  } finally {
-    database.close();
-  }
-}
-
 describe("composed dashboard runtime over an owned loopback socket", () => {
 
   it("launches pool workers through the secure bootstrap's cli arm, never the inert src/cli.ts module", () => {
@@ -219,16 +149,13 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
 
     // Subscribe first, so the card can only arrive through a published snapshot.
     const days: (typeof initial)[] = [];
-    let resolveCard: (() => void) | undefined;
-    const cardArrived = new Promise<void>((resolve) => {
-      resolveCard = resolve;
-    });
+    const cardArrived = Promise.withResolvers<void>();
     const live = new Promise<void>((resolve) => {
       const subscription = client.subscribeDay({
         day,
         onDay: (received) => {
           days.push(received);
-          if (received.workerCards.length === 1) resolveCard?.();
+          if (received.workerCards.length === 1) cardArrived.resolve();
         },
         onState: (state) => {
           if (state.state === "live") resolve();
@@ -239,166 +166,45 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     await live;
     assert.equal(days.at(-1)?.workerCards.length, 0);
 
-    const origin = `http://127.0.0.1:${String(runtime.port)}`;
-    const response = await fetch(`${origin}/api/v1/commands`, { method: "POST",
-      headers: { "content-type": "application/json", origin }, body: JSON.stringify({
-        commandId: randomUUID(), family: "worker-browser", type: "plan-worker-count",
-        target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 },
-        source: "dashboard", requestedBy: "local-operator", requestedAt: clock.now().toISOString(),
-      }) });
-    assert.equal(CommandResultSchema.parse(await response.json()).state, "applied");
-    const spawnResponse = await fetch(`${origin}/api/v1/commands`, { method: "POST",
-      headers: { "content-type": "application/json", origin }, body: JSON.stringify({
-        commandId: randomUUID(), family: "worker-browser", type: "spawn-worker",
-        target: { workflowId: personLookupDescriptor.id, expectedVersion: 1 },
-        payload: { workerId: "person-lookup-worker-1" }, source: "dashboard", requestedBy: "local-operator",
-        requestedAt: clock.now().toISOString(),
-      }) });
-    const spawned: unknown = await spawnResponse.json();
-    assert.equal(spawnResponse.status, 200, JSON.stringify(spawned) + records.flatMap(record => record.output).join(""));
-    assert.equal(CommandResultSchema.parse(spawned).state, "applied");
+    const envelope = () => ({ commandId: randomUUID(), requestedAt: clock.now().toISOString(),
+      requestedBy: "local-operator", source: "dashboard", family: "worker-browser" });
+    const planned = await client.executeCommand(WorkerBrowserCommandRequestSchema.parse({ ...envelope(), type: "plan-worker-count",
+      target: { workflowId: personLookupDescriptor.id, expectedVersion: 0 }, payload: { desiredWorkers: 1 } }));
+    assert.equal(planned.state, "applied");
+    const spawnCommandId = randomUUID();
+    const spawning = client.executeCommand(WorkerBrowserCommandRequestSchema.parse({ ...envelope(), commandId: spawnCommandId, type: "spawn-worker",
+      target: { workflowId: personLookupDescriptor.id, expectedVersion: 1 }, payload: { workerId: "person-lookup-worker-1" } }))
+      .then(result => ({ result }), (error: unknown) => ({ error }));
+
+    const outcome = await spawning;
+    if ("error" in outcome) throw outcome.error;
+    assert.equal(outcome.result.state, "applied");
     assert.equal(records.length, 1);
     assert.ok(records[0]?.pid !== undefined);
-
+    const database = profile.openDatabase({ path: join(profile.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
+    try {
+      const started = database.authority.workerLeases.get("person-lookup-worker-1");
+      assert.ok(started);
+      assert.equal(started.processId, records[0].pid);
+      assert.deepEqual(database.authority.timelineEvents.page({}).filter(record => record.payload.kind === "span"), []);
+    } finally { database.close(); }
     const deadline = setTimeout(() => {
-      assert.fail(`no worker-card snapshot within 5s; snapshots seen: ${String(days.length)}`);
+      cardArrived.reject(new Error(`no worker-card snapshot within 5s; snapshots seen: ${String(days.length)}`));
     }, 5_000);
     try {
-      await cardArrived;
+      await cardArrived.promise;
     } finally {
       clearTimeout(deadline);
     }
     const card = days.at(-1)?.workerCards[0];
     assert.equal(card?.workerId, "person-lookup-worker-1");
     assert.equal(card?.state, "starting");
+    assert.ok(card);
+    assert.ok(card.controls);
+    assert.deepEqual(card.controls.ownership, { state: "owned" });
     assert.deepEqual(card?.browserRequirements, { state: "present", systems: ["crm", "ucpath"] });
     assert.deepEqual(card?.browsers, []);
     assert.equal(records[0]?.exited, false);
-  }, scaledMs(20_000));
-
-  function observeExplorerSnapshot(authorityPath: string, onCommit?: () => void) {
-    const statements: string[] = [];
-    const expectedPath = realpathSync(authorityPath);
-    let readingExplorer = false;
-    const reader: { connection?: DatabaseSync } = {};
-    const compose = explorerComposition.composeExplorer;
-    vi.spyOn(explorerComposition, "composeExplorer").mockImplementation((input) => {
-      const composed = compose(input);
-      const snapshot = <Result,>(read: () => Result): Result => {
-        assert.equal(readingExplorer, false);
-        readingExplorer = true;
-        try { return read(); }
-        finally { readingExplorer = false; }
-      };
-      assert.ok(composed.routes.explorer.overrides);
-      assert.ok(composed.routes.explorerEdits);
-      const readAll = composed.routes.explorer.overrides.readAll;
-      const validate = composed.routes.explorerEdits.validate;
-      return { ...composed, routes: {
-        explorer: { ...composed.routes.explorer, overrides: {
-          readAll: () => snapshot(() => readAll()),
-        } },
-        explorerEdits: { validate: (draft) => snapshot(() => validate(draft)) },
-      } };
-    });
-    const execute = Reflect.get(DatabaseSync.prototype, "exec");
-    vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql) {
-      if (readingExplorer && reader.connection === undefined && sql === "BEGIN"
-        && this.location() === expectedPath) reader.connection = this;
-      const tagged = readingExplorer && this === reader.connection;
-      if (tagged) statements.push(sql);
-      Reflect.apply(execute, this, [sql]);
-      if (tagged && sql === "COMMIT") onCommit?.();
-    });
-    return statements;
-  }
-
-  it.each(["GET", "validate"] as const)("serves one SQLite snapshot without unrelated file reads per Explorer %s request", async operation => {
-    const fixture = await committedExplorer(); journalExplorer(fixture);
-    for (const suffix of ["", ".claim", ".pending", ".claim.pending"]) writeFileSync(`${fixture.path}${suffix}`, "unrelated bytes");
-    const sql = observeExplorerSnapshot(join(fixture.profile.stateRoot, "state.db"));
-    const lifetimeLock = fixture.profile.lifetime;
-    const runtime = await composeDashboardRuntime({ lifetimeLock, ...fixture.profile.dashboardInput, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
-      clock: manualClock(new Date(fixture.request.requestedAt)) });
-    try {
-      vi.mocked(readFileSync).mockClear();
-      const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-      for (const requestCount of [1, 2]) {
-        if (operation === "GET") {
-          const workflow = (await client.workflowExplorer()).workflows.find(row => row.id === fixture.request.target.workflowId);
-          assert.equal(workflow?.label, "Recovered people search"); assert.equal(workflow?.edit.overrideRevision, 1);
-        } else {
-          const validation = await client.validateExplorerEdit({ draftVersion: 1, workflowId: fixture.request.target.workflowId,
-            baseDescriptorVersion: fixture.request.target.expectedVersion, baseContractFingerprint: fixture.request.target.contractFingerprint,
-            baseOverrideRevision: 1, changes: [{ kind: "workflow-label", value: "Reviewed directory search" }] });
-          assert.equal(validation.state, "ready-to-apply");
-          if (validation.state === "ready-to-apply") assert.equal(validation.override.revision, 2);
-        }
-        assert.equal(sql.filter(statement => statement === "BEGIN IMMEDIATE").length, 0);
-        assert.equal(sql.filter(statement => statement === "BEGIN").length, requestCount);
-        assert.equal(vi.mocked(readFileSync).mock.calls.filter(([path]) => String(path).startsWith(fixture.path)).length, 0);
-      }
-    } finally { await runtime.stop(); }
-  }, scaledMs(20_000));
-
-  it.each(["GET", "validate"] as const)("keeps the captured Explorer %s view across a concurrent commit and sees it on the next request", async operation => {
-    const fixture = await committedExplorer(); journalExplorer(fixture);
-    let committed: (() => void) | undefined;
-    observeExplorerSnapshot(join(fixture.profile.stateRoot, "state.db"), () => committed?.());
-    const lifetimeLock = fixture.profile.lifetime;
-    const runtime = await composeDashboardRuntime({ lifetimeLock, ...fixture.profile.dashboardInput, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
-      clock: manualClock(new Date(fixture.request.requestedAt)) });
-    try {
-      const request = ExplorerEditApplyRequestSchema.parse({ ...fixture.request, commandId: "24242424-2424-4242-8242-242424242424",
-        target: { ...fixture.request.target, expectedOverrideRevision: 1 }, payload: { changes: [{ kind: "workflow-label", value: "New directory search" }] } });
-      const override = ExplorerWorkflowOverrideSchema.parse({ ...fixture.override, revision: 2, appliedCommandId: request.commandId,
-        commandFingerprint: explorerEditCommandFingerprint(request), presentation: { label: "New directory search" } });
-      const audit = CommandAuditRecordSchema.parse({ ...explorerAudit(request), auditId: "88888888-8888-4888-8888-888888888888",
-        result: { state: "applied", commandId: request.commandId, affectedTargets: [{ family: "explorer", workflowId: request.target.workflowId, revision: 2 }] },
-        versionChanges: [{ target: { family: "explorer", workflowId: request.target.workflowId, revision: 2 }, before: 1, after: 2 }] });
-      const writer = fixture.profile.openDatabase({ path: join(fixture.profile.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "concurrent-explorer" });
-      try {
-        let crossed = false;
-        committed = () => {
-          if (crossed) return;
-          crossed = true;
-          writer.withAuthorityTransaction(repositories => { repositories.commands.insert(request); repositories.explorerOverrides.replace(request, override); repositories.commandAudits.insert(audit); });
-        };
-        const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-        const draft = { draftVersion: 1, workflowId: request.target.workflowId, baseDescriptorVersion: request.target.expectedVersion,
-          baseContractFingerprint: request.target.contractFingerprint, baseOverrideRevision: 1, changes: [{ kind: "workflow-label", value: "Reviewed search" }] };
-        if (operation === "GET") {
-          assert.equal((await client.workflowExplorer()).workflows.find(row => row.id === request.target.workflowId)?.label, "Recovered people search");
-          assert.equal((await client.workflowExplorer()).workflows.find(row => row.id === request.target.workflowId)?.label, "New directory search");
-        } else {
-          assert.equal((await client.validateExplorerEdit(draft)).state, "ready-to-apply");
-          assert.equal((await client.validateExplorerEdit(draft)).state, "conflict");
-        }
-        assert.equal(crossed, true);
-      } finally { writer.close(); }
-    } finally { await runtime.stop(); }
-  }, scaledMs(20_000));
-
-  it("applies and replays the complete Explorer command after a real runtime restart", async () => {
-    const fixture = await committedExplorer();
-    let runtime = await composeDashboardRuntime({ lifetimeLock: fixture.profile.lifetime, ...fixture.profile.dashboardInput, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
-      clock: manualClock(new Date(fixture.request.requestedAt)) });
-    const send = (request: unknown) => {
-      const baseUrl = `http://127.0.0.1:${String(runtime.port)}`;
-      return fetch(`${baseUrl}/api/v1/commands`, { method: "POST", headers: { "content-type": "application/json", origin: baseUrl }, body: JSON.stringify(request) });
-    };
-    try {
-      const first = await send(fixture.request); assert.equal(first.status, 200); assert.equal(CommandResultSchema.parse(await first.json()).state, "applied");
-      await runtime.stop();
-      for (const suffix of ["", ".claim"]) writeFileSync(`${fixture.path}${suffix}`, "retired malformed file");
-      await fixture.profile.restart();
-      runtime = await composeDashboardRuntime({ lifetimeLock: fixture.profile.lifetime, ...fixture.profile.dashboardInput, isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
-        clock: manualClock(new Date(fixture.request.requestedAt)) });
-      const replay = await send(fixture.request); assert.equal(replay.status, 200); assert.equal(CommandResultSchema.parse(await replay.json()).state, "already-applied");
-      const divergent = await send({ ...fixture.request, reason: "Changed envelope" }); assert.equal(divergent.status, 500);
-      const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
-      assert.equal((await client.workflowExplorer()).workflows.find(row => row.id === fixture.request.target.workflowId)?.label, "Recovered people search");
-    } finally { await runtime.stop(); }
   }, scaledMs(20_000));
 
   it("plans new runs with saved settings without a dashboard restart", async () => {

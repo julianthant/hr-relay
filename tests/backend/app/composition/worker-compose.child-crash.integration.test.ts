@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
 import { timelineEventFromRow } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
@@ -111,7 +112,7 @@ async function prepare(arm: "read" | "write" = "read") {
 }
 
 async function launch(workspace: string, mode: "checkpoint" | "resume" | "attempting", lock: RuntimeLifetimeLock) {
-  const child = spawn(process.execPath, ["--import", import.meta.resolve("tsx"),
+  const child = spawn(process.execPath, ["--import", testProcessImport(),
     fileURLToPath(new URL("../../../support/processes/child-execution-crash-worker.ts", import.meta.url)), workspace, mode, String(lock.port)],
   { env: credentialKeychainTestEnvironment({}), stdio: ["ignore", "pipe", "pipe", "ipc"] });
   await lock.share(child);

@@ -150,7 +150,7 @@ Commit `recordData` batches are validated and timestamped at the call but delive
 
 A settled prior transaction returns an `already-present` preview without staging or observing a subject. Otherwise it stages the page and observes the subject, then returns `TransactionDryRunPreview`. It does not mint a mutation capability, fence an intent, create a write attempt, invoke commit, invoke the post-commit verifier, or write a transaction checkpoint or confirmed-operation history.
 
-`run-executor.ts` records the preview and ends the run at that transaction node. Upstream task checkpoints, gate records, preview events, and terminal rehearsal evidence can still exist. A dry run is not a verified real write. Dry-run evidence accounting uses `writeIntents.countDryRunEvidenceByRun`, scoped to the run rather than global table counts.
+`run-executor.ts` records each transaction preview and continues through the declared graph. A later form can consume a separately declared, labelled preview-only sample; dependent receipt/confirmation reads stay unavailable. Samples never become ordinary outputs, real transaction checkpoints or submit receipts. A live sequencer rejects preview scope, preview bindings and reserved sample values before probing, staging or fencing. Upstream task checkpoints, gate records, preview events, and terminal rehearsal evidence can still exist. A dry run is not a verified real write. Dry-run evidence accounting uses `writeIntents.countDryRunEvidenceByRun`, scoped to the run rather than global table counts.
 
 ## 4. Crash recovery and UNKNOWN refusal
 

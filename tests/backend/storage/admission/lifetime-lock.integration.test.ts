@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { createAdmissionChildFixtures } from "../../../support/helpers/storage/admission-child-fixtures.js";
 import assert from "node:assert/strict";
@@ -47,7 +48,7 @@ if (process.argv[2] === 'worker') {
   await lock.share(child);
 }
 `);
-  const parent = spawn(process.execPath, ["--import", import.meta.resolve("tsx"), path, "parent"], {
+  const parent = spawn(process.execPath, ["--import", testProcessImport(), path, "parent"], {
     stdio: ["ignore", "ignore", "pipe", "ipc"],
   });
   let stderr = "";
@@ -87,7 +88,7 @@ async function stop(child: ChildProcess): Promise<void> {
 
 it("refuses workers without a parent IPC channel before storage admission", async () => {
   const source = new URL("../../../../src/backend/storage/admission/lifetime-lock.ts", import.meta.url).href;
-  await promisify(execFile)(process.execPath, ["--import", import.meta.resolve("tsx"), "--input-type=module", "-e", `
+  await promisify(execFile)(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", `
     import assert from 'node:assert/strict';
     const { receiveRuntimeLifetimeLock } = await import(${JSON.stringify(source)});
     await assert.rejects(receiveRuntimeLifetimeLock(12345, () => assert.fail('no parent exists')), /runtime-parent-channel-required/);
@@ -169,7 +170,7 @@ it("keeps machine publication with the controller and creates no PID lease or ad
     controller.release(); controller = undefined;
     const lockSource = new URL("../../../../src/backend/storage/admission/lifetime-lock.ts", import.meta.url).href;
     const admissionSource = new URL("../../../../src/backend/storage/admission/admission.ts", import.meta.url).href;
-    worker = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
+    worker = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "--eval", `
       import assert from "node:assert/strict";
       import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(lockSource)};
       import { RuntimeAdmission } from ${JSON.stringify(admissionSource)};
@@ -225,7 +226,7 @@ it("refuses handle sharing during exclusive admission and exclusive admission un
     admission = acquireEntrypointAdmission(directory, "exclusive", lock);
     const source = new URL("../../../../src/backend/storage/admission/lifetime-lock.ts", import.meta.url).href;
     const admissionSource = new URL("../../../../src/backend/storage/admission/admission.ts", import.meta.url).href;
-    child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
+    child = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "--eval", `
       import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(source)};
       import { RuntimeAdmission } from ${JSON.stringify(admissionSource)};
       process.send({ kind: "waiting" });
@@ -410,7 +411,7 @@ for (const capability of ["foreign-workspace", "retained-child"] as const) it(`r
     initial.release();
     if (capability === "retained-child") {
       const source = new URL("../../../../src/backend/storage/admission/lifetime-lock.ts", import.meta.url).href;
-      child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+      child = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", `
         import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(source)};
         const lock = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
         process.once("message", () => { void lock.close().then(() => process.disconnect()); });

@@ -27,11 +27,11 @@ function presentResult(result: AssistantResult, requestId: number, prompt: strin
     case 'unknown':
     case 'action-proposal': {
       const unknown = result.state === 'unknown', p = result.state === 'unknown' ? result.action : result.proposal;
-      return { ...(unknown ? { disposition: 'unknown' as const } : {}), message: { id, role: 'assistant', text: unknown ? 'Action outcome is unknown. Do not retry this action.' : 'Review this local action. No change has been applied.' }, proposal: {
+      return { ...(unknown ? { disposition: 'unknown' as const } : {}), message: { id, role: 'assistant', text: unknown ? 'Action outcome is unknown. Do not retry this action.' : 'Review this proposal. No action has been applied.' }, proposal: {
         id: p.actionId, revision: String(p.revision), prompt, action: { chatId: p.chatId, actionId: p.actionId, revision: p.revision }, expiresAt: p.expiresAt,
-        workflow: { id: 'notification', label: p.label, version: String(p.revision) }, subjects: [], mode: 'local-change',
-        values: [{ label: 'Notification', value: p.targetLabel }, { label: 'Expires', value: p.expiresAt }],
-        effects: ['Changes only the bound current local notifications. No HR transaction is submitted.'], stopBefore: [],
+        workflow: { id: p.effect === 'workflow-start' ? p.workflowId : 'notification', label: p.label, version: String(p.revision) }, subjects: [], mode: p.effect === 'workflow-start' ? p.dryRun ? 'dry-run' : 'read-only' : 'local-change',
+        values: [{ label: p.effect === 'workflow-start' ? 'Selected subject' : 'Notification', value: p.targetLabel }, { label: 'Expires', value: p.expiresAt }],
+        effects: [p.effect === 'workflow-start' ? 'Starts the canonical plan for this selected subject after confirmation. No HR transaction is submitted.' : 'Changes only the bound current local notifications. No HR transaction is submitted.'], stopBefore: [],
       } };
     }
     case 'proposal': {
@@ -128,7 +128,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       if (binding !== capturedBinding) return;
       const disposition = result.state === 'applied' ? 'confirmed' : result.state === 'cancelled' ? 'cancelled' : result.state === 'unknown' ? 'unknown' : 'stale';
       publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition,
-        message: { id: `action-${proposal.id}`, role: 'assistant', text: result.state === 'applied' ? 'Local action completed.'
+        message: { id: `action-${proposal.id}`, role: 'assistant', text: result.state === 'applied' ? 'Confirmed action accepted.'
           : result.state === 'cancelled' ? 'Action cancelled.' : result.state === 'unknown' ? 'Action outcome is unknown. Do not retry this action.' : ASSISTANT_FAILURES[result.code] } }));
     } catch {
       if (binding === capturedBinding) publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'unknown' }));

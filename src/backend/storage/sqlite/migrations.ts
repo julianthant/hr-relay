@@ -5,9 +5,9 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 9;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 11;
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
@@ -742,30 +742,61 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     `CREATE TRIGGER assistant_model_preference_no_delete BEFORE DELETE ON assistant_model_preference
       BEGIN SELECT RAISE(ABORT,'assistant-preference-delete-refused'); END`,
   ] },
+  { version: 10, statements: [
+    "DROP TABLE explorer_overrides",
+    "DROP TRIGGER command_audits_retained",
+    `DELETE FROM command_audits
+      WHERE json_extract(payload_json,'$.request.family')='explorer'
+        AND json_extract(payload_json,'$.request.type')='apply-explorer-edit'
+        AND json_extract(payload_json,'$.request.commandId')=command_id
+        AND command_id IN (SELECT id FROM commands WHERE family='explorer'
+          AND json_extract(request_json,'$.family')='explorer'
+          AND json_extract(request_json,'$.type')='apply-explorer-edit'
+          AND json_extract(request_json,'$.commandId')=id)`,
+    `DELETE FROM commands WHERE family='explorer'
+      AND json_extract(request_json,'$.family')='explorer'
+      AND json_extract(request_json,'$.type')='apply-explorer-edit'
+      AND json_extract(request_json,'$.commandId')=id`,
+    `CREATE TRIGGER command_audits_retained BEFORE DELETE ON command_audits
+      BEGIN SELECT RAISE(ABORT,'retained-evidence-required'); END`,
+  ] },
+  { version: 11, statements: [
+    `UPDATE assistant_actions SET revision=revision+1,state='cancelled',
+      payload_json=json_set(payload_json,'$.revision',revision+1,'$.state','cancelled')
+      WHERE state IN ('prepared','approved')
+      AND json_extract(payload_json,'$.binding.mode') IN ('before-submits','without-asking')`,
+    `DELETE FROM assistant_grants
+      WHERE json_extract(payload_json,'$.policy.mode') IN ('before-submits','without-asking')`,
+  ] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
-  toSchemaVersion: 8 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
-  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && !(fromSchemaVersion === 7 && toSchemaVersion === 8)) throw new Error('authority-upgrade-plan-target-unsupported');
+  toSchemaVersion: 8 | 9 | 10 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10)
+    || !isSupportedStoppedAuthoritySchemaVersion(fromSchemaVersion) || fromSchemaVersion < 7 || fromSchemaVersion >= toSchemaVersion)) throw new Error('authority-upgrade-plan-target-unsupported');
   const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
   return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,
     toSchemaVersion, sourceContentFingerprint, statements })).digest("hex");
 }
 
-export function migrationTableNames(version: number): readonly AuthorityTableName[] {
-  return AuthorityTableNameSchema.options.filter(name => (version >= 4
+export function migrationTableNames(version: number): readonly (AuthorityTableName | "explorer_overrides")[] {
+  return [...(version < 10 ? ["explorer_overrides" as const] : []), ...AuthorityTableNameSchema.options.filter(name => (version >= 4
     || (name !== "workbook_library" && name !== "workbook_library_history"))
     && (version >= 8 || !name.startsWith("assistant_"))
-    && (version >= 9 || name !== "assistant_model_preference"));
+    && (version >= 9 || name !== "assistant_model_preference"))];
 }
 
 export function auditMigrationTableCoverage(): readonly string[] {
   const statements = [...SQLITE_MIGRATIONS[0].statements, ...WORKBOOK_LIBRARY_MIGRATION.statements, ...SQLITE_MIGRATIONS.filter(migration => migration.version >= 8).flatMap(migration => migration.statements)];
-  const names = statements.flatMap(statement => [...statement.matchAll(/CREATE TABLE ([a-z_]+)/gu)].map(match => match[1]));
+  const names = new Set<string>();
+  for (const statement of statements) for (const match of statement.matchAll(/(CREATE|DROP) TABLE ([a-z_]+)/gu)) {
+    if (match[1] === "CREATE") names.add(match[2]);
+    else names.delete(match[2]);
+  }
   const registered = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
   return [
-    ...registered.filter(name => !names.includes(name)).map(name => `registered table ${name} has no DDL`),
-    ...names.filter(name => !registered.some(registeredName => registeredName === name)).map(name => `DDL table ${name} is not registered`),
+    ...registered.filter(name => !names.has(name)).map(name => `registered table ${name} has no DDL`),
+    ...[...names].filter(name => !registered.some(registeredName => registeredName === name)).map(name => `DDL table ${name} is not registered`),
   ];
 }
 

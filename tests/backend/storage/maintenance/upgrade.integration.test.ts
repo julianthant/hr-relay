@@ -153,7 +153,7 @@ describe("stopped native upgrade admission",()=>{
    const row=stored.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();assert.ok(row);
    const record=AuthorityUpgradeRecordSchema.parse(JSON.parse(String(row.payload_json)));assert.ok(record.phase==="settled");
    const migrations=SQLITE_MIGRATIONS.filter(migration=>migration.version>version);
-   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5,6,7,8,9]:[5,6,7,8,9]);
+   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5,6,7,8,9,10,11]:[5,6,7,8,9,10,11]);
    assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:version,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,
     sourceContentFingerprint:source.authorityContentFingerprint,statements:migrations.flatMap(migration=>migration.statements)})).digest("hex"));
   }finally{stored.close();}
@@ -204,12 +204,12 @@ describe("stopped native upgrade admission",()=>{
    return { ...f, retained:Object.fromEntries(["worker_pools","worker_slots","worker_leases","worker_controls","commands"].map(table=>[table,raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])) };
   }finally{raw.close();}
  }
- it("upgrades schema 3 only after verifying its exact backup and retains every source table",async()=>{
+ it("upgrades schema 3 only after verifying its exact backup and retains every unrelated source table",async()=>{
   const f=await baselineFixture(3),before=readFileSync(f.path);
   const source=withOfflineMaintenanceSync(f.admission, () => AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock));
   const raw=new DatabaseSync(f.path,{readOnly:true});
   let retained:Record<string,unknown[]>;
-  try {retained=Object.fromEntries(source.tables.filter(table=>table.name!=="database_states"&&table.name!=="database_upgrades")
+  try {retained=Object.fromEntries(source.tables.filter(table=>table.name!=="database_states"&&table.name!=="database_upgrades"&&table.name!=="explorer_overrides")
    .map(table=>[table.name,raw.prepare(`SELECT * FROM ${table.name} ORDER BY rowid`).all()]));}finally{raw.close();}
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/profile-bound-authority-required/u);
   assert.deepEqual(readFileSync(f.path),before);
@@ -231,6 +231,7 @@ describe("stopped native upgrade admission",()=>{
   }finally{current.close();}
   const upgraded=new DatabaseSync(f.path,{readOnly:true});
   try {for(const [table,rows] of Object.entries(retained))assert.deepEqual(upgraded.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),rows);
+   assert.equal(upgraded.prepare("SELECT name FROM sqlite_schema WHERE name='explorer_overrides'").get(),undefined);
    assert.deepEqual(upgraded.prepare("PRAGMA foreign_key_check").all(),[]);
   }finally{upgraded.close();}
  });
@@ -565,7 +566,7 @@ describe("stopped native upgrade admission",()=>{
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),current);
  });
- it.each([10,19,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
+ it.each([12,19,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
   const f=await liveFixture();initialize(f);const raw=new DatabaseSync(f.path);
   try{raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);}finally{raw.close();}
   const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),error=>error instanceof AuthoritySchemaVersionError && error.code==="authority-schema-mismatch");assert.deepEqual(storageTree(f.root),before);

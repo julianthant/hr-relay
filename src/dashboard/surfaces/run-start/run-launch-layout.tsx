@@ -1,22 +1,24 @@
 import type { ReactNode } from "react";
-import { SegmentedChoice } from "../../ds/ui.js";
+import { BodySection, DsBodyScope, Field, FormGroup, SegmentedChoice } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 
-export function RunOptionsLayout({ flags, children, priority, onPriorityChange, browserMode, onBrowserModeChange, fixedFacts }: {
+export function RunOptionsLayout({ flags, children, priority, onPriorityChange, browserMode, onBrowserModeChange, fixedFacts, workflowLabel = "Workflow" }: {
   flags: ReactNode; children?: ReactNode; priority: "interactive" | "bulk";
   onPriorityChange: (value: "interactive" | "bulk") => void;
   browserMode: "headed" | "headless"; onBrowserModeChange: (value: "headed" | "headless") => void;
-  fixedFacts?: ReactNode;
+  fixedFacts?: ReactNode; workflowLabel?: string;
 }) {
-  return <section aria-label="Options" className="launch-options flex flex-col">
-    <div className="launch-flags">{flags}</div>
-    {children}
-    <div className="launch-options-grid">
-      <div><SegmentedChoice label="Priority" value={priority} onChange={onPriorityChange} options={[{ value: "interactive", label: "Interactive" }, { value: "bulk", label: "Bulk" }]} /><p className="mt-[5px] text-caption text-ui-muted">Interactive: work you’re waiting on. Bulk: background batches; interactive runs take priority.</p></div>
-      <div><SegmentedChoice label="Browser mode" value={browserMode} onChange={onBrowserModeChange} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} /><p className="mt-[5px] text-caption text-ui-muted">{browserMode === "headed" ? "Open visible browser windows." : "Run browsers in the background."}</p></div>
-    </div>
+  return <DsBodyScope role="region" aria-label="Options" className="launch-options flex flex-col" style={{ background: "transparent" }}>
+    <BodySection title="Run"><FormGroup label="Run options">
+      <div className="launch-flags">{flags}</div>
+      <div className="launch-options-grid">
+        <Field orientation="horizontal" label="Priority" description="Interactive runs go first."><SegmentedChoice label="Priority" value={priority} onChange={onPriorityChange} options={[{ value: "interactive", label: "Interactive" }, { value: "bulk", label: "Bulk" }]} /></Field>
+        <Field orientation="horizontal" label="Browser" description="Headless runs in the background."><SegmentedChoice label="Browser mode" value={browserMode} onChange={onBrowserModeChange} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} /></Field>
+      </div>
+    </FormGroup></BodySection>
+    {children && <BodySection title={workflowLabel}><FormGroup label="Workflow options">{children}</FormGroup></BodySection>}
     {fixedFacts && <div className="launch-fixed-facts">{fixedFacts}</div>}
-  </section>;
+  </DsBodyScope>;
 }
 
 export function RunStepsList({ children }: { children: ReactNode }) {

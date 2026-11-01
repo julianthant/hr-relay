@@ -189,7 +189,6 @@ export function auditWorkflowLayout(
 
 export const PATH_RULE_CONSUMERS = [
   "tests/architecture/workflow-kit/descriptor-coverage.test.ts",
-  "tests/architecture/workflow-kit/workflow-editor-compile-integrity.test.ts",
 ] as const;
 
 export function auditPathRuleSingleSource(sources: ReadonlyMap<string, string>): readonly string[] {

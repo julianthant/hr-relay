@@ -61,7 +61,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.keyboard.press('Enter'); await expect(grid).toBeVisible();
       const help = first.getByRole('button', { name: 'What Dry run means', exact: true });
       await help.click();
-      await expect(page.getByText('Offers a rehearsal that reads everything for real and writes nothing.', { exact: false })).toBeVisible();
+      await expect(page.getByText('Previews each applicable stage without submitting.', { exact: false })).toBeVisible();
       await page.keyboard.press('Escape'); await expect(help).toBeFocused();
       const source = group.getByRole('button', { name: 'About workflow operations', exact: true });
       await expect(group.getByText('Source: served workflow descriptors.', { exact: true })).toHaveCount(0);

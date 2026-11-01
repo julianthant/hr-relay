@@ -30,13 +30,11 @@
       - /placeholder: Ask Relay…
     - group "Message controls":
       - button "Add files"
-      - button "Ask only before submits" [expanded]
-      - menu "Ask only before submits":
+      - button "Ask before every action" [expanded]
+      - menu "Ask before every action":
         - group "How should Relay actions be approved?":
           - group:
-            - menuitemradio "Ask before every action Review every read and change."
-            - menuitemradio "Ask only before submits Review changes sent to other systems." [checked]
-            - menuitemradio "Act without asking Let Relay act within your permissions."
+            - menuitemradio "Ask before every action Confirm each proposed change." [checked]
       - 'button "Model: GPT-6.1 Sol"': GPT-6.1 Sol
       - 'button "Thinking effort: Medium"': Medium
       - button "Voice input"

@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { withOfflineMaintenance, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
@@ -132,7 +133,7 @@ try {
       } }, credentials);
     await service.restore({ manifestPath }, operation);
   `;
-  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, root, String(port)],
+  const child = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", code, root, String(port)],
     { cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe", "ipc"] }); children.push(child);
   const message = await new Promise<{ state: string; workspace: string; profileId: string; operationId: string; stagedPath: string; manifestPath: string }>((resolve, reject) => {
     let output = ""; child.stderr?.on("data", value => { output += String(value); });

@@ -11,10 +11,9 @@ readScenarioSources,
 type ExplorerModuleView,
 } from "../../../../src/backend/runs/queries/explorer.js";
 import {
-ExplorerWorkflowOverrideSchema,
-ExplorerWorkflowWireSchema,
-WorkflowExplorerWireSchema,
-type ExplorerProvenanceWire,
+  ExplorerWorkflowWireSchema,
+  WorkflowExplorerWireSchema,
+  type ExplorerProvenanceWire,
 } from "../../../../src/models/dashboard/explorer.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
@@ -321,52 +320,20 @@ describe("the contract field census", () => {
   });
 });
 
-describe("Explorer presentation override readback", () => {
-  it("hot-applies only an exact descriptor-bound override and serves its revision", () => {
-    const deps = explorerQueryDeps(CLOCK, HASH);
-    const descriptor = deps.modules.find(
-      ({ descriptor }) => String(descriptor.id) === "person-lookup",
-    )?.descriptor;
-    assert.ok(descriptor !== undefined);
-    const wire = buildWorkflowExplorer({
-      ...deps,
-      overrides: {
-        readAll: () => [
-          ExplorerWorkflowOverrideSchema.parse({
-            overrideVersion: 1,
-            workflowId: descriptor.id,
-            descriptorVersion: descriptor.version,
-            contractFingerprint: descriptor.contractFingerprint,
-            revision: 3,
-            appliedCommandId: "11111111-1111-4111-8111-111111111111",
-            commandFingerprint: "a".repeat(64),
-            presentation: {
-              label: "People search",
-              icon: "Users",
-              category: "operations",
-            },
-          }),
-        ],
-      },
-    });
-    const workflow = wire.workflows.find(
-      ({ id }) => String(id) === "person-lookup",
-    );
-    assert.ok(workflow !== undefined);
-
-    assert.equal(workflow.label, "People search");
-    assert.equal(workflow.icon, "Users");
-    assert.equal(workflow.category, "operations");
-    assert.equal(workflow.edit.overrideRevision, 3);
-    assert.deepEqual(workflow.edit.presentation.timeline, {
-      state: "unavailable",
-      reason:
-        "timeline presentation has no complete hot-apply reader; it remains descriptor-owned",
-    });
-  });
-});
-
 describe("the workflow explorer projection", () => {
+  it("serves descriptor presentation without editor authority", () => {
+    const deps = explorerQueryDeps(CLOCK, HASH);
+    const wire = buildWorkflowExplorer(deps);
+    for (const entry of wire.workflows) {
+      const descriptor = deps.modules.find(module => module.descriptor.id === entry.id)?.descriptor;
+      assert.ok(descriptor);
+      assert.equal(entry.label, descriptor.label);
+      assert.equal(entry.icon, descriptor.icon);
+      assert.equal(entry.category, descriptor.category);
+      assert.equal("edit" in entry, false);
+    }
+  });
+
   it("links workflow mini-store implementations to their backend workflow-task homes", () => {
     const expected = [
       [

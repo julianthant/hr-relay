@@ -136,10 +136,15 @@ export const AssistantProposalSchema = z.strictObject({
 });
 export const AssistantActionIdentitySchema = z.strictObject({ chatId: z.uuid(), actionId: z.uuid(), revision: z.number().int().positive() });
 export type AssistantActionIdentity = z.infer<typeof AssistantActionIdentitySchema>;
-export const AssistantActionProposalSchema = AssistantActionIdentitySchema.extend({
+const AssistantActionProposalFields = {
+  ...AssistantActionIdentitySchema.shape,
   expiresAt: z.string().datetime(), label: z.string().min(1).max(160), targetLabel: z.string().min(1).max(160),
-  subject: z.literal("none"), effect: z.literal("local-write"),
-});
+};
+export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
+  z.strictObject({ ...AssistantActionProposalFields, subject: z.literal("none"), effect: z.literal("local-write") }),
+  z.strictObject({ ...AssistantActionProposalFields, subject: z.literal("selected-run"), effect: z.literal("workflow-start"),
+    workflowId: z.string().min(1), dryRun: z.boolean() }),
+]);
 export type AssistantActionProposal = z.infer<typeof AssistantActionProposalSchema>;
 export const AssistantActionDecisionSchema = AssistantActionIdentitySchema.extend({ decision: z.enum(["confirm", "cancel"]) });
 export type AssistantActionDecision = z.infer<typeof AssistantActionDecisionSchema>;

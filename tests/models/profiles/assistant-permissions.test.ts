@@ -18,7 +18,7 @@ const GRANT_RECORD = {
   grantId: GRANT,
   profileId: PROFILE,
   policyRevision: 1,
-  mode: "before-submits",
+  mode: "every-action",
   grantedAt: NOW,
 };
 
@@ -26,7 +26,7 @@ function grantedAuthority(grant: object = GRANT_RECORD) {
   return {
     profileId: PROFILE,
     accountSessionEpoch: 1,
-    policy: { revision: 1, mode: "before-submits", grant },
+    policy: { revision: 1, mode: "every-action", grant },
     manifest: {
       revision: 1,
       entries: [{ family: "intake", action: "validate-intake", classification: "read", subject: "none" }],
@@ -38,14 +38,14 @@ function ungrantedAuthority() {
   return {
     profileId: PROFILE,
     accountSessionEpoch: 1,
-    policy: { revision: 1, mode: "before-submits" },
+    policy: { revision: 1, mode: "every-action" },
     manifest: grantedAuthority().manifest,
   };
 }
 
 describe("assistant permission authority", () => {
-  it("names before-submits as the initial mode and still refuses a missing grant", () => {
-    assert.equal(ASSISTANT_PERMISSION_INITIAL_MODE, "before-submits");
+  it("names every-action as the initial mode and still refuses a missing grant", () => {
+    assert.equal(ASSISTANT_PERMISSION_INITIAL_MODE, "every-action");
     const missing = readAssistantAuthority(ungrantedAuthority());
     assert.deepEqual(missing, { ok: false, code: "ASSISTANT_GRANT_REQUIRED" });
     const modeOnly = readAssistantAuthority({ mode: ASSISTANT_PERMISSION_INITIAL_MODE });
@@ -54,14 +54,14 @@ describe("assistant permission authority", () => {
 
   it("refuses a grant that does not match the policy, profile, or shape", () => {
     const mismatched = readAssistantAuthority(grantedAuthority({
-      grantId: GRANT, profileId: PROFILE, policyRevision: 2, mode: "without-asking", grantedAt: NOW,
+      grantId: GRANT, profileId: PROFILE, policyRevision: 2, mode: "every-action", grantedAt: NOW,
     }));
     assert.deepEqual(mismatched, { ok: false, code: "ASSISTANT_GRANT_REQUIRED" });
     const otherProfile = readAssistantAuthority(grantedAuthority({
       grantId: GRANT,
       profileId: "33333333-3333-4333-8333-333333333333",
       policyRevision: 1,
-      mode: "before-submits",
+      mode: "every-action",
       grantedAt: NOW,
     }));
     assert.deepEqual(otherProfile, { ok: false, code: "ASSISTANT_GRANT_REQUIRED" });
@@ -72,11 +72,16 @@ describe("assistant permission authority", () => {
     assert.equal(staleEpoch.code, "ASSISTANT_AUTHORITY_INVALID");
   });
 
-  it("accepts an explicit before-submits grant and rejects an unclassified family pair", () => {
+  it.each(["before-submits", "without-asking"])("refuses retired saved %s grants", mode => {
+    const authority = grantedAuthority({ ...GRANT_RECORD, mode });
+    assert.equal(readAssistantAuthority({ ...authority, policy: { ...authority.policy, mode } }).ok, false);
+  });
+
+  it("accepts an explicit every-action grant and rejects an unclassified family pair", () => {
     const accepted = readAssistantAuthority(grantedAuthority());
     assert.equal(accepted.ok, true);
     if (!accepted.ok) return;
-    assert.equal(accepted.authority.policy.mode, "before-submits");
+    assert.equal(accepted.authority.policy.mode, "every-action");
     assert.equal(AssistantActionManifestSchema.safeParse({
       revision: 1,
       entries: [{ family: "gate", action: "delete", classification: "destructive", subject: "none" }],
@@ -108,7 +113,7 @@ describe("assistant permission authority", () => {
       target: { intakeSessionId: "44444444-4444-4444-8444-444444444444", expectedVersion: 1 },
     };
     assert.equal(AssistantModelProposalSchema.safeParse(proposal).success, true);
-    assert.equal(AssistantModelProposalSchema.safeParse({ ...proposal, mode: "without-asking" }).success, false);
+    assert.equal(AssistantModelProposalSchema.safeParse({ ...proposal, mode: "every-action" }).success, false);
     assert.equal(AssistantModelProposalSchema.safeParse({ ...proposal, grant: { grantId: GRANT } }).success, false);
     assert.equal(AssistantModelProposalSchema.safeParse({ ...proposal, skipExistingGates: true }).success, false);
   });

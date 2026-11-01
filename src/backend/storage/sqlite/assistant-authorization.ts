@@ -18,7 +18,7 @@ export function createAssistantAuthorizationRepository(ports: Ports) {
   };
   const grant = (pendingCommandId?: string) => {
     const value = read("assistant_grants", "current");
-    if (value === undefined && ports.database.prepare("SELECT 1 FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' AND id IS NOT ? LIMIT 1").get(pendingCommandId ?? null) !== undefined) throw new Error("assistant-grant-missing-with-history");
+    if (value === undefined && ports.database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' AND id IS NOT ? ORDER BY rowid DESC LIMIT 1) WHERE mode IS NULL OR mode NOT IN ('before-submits','without-asking')").get(pendingCommandId ?? null) !== undefined) throw new Error("assistant-grant-missing-with-history");
     return value === undefined ? undefined : AssistantGrantRecordSchema.parse(value);
   };
   return Object.freeze({
@@ -37,7 +37,7 @@ export function createAssistantAuthorizationRepository(ports: Ports) {
           ports.database.prepare("SELECT request_json,state FROM commands WHERE id=?").get(record.commandId));
         const request = SettingsCommandRequestSchema.parse(JSON.parse(command.request_json));
         const selected = request.payload.assistantPermission;
-        if (request.requestedBy !== "local-operator" || selected === undefined || selected.mode !== record.policy.mode
+        if (request.requestedBy !== "local-operator" || selected === undefined || selected.mode !== "every-action" || selected.mode !== record.policy.mode
           || selected.expectedPolicyRevision !== revision) throw new Error("assistant-grant-command-mismatch");
         ports.database.prepare("INSERT INTO assistant_grants(id,profile_id,revision,command_id,payload_json,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET profile_id=excluded.profile_id,revision=excluded.revision,command_id=excluded.command_id,payload_json=excluded.payload_json,updated_at=excluded.updated_at")
           .run(record.id, record.profileId, record.policy.revision, record.commandId, canonicalJsonStringify(record), record.updatedAt);
@@ -68,7 +68,7 @@ export function createAssistantAuthorizationRepository(ports: Ports) {
     },
     createAction(input: unknown) {
       const record = AssistantActionRecordSchema.parse(input);
-      if (record.revision !== 1 || (record.state !== "prepared" && record.state !== "approved")) throw new Error("assistant-action-initial-state-invalid");
+      if (record.revision !== 1 || record.state !== "prepared") throw new Error("assistant-action-initial-state-invalid");
       return ports.mutate("assistant_actions", () => {
         const owner = AssistantChatRecordSchema.parse(read("assistant_chats", record.chatId));
         if (owner.profileId !== record.binding.profileId || owner.epoch !== record.binding.accountSessionEpoch) throw new Error("assistant-action-chat-owner-mismatch");

@@ -19,7 +19,7 @@ for (const theme of PARITY_THEMES) test(`settings activation ${theme.name}: curr
     await page.setViewportSize({ width: 1024, height: 720 }); await installTheme(page, theme);
     await page.goto(`${server.url}/?settings=paths`);
     await assertThemeApplied(page, theme);
-    const reports = page.getByRole("button", { name: "Change Reports directory", exact: true });
+    const reports = page.getByRole("button", { name: "Change Reports", exact: true });
     await expect(reports).toBeVisible(); await expect(reports).toBeEnabled();
     await reports.focus(); await expect(reports).toBeFocused();
     const client = createDashboardClient({ baseUrl: server.url });

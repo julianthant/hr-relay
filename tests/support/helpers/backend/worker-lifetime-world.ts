@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../compiled-process.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
@@ -61,7 +62,7 @@ export async function ownedWorkerLifetimeFixture(world: ReturnType<typeof create
     lifecycle: { state: "stopped", startedAt: lease.lifecycle.startedAt, stoppedAt: now, reason: "shutdown" }, now });
   const owner = async (authorityPath = join(h.root, "state.db"), onSpawn?: (child: ChildProcess) => void) => {
     const child = options?.fenceInOwner === true
-      ? spawn(process.execPath, ["--import", "tsx", fileURLToPath(new URL("../../../support/processes/write-fence-owner.ts", import.meta.url)), authorityPath, String(h.lifetime.port)], { stdio: ["pipe", "pipe", "inherit", "ipc"] })
+      ? spawn(process.execPath, ["--import", testProcessImport(), fileURLToPath(new URL("../../../support/processes/write-fence-owner.ts", import.meta.url)), authorityPath, String(h.lifetime.port)], { stdio: ["pipe", "pipe", "inherit", "ipc"] })
       : spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", env: {} });
     children.push(child);
     onSpawn?.(child);

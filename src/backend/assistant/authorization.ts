@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { checkAssistantAction } from "./action-policy.js";
 import { AssistantActionManifestSchema, type AssistantRefusalCode, type AssistantApprovalBinding } from "../../models/profiles/assistant-permissions.js";
-import { AssistantStoredCommandSchema, type AssistantActionRecord } from "../../models/profiles/assistant-authorization.js";
-import { type CommandRequest } from "../../rules/commands/commands.js";
+import { AssistantPlanBindingSchema, AssistantStoredCommandSchema, type AssistantActionRecord } from "../../models/profiles/assistant-authorization.js";
+import { type CommandRequest, type CommandResult } from "../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
 import type { CommandKernel } from "../runs/commands/command-kernel.js";
@@ -28,6 +28,7 @@ const same = (a: unknown, b: unknown): boolean => canonicalJsonStringify(a) === 
 export function createAssistantAuthorization(ports: Ports) {
   const chats = new WeakSet<Chat>();
   const activeClaims = new Set<string>();
+  const startChecks = new Map<string, () => void>();
   const now = () => ports.clock.now().toISOString();
   const repository = ports.database.authority.assistantAuthorization;
   const chat = (capability: Chat) => {
@@ -43,7 +44,7 @@ export function createAssistantAuthorization(ports: Ports) {
     if (grant === undefined || grant.profileId !== current.profileId) throw new AssistantAuthorizationError("assistant-grant-required", "ASSISTANT_GRANT_REQUIRED");
     const manifest = AssistantActionManifestSchema.parse(ports.kernel.assistantManifest());
     const resolved = { profileId: current.profileId, accountSessionEpoch: current.epoch, command,
-      subject: { kind: "none" }, cancelled: false, checkOutcome: { state: "none" } };
+      subject: command.family === "start" ? { kind: "catalog", catalogKey: "assistant-selected-subject", bindingDigest: command.payload.inputFingerprint } : { kind: "none" }, cancelled: false, checkOutcome: { state: "none" } };
     const checked = checkAssistantAction({ phase: approval === undefined ? "prepare" : "dispatch",
       authority: { profileId: current.profileId, accountSessionEpoch: current.epoch, policy: grant.policy, manifest },
       proposal: { commandId: command.commandId, family: command.family, action: command.type, target: command.target },
@@ -77,10 +78,18 @@ export function createAssistantAuthorization(ports: Ports) {
       return ports.database.withAuthorityTransaction(() => {
         const { checked, manifest } = decision(capability, command);
         const id = randomUUID(), createdAt = now();
-        repository.createAction({ id, chatId: capability.chatId, manifest, binding: checked.binding, command, plan: null,
-          revision: 1, state: checked.state === "approval-required" ? "prepared" : "approved", result: null, createdAt,
+        let plan = null;
+        if (command.family === "start") {
+          const stored = ports.database.authority.startPlans.get(command.target.startPlanId);
+          if (stored === undefined || stored.workflowId !== command.target.workflowId || stored.consumedBy !== undefined
+            || stored.version !== command.target.expectedVersion || Date.parse(stored.expiresAt) <= ports.clock.nowMs()
+            || !Object.entries(command.payload).every(([key, value]) => Reflect.get(stored, key) === value)) throw new AssistantAuthorizationError("assistant-plan-stale");
+          plan = AssistantPlanBindingSchema.parse({ startPlanId: stored.startPlanId, version: stored.version, descriptorFingerprint: stored.descriptorFingerprint, configFingerprint: stored.configFingerprint, ingressSchemaHash: stored.ingressSchemaHash, canonicalInputSchemaHash: stored.canonicalInputSchemaHash, inputFingerprint: stored.inputFingerprint, expiresAt: stored.expiresAt });
+        }
+        repository.createAction({ id, chatId: capability.chatId, manifest, binding: checked.binding, command, plan,
+          revision: 1, state: "prepared", result: null, createdAt,
           expiresAt: new Date(ports.clock.nowMs() + 60_000).toISOString() });
-        return Object.freeze({ id, revision: 1, state: checked.state === "approval-required" ? "prepared" as const : "approved" as const });
+        return Object.freeze({ id, revision: 1, state: "prepared" as const });
       });
     },
     approve(capability: Chat, id: string, revision: number) {
@@ -106,6 +115,7 @@ export function createAssistantAuthorization(ports: Ports) {
       if (row === undefined) return;
       if (command !== undefined && !same(row.command, command)) throw new AssistantAuthorizationError("assistant-command-binding-mismatch", "ASSISTANT_PROPOSAL_MISMATCH");
       if (!activeClaims.has(commandId)) throw new AssistantAuthorizationError("assistant-effect-custody-unproved", "ASSISTANT_UNKNOWN_NOT_REPLAYABLE");
+      startChecks.get(commandId)?.();
       ports.database.withAuthorityTransaction(() => {
         const current = ports.current(), owner = repository.chat(row.chatId);
         if (row.state !== "claimed" || owner === undefined || owner.profileId !== current.profileId || owner.epoch !== current.epoch
@@ -116,7 +126,7 @@ export function createAssistantAuthorization(ports: Ports) {
           accountSessionEpoch: current.epoch, policy: grant.policy, manifest },
           proposal: { commandId, family: row.command.family, action: row.command.type, target: row.command.target },
           resolved: { profileId: current.profileId, accountSessionEpoch: current.epoch, command: row.command,
-            subject: { kind: "none" }, cancelled: false, checkOutcome: { state: "none" } }, approval: row.binding });
+            subject: row.binding.subject, cancelled: false, checkOutcome: { state: "none" } }, approval: row.binding });
         if (checked.state !== "assistant-clear" || !same(checked.binding, row.binding) || !same(row.manifest, manifest)) throw new AssistantAuthorizationError("assistant-effect-binding-stale");
       });
     },
@@ -147,6 +157,31 @@ export function createAssistantAuthorization(ports: Ports) {
         throw error;
       } finally { activeClaims.delete(claimed.command.commandId); }
     },
+    async consumeStart(capability: Chat, id: string, assertCurrent: () => void, submit: (command: CommandRequest) => Promise<CommandResult>) {
+      const claimed = ports.database.withAuthorityTransaction(() => {
+        const row = repository.action(z.uuid().parse(id));
+        if (row === undefined) throw new AssistantAuthorizationError("assistant-action-missing");
+        validate(capability, row);
+        if (row.state !== "approved" || row.command.family !== "start") throw new AssistantAuthorizationError("assistant-action-not-consumable");
+        return repository.transition(id, row.revision, "claimed");
+      });
+      activeClaims.add(claimed.command.commandId);
+      startChecks.set(claimed.command.commandId, assertCurrent);
+      try {
+        const result = await submit(claimed.command);
+        return ports.database.withAuthorityTransaction(() => {
+          if (result.state === "pending") throw new AssistantAuthorizationError("assistant-start-settlement-unproved");
+          repository.transition(id, claimed.revision, "settled", result);
+          return result;
+        });
+      } catch (error) {
+        ports.database.withAuthorityTransaction(() => {
+          const current = repository.action(id);
+          if (current?.state === "claimed") repository.transition(id, current.revision, "unknown");
+        });
+        throw error;
+      } finally { activeClaims.delete(claimed.command.commandId); startChecks.delete(claimed.command.commandId); }
+    },
     reconcile(capability: Chat, id: string) {
       return ports.database.withAuthorityTransaction(() => {
         const row = repository.action(z.uuid().parse(id));
@@ -165,7 +200,7 @@ export function createAssistantAuthorization(ports: Ports) {
         if (row === undefined) throw new AssistantAuthorizationError("assistant-action-missing");
         validate(capability, row);
         if (row.state === "settled") return row.result;
-        if (row.state !== "approved" || row.command.family === "worker-browser") throw new AssistantAuthorizationError("assistant-action-not-consumable");
+        if (row.state !== "approved" || (row.command.family === "worker-browser" || row.command.family === "start")) throw new AssistantAuthorizationError("assistant-action-not-consumable");
         const claimed = repository.transition(id, row.revision, "claimed");
         activeClaims.add(row.command.commandId);
         try {

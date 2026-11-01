@@ -25,8 +25,8 @@ export function prepareAssistantProposal(planner: AssistantPlanner, workflowId: 
     || request.retainedInputs !== undefined) throw new Error("assistant-proposal-refused");
   const support = workflowDryRunSupport(request.descriptor);
   if (support.state !== "supported") throw new Error("assistant-proposal-refused");
-  const stop = descriptorRuntimeNodes(request.descriptor).find(node => String(node.id) === support.stopsAt);
-  if (stop?.kind !== "transaction" || stop.dryRun !== "stop-after-prepare") throw new Error("assistant-proposal-refused");
+  const firstTransaction = descriptorRuntimeNodes(request.descriptor).find(node => String(node.id) === support.firstTransactionNodeId);
+  if (firstTransaction?.kind !== "transaction" || firstTransaction.dryRun !== "stop-after-prepare") throw new Error("assistant-proposal-refused");
   const plan = planStart({ authority: context.deps.authority, clock: context.deps.clock, ids: context.deps.ids,
     planTtlMs: context.deps.planTtlMs }, request);
   context.assertCurrent();
@@ -39,7 +39,7 @@ export function prepareAssistantProposal(planner: AssistantPlanner, workflowId: 
     workflowId, subject, intent: "dry-run", descriptorVersion: plan.descriptorVersion, descriptorFingerprint: plan.descriptorFingerprint,
     configSnapshotId: plan.configSnapshotId, configFingerprint: plan.configFingerprint, inputFingerprint: plan.inputFingerprint,
     optionsFingerprint: createHash("sha256").update(canonicalJsonStringify(options)).digest("hex"),
-    expiresAt: plan.expiresAt, stopBefore: { nodeId: String(stop.id), phase: "commit", afterPrepareTaskId: String(stop.prepare.uses.id), commitTaskId: String(stop.commit.uses.id) },
+    expiresAt: plan.expiresAt, stopBefore: { nodeId: String(firstTransaction.id), phase: "commit", afterPrepareTaskId: String(firstTransaction.prepare.uses.id), commitTaskId: String(firstTransaction.commit.uses.id) },
     effects: { workflowExecuted: false, transactionCommitted: false }, confirmation: "required-in-run",
   });
 }
