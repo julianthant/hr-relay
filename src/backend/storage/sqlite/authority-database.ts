@@ -1,3 +1,4 @@
+import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import type { ChildProcess } from "node:child_process";
 import { appendRecoveryNotification } from "../../runs/lifecycle/startup-crash-recovery.js";
 import { RunRecordService, requireLifecycleApplied } from "../../runs/lifecycle/run-record-service.js";
@@ -6,7 +7,7 @@ import { CanonicalCrashRecoveryRequestSchema, RunClaimTokenSchema } from "../../
 import { privatePathRejects } from "../private-path.js";
 import { clearOperationProofSlots, revalidateOperationProof, outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
 import { assertOfflineMaintenanceForProcessRoot, type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
-import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
+import { type OfflineMaintenanceOperation, RuntimeLifetimeLock, offlineMaintenanceWorkspace } from "../admission/lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { authoritySourceDatabaseIdentity, type AuthorityBackupExpectedSource } from "./database-identity.js";
 import { WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalClaimNextRequestSchema, WorkerStandingRecoveryRequestSchema, RunClaimOutcomeSchema, RunClaimRequestSchema, RunHeartbeatOutcomeSchema, RunHeartbeatRequestSchema, RunItemQuerySchema, RunPresentationRequestSchema, RunInjectPatchesRequestSchema, RunPriorityBumpRequestSchema, RunRequeueRequestSchema, RunResumeRequestSchema, RunTransitionRequestSchema, RunUpdateOutcomeSchema, StartPlanConsumeOutcomeSchema, StartPlanConsumeRequestSchema, WorkerControlRequestSchema, WorkerLifecycleRequestSchema, WorkerPoolPlanOutcomeSchema, WorkerPoolPlanRequestSchema, WorkerStartOutcomeSchema, WorkerStartRequestSchema, WorkerUpdateOutcomeSchema, type RunClaimOutcome, type RunHeartbeatOutcome, type RunUpdateOutcome, type StartPlanConsumeOutcome, type WorkerPoolPlanOutcome, type WorkerStartOutcome, type WorkerUpdateOutcome } from "./run-store-contracts.js";
@@ -69,7 +70,7 @@ import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, statSync, lstatSync, openSync, closeSync, fsyncSync, unlinkSync, constants } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -2003,7 +2004,7 @@ export class AuthorityDatabase implements Disposable {
     try {
       const initial=flatQueuedRunCancellationInventory(database,assertCredentialCopyResourcesClosed);
       if(initial.digest!==expectedDigest)throw new Error("queued-run-cancellation-capture-changed");
-      await probeFlatBrowserInventoryClosed(lease,restore,stateRoot,maintenanceInventory(database,inspectNativeAuthority(database,6)),clock,browserClosure);
+      await probeFlatBrowserInventoryClosed(lease,restore,stateRoot,clock,browserClosure);
       assertHeld();
       database.exec("BEGIN IMMEDIATE");
       try {
@@ -2055,14 +2056,37 @@ export class AuthorityDatabase implements Disposable {
     return runIds;
   }
 
-  static readFlatBackupRecoveryInventory(path: string, restore: OfflineMaintenanceOperation) {
-    assertOfflineMaintenanceForProcessRoot(restore, join(dirname(path), "locks"));
+  static readFlatArchiveInventory(path: string, restore: OfflineMaintenanceOperation) {
+    const workspace = offlineMaintenanceWorkspace(restore), root = join(workspace, rebuildRuntimeIsolation.stateRoot);
+    const assertHeld = () => {
+      assertOfflineMaintenanceForProcessRoot(restore, join(workspace, rebuildRuntimeIsolation.processLockRoot));
+      if (path !== join(root, "state.db") && (dirname(path) !== join(root, "backups", "authority")
+        || !/^authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite$/u.test(basename(path)))) throw new Error("flat-archive-database-path-refused");
+      requireDatabaseSourcePath(path);
+    };
+    assertHeld();
     return withReadonlyAuthoritySnapshot(path, database => {
-      const inspection = inspectNativeAuthority(database, 6);
-      if (inspection.installationId !== undefined || inspection.profileId !== undefined) throw new Error("flat-backup-recovery-binding-refused");
-      const facts = maintenanceInventory(database, inspection);
-      assertOfflineMaintenanceForProcessRoot(restore, join(dirname(path), "locks"));
-      return { inspection, facts };
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || readIntPragma(database, "user_version") !== 6) throw new Error("flat-backup-schema-refused");
+      assertNativeSchema(database, 6);
+      QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
+      if (database.prepare("PRAGMA foreign_key_check").all().length !== 0) throw new Error("flat-archive-integrity-refused");
+      const meta = readMetaRow(database);
+      if (meta.schema_version !== 6 || meta.installation_id !== undefined || meta.profile_id !== undefined) throw new Error("flat-backup-schema-refused");
+      const settings = readAppSettings(database);
+      const configSnapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
+        .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", row)));
+      const expectedPaths = { stateRoot: root, artifactRoot: join(root, "artifacts"), browserProfileRoot: join(root, "browsers"),
+        duoCredential: join(root, "credentials", "duo-webauthn.json"), reportsDir: join(workspace, "data", "reports"),
+        downloadsDir: join(workspace, "data", "downloads"), onboardingDocsDir: join(workspace, "data", "onboarding"),
+        i9CheckTrackerPath: join(workspace, "data", "reports", "i9-check-tracker.xlsx") };
+      if (configSnapshots.some(snapshot => {
+        const { duoExtensionDir: _extension, ...paths } = snapshot.config.paths;
+        return canonicalJsonStringify(paths) !== canonicalJsonStringify(expectedPaths);
+      }) || settings !== undefined && Object.keys((settings.saved?.settings ?? settings.initialization.settings.settings).paths ?? {}).length !== 0) throw new Error("existing-data-flat-custom-paths-unsupported");
+      if (settings !== undefined && (settings.active === null || !configSnapshots.some(snapshot => snapshot.configSnapshotId === settings.active?.configSnapshotId
+        && snapshot.fingerprint === settings.active.configFingerprint))) throw new Error("existing-data-flat-settings-unavailable");
+      assertHeld();
+      return { settings: settings === undefined ? initialSettingsFileRecord().settings : settings.saved?.settings ?? settings.initialization.settings.settings };
     });
   }
 

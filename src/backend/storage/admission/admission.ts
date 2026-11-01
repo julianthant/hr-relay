@@ -148,13 +148,13 @@ export class RuntimeAdmission {
   readonly #profileParent: RuntimeAdmission | undefined;
   readonly #pendingLogout: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }> | undefined;
   readonly #readyUpgrade: ReadyProfileUpgrade | undefined;
-  readonly #flatBackup: ReadyProfileUpgrade | undefined;
+  readonly #flatBackup: Readonly<{ sourcePath: string; processLockRoot: string }> | undefined;
 
   private constructor(token: typeof issuanceToken, authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
     authorityDatabasePaths: readonly string[],
     scope: AdmissionScope,
     mode: "shared" | "exclusive" | "synthetic", locator?: RuntimeLocator, binding?: ProfileDatabaseBinding, profileParent?: RuntimeAdmission,
-    pendingLogout?: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }>, readyUpgrade?: ReadyProfileUpgrade, flatBackup?: ReadyProfileUpgrade) {
+    pendingLogout?: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }>, readyUpgrade?: ReadyProfileUpgrade, flatBackup?: Readonly<{ sourcePath: string; processLockRoot: string }>) {
     if (token !== issuanceToken) throw new Error("runtime-admission: unissued capability");
     this.#authority = authority;
     this.#stateRoot = stateRoot;
@@ -403,7 +403,8 @@ export class RuntimeAdmission {
       this.assertStateRoot(path);
       return;
     }
-    const backup = this.#flatBackup ?? this.#readyUpgrade;
+    if (this.#flatBackup !== undefined) throw new Error("flat-backup-archive-only");
+    const backup = this.#readyUpgrade;
     if (backup !== undefined) {
       this.assertLive();
       const directory = join(this.#stateRoot, "backups", "authority");
@@ -416,7 +417,8 @@ export class RuntimeAdmission {
     this.assertWritable();
   }
   assertAuthorityBackupSource(path: string, sourceFingerprint: string): void {
-    const backup = this.#flatBackup ?? this.#readyUpgrade;
+    if (this.#flatBackup !== undefined) throw new Error("flat-backup-archive-only");
+    const backup = this.#readyUpgrade;
     this.assertReadOnlyAuthorityDatabase(path);
     if (backup !== undefined) {
       const proof = backup.qualification.current;
@@ -430,12 +432,7 @@ export class RuntimeAdmission {
   authorityBackupExpectedSource(): AuthorityBackupExpectedSource {
     this.assertLive();
     const path = join(this.#stateRoot, "state.db");
-    if (this.#flatBackup !== undefined) {
-      const backup = this.#flatBackup, proof = backup.qualification.current;
-      if (backup.copyPath !== undefined || backup.sourceSchemaVersion !== 6 || proof.kind !== "qualified") throw new Error("authority-backup-source-unqualified");
-      this.assertAuthorityBackupSource(path, proof.sourceFingerprint);
-      return Object.freeze({ kind: "unbound-predecessor", schemaVersion: 6, authorityContentFingerprint: proof.sourceFingerprint });
-    }
+    if (this.#flatBackup !== undefined) throw new Error("flat-backup-archive-only");
     if (this.#scope === "profile-upgrade") {
       this.assertReadOnlyAuthorityDatabase(path);
       this.assertOfflineMaintenance(this.maintenanceOperation());
@@ -453,8 +450,9 @@ export class RuntimeAdmission {
     return Object.freeze({ kind: "profile", binding: this.#profileBinding });
   }
   profileMaintenanceSchemaVersion(): 6 | 8 | 9 | 10 | 11 {
-    const backup = this.#flatBackup ?? this.#readyUpgrade;
     this.assertLive();
+    if (this.#flatBackup !== undefined) return 6;
+    const backup = this.#readyUpgrade;
     if (this.#scope === "stopped-control-inventory" && this.#stoppedControlInventory !== undefined) return requireStoppedControlProfileInventory(this.#stoppedControlInventory).schemaVersion;
     if (backup === undefined) return CURRENT_AUTHORITY_SCHEMA_VERSION;
     const observed = readProfileDatabaseBinding(backup.copyPath ?? backup.sourcePath);
@@ -1013,7 +1011,8 @@ export class RuntimeAdmission {
     this.assertReadable();
     if (this.#scope === "stopped-incomplete-profile-inventory" && resolve(path) !== join(this.#stateRoot, "state.db")) throw new Error("profile-incomplete-inventory-path-refused");
     if (this.#scope === "stopped-control-inventory" && path === ":memory:") throw new Error("profile-control-upgrade-inspection-path-refused");
-    const backup = this.#flatBackup ?? this.#readyUpgrade;
+    if (this.#flatBackup !== undefined && path !== this.#flatBackup.sourcePath) throw new Error("flat-archive-database-path-refused");
+    const backup = this.#readyUpgrade;
     if (backup !== undefined) {
       if (path === ":memory:" || backup.copyPath !== undefined && path !== backup.copyPath) throw new Error("profile-stopped-upgrade-path-refused");
       if (backup.copyPath === undefined && path !== backup.sourcePath
@@ -1545,19 +1544,16 @@ export class RuntimeAdmission {
         size: info.size, modified: info.mtimeMs, changed: info.ctimeMs };
       return { sourcePath, before: canonicalJsonStringify(identity(value?.stat) ?? null), identity };
     });
-    const qualification: ReadyProfileUpgrade["qualification"] = { current: { kind: "inspection" } };
     const assertHeld = () => {
       assertSource();
       for (const source of sources) if (canonicalJsonStringify(source.identity(lstatSync(source.sourcePath, { throwIfNoEntry: false })) ?? null) !== source.before) throw new Error("flat-backup-source-changed");
     };
     const child = new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release: () => this.release() },
       root, join(root, "artifacts"), [path], "flat-backup", "exclusive", this.#locator, undefined, this, undefined, undefined,
-      { sourcePath: path, processLockRoot, sourceSchemaVersion: 6, qualification });
+      { sourcePath: path, processLockRoot });
     try {
       const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
-      const source = AuthorityDatabase.inspectStoppedUpgrade(child, path, processLockRoot, systemClock);
-      if (source.schemaVersion !== 6 || source.installationId !== undefined || source.profileId !== undefined) throw new Error("flat-backup-schema-refused");
-      qualification.current = { kind: "qualified", sourceFingerprint: source.authorityContentFingerprint };
+      AuthorityDatabase.readFlatArchiveInventory(path, restore);
       return child;
     } catch (error) {
       if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: child });

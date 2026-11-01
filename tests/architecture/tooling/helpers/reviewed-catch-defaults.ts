@@ -68,7 +68,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "c8ff6bacb2f7f05fbcaf5a273bc1cb6c3e18f3756490e00ea39bb5bd24d842ec",
+      "sha256": "4f3c6146ea6b074ec3549b4af8b739072b7168bcf7be8125c4f4c4e80a5e2c0d",
     "reason": "Only ENOENT returns explicit path absence; callers check it before creation or refusal, and other filesystem failures rethrow. Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
   },
   {
@@ -113,7 +113,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "2f6f12fdf14a09bcd81c3fdb26f08a4a7f0f266d63954a8e03724081a6ec32bd",
+    "sha256": "2377f57096005ab545633ef9908362a9563af36a417a46e9f877e22a658600fd",
     "reason": "Failed constructor cleanup retains the actual native database and admission with both opening and close failures. Failed rollback retains database custody with the original failure; successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or named search refusal, never validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody releases; required native browser closure precedes cancellation."
   },
   {

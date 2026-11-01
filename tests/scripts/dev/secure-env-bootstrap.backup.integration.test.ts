@@ -1,6 +1,6 @@
 import { acquireInstallation } from "../../../src/backend/storage/admission/installation.js";
 import { advanceProfileRegistryDocument } from "../../../src/models/profiles/profile.js";
-import { StoppedAuthorityBackupManifestSchema } from "../../../src/backend/storage/sqlite/recovery-contracts.js";
+import { retainedStorageBackup, StorageBackupSchema } from "../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 import { testProcessImport } from "../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -255,7 +255,7 @@ it.each(["server", "workers", "geocode"] as const)("refuses a CLI backup while %
   } finally { fixture.lifetime.assertHeld(); }
 });
 
-it("runs the unchanged explicit CLI backup on a stopped adopted flat source without login or profile publication", async () => {
+it("archives exact bytes through the explicit CLI on a stopped flat source without login or profile publication", async () => {
   const f = await createHistoricalFlatProfileFixture();
   try {
     cpSync(join(repositoryRoot, "src"), join(f.workspace, "src"), { recursive: true });
@@ -272,10 +272,14 @@ it("runs the unchanged explicit CLI backup on a stopped adopted flat source with
     assert.equal(result.error, undefined); assert.equal(result.signal, null);
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     const successor = await RuntimeLifetimeLock.acquire(f.lifetime.port); await successor.close();
-    assert.match(result.stdout, /backup: verified/u); assert.match(result.stdout, /private coupled companions/u);
-    const manifests = readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json"));
-    assert.equal(manifests.length, 1);
-    assert.equal(StoppedAuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(f.stateRoot, "backups", "authority", manifests[0] ?? ""), "utf8"))).schemaVersion, 6);
+    assert.match(result.stdout, /flat archive: verified/u); assert.match(result.stdout, /no person restore or adoption/u);
+    const installation = JSON.parse(readFileSync(join(f.workspace, ".tracker", "control", "installation.json"), "utf8")) as { installationId: string };
+    const reference = retainedStorageBackup(f.workspace, installation.installationId); assert.ok(reference);
+    const receipt = StorageBackupSchema.parse(JSON.parse(readFileSync(reference.backupPath, "utf8")));
+    assert.equal(receipt.kind, "flat-native6-archive");
+    assert.ok(receipt.files.some(file => file.path === "profile/state.db"));
+    assert.equal(receipt.files.some(file => file.path.startsWith("profile/credentials/")), false);
+    assert.equal(existsSync(join(f.stateRoot, "backups", "authority")), false);
     for (const [index, path] of paths.entries()) assert.deepEqual(readFileSync(path), before[index]);
     for (const path of [join(f.stateRoot, "profiles"), join(f.stateRoot, "machine"), join(f.workspace, ".tracker", "control", "profile-registry.json"),
       join(f.workspace, ".tracker", "control", "profile-owner-claims"), join(f.workspace, ".tracker", "control", "profile-flat-claim.json")]) assert.equal(existsSync(path), false);

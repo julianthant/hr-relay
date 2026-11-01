@@ -23,7 +23,8 @@ it("backs up a flat store without credentials, starts empty, and accepts an ordi
       const reference = retainedStorageBackup(f.workspace, machine.locator.installationId); assert.ok(reference);
       const record = StorageBackupSchema.parse(JSON.parse(file(reference.backupPath).bytes.toString("utf8")));
       assert.equal(record.files.some(entry => entry.path.startsWith("profile/credentials/")), false);
-      assert.ok(record.files.some(entry => entry.path.startsWith("profile/backups/authority/") && entry.path.endsWith(".sqlite")));
+      assert.ok(record.files.some(entry => entry.path === "profile/state.db"));
+      assert.equal(record.kind, "flat-native6-archive");
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "flat-start-clean.json")), false);
       const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
       try {
@@ -43,16 +44,11 @@ it("backs up a flat store without credentials, starts empty, and accepts an ordi
 for (const fault of ["write", "verification"] as const) {
   it(`refuses startup on backup ${fault} failure and retains non-credential source data`, async () => {
     const f = await createHistoricalFlatProfileFixture(), before = readFileSync(f.databasePath), artifact = readFileSync(f.artifact);
-    const write = nativeFs.writeFileSync, rename = nativeFs.renameSync;
+    const write = nativeFs.writeFileSync;
     const writeSpy = vi.spyOn(nativeFs, "writeFileSync").mockImplementation((path, data, options) => {
       if (fault === "write" && String(path).includes("storage-backups") && String(path).endsWith("source.json")) throw new Error("fixture backup write failure");
       write(path, data, options);
-    });
-    const renameSpy = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
-      rename(source, destination);
-      if (fault === "verification" && String(destination).includes("backups/authority/") && String(destination).endsWith(".manifest.json")) {
-        nativeFs.writeFileSync(destination, "{}", { mode: 0o600 });
-      }
+      if (fault === "verification" && String(path).includes("storage-backups/") && String(path).endsWith("backup.json")) write(path, "{}", { mode: 0o600 });
     });
     syncBuiltinESMExports();
     try {
@@ -63,7 +59,7 @@ for (const fault of ["write", "verification"] as const) {
       assert.equal(existsSync(join(f.stateRoot, "machine")), false);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "profile-registry.json")), false);
       assert.equal(readdirSync(join(f.stateRoot, "artifacts")).length > 0, true);
-    } finally { writeSpy.mockRestore(); renameSpy.mockRestore(); syncBuiltinESMExports(); await f.close(); }
+    } finally { writeSpy.mockRestore(); syncBuiltinESMExports(); await f.close(); }
   });
 }
 

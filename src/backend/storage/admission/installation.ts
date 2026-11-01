@@ -2140,13 +2140,12 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (canonicalJsonStringify(prior) !== canonicalJsonStringify(intent)) fail("flat-start-clean-intent-changed");
       } else atomicJson(intentPath, intent);
       const source = SourceRecordSchema.parse(JSON.parse(backupFile(join(dirname(reference.backupPath), "source.json")).bytes.toString("utf8")));
-      const sourceFiles = [...backup.files, ...source.databases.flatMap(database => database.file === undefined ? []
-        : [{ ...database.file, path: `profile/state.db${database.suffix}` }])];
+      const sourceFiles = source.members.filter(member => member.kind === "file");
       const excluded = new Set([".runtime-owner.json", "locks", "machine"]);
       const observed = backupFileInventory(locator.stateRoot, "profile", excluded).filter(entry => entry.file.path !== "profile/artifacts/.runtime-owner.json");
       for (const entry of observed) {
         const saved = sourceFiles.find(file => file.path === entry.file.path);
-        if (saved === undefined || saved.device !== entry.file.device || saved.inode !== entry.file.inode || saved.digest !== entry.file.digest) fail("flat-start-clean-source-changed");
+        if (saved === undefined || saved.digest !== entry.file.digest || saved.size !== entry.file.size || saved.mode !== entry.file.mode) fail("flat-start-clean-source-changed");
       }
       for (const entry of observed) { unlinkSync(entry.path); fsyncPath(dirname(entry.path)); }
       const removeEmpty = (directory: string) => {

@@ -578,7 +578,7 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
 
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
-  "       storage backup [--json]  verified SQLite backup; stopped flat native6 includes private coupled companions",
+  "       storage backup [--json]  verified person SQLite backup or stopped flat native6 byte archive",
   "       storage upgrade [--plan] [--machine-control] [--timeline-from <verified-copy-directory>] [--json]",
   "       storage cancel-queued-runs --plan [--json]",
   "       storage cancel-queued-runs --capture <digest> --apply [--json]",
@@ -1039,19 +1039,22 @@ export async function prepareStorageBackupCommand(
             ? await (await import("../../storage/maintenance/existing-data-backup.js")).backupFlatStorage(closure, storage, clock)
             : await backupStoppedAuthority(closure, storage, stateRoot, clock, join(repoRoot, isolation.processLockRoot), operation);
           selected?.assertCurrent();
-          const manifest = report.manifests.at(-1);
-          if (manifest === undefined) throw new Error("verified backup run reported no manifest");
-          outcome = {
-            output: json
-              ? JSON.stringify(report, null, 2)
-              : [
-                  `backup: verified — ${manifest.backupFileName}`,
-                  `  generation ${String(manifest.authorityGeneration)}, ${String(manifest.byteSize)} bytes, sha256 ${manifest.sha256}`,
-                  `  manifest ${manifest.backupFileName}.manifest.json${"coupledBackup" in report ? "" : " (restore with: storage restore --from <that manifest>)"}`,
-                  ...("coupledBackup" in report ? [`  private coupled companions: ${report.coupledBackup.backupPath}; no flat data is carried into sign-up`] : []),
-                ].join("\n"),
-            exitCode: 0,
-          };
+          if ("kind" in report) {
+            outcome = { output: json ? JSON.stringify(report, null, 2) : [
+              "flat archive: verified",
+              `  ${String(report.archive.fileCount)} files, ${String(report.archive.byteSize)} bytes, sha256 ${report.archive.backupDigest}`,
+              `  receipt ${report.archive.backupPath}`,
+              "  immutable historical bytes; no person restore or adoption",
+            ].join("\n"), exitCode: 0 };
+          } else {
+            const manifest = report.manifests.at(-1);
+            if (manifest === undefined) throw new Error("verified backup run reported no manifest");
+            outcome = { output: json ? JSON.stringify(report, null, 2) : [
+              `backup: verified — ${manifest.backupFileName}`,
+              `  generation ${String(manifest.authorityGeneration)}, ${String(manifest.byteSize)} bytes, sha256 ${manifest.sha256}`,
+              `  manifest ${manifest.backupFileName}.manifest.json (restore with: storage restore --from <that manifest>)`,
+            ].join("\n"), exitCode: 0 };
+          }
         }
       } catch (error) {
         if (hasUnprovedSourceClosure(error)) {

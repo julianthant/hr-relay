@@ -2579,7 +2579,8 @@ describe("authority.health preflight and static recovery boundary", () => {
     };
     for (const [path, names] of [
       ["src/backend/storage/maintenance/upgrade.ts", ["backupStoppedAuthority"]],
-      ["src/backend/storage/maintenance/existing-data-backup.ts", ["inspectCoupledBackupSource", "writeCoupledBackup", "backupFlatStorage"]],
+      ["src/backend/storage/maintenance/existing-data-backup.ts", ["backupFlatStorage"]],
+      ["src/backend/storage/maintenance/existing-data-backup-files.ts", ["captureFlatArchiveSource", "writeFlatArchiveCopies"]],
     ] as const) {
       const source = sourceFile(path);
       for (const name of names) {

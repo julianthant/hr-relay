@@ -605,15 +605,14 @@ are carried into sign-up. Runtime admission retains flat detection only for this
 stopped backup command.
 
 Startup first erases the flat `credentials/` directory, including protected, ChatGPT and Duo files,
-so the new backup contains none of those credentials. It then uses the existing stopped SQLite
-backup and coupled private-copy writer. The verified backup, source record and copies live outside
+so the new backup contains none of those credentials. It then uses the stopped flat native6 raw-byte archive writer. The verified backup, source record and copies live outside
 the removed state under `.tracker/control/storage-backups/<installationId>/`. Backup or verification
 failure stops startup with `PROFILE_FLAT_STORE_MIGRATION_FAILED`; all non-credential source data
 remains in place. Unsupported paths, active or UNKNOWN resource custody, corrupt or changed data
 remain refusals. An existing backup containing credentials cannot authorize the migration.
 
 Only after verification does a durable `flat-start-clean.json` intent authorize removal. Every
-remaining source file must match the backup or source record's captured identity and digest.
+remaining source file must match the source record's captured digest, size and mode.
 Restart verifies the same backup and resumes that deletion prefix, then initializes an empty
 profile registry. Installation markers, artifact-root identity and fixed process locks stay in
 place. The backup remains verified and retained after removal; sign-up creates a fresh private
@@ -623,15 +622,26 @@ profile using the ordinary onboarding path.
 registered child, or a stopped native6 flat source through its finite backup admission. The command
 neither signs in nor creates a profile. Its owner holds the same root-issued offline operation through
 an explicit native browser closure step, then captures source bytes and runs the backup. The real
-probe can update browser state; the backup copies that post-probe state and never launches a browser.
+probe can update browser state; source capture follows that probe and backup IO never launches a browser.
 A private in-memory closure observation binds the exact operation, admitted source, browser census
 and directory identities. Backup revalidates that observation and read-only OS closure at its IO
 boundaries; copied, foreign, expired or changed observations refuse. Unproved closure retains owners.
-Coupled copies complement the verified SQLite backup. Every existing source file keeps its bytes,
-inode and mode throughout backup IO, including browser Preferences; the probe finishes before that
-interval. The flat backup is a one-time pre-migration source snapshot. A fresh command probes again;
-changed post-probe source refuses with STORAGE_BACKUP_SOURCE_CHANGED and preserves the first
-verified backup and source.json. It never overwrites that receipt or creates a versioned substitute.
-An exact interrupted copy prefix may resume; missing, extra or corrupt completed copies refuse.
+The flat archive copies the original SQLite database and every present sidecar unchanged, along
+with recognized HR-managed files. Its schema2 source intent records files, directories and absent
+database companions, source modes, sizes and SHA-256 digests. Entire recognized Chromium profile,
+credential, key/auth and runtime containers are excluded with exact private member/digest census;
+unknown source shapes refuse. Credential-free means excluding Relay's identified credential owners,
+not scanning arbitrary HR payload bytes. Unretired, nonterminal and UNKNOWN historical rows remain
+opaque bytes: archiving never retires, cancels, adopts or retries them. Registered-person backup and
+UNKNOWN-write protections stay at their existing owners.
+Every source file keeps its bytes and mode throughout archive IO. Path and descriptor identities
+remain transient same-operation checks. Receipt authority is exact operation/source membership and
+bytes, with independent copy readback and fresh physical closure before completion; it persists no
+inode authority. Empty source directories are metadata only; physical copy directories are exactly
+file ancestors. The schema2 receipt is an immutable archive, never a person restore manifest.
+A fresh command probes again; changed post-probe source refuses with STORAGE_BACKUP_SOURCE_CHANGED
+and preserves the first verified archive and source.json. It never overwrites that receipt or
+creates a versioned substitute. An exact interrupted copy prefix may resume; missing, extra or
+corrupt completed copies and old schema1 receipts refuse.
 A genuinely abandoned admission mutex requires current closed process custody and exact backup,
 source-record, allocation and recovery-history evidence. Unproved source closure retains custody.

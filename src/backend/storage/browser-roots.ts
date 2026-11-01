@@ -13,7 +13,7 @@ import { deepFreeze } from "../../rules/validation/immutability.js";
 import { BrowserSystemIdSchema, PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema, type BrowserSystemId } from "../../rules/identity/ids.js";
 import type { RuntimeAdmission } from "./admission/admission.js";
 import { assertInstallationLease, inspectFlatOfflineRunMaintenance, requireStoppedControlProfileInventory, type StoppedControlProfileInventory } from "./admission/installation.js";
-import { retainedBrowserProfiles, assertCredentialCopyResourcesClosed, type ProfileBrowserClosure } from "./maintenance/profile-inventory.js";
+import { retainedBrowserProfiles, assertCredentialCopyResourcesClosed, flatBackupBrowserCensus, type ProfileBrowserClosure } from "./maintenance/profile-inventory.js";
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
 import { proveProfileRootsUnused } from "./maintenance/process-closure.js";
 import { resolveConfigWithProvenance } from "../app/config/resolve.js";
@@ -621,12 +621,9 @@ export const profileBrowserClosure: ProfileBrowserClosure = {
     if (root === undefined) throw new BrowserRootUnavailableError();
     const capture = () => {
       held();
-      const custody = admission === undefined ? AuthorityDatabase.readFlatBackupRecoveryInventory(join(root, "state.db"), heldOperation).facts
-        : AuthorityDatabase.readProfileMaintenanceInventory(admission);
-      assertCredentialCopyResourcesClosed(custody);
-      const retained = retainedBrowserProfiles(root, custody, join(root, "browsers"), { workerDirectory: workerProfileDirectory });
-      if (profiles.some(profile => !retained.some(row => same(row, profile))) || retained.length !== profiles.length) throw new BrowserRootUnavailableError();
-      return digest(custody);
+      const census = flatBackupBrowserCensus(root, heldOperation, clock);
+      if (profiles.some(profile => !census.profiles.some(row => same(row, profile))) || census.profiles.length !== profiles.length) throw new BrowserRootUnavailableError();
+      return census.identity;
     };
     const before = capture();
     proveProfileRootsUnused([root]);
