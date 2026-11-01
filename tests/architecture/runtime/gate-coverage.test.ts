@@ -98,12 +98,12 @@ describe("gate coverage", () => {
     for (const configFile of rootTypeScriptConfigFiles) {
       assert.match(
         lint,
-        new RegExp(`(^|\\s)${configFile.replace(/\./g, "\\.")}(\\s|$)`),
+        new RegExp(`(^|\\s)${configFile.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`),
         `lint must target ${configFile}; otherwise a root config is typechecked but escapes lint`,
       );
       assert.match(
         eslintConfig,
-        new RegExp(`files:\\s*\\[[^\\]]*"${configFile.replace(/\./g, "\\.")}"`),
+        new RegExp(`files:\\s*\\[[^\\]]*"${configFile.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`),
         `the typed ESLint config must explicitly cover ${configFile}; a command target without a strict block passes vacuously`,
       );
     }

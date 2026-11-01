@@ -78,7 +78,7 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
     };
   };
   const leaves = ordinary.flatMap(row => row.key.startsWith("annualDates.")
-    ? row.key.endsWith(".jobEndDate") ? [leaf(row.key, row.key.replace("*", currentFiscalYearKey))] : []
+    ? row.key.endsWith(".jobEndDate") ? [leaf(row.key, row.key.replaceAll("*", currentFiscalYearKey))] : []
     : [leaf(row.key)]);
   const protectedRows = ProtectedSettingsNameSchema.options.map(name => ({ name, label: settingsLabel(name), activationScope: "next-use",
     purpose: name === "activityPersonPseudonym" ? "Historical records only; Activity pseudonym consumers remain retired." : `Used at the next ${name.startsWith("ucpath") ? "login" : "use"}.` }));
