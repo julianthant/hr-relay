@@ -401,7 +401,8 @@ assertions and orchestration. Its injected operations use current canonical owne
 runtime authority. `src/backend/app/dry-run/manifests.ts` retains manifests used to validate
 committed test-target inputs.
 
-The `dry-run-preview` arm requires a transaction graph and its derived stopping transaction.
+The `dry-run-preview` arm requires a transaction graph with preparation-only support for every transaction.
+Full preview evidence accounts for every declared node and retains the ordered previewed transaction IDs.
 The `live-read` evidence arm requires a graph without transactions or delegated effects that its
 zero-delta proof cannot observe. A transaction preview uses `dryRun: true`; a transaction-free
 read uses its ordinary mode. Assertions compare per-run authority evidence and exact
@@ -409,9 +410,9 @@ write-intent/attempt/outbox deltas, never progress text. Ordinary checkpoints, g
 terminal rows are legitimate rehearsal effects. Complete ordered receipt verification retains
 absent, ambiguous, and unknown verdicts separately.
 
-A case may declare `screenshots: { nodes: [...] }` with ordered unique task-point IDs. The
-operator's Run choice must enable browser screenshots to collect that evidence; the declaration
-does not change runtime options. Verification requires exact node order, checkpoint attempts and
+A case may declare `screenshots: { nodes: [...] }` with ordered unique task-point IDs.
+Declared browser boundaries require capture regardless of `captureBrowserScreenshots`.
+Verification requires exact node order, checkpoint attempts and
 unique bundle/artifact pairs. Canonical run capture and timeline readers bind run, node, attempt,
 browser session, bundle and artifact identities. Generic lease diagnostics do not satisfy these
 assertions. A declaration alone does not prove an executed run.
