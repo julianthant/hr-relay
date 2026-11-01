@@ -44,7 +44,8 @@ serial architecture and two parity shards. Each group runs its assigned suites i
 The release runner starts after these groups finish. This fits the five-job macOS limit without
 an extra runner wave; other workflows and GitHub runner availability can still cause queueing.
 
-PR path filters select affected suites; pushes to `staging` or `main` always select all routine
+PR path filters select affected suites. Pushes to `staging` and `main` do not run CI: they only
+change through pull requests whose up-to-date result already passed. A manual run selects all routine
 suites. Markdown-only PRs run static and privacy without test runners. The required suite names
 stay unchanged: each summary succeeds for a deliberately omitted suite, or requires every
 scheduled group to succeed. Failed change detection, failed groups and cancelled selected groups
