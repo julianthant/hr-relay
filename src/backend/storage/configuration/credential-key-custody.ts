@@ -1,3 +1,4 @@
+import { fsyncPath, writePrivateStage } from "../private-path.js";
 import { Entry } from "@napi-rs/keyring";
 import { createHash, randomBytes } from "node:crypto";
 import { closeSync, constants, fstatSync, fsyncSync, ftruncateSync, openSync, readdirSync, writeSync } from "node:fs";
@@ -5,7 +6,7 @@ import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import { encodePrivate, privateEqual } from "../../../rules/validation/private-equal.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { fsyncPath, noSymlinkAncestry, readPrivateFile, removeExactPath, writePrivateStage, type DirectoryIdentity } from "./credential-safe-file.js";
+import { noSymlinkAncestry, readPrivateFile, removeExactPath, type DirectoryIdentity } from "./credential-safe-file.js";
 import { retainAuthoritySourceClosure } from "../source-closure.js";
 
 const IdentitySchema = z.strictObject({ installationId: z.uuid(), profileId: z.uuid(), keyId: z.uuid() });

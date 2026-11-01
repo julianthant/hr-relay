@@ -1,3 +1,4 @@
+import { replacePrivateFile, privatePathRejects, writePrivateStage, fsyncPath } from "../private-path.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { proveProfileRootsUnused } from "../maintenance/process-closure.js";
 import { assertOfflineMaintenanceOperation, OfflineMaintenanceOperationUnavailableError, offlineMaintenanceWorkspace, isOfflineMaintenanceOperationActive, type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
@@ -6,7 +7,7 @@ import { credentialKeyCustody, CredentialKeyCustodyError, type CredentialKeyMigr
 import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { retainedStorageBackup, SourceRecordSchema, StorageBackupSchema, inventory as backupFileInventory, file as backupFile } from "../maintenance/existing-data-backup-files.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
-import { capturePriorPrivateFileLock, withPrivateFileLock, withOperationProof, outermostOperationProof, type PrivateFileLock, readPrivateFile, writePrivateStage, fsyncPath, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
+import { capturePriorPrivateFileLock, withPrivateFileLock, withOperationProof, outermostOperationProof, type PrivateFileLock, readPrivateFile, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
 import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, inspectIncompleteProfileRecertification, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStageTransition, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
 import { assertProfileRestoreDatabaseBinding, assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { ProfileDatabaseBindingSchema, SignUpOperationSchema, LogoutOperationSchema, type ProfileOperation, ProfileRegistryDocumentSchema, ProfileRegistryRowSchema, ProfileVerifierDocumentSchema, ProfileOnboardingCompletionSchema, assertFinishedProfileOnboarding, deriveProfileNames, type ProfileRegistryDocument } from "../../../models/profiles/profile.js";
@@ -388,7 +389,7 @@ function verifyStage(journal: RelocationJournal, sourceLocator: RuntimeLocator, 
 }
 function entryKind(path: string): "file" | "directory" {
   const stat = lstatMaybe(path);
-  if (stat === undefined || stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid())) fail("managed source entry missing or unsafe");
+  if (stat === undefined || privatePathRejects(path, stat, "owner")) fail("managed source entry missing or unsafe");
   if (stat.isFile() && stat.nlink === 1) return "file";
   if (stat.isDirectory()) return "directory";
   fail("managed source entry has unsupported kind");
@@ -465,11 +466,11 @@ function assertKnownDefaults(workspace: string, pair: RuntimePair): void {
 }
 function privateDirectory(path: string): void {
   const stat = lstatSync(path);
-  if (!stat.isDirectory() || stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid()) || (stat.mode & 0o777) !== 0o700) fail(`unsafe directory ${path}`);
+  if (!stat.isDirectory() || privatePathRejects(path, stat, "directory-0700")) fail(`unsafe directory ${path}`);
 }
 function dataDirectory(path: string): void {
   const stat = lstatSync(path);
-  if (!stat.isDirectory() || stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid()) || (stat.mode & 0o222) !== 0o200) fail(`unsafe data root ${path}`);
+  if (!stat.isDirectory() || privatePathRejects(path, stat, "owner-write-only")) fail(`unsafe data root ${path}`);
 }
 function lstatMaybe(path: string): ReturnType<typeof lstatSync> | undefined {
   try { return lstatSync(path); }
@@ -480,16 +481,7 @@ function lstatMaybe(path: string): ReturnType<typeof lstatSync> | undefined {
 }
 function privateFile(path: string): void {
   const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || (process.getuid && stat.uid !== process.getuid()) || (stat.mode & 0o777) !== 0o600) fail(`unsafe file ${path}`);
-}
-function syncDir(path: string): void {
-  const fd = openSync(path, "r");
-  let primary: { error: unknown } | undefined, descriptorIdentity: ReturnType<typeof fstatSync> | undefined;
-  try { descriptorIdentity = fstatSync(fd); fsyncSync(fd); } catch (error) { primary = { error }; }
-  try { closeSync(fd); }
-  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
-    { descriptor: { descriptor: fd, ...(descriptorIdentity === undefined ? {} : { identity: descriptorIdentity }) } }); }
-  if (primary !== undefined) throw primary.error;
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || privatePathRejects(path, stat, "file-0600")) fail(`unsafe file ${path}`);
 }
 function readStrict<T>(path: string, schema: z.ZodType<T>): T {
   privateFile(path);
@@ -500,7 +492,7 @@ function readStrict<T>(path: string, schema: z.ZodType<T>): T {
   let descriptorIdentity = expected;
   try {
     const stat = fstatSync(fd); descriptorIdentity = stat;
-    if (!stat.isFile() || stat.nlink !== 1 || (process.getuid && stat.uid !== process.getuid()) || (stat.mode & 0o777) !== 0o600) fail(`unsafe file ${path}`);
+    if (!stat.isFile() || stat.nlink !== 1 || privatePathRejects(path, stat, "file-0600")) fail(`unsafe file ${path}`);
     result = { value: schema.parse(JSON.parse(readFileSync(fd, "utf8"))) };
   } catch (error) { primary = { error }; }
   try { closeSync(fd); }
@@ -517,17 +509,10 @@ function atomicJson(path: string, value: unknown, parentKind: "control" | "data"
   const temp = join(directory, `.${randomUUID()}.tmp`);
   let primary: { error: unknown } | undefined;
   try {
-    writeFileSync(temp, `${JSON.stringify(value)}\n`, { mode: 0o600, flag: "wx" });
-    const fd = openSync(temp, "r");
-    let syncFailure: { error: unknown } | undefined, descriptorIdentity: ReturnType<typeof fstatSync> | undefined;
-    try { descriptorIdentity = fstatSync(fd); fsyncSync(fd); } catch (error) { syncFailure = { error }; }
-    try { closeSync(fd); }
-    catch (error) { throw retainAuthoritySourceClosure(syncFailure === undefined ? [error] : [syncFailure.error, error],
-      { descriptor: { descriptor: fd, ...(descriptorIdentity === undefined ? {} : { identity: descriptorIdentity }) } }); }
-    if (syncFailure !== undefined) throw syncFailure.error;
+    writePrivateStage(temp, Buffer.from(`${JSON.stringify(value)}\n`));
     if (lstatMaybe(path)) privateFile(path);
-    renameSync(temp, path);
-    syncDir(directory);
+    replacePrivateFile(temp, path);
+    fsyncPath(directory);
   } catch (error) { primary = { error }; }
   if (primary?.error instanceof AuthoritySourceClosureUnprovedError) throw primary.error;
   let cleanupFailure: { error: unknown } | undefined;
@@ -565,7 +550,7 @@ function preflightPair(pair: RuntimePair): void {
 }
 function ensureRoot(path: string): void {
   preflightRoot(path);
-  if (!lstatMaybe(path)) { mkdirSync(path, { recursive: true, mode: 0o700 }); syncDir(resolve(path, "..")); }
+  if (!lstatMaybe(path)) { mkdirSync(path, { recursive: true, mode: 0o700 }); fsyncPath(resolve(path, "..")); }
   dataDirectory(path);
 }
 function markerPath(root: string): string { return join(root, MARKER); }
@@ -784,8 +769,7 @@ function tombstoneValue(journal: RelocationJournal, role: "state" | "artifact", 
 }
 function readTombstone(path: string): z.infer<typeof TombstoneSchema> {
   const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || (stat.mode & 0o777) !== 0o400
-    || (process.getuid && stat.uid !== process.getuid())) fail("unsafe relocation tombstone");
+  if (!stat.isFile() || stat.nlink !== 1 || privatePathRejects(path, stat, "file-0400")) fail("unsafe relocation tombstone");
   const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   try {
     const opened = fstatSync(fd);
@@ -798,14 +782,14 @@ function checkTombstone(path: string, expected: z.infer<typeof TombstoneSchema>)
 }
 function writeTombstone(path: string, expected: z.infer<typeof TombstoneSchema>): void {
   const temp = join(dirname(path), `.${basename(path)}.${expected.operationId}.tombstone.tmp`);
-  if (lstatMaybe(path)) { checkTombstone(path, expected); if (lstatMaybe(temp)) { checkTombstone(temp, expected); unlinkSync(temp); syncDir(dirname(path)); } return; }
+  if (lstatMaybe(path)) { checkTombstone(path, expected); if (lstatMaybe(temp)) { checkTombstone(temp, expected); unlinkSync(temp); fsyncPath(dirname(path)); } return; }
   if (lstatMaybe(temp)) checkTombstone(temp, expected);
   else {
     writeFileSync(temp, `${canonicalJsonStringify(expected)}\n`, { mode: 0o400, flag: "wx" });
     const fd = openSync(temp, "r"); try { fsyncSync(fd); } finally { closeSync(fd); }
   }
   renameSync(temp, path);
-  syncDir(dirname(path));
+  fsyncPath(dirname(path));
 }
 function writeJournal(control: string, pending: RelocationJournal): void {
   atomicJson(join(control, "journal.json"), JournalSchema.parse(pending));
@@ -925,7 +909,7 @@ function retainWholeRoot(pending: RelocationJournal, row: z.infer<typeof Retenti
   if (source?.isDirectory() && !retained) {
     checkFence(row.source, expectedFence(pending, row.role));
     renameSync(row.source, row.retained);
-    syncDir(dirname(row.source));
+    fsyncPath(dirname(row.source));
   } else if (source?.isDirectory() || !retained) fail("ambiguous retained source root");
   dataDirectory(row.retained);
   writeTombstone(row.source, expected);
@@ -941,7 +925,7 @@ function retainEntryShell(workspace: string, pending: RelocationJournal, row: z.
   checkFence(row.source, expectedFence(pending, "state"));
   if (!lstatMaybe(row.retained)) {
     mkdirSync(row.retained, { mode: 0o700 });
-    syncDir(dirname(row.retained));
+    fsyncPath(dirname(row.retained));
   }
   dataDirectory(row.retained);
   const existing = readdirSync(row.retained);
@@ -967,8 +951,8 @@ function retainEntryShell(workspace: string, pending: RelocationJournal, row: z.
       : movedRole(pending, "artifact") && original === pending.source.artifactRoot ? "artifact" : undefined;
     if (originalStat && !retainedStat && entryKind(original) === entry.kind) {
       renameSync(original, retained);
-      syncDir(row.source);
-      syncDir(row.retained);
+      fsyncPath(row.source);
+      fsyncPath(row.retained);
     } else if (originalStat && retainedStat) {
       if (!tombstoneRole) fail("duplicate retained managed entry");
       checkTombstone(original, tombstoneValue(pending, tombstoneRole, original, retained));
@@ -980,7 +964,7 @@ function retainEntryShell(workspace: string, pending: RelocationJournal, row: z.
 function restoreFileBinding(path: string): z.infer<typeof RestoreFileBindingSchema> {
   const custody = lstatSync(path);
   if (!custody.isFile() || custody.isSymbolicLink() || custody.nlink !== 1
-    || (custody.mode & 0o022) !== 0 || process.getuid !== undefined && custody.uid !== process.getuid()) fail("unsafe restore data file");
+    || privatePathRejects(path, custody, "group-write")) fail("unsafe restore data file");
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const before = fstatSync(fd), bytes = readFileSync(fd), after = fstatSync(fd), current = lstatSync(path);
@@ -1321,7 +1305,7 @@ function readMachineRegistry(control: string, locator: RuntimeLocator, recoverPu
         atomicJson(path, intent.document);
       }
       atomicJson(witnessPath, profileRegistryWitness(locator.installationId, path, intent.document, erasures, intent.prior.duo, intent.prior.completedRestores));
-      unlinkSync(intentPath); syncDir(control);
+      unlinkSync(intentPath); fsyncPath(control);
       return readMachineRegistry(control, locator, false);
     }
     if (intent.kind === "erasure") {
@@ -1358,7 +1342,7 @@ function readMachineRegistry(control: string, locator: RuntimeLocator, recoverPu
       if (!recoverPublication || canonicalJsonStringify(stagedPublication) !== canonicalJsonStringify(capture)) fail("credential-key-stage-fresh-owner-required");
       if (priorState) atomicJson(operationPath, capture.operation);
       atomicJson(witnessPath, profileRegistryWitness(locator.installationId, path, document, intent.erasures, intent.duo, intent.prior.completedRestores));
-      unlinkSync(intentPath); syncDir(control);
+      unlinkSync(intentPath); fsyncPath(control);
       return readMachineRegistry(control, locator, false);
     }
     if (!recoverPublication) fail("profile-registry-publication-busy");
@@ -1411,7 +1395,7 @@ function prepareProfileRegistryPublication(control: string, locator: RuntimeLoca
     && canonicalJsonStringify(published) !== canonicalJsonStringify(witness)) fail("profile-registry-publication-uncertain");
   return () => {
     atomicJson(join(control, "profile-registry.json"), published);
-    unlinkSync(join(control, "profile-publication.json")); syncDir(control);
+    unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
   };
 }
 
@@ -1494,7 +1478,7 @@ function prepareProfileOnboardingFinish(control: string, locator: RuntimeLocator
     if (verifierBefore) atomicJson(verifierPath, verifiers);
     if (before) atomicJson(registryPath, document);
     atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, registryPath, document, erasures, duos, prior.completedRestores));
-    unlinkSync(join(control, "profile-publication.json")); syncDir(control);
+    unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
   };
 }
 
@@ -1554,7 +1538,7 @@ function prepareIncompleteProfileDraft(control: string, locator: RuntimeLocator,
     if (verifierPrior) atomicJson(verifierPath, verifiers);
     if (isPrior) atomicJson(registryPath, document);
     atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, registryPath, document, nextErasures, nextDuo, prior.completedRestores));
-    unlinkSync(join(control, "profile-publication.json")); syncDir(control);
+    unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
   };
 }
 
@@ -1590,10 +1574,10 @@ function prepareUnpublishedDraftAbort(control: string, locator: RuntimeLocator, 
       assertDuoDocumentWitness(locator.stateRoot, draft.duo);
     }
     return () => {
-      if (rootPresent) { rmSync(root, { recursive: true }); syncDir(dirname(root)); }
-      if (duoPresent) { unlinkSync(duoPath); syncDir(dirname(duoPath)); }
+      if (rootPresent) { rmSync(root, { recursive: true }); fsyncPath(dirname(root)); }
+      if (duoPresent) { unlinkSync(duoPath); fsyncPath(dirname(duoPath)); }
       atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, path, document, prior.erasures, prior.duo, prior.completedRestores));
-      unlinkSync(join(control, "profile-publication.json")); syncDir(control);
+      unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
     };
   };
   if (!operationPresent && !keyPresent) return prepareRemoval();
@@ -1622,10 +1606,10 @@ function prepareUnpublishedDraftAbort(control: string, locator: RuntimeLocator, 
   if (keyPresent) assertCredentialKeyWitness(keyPath, capture.key, capture.key.binding);
   prepareRemoval();
   return () => {
-    if (sourcePresent) { unlinkSync(sourcePath); syncDir(dirname(sourcePath)); }
-    if (keyPresent) { unlinkSync(keyPath); syncDir(dirname(keyPath)); }
+    if (sourcePresent) { unlinkSync(sourcePath); fsyncPath(dirname(sourcePath)); }
+    if (keyPresent) { unlinkSync(keyPath); fsyncPath(dirname(keyPath)); }
     credentialKeyCustody.delete(capture.key.binding);
-    if (operationPresent) { unlinkSync(operationPath); syncDir(dirname(operationPath)); }
+    if (operationPresent) { unlinkSync(operationPath); fsyncPath(dirname(operationPath)); }
     prepareRemoval()();
   };
 }
@@ -1661,11 +1645,11 @@ function settleDraftDuoPublication(control: string, locator: RuntimeLocator, doc
     if (capture.prior.state !== "never-initialized") expected.push(basename(canonical));
   } else { assertDuoPublishedFile(canonical, capture); expected.push(basename(canonical)); }
   if (canonicalJsonStringify(readdirSync(directory).sort()) !== canonicalJsonStringify(expected.sort())) fail("duo-draft-publication-membership-changed");
-  if (lstatMaybe(stage)) { renameSync(stage, canonical); syncDir(directory); }
+  if (lstatMaybe(stage)) { renameSync(stage, canonical); fsyncPath(directory); }
   assertDuoPublishedFile(canonical, capture);
   if (canonicalJsonStringify(observed) === canonicalJsonStringify(priorOperation)) atomicJson(operationPath, operation);
   atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, path, document, prior.erasures, prior.duo, prior.completedRestores));
-  unlinkSync(join(control, "profile-publication.json")); syncDir(control);
+  unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
 }
 
 function settleDuoPublication(control: string, locator: RuntimeLocator, document: ProfileRegistryDocument,
@@ -1688,11 +1672,11 @@ function settleDuoPublication(control: string, locator: RuntimeLocator, document
   } else { assertDuoPublishedFile(canonical, capture); expected.push(basename(canonical)); }
   if (canonicalJsonStringify(readdirSync(directory).sort()) !== canonicalJsonStringify(expected.sort())) fail("duo-publication-membership-changed");
   for (const row of prior.duo) if (row.profileId !== capture.profileId) assertDuoDocumentWitness(locator.stateRoot, row);
-  if (lstatMaybe(stage)) { renameSync(stage, canonical); syncDir(directory); }
+  if (lstatMaybe(stage)) { renameSync(stage, canonical); fsyncPath(directory); }
   assertDuoPublishedFile(canonical, capture);
   atomicJson(join(control, "profile-registry.json"), next);
   assertDuoPublishedFile(canonical, capture);
-  unlinkSync(join(control, "profile-publication.json")); syncDir(control);
+  unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
 }
 
 function erasurePath(locator: RuntimeLocator, profileId: string): string { return join(locator.stateRoot, "machine", "erasures", profileId + ".json"); }
@@ -1809,7 +1793,7 @@ function readProfileUpgradeAuthority(control: string, workspace: string, locator
 
 function initializeMachineRegistry(control: string, locator: RuntimeLocator): void {
   const directory = join(locator.stateRoot, "machine");
-  if (!lstatMaybe(directory)) { mkdirSync(directory, { mode: 0o700 }); syncDir(locator.stateRoot); }
+  if (!lstatMaybe(directory)) { mkdirSync(directory, { mode: 0o700 }); fsyncPath(locator.stateRoot); }
   privateDirectory(directory);
   const allowed = ["profile-registry-version.json", "profiles.json", "profile-verifiers.json", "profile-pepper"];
   if (readdirSync(directory).some(name => !allowed.includes(name))) fail("profile-machine-initialization-membership-refused");
@@ -1825,7 +1809,7 @@ function initializeMachineRegistry(control: string, locator: RuntimeLocator): vo
   if (!lstatMaybe(pepperPath)) writeFileSync(pepperPath, randomBytes(32), { mode: 0o600, flag: "wx" });
   const pepper = readPrivateFile(pepperPath, { label: "lock", maxBytes: 32 });
   if (pepper?.bytes.length !== 32) fail("profile-machine-pepper-invalid");
-  fsyncPath(pepperPath); syncDir(directory);
+  fsyncPath(pepperPath); fsyncPath(directory);
   publish(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, join(directory, "profiles.json"), document, [], [], []));
 }
 
@@ -1856,7 +1840,7 @@ function adopt(control: string, workspace: string, defaultPair: RuntimePair, ver
     assertNoSymlinkComponents(processLockRoot);
     mkdirSync(processLockRoot, { mode: 0o700 });
     privateDirectory(processLockRoot);
-    syncDir(dirname(processLockRoot));
+    fsyncPath(dirname(processLockRoot));
     initializeMachineRegistry(control, { schemaVersion: 1, installationId, generation: 0, ...pair });
   }
   if (fresh && !machine) {
@@ -1881,7 +1865,7 @@ function adopt(control: string, workspace: string, defaultPair: RuntimePair, ver
     finally { active = false; }
     const database = lstatMaybe(join(pair.stateRoot, "state.db"));
     if (!database || !database.isFile() || database.isSymbolicLink() || database.nlink !== 1
-      || (process.getuid && database.uid !== process.getuid()) || (Number(database.mode) & 0o022) !== 0) {
+      || privatePathRejects(join(pair.stateRoot, "state.db"), database, "group-write")) {
       fail("fresh authority database missing or unsafe");
     }
     const evidence = verifier!(Object.freeze({ ...pair }));
@@ -1891,7 +1875,7 @@ function adopt(control: string, workspace: string, defaultPair: RuntimePair, ver
   }
   const locator = { schemaVersion: 1 as const, installationId, generation: 0, ...pair };
   atomicJson(join(control, "locator.json"), locator);
-  unlinkSync(join(control, "journal.json")); syncDir(control);
+  unlinkSync(join(control, "journal.json")); fsyncPath(control);
   return locator;
 }
 type RecoveryRequest = Readonly<{ installationId: string; fromGeneration: number; operationId: string; restoreAdmission: OfflineMaintenanceOperation }>;
@@ -2001,9 +1985,9 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       fail("fresh authority requires initializer and verifier");
     }
     const parent = dirname(control);
-    if (lstatMaybe(parent) === undefined) { mkdirSync(parent, { mode: 0o700 }); syncDir(workspace); }
+    if (lstatMaybe(parent) === undefined) { mkdirSync(parent, { mode: 0o700 }); fsyncPath(workspace); }
     privateDirectory(parent);
-    mkdirSync(control, { mode: 0o700 }); syncDir(parent);
+    mkdirSync(control, { mode: 0o700 }); fsyncPath(parent);
   }
   privateDirectory(control);
   const localAdmission: LocalAdmission = Object.freeze({ mode });
@@ -2116,14 +2100,14 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           scope.verifyKeyStage(keyStageWitness);
         }
         const directory = join(locator.stateRoot, "machine", "operations");
-        if (!lstatMaybe(directory)) { mkdirSync(directory, { mode: 0o700 }); syncDir(dirname(directory)); }
+        if (!lstatMaybe(directory)) { mkdirSync(directory, { mode: 0o700 }); fsyncPath(dirname(directory)); }
         privateDirectory(directory);
         const id = operation.kind === "write" ? operation.operation.operationId : operation.operationId;
         const path = join(directory, `${id}.json`);
         if (operation.kind === "write") atomicJson(path, operation.operation);
-        else if (lstatMaybe(path)) { privateFile(path); unlinkSync(path); syncDir(directory); }
+        else if (lstatMaybe(path)) { privateFile(path); unlinkSync(path); fsyncPath(directory); }
         atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document, prior.erasures, prior.duo, prior.completedRestores));
-        unlinkSync(join(control, "profile-publication.json")); syncDir(control);
+        unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
         } finally { scope.expire(); }
       });
   }
@@ -2186,7 +2170,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         const path = join(locator.stateRoot, "machine", "profiles.json");
         atomicJson(path, next);
         atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, path, next, erasures, duo, prior.completedRestores));
-        unlinkSync(join(control, "profile-publication.json")); syncDir(control);
+        unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
       });
   }
   function publishIssuedDuo(transaction: IssuedDuoTransaction, phase: "settle" | "durable-intent") {
@@ -2354,7 +2338,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (lstatMaybe(credentials)) {
         noSymlinkAncestry(credentials, new Map());
         unpublishedDraftAbortMembership(credentials);
-        rmSync(credentials, { recursive: true }); syncDir(locator.stateRoot);
+        rmSync(credentials, { recursive: true }); fsyncPath(locator.stateRoot);
       }
       });
     },
@@ -2382,20 +2366,20 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         const saved = sourceFiles.find(file => file.path === entry.file.path);
         if (saved === undefined || saved.device !== entry.file.device || saved.inode !== entry.file.inode || saved.digest !== entry.file.digest) fail("flat-start-clean-source-changed");
       }
-      for (const entry of observed) { unlinkSync(entry.path); syncDir(dirname(entry.path)); }
+      for (const entry of observed) { unlinkSync(entry.path); fsyncPath(dirname(entry.path)); }
       const removeEmpty = (directory: string) => {
         for (const name of readdirSync(directory)) {
           if (directory === locator.stateRoot && excluded.has(name) || directory === locator.artifactRoot && name === ".runtime-owner.json") continue;
           const child = join(directory, name), info = lstatSync(child);
           if (!info.isDirectory() || info.isSymbolicLink()) fail("flat-start-clean-membership-changed");
           removeEmpty(child);
-          if (child !== locator.artifactRoot) { rmdirSync(child); syncDir(directory); }
+          if (child !== locator.artifactRoot) { rmdirSync(child); fsyncPath(directory); }
         }
       };
       removeEmpty(locator.stateRoot);
       initializeMachineRegistry(control, locator);
       readMachineRegistry(control, locator, false);
-      unlinkSync(intentPath); syncDir(control);
+      unlinkSync(intentPath); fsyncPath(control);
       });
     },
     readProfileRegistry() {
@@ -2626,7 +2610,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           && canonicalJsonStringify(prior) !== canonicalJsonStringify(next)) fail("profile-erasure-settlement-control-changed");
         verifyCredentialErasureHead(witness, root, journalPath, { installationId: locator.installationId, profileId });
         atomicJson(join(control, "profile-registry.json"), next);
-        unlinkSync(join(control, "profile-publication.json")); syncDir(control);
+        unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
       });
     },
     assertProfileCredentialKeyAnchor(profileId: string) {
@@ -2867,7 +2851,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (canonicalJsonStringify(current.completedRestores) !== canonicalJsonStringify(previousCompleted)
           && canonicalJsonStringify(current.completedRestores) !== canonicalJsonStringify(completedRestores)) fail("completed-restore-history-changed");
         atomicJson(continuityPath, ProfileContinuitySchema.parse({ ...current, completedRestores }));
-        unlinkSync(join(control, "journal.json")); syncDir(control);
+        unlinkSync(join(control, "journal.json")); fsyncPath(control);
       });
     },
     beginRelocation(destination, plan, restore) {
@@ -3093,7 +3077,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         else checkMarker(current[`${role}Root`], pending.installationId, workspace, role, pending.destinationEpochs[role]);
       }
       const directory = join(control, RECEIPTS);
-      if (!lstatMaybe(directory)) { mkdirSync(directory, { mode: 0o700 }); syncDir(control); }
+      if (!lstatMaybe(directory)) { mkdirSync(directory, { mode: 0o700 }); fsyncPath(control); }
       privateDirectory(directory);
       const path = receiptPath(control, current.generation, pending.operationId);
       const { phase: _phase, ...base } = pending;
@@ -3105,7 +3089,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (canonicalJsonStringify(existingBody) !== canonicalJsonStringify(receiptBody)) fail("completion receipt changed");
       } else atomicJson(path, receipt);
       readReceiptChain(control, workspace, pending.installationId);
-      unlinkSync(join(control, "journal.json")); syncDir(control);
+      unlinkSync(join(control, "journal.json")); fsyncPath(control);
     },
   });
   issuedLeases.add(exclusive);
@@ -3349,7 +3333,7 @@ export function prepareStoppedDeviceRecertification(lease: InstallationLease, re
       restore.consume();
       let state = prefix();
       if (journal === undefined) {
-        writePrivateStage(stagePath, Buffer.from(`${JSON.stringify(capture.current)}\n`)); syncDir(control);
+        writePrivateStage(stagePath, Buffer.from(`${JSON.stringify(capture.current)}\n`)); fsyncPath(control);
         unchanged();
         journal = DeviceRecertificationJournalSchema.parse({ schemaVersion: 1, capture, stage: controlUpgradeFile(stagePath), authorization });
         atomicJson(intentPath, journal);
@@ -3359,14 +3343,14 @@ export function prepareStoppedDeviceRecertification(lease: InstallationLease, re
         if (state !== "prior") fail("device-recertification-publication-uncertain");
         if (!sameControlUpgradeFile(stagePath, journal.stage)
           || canonicalJsonStringify(readProfileEvidence(stagePath, ProfileContinuitySchema)) !== canonicalJsonStringify(capture.current)) fail("device-recertification-stage-changed");
-        renameSync(stagePath, controlPath); syncDir(control);
+        renameSync(stagePath, controlPath); fsyncPath(control);
       }
       if (prefix() !== "current" || lstatMaybe(stagePath)) fail("device-recertification-publication-uncertain");
       if (lstatMaybe(receiptPath)) {
         if (canonicalJsonStringify(readProfileEvidence(receiptPath, DeviceRecertificationJournalSchema)) !== canonicalJsonStringify(journal)) fail("device-recertification-receipt-changed");
       } else atomicJson(receiptPath, journal);
       unchanged();
-      if (lstatMaybe(intentPath)) { unlinkSync(intentPath); syncDir(control); }
+      if (lstatMaybe(intentPath)) { unlinkSync(intentPath); fsyncPath(control); }
       readMachineRegistry(control, locator, false);
     } });
 }
@@ -3386,8 +3370,7 @@ export function inspectFlatOfflineRunMaintenance(workspacePath: string) {
     roots: [state, artifacts, locks].map(path => {
       assertNoSymlinkComponents(path);
       const stat = lstatSync(path);
-      if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o022) !== 0
-        || process.getuid !== undefined && stat.uid !== process.getuid()) fail("worker-process-recovery-root-unsafe");
+      if (!stat.isDirectory() || stat.isSymbolicLink() || privatePathRejects(path, stat, "group-write")) fail("worker-process-recovery-root-unsafe");
       return { path, device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid };
     }) };
 }
@@ -3537,13 +3520,13 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     const stagedMarker = lstatMaybe(`${prefix}.marker.stage`) ? `${prefix}.marker.stage` : markerPath;
     if (canonicalJsonStringify(readProfileEvidence(stagedControl, ProfileContinuitySchema)) !== canonicalJsonStringify(receipt.current)) fail("profile-control-upgrade-stage-diverged");
     readProfileEvidence(stagedMarker, z.strictObject({ schemaVersion: z.literal(4) }));
-    for (const [path, stage] of stages) if (lstatMaybe(stage)) { renameSync(stage, path); syncDir(dirname(path)); syncDir(backupDirectory); }
+    for (const [path, stage] of stages) if (lstatMaybe(stage)) { renameSync(stage, path); fsyncPath(dirname(path)); fsyncPath(backupDirectory); }
     if (!sameControlUpgradeFile(controlPath, receipt.controlStage) || !sameControlUpgradeFile(markerPath, receipt.markerStage)) fail("profile-control-upgrade-readback-failed");
     if (priorControlUpgradeEvidence(locator, receipt.prior) !== receipt.sourceEvidence) fail("profile-control-upgrade-source-changed");
     if (lstatMaybe(`${prefix}.receipt.json`)) {
       if (canonicalJsonStringify(readControlUpgradeReceipt(`${prefix}.receipt.json`)) !== canonicalJsonStringify(receipt)) fail("profile-control-upgrade-receipt-changed");
     } else atomicJson(`${prefix}.receipt.json`, receipt);
-    unlinkSync(intentPath); syncDir(control);
+    unlinkSync(intentPath); fsyncPath(control);
     readMachineRegistry(control, locator, false);
     for (const revalidate of afterPublication) revalidate();
     held();
@@ -3626,7 +3609,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         if (Buffer.byteLength(JSON.stringify({ prior, current, sourceEvidence })) + 4096 > 16 * 1024 * 1024) fail("profile-control-upgrade-evidence-too-large");
         const afterPublication = publicationProofs(registry.profiles, !plan);
         if (plan) return { state: "planned" as const, runtimeAccess, profileCount: registry.profiles.length };
-        mkdirSync(backupDirectory, { mode: 0o700 }); syncDir(control);
+        mkdirSync(backupDirectory, { mode: 0o700 }); fsyncPath(control);
         privateDirectory(backupDirectory);
         const operationId = randomUUID(), prefix = join(backupDirectory, operationId), priorControl = controlUpgradeFile(controlPath), priorMarker = controlUpgradeFile(markerPath);
         const controlBytes = readPrivateFile(controlPath, { label: "lock", maxBytes: 1_048_576 }), markerBytes = readPrivateFile(markerPath, { label: "lock", maxBytes: 1_048_576 });
@@ -3635,7 +3618,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         if (controlUpgradeFile(`${prefix}.control.before.json`).digest !== priorControl.digest || controlUpgradeFile(`${prefix}.marker.before.json`).digest !== priorMarker.digest) fail("profile-control-upgrade-backup-diverged");
         writePrivateStage(`${prefix}.control.stage`, Buffer.from(JSON.stringify(current)));
         writePrivateStage(`${prefix}.marker.stage`, Buffer.from(JSON.stringify({ schemaVersion: 4 })));
-        syncDir(backupDirectory);
+        fsyncPath(backupDirectory);
         const receipt = ControlUpgradeReceiptSchema.parse({ schemaVersion: 1, operationId, installationId: locator.installationId, prior, current, priorControl, priorMarker,
           controlBackup: controlUpgradeFile(`${prefix}.control.before.json`), markerBackup: controlUpgradeFile(`${prefix}.marker.before.json`),
           controlStage: controlUpgradeFile(`${prefix}.control.stage`), markerStage: controlUpgradeFile(`${prefix}.marker.stage`), sourceEvidence });

@@ -1,3 +1,4 @@
+import { fsyncPath, writePrivateStage } from "../private-path.js";
 import { createHash, createPrivateKey, createPublicKey, randomUUID } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
@@ -11,7 +12,7 @@ import { systemClock } from "../../../rules/time/clock.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { duoCredentialPurposeBinding, duoDraftPublicationRecoveryBinding, issueDuoCredentialPurpose, issueDraftDuoCredentialPurpose, openDuoCredentialDocument, sealDuoCredentialDocument,
   type DuoCredentialPurpose } from "./credential-store.js";
-import { ensureChildDirectory, fsyncPath, noSymlinkAncestry, readPrivateFile, writePrivateStage, type DirectoryIdentity } from "./credential-safe-file.js";
+import { ensureChildDirectory, noSymlinkAncestry, readPrivateFile, type DirectoryIdentity } from "./credential-safe-file.js";
 
 const MAX_DUO_ENVELOPE_BYTES = Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096;
 export const DuoPublicationCaptureSchema = z.strictObject({

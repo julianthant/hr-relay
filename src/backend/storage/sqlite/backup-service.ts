@@ -1,3 +1,4 @@
+import { privatePathRejects } from "../private-path.js";
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/installation.js";
 import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
@@ -177,8 +178,7 @@ function verifyStoppedManifest(manifestPath: string, expectedSourceDatabaseIdent
   const failures: unknown[] = [];
   try {
     const before = lstatSync(backupPath);
-    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || (before.mode & 0o077) !== 0
-      || process.getuid !== undefined && before.uid !== process.getuid() || before.size !== manifest.byteSize) throw new Error("profile-maintenance-backup-identity-invalid");
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || privatePathRejects(backupPath, before, "private") || before.size !== manifest.byteSize) throw new Error("profile-maintenance-backup-identity-invalid");
     const descriptor = openSync(backupPath, constants.O_RDONLY | constants.O_NOFOLLOW), hash = createHash("sha256");
     let descriptorIdentity = before;
     let descriptorFailure: { error: unknown } | undefined;

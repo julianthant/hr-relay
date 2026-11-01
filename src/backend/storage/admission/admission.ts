@@ -223,8 +223,7 @@ export class RuntimeAdmission {
       const filePath = path + suffix;
       const file = lstatSync(filePath, { bigint: true, throwIfNoEntry: false });
       if (file === undefined) return { suffix, absent: true };
-      if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1n || (file.mode & 0o022n) !== 0n
-        || process.getuid !== undefined && file.uid !== BigInt(process.getuid())) throw new Error("profile-upgrade-handoff-source-unsafe");
+      if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1n || privatePathRejects(filePath, file, "group-write")) throw new Error("profile-upgrade-handoff-source-unsafe");
       const identity = (value: BigIntStats) => [value.dev, value.ino, value.size, value.mode, value.uid, value.nlink, value.mtimeNs, value.ctimeNs].join(":");
       const expected = identity(file);
       const descriptor = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -983,7 +982,7 @@ export class RuntimeAdmission {
     for (let path = dirname(journalPath); path !== this.#stateRoot; path = dirname(path)) {
       const info = lstatSync(path, { throwIfNoEntry: false });
       if (info !== undefined && (!info.isDirectory() || info.isSymbolicLink()
-        || (process.getuid && info.uid !== process.getuid()) || (info.mode & 0o022) !== 0)) throw new Error("runtime-admission: unsafe profile erasure path");
+        || privatePathRejects(path, info, "group-write"))) throw new Error("runtime-admission: unsafe profile erasure path");
     }
     profile.assertStateRoot(profile.stateRoot);
     this.assertStateRoot(journalPath);
@@ -1223,7 +1222,7 @@ export class RuntimeAdmission {
     const verifyBytes = () => {
       this.assertLive();
       const file = lstatSync(canonical);
-      if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1 || (process.getuid && file.uid !== process.getuid()) || (file.mode & 0o022) !== 0) {
+      if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1 || privatePathRejects(canonical, file, "group-write")) {
         throw new Error("runtime-admission: inspected copy has unsafe shape");
       }
       const descriptor = openSync(canonical, constants.O_RDONLY | constants.O_NOFOLLOW);

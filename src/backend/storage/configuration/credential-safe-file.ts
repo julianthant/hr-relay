@@ -2,8 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { systemClock } from "../../../rules/time/clock.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySourceClosure } from "../source-closure.js";
-import { privatePathRejects } from "../private-path.js";
-import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, readdirSync, type Stats } from "node:fs";
+import { fsyncPath, privatePathRejects } from "../private-path.js";
+import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync, readdirSync, type Stats } from "node:fs";
 import { join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
@@ -30,18 +30,6 @@ export interface CredentialInventory {
 export function errorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
   return typeof error.code === "string" ? error.code : undefined;
-}
-
-export function fsyncPath(path: string): void {
-  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-  let primary: { error: unknown } | undefined;
-  let descriptorIdentity: ReturnType<typeof fstatSync> | undefined;
-  try { descriptorIdentity = fstatSync(descriptor); fsyncSync(descriptor); }
-  catch (error) { primary = { error }; }
-  try { closeSync(descriptor); }
-  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
-    { descriptor: { descriptor, ...(descriptorIdentity === undefined ? {} : { identity: descriptorIdentity }) } }); }
-  if (primary !== undefined) throw primary.error;
 }
 
 /** Verify each component before descendants; retain identities across every operation. */
@@ -186,13 +174,6 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
   if (primary !== undefined) throw primary.error;
   return result;
 }
-
-export function writePrivateStage(path: string, bytes: Uint8Array): void {
-  writeFileSync(path, bytes, { mode: CREDENTIAL_FILE_MODE, flag: "wx" });
-  fsyncPath(path);
-}
-
-export function replacePrivateFile(stage: string, path: string): void { renameSync(stage, path); }
 
 export function createPrivateLock(path: string, credentialDirectory: string, bytes: Uint8Array, verify: () => boolean): boolean {
   let descriptor: number | undefined;

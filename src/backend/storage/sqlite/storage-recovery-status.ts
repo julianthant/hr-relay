@@ -1,3 +1,4 @@
+import { privatePathRejects } from "../private-path.js";
 import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, type Stats } from "node:fs";
 import { join } from "node:path";
@@ -37,7 +38,7 @@ export function inspectStorageRecovery(admission:RuntimeAdmission,sourceIdentity
       try {
         const before=lstatSync(path);
         if(!before.isFile() || before.isSymbolicLink() || before.nlink !== 1
-          || (process.getuid && before.uid !== process.getuid()) || (before.mode & 0o022) !== 0)throw new Error("recovery-evidence-unavailable");
+          || privatePathRejects(path, before, "group-write"))throw new Error("recovery-evidence-unavailable");
         descriptor=openSync(path,constants.O_RDONLY | constants.O_NOFOLLOW);
         if(fileIdentity(fstatSync(descriptor)) !== fileIdentity(before)
           || fileIdentity(lstatSync(path)) !== fileIdentity(before))throw new Error("recovery-evidence-changed");

@@ -1,3 +1,4 @@
+import { writePrivateStage, fsyncPath } from "../private-path.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { assertStoppedBackupClosure, type StoppedBackupClosure } from "./profile-inventory.js";
 import { SourceRecordSchema, StorageBackupSchema, hash, file, inventory, verifyCopies, retainedStorageBackup, existingDataFileLabel } from "./existing-data-backup-files.js";
@@ -7,7 +8,7 @@ import { profileAuthorityFileWitnesses } from "../configuration/credential-store
 import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { writePrivateStage, fsyncPath, noSymlinkAncestry, statDirectory } from "../configuration/credential-safe-file.js";
+import { noSymlinkAncestry, statDirectory } from "../configuration/credential-safe-file.js";
 import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";

@@ -1,12 +1,8 @@
+import { fsyncPath, writePrivateStage, replacePrivateFile } from "../private-path.js";
 import type { ProfilePublicationRead } from "../admission/installation.js";
 import { credentialKeyCustody } from "./credential-key-custody.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../source-closure.js';
-import {
-  CREDENTIAL_DIRECTORY_MODE, CredentialLockRecordSchema, errorCode, fsyncPath, noSymlinkAncestry, statDirectory,
-  unpublishedDraftAbortMembership, sameDirectory, removeExactPath, ensureChildDirectory, readPrivateFile,
-  createPrivateLock, writePrivateStage, replacePrivateFile, companionCredentialEntries,
-  type CredentialInventory, type DirectoryIdentity,
-} from "./credential-safe-file.js";
+import { CREDENTIAL_DIRECTORY_MODE, CredentialLockRecordSchema, errorCode, noSymlinkAncestry, statDirectory, unpublishedDraftAbortMembership, sameDirectory, removeExactPath, ensureChildDirectory, readPrivateFile, createPrivateLock, companionCredentialEntries, type CredentialInventory, type DirectoryIdentity } from "./credential-safe-file.js";
 import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { CredentialInitializationSchema, ProfileVerifierDocumentSchema, ProfileRegistryDocumentSchema, SignUpOperationSchema, LogoutOperationSchema, type ProfileRegistryRow, type LogoutOperation, type SignUpOperation, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { emailKey, passwordMatches } from "./synthetic-verifier.js";

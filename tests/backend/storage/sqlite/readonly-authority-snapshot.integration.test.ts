@@ -1,7 +1,8 @@
+import { fsyncPath } from "../../../../src/backend/storage/private-path.js";
 import { createHistoricalIncompleteProfileFixture } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { withOperationProof, readPrivateFile, fsyncPath } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+import { withOperationProof, readPrivateFile } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 import { retainAuthoritySourceClosure, AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import assert from "node:assert/strict";
 import fs from 'node:fs';

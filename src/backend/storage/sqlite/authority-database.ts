@@ -1,3 +1,4 @@
+import { privatePathRejects } from "../private-path.js";
 import { clearOperationProofSlots, revalidateOperationProof, outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
 import { assertOfflineMaintenanceForProcessRoot, type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
@@ -1185,7 +1186,7 @@ function removeRelocationCopyInspectionCompanions(path: string): void {
   for (const candidate of [`${path}-wal`, `${path}-shm`]) {
     const info = lstatSync(candidate, { throwIfNoEntry: false });
     if (info !== undefined && (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1
-      || (process.getuid && info.uid !== process.getuid()) || (info.mode & 0o022) !== 0
+      || privatePathRejects(candidate, info, "group-write")
       || (candidate.endsWith("-wal") && info.size !== 0))) {
       throw new Error("storage-relocation: stage authority inspection created unsafe companion");
     }
@@ -1772,7 +1773,7 @@ export class AuthorityDatabase implements Disposable {
     if (existed) {
       requireDatabaseSourcePath(options.path);
       const identity = lstatSync(options.path);
-      if (!identity.isFile() || identity.nlink !== 1 || (process.getuid !== undefined && identity.uid !== process.getuid())) throw new Error("profile-database-identity-invalid");
+      if (!identity.isFile() || identity.nlink !== 1 || privatePathRejects(options.path, identity, "owner")) throw new Error("profile-database-identity-invalid");
     }
     if (existed && statSync(options.path).size === 0) {
       throw new Error(`authority database ${options.path} exists but is empty; refusing to replace it`);

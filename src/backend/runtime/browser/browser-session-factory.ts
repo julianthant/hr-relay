@@ -1,3 +1,4 @@
+import { privatePathRejects } from "../../storage/private-path.js";
 import { DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, BrowserProfileStillClosingError, ProfileCustodyUnavailableError,
   profileReservations, assertPrivateProfilePath, probeClosedBrowserProfile, closeContextWithProof, observeContextLifecycle,
   workerProfileDirectory, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-profile-probe.js";
@@ -443,7 +444,7 @@ export function deleteOwnedBrowserProfile(profileRoot: string, profileDirectory:
   const verify = (path: string): void => {
     const metadata = lstatSync(path, { throwIfNoEntry: false });
     if (metadata === undefined) return;
-    if (metadata.isSymbolicLink() || metadata.uid !== (process.getuid?.() ?? -1) || (metadata.mode & 0o022) !== 0
+    if (metadata.isSymbolicLink() || privatePathRejects(path, metadata, "group-write")
       || !(metadata.isDirectory() || metadata.isFile()) || metadata.isFile() && metadata.nlink !== 1) throw new ProfileCustodyUnavailableError();
     if (metadata.isDirectory()) for (const name of readdirSync(path)) {
       if (["SingletonLock", "SingletonSocket", "SingletonCookie"].includes(name)) throw new ProfileCustodyUnavailableError();

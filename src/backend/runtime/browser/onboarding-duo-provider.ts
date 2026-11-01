@@ -1,3 +1,4 @@
+import { privatePathRejects } from "../../storage/private-path.js";
 import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, openSync, readFileSync, lstatSync, mkdirSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
@@ -73,7 +74,7 @@ function stageRelayExtension(sourceRoot: string, destination: string): void {
     const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
       const before = fstatSync(descriptor);
-      if (!before.isFile() || before.nlink !== 1 || before.uid !== process.getuid?.() || (before.mode & 0o022) !== 0) throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root");
+      if (!before.isFile() || before.nlink !== 1 || privatePathRejects(path, before, "group-write")) throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root");
       const bytes = readFileSync(descriptor);
       const after = fstatSync(descriptor);
       const observed = lstatSync(path);
@@ -334,7 +335,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     try {
       if (!isAbsolute(options.browserRoot) || realpathSync(options.browserRoot) !== options.browserRoot || !isAbsolute(options.extensionDirectory)) throw new Error("root");
       const root = lstatSync(options.browserRoot);
-      if (!root.isDirectory() || root.isSymbolicLink() || root.uid !== process.getuid?.() || (root.mode & 0o077) !== 0) throw new Error("root");
+      if (!root.isDirectory() || root.isSymbolicLink() || privatePathRejects(options.browserRoot, root, "private")) throw new Error("root");
     } catch { throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root"); }
     const ownerIdentity={operationId:owner.operationId,profileId:owner.profileId,accountId:owner.accountId,generation:owner.generation};
     const assertOwner=()=>{owner.assertCurrent();if(!sameOwner(owner,ownerIdentity))throw new ProfileOnboardingDuoProviderError("refused","scope");};

@@ -1,3 +1,4 @@
+import { privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { lstatSync, type BigIntStats } from "node:fs";
@@ -73,8 +74,7 @@ function captureProfileDatabaseBinding(path: string) {
   requireDatabaseSourcePath(path);
   const before = lstatSync(path, { throwIfNoEntry: false });
   if (before === undefined) throw new Error("profile-database-binding-required");
-  if (!before.isFile() || before.nlink !== 1 || (process.getuid !== undefined && before.uid !== process.getuid())
-    || (before.mode & 0o022) !== 0) throw new Error("profile-database-identity-invalid");
+  if (!before.isFile() || before.nlink !== 1 || privatePathRejects(path, before, "group-write")) throw new Error("profile-database-identity-invalid");
   const snapshot = createReadonlyAuthoritySnapshot(path);
   const failures: unknown[] = [];
   try {
@@ -122,8 +122,7 @@ function readProfileDatabaseBindingCopy(path: string):
   requireDatabaseSourcePath(path);
   const before = lstatSync(path, { throwIfNoEntry: false });
   if (before === undefined) throw new Error("profile-database-binding-required");
-  if (!before.isFile() || before.nlink !== 1 || (process.getuid !== undefined && before.uid !== process.getuid())
-    || (before.mode & 0o022) !== 0) throw new Error("profile-database-identity-invalid");
+  if (!before.isFile() || before.nlink !== 1 || privatePathRejects(path, before, "group-write")) throw new Error("profile-database-identity-invalid");
   const database = new DatabaseSync(path, { readOnly: true });
   const read = (): ReturnType<typeof readProfileDatabaseBindingCopy> => {
     const version = database.prepare("PRAGMA user_version").get();
@@ -170,12 +169,12 @@ const { DatabaseSync } = require("node:sqlite");
 const { constants, openSync, closeSync, lstatSync, fstatSync, readSync } = require("node:fs");
 const { dirname } = require("node:path");
 const [path, expected, schema, application] = process.argv.slice(1);
+const privatePathRejects = ${privatePathRejects.toString()};
 const identity = stats => [stats.dev, stats.ino, stats.mode, stats.uid, stats.nlink].join(":");
 const inspect = file => {
   const stats = lstatSync(file, { bigint: true, throwIfNoEntry: false });
   if (stats === undefined) return undefined;
-  if (!stats.isFile() || stats.nlink !== 1n || (stats.mode & 0o022n) !== 0n
-    || typeof process.getuid === "function" && stats.uid !== BigInt(process.getuid())) throw new Error("profile-database-identity-invalid");
+  if (!stats.isFile() || stats.nlink !== 1n || privatePathRejects(file, stats, "group-write")) throw new Error("profile-database-identity-invalid");
   return stats;
 };
 const checkWalHeader = (file, stats) => {
@@ -247,8 +246,7 @@ export function assertLiveProfileDatabaseBinding(path: string, expected: Profile
   requireDatabaseSourcePath(path);
   const before = lstatSync(path, { bigint: true, throwIfNoEntry: false });
   if (before === undefined) throw new Error("profile-database-binding-required");
-  if (!before.isFile() || before.nlink !== 1n || (before.mode & 0o022n) !== 0n
-    || process.getuid !== undefined && before.uid !== BigInt(process.getuid())) throw new Error("profile-database-identity-invalid");
+  if (!before.isFile() || before.nlink !== 1n || privatePathRejects(path, before, "group-write")) throw new Error("profile-database-identity-invalid");
   const identity = (stats: BigIntStats) => [stats.dev, stats.ino, stats.mode, stats.uid, stats.nlink].join(":");
   const witness = identity(before);
   const proof = outermostOperationProof();

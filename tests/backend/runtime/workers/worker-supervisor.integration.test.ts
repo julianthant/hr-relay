@@ -1,9 +1,10 @@
 import { testProcessImport } from "../../../support/compiled-process.js";
+import { writePrivateStage } from "../../../../src/backend/storage/private-path.js";
 import { assertRuntimeLifetimeHeld } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { once } from "node:events";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
-import { writePrivateStage } from '../../../../src/backend/storage/configuration/credential-safe-file.js';
+
 import { workerProfileDirectory } from '../../../../src/backend/runtime/browser/browser-session-factory.js';
 import { testRunService } from '../../../support/fixtures/run-lifecycle-fixtures.js';
 import { lifecycleCommandId, requireLifecycleApplied } from '../../../../src/backend/runs/lifecycle/run-record-service.js';

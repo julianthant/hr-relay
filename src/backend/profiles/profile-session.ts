@@ -1,3 +1,4 @@
+import { privatePathRejects } from "../storage/private-path.js";
 import type { ProfilePublicationRead } from "../storage/admission/installation.js";
 import { deleteOwnedBrowserProfile } from "../runtime/browser/browser-session-factory.js";
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
@@ -1112,7 +1113,7 @@ export function createProfileSession(input: {
           if (!noSymlinkAncestry(dirname(path), ancestry)) throw new Error("profile file read refused");
           const expected = lstatSync(path);
           if (!expected.isFile() || expected.isSymbolicLink() || expected.nlink !== 1
-            || (process.getuid !== undefined && expected.uid !== process.getuid())) throw new Error("profile file read refused");
+            || privatePathRejects(path, expected, "owner")) throw new Error("profile file read refused");
           const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
           try {
             const matches = (observed: typeof expected) => observed.isFile() && !observed.isSymbolicLink()

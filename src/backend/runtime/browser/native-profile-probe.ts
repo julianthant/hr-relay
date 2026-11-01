@@ -1,3 +1,4 @@
+import { privatePathRejects } from "../../storage/private-path.js";
 import type { ProfileBrowserClosure, RetainedBrowserProfile } from "../../storage/maintenance/profile-inventory.js";
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -178,7 +179,7 @@ export function assertPrivateProfilePath(root: string, path: string): void {
   for (let cursor = path; cursor !== dirname(cursor); cursor = dirname(cursor)) {
     const metadata = lstatSync(cursor, { throwIfNoEntry: false });
     if (metadata !== undefined && (!metadata.isDirectory() || metadata.isSymbolicLink()
-      || metadata.uid !== (process.getuid?.() ?? -1) || (metadata.mode & 0o077) !== 0)) throw new ProfileCustodyUnavailableError();
+      || privatePathRejects(cursor, metadata, "private"))) throw new ProfileCustodyUnavailableError();
     if (cursor === root) return;
   }
   throw new ProfileCustodyUnavailableError();

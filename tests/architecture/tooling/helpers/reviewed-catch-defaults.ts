@@ -8,7 +8,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/browser/onboarding-duo-provider.ts",
-    "sha256": "4730bee5f4781cfcbdfffadfccad276d05537bca11de666dac614668b43be7c8",
+    "sha256": "63f3aa3a46fe811afe081dd4a138dc81dd660e11ceeb9284a2109130e7fc1a11",
     "reason": "Failed UNKNOWN retention or failure-report callbacks retain both causes and leave attempt/browser closure unproved. Context or broker termination revokes the owner and settles the attempt; physical profile deletion waits for owner cleanup and keeps all private-path and native closure checks. Worker stop failure remains uncertain until pump/report settlement and enclosing browser closure are proved; replacement or relaunch remains refused after unproved cleanup."
   },
   {
@@ -68,7 +68,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "475b74df5e3ae89607887ec628d31966338d6df0443d5f2cb41fbbbe6ab05160",
+      "sha256": "3bab8462c5a544464a43b1bc1a543b68c2c01a90b3744ecc5f586b606c2cbdee",
     "reason": "Only ENOENT returns explicit path absence; callers check it before creation or refusal, and other filesystem failures rethrow. Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
   },
   {
@@ -113,17 +113,17 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "055ead0db94c3a2b1a0d2514d4d6df7e24066994d4562ea23a2d305491736c71",
+    "sha256": "22b9680548da67c2e6dd45449637a182aecbb36d6fa2f55353eb9e4689d217fd",
     "reason": "Failed constructor cleanup retains the actual native database and admission with both opening and close failures. Failed rollback retains database custody with the original failure; successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or named search refusal, never validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody releases; required native browser closure precedes cancellation."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
-    "sha256": "9d126991d2a6b2aae868121c86137f04626a2dac4c49c418b54ef963571ccfd4",
+    "sha256": "617dece9ee983ba7a688706584bee1dbc2c1fc57c10d6b13c3fb94eba920138c",
     "reason": "Only ENOENT returns absent source metadata; the caller rejects a missing main database and permits absent optional sidecars. Unsafe or changed sources throw. Construction and read failures rethrow after private cleanup; failed database close or snapshot disposal retains the resource owners and original causes as source-closure uncertainty, never a read result."
   },
   {
     "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
-    "sha256": "61467990efe4e97ded7b4f8af942880a1c93da793bc96e098e8daf404b4e26da",
+    "sha256": "90151c45b1642df62d186a4df287f3a96d99e71e2e297d7edcaa39f6fc368c4a",
     "reason": "Unproved startup proof source closure retains the original opened resource, admission and process handles before any dependent cleanup. Failed admission releases custody only after the opened resource closes successfully; close and release failures retain custody and original errors. Descriptor-bound worker/recovery reads aggregate any read and close failures, then rethrow; receipt absence alone preserves ordinary stale-owner refusal. Restore-publication cleanup preserves primary failures and refuses uncertain closure; failed worker handoff marks custody uncertain before any replacement release."
   },
   {
@@ -153,7 +153,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/configuration/duo-credential-store.ts",
-    "sha256": "78357e8df2b393ec9bdff85ddea7ac1f765ec82e0ef7fc36644a71debdd1c6e0",
+    "sha256": "c0af025c759bbedfbaf61bea59b93162a57211d22371795787bdd6afc0b3270a",
     "reason": "The census clears only parsed envelope metadata when arbitrary file bytes fail UTF-8, JSON or envelope validation; filesystem failures propagate. Matching canonical bytes or digest still classify the file unauthorized, and valid same-profile envelopes distinguish managed backups. Restore and erase refuse unauthorized copies; no canonical credential read or publication failure becomes success."
   },
   {
