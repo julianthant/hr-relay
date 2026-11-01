@@ -229,6 +229,7 @@ for (const changed of ["registry", "continuity"] as const) {
     try { await assert.rejects(f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId)); }
     finally { spy.mockRestore(); syncBuiltinESMExports(); }
     assert.equal(interrupted, true);
+    assert.equal(existsSync(root), false); assert.equal(existsSync(operationPath), false);
     await f.profile.close(); f.machine.release();
     const path = changed === "registry" ? registryPath : controlPath;
     const document = JSON.parse(readFileSync(path, "utf8")) as { sessionGeneration: number; generation: number };
@@ -237,8 +238,10 @@ for (const changed of ["registry", "continuity"] as const) {
     writeFileSync(path, JSON.stringify(document), { mode: 0o600 });
     const control = readFileSync(controlPath), intent = readFileSync(intentPath);
     try {
-      assert.throws(() => acquireEntrypointAdmission(f.root, "exclusive", f.lifetime), /profile-draft-abort-control-changed/);
-      assert.equal(existsSync(root), true);
+      assert.throws(() => acquireEntrypointAdmission(f.root, "exclusive", f.lifetime), {
+        message: `runtime-control: ${changed === "registry" ? "profile-draft-abort-invalid" : "profile-publication-control-changed"}`,
+      });
+      assert.equal(existsSync(root), false);
       assert.deepEqual(readFileSync(controlPath), control);
       assert.deepEqual(readFileSync(intentPath), intent);
     } finally { rmSync(f.root, { recursive: true }); }
@@ -313,7 +316,7 @@ for (const boundary of ["phase", "intent", "verifier", "registry", "continuity",
        hostFacts: { primaryDisplay: null }, clock: systemClock });
     const published = machine.readProfileRegistry().profiles.find(row => row.profileId === f.draft.profileId);
     if (published === undefined) {
-      assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, 0);
+      assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, boundary === "verifier" ? 1 : 0);
     }
     await profile.session.recoverOnboarding();
     const signedIn = profile.session.signIn({ email: "draft-recovery@ucsd.edu", password: "disposable-draft-recovery", at: new Date().toISOString() });
@@ -371,6 +374,7 @@ it("keeps Finish unpublished when the ready canonical Duo credential cannot be v
 
 it("limits finished publishing to value-free metadata and refuses key provisioning or mutation before exact Finish recovery", async () => {
   const f = await readyFixture(), operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`), rename = nativeFs.renameSync;
+  const admission = f.machine.admitProfile(f.draft.profileId), store = createDuoCredentialStore(admission, systemClock);
   let fired = false;
   const fault = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
     rename(source, destination);
@@ -395,7 +399,6 @@ it("limits finished publishing to value-free metadata and refuses key provisioni
     join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`),
     ...["protected.json", "chatgpt-account.json"].map(name => join(f.machine.stateRoot, "profiles", f.draft.profileId, "credentials", name))];
   const before = paths.map(path => readFileSync(path)), keychain = FakeKeyringEntry.snapshot();
-  const admission = f.machine.admitProfile(f.draft.profileId), store = createDuoCredentialStore(admission, systemClock);
   const refused = (error: unknown) => {
     const pending: unknown[] = [error], seen = new Set<unknown>();
     while (pending.length > 0) {
