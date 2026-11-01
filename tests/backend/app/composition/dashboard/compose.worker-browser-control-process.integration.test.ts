@@ -3,7 +3,7 @@ import type { RuntimeLifetimeLock } from "../../../../../src/backend/storage/adm
 import assert from "node:assert/strict";
 import { execFileSync,spawn,type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { copyFileSync,existsSync,readFileSync,readdirSync,writeFileSync } from "node:fs";
+import { copyFileSync,existsSync,readFileSync,readdirSync,rmdirSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, onTestFailed } from "vitest";
@@ -29,6 +29,7 @@ import { readSettings } from "../../../../../src/backend/runtime/settings/settin
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 import { FIXTURE_DUO_CREDENTIAL_KEY } from "../../../../support/helpers/duo-ceremony-fixtures.js";
 import { scaledMs } from "../../../../support/time-scale.js";
+import { createBrowserRoots } from "../../../../../src/backend/storage/browser-roots.js";
 
 const worker = (index: number) => `person-lookup-worker-${String(index)}`;
 function groupPids(group: number): number[] {
@@ -104,8 +105,9 @@ it("real ingress, two real workers and Chromium: read-only claims, exact control
   const spawnWorker: WorkerProcessSpawner = request => {
     const child = spawn(request.command,[...request.args,"--fixture-lock-port",String(lifetimeLock.port)],{cwd:request.cwd,stdio:["ignore","pipe","pipe","ipc"],detached:true});
     void lifetimeLock.share(child).catch(error => { child.emit("error", error); child.kill("SIGTERM"); });
+    lifetimeLock.observeOwnedChildClosure(child);
     children.push(child); child.stdout?.on("data",chunk => output.push(String(chunk))); child.stderr?.on("data",chunk => output.push(String(chunk)));
-    return { pid:child.pid, kill:signal => child.kill(signal), onExit:listener => {child.on("exit",listener);}, onError:listener => {child.on("error",listener);} };
+    return { pid:child.pid, nativeProcess:child, kill:signal => child.kill(signal), onExit:listener => {child.on("exit",listener);}, onError:listener => {child.on("error",listener);} };
   };
   const diagnostics = () => output.join("") + JSON.stringify({ leases: database?.authority.workerLeases.listLive(), runs: runIds.map(runId => ({
     state: database?.authority.runs.get(runId)?.lifecycle.state ?? "absent",
@@ -295,6 +297,12 @@ it("real ingress, two real workers and Chromium: read-only claims, exact control
     const replacementChild = children.find(child => child.pid === resetLease.processId); assert.ok(replacementChild);
     assert.equal(replacementChild.exitCode,null); assert.equal(replacementChild.signalCode,null);
     assert.equal(existsSync(join(root,`browser-${String(replacementChild.pid)}.jsonl`)),false,"browserless recovery and Stop must not acquire or authenticate");
+    assert.ok(profile); assert.ok(token);
+    const selected = profile.selectedContext(token);
+    assert.deepEqual(createBrowserRoots(selected.admission).inventory().roots.filter(row => row.owner.kind === "worker" && row.owner.workerId === worker(1)),[]);
+    const retiredDirectory = join(stateRoot,"browsers","w1");
+    if (existsSync(retiredDirectory)) { assert.deepEqual(readdirSync(retiredDirectory),[]); rmdirSync(retiredDirectory); }
+    assert.equal(existsSync(retiredDirectory),false);
     const removal = await post("remove-worker",{...target(1),workflowId:"person-lookup",membershipRevision:member.membershipRevision,
       expectedVersion:db.authority.workerPools.get("person-lookup")?.version});
     assert.equal(removal.result.state,"pending");

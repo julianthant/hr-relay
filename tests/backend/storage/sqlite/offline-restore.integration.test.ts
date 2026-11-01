@@ -1,4 +1,4 @@
-import { profileBrowserClosure, BrowserProfileStillClosingError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { profileBrowserClosure, BrowserProfileStillClosingError } from "../../../../src/backend/storage/browser-roots.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";

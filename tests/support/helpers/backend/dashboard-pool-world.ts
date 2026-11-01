@@ -130,6 +130,7 @@ export function createDashboardPoolTestWorld() {
     const faults: Error[] = [];
     let nextPid = 6000;
     const control = composeWorkerProcessControl({
+    admission: profile.admission,
     onExit: () => undefined,
       profileRoot: join(root, "browsers"),
       database,

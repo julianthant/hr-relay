@@ -27,7 +27,7 @@ import type { DraftDuoBrowserOwner, DraftDuoCapability, ProfileOnboardingDuoProv
 import { ProfileOnboardingDuoProviderError } from "../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import { CanonicalCredentialHeadSchema } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
-import { BrowserProfileStillClosingError, onboardingProfileDirectory } from "../../../src/backend/runtime/browser/native-profile-probe.js";
+import { BrowserProfileStillClosingError, onboardingProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
 import { createHistoricalIncompleteProfileFixture } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { scaledMs } from "../../support/time-scale.js";
 

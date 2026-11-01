@@ -94,7 +94,7 @@ async function harness(configureRunners?: (runners: readonly PreflightRunner[]) 
   const ingress = { workflowId: personLookupDescriptor.id, submissions: [{ emplId: "10873698" }], dryRun: false };
   const command = (plan: ReturnType<typeof plans.plan>) => ({ commandId: "99999999-9999-4999-8999-999999999999", requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "start", type: "start-run",
     target: { workflowId: plan.workflowId, startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });
-  return { clock, database, stateRoot, repoRoot, identity, preflight, faults, probes, plans, kernel, lifecycle, kernelWith: (workerRuntime: CommandKernelDependencies["workerRuntime"]) => createCommandKernel({ ...kernelDependencies, workerRuntime }), ingress, command, get publications() { return publications; }, changeProtected() {
+  return { admission: profile.admission, clock, database, stateRoot, repoRoot, identity, preflight, faults, probes, plans, kernel, lifecycle, kernelWith: (workerRuntime: CommandKernelDependencies["workerRuntime"]) => createCommandKernel({ ...kernelDependencies, workerRuntime }), ingress, command, get publications() { return publications; }, changeProtected() {
     protectedRecord = ProtectedStoreRecordSchema.parse({ ...protectedRecord, revision: 2,
       lastApplied: { commandId: "77777777-7777-4777-8777-777777777777", commandFingerprint: "7".repeat(64), expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "88888888-8888-4888-8888-888888888888" } });
   }, missing() { supportMissing = true; } };
@@ -393,6 +393,7 @@ try {
   const slot = roster.selected[0]; assert.ok(slot);
   const workerId = slot.workerId;
   const control = composeWorkerProcessControl({
+    admission: h.admission,
     onExit: () => undefined, profileRoot:join(h.repoRoot,rebuildRuntimeIsolation.browserProfileRoot), database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
     preflight: h.preflight, launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
     spawn: () => {
@@ -619,6 +620,7 @@ try {
   const h = await harness(); let spawns = 0; let exit: ((code: number | null, signal: string | null) => void) | undefined;
   let workerId = "";
   const control = composeWorkerProcessControl({
+    admission: h.f.admission,
     onExit: () => undefined, profileRoot: h.f.input.config.paths.browserProfileRoot,  database: h.database, clock: h.clock, scheduler: new ManualScheduler(h.clock, 0),
     preflight: h.preflight, launch: { command: "/fixture/node", prefixArgs: [], cwd: "/fixture", environment: {} },
     spawn: () => {

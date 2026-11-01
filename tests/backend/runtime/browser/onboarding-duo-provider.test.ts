@@ -1,4 +1,5 @@
-import { onboardingProfileDirectory } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { mockBrowserRootPort } from "../../../support/helpers/browser/browser-roots.js";
+import { onboardingProfileDirectory } from "../../../../src/backend/storage/browser-roots.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -37,6 +38,7 @@ function world(method: "key" | "touch" = "key") {
   let profile = "";
   const listeners: (() => void)[] = [];
   const calls: string[] = [];
+  const workerCalls: string[] = [];
   let documentCurrent = true;
   let driftAfter: string | undefined;
   function called(name: string): void { calls.push(name); if (name === driftAfter) documentCurrent = false; }
@@ -47,6 +49,7 @@ function world(method: "key" | "touch" = "key") {
   const worker = {
     url: () => "chrome-extension://owned-extension/src/relay-background.js",
     async evaluate(_callback: unknown, input: { method: string; args: unknown[] }) {
+      workerCalls.push(input.method);
       if (input.method === "install") { startupEntered?.(); await startupHold; return; }
       if (input.method === "browserInstall") return;
       if (input.method === "browserNext") return new Promise(resolve => { browserWaiter = resolve; });
@@ -77,7 +80,7 @@ function world(method: "key" | "touch" = "key") {
   const context = { serviceWorkers: () => [worker], pages: () => pages.filter(page => !page.isClosed()), on: (_event: string, callback: () => void) => { listeners.push(callback); },
     newPage: async () => { const page = makePage(); pages.push(page); return page; },
     close: async () => { closed = true; if (!missingCloseEvent) for (const listener of listeners) listener(); if (!blockedPump) { waiter?.(null); waiter = undefined; } browserWaiter?.(null); browserWaiter = undefined; } } as unknown as BrowserContext;
-  const realProvider = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory, clock, closeProofMs: 50,
+  const realProvider = createProfileOnboardingDuoProvider({ browserRoots: mockBrowserRootPort().browserRoots, browserRoot, extensionDirectory, clock, closeProofMs: 50,
     launcher: { launch: async input => {
       if(input.nativeOnly===true){
         nativeProbes++;
@@ -130,7 +133,7 @@ function world(method: "key" | "touch" = "key") {
     else requests.push(request);
     return result;
   }
-  return { mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
+  return { mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
     loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, launches: () => launchCount, profile: () => profile,
     portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
     loseActiveStopAck: () => { lostActiveStopAck = true; }, blockPump: () => { blockedPump = true; },
@@ -174,9 +177,11 @@ describe("draft Duo provider", () => {
     try{
       await w.rawProvider.showBrowser(w.owner);
       assert.equal(w.profile(),directory);assert.equal(w.nativeProbes(),1);assert.equal(w.launches(),1);assert.equal(existsSync(join(directory,"retained.txt")),false);
-      assert.deepEqual(await w.rawProvider.closeBrowser(w.owner),{state:"closed"});assert.equal(existsSync(directory),false);
-      await w.rawProvider.showBrowser(w.owner);assert.equal(w.nativeProbes(),1);assert.equal(w.launches(),2);
-      assert.deepEqual(await w.rawProvider.closeBrowser(w.owner),{state:"closed"});assert.equal(existsSync(directory),false);
+      assert.deepEqual(await w.rawProvider.closeBrowser(w.owner),{state:"closed"});assert.equal(existsSync(directory),false);assert.equal(w.nativeProbes(),2);
+      await w.rawProvider.showBrowser(w.owner);assert.equal(w.nativeProbes(),2);assert.equal(w.launches(),2);
+      assert.deepEqual(await w.rawProvider.closeBrowser(w.owner),{state:"closed"});assert.equal(existsSync(directory),false);assert.equal(w.nativeProbes(),3);
+      assert.deepEqual(w.workerCalls,["browserInstall","browserNext","browserStop","browserInstall","browserNext","browserStop"]);
+      assert.deepEqual(w.calls,[]);
     }finally{await w.closeBrowser();await w.cleanup();}
   });
   for (const proof of ["proved", "missing-event"] as const) it(`lost active-stop ACK requires settled attempt and ${proof} physical closure`, async () => {

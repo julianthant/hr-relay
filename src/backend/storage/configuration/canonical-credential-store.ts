@@ -618,9 +618,40 @@ export function inspectStoppedCanonicalConversion(admission: RuntimeAdmission, c
   }
 }
 
+export function inspectStoppedCurrentCanonicalCredentials(admission: RuntimeAdmission, claim: StoppedControlProfileInventory) {
+  const source = requireRuntimeAdmission(admission).readStoppedControlCredentialInventorySource(claim);
+  if (source.credentialFormat !== "canonical") throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
+  const paths = fixedCanonicalPaths(source.machineRoot, source.stateRoot, source.binding), ancestry = new Map<string, DirectoryIdentity>();
+  const current = () => { admission.readStoppedControlCredentialInventorySource(claim); source.revalidateSource(); };
+  try {
+    current();
+    if (!noSymlinkAncestry(paths.directory, ancestry)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    if (readPrivateFile(paths.operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
+    const headFile = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
+    if (headFile === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    const head = ActiveHead.parse(parse(headFile.bytes));
+    if (head.installationId !== paths.binding.installationId || head.profileId !== paths.binding.profileId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    const key = authenticateHead(head), keyDocument = credentialKeyCustody.read(head.key);
+    inspectCanonicalNamespace(paths, head, key, new Map(), current, ancestry);
+    const records = Object.fromEntries(kinds.map(kind => {
+      current(); const file = readPrivateFile(paths.records[kind], { label: "protected.json", maxBytes });
+      if (file === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      return [kind, open(head, key, kind, file.bytes) ?? { revision: 0, value: null }];
+    })) as Record<CanonicalCredentialKind, CanonicalCredentialRecord>;
+    current();
+    return { records, retired: head.retired, keyDocument, decryptProtected(bytes: Buffer) {
+      current(); const result = open(head, key, "protected", bytes); current(); return result;
+    } };
+  } catch (error) {
+    if (hasUnprovedSourceClosure(error)) { admission.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission }); }
+    throw error;
+  }
+}
+
 export function prepareStoppedCanonicalCredentials(admission: RuntimeAdmission, claim: StoppedControlProfileInventory,
   operationId: string, records: Readonly<Record<CanonicalCredentialKind, CanonicalCredentialRecord>>, retired: readonly string[]): CanonicalCredentialConversionPlan {
   const source = requireRuntimeAdmission(admission).readStoppedControlCredentialInventorySource(claim);
+  if (source.credentialFormat !== "legacy") throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
   const assertCurrent = () => { admission.readStoppedControlCredentialInventorySource(claim); source.revalidateSource(); };
   const paths = fixedCanonicalPaths(source.machineRoot, source.stateRoot, source.binding), ancestry = new Map<string, DirectoryIdentity>();
   try {
@@ -667,6 +698,7 @@ export function prepareStoppedCanonicalCredentials(admission: RuntimeAdmission, 
 export function publishStoppedCanonicalCredentials(admission: RuntimeAdmission, claim: StoppedControlProfileInventory,
   input: CanonicalCredentialConversionPlan): void {
   const source = requireRuntimeAdmission(admission).readStoppedControlCredentialInventorySource(claim);
+  if (source.credentialFormat !== "legacy") throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
   const operation = CreateOperation.parse(input.operation), bytes = encode(operation);
   if (digest(bytes) !== input.digest || operation.installationId !== source.binding.installationId || operation.profileId !== source.binding.profileId
     || operation.head.key.keyId !== source.key.keyId || operation.head.generation !== increment(source.head.epoch)

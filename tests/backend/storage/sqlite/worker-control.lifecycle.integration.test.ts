@@ -114,7 +114,8 @@ async function owned(h: Awaited<ReturnType<typeof fixture>>, workerId: string, e
     } },
     proveRetirement: target => {
       h.database.assertWorkerLifecycleRelease(workerId);
-      return WorkerRetirementProofSchema.parse({ workerId, membershipRevision: target.membershipRevision, checkedAt: h.authority.clock.now().toISOString(), processStopped: true, browsersClosed: true, exclusive: true });
+      return { proof: WorkerRetirementProofSchema.parse({ workerId, membershipRevision: target.membershipRevision, checkedAt: h.authority.clock.now().toISOString(), processStopped: true, browsersClosed: true, exclusive: true }),
+        assertCurrent: () => { h.database.assertWorkerLifecycleRelease(workerId); } };
     },
     onFault: error => { faults.push(error); },
   });

@@ -258,7 +258,8 @@ export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, in
   let primary: { error: unknown } | undefined;
   try {
     control = machine.beginStoppedMachineControlUpgrade(restore);
-    if (!control.machineControlCurrent() || control.upgradeIntentPresent()) {
+    await control.prepareBrowserInventory(input.plan);
+    if (!input.plan && (!control.machineControlCurrent() || control.upgradeIntentPresent())) {
       for (const profileId of control.registeredProfileIds()) {
         const claim = control.profileInventory(profileId);
         const inventory = composeInventory({ claim, hostFacts: input.hostFacts, clock });

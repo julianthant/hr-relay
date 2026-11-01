@@ -1,5 +1,5 @@
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -127,7 +127,7 @@ describe("offline missing run.queued recovery", () => {
       return database;
     });
     try {
-      assert.throws(() => f.service.repair({ runId: f.run.envelope.runId }, operation), error => {
+      await assert.rejects(() => f.service.repair({ runId: f.run.envelope.runId }, operation), error => {
         assert.ok(error instanceof AuthoritySourceClosureUnprovedError);
         assert.ok(error.cause instanceof AuthoritySourceClosureUnprovedError);
         assert.deepEqual(error.cause.errors, [failure]);
@@ -153,7 +153,7 @@ describe("offline missing run.queued recovery", () => {
       try { return db.authority.timelineEvents.page({}); } finally { db.close(); }
     };
     const before = read();
-    const report = f.service.repair({ runId: f.run.envelope.runId }, f.operation);
+    const report = await f.service.repair({ runId: f.run.envelope.runId }, f.operation);
     assert.equal(report.state, "repaired");
     const after = read();
     assert.deepEqual(after.slice(0, before.length), before);
@@ -167,7 +167,7 @@ describe("offline missing run.queued recovery", () => {
     assert.equal(appended.pid, process.pid);
     assert.equal(appended.repair.priorCursor, before.at(-1)?.cursor);
     assert.equal(appended.title, f.plan.planned[0]?.title);
-    const replay=f.service.repair({ runId:f.run.envelope.runId }, f.issueOperation());
+    const replay=await f.service.repair({ runId:f.run.envelope.runId }, f.issueOperation());
     assert.equal(replay.state,"already-repaired");assert.deepEqual(read(),after);
 
     const doctor = await doctorAuthorityStorage(f.admission, {
@@ -185,7 +185,7 @@ describe("offline missing run.queued recovery", () => {
     const f=await fixture(true);
     const database=AuthorityDatabase.open(f.admission,{path:f.authorityPath,busyTimeoutMs:500,migrationOwner:"repair-ambiguity-verifier"},f.clock);
     let before;try{before=database.authority.timelineEvents.page({});}finally{database.close();}
-    assert.throws(()=>f.service.repair({ runId:f.run.envelope.runId }, f.operation),/2 matching planned entries/u);
+    await assert.rejects(()=>f.service.repair({ runId:f.run.envelope.runId }, f.operation),/2 matching planned entries/u);
     const reopened=AuthorityDatabase.open(f.admission,{path:f.authorityPath,busyTimeoutMs:500,migrationOwner:"repair-ambiguity-verifier"},f.clock);
     try{assert.deepEqual(reopened.authority.timelineEvents.page({}),before);}finally{reopened.close();}
   });
@@ -197,7 +197,7 @@ describe("offline missing run.queued recovery", () => {
       if(fault==="input-mismatch")raw.prepare("UPDATE runs SET lifecycle_json=json_set(lifecycle_json,'$.input.raw.eid',?,'$.input.parsed.value.eid',?) WHERE id=?").run("10812346","10812346",f.run.envelope.runId);
       else raw.prepare("UPDATE commands SET request_digest=? WHERE id=?").run("a".repeat(64),UUID_1);
     }finally{raw.close();}
-    assert.throws(()=>f.service.repair({ runId:f.run.envelope.runId }, f.operation),/0 matching planned entries|identity-mismatch/u);
+    await assert.rejects(()=>f.service.repair({ runId:f.run.envelope.runId }, f.operation),/0 matching planned entries|identity-mismatch/u);
     const reopened=new DatabaseSync(f.authorityPath,{readOnly:true});
     try{assert.deepEqual(reopened.prepare("SELECT * FROM timeline_events ORDER BY cursor").all(),before);}finally{reopened.close();}
   });
@@ -229,7 +229,7 @@ describe("offline missing run.queued recovery", () => {
     }
     // The stopped proof excludes runtime writers; reconstruction still refuses
     // because no authoritative session/plan chain can supply actor and title.
-    assert.throws(
+    await assert.rejects(
       () => f.service.repair({ runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }, f.operation),
       /has no durable run session/u,
     );

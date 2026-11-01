@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import { appendRecoveryNotification } from "../../runs/lifecycle/startup-crash-recovery.js";
 import { RunRecordService, requireLifecycleApplied } from "../../runs/lifecycle/run-record-service.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
@@ -2002,7 +2003,7 @@ export class AuthorityDatabase implements Disposable {
     try {
       const initial=flatQueuedRunCancellationInventory(database,assertCredentialCopyResourcesClosed);
       if(initial.digest!==expectedDigest)throw new Error("queued-run-cancellation-capture-changed");
-      await probeFlatBrowserInventoryClosed(stateRoot,maintenanceInventory(database,inspectNativeAuthority(database,6)),clock,browserClosure);
+      await probeFlatBrowserInventoryClosed(lease,restore,stateRoot,maintenanceInventory(database,inspectNativeAuthority(database,6)),clock,browserClosure);
       assertHeld();
       database.exec("BEGIN IMMEDIATE");
       try {
@@ -2288,7 +2289,7 @@ export class AuthorityDatabase implements Disposable {
         const path = join(admission.stateRoot, "state.db"), operation = admission.assertPendingLogoutSettlementDatabase(path);
         if (operation.settlement?.phase !== "done") throw new Error("profile-logout-settlement-incomplete");
         const { assertCredentialCopyResourcesClosed, probeStoppedProfileBrowsersClosed, enumerateProfileCredentialMembership } = await import("../maintenance/profile-inventory.js");
-        const { profileBrowserClosure } = await import("../../runtime/browser/native-profile-probe.js");
+        const { profileBrowserClosure } = await import("../../storage/browser-roots.js");
         assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
         await probeStoppedProfileBrowsersClosed(admission, this.#clock, profileBrowserClosure);
         const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
@@ -2415,7 +2416,7 @@ export class AuthorityDatabase implements Disposable {
       database = new AuthorityDatabase(copyAdmission, { path: snapshot.path, openMode: "storage-doctor-read-only-no-migrate" }, this.#clock,
         undefined, undefined, undefined, undefined, "stopped-logout-inspection");
       const { probeStoppedProfileBrowsersClosed } = await import("../maintenance/profile-inventory.js");
-      const { profileBrowserClosure } = await import("../../runtime/browser/native-profile-probe.js");
+      const { profileBrowserClosure } = await import("../../storage/browser-roots.js");
       await probeStoppedProfileBrowsersClosed(admission, this.#clock, profileBrowserClosure);
       admission.assertPendingLogoutSettlementDatabase(path);
       if (inspectNativeAuthority(database.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint !== copied.authorityContentFingerprint
@@ -2516,6 +2517,23 @@ export class AuthorityDatabase implements Disposable {
       retainUnprovedSourceOwners(failure, { database: { original: this, temporary: database }, admission: { admission, copyAdmission }, snapshot, restore });
       throw failure;
     }
+  }
+
+  browserWorkerOwner(admission: RuntimeAdmission, workerId: string, stoppedProcess?: ChildProcess) {
+    if (this.#admission !== admission) throw new Error("browser-profile-database-owner-mismatch");
+    this.#assertOpen(); admission.assertProfileRuntime();
+    const id = WorkerIdSchema.parse(workerId), slot = this.authority.workerSlots.get(id), lease = this.authority.workerLeases.get(id);
+    if (slot === undefined || slot.retiredAt !== null || lease === undefined) throw new Error("browser-profile-worker-owner-mismatch");
+    if (stoppedProcess === undefined) {
+      if (lease.processId !== process.pid || !isLiveWorker(lease) || lease.lifecycle.state === "stopping") throw new Error("browser-profile-worker-owner-mismatch");
+    } else {
+      if (!(admission.lifetime instanceof RuntimeLifetimeLock) || stoppedProcess.pid !== lease.processId || lease.lifecycle.state !== "stopped") throw new Error("browser-profile-worker-owner-mismatch");
+      admission.lifetime.assertOwnedChildClosed(stoppedProcess);
+      this.assertStoppedWorkerLifetime(workerPoolMember(slot), { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt });
+    }
+    admission.lifetime.assertHeld();
+    return Object.freeze({ kind: "worker" as const, workerId: slot.workerId, workflowId: slot.workflow,
+      ordinal: slot.ordinal, membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration });
   }
 
   capturePendingLogoutSource() {

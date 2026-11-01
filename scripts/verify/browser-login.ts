@@ -1,3 +1,4 @@
+import { createBrowserRoots, ProfileCustodyUnavailableError } from "../../src/backend/storage/browser-roots.js";
 import { createDuoCredentialStore } from "../../src/backend/storage/configuration/duo-credential-store.js";
 import type { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
 import { captureSelectedProfileStorage, RuntimeCustodyUncertainError } from "../../src/backend/app/composition/storage-compose.js";
@@ -24,7 +25,6 @@ import { assertNoMigratedEnvironmentKeys, hostAwareResolutionEnvironment } from 
 import { BrowserSystemIdSchema, FingerprintSchema, WorkflowIdSchema } from "../../src/rules/identity/ids.js";
 import {
   BrowserProfileAdmissionSchema,
-  deleteOwnedBrowserProfile,
   PlaywrightWorkerSessionFactory,
   workerProfileDirectory,
 } from "../../src/backend/runtime/browser/browser-session-factory.js";
@@ -137,12 +137,12 @@ export class SmokeSessionClosureError extends AggregateError {
 
 export async function closeSmokeSessions(
   sessions: Pick<WorkerSessionManager, "closeAll">,
-  deleteProfile: () => void,
+  deleteProfile: () => void | Promise<void>,
   operationErrors: readonly unknown[],
 ): Promise<void> {
   try {
     await sessions.closeAll("worker-stop");
-    deleteProfile();
+    await deleteProfile();
   } catch (error) {
     throw new SmokeSessionClosureError([...operationErrors, error]);
   }
@@ -272,14 +272,15 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
     const profileDirectory = workerProfileDirectory({
       profileRoot: smokeProfileRoot, slotOrdinal: ordinal, system,
     });
-    deleteOwnedBrowserProfile(smokeProfileRoot, profileDirectory);
+    if (lstatSync(profileDirectory, { throwIfNoEntry: false }) !== undefined) throw new ProfileCustodyUnavailableError();
     write("[smoke] cold start: fresh owned profile selected");
   }
 
   const evidence: AuthenticatedApplicationEvidence[] = [];
   const hops: string[] = [];
+  const browserRoots = createBrowserRoots(profileAdmission);
   const factory = new PlaywrightWorkerSessionFactory({
-    duo,
+    browserRoots, browserOwner: { database: openedDatabase, profileId: profileAdmission.profileBinding.profileId }, duo,
     assertCurrent: requestedWorker => {
       selected.assertCurrent(); profileAdmission.assertProfileRuntime(); lock.assertHeld();
       const hold = openedDatabase.authority.workerSlots.verification(workerId);
@@ -358,7 +359,13 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
     sessionErrors.push(error);
   }
   await closeSmokeSessions(sessions,
-    () => { deleteOwnedBrowserProfile(smokeProfileRoot, join(smokeProfileRoot, `w${ordinal}`)); }, sessionErrors);
+    async () => {
+      const profileDirectory = workerProfileDirectory({ profileRoot: smokeProfileRoot, slotOrdinal: ordinal, system });
+      if (lstatSync(profileDirectory, { throwIfNoEntry: false }) !== undefined
+        || browserRoots.inventory().roots.some(row => resolve(machine.stateRoot, row.directory) === profileDirectory)) {
+        await factory.discardProfile({ workerId, system, instance, configFingerprint });
+      }
+    }, sessionErrors);
   write("[smoke] every session closed with proof");
   }, systemClock, { lock, ...profileAdmission.profileBinding, profileRunId, system, credentialKey: duoCeremonyCredentialKey(config, duo) });
   } catch (error) { operationFailure = { error }; }

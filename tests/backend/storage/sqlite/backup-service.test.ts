@@ -1,5 +1,5 @@
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createHash, randomUUID } from "node:crypto";

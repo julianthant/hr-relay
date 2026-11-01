@@ -1,4 +1,4 @@
-import { profileBrowserClosure } from "../../runtime/browser/native-profile-probe.js";
+import { profileBrowserClosure } from "../../storage/browser-roots.js";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { acquireRuntimeLifetimeLock, receiveRuntimeLifetimeLock, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { fileURLToPath } from "node:url";

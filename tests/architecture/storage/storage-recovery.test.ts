@@ -3,7 +3,7 @@ import { cpSync, mkdtempSync, realpathSync, appendFileSync, copyFileSync, exists
 import { tmpdir } from "node:os";
 import { OldBuildRuntimeArtifactsError } from "../../../src/backend/storage/admission/installation.js";
 import { RuntimeLifetimeLock, RuntimeAlreadyRunningError, isOfflineMaintenanceOperationActive } from "../../../src/backend/storage/admission/lifetime-lock.js";
-import { profileBrowserClosure } from "../../../src/backend/runtime/browser/native-profile-probe.js";
+import { profileBrowserClosure } from "../../../src/backend/storage/browser-roots.js";
 import * as readonlySnapshots from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase as FixtureAuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";

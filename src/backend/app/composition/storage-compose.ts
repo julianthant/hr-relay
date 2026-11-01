@@ -5,7 +5,7 @@ import { runClaim } from "../../../models/run/record.js";
 import { prepareStoppedBackupClosure, StorageBackupClosureUnprovedError, type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
 import { isOfflineMaintenanceOperationActive, OfflineMaintenanceOperationUnavailableError, type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { type AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
-import { profileBrowserClosure } from "../../runtime/browser/native-profile-probe.js";
+import { profileBrowserClosure } from "../../storage/browser-roots.js";
 import { assertProfileBrowserRoot, composeProfileClosureInventory } from "./profile-credential-inventory.js";
 import { createAssistantAuthorization } from "../../assistant/authorization.js";
 import type { CommandKernel } from "../../runs/commands/command-kernel.js";
@@ -950,7 +950,7 @@ async function repairSpanRootCommand(
       processLockRoot,
       busyTimeoutMs: 5000,
     }, clock);
-    const report = service.repair({ runId }, operation);
+    const report = await service.repair({ runId }, operation);
     return {
       output: json ? JSON.stringify(report, null, 2) : formatSpanRootRepairReport(report),
       exitCode: 0,
@@ -1103,7 +1103,7 @@ export async function composeStorageCommand(
         const { workerBootstrapEnvironment } = await import("../../../models/config/secrets.js");
         const report = await upgradeStoppedMachineControl(admission, { plan: rest.includes("--plan"), hostFacts: hostConfigFacts(workerBootstrapEnvironment()) }, clock, composeStoppedControlCredentialInventory);
         operation.release();
-        return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: machine-control ${report.state} (${String(report.profileCount)} profiles)\nruntime access: ${report.runtimeAccess}`, exitCode: 0 };
+        return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: machine-control ${report.state} (${String(report.profileCount)} profiles)\nruntime access: ${report.runtimeAccess}${report.state === "planned" ? "\nBrowser closure will be checked when the upgrade runs." : ""}`, exitCode: 0 };
       }
       const { upgradeStorage } = await import("../../storage/maintenance/upgrade.js");
       const report = await upgradeStorage(profileBrowserClosure, admission,{ stateRoot: admission.stateRoot,

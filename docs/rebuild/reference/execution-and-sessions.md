@@ -578,15 +578,21 @@ request after disconnect. Standalone execution composes its own service while ho
 root listener. Shutdown retains the controller until active geocode work drains; failed closure
 refuses release. There are no geocode election, endpoint or PID files.
 
-`runtime/browser/native-profile-probe.ts` owns the native launcher and verified page/context close
-used by preclaim and maintenance. Taking the root listener excludes Node owners; a surviving
-Chromium still requires a native profile probe before file replacement or credential erasure.
-Async closure paths await the probe directly. Synchronous inventory callbacks await a finite child
-through `native-profile-probe`; no controller, credential, provider or login is initialized in that
-selector. The request names existing private directories and deadlines. Its nonce and request digest
-bind one strict result to the full closed-directory list, followed by actual child completion.
-Busy profiles refuse with `BROWSER_PROFILE_STILL_CLOSING`; missing, malformed, failed or unproved
-closure refuses with `BROWSER_CLOSURE_UNPROVED`. Neither refusal permits erasure or replacement.
+`storage/browser-roots.ts` owns the private `machine/browser-roots.json` registry outside person
+SQLite. Its strict bounded document records actual worker or signup ownership and launch generations.
+Each launch and native acquisition records intent before Chromium starts. A fresh full-Chromium
+probe must acquire and close the exact profile before reuse or removal; saved closed/observed states
+do not authorize effects. One row remains excluded through native closure, the awaited effect and
+settlement. Only the scoped remover can delete that profile, and it expires when the effect returns.
+Unknown files, ownership changes, unsafe paths and unproved closure hold the operation.
+
+Probes run asynchronously inside their existing native owner. The stopped control converter records
+its preparing receipt before probing, then captures credential copies and verifies its SQLite backup
+before publishing browser registry, control and marker. Current control requires the external registry;
+ordinary startup does not reconstruct it. An ordinary profile drain checks actual resource and registry
+closure without minting native-unused permission. Flat native6 maintenance keeps its finite stopped
+owner and OS census. Busy profiles refuse with `BROWSER_PROFILE_STILL_CLOSING`; unproved native
+closure refuses with `BROWSER_CLOSURE_UNPROVED` and retains the actual owner and root lifetime.
 
 Retained settings roots and authenticated verification scratch paths have distinct membership.
 An absent directory is released only when the exact completed cleanup already proves owned context

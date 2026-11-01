@@ -1,3 +1,4 @@
+import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, realpathSync } from "node:fs";
@@ -21,14 +22,14 @@ for (const pendingClose of [false, true]) it(pendingClose
   ? "real synthetic MV3 pending software-key attempt retains UNKNOWN across whole-window closure and reopen"
   : "real Relay UI and private draft log in once in a separate same-window Duo tab and keep method attempts separate", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "onboarding-launch-")));
-  const browserRoot = join(root, "browsers"); mkdirSync(browserRoot, { mode: 0o700 });
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(root, file));
   const lifetime = await runtimeLifetimeLock();
   const machine = acquireEntrypointAdmission(root, "exclusive", lifetime);
+  const browserRoot = join(machine.stateRoot, "browsers", "onboarding"); mkdirSync(browserRoot, { recursive: true, mode: 0o700 });
   const processLockRoot = join(root, rebuildRuntimeIsolation.processLockRoot); mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
   let context: BrowserContext | undefined, launches = 0, acquisitions = 0, submissions = 0;
   let owner: DraftDuoBrowserOwner | undefined;
-  const provider = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: realpathSync(join(process.cwd(), "fast-duo")), clock: systemClock, closeProofMs: 5000,
+  const provider = createProfileOnboardingDuoProvider({ browserRoots: createBrowserRoots(machine), browserRoot, extensionDirectory: realpathSync(join(process.cwd(), "fast-duo")), clock: systemClock, closeProofMs: 5000,
     launcher: { async launch(input) {
       launches++; assert.equal(input.headless, false);
       // Full Chromium exercises the synthetic extension UI without a desktop session.

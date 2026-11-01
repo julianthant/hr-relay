@@ -320,8 +320,9 @@ export class RuntimeAdmission {
       const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
       assertUnpublishedSource();
       const before = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
-      const { readStoppedProfileUpgradeInventory } = await import("../maintenance/profile-inventory.js");
+      const { readStoppedProfileUpgradeInventory, probeStoppedProfileBrowsersClosed } = await import("../maintenance/profile-inventory.js");
       assertUnpublishedSource();
+      await probeStoppedProfileBrowsersClosed(admission, clock, browserClosure);
       readStoppedProfileUpgradeInventory({ machine: this, admission, clock, hostFacts, browserClosure });
       const after = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
       if (before.schemaVersion !== observed.schemaVersion || before.authorityGeneration !== after.authorityGeneration
@@ -538,6 +539,47 @@ export class RuntimeAdmission {
       throw new Error("profile-machine-authority-required");
     }
     return (this.#authority as InstallationLease).readProfileRegistry();
+  }
+  assertBrowserRegistryCustody(): void {
+    this.assertLive(); assertSourceClosuresProved(this.#sourceFailures);
+    this.#profileParent?.assertBrowserRegistryCustody();
+    this.lifetime.assertSourceCustody();
+  }
+  captureBrowserRegistryContext() {
+    this.assertLive();
+    let machine: RuntimeAdmission = this.#profileParent ?? this;
+    while (machine.#profileParent !== undefined) machine = machine.#profileParent;
+    if (machine.#scope !== "installation") throw new Error("browser-registry-installation-required");
+    const registry = machine.readProfileRegistry();
+    return Object.freeze({ machineRoot: machine.#stateRoot, installationId: machine.locator.installationId,
+      sessionGeneration: registry.sessionGeneration, profileId: this.#profileBinding?.profileId });
+  }
+  assertBrowserRegistryLaunch(profileId: string, signup?: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): void {
+    if (signup === undefined) {
+      this.assertProfileRuntime();
+      if (this.profileBinding.profileId !== profileId) throw new Error("browser-registry-profile-mismatch");
+      return;
+    }
+    const operation = this.#browserRegistrySignup(profileId, signup);
+    if (operation.phase !== "applying" || operation.onboarding?.abort !== undefined) throw new Error("browser-registry-signup-unavailable");
+  }
+  assertBrowserRegistryCleanup(profileId: string, signup: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): string {
+    return canonicalJsonStringify(this.#browserRegistrySignup(profileId, signup));
+  }
+  #browserRegistrySignup(profileId: string, signup: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): SignUpOperation {
+    this.#assertMachineRuntime();
+    const file = readPrivateFile(join(this.#stateRoot, "machine", "operations", `${z.uuid().parse(signup.operationId)}.json`), { label: "lock", maxBytes: 1_048_576 });
+    if (file === undefined) throw new Error("browser-registry-signup-unavailable");
+    const operation = SignUpOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+    if (operation.profileId !== profileId || operation.operationId !== signup.operationId
+      || !(operation.phase === "applying" || operation.phase === "publishing")
+      || operation.onboarding?.accountId !== signup.accountId || operation.onboarding.generation !== signup.providerGeneration) throw new Error("browser-registry-signup-unavailable");
+    return operation;
+  }
+  assertBrowserRegistryMaintenance(): OfflineMaintenanceOperation {
+    const operation = this.maintenanceOperation();
+    this.assertOfflineMaintenance(operation);
+    return operation;
   }
   publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument): void {
     this.#assertMachineRuntime();

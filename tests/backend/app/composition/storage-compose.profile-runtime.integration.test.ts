@@ -1,4 +1,4 @@
-import { profileBrowserClosure, BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { profileBrowserClosure, BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/storage/browser-roots.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import * as browserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";

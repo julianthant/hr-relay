@@ -1,3 +1,4 @@
+import { mockBrowserRootPort } from "./browser-roots.js";
 import { fixtureDuoSigningSource } from "./duo-signing.js";
 import type { DuoSigningSource } from "../../../../src/backend/storage/configuration/duo-signing.js";
 import { PNG } from "pngjs";
@@ -231,7 +232,7 @@ export function createBrowserSessionFactoryFixtures(
     duo: DuoSigningSource = fixtureDuoSigningSource(),
   ): PlaywrightWorkerSessionFactory {
     return new Factory({
-      config,
+      ...mockBrowserRootPort(), config,
       duo,
       protectedSecrets,
       isolation: rebuildRuntimeIsolation,

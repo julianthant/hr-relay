@@ -1,13 +1,15 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
 import { once, on } from "node:events";
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { testProcessImport } from "../compiled-process.js";
+import { BrowserRootsSchema } from "../../../src/backend/storage/browser-roots.js";
+import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { LogoutSettlementSchema } from "../../../src/models/profiles/profile.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/models/config/protected-settings.js";
@@ -17,12 +19,13 @@ import { scaledMs } from "../time-scale.js";
 
 export type CredentialSourceRetentionCase = "writer-close" | "duo-read-first" | "duo-read-second" | "stopped-head-close"
   | "protected-source" | "chatgpt-source" | "account-projection" | "stopped-control-snapshot-disposal" | "setup-protected-close" | "authenticated-upgrade-key-close" | "authenticated-upgrade-service-inspection"
-  | "authenticated-upgrade-binding-consume" | "authenticated-upgrade-unproved-close" | "authenticated-upgrade-closed-publication-refusal";
+  | "authenticated-upgrade-binding-consume" | "authenticated-upgrade-unproved-close" | "authenticated-upgrade-closed-publication-refusal"
+  | "browser-root-native-success" | "browser-root-busy" | "browser-root-close-unproved" | "browser-root-stage-close" | "browser-root-observed-publication" | "browser-root-rm-refusal";
 const retainedChildren = new Set<object>();
 
 export async function runCredentialSourceRetentionCase(scenario: CredentialSourceRetentionCase): Promise<void> {
   const profile = await createBoundProfileFixture({ sharedMachine: true });
-  const setupNonce = scenario === "setup-protected-close" || scenario.startsWith("authenticated-upgrade-") ? randomUUID() : undefined;
+  const setupNonce = scenario === "setup-protected-close" || scenario.startsWith("authenticated-upgrade-") || scenario.startsWith("browser-root-") ? randomUUID() : undefined;
   const setupWorkspace = setupNonce === undefined ? undefined : join(profile.workspace, `.${scenario}-${setupNonce}`);
   if (setupWorkspace !== undefined) mkdirSync(setupWorkspace, { mode: 0o700 });
   const child = fork(fileURLToPath(new URL("../processes/credential-source-retention-worker.ts", import.meta.url)),
@@ -233,4 +236,60 @@ export async function runLogoutSettlementCase(boundary: LogoutSettlementCase): P
   }
   for (const path of ownedSnapshots) rmSync(path, { recursive: true });
   await profile.close(); retainedChildren.delete(owned);
+}
+
+
+export async function runBrowserRootUnknownHandoffCase(): Promise<void> {
+  const profile = await createBoundProfileFixture({ sharedMachine: true }), nonce = randomUUID();
+  const workspace = join(profile.workspace, `.browser-root-unknown-${nonce}`);
+  mkdirSync(workspace, { mode: 0o700 });
+  const seedPath = join(profile.workspace, `.browser-root-unknown-${nonce}.seed.json`);
+  const closedPath = join(profile.workspace, `.browser-root-unknown-${nonce}.closed.json`);
+  const registryPath = join(workspace, rebuildRuntimeIsolation.stateRoot, "machine", "browser-roots.json");
+  const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+  const held = { profile, workspace }; retainedChildren.add(held); let childClosureProved = true;
+  async function stage(scenario: "browser-root-unknown-seed" | "browser-root-unknown-resume") {
+    childClosureProved = false;
+    const child = fork(fileURLToPath(new URL("../processes/credential-source-retention-worker.ts", import.meta.url)),
+      [String(profile.lifetime.port), profile.workspace, profile.admission.profileBinding.profileId, scenario, nonce],
+      { execArgv: ["--import", testProcessImport()], env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "ignore", "pipe", "ipc"] });
+    const closed = once(child, "close"), events = on(child, "message", { signal: AbortSignal.timeout(scaledMs(20_000)) });
+    let stderrBytes = 0, primary: unknown;
+    child.stderr?.on("data", (bytes: Buffer) => { stderrBytes += bytes.length; if (stderrBytes > 65_536) child.kill("SIGKILL"); });
+    let outcome: readonly [null, "SIGKILL"] | undefined;
+    try {
+      await profile.lifetime.share(child);
+      const next = await Promise.race([events.next(), closed.then(() => { throw new Error("unknown-handoff-child-closed-before-proof"); })]);
+      assert.equal(next.done, false);
+      const message = z.union([z.strictObject({ scenario: z.literal(scenario), assertionsComplete: z.literal(true), nonce: z.literal(nonce) }),
+        z.strictObject({ scenario: z.literal(scenario), assertionsComplete: z.literal(false), failure: z.strictObject({
+          name: z.enum(["Error", "AssertionError", "TypeError", "RangeError", "SyntaxError"]),
+          locations: z.array(z.string().max(240).regex(/^(?:tests|src)\/[A-Za-z0-9_./-]+\.(?:[cm]?js|tsx?):[1-9]\d*:[1-9]\d*$/u)).max(8),
+        }) })]).parse(next.value?.[0]);
+      if (!message.assertionsComplete) throw new Error(`unknown-handoff-child-failed: ${scenario}; ${message.failure.name}; ${message.failure.locations.join(", ")}`);
+      assert.equal(child.exitCode, null); assert.equal(child.signalCode, null);
+      if (scenario === "browser-root-unknown-seed") {
+        const seed = z.object({ nonce: z.literal(nonce), processId: z.number().int().positive(), registryHash: z.string() }).parse(JSON.parse(readFileSync(seedPath, "utf8")));
+        assert.equal(seed.processId, child.pid); assert.equal(hash(readFileSync(registryPath)), seed.registryHash);
+        assert.equal(BrowserRootsSchema.parse(JSON.parse(readFileSync(registryPath, "utf8"))).roots[0]?.launch.state, "unknown");
+      }
+    } catch (error) { primary = error; }
+    try {
+      if (child.exitCode === null && child.signalCode === null) assert.equal(child.kill("SIGKILL"), true);
+      const observed = await closed; childClosureProved = true;
+      outcome = z.tuple([z.null(), z.literal("SIGKILL")]).parse(observed);
+      assert.equal(child.connected, false); assert.equal(stderrBytes, 0); await events.return?.();
+    } catch (error) { throw new AggregateError(primary === undefined ? [error] : [primary, error], "unknown-handoff-child-kernel-closure-unproved", { cause: error }); }
+    if (primary !== undefined) throw primary instanceof Error ? primary : new Error("unknown handoff child failed", { cause: primary });
+    assert.ok(child.pid && outcome); return { processId: child.pid, code: outcome[0], signal: outcome[1] };
+  }
+  try {
+    const actualClose = await stage("browser-root-unknown-seed"), seedBytes = readFileSync(seedPath);
+    writeFileSync(closedPath, JSON.stringify({ nonce, ...actualClose, seedHash: hash(seedBytes) }), { mode: 0o600, flag: "wx", flush: true });
+    await stage("browser-root-unknown-resume");
+  } catch (error) {
+    if (childClosureProved) { rmSync(workspace, { recursive: true }); await profile.close(); retainedChildren.delete(held); }
+    throw error;
+  }
+  rmSync(workspace, { recursive: true }); await profile.close(); retainedChildren.delete(held);
 }

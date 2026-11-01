@@ -9,8 +9,7 @@ import { z } from "zod";
 import { BrowserDocumentIdSchema } from "../../../models/config/duo-credential-store.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { deleteOwnedBrowserProfile } from "./browser-session-factory.js";
-import { DEFAULT_BROWSER_LAUNCHER, onboardingProfileDirectory, probeClosedBrowserProfile, type PersistentContextLauncher } from "./native-profile-probe.js";
+import { DEFAULT_BROWSER_LAUNCHER, onboardingProfileDirectory, type PersistentContextLauncher, type BrowserRoots, type BrowserRootLaunch, type BrowserRootLaunchInput } from "../../storage/browser-roots.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
 
@@ -43,6 +42,7 @@ const BrokerRequestSchema = z.discriminatedUnion("kind", [
 type BrokerRequest = z.infer<typeof BrokerRequestSchema>;
 
 export interface OnboardingDuoProviderOptions {
+  readonly browserRoots: BrowserRoots;
   readonly browserRoot: string;
   readonly extensionDirectory: string;
   readonly clock: Clock;
@@ -65,6 +65,8 @@ async function workerCall(worker: Worker, method: "install" | "next" | "reply" |
 
 export function createProfileOnboardingDuoProvider(options: OnboardingDuoProviderOptions): ProfileOnboardingDuoProvider {
   const browserLauncher = options.launcher ?? DEFAULT_BROWSER_LAUNCHER;
+  const probeOptions = { clock: options.clock, scheduler: createTimeoutDeadlineScheduler(options.clock),
+    closeProofMs: options.closeProofMs, launchTimeoutMs: options.closeProofMs, signal: new AbortController().signal, launcher: browserLauncher };
   type ProviderSession = {
     attempt: DraftDuoAttempt; profileDirectory: string; context?: BrowserContext; launching?: Promise<BrowserContext>; worker?: Worker;
     capability?: DraftDuoCapability; credentialId?: string; requestId?: string; accepted: boolean; revoked: boolean;
@@ -73,7 +75,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
   };
 
   type OwnedBrowser = {
-    owner: DraftDuoBrowserOwner; profileDirectory: string; context?: BrowserContext; worker?: Worker;
+    owner: DraftDuoBrowserOwner; profileDirectory: string; launch: BrowserRootLaunch; rootInput: BrowserRootLaunchInput; context?: BrowserContext; worker?: Worker;
     launching?: Promise<BrowserContext>; startup?: Promise<void>; pump?: Promise<void>; setup?: Page; setupOpening?: Promise<Page>; portal?: Page; portalOpening?: Promise<void>;
     revoked: boolean; contextClosed: boolean; launchStarted: boolean; closureFailure?: unknown; close?: Promise<Readonly<{ state: "closed" | "uncertain" }>>;
   };
@@ -218,6 +220,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
             }
           }
           await session.launching;
+          session.launch.closing();
           if (session.launchStarted) {
             if (!session.context) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
             if (session.worker && !session.contextClosed) {
@@ -233,12 +236,16 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
           await session.pump;
           if (expired) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
           if (browser !== session || active !== undefined && active !== attempt) throw new ProfileOnboardingDuoProviderError("unknown", "scope");
-          deleteOwnedBrowserProfile(options.browserRoot, session.profileDirectory);
+          session.launch.closed();
+          await options.browserRoots.withUnused(session.profileDirectory, probeOptions, async ({ remove }) => { remove(); }, session.rootInput);
           if (active === attempt) active = undefined;
           if (browser === session) browser = undefined;
         })(), new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { expired = true; reject(new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime")); }, options.closeProofMs * 2); })]);
         return { state: "closed" as const };
-      } catch (error) { session.closureFailure = workerStopFailure === undefined ? error : new AggregateError([workerStopFailure, error], "onboarding browser closure unproved"); return { state: "uncertain" as const }; }
+      } catch (error) {
+        let closureFailure = error;
+        try { session.launch.uncertain(error); } catch (failure) { closureFailure = failure; }
+        session.closureFailure = workerStopFailure === undefined ? closureFailure : new AggregateError([workerStopFailure, closureFailure], "onboarding browser closure unproved"); return { state: "uncertain" as const }; }
       finally { clearTimeout(timer); }
     })();
     return session.close;
@@ -308,18 +315,18 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     if(readdirSync(options.browserRoot).some(name=>name!==basename(profileDirectory))) {
       throw new ProfileOnboardingDuoProviderError("unknown","browser-root");
     }
-    if(lstatSync(profileDirectory,{throwIfNoEntry:false})!==undefined){
-      await probeClosedBrowserProfile({profileRoot:options.browserRoot,launcher:browserLauncher,
-        launch:{profileDirectory,extensionDirectory:"",downloadsPath:profileDirectory,viewport:{width:1100,height:800},timeoutMs:options.closeProofMs},
-        clock:options.clock,scheduler:createTimeoutDeadlineScheduler(options.clock),closeProofMs:options.closeProofMs,signal:new AbortController().signal});
+    const rootInput: BrowserRootLaunchInput = { profileId: owner.profileId, profileRoot: options.browserRoot, profileDirectory,
+      credentialFingerprint: null, owner: { kind: "signup", operationId: owner.operationId, accountId: owner.accountId, providerGeneration: owner.generation } };
+    if (lstatSync(profileDirectory, { throwIfNoEntry: false }) !== undefined) {
+      await options.browserRoots.withUnused(profileDirectory, probeOptions, async ({ remove }) => { assertOwner(); remove(); }, rootInput);
       assertOwner();
-      deleteOwnedBrowserProfile(options.browserRoot,profileDirectory);
     }
     assertOwner();
-    mkdirSync(profileDirectory,{mode:0o700});
-    const session: OwnedBrowser = { owner, profileDirectory, revoked: false, contextClosed: false, launchStarted: false };
+    const launch = options.browserRoots.beginLaunch(rootInput);
+    const session: OwnedBrowser = { owner, profileDirectory, launch, rootInput, revoked: false, contextClosed: false, launchStarted: false };
     browser = session;
     session.startup = (async () => {
+      mkdirSync(session.profileDirectory, { mode: 0o700 });
       mkdirSync(join(session.profileDirectory, "Default"), { mode: 0o700 });
       writeFileSync(join(session.profileDirectory, "Default", "Preferences"), JSON.stringify({ credentials_enable_service: false, profile: { password_manager_enabled: false } }), { mode: 0o600, flag: "wx" });
       const extensionDirectory = join(session.profileDirectory, "relay-extension");
@@ -345,6 +352,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       });
       const context = await session.launching;
       browserCurrent(session);
+      session.launch.opened();
       if (session.contextClosed) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
       session.worker = context.serviceWorkers().find(worker => worker.url().startsWith("chrome-extension://") && worker.url().endsWith("/src/relay-background.js"))
         ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().startsWith("chrome-extension://") && worker.url().endsWith("/src/relay-background.js"), timeout: options.closeProofMs });

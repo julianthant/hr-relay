@@ -1,5 +1,5 @@
 import { withOfflineMaintenance, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
 import { tmpdir } from 'node:os';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';

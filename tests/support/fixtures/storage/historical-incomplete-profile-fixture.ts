@@ -97,7 +97,7 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
 export const historicalIncompleteProfileFields = Object.freeze({ firstName: "Historical", lastName: "Fixture",
   email: "historical-fixture@ucsd.edu", password: "disposable-historical-fixture" });
 
-function assertClosedWorkspace(workspace: string): void {
+export function assertClosedWorkspace(workspace: string): void {
   const result = spawnSync("lsof", ["-nP", "+D", workspace, "-Fn"], { encoding: "utf8" });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 1, "historical fixture source closure unproved");
@@ -247,6 +247,7 @@ export async function createHistoricalIncompleteProfileFixture(options: { keyFor
       credentialKey: { keyId: head.key.keyId, binding: { installationId, profileId: draft.profileId },
         file: { device: keyStat.dev, inode: keyStat.ino, digest: createHash("sha256").update(keyBytes).digest("hex") } } }],
     duo: [{ profileId: draft.profileId, state: "never-initialized", revision: 0 }] });
+  unlinkSync(join(machineRoot, "browser-roots.json"));
   fixtureJson(join(machineRoot, "profile-registry-version.json"), { schemaVersion: 5 });
   const databasePath = join(profileRoot, "state.db");
   let archive: ReturnType<typeof historicalAuthorityArchive> | undefined;

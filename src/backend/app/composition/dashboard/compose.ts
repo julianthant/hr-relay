@@ -1,8 +1,9 @@
+import { assertPrivateProfilePath, createBrowserRoots } from "../../../storage/browser-roots.js";
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
 import { createAssistantWorkflowStarts } from "../../../assistant/workflow-start.js";
 import { readProfileDatabaseBinding } from "../../../storage/sqlite/profile-local-databases.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../storage/sqlite/migrations.js";
-import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
+import { profileBrowserClosure } from "../../../storage/browser-roots.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
@@ -38,7 +39,7 @@ import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-com
 import { withEmergencyTimelineWriter, importEmergencyFaults } from "../../../logs/emergency-faults.js";
 import { WorkerRetirementProofSchema, workerPoolMember } from "../../../../models/run/worker-slot.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
-import { deleteOwnedBrowserProfile, workerProfileDirectory } from "../../../runtime/browser/browser-session-factory.js";
+import { workerProfileDirectory } from "../../../runtime/browser/browser-session-factory.js";
 import type { DashboardBuildCommand } from "./build-identity.js";
 import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
 import { composeRuntimePreflight, type RuntimePreflight } from "../../preflight/runtime-admission.js";
@@ -70,8 +71,8 @@ import { ActorIdSchema } from "../../../../rules/identity/ids.js";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
 
 import { spawn as spawnChildProcess } from "node:child_process";
-import type { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
-import { readFileSync, realpathSync } from "node:fs";
+import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
+import { readFileSync, realpathSync, lstatSync, rmdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { z } from "zod";
@@ -196,6 +197,7 @@ export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.Pr
 const WORKER_BIRTH_TIMEOUT_MS = 60_000;
 
 export interface WorkerProcessControlInput {
+  readonly admission: RuntimeAdmission;
   readonly onExit: DashboardWorkerSupervisorDependencies["onExit"];
   readonly profileRoot: string;
   readonly database: AuthorityDatabase;
@@ -333,8 +335,8 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       return audit !== undefined && "kind" in audit && audit.kind === "run-lifecycle" && audit.result.kind === "worker-recovery";
     },
     assertStoppedLifetime: (member, lifetime) => { input.database.assertStoppedWorkerLifetime(member, lifetime); },
-    proveRetirement: member => {
-      return input.database.withAuthorityTransaction(repositories => {
+    proveRetirement: async (member, child) => {
+      const capture = () => input.database.withAuthorityTransaction(repositories => {
         const slot = repositories.workerSlots.get(member.workerId);
         const lease = repositories.workerLeases.get(member.workerId);
         const pending = repositories.workerControls.pending(`worker-pool:${member.workflowId}`);
@@ -349,14 +351,56 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
           || lease !== undefined && isLiveWorker(lease)
           || repositories.workerControls.browsers(member.workerId).some(browser => browser.health !== "closed")) throw new WorkerControlRefusal("worker-retirement-closure-not-proved");
         input.database.assertWorkerLifecycleRelease(member.workerId);
-        const profileDirectory = join(input.profileRoot, `w${String(slot.ordinal)}`);
-        for (const browser of repositories.workerControls.browsers(member.workerId)) {
+        const browsers = repositories.workerControls.browsers(member.workerId);
+        for (const browser of browsers) {
           if (browser.profileDirectory !== workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: slot.ordinal, system: browser.system })) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
         }
-        deleteOwnedBrowserProfile(input.profileRoot, profileDirectory);
-        return WorkerRetirementProofSchema.parse({ workerId: member.workerId, membershipRevision: member.membershipRevision,
-          checkedAt: input.clock.now().toISOString(), processStopped: true, browsersClosed: true, exclusive: true });
+        return { browsers, processId: lease?.processId, identity: canonicalJsonStringify({ slot, lease, pending, standing, browsers }) };
       });
+      const before = capture(), roots = createBrowserRoots(input.admission);
+      const directory = join(input.profileRoot, `w${String(member.ordinal)}`);
+      const retained = roots.inventory().roots.filter(row => row.profileId === input.admission.profileBinding.profileId && row.owner.kind === "worker" && row.owner.workerId === member.workerId);
+      const process = child?.nativeProcess, lifetime = input.admission.lifetime;
+      const requiresChild = before.processId !== undefined && before.processId !== null || process !== undefined
+        || retained.length !== 0 || lstatSync(directory, { throwIfNoEntry: false }) !== undefined;
+      const rootAssertions: Array<() => void> = [];
+      const assertCurrent = () => {
+        input.admission.assertProfileRuntime();
+        if (capture().identity !== before.identity) throw new WorkerControlRefusal("worker-retirement-owner-changed");
+        if (requiresChild) {
+          if (process === undefined || !(lifetime instanceof RuntimeLifetimeLock)
+            || before.processId !== undefined && before.processId !== null && process.pid !== before.processId) throw new WorkerControlRefusal("worker-retirement-child-close-unproved");
+          lifetime.assertOwnedChildClosed(process);
+        }
+        for (const assertRoot of rootAssertions) assertRoot();
+      };
+      if (requiresChild) {
+        if (process === undefined || !(lifetime instanceof RuntimeLifetimeLock)) throw new WorkerControlRefusal("worker-retirement-child-close-unproved");
+        await lifetime.awaitOwnedChildClosed(process);
+        assertCurrent();
+        for (const row of retained) {
+          const profileDirectory = join(input.admission.captureBrowserRegistryContext().machineRoot, row.directory);
+          const browser = before.browsers.find(browser => browser.profileDirectory === profileDirectory);
+          if (browser === undefined) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
+          const assertRoot = await roots.withUnused(profileDirectory, { clock: input.clock, scheduler: input.scheduler,
+            closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs, launchTimeoutMs: ConfigSchema.shape.timeouts.parse(undefined).sessionAcquireMs,
+            signal: new AbortController().signal }, async ({ remove, assertCurrent: assertRoot }) => {
+            assertCurrent();
+            remove();
+            return assertRoot;
+          },
+          { profileId: row.profileId, profileRoot: input.profileRoot, profileDirectory, credentialFingerprint: browser.signInFingerprint,
+            owner: { kind: "worker", database: input.database, workerId: member.workerId, stoppedProcess: process } });
+          rootAssertions.push(assertRoot);
+          assertCurrent();
+        }
+        assertCurrent();
+        assertPrivateProfilePath(input.profileRoot, directory);
+        if (lstatSync(directory, { throwIfNoEntry: false }) !== undefined) rmdirSync(directory);
+      }
+      assertCurrent();
+      return Object.freeze({ proof: WorkerRetirementProofSchema.parse({ workerId: member.workerId, membershipRevision: member.membershipRevision,
+        checkedAt: input.clock.now().toISOString(), processStopped: true, browsersClosed: true, exclusive: true }), assertCurrent });
     },
     onFault: input.onFault,
   });
@@ -378,13 +422,14 @@ function realWorkerProcessSpawner(lock: RuntimeLifetimeLock, nominatim: ReturnTy
     });
     nominatim.attach(child);
     let transfer: Promise<void>;
-    try { transfer = lock.share(child); }
+    try { transfer = lock.share(child); lock.observeOwnedChildClosure(child); }
     catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }
     void transfer.catch(error => {
       child.kill("SIGKILL");
       child.emit("error", error);
     });
     return Object.freeze({
+      nativeProcess: child,
       pid: child.pid,
       kill: (signal: "SIGTERM" | "SIGKILL"): boolean => child.kill(signal),
       onExit: (listener: (code: number | null, signal: string | null) => void): void => {
@@ -736,6 +781,7 @@ async function composeDashboardRuntimeStartup(
   profile.runtime.beginSupervisorConstruction(profile.token);
   const nominatim = createNominatimGeocodeAdapter({clock});
   const workerControl = composeWorkerProcessControl({
+    admission,
     onExit: (member, pid, valid) => profile.runtime.workerExited(admission, member, pid, valid),
     profileRoot: resolved.config.paths.browserProfileRoot,
     database,
@@ -1127,7 +1173,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       const browsers = join(machine.stateRoot, "browsers"), browserRoot = join(browsers, "onboarding");
       ensureChildDirectory(machine.stateRoot, browsers, "onboarding browsers", 0o700, 0o700);
       ensureChildDirectory(browsers, browserRoot, "onboarding browsers", 0o700, 0o700);
-      onboardingDuo = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: join(realpathSync(repoRoot), "fast-duo"),
+      onboardingDuo = createProfileOnboardingDuoProvider({ browserRoots: createBrowserRoots(machine), browserRoot, extensionDirectory: join(realpathSync(repoRoot), "fast-duo"),
         clock, closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs });
     }
     const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: facts,  onboardingDuo });

@@ -102,6 +102,7 @@ export function assertOfflineMaintenanceOperation(operation: OfflineMaintenanceO
 export class RuntimeLifetimeLock {
   readonly #server: Server;
   readonly #sourceFailures = new Set<unknown>();
+  readonly #childClosures = new WeakMap<ChildProcess, { closed: boolean; completion: Promise<void> }>();
   #closing: Promise<void> | undefined;
   readonly #port: number;
   readonly #children = new Set<ChildProcess>();
@@ -133,6 +134,10 @@ export class RuntimeLifetimeLock {
 
   assertHeld(): void {
     if (!this.#server.listening) throw new RuntimeLifetimeLockReleasedError();
+  }
+
+  assertSourceCustody(): void {
+    this.assertHeld(); assertSourceClosuresProved(this.#sourceFailures);
   }
 
   assertRuntimeAvailable(): void {
@@ -246,6 +251,27 @@ export class RuntimeLifetimeLock {
     });
   }
 
+  observeOwnedChildClosure(child: ChildProcess): void {
+    this.assertHeld(); this.assertSourceCustody();
+    if (!this.#children.has(child) || this.#childClosures.has(child)) throw new Error("runtime-lifetime-child-unowned");
+    const state = { closed: false, completion: Promise.resolve() };
+    state.completion = new Promise<void>(resolve => { child.once("close", () => { state.closed = true; resolve(); }); });
+    this.#childClosures.set(child, state);
+  }
+
+  async awaitOwnedChildClosed(child: ChildProcess): Promise<void> {
+    this.assertHeld(); this.assertSourceCustody();
+    const state = this.#childClosures.get(child);
+    if (state === undefined) throw new Error("runtime-lifetime-child-unowned");
+    await state.completion;
+    this.assertOwnedChildClosed(child);
+  }
+
+  assertOwnedChildClosed(child: ChildProcess): void {
+    this.assertHeld(); this.assertSourceCustody();
+    if (this.#childClosures.get(child)?.closed !== true || this.#children.has(child)) throw new Error("runtime-lifetime-child-close-unproved");
+  }
+
   async awaitOwnedChildrenClosed(): Promise<void> {
     this.assertHeld(); assertSourceClosuresProved(this.#sourceFailures);
     while (this.#children.size !== 0) await Promise.all([...this.#children].map(child => new Promise<void>(resolve => { child.once("close", () => resolve()); })));
@@ -320,6 +346,10 @@ export class WorkerRuntimeLifetimeLock {
 
   assertHeld(): void {
     if (!this.#server.listening) throw new RuntimeLifetimeLockReleasedError();
+  }
+
+  assertSourceCustody(): void {
+    this.assertHeld(); assertSourceClosuresProved(this.#sourceFailures);
   }
 
   assertRuntimeAvailable(): void {

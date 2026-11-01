@@ -1,3 +1,4 @@
+import { mockBrowserRootPort } from "../../../support/helpers/browser/browser-roots.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -8,7 +9,7 @@ import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { BrowserProfileAdmissionSchema, PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError, workerProfileDirectory, DuoProvisioningError, assertFastDuoReady, type BrowserSessionFactoryOptions } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import { captureFullPage } from "../../../../src/backend/runtime/browser/full-page-capture.js";
-import { BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
@@ -26,7 +27,7 @@ describe("browser current-owner fence", () => {
     signal: new AbortController().signal, duoCeremony: { withCeremony: async () => { throw new Error("fixture must not start a Duo ceremony"); } } } as const;
 
   function options(config: BrowserSessionFactoryOptions["config"], native: ReturnType<typeof fixtures.fakeLauncher>, assertCurrent: () => void): BrowserSessionFactoryOptions {
-    return { config: { ...config, paths: { ...config.paths, browserProfileRoot: config.paths.browserProfileRoot } }, isolation: rebuildRuntimeIsolation, clock, scheduler, newSessionId: () => sessionId,
+    return { ...mockBrowserRootPort(), config: { ...config, paths: { ...config.paths, browserProfileRoot: config.paths.browserProfileRoot } }, isolation: rebuildRuntimeIsolation, clock, scheduler, newSessionId: () => sessionId,
       protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }),
       slotOrdinal: () => 1, assertCurrent, bindings: fixtures.recordingBindings(), launcher: native.launcher,
       admitProfile: profile => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...profile, profileRevision: 1, resetRequired: false })) };
@@ -255,11 +256,15 @@ it("opens credential-free before a ceremony and refuses restored-page signing wi
 it("preserves both broker-stop and native-close failures and keeps the profile reserved", async () => {
   await withTempRuntime(async ({ config }) => {
     const broker = fixtureWorkflowWorker();
-    const stop = broker.owner.stop.bind(broker.owner); broker.owner.stop = () => { stop(); throw new Error("synthetic broker stop failure"); };
+    const stopFailure = new Error("synthetic broker stop failure");
+    const stop = broker.owner.stop.bind(broker.owner); broker.owner.stop = () => { stop(); throw stopFailure; };
     const harness = fakeLauncher({ serviceWorker: broker.worker, emitCloseEvent: false });
     const factory = factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings());
     const resource = await factory.open(input);
-    await assert.rejects(resource.close({ reason: "worker-stop" }), error => error instanceof BrowserSessionClosureUnprovedError && error.errors.length === 2);
+    await assert.rejects(resource.close({ reason: "worker-stop" }), error => error instanceof AuthoritySourceClosureUnprovedError
+      && error.errors.length === 2 && error.cause === error.errors[0]
+      && error.errors[0] instanceof AggregateError && error.errors[0].errors.length === 1 && error.errors[0].errors[0] === stopFailure
+      && error.errors[1] instanceof Error && error.errors[1].message === "ucpath browser session close (worker-stop) never emitted its context close event; closure cannot be proven");
     await assert.rejects(factory.open(input), /custody is unavailable/u);
   });
 });
@@ -275,8 +280,9 @@ it("bounds a nonsettling broker stop while still proving native context closure"
     const factory = factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings(), scheduler);
     const resource = await factory.open(input);
     const close = resource.close({ reason: "worker-stop" });
-    const rejected = assert.rejects(close, error => error instanceof BrowserSessionClosureUnprovedError
-      && error.errors.some(cause => cause instanceof Error && cause.message === "duo-broker-close-unproved"));
+    const rejected = assert.rejects(close, error => error instanceof AuthoritySourceClosureUnprovedError
+      && error.errors.length === 1 && error.cause === error.errors[0]
+      && error.errors[0] instanceof Error && error.errors[0].message === "duo-broker-close-unproved");
     assert.ok(deadlines[0]); deadlines[0]();
     await rejected; assert.equal(harness.contextClosed(), true);
     await assert.rejects(factory.open(input), /custody is unavailable/u);

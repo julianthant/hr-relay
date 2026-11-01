@@ -1,4 +1,4 @@
-import { profileBrowserClosure } from "../../../src/backend/runtime/browser/native-profile-probe.js";
+import { profileBrowserClosure } from "../../../src/backend/storage/browser-roots.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../support/helpers/admission-fixture.js";
 import { createProductionAssistantTools } from "../../../src/backend/assistant/tools.js";

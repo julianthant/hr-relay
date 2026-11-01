@@ -95,6 +95,8 @@ export function createWorkerSupervisionTestWorld() {
     /** `true` (default) publishes the child's lease synchronously at spawn. */
     publishLeaseOnSpawn?: boolean;
     onExit?: Parameters<typeof createDashboardWorkerProcessSupervisor>[0]["onExit"];
+    proveRetirement?: Parameters<typeof createDashboardWorkerProcessSupervisor>[0]["proveRetirement"];
+    browserControl?: Parameters<typeof createDashboardWorkerProcessSupervisor>[0]["browserControl"];
   }>): Harness {
     const clock = manualClock(new Date(NOW));
     const scheduler = new ManualScheduler(clock, 0);
@@ -150,7 +152,8 @@ export function createWorkerSupervisionTestWorld() {
         clock,
         scheduler,
         birth: { pollMs: 250, timeoutMs: 10_000 },
-        proveRetirement: member => { throw new Error(`fixture native profile retirement not available: ${member.workerId}`); },
+        proveRetirement: overrides?.proveRetirement ?? (member => { throw new Error(`fixture native profile retirement not available: ${member.workerId}`); }),
+        ...(overrides?.browserControl === undefined ? {} : { browserControl: overrides.browserControl }),
         onFault: (error) => {
           faults.push(error);
         },
