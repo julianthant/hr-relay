@@ -30,7 +30,7 @@ export async function prepareTestProcesses(directory: string): Promise<string> {
     if (source === undefined) throw new Error(`test-process-precompile-output-unknown: ${output.path}`);
     const { file, contents } = source;
     const hash = createHash("sha256").update(file.endsWith(".tsx") ? "tsx" : "ts")
-      .update(contents).digest("hex");
+      .update("\0").update(contents).digest("hex");
     writeFileSync(join(cache, `${hash}.js`), output.contents, { mode: 0o600 });
     if (join(root, file) === fileURLToPath(new URL("./compiled-process-loader.ts", import.meta.url))) {
       writeFileSync(join(cache, "test-process-loader.mjs"), output.contents, { mode: 0o600 });

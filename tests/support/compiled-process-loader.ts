@@ -27,7 +27,7 @@ registerHooks({
     if (!url.startsWith("file:") || !/\.tsx?$/u.test(new URL(url).pathname)) return nextLoad(url, context);
     const source = readFileSync(new URL(url), "utf8");
     const loader = new URL(url).pathname.endsWith(".tsx") ? "tsx" : "ts";
-    const hash = createHash("sha256").update(loader).update(source).digest("hex");
+    const hash = createHash("sha256").update(loader).update("\0").update(source).digest("hex");
     const compiled = join(cache, `${hash}.js`);
     if (!existsSync(compiled)) {
       // Test-created sources join the same content cache without reusing stale scratch bytes.
