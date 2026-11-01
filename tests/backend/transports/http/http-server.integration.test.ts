@@ -550,7 +550,8 @@ afterEach(_afterEachFixture0);
       const artifacts = createContentAddressedArtifactWriter({
         admission: RuntimeAdmission.syntheticRoots(join_m0(workspace, ".tracker/data"), join_m0(workspace, ".tracker/data/artifacts")),
       });
-      const ref = await artifacts.put(Buffer.alloc(2 * 1024 * 1024, 0x5a), {
+      // Larger than loopback send plus receive buffers, so the server must wait for drain when the client goes away.
+      const ref = await artifacts.put(Buffer.alloc(32 * 1024 * 1024, 0x5a), {
         mediaType: "application/octet-stream",
       });
       const reader = createServerVerifiedArtifactReader({
