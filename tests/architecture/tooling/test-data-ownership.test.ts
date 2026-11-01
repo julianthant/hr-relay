@@ -83,7 +83,7 @@ const DEFERRED_CAPABILITIES = [
 const PROCESS_ENTRYPOINTS = [
   { file: "failure-resolution-peer.ts", consumers: ["tests/support/helpers/failure-resolution/fixtures.ts"] },
   { file: 'child-execution-crash-worker.ts', consumers: ['tests/backend/app/composition/worker-compose.child-crash.integration.test.ts'] },
-  { file: 'duo-credential-store-worker.ts', consumers: ['tests/backend/storage/configuration/duo-credential-store.integration.test.ts'] },
+  { file: 'duo-credential-store-worker.ts', consumers: ['tests/backend/storage/configuration/duo-credential-store.integration.test.ts', 'tests/backend/storage/configuration/duo-signing.integration.test.ts'] },
   { file: 'storage-restore-attempt-worker.ts', consumers: ['tests/support/helpers/backend/storage-restore-world.ts'] },
   { file: "worker-composition-child.ts", consumers: ["tests/support/helpers/backend/worker-composition-world.ts"] },
   { file: "verification-reservation-owner.ts", consumers: ["tests/backend/runs/lifecycle/startup-crash-recovery.browser-login-recovery.integration.test.ts"] },

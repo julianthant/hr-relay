@@ -30,7 +30,7 @@ export function preflightFaultCases() {
     const variants = dependency.secretNames !== undefined ? dependency.secretNames
       : system !== undefined ? system.routes
       : feature !== undefined ? PROVIDER_ADAPTER_SPECS.filter(provider=>provider.capabilities.includes(feature.providerCapability)).map(provider=>provider.provider)
-      : dependency.id === "browser.duo-extension" ? ["extension", "duoWebauthnCredential"] : [dependency.id];
+      : dependency.id === "browser.duo-extension" ? ["extension", "backend-signer"] : [dependency.id];
     return variants.map(variant=>({dependency, variant}));
   });
 }
@@ -59,9 +59,14 @@ async function inject(f: Awaited<ReturnType<typeof runtimeFixture>>, entry: Case
     syncBuiltinESMExports();
     return () => { access.mockRestore(); syncBuiltinESMExports(); assert.equal(injected, true); f.admission.assertLive(); };
   }
+  if (id === "browser.duo-extension" && entry.variant === "backend-signer") {
+    const source = f.input.duo; assert.ok(source);
+    Reflect.deleteProperty(f.input, "duo");
+    return () => { Reflect.set(f.input, "duo", source); };
+  }
   if (id === "browser.chromium" || id === "browser.duo-extension" || id === "path.artifact") {
     const path = id === "browser.chromium" ? f.executable : id === "path.artifact" ? f.artifactRoot
-      : entry.variant === "extension" ? join(f.input.config.paths.duoExtensionDir,"workflow-manifest.json") : f.input.config.paths.duoCredential;
+      : join(f.input.config.paths.duoExtensionDir,"workflow-manifest.json");
     renameSync(path,`${path}.parked`); return()=>{renameSync(`${path}.parked`,path);};
   }
   if (id === "config.resolved") {

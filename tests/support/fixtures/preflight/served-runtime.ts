@@ -32,7 +32,7 @@ export async function servedPreflightRuntime(scene: SetupScene) {
   if(scene==="browser-missing")renameSync(f.executable,`${f.executable}.parked`);
   if(scene==="secret-missing")f.setProtected(populatedProtectedRecord("ucpathPassword"));
   if(scene==="optional-warning")Reflect.set(f.input.providerAvailability,"nominatim/geocode.nominatim",false);
-  const runtime=composeRuntimePreflight({admission:f.admission,credentials:f.credentials,database,clock:f.clock,repoRoot:f.root,isolation:rebuildRuntimeIsolation,
+  const runtime=composeRuntimePreflight({admission:f.admission,credentials:f.credentials,duo:f.duo,database,clock:f.clock,repoRoot:f.root,isolation:rebuildRuntimeIsolation,
     descriptors:{resolve:id=>id===personLookupDescriptor.id?personLookupDescriptor:undefined},descriptorSetHash:FIXTURE_DESCRIPTOR_HASH,protectedSecrets:f.input.protectedSecrets,environment:{},
     runnerFactory:input=>createRuntimePreflightRunners({...input,dashboard:f.input.dashboard,browserExecutablePath:()=>f.executable})});
   const scope={...identity,descriptorFingerprint:FIXTURE_DESCRIPTOR_HASH,requestedCapabilities:f.input.scope.requestedCapabilities};
