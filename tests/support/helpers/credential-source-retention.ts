@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
@@ -219,7 +220,6 @@ export async function runLogoutSettlementCase(boundary: LogoutSettlementCase): P
         .parse(JSON.parse(readFileSync(marker, "utf8")));
       assert.equal(receipt.nonce, nonce); assert.equal(receipt.profileId, profileId); assert.equal(receipt.operationId, sourceOperationId); assert.equal(receipt.settlement.processId, faultPid);
       if (boundary === "third-image") {
-        const { DatabaseSync } = await import("node:sqlite");
         const database = new DatabaseSync(profile.path);
         try { assert.equal(database.prepare("UPDATE database_states SET updated_at=? WHERE id=1").run("2026-10-21T12:02:00.000Z").changes, 1); }
         finally { database.close(); }
