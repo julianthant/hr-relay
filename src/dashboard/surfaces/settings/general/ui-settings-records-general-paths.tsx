@@ -97,7 +97,7 @@ function PathsContent({ editor }: { editor: Editor }) {
     <BodySection title="Folders"><FormGroup label="Folders">{editor.editor.state === "failed" ? <div className="hub-settings-row"><div><div className="hub-row-label">Couldn’t load your folders</div><span className="hub-row-note">Your saved folders are unchanged.</span></div><Button variant="secondary" onClick={editor.reload}>Try again</Button></div> : paths(["paths.onboardingDocsDir", "paths.downloadsDir", "paths.reportsDir"])}</FormGroup></BodySection>
     <FixedStorageRows editor={editor.relocationEditor} />
     <BodySection title="Backup and restore"><BackupRestoreControls state="unavailable" /></BodySection>
-    {(loaded || editor.editor.state === "loading") && <BodySection title="Workflow locations"><FormGroup label="Workflow locations">{paths(["paths.browserProfileRoot", "paths.duoCredential", "paths.duoExtensionDir", "paths.i9CheckTrackerPath"])}</FormGroup></BodySection>}
+    {(loaded || editor.editor.state === "loading") && <BodySection title="Workflow locations"><FormGroup label="Workflow locations">{paths(["paths.browserProfileRoot", "paths.duoExtensionDir", "paths.i9CheckTrackerPath"])}</FormGroup></BodySection>}
   </>;
 }
 
