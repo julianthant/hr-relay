@@ -44,6 +44,12 @@
       - heading "Storage checks" [level=1]
       - paragraph: Check saved data.
       - button "Run checks again"
+      - heading "Backup and Restore" [level=2]
+      - group "Backup and restore":
+        - text: Back up Backups are unavailable. Try again when connected.
+        - button "Back up now" [disabled]
+        - text: Restore Restore is unavailable. Try again when connected.
+        - button "Restore…" [disabled]
       - heading "Status" [level=2]
       - group "Data store summary":
         - img "Done"

@@ -28,7 +28,7 @@
       - /placeholder: Ask Relay…
     - group "Message controls":
       - button "Add files"
-      - button "Ask only before submits"
+      - button "Ask before every action"
       - 'button "Model: GPT-6.1 Sol"': GPT-6.1 Sol
       - 'button "Thinking effort: Medium"': Medium
       - button "Voice input"

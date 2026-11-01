@@ -22,7 +22,8 @@ export interface RunBrowserScreenshotCapture {
     descriptorFingerprint: string;
     configFingerprint: string;
     system: string;
-    trigger: Readonly<{ kind: "task-point"; nodeId: string; attempt: number }> | Readonly<{ kind: "lease-end"; outcome: "succeeded" | "failed" }>;
+    trigger: Readonly<{ kind: "task-point"; nodeId: string; attempt: number; boundary?: "step" | "before-submit" | "after-submit" }> | Readonly<{ kind: "lease-end"; outcome: "succeeded" | "failed" }>;
     screenshot: BrowserScreenshotEvidence;
+    sampleLabels?: readonly string[];
   }>): Promise<void>;
 }

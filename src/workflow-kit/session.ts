@@ -56,7 +56,7 @@ export interface WorkerBrowserResource {
   readonly authentication: BrowserAuthenticationHandle;
   readonly driver: BrowserDriver;
   /** A viewport PNG from the resource's owned page; never a raw Page or path. */
-  readonly screenshot?: () => Promise<BrowserScreenshotEvidence>;
+  readonly screenshot?: (sampleLabels?: readonly string[]) => Promise<BrowserScreenshotEvidence>;
   readonly beginDiagnostics?: () => void;
   readonly endDiagnostics?: () => void;
   readonly reset: (input: Readonly<{ signal: AbortSignal }>) => Promise<void>;

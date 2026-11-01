@@ -9,9 +9,9 @@ import { AuthorityBackupService as RealAuthorityBackupService, verifyBackupManif
 import { OfflineAuthorityRestoreService as RealOfflineAuthorityRestoreService } from "../../../src/backend/storage/sqlite/offline-restore.js";
 import { backupStoppedAuthority as realBackupStoppedAuthority, upgradeStorage as realUpgradeStorage } from "../../../src/backend/storage/maintenance/upgrade.js";
 import { doctorAuthorityStorage as realDoctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
-import { composeStorageCommand as realComposeStorageCommand } from "../../../src/backend/app/composition/storage-compose.js";
+import type { composeStorageCommand as realComposeStorageCommand } from "../../../src/backend/app/composition/storage-compose.js";
 import { createCredentialStore as realCreateCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
-import { composeTestDataCommand as realComposeTestDataCommand } from "../../../src/backend/app/test-data/compose.js";
+import type { composeTestDataCommand as realComposeTestDataCommand } from "../../../src/backend/app/test-data/compose.js";
 import { AuthorityBootStore as RealAuthorityBootStore } from "../../../src/backend/storage/sqlite/authority-boot.js";
 import { AuthorityHealthPreflightRunner as RealAuthorityHealthPreflightRunner } from "../../../src/backend/storage/sqlite/authority-health-runner.js";
 
@@ -22,9 +22,8 @@ export * from "../../../src/backend/storage/sqlite/offline-restore.js";
 export * from "../../../src/backend/storage/sqlite/storage-doctor.js";
 export * from "../../../src/backend/storage/sqlite/storage-recovery-status.js";
 export * from "../../../src/backend/storage/maintenance/upgrade.js";
-export * from "../../../src/backend/app/composition/storage-compose.js";
 export * from "../../../src/backend/storage/configuration/credential-store.js";
-export * from "../../../src/backend/app/test-data/compose.js";
+export type { TestDataComposeDependencies } from "../../../src/backend/app/test-data/compose.js";
 export * from "../../../src/backend/storage/sqlite/authority-boot.js";
 export * from "../../../src/backend/storage/sqlite/authority-health-runner.js";
 export { AuthorityDatabase } from "./synthetic-database-admission.js";
@@ -121,6 +120,7 @@ export class AuthorityHealthPreflightRunner extends RealAuthorityHealthPreflight
 export async function composeStorageCommand(isolation: Parameters<typeof realComposeStorageCommand>[0],
   args: Parameters<typeof realComposeStorageCommand>[1], clock?: Parameters<typeof realComposeStorageCommand>[2],
   repoRoot: string = process.cwd()) {
+  const { composeStorageCommand: realComposeStorageCommand } = await import("../../../src/backend/app/composition/storage-compose.js");
   const profile = findProfileFixtureInWorkspace(repoRoot);
   return realComposeStorageCommand(isolation,args,clock,repoRoot,profile ?? syntheticStateRoot(resolve(repoRoot,isolation.stateRoot)));
 }
@@ -135,5 +135,6 @@ export function createCredentialStore(options: Omit<Parameters<typeof realCreate
 export async function composeTestDataCommand(isolation: Parameters<typeof realComposeTestDataCommand>[1],
   args: Parameters<typeof realComposeTestDataCommand>[2], root: Parameters<typeof realComposeTestDataCommand>[3],
   dependencies: Parameters<typeof realComposeTestDataCommand>[4]) {
+  const { composeTestDataCommand: realComposeTestDataCommand } = await import("../../../src/backend/app/test-data/compose.js");
   return realComposeTestDataCommand(syntheticStateRoot(resolve(root,isolation.stateRoot)),isolation,args,root,dependencies);
 }

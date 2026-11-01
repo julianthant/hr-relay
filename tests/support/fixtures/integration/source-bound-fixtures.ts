@@ -116,7 +116,7 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
     assert.equal(claimed.envelope.runId, run.envelope.runId);
     return withBoundRunConfigFingerprint(manager, claimed.envelope.configFingerprint, () => executeClaimedRun({ ...common, descriptor: registeredDescriptor, writeSequencer: sequencer }, {
       run: claimed, claim: { workerId: WorkerIdSchema.parse(slot.workerId), claimGeneration: claimed.claimGeneration }, signal: new AbortController().signal,
-    }));
+    }), claimed.envelope.browserMode, { runId: claimed.envelope.runId, descriptorFingerprint: claimed.envelope.contractFingerprint });
   }
   function fresh(run: RunRecord) { const value = database.authority.runs.get(run.envelope.runId); assert.ok(value); return value; }
   let disposeAttempted = false, disposeFailure: Error | undefined;

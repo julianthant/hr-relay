@@ -1,6 +1,6 @@
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { afterAll, afterEach,describe,it } from "vitest";
 import {
 evaluateWriteResolutionBinding,
 requireWriteResolutionBinding,
@@ -39,7 +39,10 @@ writeFixtureDescriptorWithMovedKey,
 writeFixtureQueuedRun,
 writeFixtureSaveDescriptorAfterUnrelatedEdit,
 } from "../../../support/fixtures/write-sequencer-fixtures.js";
-import { openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
+import { openBoundDatabaseFixture, createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 
 const COMMIT_TASK_ID = "ucpath/submit-write-fixture";
 
@@ -50,7 +53,7 @@ afterEach(async () => {
 
 
 async function repositories(): Promise<WriteBindingRepositories> {
-  const opened = await openBoundDatabaseFixture("write-binding-test", manualClock(new Date(WRITE_FIXTURE_NOW)));
+  const opened = await openBoundDatabaseFixture("write-binding-test", manualClock(new Date(WRITE_FIXTURE_NOW)), undefined, undefined, undefined, undefined, profileFixtures.create);
   disposers.push(async () => await opened.close());
   return opened.database.authority;
 }

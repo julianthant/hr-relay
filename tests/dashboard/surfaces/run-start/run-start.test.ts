@@ -218,7 +218,7 @@ describe("keeps optional steps and removes only the per-start destination", () =
 describe("browser presentation is an immutable Run Options choice", () => {
   afterEach(cleanup);
 
-  it("offers both modes, defaults to headed with screenshots on, and submits an explicit override", async () => {
+  it("offers both modes, defaults to headed with required screenshots, and submits an explicit browser override", async () => {
     let submitted: unknown;
     const dialog = await openDialog(stubClient({ submitStartPlan: async (input) => {
       submitted = input;
@@ -230,15 +230,14 @@ describe("browser presentation is an immutable Run Options choice", () => {
     assert.deepEqual(modes.map(mode => mode.value), ["headed", "headless"]);
     assert.equal(modes.find(mode => mode.value === "headed")?.checked, true);
     const screenshotControl = buttons().find(button => buttonName(button) === "Capture screenshots");
-    assert.ok(screenshotControl !== undefined, "Options drew no screenshot capture control");
-    assert.equal(screenshotControl.getAttribute("data-state"), "checked", "screenshot capture must default on");
+    assert.equal(screenshotControl, undefined, "Required screenshots must not have an off control");
+    assert.ok(dialog.text().includes("Always on"));
     await dialog.chooseBrowserMode("headless");
-    await dialog.press("Capture screenshots");
     await dialog.press("Continue");
     const request = StartPlanSubmissionSchema.parse(submitted);
     assert.equal(request.browserMode, "headless");
-    assert.equal(request.captureBrowserScreenshots, false);
-    assert.ok(dialog.text().includes("Headless · screenshots off"));
+    assert.equal(request.captureBrowserScreenshots, true);
+    assert.ok(dialog.text().includes("Headless · screenshots required"));
     assert.ok([...document.querySelectorAll("dt")].some(label => label.textContent === "Browser"));
   });
 });

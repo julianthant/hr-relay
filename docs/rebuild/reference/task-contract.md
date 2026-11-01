@@ -469,7 +469,12 @@ The would-prepare arm stages the page and observes the subject under the retaine
 Refused or uncertain real-path conditions also refuse preview.
 The preview creates no write intent or fence and invokes no commit implementation.
 
-The executor ends with a preview result bound to its preview schema.
+The executor continues to later transactions and accounts for unavailable dependencies explicitly.
+A transaction's optional `previewBind` supplies schema-checked prepare/commit inputs plus labelled
+sample provenance through the workflow scope. It runs only for a dry-run envelope. A sample is a
+preview input, never a completed transaction output, receipt or gate decision. Sample-dependent
+preparations do not claim an authoritative probe of the synthetic target and capture the label
+alongside the form. The final preview binds its own schema and actual read evidence.
 It does not call the authored terminal-result derivation or fabricate a completed transaction output.
 `externalCommit: "none"` distinguishes the preview from an HR write.
 [Workflow model](workflow-model.md) owns the terminal preview shape and run outcome.
@@ -520,17 +525,22 @@ There is no import prepare or commit implementation to use as an example.
 ### 9.3 Instrumentation boundary
 
 The runtime owns spans, observed data, and failure diagnostics. §4 owns confirmed task actions.
-Browser read implementations declare `screenshots: "task"` to own their successful captures through
-`ctx.captureScreenshot(): Promise<void>`. This replaces generic successful-lease capture for those
-implementations. Task-point capture runs only when the envelope sets `captureBrowserScreenshots`
-to true; otherwise the call resolves without an action. The capability exposes no bytes or paths
-and cannot outlive its lease. An unavailable or failed capture logs one warning with its reason and
-the task continues without a Screenshot action. Lease expiry or cancellation, undeclared ownership and
-Screenshot action persistence failures use `BROWSER_SCREENSHOT_CAPTURE_FAILED`.
+Every declared browser task boundary requires capture before its checkpoint. Browser read
+implementations can declare `screenshots: "task"` to place captures through
+`ctx.captureScreenshot(): Promise<void>` at their own boundaries. Other browser tasks capture
+when they finish. The capability exposes no bytes or paths and cannot outlive its lease.
+Required captures run regardless of `captureBrowserScreenshots`. Unavailable capture is retained
+explicitly where possible, logs a warning, and fails with `BROWSER_SCREENSHOT_CAPTURE_FAILED`.
+A failed capture or Screenshot action persistence prevents the read checkpoint.
 
-The worker persists task-point screenshots through `RunBrowserScreenshotCapture` as restricted
-diagnostic attachments. Logs joins each Screenshot action to its verified artifact reference.
-Existing failed-lease diagnostic screenshots remain independent of the option.
+Transactions capture before the durable fence and after the commit callback settles. Pre-submit
+capture failure prevents both fence and click. Post-submit capture failure still reaches saved-effect
+verification: valid proof settles the write, and unknown proof parks the original attempt without
+another click. Captures retain the node, run attempt, physical browser session, and boundary.
+
+The worker persists screenshots through `RunBrowserScreenshotCapture` as restricted diagnostic
+attachments. Logs joins each Screenshot action to its verified artifact reference.
+Failed-lease diagnostic screenshots remain separate from required workflow captures.
 `RunDiagnosticCapture.captureForFailure` separately associates diagnostic bundles with failure records.
 
 ## 10. Not built yet

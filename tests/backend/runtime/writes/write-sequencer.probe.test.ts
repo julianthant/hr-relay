@@ -22,7 +22,7 @@ async function read(transactionId: string, patch: Record<string, unknown> = {}, 
     log: recordingLogger().log, sessions: { withDriver: async (need, _instance, _signal, operation) => {
       assert.equal(need.access, "read");
       return operation(ignoreTarget ? { ...driver, scanTerminationTransactions: async () => UcpathTransactionScanSchema.parse({
-        state: "read", emplId: target.emplId, rows: [{ ...row, ...patch }], scannedRowCount: 1, observedAt: now }) } : driver);
+        state: "read", emplId: target.emplId, rows: [{ ...row, ...patch }], scannedRowCount: 1, observedAt: now }) } : driver, async () => { throw new Error("recheck does not request capture"); });
     } } }, { commitContract: UcpathCreateTermination, commitInput: target, transactionId, instance: "test", signal: new AbortController().signal });
 }
 

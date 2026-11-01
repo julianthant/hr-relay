@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { z } from "zod";
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -129,7 +130,7 @@ import { syncBuiltinESMExports } from "node:module";
       rmSync(directory, { recursive: true, force: true });
     }
   `;
-  const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script, String(snapshotEnabled)],
+  const child = spawnSync(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", script, String(snapshotEnabled)],
     { cwd: process.cwd(), encoding: "utf8" });
   assert.equal(child.signal, null, child.stderr);
   assert.equal(child.status, 0, child.stderr);

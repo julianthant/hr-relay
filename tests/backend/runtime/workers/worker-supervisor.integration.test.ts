@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { assertRuntimeLifetimeHeld } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { once } from "node:events";
@@ -151,7 +152,7 @@ it("retires a real worker only after its opened Chromium profile closes, custody
   };
   try {
     runtime = await composeDashboardRuntime({ lifetimeLock: profile.lifetime, ...profile.dashboardInput, preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, repoRoot: root,
-      workerProcess: { launch: { environment: {}, command: process.execPath, prefixArgs: ["--import", "tsx", join_m1(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), root], cwd: process.cwd() }, spawn: spawnWorker, birth: { pollMs: 25, timeoutMs: 20_000 }, faultSink: line => output.push(line) } });
+      workerProcess: { launch: { environment: {}, command: process.execPath, prefixArgs: ["--import", testProcessImport(), join_m1(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), root], cwd: process.cwd() }, spawn: spawnWorker, birth: { pollMs: 25, timeoutMs: 20_000 }, faultSink: line => output.push(line) } });
     const duoDirectory = join_m1(root, `physical-duo-${randomUUID()}`);
     mkdirSync(duoDirectory, { mode: 0o700 });
     const duoCredential = join_m1(duoDirectory, 'credential.json');

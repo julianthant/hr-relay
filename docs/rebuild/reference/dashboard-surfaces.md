@@ -209,8 +209,8 @@ Rerun prefills safe source identity fields in Values, using the declared input p
 values and identities that no longer satisfy the current input stay uncopied.
 
 Options show Priority as Interactive or Bulk, Browser mode as Headed or Headless, Dry run where
-declared, Capture screenshots and workflow-specific fields. New/reset dashboard
-launches start with Dry run off, Headed browser mode, and captures on. The operator explicitly
+declared, a required-screenshots notice, and workflow-specific fields. New/reset dashboard
+launches start with Dry run off and Headed browser mode. Workflow captures cannot be turned off. The operator explicitly
 chooses other values. Interactive work has priority over Bulk background batches; this is not a
 promise of immediate execution or preemption. Fixed facts use the shared field/grid treatment with
 visible reasons. A workflow with no flags has no empty flag group.
@@ -335,6 +335,15 @@ component. The explicit parity composition supplies approved mock conversations 
 scenes; product failures never select those producers. Chat titles and drafts are local to the mounted
 shell.
 
+For a currently selected served Queue run, send `start selected workflow` to propose the same
+workflow for that run's canonical subject input. The model receives a request-scoped opaque reference,
+workflow ID and execution mode; subject values remain local. Read-only graphs use Live read, and
+transaction graphs require supported dry-run traversal. Protected inputs and stale definitions refuse.
+The existing proposal card shows the selected subject and mode. Confirm checks the selected run/version,
+person/session, current Settings, canonical plan, grant, revision and expiry, then submits through the
+same command service as Run, including worker capacity. Cancel starts nothing. Lost dispatch remains
+unknown and cannot be automatically retried. Changing the selection invalidates the pending card.
+
 ## Settings
 
 Settings is a full-height takeover with its own navigation rail, search, guarded Back to dashboard,
@@ -359,11 +368,15 @@ renderer. Archive and UI catalog requests show removal notices, with a guarded r
 
 ### General and ChatGPT account
 
-Assistant permission uses the canonical Settings/grant authority; a grant alone does not verify
+Every assistant mutation requires an explicit Confirm. Settings grants enable proposals and never authorize automatic changes. Retired permission modes cannot be selected or granted; their terminal history stays inert. A grant alone does not verify
 account capability. Browser dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
 draft validation, autosave, uncertainty and readback. Explicit parity previews keep their local controls.
 
-General composes appearance, ordinary General fields, annual dates, and ChatGPT account.
+General composes appearance, ordinary General fields, annual dates, ChatGPT account, and Delete account.
+Delete account presents ready, explicit confirmation, deleting, and unavailable states. Deletion has
+no blocked presentation. Until the person deletion owner supplies authority and a callback, the served
+control is unavailable.
+The isolated `delete-account` parity fixture exercises mock state without reading or erasing data.
 Shared date controls display `MM/DD/YYYY` and preserve partial input during unrelated renders.
 Provider budget/model and API-key controls are absent. Browser viewport is developer configuration,
 not an end-user field.
@@ -390,10 +403,10 @@ value-free toast; refusal uses danger and conflict/uncertainty uses warning. Sav
 after toast expiry. Blur never retries a failed/uncertain attempt. Text fields keep native undo,
 while unsaved date/folder choices revert within their field.
 
-Paths retains the native picker and reviewed relocation plan. Persisted and active roots are not
-interchangeable. Leaving an unconfirmed plan states that it may be recorded and that recorded intent
-does not imply folders moved. Rendering Paths does not execute relocation. Performance and Routes
-retain their existing metadata/authority, and missing served values remain unavailable.
+Paths retains native pickers for ordinary document, download, and report folders. Runtime state
+and evidence roots are read-only; no relocation action is offered. Recorded pending plans are
+explicitly unapplied. Performance and Routes retain their existing metadata/authority, and missing
+served values remain unavailable.
 
 ### Preflight and storage
 
@@ -516,8 +529,7 @@ withheld values are named rather than guessed. Long source IDs/paths remain read
 on clipped chips.
 
 Current fixtures are not compiler authority or executable registration. Served wiring generates the
-timeline from each registered backend definition and preserves existing components. The retained
-Explorer query/validate command seam does not make local source edits or new-workflow authoring served.
+timeline from each registered backend definition and preserves existing components. Explorer exposes only its generated read-only query; no edit, override, validation or source-authoring command exists. Explorer editor records and their command/audit history are removed by the forward storage migration.
 
 ## Removed routes and specimen
 
@@ -561,7 +573,7 @@ operator messages, notification text, subject identifiers and source-file bodies
 or ambiguous input refuses before inference. The trusted local projection also binds whether a
 request permits a help answer or requires canonical action completion. A notification action with
 only model text and no canonical call refuses; it cannot report an execution from model prose. Notification commands resolve the reference back to the
-same actor and complete sorted current inbox membership and versions, then use the existing permission and once-consumable command door.
+same actor and complete sorted current inbox membership and versions, then wait for operator confirmation before using the once-consumable command door.
 Plural actions use one opaque collection reference and exact matching count. Inbox Read all uses the
 same canonical collection command. The kernel checks the whole membership in its transaction before
 any row update; pinned history warnings remain unchanged. Counts describe current native notices,
@@ -595,3 +607,55 @@ supply the existing model policy with synchronous currentness; without it the se
 transaction-free capability canary remain required before the assistant is usable. Subject actions,
 freeform or protected changes, unsupported owners and remaining served actions require their current
 operator interface until their canonical assistant binding is implemented.
+
+### Run pause presentation
+
+Logs exposes per-run Pause and Resume. The queue header has only Pause all; the app quit path opens
+the explicit “Pause all and quit?” confirmation. Requested pause/resume states stay pending until the
+owner supplies recorded completion. No submit is interrupted. Unavailable authority disables
+the controls; unknown closure cannot show a completed pause or clean shutdown. The isolated
+`run-pause` parity fixture changes mock state only. Backend lifecycle wiring is separate.
+
+### UCPath found transactions presentation
+
+The in-app found table displays transaction, person/EID, type, effective date, submission time,
+match quality, verified detail, list completeness, and authority. Submitted requires a selected
+exact row with verified detail and authoritative acquisition. Not submitted requires a complete authoritative list containing
+no exact or ambiguous match. Check again requests confirmation readback only; a typed transaction
+number supplies no proof. Pending decisions keep the original outcome unknown. The isolated
+`ucpath-found` fixture is synthetic; backend acquisition and resolution wiring are separate.
+
+### Full dry-run preview presentation
+
+Full-preview accounting counts exercised applicable steps, including submit rehearsals where no click occurs.
+The result card shows verified-person, checked-field, and sample-transaction facts; only Not clicked, Unavailable,
+and Skipped exceptions carry chips. Preview values carry a Sample tag with a Dry-run sample accessible name; they confer no real-run authority. The `dry-run` parity fixture demonstrates complete
+and partial exercise without executing workflows. Executor and served projection wiring are separate.
+
+### Required capture presentation
+
+Run and Rerun have no capture-off choice. Options show a locked “Always on” Screenshots row; browser
+summary facts say “screenshots required.” The shared capture notice distinguishes a pre-submit
+capture failure (no click) from post-submit missing evidence with either independently proved or
+unknown write outcome. The `required-captures` fixture is presentation-only. Execution enforcement
+and served per-step capture projection remain owned by the workflow capture implementation. Submit captures use
+equal cards with captions below the image; missing captures carry a short reason and independently proved
+outcomes retain their confirmation row.
+
+### Fixed app-data and maintenance presentation
+
+Paths shows runtime state and evidence roots read-only; there is no folder relocation picker,
+plan action, or shell-command copy control. Copy buttons copy the displayed paths. Existing pending plans are explicitly unapplied.
+Folders groups the existing document, download, and report pickers. Backup and restore sits below App data. Backup and Restore have unavailable, pending,
+verified-backup, blocked, and confirmation presentations. Restore never implies credentials roll
+back or unresolved writes disappear. The `fixed-backup` fixture has no file effects. Maintenance
+authority, stopped restore, and verified backup selection are wired separately.
+
+### Two-method Duo sign-up presentation
+
+Sign-up presents Touch ID and Security key as distinct required verified enrollments at
+`duo.ucpath.edu`. Hardware-unavailable presentation identifies Chromium’s virtual platform
+authenticator for Touch ID; it never substitutes for Security key. Finish stays unavailable until
+both enrollments are verified. Finishing and cancellation stay pending until their owners settle.
+Unknown enrollment is labelled Unknown, not failed or completed. The `duo-signup` fixture is
+synthetic; actual enrollment, owned-resource closure, and account publication are separate.

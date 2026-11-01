@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { default as assert } from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -143,7 +144,7 @@ describe("task, store, session, provider, and artifact seams", () => {
     try {
       const child = spawn(
         process.execPath,
-        ["--import", "tsx", "--input-type=module", "--eval", childSource],
+        ["--import", testProcessImport(), "--input-type=module", "--eval", childSource],
         { stdio: ["ignore", "ignore", "pipe"] },
       );
       let stderr = "";

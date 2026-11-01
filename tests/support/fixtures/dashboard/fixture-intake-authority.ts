@@ -7,7 +7,7 @@ import { createRunQueueProjection } from "../../../../src/backend/runs/projectio
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { registerQueueRoutes } from "../../../../src/backend/transports/http/routes/queue.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
-import { createBoundProfileFixture } from "../../helpers/admission-fixture.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../../helpers/admission-fixture.js";
 /** Disposable production Intake pipeline. Surrounding dashboard reads use the named fixture server. */
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
@@ -34,8 +34,8 @@ import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from ".
 import type { ParityBundleProof } from "../../../parity/helpers/bundle.js";
 
 export const INTAKE_CSV = "Employee ID#,Effective Date,Dept\n10456712,07/01/2026,Housing\n10-4567,07/01/2026,Housing\n10998801,07/01/2026,Student Affairs\n";
-export async function createIntakeAuthority() {
-  const profile = await createBoundProfileFixture();
+export async function createIntakeAuthority(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  const profile = await profileFixture();
   const root = profile.stateRoot, path = profile.path, artifactRoot = profile.admission.artifactRoot;
   const clock = manualClock(new Date(NOW));
   let database = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "intake-disposable-proof" }, clock);

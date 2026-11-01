@@ -41,6 +41,7 @@ export function createWriteSequencerTestWorld() {
   const disposers: (() => void | Promise<void>)[] = [];
 
   async function harness(options: Readonly<{
+    captureFailure?: "before-submit" | "after-submit";
     hooks?: WriteSequencerHooks;
     commitHooks?: AuthorityWriteCommitHooks;
     emitterThrowsOn?: "data.observed" | "failed-task-span" | "transaction.fenced" | "verify-start";
@@ -75,7 +76,13 @@ export function createWriteSequencerTestWorld() {
     const world = createWriteFixtureWorld();
     const registry = buildWriteFixtureRegistry(world);
     const sessions = writeFixtureSessions(world);
-    const manager = await writeFixtureSessionManager(sessions, registry, clock, duoCeremonyGatesOver(database, clock, new ManualScheduler(clock))); held.manager = manager;
+    const manager = await writeFixtureSessionManager(sessions, registry, clock, duoCeremonyGatesOver(database, clock, new ManualScheduler(clock)), {
+      capture: async context => {
+        if (context.trigger.kind !== "task-point") return;
+        if (options.captureFailure !== undefined) world.events.push(`capture:${context.trigger.boundary}`);
+        if (context.trigger.boundary === options.captureFailure) throw new Error("synthetic capture failure");
+      },
+    }); held.manager = manager;
     const emitter = recordingEmitter();
     const spanSink = {
       emit(event: Parameters<typeof emitter.emitter.emit>[0]): void {
@@ -123,12 +130,14 @@ export function createWriteSequencerTestWorld() {
         manager,
         context.run.envelope.configFingerprint,
         () => sequencer.executeTransaction(context),
+        "headless", { runId: context.run.envelope.runId, descriptorFingerprint: context.run.envelope.contractFingerprint },
       );
     const executeDryRun = (context: WriteSequencerContext): Promise<TransactionDryRunPreview> =>
       withBoundRunConfigFingerprint(
         manager,
         context.run.envelope.configFingerprint,
         () => sequencer.executeDryRun(context),
+        "headless", { runId: context.run.envelope.runId, descriptorFingerprint: context.run.envelope.contractFingerprint },
       );
     const retain = (error: unknown): Error => {
       held.primary ??= { error };

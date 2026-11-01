@@ -50,7 +50,7 @@ const FACTS: SettingsFactsWire = SettingsFactsWireSchema.parse({
     },
     {
       workflowId: "separations",
-      dryRun: { state: "supported", stopsAt: "clear-pending" },
+      dryRun: { state: "supported", firstTransactionNodeId: "clear-pending" },
       typedStart: false,
       reviewPanel: false,
       editData: { state: "read-only" },
@@ -154,7 +154,7 @@ describe("System hosts page retirement", () => {
     assert.ok(text.includes("This build has no renderer for the served section “system-hosts”"), text);
     assert.equal(mounted().querySelector(".settings-host-row"), null);
     assert.ok(!text.includes("Production endpoints"), text);
-    assert.ok(!text.includes("https://kuali.example/prod"), text);
+    assert.doesNotMatch(text, /https:\/\/kuali\.example\/prod/u);
   });
 });
 
@@ -189,7 +189,7 @@ describe("Workflow capabilities", () => {
       await act(async () => { trigger.click(); });
     }
     const text = mounted().textContent ?? "";
-    assert.ok(text.includes("stops at clear-pending"), text);
+    assert.ok(text.includes("traverses all applicable stages"), text);
     assert.ok(text.includes("Not built"), text);
     assert.ok(text.includes("write-anyway declares no preview arm"), text);
   });
@@ -199,7 +199,7 @@ describe("Workflow capabilities", () => {
     const help = mounted().querySelector('button[aria-label="What Dry run means"]');
     assert.ok(help instanceof HTMLButtonElement);
     await act(async () => { help.click(); });
-    assert.ok(document.body.textContent?.includes("Offers a rehearsal that reads everything for real and writes nothing."));
+    assert.ok(document.body.textContent?.includes("Previews each applicable stage without submitting. Sample values are labelled and unavailable stages stay visible. A workflow that changes no system of record uses Live read."));
   });
 
   it("groups the six actual capabilities by workflow", async () => {
@@ -216,7 +216,7 @@ describe("Workflow capabilities", () => {
     assert.ok(supported);
     const supportedTrigger = supported.querySelector("button"); assert.ok(supportedTrigger);
     await act(async () => { supportedTrigger.click(); });
-    assert.ok(supported.textContent?.includes("Stops after the prepare of clear-pending"));
+    assert.ok(supported.textContent?.includes("Reads, fills, verifies and captures each applicable stage"));
     const refusal = [...mounted().querySelectorAll(".settings-reference-disclosure")].find(node => node.textContent?.includes("unpreviewable-fixture"));
     assert.ok(refusal);
     const trigger = refusal.querySelector("button"); assert.ok(trigger);

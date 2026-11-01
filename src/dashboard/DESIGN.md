@@ -115,7 +115,7 @@ status fill changes without changing the information's position.
 - Put confidence beside the verdict it qualifies and keep independently derived facts visible until their agreement is proven.
 - Preserve every distinct capture availability/provenance arm; dimensions come from verified bytes, never guessed geometry.
 - Latch image selection and viewport through background refresh; image controls must not cover document text.
-- Use one control shell for fixed and editable Run Options, with a fixed value's reason visible below it.
+- Use one row pattern for fixed and editable Run Options, with a fixed value’s reason visible.
 - Derive visible form-group membership and numbering together; a workflow that declares no flags shows no empty flags group.
 - Offer spreadsheet intake from its declared capability and show only reachable launcher stages.
 - Move labels and shared file-limit text with an upload control; intake routes always identify a real session.

@@ -36,7 +36,7 @@ for (const theme of PARITY_THEMES) test(`Setup repair and launch share admission
     await dialog.getByRole("textbox", { name: /Employee IDs/u }).fill("10873698");
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     // Person Lookup has no transaction; its ordinary queued run has no dry-run variant.
-    await expect(dialog.getByRole("checkbox", { name: "Dry run", exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true })).toHaveCount(0);
     await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
     const submit = dialog.getByRole("button", { name: "Start 1 run", exact: true }); await expect(submit).toBeVisible();
     expect(h.runs()).toEqual([]); expect(h.publications).toBe(0); expect(h.mintedRunIdentities).toBe(0);

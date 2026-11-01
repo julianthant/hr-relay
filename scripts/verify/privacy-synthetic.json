@@ -7,15 +7,10 @@
     {
       "path": "tests/support/fixtures/spreadsheet/color-filtered-roster.xlsx",
       "sha256": "501ace4ab135aad65016e3327fe0a58fb45d79c931ab5b24202402643e9158c8"
-    },
-    {
-      "path": "tests/support/helpers/dashboard/color-filtered-roster.xlsx",
-      "sha256": "501ace4ab135aad65016e3327fe0a58fb45d79c931ab5b24202402643e9158c8"
     }
   ],
   "sourcePaths": [
     ".agents/skills/hr-scan/SKILL.md",
-    ".claude/skills/hr-scan/SKILL.md",
     "config/test-data.json",
     "src/dashboard/assets/ocr/documents.json",
     "src/dashboard/kit/kit-page.tsx",
@@ -172,7 +167,7 @@
   "publicConfigFiles": [
     {
       "path": ".npmrc",
-      "sha256": "caabbd604682448a0bd762ab7a8bc07d8b62df5c20a374b03d5efd69daa5055b"
+      "sha256": "d4454eb72fdf5706d03d2d002058622c498e649a5c5faa35a133e9a817a6d79a"
     }
   ],
   "credentialCanaries": [

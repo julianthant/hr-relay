@@ -22,14 +22,11 @@ HR documents are predictable. The skill's memory is **`references/document-shape
 
 ## 2 · Extract (parallel, transcribe-only)
 
-- Dispatch one reader per block (or per ~10 pages): `sup_terra` for clean print, `sup_sol` for
-  handwriting or poor scans, always at high reasoning. Set native `agent_type` to that exact role,
-  use `fork_turns: "none"`, and begin `task_name` with `sup_terra_scan_` or `sup_sol_scan_`.
-  Never substitute `default`, `worker`, `explorer`, or a bare model override; if the role is
-  unavailable, stop and report it. Native roles enforce a 240k context window and compact at 220k.
-  Paste the shape's field list and rails into each self-contained brief.
+- When parallel readers are authorized, dispatch one transcribe-only reader per block (or per
+  ~10 pages). Follow the operator's selected models and the dispatch tool's role instructions;
+  model and role selection do not belong in this skill. Paste the shape's field list and rails
+  into each self-contained brief. Without delegation authorization, extract the blocks directly.
   Readers return one JSON row per document: `{page_range, fields{...}, confidence, unreadable:[...]}`.
-  Blocks run in parallel; never one agent for the whole stack.
 - For the rebuild's own pipeline (spreadsheets/photos destined for a workflow), prefer the platform gate: `npm run cli -- ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>` (D151/D158 — the ONE extraction gate) and the intake surface; hr-scan's job is then to classify and hand over, not to parse by hand.
 - Merge rows; **dedupe** people by normalized `last, first middle` (+ DOB-year when present); keep the first page each appears on.
 

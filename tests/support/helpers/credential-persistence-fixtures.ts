@@ -1,3 +1,4 @@
+import { testProcessImport } from "../compiled-process.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
 import { once } from "node:events";
@@ -118,7 +119,7 @@ async function crashAtCredentialRename(stateRoot: string, input: ProtectedSettin
   const lifetime = owner?.lifetime;
   if (workspace === undefined || !(lifetime instanceof RuntimeLifetimeLock)) throw new Error("fixture-issued-profile-workspace-required");
   const rootUrl = pathToFileURL(join(process.cwd(), "src", "backend")).href;
-  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
+  const child = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "--eval", `
     import { readFileSync } from "node:fs";
     import { join } from "node:path";
     import { acquireSharedRuntimeAdmission } from ${JSON.stringify(rootUrl + "/storage/admission/admission.ts")};

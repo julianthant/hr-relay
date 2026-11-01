@@ -83,12 +83,6 @@
 .launch-design .ds-choice-picker > button {
   @apply h-9;
 }
-.launch-design .launch-options-grid {
-  @apply grid grid-cols-2 gap-4;
-}
-.launch-design .launch-flags {
-  @apply grid grid-cols-3 gap-[15px];
-}
 .launch-design .launch-flags .ds-checkbox-label {
   @apply font-normal;
 }
@@ -157,11 +151,9 @@
 .launch-dialog .launch-step-row .ds-checkbox-description { @apply mt-[2px] text-caption leading-4; }
 .launch-dialog .launch-flags .ds-checkbox-description { @apply mt-[3px]; }
 .launch-dialog .launch-step-row .ds-checkbox-label { @apply font-[550]; }
-.launch-dialog .launch-options { @apply gap-[10px]; }
 .launch-dialog .launch-content:has(.launch-options) { @apply gap-[10px]; }
 .launch-dialog .launch-content:has(#run-start-steps) { @apply gap-3; }
 .launch-dialog .launch-options fieldset > div { @apply h-9 gap-[3px]; }
-.launch-dialog .launch-options fieldset > legend { @apply mb-[5px]; }
 .launch-dialog .ds-choice-picker { @apply gap-[5px]; }
 .launch-dialog .ds-choice-picker > button { @apply font-normal; }
 .launch-dialog .launch-options fieldset > div > label > span { @apply h-7; }
@@ -204,3 +196,19 @@
 .launch-dialog > header, .launch-dialog > footer { grid-column: 1 / -1; }
 
 .launch-dialog .launch-picker { background: var(--ds-surface-1); }
+
+.launch-dialog .launch-options { gap:var(--ds-space-section); }
+.launch-dialog .launch-options .ds-form-group { padding:0;overflow:hidden;border:1px solid var(--ui-stroke);border-radius:var(--ds-radius-lg);background:var(--ui-table); }
+.launch-dialog .launch-flags,.launch-dialog .launch-options-grid { display:flex;flex-direction:column;gap:0; }
+.launch-dialog .launch-options-grid { border-top:1px solid var(--ui-stroke); }
+.launch-dialog .launch-options .ds-body-row,.launch-dialog .launch-options .ds-switch-row,.launch-dialog .launch-options .ds-checkbox-row,.launch-dialog .required-capture-row { padding:var(--ds-space-cozy) var(--ds-space-loose);min-height:63px; }
+.launch-dialog .launch-options .ds-body-row { grid-template-columns:minmax(0,1fr) 250px;gap:var(--ds-space-loose); }
+.launch-dialog .launch-options .ds-body-row+.ds-body-row,.launch-dialog .launch-flags>*+* { border-top:1px solid var(--ui-stroke); }
+.launch-dialog .launch-options .ds-body-section-heading { font-size:var(--ds-text-title);margin-bottom:var(--ds-space-cozy); }
+.launch-dialog .launch-options fieldset>legend { position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap; }
+.launch-dialog .launch-options fieldset>div { margin:0; }
+.required-capture-row { display:flex;align-items:center;justify-content:space-between;gap:var(--ds-space-loose); }
+
+.launch-dialog .launch-flags .ds-checkbox-row { flex-direction:row-reverse;align-items:center;justify-content:space-between; }
+.launch-dialog .launch-flags .ds-checkbox-copy { flex:1; }
+.launch-dialog .launch-flags .ds-switch-row { width:100%; }

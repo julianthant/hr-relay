@@ -1,5 +1,5 @@
 import { retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
-import { WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
+import { WorkerSessionManager, withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { duoCeremonyGatesOver } from "../../helpers/duo-ceremony-fixtures.js";
 import { FIXTURE_SESSION_ACQUIRE_MS } from "../../helpers/phase1f-executor-harness.js";
 import { canonicalChildExecution } from "../../helpers/backend/canonical-child-execution.js";
@@ -19,6 +19,7 @@ import { projectStartSteps, startStepWireControl } from "../../../../src/backend
 import { Hono } from "hono";
 import { composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
+import { supportsDryRun } from "../../../../src/backend/runs/start/plan.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
@@ -86,9 +87,9 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
     const sessions = new WorkerSessionManager({ workerId: rootMember.workerId, workflowId: rootMember.workflow,
       stores, factory: sessionFactoryHarness({ ucpath: () => separation ? separationDrivers.ucpath : fictionalFormDriver(),
         kuali: () => separationDrivers.kuali }).factory, clock, scheduler, acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
-      duoCeremony: duoCeremonyGatesOver(database, clock, scheduler) });
+      duoCeremony: duoCeremonyGatesOver(database, clock, scheduler), browserScreenshotCapture: { capture: async () => undefined } });
     held.sessions = sessions;
-    sessions.bindRunConfigFingerprint(active.configFingerprint);
+    if (mode === "local") sessions.bindRunConfigFingerprint(active.configFingerprint);
     const deps: RunExecutorDependencies = { lifecycle: testRunLifecycle(database, clock), descriptor: rootWorkflow.descriptor,
       stores, authority: database, sessions, emitter: createTimelineEmitter({ repository: database.authority.timelineEvents, clock }),
       clock, ids: sequentialIdFactory("b"), scheduler: new ManualScheduler(clock), taskDeadlineMs: 60_000,
@@ -99,7 +100,7 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
       return buildQueuedRun({ descriptor: compiled.descriptor, appVersion: "0.1.0", runId: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
         itemId: itemId ?? `00000000-0000-4000-8001-${String(number).padStart(12, "0")}`, traceId: `fp-170000-${String(number).padStart(4, "0")}`,
         rawInput: JsonValueSchema.parse(value), canonicalInput: { schemaHash: deriveSchemaHash(Plan1CanonicalInput, "output"), value: Plan1Input.parse(value), protectedBindings: [] }, ingressSchemaHash: deriveSchemaHash(Plan1Input, "input"),
-        configFingerprint: fingerprint, configSnapshotId, resolvedInstance: separation ? { kuali: "prod", ucpath: "prod" } : mode === "browser" ? { ucpath: "prod" } : {}, shape: parent === undefined ? "single" : "operation-member", priority: "bulk", dryRun: true,
+        configFingerprint: fingerprint, configSnapshotId, resolvedInstance: separation ? { kuali: "prod", ucpath: "prod" } : mode === "browser" ? { ucpath: "prod" } : {}, shape: parent === undefined ? "single" : "operation-member", priority: "bulk", dryRun: supportsDryRun(compiled.descriptor),
         attempt: 1, runNumber: number, now: clock.now().toISOString(), ...(parent === undefined ? {} : { parent }) });
     };
     const signal = new AbortController().signal;
@@ -111,8 +112,10 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
       if (slot === undefined) throw new Error("operation-fixture-slot-missing");
       const claim = worker.claimNext({ commandId: `00000000-0000-4000-8002-${String(sequence).padStart(12, "0")}`, workflow: compiled.descriptor.id, workerId: slot.workerId });
       if (claim.state !== "applied" || claim.run.envelope.runId !== run.envelope.runId || claim.run.lifecycle.state !== "claimed") throw new Error("operation-fixture-claim-mismatch");
-      const outcome = await executeClaimedRun({ ...deps, descriptor: compiled.descriptor }, { run: claim.run,
-        claim: { workerId: claim.run.lifecycle.workerId, claimGeneration: claim.run.claimGeneration }, signal });
+      const claimed = { workerId: claim.run.lifecycle.workerId, claimGeneration: claim.run.claimGeneration };
+      const outcome = await withBoundRunConfigFingerprint(sessions, active.configFingerprint, () => executeClaimedRun({ ...deps, descriptor: compiled.descriptor }, { run: claim.run,
+        claim: claimed, signal }),
+        claim.run.envelope.browserMode, { runId: claim.run.envelope.runId, descriptorFingerprint: claim.run.envelope.contractFingerprint });
       if (outcome.state === "failed" && mode === "separation-failed" || outcome.state === "parked-gate" && mode === "separation-ambiguous") return undefined;
       if (outcome.state !== "done") throw new Error(`operation-fixture-executor-${outcome.state}: ${database.authority.failures.listByRun(run.envelope.runId).map((failure) => failure.summary).join("; ")}`);
       const result = database.authority.runResults.get(run.envelope.runId);
@@ -135,11 +138,11 @@ export async function startOperationAuthorityServer(mode: "local" | "browser" | 
       const module = modules.find((candidate) => candidate.descriptor.id === id);
       return module === undefined ? undefined : { ...module.descriptor, dataOrigins: dataOriginViewsOf(module), gateNodes: gateNodeViewsOf(module.descriptor), writeContracts: writeContractViewsOf(module.descriptor) };
     } } };
-    const explorer = composeExplorer({ database, clock, descriptorSetHash: hash });
+    const explorer = composeExplorer({ clock, descriptorSetHash: hash });
     const app: DashboardApp = new Hono();
     app.onError((error, c) => { const failure = failureStatus(error); return c.json(failure.body, failure.status); });
     app.use("*", async (c, next) => { c.set("requestActorId", LOCAL_OPERATOR_ACTOR_ID); await next(); });
-    registerExplorerRoutes(app, { ...explorer.routes, explorer: { ...explorer.routes.explorer, modules, buildManifest: fixtureBuildManifest(modules.map((module) => module.descriptor.id)) } });
+    registerExplorerRoutes(app, { ...explorer, explorer: { ...explorer.explorer, modules, buildManifest: fixtureBuildManifest(modules.map((module) => module.descriptor.id)) } });
     registerRunDetailRoutes(app, { runDetail: detailDeps });
     registerTrustRoutes(app, { runDetail: detailDeps });
     const day = clock.now().toISOString().slice(0, 10);

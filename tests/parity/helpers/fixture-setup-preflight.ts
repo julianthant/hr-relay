@@ -36,7 +36,9 @@ export async function startSetupPreflightServer(scene: SetupScene, configureRout
         requests.push({method,path,status:response.status});res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));
       })().catch(()=>{res.writeHead(500).end("Setup proof request failed");});return;
     }
-    const upstream=httpRequest(new URL(path,shell.baseUrl),{method},response=>{res.writeHead(response.statusCode??502,response.headers);response.pipe(res);});
+    const target=new URL(path,shell.baseUrl);
+    if(!path.startsWith("/")||path.startsWith("//")||target.origin!==new URL(shell.baseUrl).origin){res.writeHead(400).end("Same-origin paths only");return;}
+    const upstream=httpRequest({hostname:new URL(shell.baseUrl).hostname,port:new URL(shell.baseUrl).port,path:target.pathname+target.search,method},response=>{res.writeHead(response.statusCode??502,response.headers);response.pipe(res);});
     upstream.on("error",()=>{if(!res.headersSent)res.writeHead(502);res.end();});res.on("close",()=>upstream.destroy());req.pipe(upstream);
   });
   await new Promise<void>(resolve=>{server.listen(0,"127.0.0.1",resolve);});const address=server.address();assert.ok(address&&typeof address!=="string");

@@ -83,18 +83,6 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "storage-relocation", type: "cancel-storage-relocation",
     target: { installationId: UUID_2, sourceGeneration: 1, sourcePair: { stateRoot: "/source/state", artifactRoot: "/source/artifacts" }, expectedRevision: 1 },
     payload: { writeId: UUID_4, cancelledPlanCommandId: UUID_1, cancelledPlanDigest: HASH_A, requestFingerprint: HASH_B } },
-  {
-    ...BASE_COMMAND,
-    family: "explorer",
-    type: "apply-explorer-edit",
-    target: {
-      workflowId: "onboarding",
-      expectedVersion: 1,
-      contractFingerprint: HASH_A,
-      expectedOverrideRevision: 0,
-    },
-    payload: { changes: [{ kind: "workflow-label", value: "Reviewed onboarding" }] },
-  },
 ];
 
 export const SUBJECT_EVIDENCE = {

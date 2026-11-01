@@ -97,8 +97,8 @@ describe("typed Settings catalog controls", () => {
   it("shows deployment state locations and editable new-run browser locations", async () => {
     const { host } = await setup("paths");
     assert.deepEqual([...host.querySelectorAll("h1")].map(node => node.textContent), ["Paths"]);
-    assert.deepEqual([...host.querySelectorAll("h2")].map(node => node.textContent), ["Runtime locations", "Generated files", "Workflow documents"]);
-    assert.equal(host.querySelectorAll(".settings-relocation-row .ds-path-control button").length, 2);
+    assert.deepEqual([...host.querySelectorAll("h2")].map(node => node.textContent), ["Folders", "App dataManaged by Relay", "Backup and restore", "Workflow locations"]);
+    assert.equal(host.querySelectorAll(".hub-settings-row input[readonly]").length, 2);
     assert.equal(host.querySelectorAll(".settings-compact-row .ds-path-control button").length, 7);
     for (const path of ["paths.browserProfileRoot", "paths.duoCredential", "paths.duoExtensionDir",
       "paths.reportsDir", "paths.downloadsDir", "paths.onboardingDocsDir", "paths.i9CheckTrackerPath"]) {

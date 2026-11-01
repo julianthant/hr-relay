@@ -100,7 +100,7 @@ it('synchronizes explicit renames and rejects stale retained titles after a send
   const beforeRename = session.producer.initial();
   session.rename('  Operator title  ');
   assert.equal(session.producer.initial().title, 'Operator title');
-  const next = await session.producer.send(beforeRename, { text: 'First message', files: [], model: 'Default', effort: 'Medium', approval: 'Ask only before submits' });
+  const next = await session.producer.send(beforeRename, { text: 'First message', files: [], model: 'Default', effort: 'Medium', approval: 'Ask before every action' });
   assert.equal(next.title, 'Operator title');
   session.rename('Newer operator title');
   session.autoTitle('Late automatic title');

@@ -52,7 +52,7 @@ export interface AssistantServiceOptions {
   readonly subjects?: AssistantSubjectBroker;
   readonly planner?: AssistantPlanner;
   readonly projectInput?: (request: z.infer<typeof AssistantRequestSchema>) => Readonly<{ completion?: "answer" | "canonical-action"; input: JsonValue; citations: readonly z.infer<typeof AssistantCitationSchema>[] }>;
-  readonly decideAction?: (input: AssistantActionDecision, signal: AbortSignal) => AssistantActionResult;
+  readonly decideAction?: (input: AssistantActionDecision, signal: AbortSignal) => AssistantActionResult | Promise<AssistantActionResult>;
   readonly bindFunctions?: (context: AssistantFunctionContext, signal: AbortSignal) => Promise<readonly AssistantFunctionSet[]>;
 }
 class AssistantModelPolicyError extends Error {}
@@ -88,7 +88,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
       if (options.readModelPreference === undefined) throw new AssistantModelPolicyError('assistant-model-preference-unavailable');
       return AssistantModelPreferenceViewSchema.parse(options.readModelPreference());
     },
-    decide(input: unknown, signal: AbortSignal): AssistantActionResult {
+    async decide(input: unknown, signal: AbortSignal): Promise<AssistantActionResult> {
       const parsed = AssistantActionDecisionSchema.safeParse(input);
       if (!parsed.success) return { state: "refused", code: "ASSISTANT_INVALID" };
       try {
@@ -96,7 +96,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         const { policy, modelPolicyCurrent } = captureModelPolicy();
         if (!policy.success || !modelPolicyCurrent()) return { state: "refused", code: "ASSISTANT_MODEL_UNVERIFIED" };
         if (options.decideAction === undefined) return { state: "refused", code: "ASSISTANT_UNAVAILABLE" };
-        return AssistantActionResultSchema.parse(options.decideAction(parsed.data, signal));
+        return AssistantActionResultSchema.parse(await options.decideAction(parsed.data, signal));
       } catch (error) { return { state: "refused", code: error instanceof ChatGptResourceClosureUnprovedError || error instanceof AuthoritySourceClosureUnprovedError ? 'CHATGPT_RESOURCE_CLOSURE_UNPROVED' : "ASSISTANT_PROPOSAL_REFUSED" }; }
     },
     async respond(input: unknown, signal: AbortSignal): Promise<AssistantResult> {

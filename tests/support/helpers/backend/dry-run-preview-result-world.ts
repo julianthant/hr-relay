@@ -34,7 +34,7 @@ export function createDryRunPreviewResultTestWorld() {
 
   const PREVIEW_RESULT_SCHEMA_HASH = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
 
-  async function harness(): Promise<Harness> {
+  async function harness(descriptor = writeFixtureDescriptor): Promise<Harness> {
     const profile = await createBoundProfileFixture(); profiles.push(profile);
     roots.push(profile.stateRoot);
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
@@ -54,7 +54,7 @@ export function createDryRunPreviewResultTestWorld() {
 
     const run = async (options: Readonly<{ dryRun?: boolean; probe?: unknown }> = {}): Promise<void> => {
       const dryRun = options.dryRun ?? true;
-      const workerPorts = testWorkerPorts(database, clock, { path: profile.path, descriptor: writeFixtureDescriptor, poolIndex: 1 });
+      const workerPorts = testWorkerPorts(database, clock, { path: profile.path, descriptor, poolIndex: 1 });
       assert.equal(database.authority.runs.enqueue(writeFixtureQueuedRun({ dryRun })).state, "inserted");
 
       world.probeResults.push(options.probe ?? absentProbeEvidence(WRITE_FIXTURE_NOW));
@@ -62,10 +62,11 @@ export function createDryRunPreviewResultTestWorld() {
         ...workerPorts,
         workflowId: WorkflowIdSchema.parse(WRITE_FIXTURE_WORKFLOW_ID),
         workerId: WorkerIdSchema.parse(WRITE_FIXTURE_WORKER_ID),
-        descriptor: writeFixtureDescriptor,
+        descriptor,
         stores,
         authority: database,
         sessionFactory: sessions.factory,
+        browserScreenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } },
         emitter: emitter.emitter,
         clock,
         ids,

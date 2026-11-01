@@ -202,6 +202,7 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
 
 export async function captureFullPage(page: Page, options: Readonly<{
   assertSafe: () => Promise<void>;
+  sampleLabels?: readonly string[];
   mask: () => Locator[];
   secretControls: string;
   afterCapture: () => Promise<void>;
@@ -210,6 +211,7 @@ export async function captureFullPage(page: Page, options: Readonly<{
   const originalViewport = viewport ?? await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
   const frames: Frame[] = [];
   let failure: { cause: unknown } | undefined;
+  let sampleBannerOwned = false;
   const assertSafe = async (): Promise<void> => {
     await options.assertSafe();
     for (const frame of frames) if (await frame.evaluate(() => {
@@ -239,13 +241,35 @@ export async function captureFullPage(page: Page, options: Readonly<{
       bands.push({ buffer, offsetCss: actualOffset, clipHeightCss: rect.height });
     }
     if (coveredTo < plan.scrollHeight) throw new Error("Full-page capture did not reach the content bottom");
-    return stitchCaptureBands(bands);
+    const image = stitchCaptureBands(bands);
+    if ((options.sampleLabels?.length ?? 0) === 0) return image;
+    await page.evaluate(({ labels, width }) => {
+      if (document.getElementById("relay-dry-run-sample-banner")) throw new Error("Sample banner identity is already in use");
+      const banner = document.createElement("div");
+      banner.id = "relay-dry-run-sample-banner";
+      banner.textContent = labels.join("\n");
+      banner.style.cssText = `position:fixed;left:0;top:0;z-index:2147483647;box-sizing:border-box;width:${width / window.devicePixelRatio}px;padding:16px;background:#fff0b3;color:#161616;font:700 18px monospace;white-space:pre-wrap;overflow-wrap:anywhere;`;
+      document.documentElement.append(banner);
+    }, { labels: options.sampleLabels ?? [], width: image.width });
+    sampleBannerOwned = true;
+    await assertSafe();
+    const banner = PNG.sync.read(await page.locator("#relay-dry-run-sample-banner").screenshot({ type: "png" }));
+    await assertSafe();
+    const source = PNG.sync.read(Buffer.from(image.bytes));
+    const width = Math.max(source.width, banner.width), height = source.height + banner.height;
+    if (width * height > CAPTURE.maxPixels) throw new Error("Labelled capture exceeds the pixel limit");
+    const labelled = new PNG({ width, height });
+    labelled.data.fill(255);
+    PNG.bitblt(banner, labelled, 0, 0, banner.width, banner.height, 0, 0);
+    PNG.bitblt(source, labelled, 0, 0, source.width, source.height, 0, banner.height);
+    return { bytes: new Uint8Array(PNG.sync.write(labelled)), width, height };
   } catch (error) { failure = { cause: error }; throw error; }
   finally { await restoreCaptureState(); }
 
   async function restoreCaptureState(): Promise<void> {
     const errors: unknown[] = [];
     const restore = async (action: () => Promise<unknown>): Promise<void> => { try { await action(); } catch (error) { errors.push(error); } };
+    if (sampleBannerOwned) await restore(() => page.locator("#relay-dry-run-sample-banner").evaluate(element => element.remove()));
     await restore(() => page.evaluate(() => (window as CaptureWindow).__relayCapture?.restore()));
     await restore(() => page.setViewportSize(originalViewport));
     for (const frame of frames) if (!frame.isDetached()) await restore(() => frame.evaluate(() => (window as CaptureWindow).__relayCaptureSecrets?.restore()));

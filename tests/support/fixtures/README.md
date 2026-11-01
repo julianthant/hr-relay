@@ -54,9 +54,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/dashboard-stream-seams.ts` | dashboard stream seams |
 | `fixtures/descriptor-fixtures.ts` | descriptor fixtures |
 | `fixtures/diagnostic-image-fixtures.ts` | diagnostic image fixtures |
-| `fixtures/dry-run/person-lookup-manifest.ts` | person lookup manifest |
-| `fixtures/dry-run/separations-manifest.ts` | separations manifest |
-| `fixtures/explorer-authority.ts` | explorer authority |
 | `fixtures/explorer-seams.ts` | explorer seams |
 | `fixtures/image-geometry.ts` | image geometry |
 | `fixtures/intake-kernel-seams.ts` | intake kernel seams |
@@ -184,7 +181,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/storage/transaction-history-fixture.ts` | transaction history fixture |
 | `helpers/synthetic-database-admission.ts` | synthetic database admission |
 | `helpers/synthetic-storage-admission.ts` | synthetic storage admission |
-| `helpers/t1b-manifests.ts` | t1b manifests |
 | `helpers/test-data/test-data-source.ts` | test data source |
 | `helpers/timeline-write-fixture.ts` | timeline write fixture |
 | `helpers/write-fence-fixture.ts` | claimed write-fence setup and caller-supplied corrupt SQLite seeding |
@@ -226,7 +222,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/ucpath-pending-row-fixtures.ts` | Keiichiro pending rows and deterministic driver transaction rows |
 | `helpers/storage/admission-child-fixtures.ts` | admission child fixtures |
 | `helpers/backend/preflight-port-fixtures.ts` | preflight port fixtures |
-| `helpers/dashboard/settings-editor-fixtures.ts` | settings editor fixtures |
 | `helpers/backend/worker-supervision-world.ts` | worker supervision world |
 | `helpers/backend/command-kernel-harness.ts` | command kernel harness |
 
@@ -243,7 +238,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 - `fixtures/storage/native-authority/migrated-timeline.json`
 - `fixtures/storage/native-authority/migrated-tombstones.json`
 - `fixtures/storage/native-authority/schema40-failure.json`
-- `helpers/dashboard/color-filtered-roster.xlsx`
 | `helpers/backend/kernel-stub-command-fixtures.ts` | createKernelStubCommandFixtures shared fixtures |
 | `helpers/backend/kernel-reject-member-run.ts` | kernelRejectMemberRecord shared fixtures |
 | `helpers/backend/person-lookup-start-fixtures.ts` | createPersonLookupStartFixtures shared fixtures |

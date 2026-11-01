@@ -14,6 +14,7 @@ export type LogTimelineStage = Readonly<{
   time?: string;
   durationLabel?: string;
   stepId?: string;
+  statusLabel?: string;
   substeps: readonly LogTimelineSubstep[];
 }>;
 

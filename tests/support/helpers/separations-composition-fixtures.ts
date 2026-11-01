@@ -369,6 +369,7 @@ export async function compositionHarness(options: Readonly<{
     workflowId: WorkflowIdSchema.parse(COMPOSITION_WORKFLOW_ID),
     stores: taskStoreRegistry,
     factory: sessions.factory,
+    browserScreenshotCapture: { capture: async () => undefined },
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
@@ -393,8 +394,9 @@ export async function compositionHarness(options: Readonly<{
   return {
     ucpath, kuali, database, clock, emitter, ids, sequencer,
     bound: <Result>(work: () => Promise<Result>): Promise<Result> =>
-      withBoundRunConfigFingerprint(manager, COMPOSITION_CONFIG_FINGERPRINT, work),
+      withBoundRunConfigFingerprint(manager, COMPOSITION_CONFIG_FINGERPRINT, work, "headless", { runId: COMPOSITION_RUN_ID, descriptorFingerprint: separationsDescriptor.contractFingerprint }),
     dispose: async (): Promise<void> => {
+      await manager.closeAll("worker-stop");
       releaseSeededWriteOwners(database, clock.now().toISOString());
       await opened.close();
     },

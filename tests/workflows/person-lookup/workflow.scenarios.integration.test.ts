@@ -309,7 +309,7 @@ describe("approved Person Lookup scenarios", () => {
     const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: personLookupDescriptor.id, stores: harness.deps.stores,
       factory, clock, scheduler: harness.scheduler, acquireDeadlineMs: 60000,
       duoCeremony: duoCeremonyGatesOver(database, clock), browserScreenshotCapture: createRunBrowserScreenshotCapture({ service }) });
-    sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint), "headless", { runId: queued.envelope.runId, descriptorFingerprint: personLookupDescriptor.contractFingerprint, captureBrowserScreenshots: !failed });
+    sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint), "headless", { runId: queued.envelope.runId, descriptorFingerprint: personLookupDescriptor.contractFingerprint });
     const claimed = world.enqueueAndClaim(database, { ...queued, envelope: { ...queued.envelope, captureBrowserScreenshots: !failed } }, clock.now().toISOString());
     assert.equal((await executeClaimedRun({ ...harness.deps, sessions, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 }) }, { ...claimed, signal: world.SIGNAL })).state, failed ? "failed" : "done");
     const actions = database.authority.timelineEvents.page({}).flatMap(event => event.payload.kind === "note" && event.payload.note.action?.kind === "screenshot" ? [event.payload.note.action] : []);
@@ -348,8 +348,9 @@ describe("approved Person Lookup scenarios", () => {
     const sessions = new (await import("../../../src/backend/runtime/workers/worker-sessions.js")).WorkerSessionManager({
       workerId: WorkerIdSchema.parse("person-lookup-worker-1"), workflowId: WorkflowIdSchema.parse("person-lookup"), stores: harness.deps.stores, factory, clock: harness.authority.clock, scheduler: harness.scheduler,
       acquireDeadlineMs: 60000, duoCeremony: duoCeremonyGatesOver(harness.authority.database, harness.authority.clock), onEvent: (event) => { events.push(event); },
+      browserScreenshotCapture: { capture: async () => undefined },
     });
-    sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint));
+    sessions.bindRunConfigFingerprint(FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint), "headless", { runId: queued.envelope.runId, descriptorFingerprint: personLookupDescriptor.contractFingerprint });
     const { database, clock } = harness.authority;
     const claimed = world.enqueueAndClaim(database, queued, clock.now().toISOString());
     assert.equal((await executeClaimedRun({ ...harness.deps, sessions, taskNotes: createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 }) }, { ...claimed, signal: world.SIGNAL })).state, "failed");

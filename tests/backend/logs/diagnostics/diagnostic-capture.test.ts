@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -95,7 +96,7 @@ it("uses the real fixed-1GiB repository boundary once per unique digest and publ
 
 const sourceUrl = (relative: string) => new URL(relative, import.meta.url).href;
 function child(source: string) {
-  const process = spawn(globalThis.process.execPath, ["--import", "tsx", "--input-type=module", "-e", source], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), stdio: ["ignore", "pipe", "pipe", "ipc"] });
+  const process = spawn(globalThis.process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", source], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), stdio: ["ignore", "pipe", "pipe", "ipc"] });
   assert.ok(process.stdout);
   assert.ok(process.stderr);
   let stdout = "", stderr = "";

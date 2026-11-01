@@ -1,17 +1,21 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { afterEach,it } from "vitest";
+import { afterAll, afterEach,it } from "vitest";
 import { readArtifactBytes } from "../../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
 import { IntakeSessionWireSchema } from "../../../../src/models/intake/wire.js";
 import { CommandRequestSchema,CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 import { createIntakeAuthority,INTAKE_CSV } from "../../../support/fixtures/dashboard/fixture-intake-authority.js";
 import { defineIntakeFixtureDescriptor,INTAKE_FIXTURE_WORKFLOW_ID } from "../../../support/fixtures/intake-workflow-fixture.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 type Harness = Awaited<ReturnType<typeof createIntakeAuthority>>;
 const opened: Harness[] = [];
 afterEach(async () => { for (const h of opened.splice(0)) await h.close(); });
-async function harness() { const h = await createIntakeAuthority(); opened.push(h); return h; }
+async function harness() { const h = await createIntakeAuthority(profileFixtures.create); opened.push(h); return h; }
 async function send(h: Harness, wire: { intakeSessionId: string; expectedVersion: number }, type: string, payload?: unknown) {
   const response = await h.post(h.request(wire, type, payload));
   const result = CommandResultSchema.parse(await response.json());

@@ -51,9 +51,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     await expect(dialog.getByRole("textbox", { name: "Emails", exact: true })).toHaveValue("");
     await dialog.getByRole("textbox", { name: "Emails", exact: true }).fill("jordan.lee@example.com");
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-    const flags = dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true }); await flags.uncheck();
+    const flags = dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true });
+    await expect(flags).toHaveCount(0);
+    await expect(dialog.getByText("Always on", { exact: true })).toBeVisible();
     expect(await picker.evaluate((element, original) => element === original, originalPicker)).toBe(true);
-    await expect(flags).not.toBeChecked();
+    await expect(flags).toHaveCount(0);
     await picker.getByRole("button", { name: "I-9 Check", exact: true }).click();
     await dialog.getByRole("button", { name: "1 Input", exact: true }).click();
     await expect(dialog.locator('input[type="file"]')).toHaveValue("");

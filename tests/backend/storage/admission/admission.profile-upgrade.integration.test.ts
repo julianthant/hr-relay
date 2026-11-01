@@ -42,6 +42,9 @@ it.each([6, 7])("keeps pending setup database-only until canonical binding, then
     const raw = new DatabaseSync(path);
     try {
       raw.exec("DROP TABLE assistant_model_preference; DROP TABLE assistant_actions; DROP TABLE assistant_chats; DROP TABLE assistant_grants");
+      const editorDdl = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE TABLE explorer_overrides \([\s\S]*?\n\) STRICT;/u)?.[0];
+      assert.ok(editorDdl);
+      raw.exec(editorDdl);
       if (version === 6) {
         raw.exec("DROP TRIGGER database_states_binding_immutable; ALTER TABLE database_states RENAME TO database_states_bound");
         const original = SQLITE_MIGRATIONS[0]?.statements[0]?.split("CREATE TABLE database_upgrades")[0];

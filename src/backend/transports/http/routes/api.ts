@@ -62,7 +62,6 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/exports/search", operatorMutationIngressGuard);
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);
   app.use("/api/v1/rerun-warnings", operatorMutationIngressGuard);
-  app.use("/api/v1/explorer/validate", operatorMutationIngressGuard);
   // Intake bytes use the file media type; Host/Origin admission still applies.
   app.use("/api/v1/intake/files", operatorOpaqueIngressGuard);
   app.use("/api/v1/workbooks", operatorMutationIngressGuard);

@@ -1,12 +1,16 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { RunEvidenceReceiptSchema } from "../../../../src/models/trust/evidence.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import { FICTIONAL_PERSON, seedPersonLookupPresentation } from "../../../support/fixtures/person-lookup-presentation.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
 
-const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
+const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld(profileFixtures.create);
 afterEach(cleanup);
 describe("served Person Lookup identity presentation", () => {
   it.each([

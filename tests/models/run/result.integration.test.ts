@@ -193,7 +193,7 @@ function terminalRun(database: AuthorityDatabase) {
   return record;
 }
 
-describe("a dry run previews its transaction node and ends there", () => {
+describe("a dry run retains transaction preview accounting", () => {
 afterEach(cleanup);
 
   it("settles a previewed run with a preview record and NOTHING durable from the write half", async () => {
@@ -216,18 +216,20 @@ afterEach(cleanup);
     const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
     assert.equal(preview.kind, "dry-run-preview");
     assert.equal(preview.externalCommit, "none");
-    assert.equal(preview.stoppedAtNodeId, WRITE_FIXTURE_NODE_ID);
-    assert.equal(preview.preview.kind, "transaction-dry-run-preview");
-    assert.equal(preview.preview.probe.state, "absent");
-    assert.equal(preview.preview.outcome.state, "would-prepare");
+    assert.equal(preview.coverage.state, "full");
+    const transaction = preview.steps.find(step => step.nodeId === WRITE_FIXTURE_NODE_ID);
+    assert.ok(transaction?.state === "transaction-preview");
+    assert.equal(transaction.preview.kind, "transaction-dry-run-preview");
+    assert.equal(transaction.preview.probe.state, "absent");
+    assert.equal(transaction.preview.outcome.state, "would-prepare");
     assert.equal(
-      preview.preview.outcome.state === "would-prepare" ? preview.preview.outcome.subject.state : undefined,
+      transaction.preview.outcome.state === "would-prepare" ? transaction.preview.outcome.subject.state : undefined,
       "match",
     );
 
 
     const support = workflowDryRunSupport(writeFixtureDescriptor);
-    assert.equal(support.state === "supported" ? support.stopsAt : "", preview.stoppedAtNodeId);
+    assert.equal(support.state === "supported" ? support.firstTransactionNodeId : "", transaction.nodeId);
 
 
     assert.equal(
@@ -274,8 +276,10 @@ afterEach(cleanup);
     assert.ok(result);
     assert.equal(result.resultSchemaHash, PREVIEW_RESULT_SCHEMA_HASH);
     const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
-    assert.equal(preview.preview.probe.state, "present");
-    assert.deepEqual(preview.preview.outcome, { state: "already-present", proofSource: "live-probe" });
+    const transaction = preview.steps.find(step => step.nodeId === WRITE_FIXTURE_NODE_ID);
+    assert.ok(transaction?.state === "transaction-preview");
+    assert.equal(transaction.preview.probe.state, "present");
+    assert.deepEqual(transaction.preview.outcome, { state: "already-present", proofSource: "live-probe" });
     assert.equal(preview.externalCommit, "none");
 
     assert.deepEqual(h.world.events, ["probe"], "the probe settled it; no page was ever staged");

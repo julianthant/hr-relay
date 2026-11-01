@@ -1,9 +1,10 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { createRunQueueProjection } from "../../../../src/backend/runs/projections/run-queue-projection.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { HASH_A, HASH_B, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -12,7 +13,10 @@ import { personLookupDescriptor, separationsDescriptor } from "../../../support/
 import { WorkerControlRecordSchema } from "../../../../src/models/run/worker-control.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 
-const {world, runRecordOf, queuedEventOf, CLAIM, otherConnection, appendOther, seedWorld, cleanup } = createRunQueueProjectionTestWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
+const {world, runRecordOf, queuedEventOf, CLAIM, otherConnection, appendOther, seedWorld, cleanup } = createRunQueueProjectionTestWorld(profileFixtures.create);
 
 function corruptLatest(w: DashboardWorld): void {
   using raw = new DatabaseSync(join(w.stateRoot, "state.db"));

@@ -1,0 +1,24 @@
+# duo-signup-unavailable--graphite-warm--1280x720
+# adapter: fixture
+# fixture: duo-signup
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- text: Relay
+- main:
+  - navigation "Sign-up steps": ✓ Your details 2 Duo setup 3 Ready
+  - heading "Add your sign-in methods" [level=1]
+  - paragraph: Add both in the setup browser, in either order.
+  - region "Required Duo methods":
+    - text: Not added
+    - heading "Touch ID" [level=2]
+    - paragraph: Use Touch ID on this Mac.
+    - button "Add Touch ID"
+    - text: Unavailable
+    - heading "Security key" [level=2]
+    - paragraph: Enrollment is unavailable. Reopen the setup browser.
+    - button "Show setup browser"
+    - button "Back to login"
+    - button "Finish" [disabled]

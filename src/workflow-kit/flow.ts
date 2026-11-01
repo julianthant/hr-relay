@@ -1,3 +1,4 @@
+import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
 /** The ONE workflow builder API (ref workflow-model ): it accumulates `S` (per-node output/conditional/contracts) and `Nodes`, so reading an undeclared output fails `tsc`. */
 import { z } from "zod";
@@ -53,6 +54,7 @@ export type OutputsOf<S> = {
 };
 
 export interface FlowScope<InputSchema extends z.ZodType, S> {
+  readonly dryRun?: DryRunScope;
   readonly input: z.output<InputSchema>;
   readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: OutputsOf<S>;
@@ -106,6 +108,7 @@ export interface TransactionOpts<
   /** Never sees prepare output — the durable key is stable before page mutation. */
   readonly commit: Readonly<{ uses: C; bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<C["input"]> }>;
   readonly dryRun: "stop-after-prepare" | "unsupported";
+  readonly previewBind?: (scope: ScopeFor<InputSchema, S, D>) => DryRunBinding | undefined;
   readonly probePolicy: "always" | "retries-and-recovery-only";
   readonly probeToFenceMaxMs: number;
   readonly retryBeforeFence?: RetryPolicy;
@@ -537,6 +540,7 @@ function makeBuilder(state: MutableFlowState): unknown {
       dependsOn: readonly string[];
       prepare: { uses: AnyPrepareTaskContract; bind: (scope: never) => unknown };
       commit: { uses: AnyCommitTaskContract; bind: (scope: never) => unknown };
+      previewBind?: (scope: never) => DryRunBinding | undefined;
       dryRun: "stop-after-prepare" | "unsupported";
       probePolicy: "always" | "retries-and-recovery-only";
       probeToFenceMaxMs: number;
@@ -554,6 +558,7 @@ function makeBuilder(state: MutableFlowState): unknown {
         commit: Object.freeze({ uses: pair.commit.uses, bind: pair.commit.bind }),
         leaseScope: "transaction",
         dryRun: pair.dryRun,
+        ...(pair.previewBind === undefined ? {} : { previewBind: pair.previewBind }),
         probePolicy: pair.probePolicy,
         probeToFenceMaxMs: pair.probeToFenceMaxMs,
         ...(pair.retryBeforeFence === undefined ? {} : { retryBeforeFence: pair.retryBeforeFence }),

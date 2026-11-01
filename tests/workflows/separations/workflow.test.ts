@@ -318,7 +318,7 @@ describe("workflow definition public equivalence characterization", () => {
         "ucpath/create-termination", "workflow:separations/verify-termination-receipt", "ucpath/verify-termination-filing-present",
         "kuali/stage-separation-finalization", "kuali/save-separation-finalization",
       ],
-      dryRun: { state: "supported", stopsAt: "clear-pending" },
+      dryRun: { state: "supported", firstTransactionNodeId: "clear-pending" },
     });
   });
 });

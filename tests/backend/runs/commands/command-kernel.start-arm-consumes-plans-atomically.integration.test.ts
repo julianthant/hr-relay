@@ -1,12 +1,16 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
 import { appliedRunIds, singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { HASH_A, NOW, UUID_4, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, profiles, rejectActiveDescriptor, supersedeDescriptor, parallelDescriptor, createHarness, createPlan, startCommand, applyCurrentSettings } = createCommandKernelTestWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
+const { roots, openDatabases, profiles, rejectActiveDescriptor, supersedeDescriptor, parallelDescriptor, createHarness, createPlan, startCommand, applyCurrentSettings } = createCommandKernelTestWorld(profileFixtures.create);
 
 
 afterEach(async () => {

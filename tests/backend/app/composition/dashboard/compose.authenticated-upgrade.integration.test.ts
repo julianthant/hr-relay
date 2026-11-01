@@ -38,7 +38,7 @@ import { SignUpOperationSchema } from "../../../../../src/models/profiles/profil
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { RuntimeCustodyUncertainError, composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../../src/backend/storage/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../../src/backend/storage/sqlite/migrations.js";
 
 vi.mock("../../../../../src/backend/transports/http/http-server.js", { spy: true });
 vi.mock("../../../../../src/backend/storage/admission/admission.js", async importOriginal => {
@@ -68,7 +68,7 @@ const inspectStopped = AuthorityDatabase.inspectStoppedUpgrade.bind(AuthorityDat
 
 const login = { email: "fixture@ucsd.edu", password: "disposable-fixture-password" };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
-async function priorEight(lifetime?: Awaited<ReturnType<typeof runtimeLifetimeLock>>) {
+async function priorEight(lifetime?: Awaited<ReturnType<typeof runtimeLifetimeLock>>, sourceVersion: 8 | 9 | 10 = 8) {
   const profile = await createBoundProfileFixture(lifetime === undefined ? {} : { lifetime });
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
@@ -99,9 +99,16 @@ async function priorEight(lifetime?: Awaited<ReturnType<typeof runtimeLifetimeLo
   try {
     raw.exec("PRAGMA foreign_keys=ON");
     assert.equal(raw.prepare("SELECT count(*) AS count FROM assistant_model_preference").get()?.count, 0);
-    raw.exec("BEGIN EXCLUSIVE; DROP TABLE assistant_model_preference; UPDATE database_states SET schema_version=8 WHERE id=1; PRAGMA user_version=8; COMMIT");
-    const prior = inspectNativeAuthority(raw, 8);
-    assert.equal(prior.schemaVersion, 8);
+    raw.exec("BEGIN EXCLUSIVE");
+    if (sourceVersion < 10) {
+      const editorDdl = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE TABLE explorer_overrides \([\s\S]*?\n\) STRICT;/u)?.[0];
+      assert.ok(editorDdl); raw.exec(editorDdl);
+    }
+    if (sourceVersion < 9) raw.exec("DROP TABLE assistant_model_preference");
+    raw.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(sourceVersion);
+    raw.exec(`PRAGMA user_version=${sourceVersion}; COMMIT`);
+    const prior = inspectNativeAuthority(raw, sourceVersion);
+    assert.equal(prior.schemaVersion, sourceVersion);
     assert.equal(prior.installationId, binding.installationId);
     assert.equal(prior.profileId, binding.profileId);
   } finally { raw.close(); }
@@ -121,8 +128,8 @@ const retainedPositiveOwners = new WeakMap<Error, {
   fixture: Awaited<ReturnType<typeof priorEight>>;
 }>();
 
-it("commits authenticated refusal, stops, upgrades with backup, restarts the public shell and requires fresh sign-in", async () => {
-  const f = await priorEight();
+it.each([8, 9, 10] as const)("commits authenticated schema %s upgrade, restarts the public shell and requires fresh sign-in", async sourceVersion => {
+  const f = await priorEight(undefined, sourceVersion);
   const protectedPath = join(f.profile.stateRoot, "credentials", "protected.json");
   const keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${f.binding.profileId}.json`);
   const protectedBefore = digest(protectedPath), keyBefore = digest(keyPath);

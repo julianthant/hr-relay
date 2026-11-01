@@ -1,10 +1,14 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { createWorkerSessionManagerTestWorld } from "../../../support/helpers/backend/worker-session-manager-world.js";
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { afterAll, describe, it } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const { sessionFactory, manager } = createWorkerSessionManagerTestWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
+const { sessionFactory, manager } = createWorkerSessionManagerTestWorld(profileFixtures.create);
 
 const SIGNAL = new AbortController().signal;
 
@@ -16,22 +20,9 @@ const UCPATH_REUSE = {
 
 describe("worker browser sessions", () => {
 
-  it("does not capture a historical or explicitly disabled browser lease", async () => {
-    const harness = sessionFactory();
-    const captured: unknown[] = [];
-    const sessions = await manager(harness, [], {
-      captureBrowserScreenshots: false,
-      browserScreenshotCapture: { async capture(context) { captured.push(context); } },
-    });
-    await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "ok");
-    assert.equal(harness.screenshots(), 0);
-    assert.deepEqual(captured, []);
-  });
-
   it("preserves a task failure with its selected screenshot failure and still poison-closes", async () => {
     const harness = sessionFactory({ screenshotFailure: true });
     const sessions = await manager(harness, [], {
-      captureBrowserScreenshots: true,
       browserScreenshotCapture: { async capture() {} },
     });
     await assert.rejects(

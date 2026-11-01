@@ -4,9 +4,7 @@ import type { AssistantFile } from './assistant-panel-model.js';
 export const ASSISTANT_MODELS = ['Default', 'GPT-6.1 Sol', 'GPT-6 Astra', 'GPT-6 Sol', 'GPT-6 Luna', 'GPT-5.6 Sol', 'GPT-5.6 Terra', 'GPT-5.6 Luna'] as const;
 export const ASSISTANT_EFFORTS = ['Light', 'Low', 'Medium', 'High', 'xHigh'] as const;
 export const ASSISTANT_APPROVALS = [
-  { label: 'Ask before every action', description: 'Review every read and change.' },
-  { label: 'Ask only before submits', description: 'Review changes sent to other systems.' },
-  { label: 'Act without asking', description: 'Let Relay act within your permissions.' },
+  { label: 'Ask before every action', description: 'Confirm each proposed change.' },
 ] as const;
 export type ComposerMenu = 'attach' | 'approval' | 'model' | 'effort' | 'voice';
 export interface ComposerValue { readonly text: string; readonly files: readonly AssistantFile[]; readonly model: string; readonly effort: string; readonly approval: string }
@@ -18,7 +16,7 @@ export function useComposer({ onSend, draft, initialText = '', settlementKey }: 
   useLayoutEffect(() => { draft?.retain({ text, files }); }, [draft, text, files]);
   const [model, setModel] = useState<string>(ASSISTANT_MODELS[1]);
   const [effort, setEffort] = useState<string>('Medium');
-  const [approval, setApproval] = useState<string>(ASSISTANT_APPROVALS[1].label);
+  const [approval, setApproval] = useState<string>(ASSISTANT_APPROVALS[0].label);
   const [menu, setMenu] = useState<ComposerMenu | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);

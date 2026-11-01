@@ -39,8 +39,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await page.keyboard.press("Escape"); await expect(roster).toBeFocused();
         await dialog.locator('input[type="file"]').setInputFiles({ ...pdf, name: extraction ? "contacts.pdf" : "manual-contacts.pdf" });
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-        await expect(dialog).toContainText("Interactive: work you’re waiting on.");
-        await expect(dialog).toContainText("Bulk: background batches; interactive runs take priority.");
+        await expect(dialog).toContainText("Interactive runs go first.");
+        await expect(dialog.getByRole("radio", { name: "Bulk", exact: true })).toBeVisible();
         await dialog.getByRole("radio", { name: "Bulk", exact: true }).press("Space");
         await dialog.getByRole("checkbox", { name: "Customize steps", exact: true }).check();
         await dialog.getByRole("button", { name: "Continue", exact: true }).click();

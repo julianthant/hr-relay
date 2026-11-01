@@ -8,11 +8,11 @@ import { runHeaderAction, type RunHeaderContext } from "./run-header-model.js";
 import type { LogTimelineStage } from "./logs/log-timeline-model.js";
 
 /** The production log layout accepts presentation data and has no transport dependency. */
-export const LogPanel = memo(function LogPanel({ title, steps, timeline, status, toolbar, onDecision, onReview, initialStepId, navigation, content, context }: {
+export const LogPanel = memo(function LogPanel({ title, steps, timeline, status, toolbar, onDecision, onReview, initialStepId, navigation, content, context, afterStep }: {
   onDecision?: (id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => void;
   onReview?: () => void;
   title: string; steps: readonly LogStep[]; timeline: readonly LogTimelineStage[]; status?: ReactNode; toolbar?: ReactNode; initialStepId?: string;
-  navigation?: ReactNode; content?: ReactNode; context?: RunHeaderContext;
+  navigation?: ReactNode; content?: ReactNode; context?: RunHeaderContext; afterStep?: (id: string) => ReactNode;
 }) {
   const action = runHeaderAction(steps, timeline);
   const header = (jump?: (stepId: string, entryId?: string) => void) => <header className="shrink-0 border-b border-ui-stroke bg-ui-table px-4 py-3">
@@ -21,7 +21,7 @@ export const LogPanel = memo(function LogPanel({ title, steps, timeline, status,
     </div>
   </header>;
   return <section aria-label="Selected run logs" className="ui-theme-scope flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-fg:var(--ui-primary)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
-    {content ? <>{header()}{navigation}{content}</> : <LogFeed steps={steps} initialStepId={initialStepId} onDecision={onDecision}
+    {content ? <>{header()}{navigation}{content}</> : <LogFeed steps={steps} afterStep={afterStep} initialStepId={initialStepId} onDecision={onDecision}
       navigation={jump => <>{header(jump)}{navigation}<LogTimeline stages={timeline} onJump={jump} /></>} />}
   </section>;
 });
