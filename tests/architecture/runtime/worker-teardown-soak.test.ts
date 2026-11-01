@@ -97,7 +97,7 @@ describe("graceful teardown with a run in flight", () => {
       }),
       crm: () => healthyCrmDriver(),
     });
-    const dying = await workerHarness(authority, "1", "a", { sessions, exitWhenIdle: false });
+    const dying = workerHarness(authority, "1", "a", { sessions, exitWhenIdle: false });
     const looping = runWorkerLoop(dying.deps);
     await driverStarted;
 
@@ -123,7 +123,7 @@ describe("graceful teardown with a run in flight", () => {
     assert.ok(recoveredRun.lifecycle.state === "terminal" && recoveredRun.lifecycle.outcome === "failed");
     assert.equal(database.authority.failures.listByRun(runId)[0]?.code, "RUN_INTERRUPTED_BY_CRASH");
 
-    const successor = await workerHarness(authority, "2", "b");
+    const successor = workerHarness(authority, "2", "b");
     const recovered = await runWorkerLoop(successor.deps);
     assert.deepEqual(recovered.outcomes.map(({ state }) => state), []);
     assert.deepEqual([...activeClaimsByWorker(database).keys()], []);
@@ -327,8 +327,8 @@ describe("bounded multi-worker soak over one authority database", () => {
     };
 
     const prefixes = ["a", "b", "c"] as const;
-    const harnesses = await Promise.all(prefixes.map((prefix, index) =>
-      workerHarness(authority, String(index + 1), prefix, { onSpan: sample })));
+    const harnesses = prefixes.map((prefix, index) =>
+      workerHarness(authority, String(index + 1), prefix, { onSpan: sample }));
 
     const startedAtMs = performance.now();
     const reports = await Promise.all(harnesses.map(({ deps }) => runWorkerLoop(deps)));

@@ -1,8 +1,9 @@
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
 
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from "./helpers/fixtures.js";
 import { SettingsFactsWireSchema } from '../../src/models/dashboard/settings.js';
-import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
+import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 import { FIXTURE_SETTINGS_FACTS } from './helpers/fixture-settings.js';
@@ -22,7 +23,6 @@ const facts = SettingsFactsWireSchema.parse({
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`Workflow readiness groups real operations and preserves requirements @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, preflightScenario: 'ready' });
     const errors: string[] = [], writes: string[] = [];
     page.on('pageerror', error => errors.push(error.message));

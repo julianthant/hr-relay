@@ -1,6 +1,7 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
 import { separationsIdentityCheckModule } from "../../../../src/backend/app/registries/step-proof-modules.js";
 import {
 availableSections,
@@ -44,10 +45,13 @@ uuidOf,
 type DashboardWorld,
 } from "../../../support/helpers/backend/dashboard-harness.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 const worlds: DashboardWorld[] = [];
 const checkpointEvents = new WeakMap<DashboardWorld, Map<string, unknown>>();
 async function world(): Promise<DashboardWorld> {
-  const created = await makeWorld();
+  const created = await makeWorld({ profileFixture: profileFixtures.create });
   worlds.push(created);
   checkpointEvents.set(created, new Map());
   return created;

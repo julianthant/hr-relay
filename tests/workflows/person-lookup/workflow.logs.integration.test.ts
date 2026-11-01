@@ -1,13 +1,17 @@
+import { afterAll, afterEach, it } from "vitest";
+import { createClonedProfileFixtures } from "../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import type { JsonObject } from "../../../src/rules/validation/canonical-json.js";
-import { afterEach, it } from "vitest";
 import { buildRunLogsSection } from "../../../src/backend/runs/queries/run-logs.js";
 import { dataOriginViewsOf } from "../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import { createRunQueueProjectionTestWorld } from "../../support/helpers/backend/run-queue-projection-world.js";
 import { personLookupModule } from "../../support/helpers/registered-workflows.js";
 import { traceOf, uuidOf } from "../../support/helpers/backend/dashboard-harness.js";
 
-const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
+const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld(profileFixtures.create);
 afterEach(cleanup);
 
 it.each([

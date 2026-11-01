@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import type { ChildProcess,SpawnOptions } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { describe,it,vi } from "vitest";
+import { scaledMs } from "../../support/time-scale.js";
 
 const mocks = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock("node:child_process", () => ({ spawn: mocks.spawn }));
@@ -40,7 +41,7 @@ async function start(backendSource = BACKEND) {
 }
 
 async function waitUntil(predicate: () => boolean): Promise<void> {
-  const deadline = Date.now() + 3000;
+  const deadline = Date.now() + scaledMs(3000);
   while (!predicate()) {
     if (Date.now() > deadline) throw new Error("fixture progress timed out");
     await new Promise(resolve => setTimeout(resolve, 10));

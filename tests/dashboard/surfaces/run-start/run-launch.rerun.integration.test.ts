@@ -1,9 +1,10 @@
+import { afterAll, afterEach, describe, it, vi } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { launchDescriptor } from "../../../support/fixtures/run-launch-fixtures.js";
 import { createMountedRerunWorld } from "../../../support/helpers/dashboard/mounted-rerun-world.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act } from "react";
-import { afterEach,describe,it,vi } from "vitest";
 import { z } from "zod";
 import { StartPlanRequestSchema } from "../../../../src/models/dashboard/start-plan.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
@@ -11,7 +12,10 @@ import { absentProbeEvidence } from "../../../support/fixtures/write-sequencer-f
 import { createPlSeparationsReadinessWorld } from "../../../support/helpers/dashboard/pl-separations-readiness-world.js";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 
-const { setup, text, button, press, checkbox, field, fill, mount, cleanup } = createMountedRerunWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
+const { setup, text, button, press, checkbox, field, fill, mount, cleanup } = createMountedRerunWorld(profileFixtures.create);
 afterEach(cleanup);
 type Harness = Awaited<ReturnType<typeof setup>>;
 
@@ -122,7 +126,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
 });
 
 describe("registered Person Lookup and Separations served launch", () => {
-  const readiness = createPlSeparationsReadinessWorld();
+  const readiness = createPlSeparationsReadinessWorld(profileFixtures.create);
   afterEach(readiness.cleanup);
   const cases = [
     { workflowId: "person-lookup", text: "10000001", submission: { mode: "search", emplId: "10000001",

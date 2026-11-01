@@ -1,3 +1,4 @@
+import { createClonedProfileFixtures } from "../../helpers/admission-fixture.js";
 import nativeFs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { vi } from "vitest";
@@ -124,6 +125,7 @@ export async function executePreflightCorpus(transform?: (runners: readonly Pref
     assert.equal(manifest.fixture,"fixtures/preflight/environment-doctor.json");
     assert.deepEqual(manifest.requiredAssertions,[`reports-${fault.injection}`]);
   }
+  const profiles = createClonedProfileFixtures();
   const executions:CorpusExecution[]=[];
   let actionCount=0, externalCommitCount=0;
   const launch = vi.spyOn(chromium,"launch").mockImplementation(()=>{actionCount++;throw new Error("Corpus attempted a browser launch");});
@@ -132,7 +134,7 @@ export async function executePreflightCorpus(transform?: (runners: readonly Pref
   const fetch = vi.spyOn(globalThis,"fetch").mockImplementation(()=>{externalCommitCount++;throw new Error("Corpus attempted an external request");});
   try {
   for(const entry of preflightFaultCases()) {
-    const f=await runtimeFixture(entry.dependency.capabilities);let undo:(()=>Promise<void>|void)|undefined;
+    const f=await runtimeFixture(entry.dependency.capabilities, profiles.create);let undo:(()=>Promise<void>|void)|undefined;
     try {
       const feature=FEATURE_RUNTIME_SPECS.find(candidate=>candidate.dependency===entry.dependency.id);
       if(feature!==undefined) for(const key of Object.keys(f.input.providerAvailability)) if(key.endsWith(`/${feature.providerCapability}`))Reflect.set(f.input.providerAvailability,key,key.startsWith(`${entry.variant}/`));
@@ -146,8 +148,8 @@ export async function executePreflightCorpus(transform?: (runners: readonly Pref
       assert.equal((await f.report()).results.find(result=>result.check===entry.dependency.check)?.status,"pass","explicit restoration did not re-check healthy");
       executions.push(ExecutionSchema.parse({scenario:entry.dependency.scenario,dependency:entry.dependency.id,variant:entry.variant,check:entry.dependency.check,report,
         terminal:report.results.some(result=>result.status==="fail")?"failed":"partial",actionCount,externalCommitCount,evidence:[`preflight.${entry.dependency.scenario.slice("preflight/".length)}`],reportDigest:sha256Hex(canonicalJsonStringify(report)),restored:true}));
-    } finally {await undo?.();await f.close();}
+    } finally {try {await undo?.();} finally {await f.close();}}
   }
   auditPreflightExecutions(executions);return executions;
-  } finally {launch.mockRestore();persistent.mockRestore();spawn.mockRestore();fetch.mockRestore();}
+  } finally {launch.mockRestore();persistent.mockRestore();spawn.mockRestore();fetch.mockRestore();await profiles.close();}
 }

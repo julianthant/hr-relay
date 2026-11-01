@@ -1,11 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
-import { mkdtemp, rm } from "node:fs/promises";
-import { join, resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { build, preview, type PreviewServer } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
+import type { PreviewServer } from "vite";
+import { previewComponentFixture } from "./helpers/component-fixtures.js";
 import { PARITY_THEMES } from "./helpers/capture.js";
 
 
@@ -21,21 +18,16 @@ const cases = [
   { state: "enabled", action: "failed", control: "Disconnect" },
 ] as const;
 let server: PreviewServer;
-let output: string;
 let baseUrl: string;
 test.describe.configure({ mode: "default" });
 test.beforeAll(async () => {
-  output = await mkdtemp(join(tmpdir(), "hrauto-account-component-"));
-  const root = resolve("tests/parity/fixtures/account");
-  await build({ configFile: false, root, plugins: [react(), tailwindcss()], logLevel: "warn", build: { outDir: output, emptyOutDir: true } });
-  server = await preview({ configFile: false, root, logLevel: "warn", build: { outDir: output }, preview: { host: "127.0.0.1", port: 0, strictPort: true } });
+  server = await previewComponentFixture("account");
   const address = server.httpServer.address();
   if (address === null || typeof address === "string") throw new Error("account-component-server-address-invalid");
   baseUrl = `http://127.0.0.1:${String(address.port)}`;
 });
 test.afterAll(async () => {
   if (server !== undefined) await new Promise<void>((done, reject) => server.httpServer.close(error => error ? reject(error) : done()));
-  if (output !== undefined) await rm(output, { recursive: true, force: true });
 });
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {

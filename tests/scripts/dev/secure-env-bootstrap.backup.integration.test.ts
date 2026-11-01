@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, it, vi } from "vitest";
 import { z } from "zod";
-import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { RuntimeLifetimeLock, type OfflineMaintenanceOperation } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { credentialKeychainTestEnvironment } from "../../support/helpers/credential-keychain-fake.js";
 import { createHistoricalFlatProfileFixture } from "../../support/fixtures/storage/historical-flat-profile-fixture.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -151,7 +151,16 @@ it("refuses a selected profile generation change during backup instead of report
   syncBuiltinESMExports();
   try {
     await assert.rejects(composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], systemClock, fixture.workspace, machine),
-      /profile-session-stale|profile-storage-claim-generation-changed/u);
+      error => {
+        const pending: unknown[] = [error], seen = new Set<unknown>();
+        let stale = false;
+        while (pending.length !== 0) {
+          const value = pending.pop(); if (seen.has(value)) continue; seen.add(value);
+          if (value instanceof AggregateError) { const errors: readonly unknown[] = value.errors; pending.push(...errors); }
+          else { assert.ok(value instanceof Error); assert.match(value.message, /profile-session-stale|profile-storage-claim-generation-changed/u); stale = true; }
+        }
+        return stale;
+      });
     assert.equal(changed, true); assert.deepEqual(readFileSync(path), before);
   } finally { spy.mockRestore(); syncBuiltinESMExports(); machine.release(); }
 });
@@ -161,9 +170,11 @@ for (const uncertain of [false, true]) {
     const fixture = await installation(), machine = acquireEntrypointAdmission(fixture.workspace, "exclusive", fixture.lifetime);
     const inspect = AuthorityDatabase.inspectStoppedUpgrade.bind(AuthorityDatabase);
     const open = nativeFs.openSync.bind(nativeFs), close = nativeFs.closeSync.bind(nativeFs), argv = process.argv.slice();
-    let issued: RuntimeAdmission | undefined, armed = false, fired = false;
+    let issued: RuntimeAdmission | undefined, operation: OfflineMaintenanceOperation | undefined, armed = false, fired = false;
     const retained: { descriptor?: number; device?: number; inode?: number } = {};
     try {
+      const begin = fixture.lifetime.beginOfflineMaintenance.bind(fixture.lifetime);
+      vi.spyOn(fixture.lifetime, "beginOfflineMaintenance").mockImplementation(workspace => { operation = begin(workspace); return operation; });
       const path = join(fixture.stateRoot, "state.db"), before = readFileSync(path);
       const registryPath = join(fixture.workspace, ".tracker", "control", "profile-registry.json"), registry = readFileSync(registryPath);
       const fault = new Error("fixture-backup-source-close-refused");
@@ -220,7 +231,7 @@ for (const uncertain of [false, true]) {
     } finally {
       vi.restoreAllMocks(); syncBuiltinESMExports(); process.argv.splice(0, process.argv.length, ...argv);
       if (retained.descriptor !== undefined) close(retained.descriptor);
-      issued?.release(); machine.release();
+      operation?.release(); issued?.release(); machine.release();
     }
   });
 }

@@ -1,4 +1,4 @@
-import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,12 +7,12 @@ import { chromium, expect } from "@playwright/test";
 import type { BrowserContext } from "playwright";
 import { it } from "vitest";
 import { z } from "zod";
-import { createProfileOnboardingDuoProvider } from "../../../src/backend/profiles/onboarding-duo-provider.js";
-import type { DraftDuoBrowserOwner } from "../../../src/backend/profiles/onboarding-duo.js";
-import { systemClock } from "../../../src/rules/time/clock.js";
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { composeProfileRuntime } from "../../../src/backend/app/composition/storage-compose.js";
-import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { createProfileOnboardingDuoProvider } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
+import type { DraftDuoBrowserOwner } from "../../../../src/backend/profiles/onboarding-duo.js";
+import { systemClock } from "../../../../src/rules/time/clock.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const FORM = `<!doctype html><form action="${SSO}" method="post"><label for="ssousername">Username</label><input id="ssousername" name="username"><label for="ssopassword">Password</label><input id="ssopassword" name="password" type="password"><button name="_eventId_proceed">Sign in</button></form>`;
@@ -31,7 +31,8 @@ for (const pendingClose of [false, true]) it(pendingClose
   const provider = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: realpathSync(join(process.cwd(), "fast-duo")), clock: systemClock, closeProofMs: 5000,
     launcher: { async launch(input) {
       launches++; assert.equal(input.headless, false);
-      context = await chromium.launchPersistentContext(input.profileDirectory, { channel: "chromium", headless: false,
+      // Full Chromium exercises the synthetic extension UI without a desktop session.
+      context = await chromium.launchPersistentContext(input.profileDirectory, { channel: "chromium", headless: true,
         args: [`--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`] });
       await context.route("**/*", async route => {
         const request = route.request();
@@ -148,7 +149,8 @@ for (const pendingClose of [false, true]) it(pendingClose
       assert.equal(retained.operatorConfirmed, false); assert.equal(retained.exactCredentialRequestObserved, false);
       assert.equal(read().methods.touch.state, "idle"); assert.equal(acquisitions, 1); assert.equal(submissions, 1);
       await expect(context.pages()[0].locator("#accountList")).toContainText("Failed");
-      await assert.rejects(profile.session.cancelOnboarding(draft.token, draft.operationId));
+      assert.deepEqual(await profile.session.cancelOnboarding(draft.token, draft.operationId), { state: "signed-out" });
+      assert.ok(owner); const stale = owner; assert.throws(() => stale.assertCurrent()); await assert.rejects(stale.acquireCredentials());
       assert.equal(machine.readProfileRegistry().profiles.length, 0);
     } else {
       assert.deepEqual(await profile.session.cancelOnboarding(draft.token, draft.operationId), { state: "signed-out" });

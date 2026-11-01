@@ -35,6 +35,7 @@ export function createSystemSessionTestWorld() {
   }> {
     const harness = fakeLoginPage(script);
     const recorded: AuthenticatedApplicationEvidence[] = [];
+    let ceremony: ReturnType<typeof fixtureDuoCeremonyGate> | undefined;
     return {
       harness,
       evidence: () => Object.freeze([...recorded]),
@@ -47,7 +48,12 @@ export function createSystemSessionTestWorld() {
         credentials: CREDENTIALS,
         recordEvidence: (evidence) => recorded.push(evidence),
 
-        duoCeremony: await fixtureDuoCeremonyGate(system),
+        duoCeremony: {
+          async withCeremony(run) {
+            const gate = await (ceremony ??= fixtureDuoCeremonyGate(system));
+            return gate.withCeremony(run);
+          },
+        },
       },
     };
   }

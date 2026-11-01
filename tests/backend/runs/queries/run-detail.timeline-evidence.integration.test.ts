@@ -1,6 +1,7 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import type { RunDetailDescriptorView } from "../../../../src/backend/runs/queries/run-detail.js";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
@@ -18,8 +19,11 @@ import { createTimelineEmitter } from "../../../../src/backend/storage/events/ti
 import { timelineEventDuration } from "../../../../src/models/dashboard/run-detail.js";
 import { DAY } from "../../../support/helpers/backend/dashboard-harness.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 {
-const {world, cleanup } = createRunDetailTestWorld();
+const {world, cleanup } = createRunDetailTestWorld(() => profileFixtures.create());
 
 /* ── 1. the factory derives and REFUSES ──────────────────────────────────── */
 
@@ -511,7 +515,7 @@ afterEach(cleanup);
 }
 
 {
-const {world, cleanup } = createRunDetailTestWorld();
+const {world, cleanup } = createRunDetailTestWorld(() => profileFixtures.create());
 
 const SEED = 1;
 const NODE = "timecard-search";
@@ -612,7 +616,7 @@ afterEach(cleanup);
 }
 
 {
-const {world, cleanup } = createRunDetailTestWorld();
+const {world, cleanup } = createRunDetailTestWorld(() => profileFixtures.create());
 
 /** A run the projection can render, with nothing on its timeline yet. */
 function seedRun(w: DashboardWorld, seed = 1): void {

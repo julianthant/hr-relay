@@ -1,5 +1,6 @@
 import { AssistantModelPreferenceViewSchema } from '../../src/models/dashboard/assistant.js';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from "./helpers/fixtures.js";
 import { startAssistantCoupledServer } from '../support/helpers/assistant-coupled-server.js';
 import { attachShellA11y } from './helpers/shell-proof.js';
 

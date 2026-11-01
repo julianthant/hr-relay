@@ -1,6 +1,6 @@
 import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 import { releaseSeededWriteOwners } from "./timeline-write-fixture.js";
-import { createBoundProfileFixture } from "./admission-fixture.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "./admission-fixture.js";
 import assert from "node:assert/strict";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { readTimelineRecords } from "../../../src/backend/storage/events/timeline-reader.js";
@@ -53,10 +53,10 @@ export const EXECUTOR_NOW = "2026-08-03T09:00:00.000Z";
 
 /* ── authority ───────────────────────────────────────────────────────────── */
 
-export interface AuthorityHarness {
+export interface AuthorityHarness<Profile extends BoundProfileStorageFixture = Awaited<ReturnType<typeof createBoundProfileFixture>>> {
   readonly database: AuthorityDatabase;
   readonly clock: TestClock;
-  readonly profile: Awaited<ReturnType<typeof createBoundProfileFixture>>;
+  readonly profile: Profile;
 
   readonly path: string;
   readonly stateRoot: string;
@@ -66,12 +66,14 @@ export interface AuthorityHarness {
 
 const retainedAuthorityHarnessOwners = new Set<object>();
 
-export async function openAuthorityHarness(): Promise<AuthorityHarness> {
-  const held: { fixture?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; primary?: { error: unknown } } = {};
+export function openAuthorityHarness<Profile extends BoundProfileStorageFixture>(profileFixture: () => Promise<Profile>): Promise<AuthorityHarness<Profile>>;
+export function openAuthorityHarness(): Promise<AuthorityHarness>;
+export async function openAuthorityHarness(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture): Promise<AuthorityHarness<BoundProfileStorageFixture>> {
+  const held: { fixture?: BoundProfileStorageFixture; database?: AuthorityDatabase; primary?: { error: unknown } } = {};
   retainedAuthorityHarnessOwners.add(held);
   try {
   const clock = manualClock(new Date(EXECUTOR_NOW));
-  const fixture = await createBoundProfileFixture(); held.fixture = fixture;
+  const fixture = await profileFixture(); held.fixture = fixture;
   const root = fixture.stateRoot, path = fixture.path;
   const database = AuthorityDatabase.open(
     { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },

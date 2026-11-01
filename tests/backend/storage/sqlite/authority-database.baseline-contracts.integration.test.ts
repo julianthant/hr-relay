@@ -1,6 +1,12 @@
+import { AuthorityDatabase, createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { NOTIFICATION } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { describe,it } from "vitest";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { lstatSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { describe,it, vi } from "vitest";
 import { buildIntakeManifest } from "../../../../src/models/intake/manifest.js";
 import { IntakeSessionSchema } from "../../../../src/models/intake/session.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -22,6 +28,27 @@ function manifest(n = 1) {
     currentRejects: new Map(), rejectionHistory: [], corrections: [], exclusions: [] });
 }
 describe("native imported-artifact contracts", () => {
+  for (const mode of ["read", "write"] as const) it(`rechecks profile authority before committing a ${mode} operation`, async () => {
+    const f = await foundationFixture();
+    const path = join(f.profile.machine.stateRoot, "machine", "profiles.json");
+    const before = readFileSync(path);
+    const generation = f.db.getMeta().authorityGeneration;
+    try {
+      const work = () => {
+        if (mode === "write") f.db.authority.intakeSessions.create(session());
+        writeFileSync(path, "{}");
+      };
+      assert.throws(() => mode === "write"
+        ? f.db.withAuthorityTransaction(work)
+        : f.db.withAuthorityReadSnapshot(work), { name: "ZodError" });
+      writeFileSync(path, before);
+      assert.equal(f.db.authority.intakeSessions.get(id(1)), undefined);
+      assert.equal(f.db.getMeta().authorityGeneration, generation);
+    } finally {
+      writeFileSync(path, before);
+      await f.dispose();
+    }
+  });
   it("keeps nested writes and generation in the outer transaction and freezes submitted content", async () => {
     const f = await foundationFixture();
     const db = f.db;
@@ -46,4 +73,57 @@ describe("native imported-artifact contracts", () => {
       assert.equal(canonicalJsonStringify(db.authority.intakeManifests.get(id(11))), frozen);
     } finally { await f.dispose(); }
   });
+});
+
+it("clones seeded profile state without sharing writes or a live canonical path", async () => {
+  const fixtures = createClonedProfileFixtures();
+  const held: BoundProfileStorageFixture[] = [];
+  const databases: AuthorityDatabase[] = [];
+  try {
+    const first = await fixtures.create(); held.push(first);
+    const peer = await fixtures.create(); held.push(peer);
+    assert.notEqual(peer.path, first.path);
+    const originalInode = lstatSync(first.path).ino;
+    const database = AuthorityDatabase.open({ path: first.path, busyTimeoutMs: 250, migrationOwner: "clone-isolation" });
+    databases.push(database);
+    database.authority.notifications.create({ ...NOTIFICATION, trigger: "backfill-gap", links: [] });
+    database.close();
+    await first.close();
+    const next = await fixtures.create(); held.push(next);
+    assert.equal(next.path, first.path);
+    assert.notEqual(lstatSync(next.path).ino, originalInode);
+    await first.close();
+    next.admission.assertLive();
+    for (const profile of [next, peer]) {
+      const current = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "clone-isolation" });
+      databases.push(current);
+      assert.equal(current.authority.notifications.get(NOTIFICATION.notificationId), undefined);
+      current.close();
+    }
+  } finally {
+    for (const database of databases) database.close();
+    for (const profile of held) await profile.close();
+    await fixtures.close();
+  }
+});
+
+it("refuses a cross-device clone before deleting the previous profile", async () => {
+  const fixtures = createClonedProfileFixtures();
+  const first = await fixtures.create();
+  const inode = lstatSync(first.path).ino;
+  await first.close();
+  const stat = fs.statSync;
+  try {
+    vi.spyOn(fs, "statSync").mockImplementation((path, options) => {
+      const result = stat(path, options);
+      if (result !== undefined && path === dirname(first.stateRoot)) result.dev++;
+      return result;
+    });
+    syncBuiltinESMExports();
+    await assert.rejects(() => fixtures.create(), /fixture-clone-device-mismatch/u);
+    assert.equal(lstatSync(first.path).ino, inode);
+  } finally {
+    vi.restoreAllMocks(); syncBuiltinESMExports();
+    await fixtures.close();
+  }
 });

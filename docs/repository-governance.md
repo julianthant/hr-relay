@@ -4,24 +4,44 @@ The [root Git instructions](../AGENTS.md#git) own branch and release policy.
 
 ## Branch protection
 
-Protect `staging` and `main`: require pull requests, one independent approving review, dismissal of
-stale approvals, resolved conversations and passing required checks. Block force pushes and branch
-deletion. For both branches, enable "Require branches to be up to date before merging" so required
-checks validate the current target base. Enable merge commits; disable squash and rebase merging. Do not require linear history.
+Protect `staging` and `main`: require pull requests, resolved conversations and passing required
+checks. Do not require a human approving review. Block force pushes and branch deletion. For both
+branches, enable "Require branches to be up to date before merging" so required checks validate the
+current target base. Enable merge commits; disable squash and rebase merging. Do not require linear
+history. Enable repository auto-merge. A pull request into `staging` auto-merges with a merge commit
+when its required checks are green. The owner fixes a red check. `main` does not auto-merge: the
+operator merges the release pull request.
 
 | Branch | Required CI check names |
 | --- | --- |
-| `staging` | `static`, `unit`, `integration`, `architecture`, `parity`, `privacy` |
-| `main` | `static`, `unit`, `integration`, `architecture`, `parity`, `privacy`, `release` |
+| `staging` | `static`, `unit (macos-15)`, `integration (macos-15)`, `architecture (macos-15)`, `parity`, `privacy`, and the Cursor Bugbot check once its name is known |
+| `main` | the `staging` checks, plus `release` |
 
 `release` runs only on PRs targeting `main`, after the other checks. Its isolated runner builds the
 web bundle, runs coverage alone, then performance. The operator authorizes release PRs from
 `staging` to `main`, and syncs `main` back into `staging` after merging. Branch protection is configured
-by the repository owner; the workflow does not enable it.
+by the repository owner; the workflow does not enable it. Confirm the check names on a pull request
+before locking them. Add the Cursor Bugbot check when its name is known; do not invent it.
 
-CI takes Node from `package.json` engines and caches npm. Test jobs use macOS because the test
-runner requires `/usr/bin/lockf`. Desktop parity uses headless Chromium and existing references;
-CI never updates references or uploads HR evidence.
+CI takes Node from `package.json` engines and caches npm. Routine test suites are macOS:
+required unit, integration, architecture and parity on `macos-15` Apple Silicon runners.
+Static, privacy and the four required suite summaries stay on Ubuntu. CI runs no Windows jobs.
+A full run uses five concurrent macOS groups: twenty integration shards distributed around unit,
+serial architecture and two parity shards. Each group runs its assigned suites in sequence.
+The release runner starts after these groups finish. This fits the five-job macOS limit without
+an extra runner wave; other workflows and GitHub runner availability can still cause queueing.
+
+PR path filters select affected suites; pushes to `staging` or `main` always select all routine
+suites. Markdown-only PRs run static and privacy without test runners. The required suite names
+stay unchanged: each summary succeeds for a deliberately omitted suite, or requires every
+scheduled group to succeed. Failed change detection, failed groups and cancelled selected groups
+fail the summaries. The [test reference](rebuild/reference/guards-and-tests.md#2-vitest-selection-and-commands)
+owns the selection rules and membership proof. Markdown-only release PRs also omit coverage and perf.
+
+Playwright browser caches use `~/Library/Caches/ms-playwright`, keyed by runner OS, architecture,
+macOS image, browser set and `package-lock.json` digest. An exact hit skips installation; a miss
+installs the required browsers. There are no partial-key restores. Desktop parity uses headless
+Chromium and existing references; CI never updates references or uploads HR evidence.
 
 ## Privacy check
 

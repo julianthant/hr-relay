@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync,rmSync } from "node:fs";
 import { request } from "node:http";
 import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterAll,afterEach,describe,it } from "vitest";
+import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { createDiagnosticCaptureService } from "../../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../../../src/backend/storage/sqlite/storage-records.js";
 import { startDashboardHttpServer } from "../../../../../src/backend/transports/http/http-server.js";
@@ -675,5 +676,10 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
 });
 
-import { HASH_B,beforeArtifactReaderOperation,captureDiagnosticBundle,disposeHttpRouteHarness,harness,json,loopbackResponse,observeArtifactLeaseDisposal,writeStoredArtifactEnvelope,type Harness } from "../../../../support/helpers/backend/http-route-harness.js";
+import { HASH_B,beforeArtifactReaderOperation,captureDiagnosticBundle,disposeHttpRouteHarness,harness as createHarness,json,loopbackResponse,observeArtifactLeaseDisposal,writeStoredArtifactEnvelope,type Harness } from "../../../../support/helpers/backend/http-route-harness.js";
+const profiles = createClonedProfileFixtures();
 afterEach(disposeHttpRouteHarness);
+afterAll(() => profiles.close());
+function harness(options?: Parameters<typeof createHarness>[0]) {
+  return createHarness({ ...options, profileFixture: profiles.create });
+}

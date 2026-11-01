@@ -1,6 +1,7 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Page, type TestInfo } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { resolve } from "node:path";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { captureParityPair } from "./helpers/capture.js";
 import { assertMonotonicFrozen, installFrozenMonotonic } from "./helpers/app-driver.js";
 import { attachShellA11y } from "./helpers/shell-proof.js";
@@ -25,7 +26,6 @@ async function capture(page: Page, info: TestInfo, state: string, theme: string)
 }
 for (const theme of ["light", "dark"]) {
   test(`HUB shell chat lifecycle, overlays and logout ${theme}`, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -69,7 +69,6 @@ for (const theme of ["light", "dark"]) {
   });
 
   test(`HUB onboarding mock handoff and readiness guards ${theme}`, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const writes: string[] = [], errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -135,7 +134,6 @@ for (const theme of ["light", "dark"]) {
   });
 
   test(`HUB appearance, session mock preferences and motion ${theme}`, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await installFrozenMonotonic(page);

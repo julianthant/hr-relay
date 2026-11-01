@@ -17,7 +17,7 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../.
 import { QUEUED_RUN, RUN_ID } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { FakeWorkerChild } from "../../../../support/helpers/backend/dashboard-pool-world.js";
 import { runCapacityCommandId } from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
-import { readRuntimeProcessLock } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import { StartPlanWireSchema } from "../../../../../src/models/dashboard/start-plan.js";
 import { WorkerControlRefusal } from "../../../../../src/models/run/worker-control.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
@@ -652,12 +652,17 @@ const retainedCapacityCustody: {
   databases: AdmittedAuthorityDatabase[];
   credentials?: ReturnType<typeof createCredentialStore>;
   shutdownFailure?: unknown;
-  backend?: NonNullable<ReturnType<typeof readRuntimeProcessLock>>;
   refusal?: RuntimeCustodyUncertainError;
 }[] = [];
 
   it.each(["manual-worker", "dashboard-start"] as const)("retains backend custody when adversarial %s work cannot drain", async mode => {
     const profile = await createBoundProfileFixture(), repoRoot = profile.workspace;
+    cleanups.push(async () => { await profile.close(); });
+    const heldPort = profile.lifetime.port;
+    const assertExclusiveLifetime = async () => {
+      profile.lifetime.assertHeld();
+      await assert.rejects(RuntimeLifetimeLock.acquire(heldPort), RuntimeAlreadyRunningError);
+    };
     const children: FakeWorkerChild[] = [];
     const retained: (typeof retainedCapacityCustody)[number] = { profile, children, databases: [] };
     retainedCapacityCustody.push(retained);
@@ -666,10 +671,6 @@ const retainedCapacityCustody: {
     const admission = profile.machine;
     const scheduler = new ManualScheduler(clock, 0);
     const faultLines: string[] = [];
-    const lockRecord = () => {
-      const record = readRuntimeProcessLock(join(repoRoot, rebuildRuntimeIsolation.processLockRoot), "server");
-      assert.ok(record); return record;
-    };
     // Port 0 asks the OS for an ephemeral port, isolating this proof from a running dashboard.
     const runtime = await composeDashboardApplication({ lifetimeLock: profile.lifetime, admission, preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
@@ -693,7 +694,7 @@ const retainedCapacityCustody: {
     });
     const selectedAdmission: { current?: RuntimeAdmission } = {};
     retained.runtime = runtime;
-    retained.backend = lockRecord();
+    await assertExclusiveLifetime();
 
     const cookie = await signInPoolApplication(runtime);
     const stateRoot = profile.stateRoot;
@@ -799,13 +800,27 @@ const retainedCapacityCustody: {
       } finally { committed.close(); }
       assert.equal(children.length, 1);
     }
+    if (mode === "manual-worker") {
+      const held = AdmittedAuthorityDatabase.open(currentAdmission,
+        { path: profile.path, busyTimeoutMs: 5_000, migrationOwner: "unit-test" }, clock, undefined, undefined, undefined, credentials);
+      retained.databases.push(held);
+      try {
+        const heldCommandId = nextCommandId();
+        const admittedAt = clock.now().toISOString();
+        const heldCommand = { commandId: heldCommandId, requestedAt: admittedAt, requestedBy: "local-operator", source: "dashboard",
+          family: "worker-browser", type: "spawn-worker", target: { workflowId: WORKFLOW, expectedVersion: 1 }, payload: { workerId: WORKER_1 } };
+        held.withAuthorityTransaction(repositories => {
+          repositories.commands.insert(heldCommand);
+          repositories.workerControls.admit({ commandId: heldCommandId, request: heldCommand, scope: `worker-pool:${WORKFLOW}`,
+            executorId: nextCommandId(), admittedAt, expiresAt: new Date(Date.parse(admittedAt) + 180_000).toISOString(),
+            basisVersion: 1, phase: { state: "admitted" } });
+        });
+      } finally { held.close(); }
+    }
 
     // Shutdown: ingress closes and the supervisor durably requests stop. It
     // must remain pending until this owned child reports its real OS exit.
-    assert.ok(lockRecord());
-    assert.equal(lockRecord().releasedAt, null);
-    const backendBeforeStop = lockRecord();
-    retained.backend = backendBeforeStop;
+    await assertExclusiveLifetime();
     const stopping = runtime.stop();
     const observedShutdown = stopping.then(() => ({ error: undefined }), (error: unknown) => ({ error }));
     let stopRequested = false;
@@ -823,7 +838,7 @@ const retainedCapacityCustody: {
       if (!stopRequested) await new Promise((resolve) => setTimeout(resolve, 10));
     }
     assert.equal(stopRequested, true, "shutdown must persist the graceful stop directive");
-    assert.equal(lockRecord().releasedAt, null);
+    await assertExclusiveLifetime();
     children[0]?.emitExit(0, null);
     const { error } = await observedShutdown;
     retained.shutdownFailure = error;
@@ -840,8 +855,8 @@ const retainedCapacityCustody: {
     assert.equal(drainUnproved, true, error);
 
     assert.equal(faultLines.some((line) => line.includes("dashboard shutdown leaves a worker child")), false);
-    assert.equal(lockRecord().releasedAt, null);
-    assert.equal(lockRecord().acquisitionId, backendBeforeStop.acquisitionId);
+    await assertExclusiveLifetime();
+    assert.equal(profile.lifetime.port, heldPort);
     currentAdmission.assertLive();
     profile.admission.assertLive();
     profile.machine.assertLive();

@@ -1,6 +1,7 @@
 import { DashboardDayWireSchema } from "../../src/models/dashboard/projection.js";
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect, type Page, type TestInfo } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY_WIRE } from "./helpers/fixture-queue.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -20,7 +21,6 @@ async function menu(page: Page, info: TestInfo, label: RegExp, state: string) {
 }
 
 test("mounted launch pickers and queue overlays", async ({ page }, info) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
     await installFrozenMonotonic(page);
@@ -52,7 +52,6 @@ test("mounted launch pickers and queue overlays", async ({ page }, info) => {
 });
 
 test("mounted served Queue empty, failure and unselected states", async ({ page }, info) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
     await installFrozenMonotonic(page);
@@ -77,7 +76,6 @@ test("mounted served Queue empty, failure and unselected states", async ({ page 
 });
 
 test("mounted Separations Rerun and delete confirmation", async ({ page }, info) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
     await installFrozenMonotonic(page);

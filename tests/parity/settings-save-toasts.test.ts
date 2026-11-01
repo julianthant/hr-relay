@@ -1,5 +1,6 @@
 
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { createHash, randomUUID } from "node:crypto";
 import { SettingsCommandRequestSchema, ProtectedSettingsCommandRequestSchema, CommandResultSchema } from "../../src/rules/commands/commands.js";
 import { validateShortcutPreferences } from "../../src/dashboard/surfaces/settings/navigation/keyboard-preferences-model.js";
@@ -8,12 +9,12 @@ import { EditableSettingsWireSchema } from "../../src/models/dashboard/settings-
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const a11yName = `settings-save-toast-${theme.attribute}-${width}.a11y.yml`;
   test(`confirmed save toasts @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: a11yName }] }, async ({ page }, info) => {
-    ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     let settings: Parameters<typeof mergeSettingsPatch>[0] = {}, revision = 1;
     let settingsDocument = fixtureSettingsDocument();
     const read = () => settingsDocument;

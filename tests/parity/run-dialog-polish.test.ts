@@ -1,6 +1,7 @@
 
-import { expect, test } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY, traceOf } from "./helpers/fixture-identity.js";
@@ -9,7 +10,6 @@ import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`Run and Cancel dialogs retain focus and served identity @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: {
       bootstrap: FIXTURE_START_PICKER_BOOTSTRAP, day: FIXTURE_START_PICKER_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
     } });

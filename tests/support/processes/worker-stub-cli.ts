@@ -1,3 +1,5 @@
+import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-registry.js";
+import { workflowProjections } from "../../../src/workflow-kit/workflow.js";
 
 import { randomUUID } from "node:crypto";
 import { admitDirectWorker, admitSupervisedWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
@@ -83,11 +85,12 @@ const bound = bindWorkerProcessAdmission({
 });
 const { value: database, workerId, processLock: lock } = bound;
 
+const descriptor = DESCRIPTORS.find(value => value.id === workflowId);
+if (descriptor === undefined) throw new Error("worker-stub-workflow-unavailable");
 const started = database.authority.workerLeases.start({
   workerId,
   workflow: workflowId,
-  // This supervision-only stub loads no workflow descriptor and opens no browser.
-  browserSystems: [],
+  browserSystems: workflowProjections(descriptor).systems,
   processId: process.pid,
   requestedBy: "local-operator",
   now: systemClock.now().toISOString(),

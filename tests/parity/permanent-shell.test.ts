@@ -1,6 +1,7 @@
 
-import { expect, test } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -13,7 +14,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`permanent rail with separate queue, Action panel and Logs @ ${theme.attribute}-${width}`, {
     annotation: [actionEvidence, settingsEvidence].map(description => ({ type: "required-a11y-evidence", description })),
   }, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, preflightScenario: "ready" });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });

@@ -1,3 +1,5 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { randomUUID } from "node:crypto";
 
 import { createRunQueueProjection } from "../../../../../src/backend/runs/projections/run-queue-projection.js";
@@ -7,7 +9,6 @@ import { admitDirectWorker } from "../../../../../src/backend/storage/sqlite/wor
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
 import { BackfillGapObservationSchema } from "../../../../../src/backend/runs/notifications/backfill-gap.js";
 import { createDashboardStreamHub,type DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { applyDashboardDayPatch } from "../../../../../src/dashboard/client/index.js";
@@ -25,6 +26,9 @@ uuidOf,
 type DashboardWorld,
 } from "../../../../support/helpers/backend/dashboard-harness.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 const worlds: DashboardWorld[] = [];
 const hubs: DashboardStreamHub[] = [];
 const workers = new Map<DashboardWorld["database"], Set<string>>();
@@ -37,7 +41,7 @@ const VALIDATING_BACKFILL_GAPS = {
 };
 
 async function harness(nativeWorkers = false): Promise<{ w: DashboardWorld; hub: DashboardStreamHub }> {
-  const original = await makeWorld();
+  const original = await makeWorld({ profileFixture: profileFixtures.create });
   const projection = nativeWorkers ? createRunQueueProjection({
     timeline: original.timeline, reader: original.runReader, stateRoot: original.stateRoot, clock: original.clock,
     appVersion: "0.1.0", descriptorSetHash: original.projection.descriptorSetHash(),
@@ -248,7 +252,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("reports the exact historical cursor transition when a retained snapshot forces replacement", async () => {
-    const w = await makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const observed: unknown[] = [];
     const hub = createDashboardStreamHub({
@@ -299,7 +303,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("resnapshots a cursor from an earlier projection generation without reporting missed history", async () => {
-    const w = await makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const observed: unknown[] = [];
     const hub = createDashboardStreamHub({
@@ -329,7 +333,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("resnapshots a historical cursor without generation evidence without reporting missed history", async () => {
-    const w = await makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const observed: unknown[] = [];
     const hub = createDashboardStreamHub({
@@ -354,7 +358,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("never pairs a hello from one generation with a snapshot captured after publish rebuilt projection", async () => {
-    const w = await makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const hub: DashboardStreamHub = createDashboardStreamHub({
       projection: w.projection,
@@ -390,7 +394,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("captures the complete replacement snapshot after durable gap publication without projection movement", async () => {
-    const w = await makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const counts = { beforePublication: -1, afterPublication: -1 };
     const hub = createDashboardStreamHub({
@@ -461,7 +465,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("refuses to serve a replacement handshake when durable gap publication fails", async () => {
-    const w = await makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const hub = createDashboardStreamHub({
       projection: w.projection,
@@ -534,7 +538,7 @@ describe("dashboard stream hub", () => {
     } as never);
     // collectRebuilds is off, so the default schedule ran the rebuild
     // immediately and recovered; force a degraded state via corrupt storage.
-    const degradedWorld = await makeWorld({ collectRebuilds: true });
+    const degradedWorld = await makeWorld({ profileFixture: profileFixtures.create, collectRebuilds: true });
     worlds.push(degradedWorld);
     const degradedHub = createDashboardStreamHub({
       projection: degradedWorld.projection,
@@ -618,7 +622,7 @@ describe("dashboard stream hub", () => {
   });
 
   it("builds one snapshot per distinct day for a count-bearing change, however many subscribers share it", async () => {
-    const w = await makeWorld();
+    const w = await makeWorld({ profileFixture: profileFixtures.create });
     worlds.push(w);
     const builds: string[] = [];
     // A bound Proxy rather than a patched method: the projection keeps private
