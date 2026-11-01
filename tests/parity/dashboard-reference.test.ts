@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { PARITY_THEMES, assertThemeApplied, installTheme } from "./helpers/capture.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";

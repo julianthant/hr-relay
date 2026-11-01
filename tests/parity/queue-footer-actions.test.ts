@@ -1,6 +1,7 @@
 
-import { expect, test } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -12,7 +13,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920])
   test(`single-line queue footers without a row context menu @ ${theme.attribute}-${width}`, {
     annotation: [evidence, ...(width === 1024 ? [floorEvidence] : [])].map(description => ({ type: "required-a11y-evidence", description })),
   }, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));

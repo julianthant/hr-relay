@@ -1,3 +1,4 @@
+import { withOperationProof } from "../configuration/credential-safe-file.js";
 import { inspectRestoreEligibility, inspectStorageRecovery } from "./storage-recovery-status.js";
 import { verifyBackupLocationEvidence } from "./backup-location-evidence.js";
 import { validateStorageRelocationRestoreCandidate } from "./relocation-restore-candidate.js";
@@ -841,145 +842,147 @@ function inspectCredentialPresence(admission: RuntimeAdmission, stateRoot: strin
 }
 
 export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock, credentials?: CredentialStore): Promise<StorageDoctorReport> {
-  requireRuntimeAdmission(admission);
-  const options = StorageDoctorOptionsSchema.parse(input);
-  const authorityPath = resolve(options.authorityPath);
-  const stateRootTrustAnchor = resolve(options.stateRootTrustAnchor);
-  const stateRoot = resolve(options.stateRoot);
-  const backupDirectory = resolve(options.backupDirectory);
-  if (stateRoot !== admission.stateRoot || authorityPath !== join(stateRoot, "state.db")
-    || backupDirectory !== join(stateRoot, "backups", "authority")) {
-    throw new Error("runtime-admission: storage doctor roots differ from active locator");
-  }
-  const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
-  let authorityInspection: AuthorityCopyInspection | undefined;
-  let authorityCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
-  try {
-    authorityInspection = AuthorityDatabase.inspectExistingReadOnly(admission, authorityPath, options.busyTimeoutMs);
-  } catch (error) {
-    authorityCause = storageHealthCauseFromError(error);
-  }
-  const initialAuthorityRead: AuthorityIdentityRead = authorityInspection === undefined
-    ? inspectAuthorityIdentity(admission, authorityPath, options.busyTimeoutMs)
-    : { state: "available", identity: authorityIdentityOf(authorityInspection) };
-  const initialAuthorityIdentity = initialAuthorityRead.state === "available"
-    ? initialAuthorityRead.identity
-    : undefined;
+  return withOperationProof(async () => {
+    requireRuntimeAdmission(admission);
+    const options = StorageDoctorOptionsSchema.parse(input);
+    const authorityPath = resolve(options.authorityPath);
+    const stateRootTrustAnchor = resolve(options.stateRootTrustAnchor);
+    const stateRoot = resolve(options.stateRoot);
+    const backupDirectory = resolve(options.backupDirectory);
+    if (stateRoot !== admission.stateRoot || authorityPath !== join(stateRoot, "state.db")
+      || backupDirectory !== join(stateRoot, "backups", "authority")) {
+      throw new Error("runtime-admission: storage doctor roots differ from active locator");
+    }
+    const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
+    let authorityInspection: AuthorityCopyInspection | undefined;
+    let authorityCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
+    try {
+      authorityInspection = AuthorityDatabase.inspectExistingReadOnly(admission, authorityPath, options.busyTimeoutMs);
+    } catch (error) {
+      authorityCause = storageHealthCauseFromError(error);
+    }
+    const initialAuthorityRead: AuthorityIdentityRead = authorityInspection === undefined
+      ? inspectAuthorityIdentity(admission, authorityPath, options.busyTimeoutMs)
+      : { state: "available", identity: authorityIdentityOf(authorityInspection) };
+    const initialAuthorityIdentity = initialAuthorityRead.state === "available"
+      ? initialAuthorityRead.identity
+      : undefined;
 
-  const initialRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
-  let candidates: readonly CandidateWithMtime[] = [];
-  let previous: readonly PreviousWithMtime[] = [];
-  let candidateInspectionFailed = false;
-  try {
-    const inspected = await inspectCandidates(admission,backupDirectory, authorityInspection, stateRoot, clock);
-    candidates = inspected.current;
-    previous = inspected.previous;
-  } catch { candidateInspectionFailed = true; }
-  const first = candidates[0];
-  const latestVerified = candidates
-    .filter((entry): entry is CandidateWithMtime & { candidate: Extract<RestoreCandidate, { state: "verified-compatible" }> } => (
-      entry.candidate.state === "verified-compatible"
-    ))
-    .sort((left, right) => Date.parse(right.candidate.createdAt) - Date.parse(left.candidate.createdAt))[0];
+    const initialRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
+    let candidates: readonly CandidateWithMtime[] = [];
+    let previous: readonly PreviousWithMtime[] = [];
+    let candidateInspectionFailed = false;
+    try {
+      const inspected = await inspectCandidates(admission,backupDirectory, authorityInspection, stateRoot, clock);
+      candidates = inspected.current;
+      previous = inspected.previous;
+    } catch { candidateInspectionFailed = true; }
+    const first = candidates[0];
+    const latestVerified = candidates
+      .filter((entry): entry is CandidateWithMtime & { candidate: Extract<RestoreCandidate, { state: "verified-compatible" }> } => (
+        entry.candidate.state === "verified-compatible"
+      ))
+      .sort((left, right) => Date.parse(right.candidate.createdAt) - Date.parse(left.candidate.createdAt))[0];
 
-  let backup: z.infer<typeof BackupHealthSchema>;
-  if (candidateInspectionFailed) {
-    backup = BackupHealthSchema.parse({ state: "invalid", cause: { code: "backup-invalid",
-      summary: "Backup directory inspection is unavailable; no restore selection can be established." } });
-  } else if (first?.candidate.state === "invalid") {
-    backup = BackupHealthSchema.parse({ state: "invalid", cause: first.candidate.cause });
-  } else if (latestVerified === undefined) {
-    backup = BackupHealthSchema.parse({
-      state: candidates.length === 0 ? "missing" : "invalid",
-      cause: StorageHealthCauseSchema.parse({
-        code: candidates.length === 0 ? "backup-missing" : "backup-invalid",
-        summary: candidates.length === 0
-          ? previous.length > 0
-            ? "no current-location authority backup exists; verified previous-location backups remain preserved"
-            : `no authority backup manifests exist in ${basename(backupDirectory)}`
-          : `no verified compatible authority backup exists in ${basename(backupDirectory)}`,
-      }),
+    let backup: z.infer<typeof BackupHealthSchema>;
+    if (candidateInspectionFailed) {
+      backup = BackupHealthSchema.parse({ state: "invalid", cause: { code: "backup-invalid",
+        summary: "Backup directory inspection is unavailable; no restore selection can be established." } });
+    } else if (first?.candidate.state === "invalid") {
+      backup = BackupHealthSchema.parse({ state: "invalid", cause: first.candidate.cause });
+    } else if (latestVerified === undefined) {
+      backup = BackupHealthSchema.parse({
+        state: candidates.length === 0 ? "missing" : "invalid",
+        cause: StorageHealthCauseSchema.parse({
+          code: candidates.length === 0 ? "backup-missing" : "backup-invalid",
+          summary: candidates.length === 0
+            ? previous.length > 0
+              ? "no current-location authority backup exists; verified previous-location backups remain preserved"
+              : `no authority backup manifests exist in ${basename(backupDirectory)}`
+            : `no verified compatible authority backup exists in ${basename(backupDirectory)}`,
+        }),
+      });
+    } else {
+      const generationGap = latestVerified.candidate.generationGap;
+      const stale = (options.maxBackupAgeMs !== undefined && latestVerified.candidate.ageMs > options.maxBackupAgeMs)
+        || generationGap.state === "known" && generationGap.value > 0;
+      const gapSummary = generationGap.state === "known"
+        ? String(generationGap.value)
+        : generationGap.reason;
+      backup = BackupHealthSchema.parse(stale
+        ? {
+            state: "stale",
+            latest: latestVerified.candidate,
+            cause: StorageHealthCauseSchema.parse({
+              code: "backup-stale",
+              summary: `latest verified backup is ${String(latestVerified.candidate.ageMs)}ms old with authority generation gap ${gapSummary}`,
+            }),
+          }
+        : { state: "current", latest: latestVerified.candidate });
+    }
+
+    if (authorityInspection === undefined && authorityCause === undefined) {
+      throw new Error("authority doctor produced neither an inspection nor a failure cause");
+    }
+    const spanAuthorityRead = reconcileSpanAuthority(
+      admission,
+      stateRootTrustAnchor,
+      stateRoot,
+      authorityPath,
+      options.busyTimeoutMs,
+    );
+    const spanAuthority = spanAuthorityRead.reconciliation;
+    const spanAuthorityBecameIdentifiable = initialAuthorityIdentity === undefined
+      && spanAuthorityRead.authorityIdentity !== undefined;
+    const spanAuthorityIdentityMismatch = initialAuthorityIdentity !== undefined
+      && spanAuthorityRead.authorityIdentity !== undefined
+      && !sameAuthorityIdentity(initialAuthorityIdentity, spanAuthorityRead.authorityIdentity);
+    const protectedSettings = inspectCredentialPresence(admission, stateRoot, credentials);
+    const authorityUpgrades = inspectAuthorityUpgradeStatus(admission, authorityPath, options.busyTimeoutMs, clock);
+    const finalAuthorityRead = inspectAuthorityIdentity(admission, authorityPath, options.busyTimeoutMs);
+    if (initialAuthorityRead.state !== finalAuthorityRead.state) {
+      throw authorityIdentityChanged(initialAuthorityRead, finalAuthorityRead);
+    }
+    if (initialAuthorityRead.state === "available" && finalAuthorityRead.state === "available"
+      && !sameAuthorityIdentity(initialAuthorityRead.identity, finalAuthorityRead.identity)) {
+      throw authorityIdentityChanged(initialAuthorityRead, finalAuthorityRead);
+    }
+    if (initialAuthorityRead.state === "unavailable" && finalAuthorityRead.state === "unavailable"
+      && (initialAuthorityRead.cause.code !== finalAuthorityRead.cause.code
+        || initialAuthorityRead.cause.summary !== finalAuthorityRead.cause.summary)) {
+      throw authorityIdentityChanged(initialAuthorityRead, finalAuthorityRead);
+    }
+    if (spanAuthorityBecameIdentifiable) {
+      throw new Error("span authority became identifiable after the storage doctor's initial authority read");
+    }
+    if (spanAuthorityIdentityMismatch) {
+      throw new Error("span authority snapshot does not match the storage doctor's initial authority identity");
+    }
+    const finalRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
+    const recovery = initialRecovery.identity === finalRecovery.identity ? finalRecovery.report
+      : { state: "unavailable", findings: finalRecovery.report.state === "clear" ? [] : finalRecovery.report.findings,
+        cause: { code: "authority-unavailable", summary: "Recovery evidence changed during inspection. Run the doctor again before deciding recovery." } };
+    return StorageDoctorReportSchema.parse({
+      recovery,
+      authorityUpgrades,
+      kind: "authority-storage-doctor",
+      tombstoneOrdinals: spanAuthorityRead.tombstoneOrdinalFindings === undefined
+        ? { state: "unavailable", cause: { code: "authority-unavailable", summary: "tombstone ordinals could not be verified in the span authority snapshot" } }
+        : { state: "available", findings: spanAuthorityRead.tombstoneOrdinalFindings },
+      protectedSettings,
+      mode: "read-only",
+      checkedAt: clock.now().toISOString(),
+      sourceDatabaseIdentity,
+      authority: authorityInspection === undefined
+        ? { state: "degraded", cause: authorityCause }
+        : { state: "healthy", inspection: authorityInspection },
+      counts: authorityInspection === undefined
+        ? { state: "unavailable", cause: authorityCause }
+        : { state: "available", values: authorityInspection.counts },
+      spanAuthority,
+      backup,
+      restoreCandidates: candidates.map(({ candidate }) => candidate),
+      ...(previous.length === 0 ? {} : { previousLocationBackups: previous.map(({ backup }) => backup) }),
     });
-  } else {
-    const generationGap = latestVerified.candidate.generationGap;
-    const stale = (options.maxBackupAgeMs !== undefined && latestVerified.candidate.ageMs > options.maxBackupAgeMs)
-      || generationGap.state === "known" && generationGap.value > 0;
-    const gapSummary = generationGap.state === "known"
-      ? String(generationGap.value)
-      : generationGap.reason;
-    backup = BackupHealthSchema.parse(stale
-      ? {
-          state: "stale",
-          latest: latestVerified.candidate,
-          cause: StorageHealthCauseSchema.parse({
-            code: "backup-stale",
-            summary: `latest verified backup is ${String(latestVerified.candidate.ageMs)}ms old with authority generation gap ${gapSummary}`,
-          }),
-        }
-      : { state: "current", latest: latestVerified.candidate });
-  }
-
-  if (authorityInspection === undefined && authorityCause === undefined) {
-    throw new Error("authority doctor produced neither an inspection nor a failure cause");
-  }
-  const spanAuthorityRead = reconcileSpanAuthority(
-    admission,
-    stateRootTrustAnchor,
-    stateRoot,
-    authorityPath,
-    options.busyTimeoutMs,
-  );
-  const spanAuthority = spanAuthorityRead.reconciliation;
-  const spanAuthorityBecameIdentifiable = initialAuthorityIdentity === undefined
-    && spanAuthorityRead.authorityIdentity !== undefined;
-  const spanAuthorityIdentityMismatch = initialAuthorityIdentity !== undefined
-    && spanAuthorityRead.authorityIdentity !== undefined
-    && !sameAuthorityIdentity(initialAuthorityIdentity, spanAuthorityRead.authorityIdentity);
-  const protectedSettings = inspectCredentialPresence(admission, stateRoot, credentials);
-  const authorityUpgrades = inspectAuthorityUpgradeStatus(admission, authorityPath, options.busyTimeoutMs, clock);
-  const finalAuthorityRead = inspectAuthorityIdentity(admission, authorityPath, options.busyTimeoutMs);
-  if (initialAuthorityRead.state !== finalAuthorityRead.state) {
-    throw authorityIdentityChanged(initialAuthorityRead, finalAuthorityRead);
-  }
-  if (initialAuthorityRead.state === "available" && finalAuthorityRead.state === "available"
-    && !sameAuthorityIdentity(initialAuthorityRead.identity, finalAuthorityRead.identity)) {
-    throw authorityIdentityChanged(initialAuthorityRead, finalAuthorityRead);
-  }
-  if (initialAuthorityRead.state === "unavailable" && finalAuthorityRead.state === "unavailable"
-    && (initialAuthorityRead.cause.code !== finalAuthorityRead.cause.code
-      || initialAuthorityRead.cause.summary !== finalAuthorityRead.cause.summary)) {
-    throw authorityIdentityChanged(initialAuthorityRead, finalAuthorityRead);
-  }
-  if (spanAuthorityBecameIdentifiable) {
-    throw new Error("span authority became identifiable after the storage doctor's initial authority read");
-  }
-  if (spanAuthorityIdentityMismatch) {
-    throw new Error("span authority snapshot does not match the storage doctor's initial authority identity");
-  }
-  const finalRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
-  const recovery = initialRecovery.identity === finalRecovery.identity ? finalRecovery.report
-    : { state: "unavailable", findings: finalRecovery.report.state === "clear" ? [] : finalRecovery.report.findings,
-      cause: { code: "authority-unavailable", summary: "Recovery evidence changed during inspection. Run the doctor again before deciding recovery." } };
-  return StorageDoctorReportSchema.parse({
-    recovery,
-    authorityUpgrades,
-    kind: "authority-storage-doctor",
-    tombstoneOrdinals: spanAuthorityRead.tombstoneOrdinalFindings === undefined
-      ? { state: "unavailable", cause: { code: "authority-unavailable", summary: "tombstone ordinals could not be verified in the span authority snapshot" } }
-      : { state: "available", findings: spanAuthorityRead.tombstoneOrdinalFindings },
-    protectedSettings,
-    mode: "read-only",
-    checkedAt: clock.now().toISOString(),
-    sourceDatabaseIdentity,
-    authority: authorityInspection === undefined
-      ? { state: "degraded", cause: authorityCause }
-      : { state: "healthy", inspection: authorityInspection },
-    counts: authorityInspection === undefined
-      ? { state: "unavailable", cause: authorityCause }
-      : { state: "available", values: authorityInspection.counts },
-    spanAuthority,
-    backup,
-    restoreCandidates: candidates.map(({ candidate }) => candidate),
-    ...(previous.length === 0 ? {} : { previousLocationBackups: previous.map(({ backup }) => backup) }),
   });
 }

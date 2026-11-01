@@ -12,7 +12,8 @@ afterEach(() => { for (const db of databases.splice(0)) db.close(); });
 function fixture() {
   const db = new DatabaseSync(":memory:", { enableForeignKeyConstraints: false }); databases.push(db);
   for (const migration of SQLITE_MIGRATIONS) for (const sql of migration.statements) db.exec(sql);
-  db.prepare("INSERT INTO database_states VALUES(1,1,0,?,0,'ready')").run(QUEUED_RUN.createdAt);
+  db.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,1,0,?,0,'ready',?,?)")
+    .run(QUEUED_RUN.createdAt, "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222");
   const index = createRunSearchIndex(db); index.installTracking();
   index.register([{ workflow: QUEUED_RUN.envelope.workflow, version: 1, contractFingerprint: QUEUED_RUN.envelope.contractFingerprint, subjectProjection: null }], QUEUED_RUN.createdAt);
   const add = (sequence: number, date: string) => {

@@ -1,28 +1,28 @@
-import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
-import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { DatabaseSync } from "node:sqlite";
-import { RunRecordSchema } from "../../../src/models/run/record.js";
-import { runRecordColumns } from "../../../src/backend/storage/sqlite/run-record-row.js";
-import { createRunSearchIndex } from "../../../src/backend/storage/sqlite/run-search-index.js";
-import { attemptingOwnedWrite } from "../../support/helpers/backend/worker-lifetime-world.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
+import { attemptingOwnedWrite } from "../../../support/helpers/backend/worker-lifetime-world.js";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
-import { credentialKeychainTestEnvironment } from "../../support/helpers/credential-keychain-fake.js";
-import { stopSyntheticDatabaseWorkers } from "../../support/helpers/synthetic-database-admission.js";
+import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
+import { stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { afterEach, it } from "vitest";
-import { createRunRecordServiceTestWorld } from "../../support/helpers/backend/run-record-service-world.js";
-import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
-import { reconcileStartupCrash } from "../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
-import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
+import { createRunRecordServiceTestWorld } from "../../../support/helpers/backend/run-record-service-world.js";
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
+import { reconcileStartupCrash } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 
 const world = createRunRecordServiceTestWorld();
 afterEach(() => world.cleanup());
@@ -105,7 +105,7 @@ it("recovers an actual hard-crashed standalone reservation with no worker lease 
   const installation = f.machine.readInstallationContext(); assert.ok(installation);
   await f.closeController();
   const child = spawn(process.execPath, ["--import", import.meta.resolve("tsx"),
-    fileURLToPath(new URL("../../support/processes/verification-reservation-owner.ts", import.meta.url)),
+    fileURLToPath(new URL("../../../support/processes/verification-reservation-owner.ts", import.meta.url)),
     installation.workspace, String(port), f.clock.now().toISOString()],
   { env: credentialKeychainTestEnvironment({}), stdio: ["ignore", "ignore", "pipe", "ipc"] });
   const exited = once(child, "close");

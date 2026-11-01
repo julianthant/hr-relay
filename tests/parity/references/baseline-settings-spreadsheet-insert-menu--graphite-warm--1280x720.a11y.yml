@@ -107,9 +107,3 @@
     - button "Settings" [pressed]
     - button "Log out"
 - region "Notifications"
-- menu "Columns":
-  - group:
-    - searchbox "Find a column"
-  - menuitemcheckbox "A · Legal Name" [checked]
-  - menuitemcheckbox "B · Employee ID" [checked]
-  - menuitemcheckbox "C · Personal Email" [checked]

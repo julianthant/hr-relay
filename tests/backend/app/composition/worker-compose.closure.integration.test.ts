@@ -37,7 +37,7 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
   const managers: WorkerSessionManager[] = [];
   let launches = 0, launchFailure: Promise<never> | undefined;
   let closedWorkerDatabase: AuthorityDatabase | undefined, launchedDirectory: string | undefined;
-  let custodyOraclesProved = false;
+  let custodyOraclesProved = false, primary: unknown;
   const run = workerLoop.runWorkerLoop;
   const store = credentialStores.createCredentialStore;
   vi.spyOn(workerLoop, "runWorkerLoop").mockImplementation(async input => { report = await run(input); return report; });
@@ -59,7 +59,11 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
     const queued = context.database.withAuthorityTransaction(repositories => repositories.runs.enqueue({ ...run,
       envelope: { ...run.envelope, configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } }));
     assert.equal(queued.state, "inserted");
-    vi.spyOn(chromium, "launchPersistentContext").mockImplementation(directory => { launches += 1; launchedDirectory = directory; launchFailure = Promise.reject(new Error("uncertain launch failure")); return launchFailure; });
+    const nativeLaunch = chromium.launchPersistentContext.bind(chromium);
+    vi.spyOn(chromium, "launchPersistentContext").mockImplementation((directory, options) => {
+      if (options?.args?.includes("--disable-extensions")) return nativeLaunch(directory, options);
+      launches += 1; launchedDirectory = directory; launchFailure = Promise.reject(new Error("uncertain launch failure")); return launchFailure;
+    });
   }
   try {
     await assert.rejects(composeWorkerRuntime({ lifetimeLock, admission: f.machine, repoRoot: f.workspace, isolation: rebuildRuntimeIsolation,
@@ -86,7 +90,7 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
     assert.throws(() => closed.getMeta(), /closed/u);
     lifetimeLock.assertHeld();
     custodyOraclesProved = true;
-  } finally {
+  } catch (error) { primary = error; throw error; } finally {
     vi.restoreAllMocks();
     for (const manager of managers) await manager.closeAll("worker-stop");
     await context.account.close();
@@ -103,7 +107,7 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
       assert.equal(closedNames.has(path), false, "closed database cannot retain a descriptor");
       assert.equal(closedNames.has(`${path} (deleted)`), false, "closed database cannot retain a deleted descriptor");
     }
-    assert.equal(custodyOraclesProved, true, "worker-closure-fixture-custody-unproved");
+    assert.equal(custodyOraclesProved, true, new Error("worker-closure-fixture-custody-unproved", { cause: primary }));
     issued?.release(); await f.close();
   }
 });

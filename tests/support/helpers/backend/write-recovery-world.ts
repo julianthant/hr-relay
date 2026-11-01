@@ -1,7 +1,7 @@
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import assert from "node:assert/strict";
 
-import { createBoundProfileFixture } from "../admission-fixture.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { RunRecordService,runContinuationPort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -40,17 +40,17 @@ interface Harness {
 
 const retainedWriteRecoveryOwners = new Set<object>();
 
-export function createWriteRecoveryTestWorld() {
+export function createWriteRecoveryTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
   const disposers: (() => void | Promise<void>)[] = [];
 
   const SIGNAL = new AbortController().signal;
 
   async function harness(refuseContinuation = false): Promise<Harness> {
-    const held: { profile?: Awaited<ReturnType<typeof createBoundProfileFixture>>; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; manager?: WorkerSessionManager; world?: WriteFixtureWorld; recovery?: WriteRecoveryService; primary?: unknown; failure?: Error } = {};
+    const held: { profile?: BoundProfileStorageFixture; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; manager?: WorkerSessionManager; world?: WriteFixtureWorld; recovery?: WriteRecoveryService; primary?: unknown; failure?: Error } = {};
     retainedWriteRecoveryOwners.add(held);
     try {
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
-    const profile = await createBoundProfileFixture(); held.profile = profile;
+    const profile = await profileFixture(); held.profile = profile;
 
     const open=()=>AuthorityDatabase.open({path:profile.path,busyTimeoutMs:250,migrationOwner:"write-recovery-test"},clock);
     let database=open(); held.database = database;

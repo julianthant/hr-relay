@@ -2,8 +2,9 @@ import { attachPresentationReference } from "./helpers/presentation-reference.js
 
 import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
-import { expect, test } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 
@@ -12,7 +13,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
   test(`complete Explorer layout and source return @ ${theme.attribute} ${width}`, {
     annotation: [{ type: "required-a11y-evidence", description: evidence }],
   }, async ({ page }) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: 720 });
@@ -84,7 +84,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
 }
 
 test("Explorer branch previews stop writes, recover and reuse an existing receipt", async ({ page }) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
     await installTheme(page, PARITY_THEMES[0]);
@@ -127,7 +126,6 @@ test("Explorer branch previews stop writes, recover and reuse an existing receip
 });
 
 test("named comment conditions update both UCPath fields and preserve Kuali text", async ({ page }) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
     await installTheme(page, PARITY_THEMES[0]);

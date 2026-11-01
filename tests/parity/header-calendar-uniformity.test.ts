@@ -1,6 +1,7 @@
 import { chooseSelect } from "./helpers/select-choice.js";
-import { expect, test, type Locator } from '@playwright/test';
-import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
+import { expect, type Locator } from '@playwright/test';
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 
@@ -23,7 +24,6 @@ async function controlStyle(control: Locator) {
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
 test(`global single and range calendars across Logs and Activity @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
     try {
       await page.setViewportSize({ width, height: 900 });
@@ -92,7 +92,6 @@ test(`global single and range calendars across Logs and Activity @ ${theme.attri
 }
 
 test('default DatePicker fields and the shared range preserve typed dates and update both endpoints', async ({ page }) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
   try {
     await page.goto(`${server.baseUrl}/kit.html#forms`);

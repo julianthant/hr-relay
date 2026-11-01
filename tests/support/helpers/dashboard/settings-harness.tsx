@@ -1,9 +1,6 @@
 import { FixtureCommandBinding } from "./command-binding.js";
 import type { SettingsSaveNotice, SettingsSaveProblem } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -13,8 +10,7 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatc
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { boundProfileCredentials, createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { activeSettingsRuntimeIdentity } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { composeSettings } from "../../../../src/backend/app/composition/dashboard/settings.js";
 import { buildSettingsEditor } from "../../../../src/backend/runs/queries/settings-editor.js";
@@ -26,12 +22,12 @@ import { SettingsAuthoritySection } from "../../../../src/dashboard/surfaces/set
 import { RoutesSection } from "../../../../src/dashboard/surfaces/settings/routes/settings-routes.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-export function syntheticSettingsAuthority() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "settings-surface-"));
+export async function syntheticSettingsAuthority(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  const profile = await profileFixture();
   const clock = manualClock(new Date("2026-09-13T12:00:00.000Z"));
-  const admission = RuntimeAdmission.syntheticRoots(root, join(root, "artifacts"));
-  const database = AuthorityDatabase.open(admission, { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
-  const credentials = createCredentialStore({ admission, stateRoot: root });
+  const admission = profile.admission;
+  const credentials = boundProfileCredentials(admission);
+  const database = AuthorityDatabase.open(admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock, undefined, undefined, undefined, credentials);
   const hostFacts = hostConfigFacts({ HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080" });
   const resolveConfigured = (settings: unknown) => resolveConfigWithProvenance(settings, hostFacts, clock);
   const resolved = resolveConfigured({});
@@ -44,10 +40,10 @@ export function syntheticSettingsAuthority() {
   const read = () => buildSettingsEditor(composition.routes.settingsEditor);
   const apply = (patch: SettingsPatch, revision = read().revision) => execute({ family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: revision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
   const protectedApply = (entries: unknown, revision = credentials.read().revision) => execute({ family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries } });
-  return { root, database, credentials, clock, execute, read, apply, protectedApply,
-    close: () => { database.close(); admission.release(); rmSync(root, { recursive: true, force: true }); } };
+  return { root: profile.workspace, database, credentials, clock, execute, read, apply, protectedApply,
+    close: async () => { database.close(); await profile.close(); } };
 }
-export async function mountSettingsHarness(authority: ReturnType<typeof syntheticSettingsAuthority>, section = "general", readDocument: (() => unknown) | undefined = undefined) {
+export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof syntheticSettingsAuthority>>, section = "general", readDocument: (() => unknown) | undefined = undefined) {
   const commands: unknown[] = [];
   const notices: SettingsSaveNotice[] = [];
   const problems: SettingsSaveProblem[] = [];

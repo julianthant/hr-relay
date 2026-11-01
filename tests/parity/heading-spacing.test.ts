@@ -1,6 +1,7 @@
 
-import { expect, test } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 
@@ -8,7 +9,6 @@ const sections = ["general", "performance", "paths", "routes", "credentials", "s
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`Dashboard headings group their descriptions before content @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, preflightScenario: "ready" });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -20,6 +20,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await page.goto(`${server.baseUrl}/?settings=${section}`);
         if (section === "spreadsheets") {
           const library = page.locator(".hub-sheets-library");
+          await expect(library.getByRole("heading", { name: "Spreadsheets", exact: true })).toBeVisible();
           const title = (await library.getByRole("heading", { name: "Spreadsheets", exact: true }).boundingBox())!;
           const intro = (await library.locator(".hub-sheets-intro").boundingBox())!;
           expect(intro.y - title.y - title.height).toBe(4);
@@ -28,23 +29,28 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           continue;
         }
         const heading = page.locator(".ds-page-heading").first();
-        await expect(heading.locator(".ds-page-heading-title")).toBeVisible();
         await expect(page.locator("[data-settings-loading]")).toHaveCount(0);
+        await expect(heading.locator(".ds-page-heading-title")).toBeVisible();
         const description = heading.locator(".ds-page-heading-description");
         if (await description.count()) {
-          const title = (await heading.locator(".ds-page-heading-title").boundingBox())!;
-          const copy = (await description.boundingBox())!;
-          expect(copy.y - title.y - title.height, `${section}: title/description gap`).toBe(4);
-          const next = heading.locator("xpath=following-sibling::*[1]");
-          if (await next.count()) {
-            const content = (await next.boundingBox())!;
-            expect(content.y - copy.y - copy.height, `${section}: description/content gap`).toBe(await heading.evaluate(node => node.parentElement?.classList.contains("settings-compact-page") ? 30 : 16));
-          }
-          if (await heading.locator(".ds-page-heading-actions").count()) {
-            const actions = (await heading.locator(".ds-page-heading-actions").boundingBox())!;
-            const headerBox = (await heading.boundingBox())!;
-            expect(Math.abs(actions.y + actions.height / 2 - headerBox.y - headerBox.height / 2), `${section}: heading action alignment`).toBeLessThanOrEqual(1);
-          }
+          await expect(description).toBeVisible();
+          await expect(async () => {
+            const title = (await heading.locator(".ds-page-heading-title").boundingBox())!;
+            const copy = (await description.boundingBox())!;
+            expect(title, `${section}: loaded title`).not.toBeNull();
+            expect(copy, `${section}: loaded description`).not.toBeNull();
+            expect(copy.y - title.y - title.height, `${section}: title/description gap`).toBe(4);
+            const next = heading.locator("xpath=following-sibling::*[1]");
+            if (await next.count()) {
+              const content = (await next.boundingBox())!;
+              expect(content.y - copy.y - copy.height, `${section}: description/content gap`).toBe(await heading.evaluate(node => node.parentElement?.classList.contains("settings-compact-page") ? 30 : 16));
+            }
+            if (await heading.locator(".ds-page-heading-actions").count()) {
+              const actions = (await heading.locator(".ds-page-heading-actions").boundingBox())!;
+              const headerBox = (await heading.boundingBox())!;
+              expect(Math.abs(actions.y + actions.height / 2 - headerBox.y - headerBox.height / 2), `${section}: heading action alignment`).toBeLessThanOrEqual(1);
+            }
+          }).toPass({ timeout: 5000 });
         }
         for (const copy of await page.locator(".ds-body-section-description").all()) {
           const title = (await copy.locator("xpath=preceding-sibling::*[1]").boundingBox())!;

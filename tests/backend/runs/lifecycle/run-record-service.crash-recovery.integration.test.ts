@@ -20,7 +20,7 @@ it("requires a held controller and terminalizes the exact interrupted claim with
   assert.ok(command && "operation" in command); assert.equal(command.operation, "recover-crash");
   assert.equal(f.service.recoverCrash(request, f.lock).state, "applied-already");
   assert.ok(f.database.authority.runResults.get(f.run.envelope.runId));
-  await f.lock.close();
+  await f.closeController();
   assert.throws(() => f.service.recoverCrash(request, f.lock), RuntimeLifetimeLockReleasedError);
 });
 

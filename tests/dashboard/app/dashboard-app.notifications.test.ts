@@ -24,6 +24,11 @@ import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page
 import { notificationTargetUnavailable } from "../../../src/dashboard/app/navigation/notification-navigation.js";
 
 const requested = vi.hoisted(() => ({ target: undefined as NotificationDestination | undefined }));
+function mockProductSources(): WorkflowSourcePolicy {
+  const sources: Record<string, "mock"> = {};
+  for (const id of Object.keys(PRODUCT_WORKFLOW_COMPOSITION.sources)) sources[id] = "mock";
+  return Object.freeze(sources);
+}
 vi.mock("../../../src/dashboard/surfaces/notifications/notifications-preview-model.js", async importOriginal => ({
   ...await importOriginal<typeof import("../../../src/dashboard/surfaces/notifications/notifications-preview-model.js")>(),
   useWorkspaceNotifications: () => ({ state: "ready", pinned: [], items: [{ id: "canonical", title: "Run failed", subject: "Canonical history", workflow: "Person Lookup", detail: "Failure", tone: "danger", age: "", read: false, action: "Open exact target", destination: requested.target }] }),
@@ -35,7 +40,7 @@ Reflect.set(globalThis, "cancelAnimationFrame", clearTimeout);
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); localStorage.clear(); vi.restoreAllMocks(); window.history.replaceState(null, "", "/"); });
 async function mount(missing = false, mixed = false) {
-  const sources: WorkflowSourcePolicy = mixed ? PRODUCT_WORKFLOW_COMPOSITION.sources : Object.freeze({ ...PRODUCT_WORKFLOW_COMPOSITION.sources, "person-lookup": "mock" as const });
+  const sources: WorkflowSourcePolicy = mixed ? PRODUCT_WORKFLOW_COMPOSITION.sources : mockProductSources();
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
   const reads: string[] = [];
@@ -122,7 +127,7 @@ it("mounts served inbox controls and reports only the served search authority to
   };
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE.day}`);
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp) })); await new Promise(resolve => setTimeout(resolve, 20)); });
+  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(mockProductSources()) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 1 unread"]'); assert(bell);
   await act(async () => bell.click());
   assert(host.textContent?.includes("Storage degraded")); assert.equal(host.textContent?.includes("Canonical history"), false);
@@ -183,7 +188,7 @@ it("refreshes the destination inbox after a delayed cross-day mark-read settles"
   };
   window.history.replaceState(null, "", "/?day=2026-08-02");
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp) })); await new Promise(resolve => setTimeout(resolve, 20)); });
+  await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: () => workflowComposition(mockProductSources()) }) })); await new Promise(resolve => setTimeout(resolve, 20)); });
   const bell = host.querySelector<HTMLButtonElement>('button[aria-label="Notifications, 1 unread"]'); assert(bell);
   await act(async () => bell.click());
   const open = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Open log"); assert(open);

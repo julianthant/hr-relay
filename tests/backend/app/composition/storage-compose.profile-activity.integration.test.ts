@@ -24,6 +24,7 @@ import { WorkerChildEvidenceSchema } from "../../../../src/backend/runtime/worke
 import { systemClock, manualClock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { scaledMs } from "../../../support/time-scale.js";
 
 async function fixture() {
   const f = await createBoundProfileFixture();
@@ -131,6 +132,20 @@ function plan(f: Awaited<ReturnType<typeof fixture>>, settled = true, workflow: 
   const slot = roster.selected[0]; assert.ok(slot);
   return { request, slot };
 }
+
+it("keeps an audited planned member without a first lifetime quiescent until explicit spawn", async () => {
+  const f = await fixture();
+  try {
+    const planned = plan(f);
+    assert.equal(f.context.database.authority.workerLeases.get(planned.slot.workerId), undefined);
+    const activity = composeProfileActivity(f.input);
+    const before = byteSnapshot(f.workspace), generation = f.context.database.getMeta().authorityGeneration;
+    assert.equal(activity.hasUnquiescedWork(f.admission.profileBinding.profileId), false);
+    assert.equal(f.context.database.getMeta().authorityGeneration, generation);
+    assert.equal(isDeepStrictEqual(byteSnapshot(f.workspace), before), true);
+    assert.equal(reservationReaders(f)[0]?.state, "settled");
+  } finally { await f.cleanup(); }
+});
 
 async function stoppedPlanFixture(mode: "plan" | "direct" = "plan") {
   const f = await fixture();
@@ -389,7 +404,7 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
     if (!closed) retainedNativeRetirementFixtures.push({ f, profile, dashboard, children });
   }
   if (failures.length > 0) throw new AggregateError(failures, "canonical retirement proof failed");
-}, 60_000);
+}, scaledMs(60_000));
 
 it("refuses a real other-workflow plan bound to a previously valid stopped slot in both readers", async () => {
   const { f, planned, input } = await stoppedPlanFixture();

@@ -31,13 +31,15 @@ export function mappedReadDescriptor(mappings: readonly RerunValueMappingSpec[] 
     ? defineWorkflowDescriptor({ ...descriptor, flow: graphWithGate })
     : defineWorkflowDescriptor({ ...descriptor, flow: graphWithoutGate });
 }
-export async function rerunValuesHarness() { return await sourceBoundHarness(mappedReadDescriptor(), sourceBoundReadStores); }
+export async function rerunValuesHarness(profileFixture?: Parameters<typeof sourceBoundHarness>[4]) {
+  return await sourceBoundHarness(mappedReadDescriptor(), sourceBoundReadStores, undefined, undefined, profileFixture);
+}
 export function rerunValuesDeps(h: Awaited<ReturnType<typeof sourceBoundHarness>>): RerunValuesDependencies {
   return { reader: h.lifecycle, database: h.database, descriptors: { resolve: () => h.descriptor } };
 }
 
 /** Descriptor and authority fixture for retained partial source evidence. */
-export async function valueShapeHarness() {
+export async function valueShapeHarness(profileFixture?: Parameters<typeof sourceBoundHarness>[4]) {
   const Input = z.strictObject({ eid: EidSchema, documentNumber: z.string().optional(), memo: z.string().optional() });
   const Output = z.strictObject({ eid: EidSchema, documentNumber: z.string().optional(), embedded: z.string(), missing: z.string().optional(), invalidEid: z.string() });
   const valueContract = defineTaskContract({ id: contract.id, title: "Read source values", effect: "read", input: Input, output: Output,
@@ -56,7 +58,7 @@ export async function valueShapeHarness() {
       .build({ schema: Output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
   });
 
-  return await sourceBoundHarness(descriptor, () => defineTaskStoreRegistry([], { scenarioIds: [], tasks: [] }));
+  return await sourceBoundHarness(descriptor, () => defineTaskStoreRegistry([], { scenarioIds: [], tasks: [] }), undefined, undefined, profileFixture);
 }
 
 export async function mappedTransactionHarness() {

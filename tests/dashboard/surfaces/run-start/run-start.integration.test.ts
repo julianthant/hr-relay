@@ -1,12 +1,16 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../src/models/failures/error-catalog.js";
 import { createMountedRerunWorld } from "../../../support/helpers/dashboard/mounted-rerun-world.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act } from "react";
-import { afterEach,describe,it } from "vitest";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 
-const { setup, text, button, press, checkbox, field, fill, mount, cleanup, unmount } = createMountedRerunWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
+const { setup, text, button, press, checkbox, field, fill, mount, cleanup, unmount } = createMountedRerunWorld(profileFixtures.create);
 afterEach(cleanup);
 
 describe("mounted Rerun uses source authority and the ordinary launch host", () => {

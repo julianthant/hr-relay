@@ -1,6 +1,7 @@
 
-import { expect, test } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
@@ -9,7 +10,6 @@ import { settingsSearchIndex } from "../../src/dashboard/surfaces/settings/navig
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`Settings search navigates and centers real controls @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -120,20 +120,30 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 }
 
-test("Every indexed setting resolves to a visible destination, including folded groups", async ({ page }) => {
+const indexedDocument = fixtureSettingsDocument();
+const indexedTargets = settingsSearchIndex(buildSettingsNav([], indexedDocument), indexedDocument, true)
+  .filter(result => result.target !== undefined);
+for (const section of new Set(indexedTargets.map(result => result.entry.id))) {
+test(`Every indexed setting in ${section} resolves to a visible destination, including folded groups`, async ({ page }) => {
   test.setTimeout(90000);
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    const document = fixtureSettingsDocument();
-    const index = settingsSearchIndex(buildSettingsNav([], document), document, true);
-    for (const result of index.filter(result => result.target !== undefined)) {
+    for (const result of indexedTargets.filter(result => result.entry.id === section)) {
       await page.goto(`${server.baseUrl}/?${new URLSearchParams({ settings: result.entry.id, settingsTarget: result.target! })}`);
       const target = page.locator(`[data-settings-path="${result.target}"]`);
       await expect(target, result.label).toBeVisible();
       await expect(target, result.label).toBeFocused();
     }
+  } finally { await server.close(); }
+});
+}
+
+test("Setting targets retain reduced-motion and unavailable states", async ({ page }) => {
+  test.setTimeout(90000);
+  const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+  try {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(`${server.baseUrl}/?settings=performance&settingsTarget=ocr.backoffBaseMs`);
     const row = page.locator('[data-settings-path="ocr.backoffBaseMs"]');
     await expect(row).toBeFocused();
@@ -147,7 +157,6 @@ test("Every indexed setting resolves to a visible destination, including folded 
 void 0;
 
 test("A path target waits for its verified authority without a false unavailable warning", async ({ page }) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   let release: (() => void) | undefined;
   const pending = new Promise<void>(resolve => { release = resolve; });

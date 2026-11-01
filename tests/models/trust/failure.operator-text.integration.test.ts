@@ -1,3 +1,4 @@
+import { testWorkerLifetime } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildExplainRunView, renderExplainRun } from "../../../src/backend/runs/explain/explain-run.js";
@@ -89,13 +90,15 @@ describe("operator failure text", () => {
     trusts.push(trust);
     const created = trust.create(401);
     const now = trust.world.clock.now().toISOString();
-    const claimed = trust.database.authority.runs.claimNext({ workflow: created.envelope.workflow, workerId: trust.workerId, now });
+    const member = trust.database.authority.workerSlots.get(trust.workerId); assert.ok(member);
+    const workerLifetime = testWorkerLifetime(trust.database, created.envelope.workflow, member.poolIndex).workerLifetime;
+    const claimed = trust.database.authority.runs.claimNext({ workerLifetime, workflow: created.envelope.workflow, workerId: trust.workerId, now });
     assert.equal(claimed.state, "claimed");
     if (claimed.state !== "claimed") throw new Error("fixture claim failed");
     const claim = { workerId: trust.workerId, claimGeneration: claimed.run.claimGeneration };
     const validating = trust.database.authority.runs.transition({
       runId: created.envelope.runId, expectedVersion: claimed.run.version, claim, now,
-      lifecycle: { state: "validating", workerId: trust.workerId, claimedAt: now, heartbeatAt: now },
+      lifecycle: { state: "validating", workerId: trust.workerId, workerLifetime, claimedAt: now, heartbeatAt: now },
     });
     assert.equal(validating.state, "applied");
     if (validating.state !== "applied") throw new Error("fixture validation failed");

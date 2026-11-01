@@ -1,7 +1,8 @@
 import { moveAssistantLauncherAboveFooter } from "./helpers/app-driver.js";
 
-import { expect, test } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -10,7 +11,7 @@ import { mockQueueId } from "../../src/dashboard/surfaces/workflows/mocks/workfl
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`notification destinations, approval and new run updates @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
-    ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET") writes.push(`${request.method()} ${new URL(request.url()).pathname}`); });
@@ -88,7 +89,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } finally { await server.close(); }
   });
   test(`every mock notification reveals its queue row @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
-    ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET") writes.push(`${request.method()} ${new URL(request.url()).pathname}`); });

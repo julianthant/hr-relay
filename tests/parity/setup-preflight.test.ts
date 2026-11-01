@@ -1,12 +1,13 @@
 import type { PreflightReadinessWire } from "../../src/models/preflight/preflight-contract.js";
 import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
-import { expect,test,type Locator } from "@playwright/test";
+import { expect, type Locator } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { PARITY_THEMES,installTheme,assertThemeApplied } from "./helpers/capture.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { dismissWorkflowWindow,failOnPageErrors } from "./helpers/reference-harness.js";
-import { ensureParityBundle } from "./helpers/bundle.js";
+
 import { startSetupPreflightServer } from "./helpers/fixture-setup-preflight.js";
 import { SETUP_SCENES } from "./helpers/reference-setup-preflight-scenes.js";
 
@@ -35,7 +36,6 @@ async function assertChecks(surface:Locator, served:ServedRead, settings:boolean
   }
 }
 
-test.beforeAll(()=>{ensureParityBundle();});
 for(const scene of SETUP_SCENES)for(const theme of PARITY_THEMES)for(const viewport of [{width:1280,height:720},{width:1440,height:900}]) {
   const a11yName=`setup-${scene.id}-${theme.name}-${String(viewport.width)}.a11y.yml`;
   test(`Setup ${scene.id} ${theme.name} ${String(viewport.width)}`,{annotation:[{type:"required-a11y-evidence",description:a11yName}]},async({page},info)=>{

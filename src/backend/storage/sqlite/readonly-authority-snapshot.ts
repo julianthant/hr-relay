@@ -5,6 +5,7 @@ import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
+import { outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
 import { existsSync, statSync, lstatSync, mkdtempSync, realpathSync, rmSync, type BigIntStats } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -93,7 +94,30 @@ try {
 }
 `;
 
+function snapshotMarker(sourcePath: string): string {
+  return ["", "-wal", "-shm", "-journal"].map(suffix => {
+    const stats = inspect(`${sourcePath}${suffix}`);
+    return stats === undefined ? "absent" : identity(stats);
+  }).join("|");
+}
+
 export function createReadonlyAuthoritySnapshot(sourcePath: string) {
+  const proof = outermostOperationProof();
+  const marker = snapshotMarker(sourcePath);
+  const key = `readonly-snapshot:${sourcePath}`;
+  const cached = proof?.slots.get(key) as { marker: string; snapshot: ReturnType<typeof copyReadonlyAuthoritySnapshot> } | undefined;
+  if (cached?.marker === marker) {
+    cached.snapshot.assertUnchanged();
+    return Object.freeze({ path: cached.snapshot.path, assertUnchanged: cached.snapshot.assertUnchanged, dispose() { if (!proof?.active) cached.snapshot.dispose(); } });
+  }
+  const snapshot = copyReadonlyAuthoritySnapshot(sourcePath);
+  if (proof === undefined) return snapshot;
+  proof.slots.set(key, { marker, snapshot });
+  proof.release.push(() => { snapshot.dispose(); });
+  return Object.freeze({ path: snapshot.path, assertUnchanged: () => snapshot.assertUnchanged(), dispose() { if (!proof.active) snapshot.dispose(); } });
+}
+
+function copyReadonlyAuthoritySnapshot(sourcePath: string) {
   const directory = mkdtempSync(join(realpathSync(tmpdir()), "relay-readonly-authority-"));
   const path = join(directory, "authority.sqlite");
   const sources: Array<{ path: string; suffix: string; stats: BigIntStats | undefined }> = [];
@@ -170,9 +194,11 @@ export function openReadOnlyDatabase(path: string, busyTimeoutMs: number): Datab
 
 
 export function withAuthorityDatabaseReadOnly<Result>(admission:RuntimeAdmission,pathInput:string,read:(database:DatabaseSync)=>Result,busyTimeoutMs=250):Result {
- const path=resolve(pathInput);
- requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
- return withReadonlyAuthoritySnapshot(path, read, busyTimeoutMs);
+ return withOperationProof(() => {
+   const path=resolve(pathInput);
+   requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
+   return withReadonlyAuthoritySnapshot(path, read, busyTimeoutMs);
+ });
 }
 
 export function withReadonlyAuthoritySnapshot<Result>(pathInput: string, read: (database: DatabaseSync) => Result, busyTimeoutMs = 250): Result {

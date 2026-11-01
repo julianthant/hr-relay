@@ -1,17 +1,20 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { afterEach, describe, it } from "vitest";
 import { type SettingsApplicationExecutor } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { SETTINGS_SCHEMA_HASH, SettingsApplyRejectionCodeSchema, derivePersistedSettingsFingerprint, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { HASH_A, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const { roots, openDatabases, profiles, createHarness, nextCommandId } = createCommandKernelTestWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
+const { roots, openDatabases, profiles, createHarness, nextCommandId } = createCommandKernelTestWorld(profileFixtures.create);
 
 
 afterEach(async () => {

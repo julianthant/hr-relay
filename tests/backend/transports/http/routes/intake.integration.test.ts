@@ -1,7 +1,8 @@
-import { foreignOriginCases } from "../../../../support/helpers/backend/http-route-harness.js";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { foreignOriginCases, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 
 import assert from "node:assert/strict";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import { UNWIRED_INTAKE_SERVICE } from "../../../../support/fixtures/intake-kernel-seams.js";
 import Excel from "exceljs";
 import JSZip from "jszip";
@@ -11,6 +12,9 @@ import { INTAKE_FIXTURE_WORKFLOW_ID, intakeFixtureDescriptor, intakeFixtureProje
 import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { createHash } from "node:crypto";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   const FOREIGN_ORIGIN_CASES = foreignOriginCases();
@@ -19,7 +23,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     "refuses an intake upload with %s before the query, the bytes or the intake service are read",
     async (_label, headers) => {
       let uploads = 0;
-      const h = await harness({
+      const h = await harness({ profileFixture: profileFixtures.create,
         intake: {
           ...UNWIRED_INTAKE_SERVICE,
           upload: () => {
@@ -48,7 +52,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("admits a same-origin intake upload under the file's own media type and keeps the route's media contract", async () => {
     const seen: string[] = [];
-    const h = await harness({
+    const h = await harness({ profileFixture: profileFixtures.create,
       intake: {
         ...UNWIRED_INTAKE_SERVICE,
         upload: (input) => {
@@ -69,7 +73,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(seen, ["fixture-graph|roster.csv|text/csv|13"]);
   });
   it.each(["archive", "truncated-pk", "directory", "xml", "rels", "workbook-empty", "relationships-empty"])("refuses malformed XLSX %s through the real upload/parser without creating a session", async corruption => {
-    const h = await harness({ intake: { ...UNWIRED_INTAKE_SERVICE, upload: input => actual.upload(input) } });
+    const h = await harness({ profileFixture: profileFixtures.create, intake: { ...UNWIRED_INTAKE_SERVICE, upload: input => actual.upload(input) } });
     const actual = composeIntake({ database: h.database, artifacts: h.artifacts, parser: createIntakeParser({ artifacts: h.artifacts }),
       projections: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureProjection : undefined },
       descriptors: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureDescriptor : undefined }, clock: h.clock, ids: sequentialIdFactory("c") });
@@ -96,5 +100,4 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 });
 
-import { disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

@@ -1,3 +1,6 @@
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
+import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { afterAll } from "vitest";
 import { buildGateParkSection } from "../../../../src/backend/runs/queries/run-detail/gate-park.js";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
@@ -5,9 +8,6 @@ import { testWorkerLifetime, testRunService, testWorkerPorts } from "../../../su
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -26,21 +26,40 @@ const MUCH_LATER = "2026-07-31T18:00:00.000Z";
 
 const WORKER_ID = "person-lookup-worker-1";
 const SIBLING_WORKER_ID = "person-lookup-worker-2";
-const roots: string[] = [];
+const profiles = createClonedProfileFixtures();
+const heldProfiles: BoundProfileStorageFixture[] = [];
+afterAll(() => profiles.close());
 const databases: AuthorityDatabase[] = [];
-afterEach(() => {
-  for (const database of databases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+afterEach(async () => {
+  for (const database of databases.splice(0)) {
+    for (const run of database.authority.runs.listByWorkflow(WORKFLOW_ID)) {
+      for (const intent of database.authority.writeIntents.listByRun(run.envelope.runId)) {
+        if (intent.status !== "attempting") continue;
+        database.authority.writeIntents.parkAttempt({ writeIntentId: intent.writeIntentId, generation: intent.generation,
+          expectedVersion: intent.version, code: "unknown", message: "fixture release",
+          authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "fixture release"), now: MUCH_LATER });
+      }
+      if (run.lifecycle.state === "parked-write") {
+        const intent = database.authority.writeIntents.get(run.lifecycle.writeIntentId);
+        if (intent === undefined || !("runId" in intent) || intent.runId !== run.envelope.runId) {
+          assert.equal(database.authority.runs.transition({ runId: run.envelope.runId,
+            expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: MUCH_LATER }, now: MUCH_LATER }).state, "applied");
+        }
+      }
+    }
+    releaseSeededWriteOwners(database, MUCH_LATER);
+    database.close();
+  }
+  for (const profile of heldProfiles.splice(0)) await profile.close();
 });
 
-function openDatabase(): AuthorityDatabase {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-write-park-"));
-  roots.push(root);
+async function openDatabase(): Promise<AuthorityDatabase> {
+  const profile = await profiles.create(); heldProfiles.push(profile);
   const database = AuthorityDatabase.open(
-    { path: join(root, "authority.sqlite"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     manualClock(new Date(NOW)),
   );
-  for (const poolIndex of [1, 2]) testWorkerPorts(database, manualClock(new Date(NOW)), { path: join(root, "authority.sqlite"), descriptor: personLookupDescriptor, poolIndex });
+  for (const poolIndex of [1, 2]) testWorkerPorts(database, manualClock(new Date(NOW)), { path: profile.path, descriptor: personLookupDescriptor, poolIndex });
   databases.push(database);
   return database;
 }
@@ -68,7 +87,7 @@ function claimAndRun(database: AuthorityDatabase, target: "claimed" | "running",
     runId: queued.envelope.runId,
     expectedVersion: claimed.run.version,
     claim: { workerId, claimGeneration: 1 },
-    lifecycle: { state: "validating", workerId, claimedAt: NOW, heartbeatAt: NOW },
+    lifecycle: { state: "validating", workerId, workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember5.poolIndex).workerLifetime, claimedAt: NOW, heartbeatAt: NOW },
     now: NOW,
   });
   assert.equal(validating.state, "applied");
@@ -80,6 +99,7 @@ function claimAndRun(database: AuthorityDatabase, target: "claimed" | "running",
     lifecycle: {
       state: "running",
       workerId,
+      workerLifetime: testWorkerLifetime(database, WORKFLOW_ID, claimMember5.poolIndex).workerLifetime,
       claimedAt: NOW,
       heartbeatAt: NOW,
       currentNodeId: "searching",
@@ -90,8 +110,8 @@ function claimAndRun(database: AuthorityDatabase, target: "claimed" | "running",
 }
 
 describe("write parking and recovery fencing", () => {
-  it("records exactly one parked event with its journal and rolls it back with the park", () => {
-    const database = openDatabase();
+  it("records exactly one parked event with its journal and rolls it back with the park", async () => {
+    const database = await openDatabase();
     claimAndRun(database, "running");
     fenceWriteFixture(database, { intent: PERSON_LOOKUP_ATTEMPTING_INTENT, attempt: PERSON_LOOKUP_WRITE_ATTEMPT });
     const service = testRunService(database, manualClock(new Date(MUCH_LATER)));
@@ -119,8 +139,8 @@ describe("write parking and recovery fencing", () => {
     assert.equal(database.authority.writeIntents.get(PERSON_LOOKUP_ATTEMPTING_INTENT.writeIntentId)?.status, "attempting");
   });
 
-  it("records the normal intent park, run park and event atomically without retry authority", () => {
-    const database = openDatabase();
+  it("records the normal intent park, run park and event atomically without retry authority", async () => {
+    const database = await openDatabase();
     claimAndRun(database, "running");
     fenceWriteFixture(database, { intent: PERSON_LOOKUP_ATTEMPTING_INTENT, attempt: PERSON_LOOKUP_WRITE_ATTEMPT });
     const service = testRunService(database, manualClock(new Date(MUCH_LATER)));
@@ -146,8 +166,8 @@ describe("write parking and recovery fencing", () => {
     assert.equal(database.authority.timelineEvents.page({ runId: RUN_ID }).filter(record => record.payload.kind === "write-parked").length, 1);
   });
 
-  it("records a recovery park on its actual run without adopting the earlier write owner's span or serving its decision", () => {
-    const database = openDatabase();
+  it("records a recovery park on its actual run without adopting the earlier write owner's span or serving its decision", async () => {
+    const database = await openDatabase();
     claimAndRun(database, "running");
     const runId = "33333333-3333-4333-8333-333333333333";
     const later = { ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, runId, traceId: "pl-170000-3333", attempt: 2, retryOf: RUN_ID } };
@@ -170,8 +190,8 @@ describe("write parking and recovery fencing", () => {
     } as unknown as RunDetailQueryDeps, runId, "parked-write"), /which is attempting/);
   });
 
-  it("refuses a malformed recorded prepare owner without parking or recording a guessed node", () => {
-    const database = openDatabase();
+  it("refuses a malformed recorded prepare owner without parking or recording a guessed node", async () => {
+    const database = await openDatabase();
     claimAndRun(database, "running");
     const proof = { ...PERSON_LOOKUP_PROOF, afterPrepareSpanPath: "foreign/termination/prepare" };
     const bindingProofDigest = deriveWriteBindingProofDigest(proof);

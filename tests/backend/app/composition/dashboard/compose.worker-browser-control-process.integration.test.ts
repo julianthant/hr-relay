@@ -26,6 +26,8 @@ import { composeProfileRuntime } from "../../../../../src/backend/app/compositio
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
 import { readSettings } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
+import { FIXTURE_DUO_CREDENTIAL_KEY } from "../../../../support/helpers/duo-ceremony-fixtures.js";
+import { scaledMs } from "../../../../support/time-scale.js";
 
 const worker = (index: number) => `person-lookup-worker-${String(index)}`;
 function groupPids(group: number): number[] {
@@ -34,7 +36,7 @@ function groupPids(group: number): number[] {
   });
 }
 async function waitFor(test: () => boolean, message: string, output: () => string, milliseconds = 20_000) {
-  const deadline = systemClock.monotonicMs() + milliseconds;
+  const deadline = systemClock.monotonicMs() + scaledMs(milliseconds);
   while (!test()) { if (systemClock.monotonicMs() > deadline) throw new Error(`${message}\n${output()}`); await new Promise(resolve => setTimeout(resolve,25)); }
 }
 
@@ -47,6 +49,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
   let profile: ReturnType<typeof composeProfileRuntime> | undefined;
   let token: string | undefined;
   const children: ChildProcess[] = []; const output: string[] = []; const faults: string[] = [];
+  const runIds = [randomUUID(), randomUUID()];
   type DiagnosticPhase = 'starting' | 'boot-admission' | 'boot-runtime' | 'first-boot' | 'settings-request' | 'settings-response'
     | 'worker-command-request' | 'worker-command-response' | 'paused-workers' | 'claimed-runs' | 'browser-session'
     | 'run-completion' | 'idle-workers' | 'heartbeat' | 'first-stop' | 'closed-children' | 'second-boot'
@@ -103,7 +106,12 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     children.push(child); child.stdout?.on("data",chunk => output.push(String(chunk))); child.stderr?.on("data",chunk => output.push(String(chunk)));
     return { pid:child.pid, kill:signal => child.kill(signal), onExit:listener => {child.on("exit",listener);}, onError:listener => {child.on("error",listener);} };
   };
-  const diagnostics = () => output.join("") + JSON.stringify({ leases: database?.authority.workerLeases.listLive(), runs: [1,2].flatMap(index => database?.authority.runs.listByWorker(worker(index)) ?? []) });
+  const diagnostics = () => output.join("") + JSON.stringify({ leases: database?.authority.workerLeases.listLive(), runs: runIds.map(runId => ({
+    state: database?.authority.runs.get(runId)?.lifecycle.state ?? "absent",
+    failureCodes: database?.authority.failures.listByRun(runId).map(failure => failure.code) ?? [],
+  })), duoLease: database?.authority.duoCeremonyLeases.get(FIXTURE_DUO_CREDENTIAL_KEY),
+  browsers: [1, 2].map(index => database?.authority.workerControls.browsers(worker(index)).map(({ system, health }) => ({ system, health }))),
+  traces: readdirSync(root).filter(name => /^browser-\d+\.jsonl$/u.test(name)).map(name => readFileSync(join(root, name), "utf8").trim().split("\n")) });
   phase = 'boot-admission';
   const boot = async () => {
     const bootMachine = acquireEntrypointAdmission(root, "shared", lifetimeLock);
@@ -117,7 +125,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     assert.equal(existsSync(join(machine.stateRoot, "state.db")), false);
     phase = 'boot-runtime';
     const dashboard = await composeDashboardRuntime({ lifetimeLock, admission: machine, profile: { runtime: profile, token }, preflightRunnerFactory: healthyRuntimePreflightRunners,isolation:rebuildRuntimeIsolation,backendPortOverride:0,frontendPortOverride:0,env:{},repoRoot:root,
-    workerProcess:{launch:{environment:{},command:process.execPath,prefixArgs:["--import","tsx",join(process.cwd(),"tests/support/processes/worker-browser-control-cli.ts"),root],cwd:process.cwd()},spawn:spawnWorker,birth:{pollMs:25,timeoutMs:20_000},faultSink:line=>faults.push(line)}});
+    workerProcess:{launch:{environment:{},command:process.execPath,prefixArgs:["--import","tsx",join(process.cwd(),"tests/support/processes/worker-browser-control-cli.ts"),root],cwd:process.cwd()},spawn:spawnWorker,birth:{pollMs:25,timeoutMs:scaledMs(20_000)},faultSink:line=>faults.push(line)}});
     return { dashboard, machine: bootMachine };
   };
   const failures: unknown[]=[];
@@ -128,7 +136,9 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     assert.ok(profile); assert.ok(token);
     let db = profile.selectedContext(token).database; database = db;
     const baseline = readSettings(db.authority).revision;
-    const patch = { "daemon.idleRepollMs": { set: 100 }, "browser.headless": { set: true }, "features.duoWebAuthn": { set: false } };
+    // Real workers inherit product deadlines from settings; stretch them like every other test deadline.
+    const patch = { "daemon.idleRepollMs": { set: 100 }, "browser.headless": { set: true }, "features.duoWebAuthn": { set: false },
+      "timeouts.sessionAcquireMs": { set: scaledMs(60_000) }, "browser.closeProofMs": { set: scaledMs(15_000) } };
     phase = 'settings-request';
     const response = await fetch(`${origin}/api/v1/commands`, { method:"POST", headers:{"content-type":"application/json",origin},
       body:JSON.stringify({commandId:randomUUID(),family:"settings",type:"apply-settings",target:{expectedRevision:baseline},source:"dashboard",requestedBy:"local-operator",requestedAt:systemClock.now().toISOString(),
@@ -170,7 +180,6 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     }
     phase = 'paused-workers';
     await waitFor(()=>[1,2].every(index=>db.authority.workerLeases.get(worker(index))?.lifecycle.state==="paused"),"workers did not observe pause",diagnostics);
-    const runIds=[randomUUID(),randomUUID()];
     const active=db.authority.runtimeConfig.get(); assert.ok(active);
     for (const runId of runIds) {
       const candidate=RunRecordSchema.parse(personLookupQueuedRun({runId,itemId:randomUUID(),dryRun:true}));
@@ -198,7 +207,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     assert.equal(db.authority.workerControls.get(busy.request.commandId),undefined);
     writeFileSync(join(root,"release-drivers"),"release\n");
     phase = 'run-completion';
-    await waitFor(()=>runIds.every(id=>{const state=db.authority.runs.get(id)?.lifecycle; return state?.state==="terminal"&&state.outcome==="done";}),"dry runs did not finish",diagnostics);
+    await waitFor(()=>runIds.every(id=>{const state=db.authority.runs.get(id)?.lifecycle; return state?.state==="terminal"&&state.outcome==="done";}),"dry runs did not finish",diagnostics,30_000);
     phase = 'run-completion';
     await waitFor(()=>[1,2].every(index=>db.authority.workerLeases.get(worker(index))?.lifecycle.state==="idle"),"workers not idle",diagnostics);
     const original=liveSession(); assert.ok(original);
@@ -341,4 +350,4 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     }
   }
   if(failures.length>0)throw new AggregateError(failures,`process proof failed; retained ${root}\n${output.join("")}`);
-},90_000);
+}, scaledMs(90_000));

@@ -3,7 +3,7 @@ import { deleteOwnedBrowserProfile } from "../runtime/browser/browser-session-fa
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
 import { resolveConfigWithProvenance } from "../app/config/resolve.js";
 import { NativeBrowserClosureUnprovedError, onboardingProfileDirectory, probeClosedBrowserProfile, assertPrivateProfilePath } from "../runtime/browser/native-profile-probe.js";
-import { ProfileOnboardingDuoProviderError } from "./onboarding-duo-provider.js";
+import { ProfileOnboardingDuoProviderError } from "../runtime/browser/onboarding-duo-provider.js";
 import { ProfileSessionRefusedError } from "./profile-errors.js";
 import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
 import { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
@@ -38,6 +38,7 @@ import { assertFinishedProfileOnboarding, deriveProfileNames, ProfileNameValidat
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import {
   noSymlinkAncestry,
+  withOperationProof,
   type DirectoryIdentity,
 } from "../storage/configuration/credential-safe-file.js";
 import { assessCredentialInventory, type CredentialInventory } from "./credential-inventory.js";
@@ -683,7 +684,7 @@ export function createProfileSession(input: {
     });
   }
 
-  return Object.freeze({
+  return withProvedOperations({
     close(): void {
       onboarding.assertClosed();
       logoutContinuationGeneration++;
@@ -1131,4 +1132,14 @@ export function createProfileSession(input: {
       });
     },
   });
+}
+
+function withProvedOperations<T extends object>(api: T): T {
+  const proved: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(api)) {
+    proved[key] = typeof value === "function"
+      ? (...args: unknown[]) => withOperationProof(() => (value as (...inner: unknown[]) => unknown).apply(api, args))
+      : value;
+  }
+  return Object.freeze(proved) as T;
 }

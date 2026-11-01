@@ -1,8 +1,9 @@
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
 
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { OCR_DOCUMENT_FIXTURES } from "../../src/dashboard/surfaces/workflows/mocks/workflow-document-model.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -16,7 +17,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`document-complete OCR queue, viewer and actions @ ${theme.attribute}-${width}`, {
     annotation: [queueEvidence, inputEvidence, ...OCR_DOCUMENT_FIXTURES.map(doc => documentEvidence(doc.name))].map(description => ({ type: "required-a11y-evidence", description })),
   }, async ({ page }, info) => {
-    ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
