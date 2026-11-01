@@ -142,7 +142,7 @@ jobs:
       - name: Architecture
         if: ${{ !cancelled() && matrix.suite == 'architecture' && needs.changes.outputs.architecture == 'true' }}
         timeout-minutes: 15
-        run: npm run test:architecture -- --no-file-parallelism
+        run: npm run test:architecture -- --maxWorkers=2
       - name: Check native browser process proofs without competing files
         if: ${{ !cancelled() && matrix.group == 5 && needs.changes.outputs.integration == 'true' }}
         run: >-

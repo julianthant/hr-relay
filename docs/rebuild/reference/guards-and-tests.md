@@ -94,13 +94,14 @@ The worker default belongs to the root configuration so CLI limits apply to ever
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
 CI runs five macOS groups. The matrix in `.github/workflows/ci.yml` assigns twenty ordinary
-integration shards around one unit run, one serial architecture run and two parity shards.
+integration shards around one unit run, one architecture run with two file workers and two parity shards.
 The three native browser process-proof files (browser control, onboarding Duo provider, worker supervisor) run first and serially in group 5, without competing
 test files. Ordinary shards discover integration files through Vitest, remove those three paths,
 then pass the remaining paths explicitly. Vitest 4.1.11's CLI exclusions do not reach these named
 projects. Selection refuses if any native file is missing or no ordinary files remain.
 Remaining integration files, unit and parity use two workers. Groups have 30-minute budgets;
-the architecture step retains its 15-minute budget. CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
+architecture runs `npm run test:architecture -- --maxWorkers=2` within its 15-minute budget.
+CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
 Vitest test and hook limits, test wait helpers and the browser deadlines tests pass to product code by it.
 Local runs use 1. Product defaults are unchanged. Remaining-file steps run after a failed proof
 unless the workflow is cancelled, preserving failure visibility. An integration shard failure
