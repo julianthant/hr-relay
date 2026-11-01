@@ -43,7 +43,7 @@ required unit, integration, architecture and parity on `macos-15` Apple Silicon 
 Static, privacy and the four required suite summaries stay on Ubuntu. CI runs no Windows jobs.
 Test suites run on Ubuntu runners, except files that need macOS: the native browser process proofs,
 the storage closure, backup and restore proofs, and Desktop parity. A pull request into `staging`
-uses at most twenty Ubuntu jobs and all five macOS jobs; a release pull request gives three of the
+uses all twenty Ubuntu jobs and all five macOS jobs; a release pull request gives three of the
 macOS jobs to parity. The release runner starts after these jobs finish.
 
 PRs into `staging` run static, privacy, unit, integration and architecture; PRs into `main` add

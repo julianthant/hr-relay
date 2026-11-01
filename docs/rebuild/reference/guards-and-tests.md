@@ -96,17 +96,27 @@ per-assertion progress messages. Multi-stage harnesses may emit stable phase mar
 CI runs test files on Ubuntu unless they need macOS. `scripts/test/ci-files.ts` names the macOS
 files: `MACOS_FILES` (storage closure, backup and restore proofs that refuse off macOS, unit and
 integration) and `SERIAL_FILES` (the three native browser process proofs: browser control,
-onboarding Duo provider, worker supervisor). Each job lists its project through Vitest, selects its
-files with that script and passes the paths explicitly; Vitest 4.1.11's CLI exclusions do not reach
-these named projects. Selection refuses when a named file is no longer listed or no files remain.
+onboarding Duo provider, worker supervisor). `scripts/test/ci-run.sh` lists a project through
+Vitest, selects the job's files with that script and passes the paths explicitly; Vitest 4.1.11's
+CLI exclusions do not reach these named projects. Selection refuses when a named file is no longer
+listed. Files are packed longest first onto the least-loaded job using
+`scripts/test/ci-durations.json`; unmeasured files count as the median. Serial proofs count their
+full time because they run alone; other macOS files count half because two workers share them.
 
 | Job | Runner | Jobs | Contents |
 | --- | --- | --- | --- |
-| unit | Ubuntu | 3 shards | unit files except `MACOS_FILES` |
-| architecture | Ubuntu | 1 | `npm run test:architecture -- --maxWorkers=2` |
-| integration | Ubuntu | 14 shards | integration files except `MACOS_FILES` and `SERIAL_FILES` |
-| native | macOS | 5 jobs (2 when parity runs) | job 1 runs the macOS unit files, then `SERIAL_FILES` serially without competing files; the other jobs split the macOS integration files |
+| unit | Ubuntu | 3 | unit files except `MACOS_FILES` |
+| architecture | Ubuntu | 2 | architecture files |
+| integration | Ubuntu | 13 | integration files except `MACOS_FILES` and `SERIAL_FILES` |
+| native | macOS | 5 (2 when parity runs) | its `SERIAL_FILES` alone, then its macOS unit and integration files |
 | parity | macOS | 3 shards | Desktop parity, release pull requests only |
+
+With `static` and `privacy`, a pull request into `staging` starts exactly the twenty Ubuntu jobs that
+run at once. Every job uploads Vitest JSON reports as `durations-*` artifacts. When job end times
+spread more than a minute, refresh the durations from a recent run and commit them in the next
+bundled pull request:
+`gh run download <run-id> -p 'durations-*' -D <dir>` then `npx tsx scripts/test/ci-files.ts durations <dir>`.
+A new test file that needs macOS fails on Ubuntu with the darwin refusal; add it to `MACOS_FILES`.
 
 Unit, integration and parity use two workers. Ubuntu jobs put test temp on tmpfs and have 20-minute
 budgets; macOS jobs use a RAM disk with Spotlight indexing off and have 30-minute budgets. Budgets are
@@ -139,11 +149,7 @@ job fails the summary.
 
 Membership verification compares an unsharded `vitest list --filesOnly --json` for unit,
 integration and architecture with the union of the exact CI selections. `tests/scripts/test/ci-files.test.ts`
-proves the runner selections give each file to exactly one runner. For every shard, use
-`vitest list --project <project> <selected paths> --shard=N/M --json=/absolute/shard-N.json`
-with the same selected path array as CI. Deduplicate test rows into files within each shard, then require
-no duplicate files across shards, no missing files and no extra files against the baseline.
-Vitest 4.1.11's `list --filesOnly` does not apply sharding, so it cannot prove shard membership.
+proves the selections give each file to exactly one job, so selected paths need no Vitest sharding.
 Parity's three Playwright shards' `--list --reporter=json` test identities must also form the
 unsharded listing exactly once. Coverage, perf and local selection are unchanged.
 

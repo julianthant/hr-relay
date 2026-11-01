@@ -105,8 +105,11 @@ The repository holds only the current version. No compatibility readers, old mig
   only pull requests labeled `needs-human`.
 - Pull requests into `staging` run static, privacy, unit, integration and architecture checks;
   parity runs on the release pull request into `main`, and a red release is fixed by a pull request
-  into `staging`. Run the tests related to your change locally before pushing, and parity
-  when the change touches a dashboard screen.
+  into `staging`. Run the tests related to your change locally before pushing, and parity when the
+  change touches a dashboard screen.
+- A test file that needs macOS goes in `MACOS_FILES` in `scripts/test/ci-files.ts`. When CI jobs'
+  end times spread more than a minute, refresh `scripts/test/ci-durations.json` (see
+  `docs/rebuild/reference/guards-and-tests.md`).
 - A pull request bundles a good amount of related work, so CI runs once per batch rather than after
   every small fix. Keep commits logical inside it; never mix unrelated features. Title and describe
   what changed and why. Pull a branch before continuing work on it.

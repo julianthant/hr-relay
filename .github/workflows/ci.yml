@@ -80,13 +80,13 @@ jobs:
               (suite !== 'parity' || release) && (manual || filters.shared === 'true' || filters[suite] === 'true')
             ]));
             const jobs = (suite, shards) => Array.from({ length: shards }, (_, i) => ({ suite, shard: i + 1, shards }));
-            // Native job 1 runs the serial browser proofs and macOS unit files; the others split the macOS
-            // integration files. Release runs give three of the five macOS runners to parity.
+            // scripts/test/ci-files.ts balances each suite's files across its jobs by measured duration.
+            // Release runs give three of the five macOS runners to parity.
             const macosShards = selected.integration ? (selected.parity ? 2 : 5) : selected.unit ? 1 : 0;
             const ubuntu = [
               ...(selected.unit ? jobs('unit', 3) : []),
-              ...(selected.architecture ? jobs('architecture', 1) : []),
-              ...(selected.integration ? jobs('integration', 14) : []),
+              ...(selected.architecture ? jobs('architecture', 2) : []),
+              ...(selected.integration ? jobs('integration', 13) : []),
             ];
             const macos = [...(selected.parity ? jobs('parity', 3) : []), ...jobs('native', macosShards)];
             for (const suite of suites) core.setOutput(suite, String(selected[suite]));
@@ -139,20 +139,18 @@ jobs:
         run: |
           dir=$(mktemp -d /dev/shm/relay-tmp.XXXXXX)
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - name: Architecture
-        if: matrix.suite == 'architecture'
-        run: npm run test:architecture -- --maxWorkers=2
-      - name: Unit or integration shard
-        if: matrix.suite != 'architecture'
+      - name: Tests
         env:
           SUITE: ${{ matrix.suite }}
-          SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: |
-          npx vitest list --project "$SUITE" --filesOnly --json="$RUNNER_TEMP/files.json"
-          npx tsx scripts/test/ci-files.ts "$SUITE" ubuntu "$RUNNER_TEMP/files.json" > "$RUNNER_TEMP/paths"
-          files=()
-          while IFS= read -r -d '' file; do files+=("$file"); done < "$RUNNER_TEMP/paths"
-          npm run "test:$SUITE" -- "${files[@]}" --shard="$SHARD" --maxWorkers=2
+          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=2
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: durations-ubuntu-${{ matrix.suite }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/durations/
+          if-no-files-found: ignore
+          retention-days: 14
 
   macos:
     name: macOS ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.shards }}
@@ -192,16 +190,10 @@ jobs:
           esac
           sudo mdutil -i off "$vol"
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - name: macOS-only unit files
-        if: ${{ !cancelled() && matrix.suite == 'native' && matrix.shard == 1 && needs.changes.outputs.unit == 'true' }}
-        run: |
-          npx vitest list --project unit --filesOnly --json="$RUNNER_TEMP/unit-files.json"
-          npx tsx scripts/test/ci-files.ts unit macos "$RUNNER_TEMP/unit-files.json" > "$RUNNER_TEMP/unit-paths"
-          files=()
-          while IFS= read -r -d '' file; do files+=("$file"); done < "$RUNNER_TEMP/unit-paths"
-          npm run test:unit -- "${files[@]}" --maxWorkers=2
       - name: Check native browser process proofs without competing files
-        if: ${{ !cancelled() && matrix.suite == 'native' && matrix.shard == 1 && needs.changes.outputs.integration == 'true' }}
+        if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.integration == 'true' }}
+        env:
+          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
         # Samples machine state every 5s so a stalled proof shows whether memory, CPU or the RAM disk ran out.
         run: |
           ( while true; do
@@ -211,25 +203,27 @@ jobs:
             done ) &
           sampler=$!
           set +e
-          npx vitest list --project integration --filesOnly --json="$RUNNER_TEMP/serial-files.json"
-          npx tsx scripts/test/ci-files.ts integration serial "$RUNNER_TEMP/serial-files.json" > "$RUNNER_TEMP/serial-paths"
-          files=()
-          while IFS= read -r -d '' file; do files+=("$file"); done < "$RUNNER_TEMP/serial-paths"
-          npm run test:integration -- "${files[@]}" --maxWorkers=1 --no-file-parallelism
+          scripts/test/ci-run.sh integration serial "$SLICE" --maxWorkers=1 --no-file-parallelism
           status=$?
           kill "$sampler"
           exit "$status"
-      - name: macOS-only integration shard
-        if: ${{ !cancelled() && matrix.suite == 'native' && matrix.shard > 1 && needs.changes.outputs.integration == 'true' }}
+      - name: macOS-only unit files
+        if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.unit == 'true' }}
         env:
-          SHARD: ${{ matrix.shard }}
-          SHARDS: ${{ matrix.shards }}
-        run: |
-          npx vitest list --project integration --filesOnly --json="$RUNNER_TEMP/files.json"
-          npx tsx scripts/test/ci-files.ts integration macos "$RUNNER_TEMP/files.json" > "$RUNNER_TEMP/paths"
-          files=()
-          while IFS= read -r -d '' file; do files+=("$file"); done < "$RUNNER_TEMP/paths"
-          npm run test:integration -- "${files[@]}" --shard="$((SHARD - 1))/$((SHARDS - 1))" --maxWorkers=2
+          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: scripts/test/ci-run.sh unit macos "$SLICE" --maxWorkers=2
+      - name: macOS-only integration files
+        if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.integration == 'true' }}
+        env:
+          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: scripts/test/ci-run.sh integration macos "$SLICE" --maxWorkers=2
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && matrix.suite == 'native' }}
+        with:
+          name: durations-macos-${{ matrix.shard }}
+          path: ${{ runner.temp }}/durations/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Desktop parity
         if: ${{ !cancelled() && matrix.suite == 'parity' }}
         run: npm run test:parity -- --shard=${{ matrix.shard }}/${{ matrix.shards }} --workers=2
