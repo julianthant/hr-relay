@@ -1,16 +1,16 @@
 import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, openSync, readFileSync, lstatSync, mkdirSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
-import { submitOnboardingSsoCredentials } from "../systems/browser-shared/ucsd-sso.js";
+import { submitOnboardingSsoCredentials } from "../../systems/browser-shared/ucsd-sso.js";
 import type { BrowserContext, Page, Worker } from "playwright";
 import { z } from "zod";
-import { BrowserDocumentIdSchema } from "../../models/config/duo-credential-store.js";
-import type { Clock } from "../../rules/time/clock.js";
-import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-import { deleteOwnedBrowserProfile } from "../runtime/browser/browser-session-factory.js";
-import { DEFAULT_BROWSER_LAUNCHER, onboardingProfileDirectory, probeClosedBrowserProfile, type PersistentContextLauncher } from "../runtime/browser/native-profile-probe.js";
-import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
-import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
+import { BrowserDocumentIdSchema } from "../../../models/config/duo-credential-store.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { deleteOwnedBrowserProfile } from "./browser-session-factory.js";
+import { DEFAULT_BROWSER_LAUNCHER, onboardingProfileDirectory, probeClosedBrowserProfile, type PersistentContextLauncher } from "./native-profile-probe.js";
+import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
+import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
 
 export class ProfileOnboardingDuoProviderError extends Error {
   constructor(readonly kind: "unavailable" | "refused" | "unknown",
@@ -364,12 +364,14 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         session.context = context;
         context.on("close", () => {
           session.contextClosed = true;
-          if (!session.revoked) {
+          // Context closure precedes native profile release; the next owner operation proves cleanup.
+          if (!session.close) {
+            session.revoked = true;
             if (active) {
               if (active.accepted || active.attempt.method === "key" && active.requestId) active.revoked = true;
               else void reportFailure(active, new ProfileOnboardingDuoProviderError(active.capability ? "unknown" : "unavailable", "browser-lifetime"));
+              void close(active);
             }
-            void closeBrowser(session);
           }
         });
         return context;
@@ -401,7 +403,12 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
             await workerCall(worker, "browserReply", [request.id, { ok: true, value: owner.readState() }]);
           } catch { await workerCall(worker, "browserReply", [request.id, { ok: false }]); }
         }
-      })().catch(() => { if (!session.revoked) queueMicrotask(() => { void closeBrowser(session); }); });
+      })().catch(() => {
+        if (!session.revoked) {
+          session.revoked = true;
+          if (active) void close(active);
+        }
+      });
       session.setup = context.pages()[0] ?? await context.newPage();
       browserCurrent(session);
       await session.setup.goto(new URL("options.html", worker.url()).href, { waitUntil: "domcontentloaded" });

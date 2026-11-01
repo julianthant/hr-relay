@@ -1,8 +1,9 @@
 import { installFrozenMonotonic, moveAssistantLauncherAboveFooter } from "./helpers/app-driver.js";
 
 import { createHash } from "node:crypto";
-import { expect, test } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -11,7 +12,6 @@ const pdf = { name: "direct-contact.pdf", mimeType: "application/pdf", buffer: B
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const name = `ocr-direct-${theme.attribute}-${width}`;
   test(`standalone OCR reads or opens blank typed records without downstream approval @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: `${name}.a11y.yml` }] }, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));

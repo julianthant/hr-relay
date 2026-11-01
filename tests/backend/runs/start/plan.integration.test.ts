@@ -1,33 +1,33 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { ProtectedStoreRecordSchema } from "../../../../src/models/config/protected-settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { afterEach, describe, it } from "vitest";
-import { planStart } from "../../../../src/backend/runs/start/plan.js";
+import { planStart, dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../../../../src/backend/runs/start/plan.js";
 
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { HASH_A, NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { HASH_A, NOW, UUID_4, HASH_B } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
-import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { separationsDescriptor, personLookupDescriptor, separationsKualiFinalizationDescriptor, separationsUcpathTerminationDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 import { createPersonLookupStartFixtures } from "../../../support/helpers/backend/person-lookup-start-fixtures.js";
 
-import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../../../../src/backend/runs/start/plan.js";
 import { deriveCanonicalInputDigest, derivePlannedInputFingerprint, StartPlanRecordSchema } from "../../../../src/models/run/start-plan.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
 
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../../src/workflow-kit/workflow.js";
 import { PersonLookupCanonicalInput, PersonLookupInput } from "../../../../src/workflows/person-lookup/workflow.js";
-import { HASH_B } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 import { WRITE_FIXTURE_NODE_ID, writeFixtureDescriptorWithoutDryRunArm } from "../../../support/fixtures/write-sequencer-fixtures.js";
-import { personLookupDescriptor, separationsKualiFinalizationDescriptor, separationsUcpathTerminationDescriptor } from "../../../support/helpers/registered-workflows.js";
+
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 
 {
 
@@ -53,7 +53,7 @@ const _afterEachFixture0 = async () => {
 };
 
 async function openDatabase(): Promise<AuthorityDatabase> {
-  const profile = await createBoundProfileFixture();
+  const profile = await profileFixtures.create();
   const database = AuthorityDatabase.open(
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     CLOCK,
@@ -192,7 +192,7 @@ const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 const profiles: { close(): Promise<void> }[] = [];
 
-const { openDatabase, plannerDeps, baseRequest } = createPersonLookupStartFixtures(roots, databases, profiles, CLOCK, PLAN_TTL_MS);
+const { openDatabase, plannerDeps, baseRequest } = createPersonLookupStartFixtures(roots, databases, profiles, CLOCK, PLAN_TTL_MS, profileFixtures.create);
 
 const _afterEachFixture0 = async () => {
   while (databases.length > 0) databases.pop()?.close();

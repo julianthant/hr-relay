@@ -1,6 +1,7 @@
-import { expect,test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./fixtures.js";
 import { resolve } from "node:path";
-import { PARITY_DIST_DIR,ensureParityBundle } from "./bundle.js";
+import { PARITY_DIST_DIR } from "./bundle.js";
 import { startFixtureServer,type FixtureServer } from "../../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
 import { FIXTURE_DAY_WIRE } from "./fixture-queue.js";
@@ -16,8 +17,6 @@ let separationsStartServer: Awaited<ReturnType<typeof startSeparationsStartServe
 let storageServer: FixtureServer | undefined;
 let seeded: SeededServer | undefined;
 test.beforeAll(async () => {
-
-  ensureParityBundle();
 
   if (kinds.includes("server")) server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
 

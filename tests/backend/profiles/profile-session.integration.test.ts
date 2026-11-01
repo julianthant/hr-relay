@@ -1,5 +1,5 @@
 import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
-import { PrivateFileLockUnavailableError } from "../../../src/backend/storage/configuration/credential-safe-file.js";
+import { PrivateFileLockUnavailableError, withOperationProof } from "../../../src/backend/storage/configuration/credential-safe-file.js";
 import { FakeKeyringEntry } from "../../support/helpers/credential-keychain-fake.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
@@ -32,6 +32,7 @@ import { RuntimeAdmission } from "../../../src/backend/storage/admission/admissi
 import { RESTORE_ADMISSION_REQUEST, createChatGptCredentialRepository } from "../../../src/backend/storage/configuration/credential-store.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
+import { scaledMs } from "../../support/time-scale.js";
 
 const machineAdmissions = new Map<string, RuntimeAdmission>();
 const sessionOwners = new Set<ReturnType<typeof realCreateProfileSession>>();
@@ -451,7 +452,7 @@ describe("profile session", () => {
     const registry = JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as { profiles: { firstName: string }[] };
     assert.equal(registry.profiles.length, 1);
     assert.equal(registry.profiles[0]?.firstName, "Alex");
-  }, 20_000);
+  }, scaledMs(20_000));
 
   for (const record of ["malformed", "unknown"] as const) it(`retains a ${record} profile lock without sign-up effects`, async () => {
     const root = await temp();
@@ -1054,4 +1055,28 @@ it.each(["ancestor-before-open", "file-before-open", "ancestor-during-read", "fi
     if (closedDescriptor !== undefined) assert.throws(() => fs.fstatSync(closedDescriptor), { code: "EBADF" });
   } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
   assert.equal(existsSync(join(f.root, "machine", ".profile-ops.lock")), false);
+});
+
+it("rechecks a registry proof after another async context publishes", async () => {
+  const f = await createBoundProfileFixture();
+  try {
+    const profileId = f.admission.profileBinding.profileId;
+    const registry = createProfileRegistry(f.machine);
+    let entered: () => void = () => undefined, resume: () => void = () => undefined;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const held = new Promise<void>(resolve => { resume = resolve; });
+    const at = IsoInstantSchema.parse("2026-10-30T12:00:00.000Z");
+    const reader = withOperationProof(async () => {
+      assert.notEqual(registry.read().profiles.find(row => row.profileId === profileId)?.lastSignedInAt, at);
+      entered();
+      await held;
+      assert.equal(registry.read().profiles.find(row => row.profileId === profileId)?.lastSignedInAt, at);
+    });
+    const writer = (async () => {
+      await started;
+      try { registry.update(profileId, { lastSignedInAt: at }); }
+      finally { resume(); }
+    })();
+    await Promise.all([reader, writer]);
+  } finally { await f.close(); }
 });

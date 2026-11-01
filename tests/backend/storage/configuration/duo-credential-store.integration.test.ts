@@ -28,6 +28,7 @@ import { DuoCredentialDocumentSchema } from "../../../../src/models/config/duo-c
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { removeExactPath } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+import { scaledMs } from "../../../support/time-scale.js";
 
 function oldArtifactSnapshot(root: string) {
   const paths = [root], entries = [];
@@ -510,7 +511,7 @@ it("reserves increasing counts in independent processes and burns a committed at
   if (primary !== undefined && failures.length > 0) throw new AggregateError([primary.error, ...failures], 'Duo process scenario failed', { cause: primary.error });
   if (primary !== undefined) throw primary.error;
   if (failures.length > 0) throw new AggregateError(failures, 'Duo process cleanup failed', { cause: failures[0] });
-}, 30_000);
+}, scaledMs(30_000));
 
 it("recovers an interrupted Duo publication only for the issued claim and keeps the reserved count burned", async () => {
   const f = await setup();
@@ -780,7 +781,7 @@ it("finishes one interrupted Duo publication after the producing process exits a
   if (cleanup.length === 1) throw cleanup[0];
   if (primary !== undefined) throw primary.error;
   if (!recoveryCompleted || !childReleased) throw new Error('duo-recovery-closure-unproved');
-}, 30_000);
+}, scaledMs(30_000));
 
 it("refuses unmanaged Duo copies, then backup erase and restore keep burned counters and do not revive erased key material", async () => {
   const f = await setup();

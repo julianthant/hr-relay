@@ -1,9 +1,11 @@
+import { createClonedProfileFixtures, profileFixtureStorageAdmission, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { afterAll } from "vitest";
 import { TargetNotFoundError } from "../../../../src/backend/runs/commands/refusals.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync,readFileSync,readdirSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
+import { mkdtempSync,lstatSync,readFileSync,readdirSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
@@ -23,17 +25,21 @@ seedPersonLookupExitRun,
 } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
+const profiles = createClonedProfileFixtures();
+const heldProfiles: BoundProfileStorageFixture[] = [];
+afterAll(() => profiles.close());
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of databases.splice(0)) database.close();
+  for (const profile of heldProfiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function seeded(): AuthorityDatabase {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-explain-"));
-  roots.push(root);
+async function seeded(): Promise<AuthorityDatabase> {
+  const profile = await profiles.create(); heldProfiles.push(profile);
+  const root = profile.stateRoot;
   const database = AuthorityDatabase.open(
     { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "explain-test" },
     manualClock(new Date("2026-08-04T00:11:13.500Z")),
@@ -45,9 +51,9 @@ function seeded(): AuthorityDatabase {
 }
 
 describe("explain run", () => {
-  it("reads bounded persisted debug categories without attributing global events to a run or changing source inventory", () => {
-    const database = seeded();
-    const root = roots.at(-1); assert.ok(root);
+  it("reads bounded persisted debug categories without attributing global events to a run or changing source inventory", async () => {
+    const database = await seeded();
+    const root = heldProfiles.at(-1)?.stateRoot; assert.ok(root);
     const writer = createDebugEventWriter({ repository: database.authority.timelineEvents, clock: manualClock(new Date("2026-08-04T00:11:13.500Z")), build: "fixture" });
     for (const category of ["session", "duo", "worker", "http", "sse", "client", "boot"] as const) {
       writer.emit({ category, phase: "failed", correlationId: category, code: "FIXTURE" }, { kind: "transport", connectionId: "fixture" });
@@ -61,9 +67,9 @@ describe("explain run", () => {
     assert.equal(runView.debugEvents?.records.length, 1);
     assert.equal(runView.debugEvents?.records[0]?.scope.kind, "run");
     const path = join(root, "state.db");
-    const admission = RuntimeAdmission.syntheticFixture(path);
-    const before = readFileSync(path); const inventory = readdirSync(root).sort();
-    const sourceBytes = inventory.map(name => [name, readFileSync(join(root, name))] as const);
+    const admission = profileFixtureStorageAdmission(path);
+    const before = readFileSync(path); const inventory = readdirSync(root, { recursive: true, encoding: "utf8" }).sort();
+    const sourceBytes = inventory.filter(name => lstatSync(join(root, name)).isFile()).map(name => [name, readFileSync(join(root, name))] as const);
     assert.match(composeExplainRuntime({ admission, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] }), /nextCursor/u);
     let after = 0; const categories = new Set<string>();
     for (;;) {
@@ -74,7 +80,7 @@ describe("explain run", () => {
       if (!page.hasMore) break;
     }
     assert.equal(categories.size, 7);
-    assert.deepEqual(readFileSync(path), before); assert.deepEqual(readdirSync(root).sort(), inventory);
+    assert.deepEqual(readFileSync(path), before); assert.deepEqual(readdirSync(root, { recursive: true, encoding: "utf8" }).sort(), inventory);
     for (const [name, bytes] of sourceBytes) assert.deepEqual(readFileSync(join(root, name)), bytes);
     assert.throws(() => parseDiagnosticArgs(["--limit", "1001"]));
     assert.throws(() => parseDiagnosticArgs(["--after", "-1"]));
@@ -94,8 +100,8 @@ describe("explain run", () => {
     writeFileSync(path, Buffer.alloc(5 * 1024 * 1024 + 1)); assert.throws(() => readEmergencyFaults(root), /boot-log-cap-exceeded/u);
     rmSync(path); symlinkSync(join(root, "missing"), path); assert.throws(() => readEmergencyFaults(root), /boot-log-path-unsafe/u);
   });
-  it("resolves either identity form to the same explanation", () => {
-    const database = seeded();
+  it("resolves either identity form to the same explanation", async () => {
+    const database = await seeded();
     const byRun = explainRunFrom(database, EXIT_RUN_ID);
     const byTrace = explainRunFrom(database, EXIT_TRACE_ID);
     assert.deepEqual(byTrace, byRun);
@@ -103,8 +109,8 @@ describe("explain run", () => {
     assert.equal(byRun.traceId, EXIT_TRACE_ID);
   });
 
-  it("refuses an identity that is neither form rather than guessing", () => {
-    const database = seeded();
+  it("refuses an identity that is neither form rather than guessing", async () => {
+    const database = await seeded();
     assert.throws(() => explainRunFrom(database, "the-run-i-mean"), /neither a run id .* nor a trace id/s);
     assert.throws(
       () => explainRunFrom(database, "00000000-0000-4000-8000-000000000000"),
@@ -112,8 +118,8 @@ describe("explain run", () => {
     );
   });
 
-  it("resolves the node timeline, checkpoint reuse, and terminal outcome", () => {
-    const view = explainRunFrom(seeded(), EXIT_TRACE_ID);
+  it("resolves the node timeline, checkpoint reuse, and terminal outcome", async () => {
+    const view = explainRunFrom(await seeded(), EXIT_TRACE_ID);
 
     assert.equal(view.state, "terminal");
     assert.deepEqual(view.outcome, { state: "present", value: "done" });
@@ -133,8 +139,8 @@ describe("explain run", () => {
     assert.ok((reuse.get("searching")?.ageMs ?? 0) > 0);
   });
 
-  it("names every absence instead of rendering an empty section", () => {
-    const view = explainRunFrom(seeded(), EXIT_RUN_ID);
+  it("names every absence instead of rendering an empty section", async () => {
+    const view = explainRunFrom(await seeded(), EXIT_RUN_ID);
     assert.equal(view.failure.state, "absent");
     assert.equal(view.openGate.state, "absent");
     assert.equal(view.openDependency.state, "absent");
@@ -144,8 +150,8 @@ describe("explain run", () => {
     assert.deepEqual(view.writes, [], "a read-only workflow fenced no external write");
   });
 
-  it("carries the receipt's verdicts and a concrete next safe action", () => {
-    const view = explainRunFrom(seeded(), EXIT_RUN_ID);
+  it("carries the receipt's verdicts and a concrete next safe action", async () => {
+    const view = explainRunFrom(await seeded(), EXIT_RUN_ID);
     assert.equal(view.receipt.state, "present");
     if (view.receipt.state !== "present") throw new Error("unreachable");
     assert.equal(view.receipt.value.result, "verified-done");
@@ -157,8 +163,8 @@ describe("explain run", () => {
     assert.match(view.nextSafeAction, /Nothing\. This run is settled/);
   });
 
-  it("renders an operator-readable report carrying every ref operator-trust §2.5 section", () => {
-    const text = renderExplainRun(explainRunFrom(seeded(), EXIT_TRACE_ID));
+  it("renders an operator-readable report carrying every ref operator-trust §2.5 section", async () => {
+    const text = renderExplainRun(explainRunFrom(await seeded(), EXIT_TRACE_ID));
     for (const heading of [
       "state", "node timeline", "checkpoint reuse", "subject bindings", "failure",
       "last successful action", "open gate", "open dependency", "command history",

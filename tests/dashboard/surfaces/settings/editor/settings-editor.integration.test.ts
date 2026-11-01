@@ -5,10 +5,10 @@ import { EditableSettingsWireSchema } from "../../../../../src/models/dashboard/
 import { fixtureSettingsDocument } from "../../../../support/fixtures/dashboard/fixture-settings.js";
 import { mountSettingsHarness,settingsAction,syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
 
-const cleanups: (() => void)[] = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 async function setup(section?: string) {
-  const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+  const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
   const mounted = await mountSettingsHarness(authority, section); cleanups.push(mounted.close); return { ...mounted, authority };
 }
 function settingsWithDistinctRuntimeValues() {
@@ -35,7 +35,7 @@ function settingsWithDistinctRuntimeValues() {
 }
 describe("typed Settings catalog controls", () => {
   it("omits the actor label control while retaining the General settings", async () => {
-    const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+    const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "general", settingsWithDistinctRuntimeValues); cleanups.push(mounted.close);
     assert.equal(mounted.host.querySelector('[data-settings-path="actor.label"]'), null);
     assert.doesNotMatch(mounted.host.textContent ?? "", /Operator identity|Operator label/u);
@@ -49,7 +49,7 @@ describe("typed Settings catalog controls", () => {
     assert.doesNotMatch(mounted.host.textContent ?? "", /Kronos|Add fiscal year|New fiscal year|FY202[0-9]/u);
   });
   it("shows the approved General browser controls without observed host details", async () => {
-    const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+    const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "general"); cleanups.push(mounted.close);
     assert.ok(mounted.host.querySelector('[data-settings-path="browser.headless"] [role="switch"]'));
     assert.equal(mounted.host.querySelectorAll('input[name="display.screenWidth"], input[name="display.screenHeight"]').length, 2);
@@ -166,7 +166,7 @@ describe("typed Settings catalog controls", () => {
     assert.equal([...host.querySelectorAll("button")].some(button => button.textContent === "Save changes"), false);
   });
   it("discards a pending Performance clear without an inline Undo control", async () => {
-    const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+    const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "performance", () => fixtureSettingsDocument({ timeouts: { navigationMs: 22_000 } }, 2)); cleanups.push(mounted.close);
     const row = mounted.host.querySelector('[data-settings-path="timeouts.navigationMs"]'); assert.ok(row);
     assert.equal(row.querySelector("input")?.value, "22");
@@ -192,7 +192,7 @@ describe("typed Settings catalog controls", () => {
     assert.match(ocr.textContent ?? "", /Enter a whole number of at least 0/u);
   });
   it("does not expose host observation as a served authority page", async () => {
-    const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+    const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "derived-host"); cleanups.push(mounted.close);
     assert.match(mounted.host.textContent ?? "", /did not include|unavailable/u);
   });

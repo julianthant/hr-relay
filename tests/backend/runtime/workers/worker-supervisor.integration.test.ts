@@ -1,3 +1,5 @@
+import { assertRuntimeLifetimeHeld } from "../../../support/helpers/backend/runtime-lifetime.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { once } from "node:events";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { writePrivateStage } from '../../../../src/backend/storage/configuration/credential-safe-file.js';
@@ -21,7 +23,7 @@ import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-qu
 import { type WorkerProcessSpawner } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
 import { createDashboardWorkerProcessSupervisor } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { assertWorkerProcessStopped, readRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { assertWorkerProcessStopped } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { workerPoolMember, WorkerPoolMemberSchema } from "../../../../src/models/run/worker-slot.js";
@@ -37,6 +39,7 @@ import { describe, expect } from "vitest";
 import { WorkerPoolMemberSchema as WorkerPoolMemberSchema_m2, type WorkerPoolMember } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { workerCliArgv, type WorkerDurableStopReceipt, type WorkerLeaseBirthFact } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
+import { scaledMs } from "../../../support/time-scale.js";
 
 {
 
@@ -115,7 +118,7 @@ it.each(["poolIndex", "membershipRevision"] as const)("refuses an altered same-i
 const retainedPhysicalWorkerFixtures: object[] = [];
 
 async function waitFor(test: () => boolean, message: string, diagnostics: () => string) {
-  const deadline = systemClock.monotonicMs() + 25_000;
+  const deadline = systemClock.monotonicMs() + scaledMs(25_000);
   while (!test()) { if (systemClock.monotonicMs() > deadline) throw new Error(`${message}\n${diagnostics()}`); await new Promise(resolve => setTimeout(resolve, 25)); }
 }
 
@@ -157,7 +160,7 @@ it("retires a real worker only after its opened Chromium profile closes, custody
       privateKey: generated.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'), signCount: 0, transport: 'internal' })));
     assert.equal(statSync(duoDirectory).mode & 0o777, 0o700);
     assert.equal(statSync(duoCredential).mode & 0o777, 0o600);
-    const origin = `http://127.0.0.1:${String(runtime.port)}`, patch = { "daemon.idleRepollMs": { set: 100 }, 'paths.duoCredential': { set: duoCredential }, 'paths.duoExtensionDir': { set: join_m1(process.cwd(), 'duo-autopilot') } };
+    const origin = `http://127.0.0.1:${String(runtime.port)}`, patch = { "daemon.idleRepollMs": { set: 100 }, "browser.headless": { set: true }, 'paths.duoCredential': { set: duoCredential }, 'paths.duoExtensionDir': { set: join_m1(process.cwd(), 'duo-autopilot') } };
     const settings = await fetch(`${origin}/api/v1/commands`, { method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ commandId: randomUUID(), family: "settings", type: "apply-settings", target: { expectedRevision: world.readRuntimeSettingsRevision(profile) }, source: "dashboard", requestedBy: "local-operator", requestedAt: systemClock.now().toISOString(), payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }) });
     assert.equal(CommandResultSchema.parse(await settings.json()).state, "applied");
     const db = profile.openDatabase({ path: join_m1(profile.stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "native-retirement-proof" }, systemClock); database = db;
@@ -272,11 +275,13 @@ it("retires a real worker only after its opened Chromium profile closes, custody
       }
       database?.close();
       await runtime?.stop();
-      if (runtime !== undefined) {
-        const server = readRuntimeProcessLock(join_m1(root, rebuildRuntimeIsolation.processLockRoot), 'server');
-        assert.ok(server?.releasedAt !== null && server?.releasedAt !== undefined);
+      if (runtime !== undefined) await assertRuntimeLifetimeHeld(profile.lifetime);
+      if (failures.length === 0) {
+        await world.cleanup();
+        assert.throws(() => profile.lifetime.assertHeld());
+        const replacement = await RuntimeLifetimeLock.acquire(profile.lifetime.port);
+        await replacement.close();
       }
-      if (failures.length === 0) await world.cleanup();
       else retainedPhysicalWorkerFixtures.push({ runtime, database, profile, children, world });
     } catch (error) {
       retainedPhysicalWorkerFixtures.push({ runtime, database, profile, children, world });
@@ -284,7 +289,7 @@ it("retires a real worker only after its opened Chromium profile closes, custody
     }
   }
   if (failures.length > 0) throw new AggregateError(failures, `native retirement proof failed; retained ${root}\n${output.join("")}`, { cause: failures[0] });
-}, 90_000);
+}, scaledMs(90_000));
 }
 
 {

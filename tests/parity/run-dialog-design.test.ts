@@ -1,7 +1,8 @@
 import { setSwitchChecked } from "./helpers/switch-choice.js";
 import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { startRunRerunServer } from "./helpers/run-rerun-server.js";

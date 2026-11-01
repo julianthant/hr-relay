@@ -1,7 +1,8 @@
 import { setSwitchChecked } from "./helpers/switch-choice.js";
 import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 
-import { test, expect, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { startRunRerunServer, type RunRerunServer } from "./helpers/run-rerun-server.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { absentProbeEvidence } from "../support/fixtures/write-sequencer-fixtures.js";

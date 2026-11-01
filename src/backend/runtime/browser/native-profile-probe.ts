@@ -158,7 +158,7 @@ export async function probeClosedBrowserProfile(input: Readonly<{
   try {
     context = await (input.launcher ?? DEFAULT_BROWSER_LAUNCHER).launch({ ...input.launch, headless: true, acceptDownloads: false, nativeOnly: true });
     const lifecycle = observeContextLifecycle(context);
-    await closeContextWithProof(input, context, lifecycle, "native profile probe", "fresh-boundary");
+    await closeContextWithProof(input, context, lifecycle, "native profile probe", "profile-reset");
     profileReservations.delete(directory);
   } catch (error) {
     if (error instanceof Error && ["Failed to create a ProcessSingleton for your profile directory.", "Opening in existing browser session."]

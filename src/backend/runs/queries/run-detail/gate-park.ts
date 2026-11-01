@@ -480,9 +480,9 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     && descriptor.contractFingerprint === authority.envelope.contractFingerprint
     && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction"
       && node.commit.uses.id === intent.taskId && acceptsRecheckTransactionId(node.commit.uses.writeSafety.completion));
-  const repositories = deps.canonical?.database.authority;
+  const repositories = deps.canonical?.database?.authority;
   let check: unknown = { state: "unavailable", code: "PARKED_CHECK_UNAVAILABLE" };
-  if (repositories !== undefined && deps.authorityIdentity !== undefined && native !== undefined && authority.envelope.workflow === "separations"
+  if (repositories !== undefined && deps.authorityIdentity !== undefined && native !== undefined
     && intent.bindingProof.kind === "subject-match" && ["ucpath/create-termination", "ucpath/delete-pending-terminations", "kuali/save-separation-finalization"].includes(intent.taskId)) {
     const worker = repositories.workerSlots.list(authority.envelope.workflow).filter(slot => slot.retiredAt === null)
       .map(slot => ({ slot, lease: repositories.workerLeases.get(slot.workerId) }))

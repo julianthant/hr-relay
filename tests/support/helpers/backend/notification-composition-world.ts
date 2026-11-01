@@ -42,7 +42,7 @@ export function createNotificationCompositionTestWorld() {
     for (const state of ["validating", "running"] as const) {
       const result = f.db.authority.runs.transition({ runId: run.envelope.runId, expectedVersion: run.version,
         claim: { workerId: slot.workerId, claimGeneration: run.claimGeneration }, now: f.clock.now().toISOString(),
-        lifecycle: { state, ...(state === "running" ? { currentNodeId: "searching" } : {}), workerId: slot.workerId, claimedAt: run.lifecycle.state === "claimed" ? run.lifecycle.claimedAt : f.clock.now().toISOString(), heartbeatAt: f.clock.now().toISOString() } });
+        lifecycle: { state, ...(state === "running" ? { currentNodeId: "searching" } : {}), workerId: slot.workerId, workerLifetime: testWorkerLifetime(f.db, "person-lookup", claimMember1.poolIndex).workerLifetime, claimedAt: run.lifecycle.state === "claimed" ? run.lifecycle.claimedAt : f.clock.now().toISOString(), heartbeatAt: f.clock.now().toISOString() } });
       if (result.state !== "applied") throw new Error("fixture transition refused");
       run = result.run;
     }

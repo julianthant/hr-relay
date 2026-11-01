@@ -1,3 +1,4 @@
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { ucpathDriver } from "../../../../src/backend/systems/ucpath/driver-declaration.js";
 import { ucpathSession } from "../../../../src/backend/systems/ucpath/session-provider.js";
 import { ucpathStore } from "../../../../src/backend/systems/ucpath/task-registry.js";
@@ -38,8 +39,8 @@ import { type RunParent } from "../../../../src/models/run/envelope.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { recordBrowserAction, runDeclaredAction } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 
-interface ExecutorHarness {
-  readonly authority: AuthorityHarness;
+interface ExecutorHarness<Profile extends BoundProfileStorageFixture> {
+  readonly authority: AuthorityHarness<Profile>;
   readonly sessions: SessionFactoryHarness;
   readonly manager: WorkerSessionManager;
   readonly scheduler: ManualScheduler;
@@ -47,8 +48,13 @@ interface ExecutorHarness {
   readonly deps: RunExecutorDependencies;
 }
 
-export function createRunExecutorTestWorld() {
-  const authorityHarnesses = new WeakMap<AuthorityDatabase, AuthorityHarness>();
+export function createRunExecutorTestWorld<Profile extends BoundProfileStorageFixture>(profileFixture: () => Promise<Profile>): ReturnType<typeof createExecutorWorld<Profile>>;
+export function createRunExecutorTestWorld(): ReturnType<typeof createExecutorWorld<Awaited<ReturnType<typeof createBoundProfileFixture>>>>;
+export function createRunExecutorTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
+  return createExecutorWorld(profileFixture);
+}
+function createExecutorWorld<Profile extends BoundProfileStorageFixture>(profileFixture: () => Promise<Profile>) {
+  const authorityHarnesses = new WeakMap<AuthorityDatabase, AuthorityHarness<Profile>>();
 
   const disposers: (() => void | Promise<void>)[] = [];
   const sessionClosures = new Set<() => Promise<void>>();
@@ -59,8 +65,8 @@ export function createRunExecutorTestWorld() {
     taskDeadlineMs?: number;
     stores?: RunExecutorDependencies["stores"];
     descriptor?: AnyWorkflowDescriptor;
-  }> = {}): Promise<ExecutorHarness> {
-    const authority = await openAuthorityHarness();
+  }> = {}): Promise<ExecutorHarness<Profile>> {
+    const authority = await openAuthorityHarness(profileFixture);
     authorityHarnesses.set(authority.database, authority);
     const sessions = options.sessions ?? happySessionHarness();
     const manager = await sessionManagerFor(sessions, authority.clock, undefined, undefined, duoCeremonyGatesOver(authority.database, authority.clock));

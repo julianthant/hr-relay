@@ -1,3 +1,5 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { childMixedPolicyRoot, childMixedPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
@@ -14,10 +16,9 @@ import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { ActorIdSchema, ErrorCodeSchema } from "../../../../src/rules/identity/ids.js";
 import { failureStatus } from "../../../../src/backend/transports/http/routes/failure-status.js";
 import { projectFailureDisplay } from "../../../../src/models/dashboard/failure-display.js";
-import { ErrorCodeSchema } from "../../../../src/rules/identity/ids.js";
 import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 import { localDatePart } from "../../../../src/rules/time/clock.js";
@@ -25,12 +26,14 @@ import { kernelRejectMemberRecord } from "../../../support/helpers/backend/kerne
 import { createCommandKernelTestWorld, type Harness } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
-import { afterEach, describe, it } from "vitest";
 import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, createPlan, startCommand, runCommand } = createCommandKernelTestWorld();
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
+const { roots, openDatabases, profiles, rejectActiveDescriptor, createHarness, createPlan, startCommand, runCommand } = createCommandKernelTestWorld(profileFixtures.create);
 
 
 const delegationWorld = createRunExecutorTestWorld();
@@ -281,7 +284,7 @@ describe("protected subject recovery publication", () => {
           assert.equal(event.subtitle, undefined);
           assert.equal(JSON.stringify(rows).includes(SYNTHETIC_EID), false);
         }
-        const world = await makeWorld({ reader: sqliteRunReader(harness.database, harness.clock),
+        const world = await makeWorld({ profileFixture: profileFixtures.create, reader: sqliteRunReader(harness.database, harness.clock),
           timeline: harness.database.authority.timelineEvents,
           descriptors: { resolve: workflow => [personLookupDescriptor, separationsDescriptor].find(descriptor => descriptor.id === workflow) } });
         try {
@@ -324,7 +327,7 @@ describe("protected subject recovery publication", () => {
       assert.deepEqual(harness.database.authority.runs.listByWorkflow(personLookupDescriptor.id), [terminal]);
       assert.deepEqual(harness.database.authority.timelineEvents.page({}), beforeTimeline);
       assert.equal(JSON.stringify(beforeTimeline).includes("synthetic-unmasked-subject-proof"), false);
-      const world = await makeWorld({ reader: sqliteRunReader(harness.database, harness.clock),
+      const world = await makeWorld({ profileFixture: profileFixtures.create, reader: sqliteRunReader(harness.database, harness.clock),
         timeline: harness.database.authority.timelineEvents,
         descriptors: { resolve: workflow => workflow === personLookupDescriptor.id ? personLookupDescriptor : undefined } });
       try {

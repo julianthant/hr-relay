@@ -11,17 +11,21 @@ export interface SuiteSize {
 }
 
 export function measureSuiteSize(root = process.cwd()): SuiteSize[] {
-  return REBUILD_TEST_PROJECTS.map(({ name, include, exclude }) => {
+  return REBUILD_TEST_PROJECTS.flatMap(({ name, include, exclude }) => {
     const excluded = new Set(globSync([...exclude], { cwd: root }));
     const files = [...new Set(globSync([...include], { cwd: root }))]
       .filter((file) => !excluded.has(file)).sort();
-    if (files.length === 0) throw new Error(`${name}: project collects no tests`);
-    return {
+    if (files.length === 0) {
+      // Empty local means no operator-machine test exists yet.
+      if (name === "local") return [];
+      throw new Error(`${name}: project collects no tests`);
+    }
+    return [{
       family: name,
       files: files.length,
       lines: files.reduce((sum, file) => sum + readFileSync(join(root, file), "utf8").split("\n").length, 0),
-      state: "active",
-    };
+      state: "active" as const,
+    }];
   });
 }
 

@@ -1,3 +1,4 @@
+import type { BoundProfileStorageFixture } from "../admission-fixture.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { foundationFixture, id, HASH } from "../database-foundation/fixtures.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -6,8 +7,8 @@ import { createTransactionHistory } from "../../../../src/backend/storage/sqlite
 import { queryQueueSummaries, queryActivitySummaries } from "../../../../src/backend/runs/queries/run-summaries.js";
 import type { ServedSummaryQueries } from "../../../../src/backend/runs/projections/run-queue-projection.js";
 
-export async function summaryFixture() {
-  const f = await foundationFixture();
+export async function summaryFixture(profileFixture?: () => Promise<BoundProfileStorageFixture>) {
+  const f = await foundationFixture({ profileFixture });
   const reader = new RunRecordService({ database: f.db, clock: f.clock, ids: { uuid: () => id(9901) }, publishQueued: () => {} });
   const ledger = createTransactionHistory(f.db.authority);
   const descriptors = { resolve: () => undefined };

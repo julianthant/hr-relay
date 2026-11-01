@@ -14,7 +14,7 @@ it("registers the forward schema while refusing unjournaled grants and foreign c
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const database = AuthorityDatabase.open(profile.admission, { path: join(profile.stateRoot, "state.db"), busyTimeoutMs: 100, migrationOwner: "assistant-repository-test" }, clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
   cleanups.push(async () => { database.close(); await profile.close(); });
-  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 8);
+  assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 9);
   assert.deepEqual(auditMigrationTableCoverage(), []);
   assert.equal(migrationTableNames(7).some(name => name.startsWith("assistant_")), false);
   assert.equal(migrationTableNames(8).filter(name => name.startsWith("assistant_")).length, 3);

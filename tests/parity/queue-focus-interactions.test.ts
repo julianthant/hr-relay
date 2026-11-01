@@ -2,8 +2,9 @@ import { setSwitchChecked } from "./helpers/switch-choice.js";
 import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 
 import { createHash } from 'node:crypto';
-import { expect, test } from '@playwright/test';
-import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
+import { expect } from '@playwright/test';
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { FIXTURE_DAY } from './helpers/fixture-identity.js';
@@ -21,7 +22,6 @@ if (failed === undefined) throw new Error('Focus verification requires a failed 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const evidence = `queue-focus-${theme.attribute}-${width}.a11y.yml`;
   test(`approved Focus queue and Run input @ ${theme.attribute} ${width}`, { annotation: [{ type: 'required-a11y-evidence', description: evidence }] }, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' }, dayWire: { ...FIXTURE_DAY_WIRE, queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row => row.runId === failed.runId ? { ...row, actions: [
       { key: 'rerun', kind: 'navigation', label: 'Retry', navigate: { kind: 'rerun', expectedVersion: row.rowRevision }, intent: 'neutral', icon: 'retry', placement: ['footer'] },
       { key: 'delete', kind: 'command', command: 'delete', label: 'Delete', expectedVersion: row.rowRevision, intent: 'destructive', icon: 'delete', placement: ['footer'], confirm: { title: 'Delete this run?', confirmLabel: 'Delete run', tone: 'destructive' } },

@@ -1,10 +1,11 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { terminalDone, depsOf, observedDepsOf, observedEvent } from "../../../support/helpers/backend/note-scope-fixtures.js";
 
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
 import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { separationsKualiFinalizationModule } from "../../../../src/backend/app/registries/step-proof-modules.js";
 import { deterministicUuid } from "../../../../src/backend/runs/lifecycle/support.js";
@@ -15,9 +16,11 @@ import { createTimelineEmitter } from "../../../../src/backend/storage/events/ti
 import { AT, instantOffsetOf, makeWorld, queuedEventOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 const worlds: DashboardWorld[] = [];
 async function world(): Promise<DashboardWorld> {
-  const created = await makeWorld({ descriptors: { resolve: () => personLookupDescriptor } });
+  const created = await makeWorld({ profileFixture: profileFixtures.create, descriptors: { resolve: () => personLookupDescriptor } });
   worlds.push(created);
   return created;
 }
@@ -51,7 +54,7 @@ describe("a logs GET opens only its run partitions", () => {
     if (seed !== 1 && w.authority.getRun(uuidOf(100)) === undefined) {
       for (const foreignSeed of [100, 101]) { terminalDone(w, foreignSeed); emitNotes(w, foreignSeed, 1); }
     }
-    const raw = new DatabaseSync(join(w.stateRoot, "authority.db"));
+    const raw = new DatabaseSync(join(w.stateRoot, "state.db"));
     try { const trigger = raw.prepare("SELECT sql FROM sqlite_master WHERE name='timeline_events_immutable'").get(); assert.equal(typeof trigger?.sql, "string"); raw.exec("DROP TRIGGER timeline_events_immutable; PRAGMA ignore_check_constraints=ON"); raw.prepare("UPDATE timeline_events SET payload_json='{}' WHERE run_id=? AND kind='note'").run(uuidOf(seed)); raw.exec(String(trigger?.sql)); }
     finally { raw.close(); }
   }
@@ -178,7 +181,7 @@ describe("a logs GET opens only its run partitions", () => {
 
   it("serves a real transaction module as probe, prepare, fence, commit, verify without fabricating fence data", async () => {
     const module = separationsKualiFinalizationModule;
-    const w = await makeWorld({ descriptors: { resolve: () => module.descriptor } });
+    const w = await makeWorld({ profileFixture: profileFixtures.create, descriptors: { resolve: () => module.descriptor } });
     worlds.push(w);
     queuedEventOf(w, { seed: 1, workflow: "separations-kuali-finalization" });
     const emitObserved = (taskId: string, direction: "read" | "write", at: string): void => {
@@ -415,7 +418,7 @@ describe("a logs GET opens only its run partitions", () => {
     assert.equal(unchanged.section, "logs");
     assert.deepEqual(unchanged.payload.rows, []);
     observedEvent(w);
-    const raw = new DatabaseSync(join(w.stateRoot, "authority.db"));
+    const raw = new DatabaseSync(join(w.stateRoot, "state.db"));
     try {
       const trigger = raw.prepare("SELECT sql FROM sqlite_master WHERE name='timeline_events_immutable'").get();
       assert.equal(typeof trigger?.sql, "string");

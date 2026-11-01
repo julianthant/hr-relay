@@ -13,7 +13,7 @@ import { servedFixtureSources } from "../../../parity/helpers/workflow-compositi
 import { launchHarness } from "../../fixtures/run-launch-fixtures.js";
 
 
-export function createMountedRerunWorld() {
+export function createMountedRerunWorld(profileFixture?: Parameters<typeof launchHarness>[3]) {
 class Measure { observe() {} unobserve() {} disconnect() {} }
 Reflect.set(globalThis, "ResizeObserver", Measure);
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -22,7 +22,7 @@ const disposers: (() => void | Promise<void>)[] = [];
 async function unmount() { await act(async () => root?.unmount()); root = undefined; }
 async function cleanup() { await unmount(); document.body.replaceChildren(); window.sessionStorage.clear();
   for (const dispose of disposers.splice(0)) await dispose(); }
-async function setup() { const h = await launchHarness(); disposers.push(h.dispose); return h; }
+async function setup() { const h = await launchHarness(undefined, undefined, undefined, profileFixture); disposers.push(h.dispose); return h; }
 type Harness = Awaited<ReturnType<typeof setup>>;
 const text = () => document.body.textContent ?? "";
 function button(name: string): HTMLButtonElement {

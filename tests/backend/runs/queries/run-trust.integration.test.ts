@@ -76,11 +76,14 @@ it("corrupt protected annotation JSON fails by name without echoing private text
   try {
     sql.exec("PRAGMA ignore_check_constraints=ON");
     // Fault injection removes only this disposable fixture's immutable update trigger.
-    const triggers = sql.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='run_failures'").all();
+    const triggers = sql.prepare("SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name='run_failures'").all();
+    const original = sql.prepare("SELECT resolution_json FROM run_failures WHERE id=?").get(f.record.failureId); assert.ok(original);
     for (const row of triggers) { assert.equal(typeof row.name, "string"); sql.exec(`DROP TRIGGER "${String(row.name).replaceAll('"', '""')}"`); }
     sql.prepare("UPDATE run_failures SET resolution_json=? WHERE id=?").run('SYNTHETIC_PRIVATE_NOTE_INVALID_JSON', f.record.failureId);
     assert.throws(() => buildRunSection(resolutionReadDeps(f), f.record.runId, "failure"), error =>
       error instanceof Error && error.message === "failure-resolution-annotation-invalid");
+    sql.prepare("UPDATE run_failures SET resolution_json=? WHERE id=?").run(original.resolution_json, f.record.failureId);
+    for (const trigger of triggers) { assert.equal(typeof trigger.sql, "string"); sql.exec(String(trigger.sql)); }
   } finally { sql.close(); await f.dispose(); }
 });
 }
@@ -156,8 +159,8 @@ afterEach(_afterEachFixture0);
     assert.equal(claimed.state, "claimed"); if (claimed.state !== "claimed") throw new Error("not claimed");
     let parked = claimed.run;
     for (const lifecycle of [
-      { state: "validating", workerId: f.workerId, claimedAt: parked.lifecycle.state === "claimed" ? parked.lifecycle.claimedAt : "", heartbeatAt: f.world.clock.now().toISOString() },
-      { state: "running", workerId: f.workerId, claimedAt: f.world.clock.now().toISOString(), heartbeatAt: f.world.clock.now().toISOString() },
+      { state: "validating", workerId: f.workerId, workerLifetime: testWorkerLifetime(f.database, run.envelope.workflow, claimMember1.poolIndex).workerLifetime, claimedAt: parked.lifecycle.state === "claimed" ? parked.lifecycle.claimedAt : "", heartbeatAt: f.world.clock.now().toISOString() },
+      { state: "running", workerId: f.workerId, workerLifetime: testWorkerLifetime(f.database, run.envelope.workflow, claimMember1.poolIndex).workerLifetime, claimedAt: f.world.clock.now().toISOString(), heartbeatAt: f.world.clock.now().toISOString() },
       { state: "parked-gate", gateId: "identity-approval", parkedAt: f.world.clock.now().toISOString(), resumeAt: "identity-approval" },
     ]) {
       const outcome = f.database.authority.runs.transition({ runId: run.envelope.runId, expectedVersion: parked.version,

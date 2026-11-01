@@ -1,6 +1,7 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
 import { Hono } from "hono";
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
 import { composeDataQueries } from "../../../../../src/backend/app/composition/dashboard/data.js";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { registerDataRoutes } from "../../../../../src/backend/transports/http/routes/data.js";
@@ -8,10 +9,13 @@ import { RerunValuesResponseSchema } from "../../../../../src/models/dashboard/r
 import { rerunValuesHarness } from "../../../../support/fixtures/rerun-values-fixtures.js";
 import { makeWorld } from "../../../../support/helpers/backend/dashboard-harness.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 const disposers: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose(); });
 async function setup() {
-  const h = await rerunValuesHarness(); const w = await makeWorld(); disposers.push(h.dispose, async () => await w.dispose());
+  const h = await rerunValuesHarness(profileFixtures.create); const w = await makeWorld({ profileFixture: profileFixtures.create }); disposers.push(h.dispose, async () => await w.dispose());
   const queued = h.start(h.proposal()); assert.equal((await h.execute(queued)).state, "done"); const run = h.fresh(queued);
   const deps = { stateRoot: w.stateRoot, timeline:w.timeline, projection: w.projection, authority: w.authority,
     descriptors: { resolve: () => undefined }, runReader: h.lifecycle,

@@ -45,7 +45,7 @@ function classifyBytes(bytes: Uint8Array): Exclude<CopyClass, "absent" | "unread
   catch { return "plaintext"; }
   if (typeof decoded !== "object" || decoded === null || !("schemaVersion" in decoded)) return "unknown";
   if (decoded.schemaVersion !== 2 && decoded.schemaVersion !== 3) return "unknown";
-  return holdsUcsd(decoded) ? "holds" : "unknown";
+  return holdsUcsd(decoded) ? "holds" : "clean";
 }
 
 function readCredentialInventoryBytes(path: string): Buffer {

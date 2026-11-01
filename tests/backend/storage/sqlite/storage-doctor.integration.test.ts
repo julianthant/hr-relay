@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
-import { afterEach, describe, it, vi } from "vitest";
+import { afterAll, afterEach, describe, it, vi } from "vitest";
 
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { runOfflineStorageRelocation } from "../../../../src/backend/app/composition/storage/relocate.js";
@@ -24,11 +24,16 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
-import { createBoundProfileFixture, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase as AuthorityDatabase_m2, composeStorageCommand, doctorAuthorityStorage as doctorAuthorityStorage_m2, syntheticStateRoot } from "../../../support/helpers/synthetic-storage-admission.js";
 
 import { UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+
 import { AuthorityBackupService, summarizeBackupHealth as summarizeBackupHealth_m3 } from "../../../support/helpers/synthetic-storage-admission.js";
+
+const diagnosticProfiles = createClonedProfileFixtures();
+afterAll(() => diagnosticProfiles.close());
+
 
 {
 
@@ -138,9 +143,11 @@ afterEach(_afterEachFixture0);
   ]),
   ])("validates $label from $event / $field or refuses an unadmitted root before a doctor report", async (testCase) => {
     const { marker, event, field } = testCase;
-    const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "hrauto-diagnostic-redaction-")));
-    roots.push(repoRoot);
-    const profile = await createBoundProfileFixture({ workspace: repoRoot });
+    const profile = event === "nested-root"
+      ? await createBoundProfileFixture({ workspace: realpathSync(mkdtempSync(join(tmpdir(), "hrauto-diagnostic-redaction-"))) })
+      : await diagnosticProfiles.create();
+    const repoRoot = profile.workspace;
+    if (event === "nested-root") roots.push(repoRoot);
     if (event === "nested-root") {
       const actualParent = join(repoRoot, "owned");
       mkdirSync(actualParent);
@@ -276,10 +283,10 @@ const MAX_AGE_MS = 45 * 60 * 1000;
 
 async function world() {
   const clock = manualClock(new Date(NOW));
-  const opened = await openBoundDatabaseFixture("summary-test", clock, 1000);
-  disposers.push(async () => await opened.close());
-  const database = opened.database;
-  const directory = join(opened.stateRoot, "backups", "authority");
+  const profile = await diagnosticProfiles.create();
+  const database = AuthorityDatabase_m2.open({ path: profile.path, busyTimeoutMs: 1000, migrationOwner: "summary-test" }, clock);
+  disposers.push(async () => { database.close(); await profile.close(); });
+  const directory = join(profile.stateRoot, "backups", "authority");
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const service = new AuthorityBackupService(database, { directory }, clock);
   const options = { backupDirectory: directory, maxBackupAgeMs: MAX_AGE_MS };

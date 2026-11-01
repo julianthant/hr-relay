@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
 import { gitVisibleFiles, REPO_ROOT, repoRelative } from "../support/helpers/guard-files.js";
+import { scaledMs } from "../../support/time-scale.js";
 
 const ALLOWLIST = ["src/backend/storage/sqlite/authority-database.ts", "src/backend/runs/lifecycle/run-record-service.ts"];
 const RUN_MUTATORS = new Set(["enqueue", "claimNext", "claimEligible", "renewClaim", "transition", "resume", "requeue",
@@ -162,7 +163,7 @@ describe("no-lifecycle-sql-outside-the-adapter", () => {
     assert.equal(check("src/backend/storage/sqlite/completion-conversion.ts","runtime",COMPLETION_SQL),false);
     assert.equal(check("src/backend/storage/sqlite/completion-conversion.ts","convertRunCompletions","DELETE FROM workflow_runs"),false);
   });
-  it("limits lifecycle writes to the service/adapter and remaining exact stopped conversions", () => { assert.deepEqual(audit(), []); }, 45_000);
+  it("limits lifecycle writes to the service/adapter and remaining exact stopped conversions", () => { assert.deepEqual(audit(), []); }, scaledMs(45_000));
   it("detects checked-in SQL, aliased mutator and runs_view reader violations", () => {
     const found = audit(true);
     for (const arm of ["sql", "mutator", "view"]) assert.ok(found.some((entry) => entry.startsWith(`src/core/guard-fixtures/${arm}.ts:`)), arm);

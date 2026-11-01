@@ -80,7 +80,11 @@ it("retains exact same-clock confirmed operations through authenticated deletion
           else raw.prepare("DELETE FROM deleted_runs WHERE run_id=?").run(owner.envelope.runId);
         } finally { for (const trigger of triggers) raw.exec(String(trigger.sql)); }
       }
-      assertHistoryRefusal(() => w.history.query({ ...range, system: "kuali" }), fault === "wrong-deletion-command" ? /confirmed-publication-deletion-settlement-mismatch/u : /^confirmed-history-checkpoint-missing$/u);
+      const refusal = assertHistoryRefusal(() => w.history.query({ ...range, system: "kuali" }), fault === "wrong-deletion-command" ? /confirmed-publication-deletion-settlement-mismatch/u : /^authority table write_intents failed native record validation: confirmed-history-checkpoint-missing$/u);
+      if (fault === "missing-deletion-owner") {
+        assert.ok(refusal.cause instanceof Error);
+        assert.match(refusal.cause.message, /^confirmed-history-checkpoint-missing$/u);
+      }
       if (fault === "missing-deletion-owner") {
         assert.equal(raw.prepare("SELECT count(*) AS count FROM deleted_runs WHERE run_id=?").get(owner.envelope.runId)?.count,0);
       }

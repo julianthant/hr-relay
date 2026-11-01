@@ -1,6 +1,7 @@
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { StartStepOmissionRefusedError } from "../../../../src/backend/runs/start/step-selection.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -14,15 +15,17 @@ omissionAssertingDescriptor,
 omissionCascadingDescriptor,
 } from "../../../support/fixtures/start-step-omission-fixtures.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 import { RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 const CLOCK = manualClock(new Date(NOW));
 // Use a different fact EID; repeating the submitted title would make the wire-leak assertion vacuous.
 const READING_FACTS = { eid: "20111222", effectiveDate: "01/02/2026" };
-const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
+const profiles: Awaited<ReturnType<typeof profileFixtures.create>>[] = [];
 const databases: AuthorityDatabase[] = [];
 
 afterEach(async () => {
@@ -31,7 +34,7 @@ afterEach(async () => {
 });
 
 async function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart-from-start", initialize = true) {
-  const profile = await createBoundProfileFixture(); profiles.push(profile);
+  const profile = await profileFixtures.create(); profiles.push(profile);
   const database = AuthorityDatabase.open(profile.admission,
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, CLOCK,
     undefined, undefined, undefined, boundProfileCredentials(profile.admission));

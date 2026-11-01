@@ -1,4 +1,4 @@
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdirSync,rmSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach,describe,it,vi } from "vitest";
+import { afterAll, afterEach,describe,it,vi } from "vitest";
 import type { z } from "zod";
 import { DiagnosticBundleCorruptError,SectionUnavailableError,TargetNotFoundError } from "../../../../src/backend/runs/commands/refusals.js";
 import {
@@ -34,6 +34,8 @@ import { makeWorld,queuedEventOf,uuidOf } from "../../../support/helpers/backend
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
@@ -84,10 +86,10 @@ function bundleOf(bundleSeed: number, origin: BundleInput["origin"], options: {
 }
 
 async function harness() {
-  const world = await makeWorld();
+  const world = await makeWorld({ profileFixture: profileFixtures.create });
   cleanups.push(async () => await world.dispose());
   queuedEventOf(world, { seed: 1, enqueuedAt: NOW });
-  const profile = await createBoundProfileFixture();
+  const profile = await profileFixtures.create();
   cleanups.push(async () => await profile.close());
   const database = AuthorityDatabase.open({
     path: profile.path, busyTimeoutMs: 1000,

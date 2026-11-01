@@ -1,12 +1,13 @@
 import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 import { createHash } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { storageRecoveryTarget } from "./helpers/storage-recovery-server.js";
 import { PARITY_THEMES, installTheme, assertThemeApplied } from "./helpers/capture.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { dismissWorkflowWindow, failOnPageErrors } from "./helpers/reference-harness.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
-import { ensureParityBundle } from "./helpers/bundle.js";
+
 import { StorageDoctorWireSchema } from "../../src/models/dashboard/storage.js";
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,7 +19,6 @@ for (const theme of PARITY_THEMES) for (const viewport of [{width: 1024, height:
   const a11yName = `recovered-${theme.name}-${String(viewport.width)}x${String(viewport.height)}.a11y.yml`;
 
 test(`real storage recovery @ ${theme.name} @ ${String(viewport.width)}x${String(viewport.height)}`, {annotation: [{type: "required-a11y-evidence", description: a11yName}]}, async ({page}) => {
-    ensureParityBundle();
     const target = await storageRecoveryTarget();
     const errors = failOnPageErrors(page);
     let parityBodyFailure: { error: unknown } | undefined;
@@ -91,7 +91,6 @@ test(`real storage recovery @ ${theme.name} @ ${String(viewport.width)}x${String
 }
 
 test("real doctor serves corrupt authority and invalid recovery evidence together", async ({page}) => {
-  ensureParityBundle();
   const target = await storageRecoveryTarget();
   let parityBodyFailure: { error: unknown } | undefined;
   try {

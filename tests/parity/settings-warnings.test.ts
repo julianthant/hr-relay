@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect, type Page, type TestInfo } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
@@ -45,7 +46,6 @@ for (const entry of [
   { section: "paths", path: "**/api/v1/settings/storage-relocation", title: "App-data locations couldn’t be read.", group: "App data" },
   { section: "routes", path: "editable", title: "Onboarding roster URL unavailable", group: "SharePoint" },
 ]) test(`Settings warning slot and spacing for ${entry.section}`, { annotation: [{ type: "required-a11y-evidence", description: `settings-warning-${entry.section}.a11y.yml` }] }, async ({ page }, info) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   await page.setViewportSize({ width: 1280, height: 720 }); await installTheme(page, PARITY_THEMES[0]);
   if (entry.path === "editable") {
@@ -60,7 +60,7 @@ for (const entry of [
 });
 
 test("Settings fixed app data never dispatches a relocation command", { annotation: [{ type: "required-a11y-evidence", description: "settings-warning-relocation-uncertain.a11y.yml" }] }, async ({ page }, info) => {
-  ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+  const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   await page.setViewportSize({ width: 1280, height: 720 }); await installTheme(page, PARITY_THEMES[0]);
   const writes: string[] = [];
   page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
@@ -76,7 +76,7 @@ test("Settings fixed app data never dispatches a relocation command", { annotati
 });
 
 test("Settings account command uncertainty uses the section slot", { annotation: [{ type: "required-a11y-evidence", description: "settings-warning-account-action.a11y.yml" }] }, async ({ page }, info) => {
-  ensureParityBundle(); const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+  const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   await page.setViewportSize({ width: 1280, height: 720 }); await installTheme(page, PARITY_THEMES[0]);
   await page.route("**/api/v1/settings/chatgpt-account/sign-in", route => route.abort("failed"));
   try {

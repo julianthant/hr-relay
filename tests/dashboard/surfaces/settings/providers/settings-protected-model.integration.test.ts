@@ -14,14 +14,14 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../.
 import { FixtureCommandBinding } from "../../../../support/helpers/dashboard/command-binding.js";
 import { syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
 
-const cleanups: (() => void)[] = [];
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   vi.restoreAllMocks();
 });
 
 async function mountRecovery() {
-  const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+  const authority = await syntheticSettingsAuthority(); cleanups.push(authority.close);
   const sent: string[] = [];
   let loseReply = true;
   let available = true;

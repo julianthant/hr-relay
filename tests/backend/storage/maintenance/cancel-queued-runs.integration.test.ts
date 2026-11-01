@@ -86,7 +86,7 @@ it("refuses unknown writes without mutation", async () => {
   } finally { await f.close(); }
 });
 
-it("refuses a changed native capture and a live runtime owner before applying", async () => {
+it("refuses a changed native capture and retained old-build runtime evidence before applying", async () => {
   const f = await fixture();
   try {
     const plan = await runOfflineQueuedRunCancellation(profileBrowserClosure, f.workspace, ["--plan"], f.lifetime);
@@ -99,7 +99,7 @@ it("refuses a changed native capture and a live runtime owner before applying", 
     await assert.rejects(() => runOfflineQueuedRunCancellation(profileBrowserClosure, f.workspace, ["--capture", plan.report.captureDigest, "--apply"], f.lifetime), /capture-changed/u);
     assert.deepEqual(readFileSync(f.databasePath), before);
     const lock = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "server", pid: process.pid });
-    try { await assert.rejects(() => runOfflineQueuedRunCancellation(profileBrowserClosure, f.workspace, ["--plan"], f.lifetime), /other-owner-unreleased|runtime-active/u); }
+    try { await assert.rejects(() => runOfflineQueuedRunCancellation(profileBrowserClosure, f.workspace, ["--plan"], f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" }); }
     finally { lock.release(); }
     assert.deepEqual(readFileSync(f.databasePath), before);
   } finally { await f.close(); }

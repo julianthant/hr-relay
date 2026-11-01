@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { mkdtempSync, realpathSync, appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, realpathSync, appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { OldBuildRuntimeArtifactsError } from "../../../src/backend/storage/admission/installation.js";
 import { RuntimeLifetimeLock, RuntimeAlreadyRunningError, isOfflineMaintenanceOperationActive } from "../../../src/backend/storage/admission/lifetime-lock.js";
@@ -22,7 +22,7 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it, vi } from "vitest";
+import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { buildRunResult } from "../../../src/backend/runs/lifecycle/run-result.js";
 import type { MonotonicDeadlineScheduler } from "../../../src/backend/runtime/scheduling/deadline-scheduler.js";
 import { executePreflightRunner } from "../../../src/models/preflight/preflight.js";
@@ -260,11 +260,17 @@ function seedTerminalAuthority(database: AuthorityDatabase) {
   return { failure, failureAuthorization, result: built.record, successAuthorization };
 }
 
-async function testRoot(configScope: "global" | "profile" = "global"): Promise<string> {
+type AuthorityTemplate = {
+  readonly profile: Awaited<ReturnType<typeof createBoundProfileFixture>>;
+  readonly snapshotRoot: string;
+  readonly generation: number;
+};
+const authorityTemplates = new Map<"global" | "profile", AuthorityTemplate>();
+const templateRoots = new Set<string>();
+const heldTemplates = new Set<"global" | "profile">();
+
+async function openInitializedProfile(configScope: "global" | "profile") {
   const profile = await createBoundProfileFixture();
-  profiles.set(profile.stateRoot, profile);
-  roots.push(profile.workspace);
-  admissions.set(profile.stateRoot, profile.admission);
   const database = FixtureAuthorityDatabase.open(databaseOptions(profile.path), CLOCK);
   try {
     const resolved = configScope === "profile" ? resolveConfigWithProvenance(initialSettingsFileRecord().settings,
@@ -273,9 +279,52 @@ async function testRoot(configScope: "global" | "profile" = "global"): Promise<s
       ...CONFIG_SNAPSHOT, config: resolved.config, fingerprint: resolved.fingerprint, provenance: resolved.provenance,
     });
     if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(snapshot);
-    initialGenerations.set(profile.stateRoot, database.getMeta().authorityGeneration);
+    return { profile, generation: database.getMeta().authorityGeneration };
   } finally { database.close(); }
+}
+
+function rememberProfile(profile: Awaited<ReturnType<typeof createBoundProfileFixture>>, generation: number): string {
+  profiles.set(profile.stateRoot, profile);
+  roots.push(profile.workspace);
+  admissions.set(profile.stateRoot, profile.admission);
+  initialGenerations.set(profile.stateRoot, generation);
   return profile.stateRoot;
+}
+
+function restoreWorkspace(live: string, snapshot: string): void {
+  const extras = new Set(readdirSync(live));
+  for (const name of readdirSync(snapshot)) {
+    extras.delete(name);
+    const from = join(snapshot, name), to = join(live, name);
+    if (statSync(from).isDirectory()) {
+      if (!existsSync(to)) mkdirSync(to);
+      restoreWorkspace(to, from);
+    } else writeFileSync(to, readFileSync(from));
+  }
+  for (const name of extras) rmSync(join(live, name), { recursive: true, force: true });
+}
+
+function adoptAuthorityRoot(template: AuthorityTemplate): string {
+  restoreWorkspace(template.profile.workspace, template.snapshotRoot);
+  return rememberProfile(template.profile, template.generation);
+}
+
+async function testRoot(configScope: "global" | "profile" = "global"): Promise<string> {
+  if (!heldTemplates.has(configScope)) {
+    let template = authorityTemplates.get(configScope);
+    if (template === undefined) {
+      const created = await openInitializedProfile(configScope);
+      const snapshotRoot = mkdtempSync(join(tmpdir(), "authority-template-"));
+      cpSync(created.profile.workspace, snapshotRoot, { recursive: true });
+      template = { profile: created.profile, snapshotRoot, generation: created.generation };
+      authorityTemplates.set(configScope, template);
+      templateRoots.add(template.profile.stateRoot);
+    }
+    heldTemplates.add(configScope);
+    return adoptAuthorityRoot(template);
+  }
+  const disposable = await openInitializedProfile(configScope);
+  return rememberProfile(disposable.profile, disposable.generation);
 }
 function fixtureFor(path: string) {
   const entry = [...profiles.entries()].find(([root]) => path === root || path.startsWith(root + "/"));
@@ -293,6 +342,16 @@ function renewAfterRestore(path: string): void {
   const fresh = profile.renewAfterRestore();
   assert.throws(() => old.assertLive(), /profile-restore-context-expired|released admission/u);
   admissions.set(profile.stateRoot, fresh.admission);
+}
+
+function discardTemplate(stateRoot: string): void {
+  if (!templateRoots.delete(stateRoot)) return;
+  for (const [scope, template] of authorityTemplates) {
+    if (template.profile.stateRoot === stateRoot) {
+      rmSync(template.snapshotRoot, { recursive: true, force: true });
+      authorityTemplates.delete(scope);
+    }
+  }
 }
 
 function inspectReplacedAuthority(path: string) {
@@ -501,8 +560,28 @@ afterEach(async () => {
     database.close();
   }
   admissions.clear();
-  for (const profile of profiles.values()) await profile.close();
+  for (const template of [...authorityTemplates.values()]) {
+    try {
+      restoreWorkspace(template.profile.workspace, template.snapshotRoot);
+      try { template.profile.admission.assertProfileRuntime(); }
+      catch { template.profile.renewAfterRestore(); }
+      template.profile.admission.assertProfileRuntime();
+    } catch { discardTemplate(template.profile.stateRoot); }
+  }
+  for (const profile of profiles.values()) {
+    if (!templateRoots.has(profile.stateRoot)) await profile.close();
+  }
   profiles.clear(); initialGenerations.clear(); roots.splice(0);
+  heldTemplates.clear();
+});
+
+afterAll(async () => {
+  for (const template of authorityTemplates.values()) {
+    await template.profile.close();
+    rmSync(template.snapshotRoot, { recursive: true, force: true });
+  }
+  authorityTemplates.clear();
+  templateRoots.clear();
 });
 
 describe("verified native online backups", () => {

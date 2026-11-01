@@ -1,8 +1,7 @@
+import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { afterAll } from "vitest";
 import { dryRunScenarioResultRecords } from "../../../support/helpers/dry-run-scenario-fixtures.js";
 import { default as assert } from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -84,18 +83,20 @@ describe("evidence receipt repository", () => {
 
 const NOW = "2026-08-25T12:00:00.000Z";
 const HASH = "a".repeat(64);
-const roots: string[] = [];
+const profiles = createClonedProfileFixtures();
+const heldProfiles: BoundProfileStorageFixture[] = [];
+afterAll(() => profiles.close());
 const { STARTED_MET_RESULT, NOT_STARTED_BLOCKED_RESULT } = dryRunScenarioResultRecords(HASH, NOW);
 
 
 
-function databasePath(): string {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-dry-run-result-"));
-  roots.push(root);
-  return join(root, "authority.sqlite");
+async function databasePath(): Promise<string> {
+  const profile = await profiles.create(); heldProfiles.push(profile);
+  return profile.path;
 }
 
-function openDatabase(path = databasePath()): AuthorityDatabase {
+async function openDatabase(path: string | undefined = undefined): Promise<AuthorityDatabase> {
+  path ??= await databasePath();
   const database = AuthorityDatabase.open(
     { path, busyTimeoutMs: 250, migrationOwner: "dry-run-result-test" },
     manualClock(new Date(NOW)),
@@ -104,15 +105,15 @@ function openDatabase(path = databasePath()): AuthorityDatabase {
   return database;
 }
 
-const _afterEachFixture0 = () => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+const _afterEachFixture0 = async () => {
+  for (const profile of heldProfiles.splice(0)) await profile.close();
 };
 
 describe("dry-run scenario result authority repository", () => {
 afterEach(_afterEachFixture0);
 
-  it("rejects a started result whose trace does not identify its dry-run record", () => {
-    const database = openDatabase();
+  it("rejects a started result whose trace does not identify its dry-run record", async () => {
+    const database = await openDatabase();
     database.authority.runs.enqueue({
       ...QUEUED_RUN,
       envelope: { ...QUEUED_RUN.envelope, dryRun: true },
@@ -135,8 +136,8 @@ afterEach(_afterEachFixture0);
     database.close();
   });
 
-  it("treats exact replay as idempotent and rejects identity reuse with different content", () => {
-    const database = openDatabase();
+  it("treats exact replay as idempotent and rejects identity reuse with different content", async () => {
+    const database = await openDatabase();
     const inserted = database.authority.dryRunScenarioResults.insert(NOT_STARTED_BLOCKED_RESULT);
     const generationAfterInsert = database.getMeta().authorityGeneration;
 
@@ -156,9 +157,9 @@ afterEach(_afterEachFixture0);
     database.close();
   });
 
-  it("rejects resolved subject values before any payload_json is written", () => {
-    const path = databasePath();
-    const database = openDatabase(path);
+  it("rejects resolved subject values before any payload_json is written", async () => {
+    const path = await databasePath();
+    const database = await openDatabase(path);
 
     assert.throws(() => database.authority.dryRunScenarioResults.insert({
       ...NOT_STARTED_BLOCKED_RESULT,
@@ -178,9 +179,9 @@ afterEach(_afterEachFixture0);
     database.close();
   });
 
-  it("refuses raw SQL updates to recorded evidence", () => {
-    const path = databasePath();
-    const database = openDatabase(path);
+  it("refuses raw SQL updates to recorded evidence", async () => {
+    const path = await databasePath();
+    const database = await openDatabase(path);
     database.authority.dryRunScenarioResults.insert(NOT_STARTED_BLOCKED_RESULT);
     database.close();
     const raw = new DatabaseSync(path);
@@ -193,9 +194,9 @@ afterEach(_afterEachFixture0);
     raw.close();
   });
 
-  it("refuses raw SQL deletion of recorded evidence", () => {
-    const path = databasePath();
-    const database = openDatabase(path);
+  it("refuses raw SQL deletion of recorded evidence", async () => {
+    const path = await databasePath();
+    const database = await openDatabase(path);
     database.authority.dryRunScenarioResults.insert(NOT_STARTED_BLOCKED_RESULT);
     database.close();
     const raw = new DatabaseSync(path);
@@ -208,9 +209,9 @@ afterEach(_afterEachFixture0);
     raw.close();
   });
 
-  it("fails boot when a raw insert contains a record that violates the strict boundary", () => {
-    const path = databasePath();
-    const database = openDatabase(path);
+  it("fails boot when a raw insert contains a record that violates the strict boundary", async () => {
+    const path = await databasePath();
+    const database = await openDatabase(path);
     database.close();
     const raw = new DatabaseSync(path);
     const corrupted = {
@@ -230,7 +231,7 @@ afterEach(_afterEachFixture0);
     );
     raw.close();
 
-    assert.throws(
+    await assert.rejects(
       () => openDatabase(path),
       /authority table dryrun_results failed native record validation/,
     );

@@ -1,6 +1,7 @@
 import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { installRunOperationsRoutes } from "../support/fixtures/run-operations.js";
 import { startSetupPreflightServer } from "./helpers/fixture-setup-preflight.js";
 import { gotoAppState } from "./helpers/app-driver.js";

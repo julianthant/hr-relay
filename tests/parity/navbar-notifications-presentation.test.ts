@@ -3,8 +3,9 @@ import { seedMockRuns } from "../../src/dashboard/surfaces/workflows/mocks/workf
 import { attachShellA11y } from "./helpers/shell-proof.js";
 
 
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect, type Page, type TestInfo } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -40,7 +41,6 @@ function disconnectedRequests(page: Page) {
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const size = `${theme.attribute}-${width}`;
   test(`permanent workspace rail and local controls @ ${size}`, { annotation: ["navbar", "navbar-search", "navbar-calendar"].map(name => ({ type: "required-a11y-evidence", description: `${name}-${size}.a11y.yml` })) }, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
@@ -182,7 +182,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 
   test(`notification filters, retired history gaps and local actions @ ${size}`, { annotation: [{ type: "required-a11y-evidence", description: `notifications-normal-${size}.a11y.yml` }] }, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
@@ -263,7 +262,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 
   test(`notification empty, loading, unavailable and ping states @ ${size}`, { annotation: ["notifications-empty", "notifications-loading", "notifications-unavailable", "notification-ping"].map(name => ({ type: "required-a11y-evidence", description: `${name}-${size}.a11y.yml` })) }, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });

@@ -1,3 +1,4 @@
+import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { randomUUID } from "node:crypto";
 import { childPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
@@ -101,18 +102,18 @@ describe("canonical run-record service", () => {
       configSnapshotId: blocked.envelope.configSnapshotId, resolvedInstance: blocked.envelope.resolvedInstance,
       priority: blocked.envelope.priority, shape: blocked.envelope.shape, dryRun: false,
       input: blocked.input, runtimeConfig };
-    const olderBulk = created(service, {
+    const olderBulk = requireLifecycleApplied(service.create({
       ...request,
       commandId: "51000000-0000-4000-8000-000000000006",
       matchKey: "claim-older-bulk",
       priority: "bulk",
-    });
-    const newerInteractive = created(service, {
+    }, { title: "Claim order fixture", actorId: "local-operator" }));
+    const newerInteractive = requireLifecycleApplied(service.create({
       ...request,
       commandId: "51000000-0000-4000-8000-000000000007",
       matchKey: "claim-newer-interactive",
       priority: "interactive",
-    });
+    }, { title: "Claim order fixture", actorId: "local-operator" }));
 
     const owner = testAdmittedWorker(database, clock, { path, workflow: compiled.descriptor.id, poolIndex: 2, browserSystems: [] });
     const generation = database.getMeta().authorityGeneration;
@@ -142,7 +143,9 @@ describe("canonical run-record service", () => {
     assert.equal(service.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: child.envelope.runId,
       expectedVersion: requestedChild.version, claim: { workerId: firstOwner.workerId, claimGeneration: childClaim.run.claimGeneration },
       endedAt: clock.now().toISOString() }, childDescriptor).state, "applied");
-    assert.equal(database.authority.dependencies.readiness(blocked.envelope.runId, "join").state, "ready");
+    assert.deepEqual(database.authority.dependencies.readiness(blocked.envelope.runId, "join"),
+      { state: "blocked", childRunId: child.envelope.runId, reason: "child-cancellation-unavailable" });
+    assert.equal(database.authority.dependencies.readiness(blocked.envelope.runId, "cancel").state, "ready");
   });
 
   it("#25 preserves spent attempt and run number after deleting the highest row", async () => {

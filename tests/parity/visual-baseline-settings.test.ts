@@ -1,9 +1,10 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Page, type TestInfo } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { mergeSettingsPatch } from "../../src/models/config/settings.js";
 import { ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema } from "../../src/rules/commands/commands.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, captureParityPair, installTheme, PARITY_THEMES, type ParityTheme } from "./helpers/capture.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
@@ -36,7 +37,6 @@ async function capture(page: Page, info: TestInfo, theme: ParityTheme, width: nu
 }
 
 async function setup(page: Page, theme: ParityTheme, width: number) {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   await page.setViewportSize({ width, height: 720 });
   await page.clock.setFixedTime(new Date(FIXTURE_NOW));
@@ -351,6 +351,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await page.keyboard.press("Escape");
       await editor.getByRole("button", { name: "Insert", exact: true }).click();
       await expect(page.getByRole("menu", { name: "Insert", exact: true })).toBeVisible();
+      await expect(page.getByRole("menu", { name: "Columns", exact: true })).toHaveCount(0);
       await capture(page, info, theme, width, "spreadsheet-insert-menu");
       await page.getByRole("menuitem", { name: "Add row", exact: true }).click();
       await expect(editor.locator(".spreadsheet-grid tbody tr")).toHaveCount(3);
@@ -412,7 +413,6 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     test(`baseline Preflight refresh ${scene} ${theme.attribute} ${width}`, {
       annotation: [{ type: "required-a11y-evidence", description: evidence(`preflight-${scene}-coverage`, theme, width) }],
     }, async ({ page }, info) => {
-      ensureParityBundle();
       const server = await startSetupPreflightServer(scene);
       const gate = Promise.withResolvers<void>();
       try {

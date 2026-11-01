@@ -1,3 +1,4 @@
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { createSeededDashboardWorld } from "../seeded-dashboard-world.js";
 import { claimEventOf, makeWorld, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "./dashboard-harness.js";
 
@@ -9,11 +10,11 @@ import { join } from "node:path";
 
 
 
-export function createRunQueueProjectionTestWorld() {
+export function createRunQueueProjectionTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
   const worlds: DashboardWorld[] = [];
 
   async function world(...args: Parameters<typeof makeWorld>): Promise<DashboardWorld> {
-    const created = await makeWorld(...args);
+    const created = await makeWorld({ profileFixture, ...args[0] });
     worlds.push(created);
     return created;
   }

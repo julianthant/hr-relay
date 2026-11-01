@@ -1,14 +1,14 @@
 
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from "./helpers/fixtures.js";
 import { createHash } from 'node:crypto';
-import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
+import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920, 2560]) {
   const evidenceName = `typed-import-${theme.attribute}-${width}.a11y.yml`;
   test(`typed spreadsheet mapping and retained edits @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidenceName }] }, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
     const errors: string[] = [], writes: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
