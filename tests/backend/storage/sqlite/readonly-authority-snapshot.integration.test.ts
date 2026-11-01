@@ -163,7 +163,7 @@ it("ordinary read refusal and unreadable login copy stay ordinary after proved c
 
 for (const invalid of [false, true]) it(`retains a private source descriptor and its primary failure on close refusal ${invalid}`, async () => {
   const f = await createBoundProfileFixture(), path = join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`);
-  f.machine.assertProfileCredentialKey(f.admission, path);
+  f.admission.assertProfileRuntime(); f.machine.assertStateRoot(path);
   const before = digest(path), identity = fs.lstatSync(path), actualClose = fs.closeSync;
   const injected = new Error("private-source-descriptor-close-refused");
   let descriptor: number | undefined, attempts = 0, proved = false;
@@ -193,7 +193,7 @@ for (const invalid of [false, true]) it(`retains a private source descriptor and
 
 for (const failSync of [false, true]) it(`retains the real sync descriptor and primary error after close refusal ${failSync}`, async () => {
   const f = await createBoundProfileFixture(), path = join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`);
-  f.machine.assertProfileCredentialKey(f.admission, path);
+  f.admission.assertProfileRuntime(); f.machine.assertStateRoot(path);
   const before = digest(path);
   const actualClose = fs.closeSync, actualSync = fs.fsyncSync;
   const primary = new Error("source-sync-refused"), cleanup = new Error("source-sync-close-refused");

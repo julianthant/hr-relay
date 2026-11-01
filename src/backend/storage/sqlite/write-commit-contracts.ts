@@ -1,3 +1,4 @@
+import { RunClaimTokenSchema } from "../../../models/run/worker.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import {
@@ -18,7 +19,6 @@ import {
   ParkedWriteResolutionBindingSchema,
   ParkedWriteRecheckSchema,
 } from "../../../rules/write-safety/write-safety.js";
-import { RunClaimTokenSchema } from "./run-store-contracts.js";
 import { RunRecordRefusalSchema } from "../../../models/config/authority.js";
 
 export const WriteFenceRecordsSchema = z.strictObject({

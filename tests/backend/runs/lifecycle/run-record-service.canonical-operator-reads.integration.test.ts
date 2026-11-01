@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { afterAll } from "vitest";
 import assert from "node:assert/strict";
@@ -16,7 +16,7 @@ import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.j
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
 
 const cleanups: (() => void | Promise<void>)[] = [];

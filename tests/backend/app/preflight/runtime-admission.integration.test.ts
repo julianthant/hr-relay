@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
-import { createClonedProfileFixtures, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import fs, { renameSync } from "node:fs";
@@ -45,7 +45,7 @@ import { AuthorityBackupService, AuthorityDatabase } from "../../../support/help
 
 {
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 const cleanup: (() => void | Promise<void>)[] = [];
 const _afterEachFixture0 = async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose(); };

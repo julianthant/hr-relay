@@ -1,11 +1,11 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createWorkerSessionManagerTestWorld } from "../../../support/helpers/backend/worker-session-manager-world.js";
 import assert from "node:assert/strict";
 import { afterAll, describe, it } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const { sessionFactory, manager } = createWorkerSessionManagerTestWorld(profileFixtures.create);

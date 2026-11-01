@@ -71,7 +71,7 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
       ...(atPath(defaults, path) === undefined ? {} : { defaultValue: atPath(defaults, path) }),
       ...(settingsValue === undefined ? {} : { settingsValue }),
       source: settingsValue === undefined ? "default" : "settings", sourceClass: "ordinary-settings", sensitivity: "ordinary",
-      editable: true, validity: effectiveValue === undefined ? "unset" : "valid",
+      editable: key !== "paths.duoCredential", validity: effectiveValue === undefined ? "unset" : "valid",
       activationScope: key.startsWith("daemon.") ? "next-idle" : "new-runs",
       ...(control.input === "number" ? { minimum: control.minimum } : {}),
       ...(key.startsWith("display.") ? { unit: "px" } : {}),
@@ -92,7 +92,7 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
     protectedSettings = { state: "unknown", rows: protectedRows, reason: "credential-store-unavailable" };
   }
   const deployment = Object.fromEntries(SETTINGS_CATALOG.filter(row => row.sourceClass === "runtime-isolation").map(row => {
-    const value = atPath(activeConfig, row.key === "duoWebauthnCredential" ? "paths.duoCredential" : row.key);
+    const value = atPath(activeConfig, row.key);
     if (value === undefined) throw new Error("settings-editor-deployment-fact-missing");
     return [row.key, value];
   }));

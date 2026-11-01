@@ -252,20 +252,12 @@ supplies the default browser root `<stateRoot>/browsers`. A saved browser root c
 | `paths.stateRoot` | Admitted installation root, initially `.tracker/data` |
 | `paths.artifactRoot` | Admitted installation root, initially `.tracker/data/artifacts` |
 | `paths.browserProfileRoot` | Admitted `<stateRoot>/browsers`, or the isolation default `.tracker/data/browsers` without an admitted pair |
-| `paths.duoCredential` | Absolute `<stateRoot>/credentials/duo-webauthn.json` |
+| `paths.duoCredential` | Retained deployment fact in accepted configuration snapshots; no credential reader or picker |
 | `paths.duoExtensionDir` | Absolute `fast-duo` source folder with `workflow-manifest.json` |
 
-The first four paths and the three browser/Duo paths are ordinary settings. State and artifact roots
-use relocation authority. Browser, Duo credential, and extension paths are independent; changing a
-browser root does not rebase the credential path.
+The first four paths, browser root and extension path are ordinary settings. State and artifact roots use relocation authority. `paths.duoCredential` remains in the strict serialized configuration and catalog because accepted snapshots and their fingerprints retain that deployment fact. New edits refuse as a retired input; it grants no file access, picker or authentication authority. Removing the persisted field requires the complete snapshot forward conversion.
 
-`ordinary-path-validator.ts` validates changed effective paths, so unchanged paths do not block an
-unrelated save. Browser targets require a canonical absolute path, safe ancestry and ownership, no
-protected-root overlap, and an absent or empty target. The canonical default may reuse its existing
-safe directory. A changed Duo credential requires an owned, one-link, 0600 regular file, no-follow
-admission, a 64,000-byte bound, and recognizable `rpId` plus `credentialId` identity. This proves
-identity shape, not successful authentication. The extension requires an owned unpacked MV3 directory
-and manifest. `OrdinaryPathValidationError` becomes `invalid-value` before snapshot activation.
+`ordinary-path-validator.ts` validates changed effective paths. Browser targets require a canonical absolute path, safe ancestry and ownership, no protected-root overlap, and an absent or empty target. The canonical default may reuse its existing safe directory. The extension requires an owned unpacked MV3 directory and manifest. `OrdinaryPathValidationError` becomes `invalid-value` before snapshot activation.
 
 `POST /api/v1/settings/path-picker` accepts `NativePathPickerRequestSchema` and returns a selected
 absolute path, cancellation, or explicit unavailable result. The native picker owns dialog bounds
@@ -275,11 +267,7 @@ an occupied picker reports `busy`.
 
 ## 6. Credential access and storage
 
-`SECRET_SPECS` has four protected-store entries: `ucpathUserId`, `ucpathPassword`, `timekeeperName`,
-and `sharepointOnboardingRosterUrl`. `SECRET_FILE_SPECS` has the named file
-`duoWebauthnCredential` at `paths.duoCredential`, classified `credential-file`, with a 64,000-byte
-metadata bound. The protected store also retains `activityPersonPseudonym` for historical records;
-its Activity consumers are absent.
+`SECRET_SPECS` has four protected-store entries: `ucpathUserId`, `ucpathPassword`, `timekeeperName`, and `sharepointOnboardingRosterUrl`. The protected store retains `activityPersonPseudonym` for historical records; its Activity consumers are absent. There is no plaintext Duo credential-file capability.
 
 The value schemas in `protected-settings.ts` are shared by persistence and access. They admit
 `ucpathUserId` and `timekeeperName` strings of 1 to 256 characters, `ucpathPassword` of 1 to 4096
@@ -295,238 +283,27 @@ Missing entries produce `undefined` or `SecretMissingError`. Source failures bec
 `SecretSourceError` to unknown and rethrows other errors. `protectedSecretRevision` returns a
 value-free revision. `validateBootSecrets` currently has an empty required-at-boot set.
 
-`requireSecretFile` validates the registered path with `statSync`, requires a regular file with no
-group or world permission bits, checks stat size, then uses `readFileSync`. That accessor does not
-use the credential-store no-follow descriptor protocol. `resolveSecretFileIdentity` parses the Duo
-object, array, or `{ credentials: [...] }` shape and hashes sorted `rpId` and `credentialId` pairs
-under `hrauto:duo-credential-identity:v1`. Missing identity or malformed JSON throws `SecretFileError`.
-The identity excludes the private key and sign counter; [execution and sessions](execution-and-sessions.md)
-owns counter custody.
-
 ### Independent private credential authority
 
-Credential-store construction admits the exact erasure journal and anchor paths. Local journal reads
-retain issued-admission liveness and pinned credential ancestry, including trusted sticky ancestors;
-external machine/profile journals and credential writes retain strict storage admission. Missing
-established erasure authority refuses rather than becoming an empty journal.
+`canonical-credential-store.ts` owns three authenticated encrypted records: profile `credentials/protected.json`, profile `credentials/chatgpt-account.json`, and `machine/duo-credentials/<profileId>.json`. Thin protected, Duo and ChatGPT views validate their domain payloads and require domain revision to equal the authenticated frame revision. An absent established frame, head or native key refuses; only an authenticated initialized null frame denotes an uninitialized record.
 
-`<stateRoot>/credentials/` is the home for protected settings, the ChatGPT account, and the retained
-configured Duo credential file (`duo-webauthn.json`, validated through `paths.duoCredential`).
-Workflow authentication uses the admitted encrypted Duo store below; it does not provision this file into browsers.
-`src/backend/storage/configuration/` owns those private records.
-`credential-store.ts` exposes the protected-settings store and the ChatGPT account repository.
-Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 directories,
-0600 files, no-follow reads, fsync, atomic replacement, and lock-file safety.
-`storage/private-path.ts` owns their privacy policies, including trusted sticky ancestors and
-distinct private-file and managed-data permissions, plus exclusive stages, replacement and durable
-flushes. Unavailable ownership evidence refuses access. SQLite's descriptor observer executes the
-same self-contained privacy policy; operation identity and content checks remain with its caller.
-Each record retains its own transaction and recovery contract.
+`machine/credential-keys/<profileId>.json` is the sole external head: immutable installation/person binding, native key metadata, lifecycle and erasure generation, durable Duo counter floors, consumed request IDs and retired identities. Nested key binding must match the actual outer/path binding before native key access. The random 32-byte person key lives in the OS credential store through `credential-key-custody.ts`: service `Relay`, account `<installationId>:<profileId>`, macOS Keychain or Windows Credential Manager. Public catalog errors retain original private source causes and owners.
 
-The same private-file primitive serializes installation mutation at
-`<workspace>/.tracker/control/.installation-mutation.lock` and profile operations and registry
-publication at their distinct machine-root `.profile-ops.lock` and `.profile-registry.lock` paths.
-Each file contains only a private nonce; parent identity, file inode, bytes and fsync bind exact
-release. Callbacks are synchronous, with a ten-second wait budget and 25ms polling.
-The first genuine root workspace initialization authenticates and clears only these exact prior
-fixed locks before children or reservations exist. Malformed or unproved evidence remains held;
-the same lifetime never reaps a current lock. Pending publication validation runs without settlement
-effects during that startup inspection. Key-stage and credential-anchor publication reuse the
-held installation mutation through an operation-bound read scope, which expires on callback exit.
+One `machine/credential-operations/<profileId>.json` owns active creation or erasure. Creation records planned native metadata/digest before native set, authenticates exact encrypted stages and source prefixes, and publishes the head last. Missing or mismatched prepared key custody never regenerates or adopts an unknown key. Abort can settle only its exact authenticated create prefix to finish deletion; the erased head binds the erase source plan digest before native key deletion. Counter floors and retired identities remain external to SQLite.
 
-Credential envelopes, keys, locks, and other private documents require mode `0600`. SQLite file
-witnesses follow the canonical database policy: an owned, one-link, regular non-symlink file with no
-group or world write permission beneath validated private profile ancestry. A safe `0644` database
-retains its mode, bytes, and physical identity during read-only inspection and incomplete-profile
-withdrawal. These reads do not change database permissions.
+The common writer uses a short cross-process nonce mutex, authenticates the current head and namespace, checks exact expected revision, stages/fsyncs/replaces, and verifies readback. Same-operation stages retain exact inode/bytes custody. Unknown descendants, unsafe ancestry/permissions/links or unexplained stages refuse. An attempted native replacement with uncertain outcome reports uncertainty and never claims rollback. Actual descriptor/database closure failures are remembered by profile admission, installation parent and native lifetime; successful rereads or safe HTTP/account projections cannot clear that custody or release the listener.
 
-Duo enrollment binds the exact browser-owned `sender.documentId`: a 32-character hexadecimal token.
-The extension broker, backend broker, and stored scope retain its case and value without UUID
-conversion. Account, operation, and arm identities remain UUIDs. Missing, malformed, foreign, or
-stale document tokens refuse enrollment and signing. Unexpected stored scope formats remain held.
+ChatGPT `withLock()` uses one durable cross-process asynchronous operation lease spanning remote awaits, separate from the short writer mutex. Its transaction is revoked on settle and exact callback errors survive successful cleanup. Read-only account observation does not mutate credentials. Refresh, usage changes and sign-out retain CAS; close/sign-out abort and await owned inference/page/access operations. Actual response, artifact or PDF closure failures refuse sign-out and retain resources. Startup may clear only an exact prior nonce lock under genuine one-shot native workspace initialization, never ordinary PID-as-death cleanup. Unknown old lock/stage bytes remain held. The schema-1 ChatGPT payload is bounded to 64,000 bytes and contains registration plus current session, with no token history; tokens are encrypted inside the canonical frame.
 
-The new-purpose Duo document is separate. `duo-credential-store.ts` stores one encrypted document per
-profile at `<machineRoot>/machine/duo-credentials/<profileId>.json`. Installation control owns its
-continuity row, physical witness, and publication. The profile credential key seals it. A count is
-reserved in that document before any later signature use; failed, crashed, and UNKNOWN attempts stay
-burned. Both signup and workflow sessions use this store-backed Node signer; the workflow browser
-receives only public ceremony requests and assertion replies. Signing request UUIDs are durable,
-once-consumed reservations rather than replayable assertion caches. Ordinary registry reads fail closed on a pending publication and do not finish it. The same
-process can resume only the claim that started the publication. After that process exits,
-`storage recover-duo-publication` acquires stopped maintenance admission and finishes that one
-durable publication: it checks the pending intent, continuity, binding, purpose, revision, physical
-file, and source, then settles the existing publication. It does not reserve another count, sign, or
-retry UNKNOWN. Erase walks the machine and profile roots, including credentials, backups, artifacts,
-and `machine/duo-purpose-backups`. It refuses a symlink, hard link, same-digest copy, or another
-authenticated envelope for that profile and purpose. Explicit purpose backups live only under
-`machine/duo-purpose-backups/<profileId>/<revision>.json`. The purpose decrypt owner freshly binds the
-actual runtime profile, current continuity and canonical document's physical witness before returning
-credential material. Each open checks complete custody and continuity before key access and after
-the final key/document reread. Each boundary uses a fresh isolated database-binding observation and
-rechecks current authority after the child exits; draft authority includes stable operation identity,
-generation, registry absence and explicit Finish proof for publication. The current authenticated
-retired identities keep erased credentials revoked even
-after a different valid enrollment; fresh and earlier genuine purposes cannot decrypt those managed
-backups. A missing or corrupt current witness refuses instead of supplying an empty retired set.
-Same-enrollment backups remain readable, and restore still refuses a backup that would lower a burned
-counter. Decrypt refuses during pending publication; that check does not change the separate
-same-issued or stopped publication settlement. Erase does not delete or import `duo-webauthn.json`.
-The current registry document is schema 3: its installation ID matches the locator, and every
-registry publication advances its safe-integer revision exactly once. The session epoch remains a
-separate counter. Control schema 4 binds that revision, epoch, canonical content digest and logical
-operation IDs/digests; marker 5 selects this current format. A byte-identical closed-file replacement keeps the same logical ownership; a fresh open validates
-the current file. General persisted inode/device
-continuity and device recertification are absent. Exact credential, Duo, restore and open-descriptor
-proofs retain their operation-specific physical checks.
+Duo records hold pending/ready enrolled P256 material and exact browser scope. Backend validation requires canonical Base64, EC prime256v1 and matching public/private material. Same credential identity cannot change its key. Both onboarding and workflow use the single backend FastDuo signer and public request/reply broker; no private key is installed into browsers. Every signature durably reserves a strictly advancing external counter first. Failed, crashed, cancelled and UNKNOWN attempts burn it; duplicate request IDs refuse rather than replay an allocation. The browser document token remains an exact 32-character hexadecimal `sender.documentId`, while account/operation/arm identities are UUIDs. Scope, account, origin, allowCredentials and current owner are checked before signing and after relevant awaits.
 
-`storage upgrade --machine-control` converts settled registry schema 2 with control 1/2/3 and marker
-2/3/4 under the same stopped maintenance owner. Its one journal records exact registry/control/marker
-backups and stages, supports only unchanged publication prefixes, and seeds registry revision 1.
-Existing completed upgrade artifacts remain an exact preserved inventory. Unsupported old pending
-journals refuse before startup lock cleanup, key migration or publication replay. Older formats remain
-stopped-only; ordinary startup accepts only the current tuple. Conversion preserves existing Duo and
-completed-restore custody. Sources without completed-restore custody require authenticated empty
-suspect membership. These backups contain control files, not profile SQLite or Duo keys.
-A failed snapshot close retains its maintenance admission.
+Protected payload schema-4 authenticates current record, value-free history, retired identities and the latest exact request. Entries remain `{valueId,value,updatedAt}`. Only the latest apply/erase request retains plaintext inside ciphertext; history contains marked operations and receipts. Current reads never run old-format migration. Apply checks expectedRevision, schema hash and command/write identity; latest exact replay succeeds, divergent/reused identities refuse, and clear removes the entry while advancing revision. Retired history remains deny-only and cannot revive a value. Documents are bounded to 16 MiB and private requests to 64,000 bytes. Settings apply commits independently before the value-free SQLite audit; failed audit cannot roll back the private commit. Protected values never enter configuration fingerprints or snapshots. The local Settings editor deliberately serves authenticated protected values; unavailable authority is unknown, never an empty default.
 
-Current relocation commands require an issued bound owner and refuse unsupported registered roots.
-Ownerless or unbound plan/resume requests refuse before creating maintenance; status and historical
-receipt inspection remain read-only. Pending bytes remain untouched by that refusal.
+Registry document 3 binds immutable installation ID and safe revision. Control 5 binds logical registry digest/revision/epoch, operation membership and completed-restore custody; marker 6 selects the current tuple. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
 
-Completed restores append exact profile, operation, source generation, outcome and retained suspect
-file identities to `control/profile-registry.json` before removing the restore journal. Recovery
-accepts the identical append once and refuses divergent custody. Credential inventory validates the
-recorded paths, inode, bytes and complete companions, then scans the authenticated SQLite copies
-through the existing read-only owner. Missing, substituted or extra files remain unknown. Registry
-mutations preserve this history. Profile relocation is unsupported; the raw lease also refuses
-completed history before destination or journal effects because its file identities cannot be
-carried through an unverified copy.
+`storage upgrade --machine-control` uses the existing stopped three-file forward protocol. Supported settled prior tuples and bound SQL schemas 8–11 require genuine source inspection and durable verified credential-free SQL backup before canonical key/frame/control publication. One receipt records exact tuple backups, encrypted credential plans, source fingerprints and the verified SQL archive. Publication resumes only exact recorded source-or-published prefixes. Old credentials/key plaintext are not copied into the new archive. Old runtime readers are deleted. Unknown software Duo counter history or unsupported pending journals produce a named HOLD before mutation; no clock seed, inferred absence, key adoption or silent retirement is allowed. Completed historical artifacts remain exact preserved inventory.
 
-The selected ChatGPT account owner fetches its current model catalog in server order and returns only
-list-visible slugs and display names. Assistant requests use that catalog, explicit trusted model
-policy, and current account/profile authority; catalog presence grants no execution permission. The
-requested default is `gpt-6.1-sol` with medium reasoning. Missing availability refuses without a model
-fallback. Per-profile choice persistence and served selector wiring are separate; no Settings leaf or
-credential field stores that choice here. OCR uses the fixed backend `CHATGPT_OCR_MODEL` (`gpt-6.1-sol`) independently of assistant preference, with no substitute model.
-
-OCR and assistant inference share the existing bounded Responses transport, cancellation and usage
-owner. Account closure fences new work, aborts requests and awaits issued inference/page operations and
-accesses; sign-out also drains those operations before revocation or credential mutation. Failed native
-artifact, PDF or response-reader closure retains explicit resource uncertainty and refuses sign-out
-without clearing credentials. Cancelling an errored response wrapper may rethrow its original cancellation
-after the transport reader has closed; that identical cancellation remains cancellation, while actual
-transport cancel or reader-release failures retain resource uncertainty. Assistant functions are strict and namespaced. One trusted per-request server binding captures
-request-specific private state before catalog or inference awaits and returns its closure-bound
-validators and handlers; captured state is not automatically sent to the model. The absent binding
-returns an empty set without subject reads. Continuation retains every returned item and exact call
-identity. A completed model response is required before any local handler; handler completion and citations are validated before return.
-Function calls and trusted synthetic fixture bindings grant no production command authority.
-
-`createCredentialStore` stores `<profileRoot>/credentials/protected.json` using the exact issued
-profile child and its machine journal owner. The schema-4 envelope authenticates the whole current
-record, value-free history and latest exact request with AES-256-GCM. Authentication finishes before
-plaintext is parsed or returned. In-memory entries remain `{ valueId, value, updatedAt }`.
-The random 32-byte per-profile key lives only in the OS secret store through
-`credential-key-custody.ts` and exact `@napi-rs/keyring` 2.1.0: service `Relay`, account
-`<installationId>:<profileId>`, with base64 key bytes. macOS uses Keychain and Windows uses
-Credential Manager. `machine/credential-keys/<profileId>.json` contains only schema-2 binding,
-key ID and key digest metadata; machine continuity still pins its private file identity and digest.
-Ordinary reads cannot create or replace an established key, document or anchor. Missing,
-mismatched, unavailable or uncertain OS custody raises the corresponding `CREDENTIAL_KEYCHAIN_*`
-code without exposing native error details or key material.
-
-Startup moves canonical schema-1 keys into the OS store under the installation mutex, only with
-no peer leases. Before importing or rewriting a key, admission matches its filename, binding,
-key ID and original file witness to retained profile continuity, an authenticated initialization
-operation, or the exact pending key-stage publication. Pending publication validates the owning
-initialization transition and publication envelope before any migration effect. Retained schema-1
-control with its schema-2 marker admits only its exact canonical key witness for stopped control
-conversion; ordinary runtime still refuses until that conversion completes. Journal recovery repeats that admission
-against the reconstructed original witness. It reads back and compares the entry before removing disk secret bytes. A
-non-secret migration intent and descriptor-checked rewrite preserve the original inode. Migrated
-metadata marks its historical witness: the old canonical document digest is reconstructed in memory
-from the OS entry, preserving existing control and operation witnesses. Interrupted rewrites resume
-only from the recorded inode and an exact recognized byte prefix; changed evidence refuses.
-The schema-1 reader exists only inside this forward migration, never on the credential read path.
-Existing backups made before migration still contain their original bytes and must be protected;
-new backups copy only metadata and ciphertext. Same-machine restore requires the matching OS entry;
-restore without it refuses and never regenerates a key.
-
-Fresh setup and explicit forward conversion use the existing sign-up operation and profile-publication
-journal. Key bytes first become durable in the OS store, with verified readback. Only non-secret
-metadata enters the private operation-named stage. Its exact inode, bytes and prior operation enter that journal through the actual factory witness before the same
-inode is renamed to the canonical key path. Passive reads validate an interrupted stage publication;
-only fresh matching maintenance custody can complete it. A stage left before intent publication is
-an unowned orphan and refuses adoption.
-If OS creation completed before metadata staging, the validated initialization may reuse those
-exact OS bytes only with no canonical/staged metadata, recorded key witness or encrypted document.
-It never replaces the retained entry; established missing or mismatched custody still refuses.
-Proven schema-2 replay may supply current values. Unprovable schema-3 input requires the
-verified operator to supply all five set/clear choices before activation; none of its old values are
-imported. The validated legacy revision is an opaque concurrency floor, with new history advancing
-from that revision. Legacy identities are deny-only, never successful replay authority. Ordinary reads
-accept only schema 4. Publication of a migration key anchor revokes the previous login epoch once;
-resumption uses the exact pending publication and fresh canonical inventory, rather than a new attempt.
-
-Private history contains no request digests or replaced plaintext. Only the latest exact apply or
-erase request is retained inside authenticated ciphertext. The external value-free erasure journal
-retains its own request identity. Complete inventory authenticates ciphertext before tombstone repair,
-checks decoded JSON and native copies, and refuses incomplete captures or unknown membership.
-The key does not provide general rollback resistance or a cryptographic-erasure guarantee.
-Ordinary protected-value erase and logout retain this key to authenticate erased history and retained
-settings. Cancelled unpublished sign-up removes the keychain entry after metadata removal, before
-operation removal; uncertain OS deletion retains the durable abort intent for settlement.
-
-The protected-settings reader verifies link count, size, descriptor identity, path identity,
-and stable readback. The document limit is
-16 MiB; admitted private requests are bounded to 64,000 bytes. Unexpected or unsettled directory
-entries refuse. Schema and replayed history must agree with the current record.
-
-The writer serializes through `.protected.lock`, with `.protected.reaper` and
-`.protected.reaper-claim` for stale-owner recovery. Owner identity includes process birth evidence;
-live or unknown custody is not stolen. It stages a private file, fsyncs it, compares exact prior
-bytes, renames it, fsyncs the directory, and verifies exact completion. Failures after replacement
-or uncertain lock release raise `CredentialStoreCommitUncertainError` rather than claim rollback.
-
-`settings/apply-protected-settings` carries independent `expectedRevision`, `protectedSchemaHash`,
-`writeId`, and `entries`. Set allocates a fresh random `valueId`; clear removes the entry. Both advance
-the credential revision. Latest exact request replay returns the current applied record; a divergent
-latest replay or reused command/write identity refuses `command-divergent`. A stale revision reports
-conflict; unavailable exclusion reports `lock-unavailable`.
-
-`erase()` durably records erased value identities and retired commands before rewriting protected
-entries. Profile sessions use the separately admitted machine journal outside the profile root, at
-`machine/erasures/<profileId>.json`, with its identity anchor. Readback
-repairs restored erased values under strict writable admission and refuses missing established authority.
-
-`settings-service.ts` commits this private operation independently before the command kernel's
-value-free audit transaction. `markProtectedSettingsPatch` replaces every set value with `"<set>"`;
-SQLite command identity and audit contain that marked request, not protected values or their hashes.
-An audit failure throws `credential-audit-uncertain` and cannot roll back the private commit.
-Replay authenticates private identity
-through `verifyReplay`. Credential edits advance no ordinary settings generation. Database backup
-and restore exclude and leave this credential authority unchanged.
-
-Protected values are not `Config` leaves, so they cannot enter configuration fingerprints or
-`settings_snapshots`. The local Settings query deliberately serves authenticated protected entries
-and values in addition to presence readback. `buildSettingsEditor` reports an unavailable credential
-store as `protectedSettings: { state: "unknown", reason: "credential-store-unavailable" }`, rather
-than an empty store. This local display does not widen command journals, logs, or provider egress.
-
-`chatgpt-credential-repository.ts` stores `<stateRoot>/credentials/chatgpt-account.json` as a
-schema-1 record with registration metadata and the current session, without token history.
-`createChatGptCredentialRepository` exposes `read()` and asynchronous `withLock()` transactions
-through `credential-store.ts`. Replacement checks the expected revision and advances it by one.
-Account authority observation is read-only: concurrent live service instances do not advance the
-credential revision. Unexpired access and unchanged usage revalidate the issued authority without a
-writer lock; refresh and changed usage retain lock/CAS publication. Closing the issuing service,
-actual credential mutation, profile epoch change or lost physical admission revokes its captures.
-The record has a 64,000-byte limit and uses `.chatgpt-account.lock`; stale-lock cleanup requires
-exclusive `RuntimeAdmission`. With the dashboard stopped, `npm run cli -- storage recover-chatgpt-lock`
-clears a lock whose recorded owner process is gone and refuses one whose owner still runs. Unconfirmed completion after replacement reports
-`CHATGPT_CREDENTIAL_UNCERTAIN`. The account service in `accounts/` imports this credential-store API. Dashboard composition creates it with the admitted state root and clock, closes it before releasing admission, and exposes only the token-free account and sign-in lifecycle schemas from `models/dashboard/chatgpt-account.ts`. The HTTP account boundary retains the latest independent attempt ID and reads its original completion once; the OAuth loopback callback remains inside the service.
-Storage relocation carries all three files under `credentials/`, and `paths.duoCredential`
-follows the admitted state root.
+Offline restore replaces SQLite only. It preserves current canonical head/key/generation/floors and credentials, and retains existing source/stage/suspect/completed-restore, settings and UNKNOWN-write proofs. Same-machine native key absence refuses. Profile relocation without a genuine supported binding refuses before maintenance effects; status and historical inspection remain read-only.
 
 ### Environment and private test inputs
 
@@ -752,28 +529,22 @@ instead of reading the map directly.
 
 ### Profile storage admission
 
-A READY, saved native7 profile can request its backed-up upgrade only through genuine password-verified sign-in. Verification, normal lockout and selection/logout checks precede a private, once-consumed maintenance authorization; no applying operation, ordinary child admission, credential read or session token is issued for it. Current8 sign-in remains ordinary. Pending setup operations remain intact and cannot become READY-upgrade authority.
+A READY, saved profile with supported SQLite schema 8–10 can request its backed-up upgrade only through genuine password-verified sign-in. Verification, normal lockout and selection/logout checks precede a private, once-consumed maintenance authorization; no applying operation, ordinary child admission, credential read or session token is issued for it. Current schema 11 sign-in remains ordinary. Pending setup operations remain intact and cannot become READY-upgrade authority.
 
 The authorization retains only identity evidence: exact installation/workspace/locator, registry/control/verifier/operation observation, anchored key and erasure head, canonical source and sidecar identities/digests, and strict encrypted v4 envelope metadata. It contains no password, decrypted value or ordinary authority. Its identity evidence survives intentional old shared-admission release only for comparison against a fresh genuine exclusive installation; any other drift or reuse refuses. The existing stopped service still owns actual restore, all-stopped resources, verified backup, migration and readback.
 
 
 Fresh machine bootstrap owns the registry, verifier and installation-control evidence without a root database or selected profile. A supported pre-profile flat store starts clean through the verified startup migration below; unsupported unbound state remains refused. Normal boot never assigns a default profile. Canonical bound database metadata binds immutable installation and profile UUIDs before writable configuration or repository construction. A control-authenticated pending sign-up issues exact database-only setup; ready storage claims require canonical binding. Normal registry publication cannot add profiles: the credential owner captures exact canonical committed replay in an opaque value-free witness, and installation control revalidates its bounded document/journal/anchor evidence when publishing the ready row.
 
-Admission identity has one owner in `storage/admission/admission-identity.ts`; only the token-protected `RuntimeAdmission` constructor registers identities. Profile children remain dependent on the current installation lease and authenticated durable intent or membership. New runtime opens and writes recheck readiness. Cancelling profiles retain only settlement custody; restart can reissue it from the exact pending logout and cancelling row. The settlement entry accepts the original authenticated erase command and cannot open ordinary databases or apply credentials. Generic credential reads refuse; the actual credential owner exposes an exact pending-operation observation for erasure revision and inventory without tombstone repair or writes. Replayed erasure strips restored plaintext before a repaired read. Flat runtime callers remain held with `profile-bound-authority-required`. The dashboard composition requires an existing server-owned active profile token and the exact parent-owned profile runtime; ready/saved registry state alone cannot resume login. The public dashboard shell mounts profile HTTP surfaces before selection; ordinary dashboard resources require the resulting server-issued selected session. Details creates only a private sign-up draft and limited onboarding cookie. Duo and Ready remain unpublished; explicit Finish requires both verified methods and stores an immutable completion witness with the ready registration, then consumes the private operation. Stopped machine-control format conversion preserves historical registry, verifier, protected credentials, database and profile identities. Every planned, upgraded, current or recovered result reports `runtimeAccess: onboarding-incomplete` when any profile lacks completion proof; otherwise it reports `unchanged`. Format conversion does not grant ordinary runtime or login authority. Profiles missing historical completion remain unavailable to ordinary login.
-
-Stopped control credential inventory uses the same registered derived admission for credential attestation. That admission privately retains its exact original opaque inventory claim. Its gateway checks the registered receiver, existing stopped-control inventory purpose, exact claim identity and current liveness before invoking the original private claim validator or inspecting protected keys. A structural claim, a distinct genuine claim for the same profile, a wrong-purpose admission or a released receiver cannot substitute. Credential storage reaches this validator through the admission, keeping its installation dependency type-only without introducing another issuer.
-
-An already-open authority database retains storage custody for accepted drain and UNKNOWN settlement. Its physical binding and parent liveness still revalidate. Current runtime issue authority gates fresh opens; selected-session producers must separately reject new ordinary work after revocation through retained handles. Production composition must bind that distinction before profiles are mounted; a global readiness check on all database reads and transactions would also prevent accepted terminal observations.
-
-The selected storage composition captures the authenticated profile and session generation from machine control, opens that child's exact canonical database, and uses its actual protected store for command identity ownership. An inspection open without that store refuses command ownership checks with `CREDENTIAL_CONTEXT_REQUIRED`; it never creates a local-journal substitute. Lazy Settings reads preserve existing active identity and report saved-only changes as restart-required. Only an absent first-boot active record is initialized.
+Admission identity has one owner in `storage/admission/admission-identity.ts`; only the token-protected `RuntimeAdmission` constructor registers identities. Profile children depend on genuine installation custody and actual captured person/session epoch. Ordinary mutation transactions admit current selection and session epoch before BEGIN and revalidate that same owner before COMMIT. Open-database liveness checks retain cleanup and inspection custody after revocation; they do not refresh stale effect authority. Setup remains bound to its exact current Signup2 operation. Publishing Finish permits only its existing exact publication-read callback, not ordinary setup credential access. Flat runtime callers remain refused.
 
 Fresh machine initialization creates the fixed private process-lock directory before publishing its installation locator. The dashboard validates that directory before profile composition. An existing installation with a missing, symlinked, wrongly owned or non-private directory refuses without recreation or permission changes.
 
-Worker bootstrap acquires machine admission, captures durable selection, and takes exact profile-database process custody before issuing a child or opening SQLite. Ordinary worker admission, claims, protected reads and browser acquisition revalidate that selection. Failed admission closes SQLite and releases child custody before its process record. Unproved closure propagates `RUNTIME_CUSTODY_UNCERTAIN`, retaining parent admission and remaining process custody. Profile runtime composition retains one ordinary/settlement resource entry, schedules actual account and canonical resource closure through session activity, and closes SQLite before child release after erasure inventory. Closing synchronously refuses new ordinary work. Dashboard shutdown and startup unwind drain their transport, timers and notification observer before account closure and strict credential inventory. Failed producer closure prevents source closure and retains custody. Dashboard startup binds its actual supervisor once at the construction boundary. With a configured supervisor, a stopped historical worker can close without in-memory child evidence only when exact lifetime authentication proves its original process is gone and its process claim is released, and native release checks pass. A released claim on a live process still refuses closure. Public profile mounting, complete supported inventory coverage and actual process/browser closure acceptance remain required.
+Worker bootstrap acquires genuine machine admission, captures selection and takes exact profile-database process custody before issuing a child or opening SQLite. Protected access, worker effects and browser actions repeat current-owner checks. Unproved closure propagates retained `RUNTIME_CUSTODY_UNCERTAIN`; actual child CLOSE, not only exit or a closed browser context, controls native release.
 
-A stopped cancelling profile uses a privately issued pending-logout inventory child, bound to its exact current operation, registry generation, parent lease and physical source. Its canonical database binding is parsed once from a descriptor-isolated snapshot retained only for that child. Every liveness check revalidates the exact unchanged main, WAL, SHM and journal identities and absences, plus current parent and operation custody; any change permanently revokes that child. Native resource inventories still take fresh strict snapshots. Disposal precedes child and parent release, and a failed snapshot cleanup retains custody. It admits descriptor-isolated inspection of canonical copies before an erasure CAS exists; it cannot grant ordinary credential reads, database writes, artifacts, workers or selection. The constructor-owned credential inventory authenticates key, external head and all recognized ciphertext copies before assessment, with complete profile and process-root membership revalidation. Cold closure requires terminal runs and closed leases, browsers, controls and write custody. A matching late erasure observes only its original request and pending publication head; incomplete capture remains a refusal when surviving copies cannot be certified.
+Logout retains all three canonical records and native key. Its current operation records original session epoch and source identity captured by the already-opened native database owner before cancellation or selection revocation. Actual durable cancellation requests precede logout intent. The exact metadata prefixes normalize selection clear and cancelling state; stale epochs, another person or substituted source refuse. After child/account/native-database closure, the controller owns one stopped settlement operation. Its prepared→commit-intent→done evidence captures requests/time/IDs once and brackets one native SQL transaction with exact before/after images. Recovery reuses existing canonical receipts and preserves UNKNOWN fences; any third image holds. Native writer close precedes ready-row publication and operation removal. Stopped inspection copies come only from the fixed-source snapshot factory; generic copy delegation is refused. No credentials are erased or restored by logout.
 
-Logout inventory certifies independent backup and credential-stage copies only when both canonical UCPath identity and password were available for capture before that erase. When a prior erase leaves capture incomplete, even a clean-shaped existing copy remains uncertain; repeated resumes and restart cannot publish wiped until those copies are absent. No captured plaintext is persisted. Credential copy scans use the exact authenticated source-schema table registry for verified stopped backups, including supported pre-assistant copies. Their native schema, metadata, digest and physical custody must validate before scanning; ordinary runtime admission remains current-schema-only. Noncurrent bound backups from schemas 7–10 require one exact settled upgrade receipt. Its recorded destination must be supported, newer than that source and no newer than the current schema. Verification derives the immutable plan for that actual source and recorded destination, including retained 7→8, 7→9 and 8→9 proofs; it never relabels historical receipts as current upgrades. Each copy requires its authenticated profile/installation binding, exact source bytes and matching receipt. Full stopped-process, resource and copy custody remains required before and after inventory; missing, duplicate, foreign or mismatched evidence refuses. Historical receipts and backup bytes remain unchanged. Schema7 archival inspection grants no ordinary runtime, credential write or READY schema7 upgrade authority; the generic pending-setup conversion remains separate. Unbound schema1–6 backups retain a named binding refusal. Path identity alone never assigns them to a profile.
+Cold continuation requires an immutable pending-operation/source observation captured during genuine one-shot native startup. A second composition on the same live controller cannot manufacture that fact. After new-controller closure proofs, readonly source snapshots and the same stopped settlement protocol handle exact metadata/SQL prefixes. Old ordinary handles remain revoked; stopped access grants no general epoch bypass or credential effects.
 
 Settled worker reservation IDs retain allocation provenance. Closure authenticates the exact origin,
 revision and canonical retirement command. Remove-worker retirement requires
@@ -781,9 +552,7 @@ revision and canonical retirement command. Remove-worker retirement requires
 plan-excess retirement requires `retiredAt == proof.checkedAt`. Pending or UNKNOWN commands and
 verification or recovery holds continue to block closure.
 
-Profile erasure publishes its canonical journal transition through the existing installation control publication intent. Control retains a typed head and verified registration origin for every registered profile; missing, substituted or rolled-back journal/anchor evidence blocks protected availability. Only the actual credential owner can issue the value-free capture and exact erase-intent witness. Interrupted erasure retains its original command/write/receipt and permits only authenticated settlement; ordinary reads and writes cannot treat the pending transition as available.
-
-Offline profile restore requires the exact workspace-bound `OfflineMaintenanceOperation` issued by the genuine root lifetime. Recovery can issue that operation before admission and passes the same object into the exclusive installation lease. Each explicit command consumes it once and retains it through validation, source IO, and owned closure. Copies, foreign roots, expired operations, and replay refuse before effects. Runtime lock artifacts from an older build produce `RUNTIME_OLD_BUILD_ARTIFACTS` without interpretation or deletion. Restore binds canonical profile SQLite, verified backup physical origin, current control, and the external erasure head. Replacement invalidates selected sessions idempotently through the existing restore journal. Its saved prior registry document must match captured logical control, and its saved successor must be exactly one revision and session epoch forward with selection cleared before any replay writes. Recovery acknowledges the exact observed outcome without repeating replacement. Current credentials and machine evidence remain outside the SQLite payload. Whole-machine rollback without an independent retained witness and profile restore after unsupported whole-machine relocation refuse before staging.
+Offline profile restore requires the exact workspace-bound `OfflineMaintenanceOperation` issued by the genuine root lifetime. Recovery can issue that operation before admission and passes the same object into the exclusive installation lease. Each explicit command consumes it once and retains it through validation, source IO, and owned closure. Copies, foreign roots, expired operations, and replay refuse before effects. Runtime lock artifacts from an older build produce `RUNTIME_OLD_BUILD_ARTIFACTS` without interpretation or deletion. Restore binds canonical profile SQLite, verified backup physical origin, current control, and the authenticated canonical credential head. Replacement invalidates selected sessions idempotently through the existing restore journal. Its saved prior registry document must match captured logical control, and its saved successor must be exactly one revision and session epoch forward with selection cleared before any replay writes. Recovery acknowledges the exact observed outcome without repeating replacement. Current credentials and machine evidence remain outside the SQLite payload. Whole-machine rollback without an independent retained witness and profile restore after unsupported whole-machine relocation refuse before staging.
 
 Source snapshot removal, isolated binding/login-copy database close, authenticated source/control descriptors, stopped backup descriptors and actual restore/process-custody close paths are owned closure boundaries. Failed closure raises `AuthoritySourceClosureUnprovedError` from the pure `storage/source-closure.ts` and retains the exact failed resource privately for the failure lifetime. Validation failures remain ordinary when actual database and snapshot cleanup succeeds; an uncertain close never authorizes exclusive-admission release or automatic retry.
 

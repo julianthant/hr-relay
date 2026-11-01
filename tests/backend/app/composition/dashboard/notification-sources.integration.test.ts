@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import { createNotificationCompositionTestWorld } from "../../../../support/helpers/backend/notification-composition-world.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
 import { afterAll, describe, expect, it } from "vitest";
@@ -13,7 +13,7 @@ import { cleanReceiptOf, failureRecordOf, runRecordOf } from "../../../../suppor
 import { personLookupDescriptor } from "../../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const { fixture, seedRun } = createNotificationCompositionTestWorld(profileFixtures.create);

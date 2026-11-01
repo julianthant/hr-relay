@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import { foreignOriginCases, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 
 import assert from "node:assert/strict";
@@ -12,7 +12,7 @@ import { INTAKE_FIXTURE_WORKFLOW_ID, intakeFixtureDescriptor, intakeFixtureProje
 import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { createHash } from "node:crypto";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {

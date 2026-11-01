@@ -1,3 +1,4 @@
+import { RunClaimTokenSchema } from "../../../models/run/worker.js";
 import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
 
 
@@ -55,13 +56,6 @@ import {
   FailureTerminalizationRequestSchema,
   SuccessTerminalizationRequestSchema,
 } from "./run-terminal-contracts.js";
-
-/** Proof that the caller still owns the row it is about to change. */
-export const RunClaimTokenSchema = z.strictObject({
-  workerId: WorkerIdSchema,
-  claimGeneration: PositiveIntSchema,
-});
-export type RunClaimToken = z.infer<typeof RunClaimTokenSchema>;
 
 export { WorkerClaimLifetimeSchema } from "../../../models/run/worker.js";
 
@@ -415,12 +409,6 @@ export const WorkerStandingRecoveryRequestSchema = z.strictObject({
   now: IsoInstantSchema,
 }).refine(value => value.commandId === value.binding.commandId
   && value.binding.operation.kind === "retry" && value.binding.operation.mode === "browserless", "worker-standing-recovery-binding-invalid");
-
-export const CanonicalCrashRecoveryRequestSchema = z.strictObject({
-  commandId: CommandIdSchema, runId: RunIdSchema, expectedVersion: PositiveIntSchema, claim: RunClaimTokenSchema,
-  workerLifetime: WorkerClaimLifetimeSchema,
-  now: IsoInstantSchema,
-});
 
 export const WorkerStartRequestSchema = z.strictObject({
   commandId: CommandIdSchema.optional(),

@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createNotificationBackfillTestWorld } from "../../../support/helpers/backend/notification-backfill-world.js";
 import assert from "node:assert/strict";
 import { afterAll, afterEach, describe, it } from "vitest";
@@ -6,7 +6,7 @@ import { createBackfillGapNotifier } from "../../../../src/backend/runs/notifica
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const {world, cleanup } = createNotificationBackfillTestWorld(profileFixtures.create);

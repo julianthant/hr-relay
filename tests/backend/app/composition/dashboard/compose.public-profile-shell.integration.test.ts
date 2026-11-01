@@ -200,7 +200,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     const request = { requestId: randomUUID(), credentialId: "Zml4dHVyZS1zb2Z0d2FyZS1rZXk", origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" as const, challenge: "AQID" };
     const assertion = await keyCapture.capability.signAssertion(request);
     assert.ok(assertion.signCount > 0);
-    await assert.rejects(keyCapture.capability.signAssertion(request), /duo-attempt-reused/u);
+    await assert.rejects(keyCapture.capability.signAssertion(request), { code: "DUO_CREDENTIAL_CONFLICT" });
     const touch = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/onboarding/duo/start", { operationId: draft.operationId, method: "touch" }, draftCookie)).json());
     if (touch.state !== "onboarding" || touch.methods.touch.attemptId === undefined) throw new Error("fixture touch draft required");
     assert.equal(closedAttempts, 1);
@@ -227,10 +227,15 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie, origin: "http://foreign.invalid" } })).status, 401);
     assert.equal((await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).status, 200);
     assert.equal(existsSync(join(f.machine.stateRoot, "profiles", active.profileId, "state.db")), true);
+    const profileRoot = join(f.machine.stateRoot, "profiles", active.profileId);
+    const credentialPaths = [join(profileRoot, "credentials", "protected.json"), join(profileRoot, "credentials", "chatgpt-account.json"),
+      join(f.machine.stateRoot, "machine", "duo-credentials", `${active.profileId}.json`), join(f.machine.stateRoot, "machine", "credential-keys", `${active.profileId}.json`)];
+    const retainedCredentials = credentialPaths.map(path => createHash("sha256").update(readFileSync(path)).digest("hex"));
     const logout = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/logout", {}, cookie)).json());
     assert.deepEqual(logout, { state: "signed-out" });
     assert.equal(f.machine.readProfileRegistry().activeProfileId, null);
-    assert.equal(f.machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.credentialState, "wiped");
+    assert.equal(f.machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.credentialState, "saved");
+    assert.deepEqual(credentialPaths.map(path => createHash("sha256").update(readFileSync(path)).digest("hex")), retainedCredentials);
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie } })).status, 401);
     const login = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
     const restored = PublicProfileStateSchema.parse(await login.json()); assert.equal(restored.state, "active");

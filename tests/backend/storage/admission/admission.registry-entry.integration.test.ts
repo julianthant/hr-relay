@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { it } from "vitest";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireInstallation } from "../../../../src/backend/storage/admission/installation.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { AuthorityDatabase, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
 it("keeps registry entry admission freshness and scope refusal precedence", async () => {
   const profile = await createBoundProfileFixture({ sharedMachine: true });
@@ -82,8 +82,11 @@ it("keeps logical operation membership and content fences after closed byte-iden
   const f = await createBoundProfileFixture({ sharedMachine: true });
   try {
     const operationId = randomUUID(), root = f.machine.stateRoot;
-    const operation = LogoutOperationSchema.parse({ schemaVersion: 1, kind: "logout", operationId,
-      profileId: f.admission.profileBinding.profileId, at: "2026-11-01T00:00:00.000Z", phase: "complete" });
+    const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 1000 });
+    let source: ReturnType<typeof database.capturePendingLogoutSource>;
+    try { source = database.capturePendingLogoutSource(); } finally { database.close(); }
+    const operation = LogoutOperationSchema.parse({ schemaVersion: 2, kind: "logout", operationId,
+      profileId: f.admission.profileBinding.profileId, sessionGeneration: f.machine.readProfileRegistry().sessionGeneration, source, at: "2026-11-01T00:00:00.000Z", phase: "complete" });
     f.machine.publishProfileOperation(operation);
     const path = join(root, "machine", "operations", `${operationId}.json`), bytes = readFileSync(path);
     f.admission.release(); f.machine.release();

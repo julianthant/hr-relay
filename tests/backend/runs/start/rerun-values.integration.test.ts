@@ -9,7 +9,7 @@ import { RunSessionRecordSchema } from "../../../../src/models/run/session.js";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { afterAll,afterEach,describe,it } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values.js";
 import { buildRerunPlan, previewRerunWarnings, RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
@@ -28,7 +28,7 @@ import { protectedSecretSource } from "../../../support/helpers/protected-secret
 import { RerunValuesResponseSchema } from "../../../../src/models/dashboard/rerun-values.js";
 
 const disposers: (() => void | Promise<void>)[] = [];
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose(); });
 afterAll(() => profiles.close());
 function launchHarness(...args: Parameters<typeof createLaunchHarness>) {

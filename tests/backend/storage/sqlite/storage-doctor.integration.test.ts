@@ -24,14 +24,14 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
-import { createBoundProfileFixture, createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase as AuthorityDatabase_m2, composeStorageCommand, doctorAuthorityStorage as doctorAuthorityStorage_m2, syntheticStateRoot } from "../../../support/helpers/synthetic-storage-admission.js";
 
 import { UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 import { AuthorityBackupService, summarizeBackupHealth as summarizeBackupHealth_m3 } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const diagnosticProfiles = createClonedProfileFixtures();
+const diagnosticProfiles = createProfileFixtureSet();
 afterAll(() => diagnosticProfiles.close());
 
 

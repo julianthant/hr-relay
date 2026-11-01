@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { checkParkedWrite } from "../../../../src/backend/runtime/writes/write-recovery.js";
 import { WorkerSessionClosureUnprovedError, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
@@ -29,7 +29,7 @@ import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../support/f
 import { UUID_5, UUID_6, UUID_7, UUID_8 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { WRITE_FIXTURE_NOW, WRITE_FIXTURE_FINGERPRINT, WRITE_FIXTURE_OBSERVATION, WRITE_FIXTURE_STAGED_STATE, writeFixtureQueuedRun } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const NOW = WRITE_FIXTURE_NOW;

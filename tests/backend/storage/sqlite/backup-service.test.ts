@@ -38,7 +38,6 @@ async function fixture() {
   const bound = await createBoundProfileFixture();
   const { workspace, path } = bound, root = bound.stateRoot;
   let admission = bound.admission;
-  const profileId = admission.profileBinding.profileId;
   let credentials = boundProfileCredentials(admission);
   const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-backup" }, undefined, undefined, undefined, undefined, credentials);
   cleanups.push(async () => { database.close(); admission.release(); await bound.close(); });
@@ -51,8 +50,8 @@ async function fixture() {
     renewAfterRestore() {
       admission.release();
       admission = bound.renewAfterRestore().admission;
-      credentials = createCredentialStore({ admission, stateRoot: root, erasureJournalAdmission: bound.machine,
-        erasureJournalPath: join(bound.machine.stateRoot, "machine", "erasures", `${profileId}.json`) });
+      credentials = createCredentialStore({ admission, stateRoot: root,
+        });
     }, database, directory, clock, service, configSnapshot };
 }
 describe("native authority backup", () => {

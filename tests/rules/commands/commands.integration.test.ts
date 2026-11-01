@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it, onTestFinished } from "vitest";
-import { createClonedProfileFixtures } from "../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../support/helpers/admission-fixture.js";
 import { createSettingsAuthorityTestWorld } from "../../support/helpers/backend/settings-authority-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -30,7 +30,7 @@ import { failure, foundationFixture, HASH, id, NOW as FOUNDATION_NOW, terminaliz
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 {

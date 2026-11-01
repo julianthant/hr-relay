@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import { dryRunScenarioResultRecords } from "../../../support/helpers/dry-run-scenario-fixtures.js";
 import { default as assert } from "node:assert/strict";
@@ -83,7 +83,7 @@ describe("evidence receipt repository", () => {
 
 const NOW = "2026-08-25T12:00:00.000Z";
 const HASH = "a".repeat(64);
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 const heldProfiles: BoundProfileStorageFixture[] = [];
 afterAll(() => profiles.close());
 const { STARTED_MET_RESULT, NOT_STARTED_BLOCKED_RESULT } = dryRunScenarioResultRecords(HASH, NOW);

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it, vi } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { launchDescriptor } from "../../../support/fixtures/run-launch-fixtures.js";
 import { createMountedRerunWorld } from "../../../support/helpers/dashboard/mounted-rerun-world.js";
 // @vitest-environment jsdom
@@ -12,7 +12,7 @@ import { absentProbeEvidence } from "../../../support/fixtures/write-sequencer-f
 import { createPlSeparationsReadinessWorld } from "../../../support/helpers/dashboard/pl-separations-readiness-world.js";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const { setup, text, button, press, checkbox, field, fill, mount, cleanup } = createMountedRerunWorld(profileFixtures.create);

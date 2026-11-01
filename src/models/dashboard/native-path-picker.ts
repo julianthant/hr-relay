@@ -8,7 +8,6 @@ export const NativePathFieldSchema = z.enum([
   "paths.reportsDir",
   "paths.downloadsDir",
   "paths.onboardingDocsDir",
-  "paths.duoCredential",
   "paths.i9CheckTrackerPath",
 ]);
 

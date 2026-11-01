@@ -1,4 +1,4 @@
-import { AuthorityDatabase, createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { AuthorityDatabase, createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { NOTIFICATION } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -76,7 +76,7 @@ describe("native imported-artifact contracts", () => {
 });
 
 it("clones seeded profile state without sharing writes or a live canonical path", async () => {
-  const fixtures = createClonedProfileFixtures();
+  const fixtures = createProfileFixtureSet();
   const held: BoundProfileStorageFixture[] = [];
   const databases: AuthorityDatabase[] = [];
   try {
@@ -108,7 +108,7 @@ it("clones seeded profile state without sharing writes or a live canonical path"
 });
 
 it("refuses a cross-device clone before deleting the previous profile", async () => {
-  const fixtures = createClonedProfileFixtures();
+  const fixtures = createProfileFixtureSet();
   const first = await fixtures.create();
   const inode = lstatSync(first.path).ino;
   await first.close();

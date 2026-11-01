@@ -376,7 +376,7 @@ export function inventoryFileIdentity(path: string) {
     mode: info.mode, modified: info.mtimeMs, changed: info.ctimeMs };
 }
 
-export function enumerateProfileCredentialMembership<Custody extends CredentialMembershipCustody>(admission: RuntimeAdmission, custody: Custody, savedBrowserRoot: string, browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>) {
+export function enumerateProfileCredentialMembership<Custody extends CredentialMembershipCustody>(admission: RuntimeAdmission, custody: Custody, savedBrowserRoot: string, browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>, ownedCredentialStages: readonly string[] = []) {
   admission.assertLive();
   const root = admission.stateRoot, flat = admission.profileMaintenanceSchemaVersion() === 6;
   if (admission.artifactRoot !== join(root, "artifacts")) throw new Error("profile-inventory-artifact-root-unavailable");
@@ -384,7 +384,7 @@ export function enumerateProfileCredentialMembership<Custody extends CredentialM
   const suspects = restores.flatMap(row => [{ path: join(root, row.suspect.relativePath), sha256: row.suspect.file.sha256,
     companion: false }, ...row.companions.map(companion => ({ path: `${join(root, row.suspect.relativePath)}${companion.suffix}`,
       sha256: companion.file.sha256, companion: true }))]);
-  return enumerateCredentialMembership(root, flat, custody, savedBrowserRoot, path => admission.assertStateRoot(path), suspects, browserClosure, ownedWriter);
+  return enumerateCredentialMembership(root, flat, custody, savedBrowserRoot, path => admission.assertStateRoot(path), suspects, browserClosure, ownedWriter, ownedCredentialStages);
 }
 
 export function enumerateFlatBackupRecoveryMembership<Custody extends CredentialMembershipCustody>(root: string, custody: Custody, browserClosure: ProfileBrowserClosure) {
@@ -396,7 +396,7 @@ export function enumerateFlatBackupRecoveryMembership<Custody extends Credential
 function enumerateCredentialMembership<Custody extends CredentialMembershipCustody>(root: string, flat: boolean, custody: Custody,
   savedBrowserRoot: string, assertPath: (path: string) => void,
   suspects: readonly Readonly<{ path: string; sha256: string; companion: boolean }>[],
-  browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>) {
+  browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>, ownedCredentialStages: readonly string[] = []) {
     const profiles = retainedBrowserProfiles(root, custody, savedBrowserRoot, browserClosure);
     const browserRootPaths = [...new Set([...configuredBrowserRoots(root, custody, savedBrowserRoot), ...profiles.map(profile => profile.profileRoot)])];
     for (const path of browserRootPaths) assertPath(path);
@@ -435,6 +435,7 @@ function enumerateCredentialMembership<Custody extends CredentialMembershipCusto
       }
       if (top.startsWith("state.db")) { if (parts.length !== 1) throw new Error("profile-inventory-unowned-entry"); return; }
       if (top === "credentials") {
+        if (ownedCredentialStages.includes(path)) return;
         if (parts.length === 2 && parts[1] === ".protected.lock" && ownedWriter !== undefined) {
           const file = readPrivateFile(path, { label: "lock", maxBytes: 4096 });
           if (file === undefined) throw new Error("credential-maintenance-writer-required");

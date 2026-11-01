@@ -1,3 +1,4 @@
+import { assertSourceClosuresProved, rememberUnprovedSourceClosure } from "../source-closure.js";
 import { realpathSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
@@ -100,6 +101,7 @@ export function assertOfflineMaintenanceOperation(operation: OfflineMaintenanceO
 
 export class RuntimeLifetimeLock {
   readonly #server: Server;
+  readonly #sourceFailures = new Set<unknown>();
   #closing: Promise<void> | undefined;
   readonly #port: number;
   readonly #children = new Set<ChildProcess>();
@@ -109,6 +111,7 @@ export class RuntimeLifetimeLock {
   #startup: "initializing" | "ready" | "failed" | undefined;
   private constructor(server: Server, port: number) { this.#server = server; this.#port = port; }
   get port(): number { return this.#port; }
+  retainSourceClosure(error: unknown): void { rememberUnprovedSourceClosure(this.#sourceFailures, error); }
 
   static async acquire(this: void, port: number): Promise<RuntimeLifetimeLock> {
     z.number().int().nonnegative().max(65535).parse(port);
@@ -133,7 +136,7 @@ export class RuntimeLifetimeLock {
   }
 
   assertRuntimeAvailable(): void {
-    this.assertHeld();
+    this.assertHeld(); assertSourceClosuresProved(this.#sourceFailures);
     if (this.#closing !== undefined) throw new RuntimeLifetimeLockReleasedError();
     if (this.#exclusiveOperation !== undefined) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-busy");
   }
@@ -162,7 +165,7 @@ export class RuntimeLifetimeLock {
       if (completed !== undefined) throw new Error("runtime-lifetime-startup-must-be-synchronous");
       this.assertHeld(); this.#startup = "ready";
     }
-    catch (error) { this.#startup = "failed"; throw error; }
+    catch (error) { this.retainSourceClosure(error); this.#startup = "failed"; throw error; }
   }
 
   assertWorkspace(workspace: string): void {
@@ -201,6 +204,7 @@ export class RuntimeLifetimeLock {
   }
 
   beginOfflineMaintenance(workspace: string): OfflineMaintenanceOperation {
+    assertSourceClosuresProved(this.#sourceFailures);
     this.assertExclusiveWorkspaceTarget(workspace);
     if (this.#exclusiveOperation !== undefined) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-busy");
     let finish: () => void = () => { throw new Error("offline-maintenance-completion-unissued"); };
@@ -215,7 +219,7 @@ export class RuntimeLifetimeLock {
   }
 
   assertOfflineMaintenance(operation: OfflineMaintenanceOperation, workspace: string): void {
-    this.assertHeld();
+    this.assertHeld(); assertSourceClosuresProved(this.#sourceFailures);
     if (this.#workspace !== workspace || this.#exclusiveOperation?.operation !== operation
       || !StoppedMaintenance.ownedBy(operation, this, workspace)) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-unissued");
     if (this.#children.size !== 0) throw new Error("runtime-lifetime-owned-children-unclosed");
@@ -227,7 +231,7 @@ export class RuntimeLifetimeLock {
   }
 
   share(child: ChildProcess): Promise<void> {
-    this.assertHeld();
+    this.assertHeld(); assertSourceClosuresProved(this.#sourceFailures);
     if (this.#closing !== undefined) throw new Error("runtime-lifetime-closing");
     if (this.#startup !== "ready" || this.#workspace === undefined) throw new Error("runtime-lifetime-workspace-unproved");
     if (this.#exclusiveAdmission || this.#exclusiveOperation !== undefined) throw new Error("runtime-lifetime-exclusive-lease-held");
@@ -242,17 +246,28 @@ export class RuntimeLifetimeLock {
     });
   }
 
+  async awaitOwnedChildrenClosed(): Promise<void> {
+    this.assertHeld(); assertSourceClosuresProved(this.#sourceFailures);
+    while (this.#children.size !== 0) await Promise.all([...this.#children].map(child => new Promise<void>(resolve => { child.once("close", () => resolve()); })));
+    this.assertHeld(); assertSourceClosuresProved(this.#sourceFailures);
+  }
+
   close(): Promise<void> {
+    try { assertSourceClosuresProved(this.#sourceFailures); } catch (error) { return Promise.reject(error instanceof Error ? error : new Error("runtime source closure unproved", { cause: error })); }
     return this.#closing ??= (async () => {
       if (this.#exclusiveOperation !== undefined) await this.#exclusiveOperation.completion;
-      if (this.#children.size !== 0) await Promise.all([...this.#children].map(child => new Promise<void>(resolve => { child.once("close", () => resolve()); })));
+      assertSourceClosuresProved(this.#sourceFailures);
+      await this.awaitOwnedChildrenClosed();
+      assertSourceClosuresProved(this.#sourceFailures);
       await closeListener(this.#server);
+      assertSourceClosuresProved(this.#sourceFailures);
     })();
   }
 }
 
 export class WorkerRuntimeLifetimeLock {
   readonly #server: Server;
+  readonly #sourceFailures = new Set<unknown>();
   readonly #disconnected: () => void;
   #closing: Promise<void> | undefined;
   readonly #port: number;
@@ -261,6 +276,7 @@ export class WorkerRuntimeLifetimeLock {
     this.#server = server; this.#port = port; this.#workspace = workspace; this.#disconnected = disconnected;
   }
   get port(): number { return this.#port; }
+  retainSourceClosure(error: unknown): void { rememberUnprovedSourceClosure(this.#sourceFailures, error); }
 
   static receive(this: void, port: number, onDisconnect: () => void): Promise<WorkerRuntimeLifetimeLock> {
     z.number().int().positive().max(65535).parse(port);
@@ -307,7 +323,7 @@ export class WorkerRuntimeLifetimeLock {
   }
 
   assertRuntimeAvailable(): void {
-    this.assertHeld();
+    this.assertHeld(); assertSourceClosuresProved(this.#sourceFailures);
     if (!process.connected || this.#closing !== undefined) throw new RuntimeLifetimeLockReleasedError();
   }
 
@@ -317,11 +333,13 @@ export class WorkerRuntimeLifetimeLock {
   }
 
   close(): Promise<void> {
-    if (this.#closing === undefined) {
+    try { assertSourceClosuresProved(this.#sourceFailures); } catch (error) { return Promise.reject(error instanceof Error ? error : new Error("runtime source closure unproved", { cause: error })); }
+    return this.#closing ??= (async () => {
+      assertSourceClosuresProved(this.#sourceFailures);
       process.removeListener("disconnect", this.#disconnected);
-      this.#closing = closeListener(this.#server);
-    }
-    return this.#closing;
+      await closeListener(this.#server);
+      assertSourceClosuresProved(this.#sourceFailures);
+    })();
   }
 }
 

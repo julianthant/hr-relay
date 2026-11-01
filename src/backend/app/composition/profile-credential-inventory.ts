@@ -1,29 +1,30 @@
-import { z } from "zod";
+
+import { inspectStoppedCanonicalConversion } from "../../storage/configuration/canonical-credential-store.js";
+import { prepareStoppedCredentialConversion, releaseStoppedCredentialConversion, type StoppedCredentialCopyInspection } from "../../storage/configuration/credential-conversion.js";
+import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
 import { profileBrowserClosure } from "../../runtime/browser/native-profile-probe.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
-import { assertRetainedProfileBrowserRoot, inventoryFileIdentity, enumerateProfileCredentialMembership, credentialCopyProcessCustody, assertCredentialCopyResourcesClosed, assertRetainedBrowsersClosed, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
-import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, migrationTableNames, deriveAuthorityUpgradePlanDigest } from "../../storage/sqlite/migrations.js";
+import { assertRetainedProfileBrowserRoot, inventoryFileIdentity, enumerateProfileCredentialMembership, assertCredentialCopyResourcesClosed, assertRetainedBrowsersClosed, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
+
+import { migrationTableNames } from "../../storage/sqlite/migrations.js";
 import { readEmergencyFaults } from "../../logs/emergency-faults.js";
-import { type CredentialInitializationCopyInspection, isOwnedDraftAbortSource, inspectCredentialKeyCopy, inspectCredentialCopy, assertCredentialStoreOwner, readForErasure, attestStoppedControlCredentials, releaseStoppedControlCredentialAttestation } from "../../storage/configuration/credential-store.js";
-import type { CredentialEraseInput, CredentialStore } from "../../../models/config/credential-store.js";
+
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
-import type { SignUpOperation, LogoutOperation } from "../../../models/profiles/profile.js";
+
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { createHash } from "node:crypto";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
 import { readSettings } from "../../runtime/settings/settings-runtime.js";
-import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readSync, type Stats } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, type Stats } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { assessCredentialInventory, countProfileCredentialLoginRows, type CredentialInventory } from "../../profiles/credential-inventory.js";
+import { countProfileCredentialLoginRows } from "../../profiles/credential-inventory.js";
 import { verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../storage/sqlite/backup-service.js";
 import { withAuthorityDatabaseReadOnly } from "../../storage/sqlite/readonly-authority-snapshot.js";
-import { inspectRuntimeProcessOrphans, readRuntimeProcessLock } from "../../storage/sqlite/runtime-process-locks.js";
+
 import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
-import { DuoDocumentEnvelopeSchema } from "../../../models/config/duo-credential-store.js";
-import { readPrivateFile } from "../../storage/configuration/credential-safe-file.js";
-import { readProfilePublicationRegistry, requireStoppedControlProfileInventory, type ProfilePublicationRead, type StoppedControlProfileInventory } from "../../storage/admission/installation.js";
+
+import { requireStoppedControlProfileInventory, type StoppedControlProfileInventory } from "../../storage/admission/installation.js";
 import { RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -80,7 +81,7 @@ export function scanProfileCredentialCopy(path: string, capturedSecrets: readonl
     if (opened.dev !== before.device || opened.ino !== before.inode || opened.size !== before.size) throw new Error("profile-inventory-file-changed");
     const digest = createHash("sha256"), chunk = Buffer.alloc(64 * 1024);
     const overlap = Math.max(privateKeyScan?.keyScanOverlap ?? 0, ...secrets.map(secret => secret.length - 1));
-    if (overlap > 64 * 1024) throw new Error("profile-inventory-secret-size-invalid");
+    if (overlap > 128 * 1024) throw new Error("profile-inventory-secret-size-invalid");
     let tail = Buffer.alloc(0), containsSecret = false, count = 0;
     for (;;) {
       const size = readSync(fd, chunk, 0, chunk.length, null);
@@ -100,15 +101,10 @@ export function scanProfileCredentialCopy(path: string, capturedSecrets: readonl
 
 
 type CredentialMaintenancePurpose = Readonly<{ kind: "ordinary" }> | Readonly<{ kind: "stopped-control"; claim: StoppedControlProfileInventory }>;
-function observeStoppedControlProcessCustody(claim: StoppedControlProfileInventory) {
-  const issued = requireStoppedControlProfileInventory(claim);
-  issued.revalidateSource();
-  return { binding: issued.binding, locator: issued.locator };
-}
 
 function assessProfileCredentialCopies(admission: RuntimeAdmission, before: ReturnType<typeof enumerateProfileCredentialMembership>,
   backups: readonly Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[], fields: Readonly<{ capturedSecrets: readonly string[];
-    abortSource?: CredentialInitializationCopyInspection["abortSource"]; capturedSecretsComplete: boolean; containsKey(value: unknown): boolean; readonly keyScanOverlap: number; inspectEncrypted(path: string): Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> }>,
+    capturedSecretsComplete: boolean; containsKey(value: unknown): boolean; readonly keyScanOverlap: number; inspectEncrypted(path: string): Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> }>,
   purpose: CredentialMaintenancePurpose) {
   const root = admission.stateRoot, backupPlaintext: string[] = [], unknownFormats = [...before.unsupported];
   if (purpose.kind === "stopped-control") {
@@ -116,7 +112,6 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
     if (issued.binding.profileId !== admission.profileBinding.profileId || issued.stateRoot !== root) throw new Error("profile-control-upgrade-inventory-owner-mismatch");
   }
       for (const path of [...before.copies, ...before.backupPaths]) {
-        if (isOwnedDraftAbortSource(fields.abortSource, path, admission)) continue;
         const scanned = scanProfileCredentialCopy(path, fields.capturedSecrets, fields), backup = backups.find(value => value.backupPath === path);
         const suspect = before.suspects.find(value => value.path === path);
         if (backup !== undefined && scanned.digest !== backup.manifest.sha256) throw new Error("profile-inventory-backup-changed");
@@ -188,256 +183,31 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
 
 
 
-function assertCredentialBackupBinding(admission: RuntimeAdmission, backup: Awaited<ReturnType<typeof verifyBackupManifestAtPath>>,
-  upgrades: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>["upgrades"]) {
-  const { manifest } = backup;
-  if (manifest.profileId !== admission.profileBinding.profileId || manifest.installationId !== admission.profileBinding.installationId
-    || manifest.sourceDatabaseIdentity !== AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())) throw new Error("profile-inventory-backup-binding-mismatch");
-  if (manifest.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return;
-  if (manifest.schemaVersion !== 7 && manifest.schemaVersion !== 8 && manifest.schemaVersion !== 9 && manifest.schemaVersion !== 10) throw new Error("profile-inventory-backup-binding-mismatch");
-  const matching = upgrades.filter(record => record.phase !== "baseline" && (record.backup.manifestPath === backup.manifestPath
-    || record.backup.sha256 === manifest.sha256 || record.upgradeId === manifest.authorityContentFingerprint));
-  const record = matching[0];
-  const parsedDestination = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]).safeParse(record?.toSchemaVersion);
-  if (!parsedDestination.success) throw new Error("profile-inventory-backup-upgrade-unproved");
-  const destination = parsedDestination.data;
-  if (destination <= manifest.schemaVersion || destination > CURRENT_AUTHORITY_SCHEMA_VERSION || matching.length !== 1 || record?.phase !== "settled" || record.fromSchemaVersion !== manifest.schemaVersion
-    || record.toSchemaVersion !== destination || record.backup.manifestPath !== backup.manifestPath
-    || record.backup.sha256 !== manifest.sha256 || record.backup.authorityGeneration !== manifest.authorityGeneration
-    || record.upgradeId !== manifest.authorityContentFingerprint
-    || record.planDigest !== deriveAuthorityUpgradePlanDigest(manifest.schemaVersion, manifest.authorityContentFingerprint, destination)) throw new Error("profile-inventory-backup-upgrade-unproved");
-}
-
-function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; hostFacts: HostConfigFacts; clock: Clock }>, owner: CredentialMaintenancePurpose, authorize: () => void,
-  initializationKeyId?: string) {
-  return (writer: Readonly<{ acquisitionId: string; pid: number }> | undefined, copies: CredentialInitializationCopyInspection) => {
-    const { admission } = input;
-    authorize();
-    const authorityWitness = (scope?: ProfilePublicationRead) => owner.kind === "ordinary"
-      ? canonicalJsonStringify(scope === undefined ? input.machine.readProfileRegistry() : readProfilePublicationRegistry(scope))
-      : canonicalJsonStringify({ binding: requireStoppedControlProfileInventory(owner.claim).binding, locator: requireStoppedControlProfileInventory(owner.claim).locator });
-    const registry = authorityWitness();
-    const installation = owner.kind === "ordinary" ? input.machine.readInstallationContext() : admission.readInstallationContext();
-    if (installation === undefined) throw new Error("credential-maintenance-installation-required");
-    const processLockRoot = join(installation.workspace, rebuildRuntimeIsolation.processLockRoot);
-    const assertProcessRoot = () => {
-      if (owner.kind === "ordinary") input.machine.assertFixedProcessLockRoot(installation.workspace, processLockRoot);
-      else requireStoppedControlProfileInventory(owner.claim);
-    };
-    assertProcessRoot();
-    const enumerate = () => {
-      admission.assertLive();
-      assertProcessRoot();
-      const profileRoot = admission.stateRoot;
-      const processCustody = owner.kind === "ordinary" ? credentialCopyProcessCustody(input) : observeStoppedControlProcessCustody(owner.claim);
-      const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
-      assertCredentialCopyResourcesClosed(facts);
-      const settings = facts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
-        : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
-      const savedBrowserRoot = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
-        { stateRoot: profileRoot, artifactRoot: admission.artifactRoot }).config.paths.browserProfileRoot;
-      const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, profileBrowserClosure, writer);
-      const backups = membership.manifests.map(manifest => verifyStoppedBackupManifestAtPath(admission, manifest));
-      if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("credential-maintenance-backup-membership-unproved");
-      const assessment = assessProfileCredentialCopies(admission, membership, backups, copies, owner);
-      if (assessment.backupPlaintext.length > 0 || assessment.unknownFormats.length > 0) throw new Error("credential-maintenance-copy-capture-incomplete");
-      const login = countProfileCredentialLoginRows(membership.loginDataPaths);
-      if (login === "unreadable" || typeof login === "number" && login > 0) throw new Error("credential-maintenance-login-copy-present");
-      const credentialsRoot = join(profileRoot, "credentials");
-      const stable = { ...membership, ...processCustody, identities: membership.identities.filter(entry => entry.path !== credentialsRoot
-        && entry.path !== join(credentialsRoot, "protected.json") && entry.path !== join(credentialsRoot, ".protected.lock")) };
-      return canonicalJsonStringify(stable);
-    };
-    const probeFacts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
-    assertCredentialCopyResourcesClosed(probeFacts);
-    const probeSettings = probeFacts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
-      : probeFacts.settingsAuthority.record.saved?.settings ?? probeFacts.settingsAuthority.record.initialization.settings.settings;
-    const probeConfig = resolveConfigWithProvenance(probeSettings,input.hostFacts,input.clock,
-      {stateRoot:admission.stateRoot,artifactRoot:admission.artifactRoot}).config;
-    assertRetainedBrowsersClosed(admission,probeFacts,probeConfig,profileBrowserClosure);
-    const before = enumerate();
-    const root = admission.stateRoot, binding = admission.profileBinding, profileId = binding.profileId;
-    const duoRoot = owner.kind === "ordinary" ? input.machine.stateRoot : requireStoppedControlProfileInventory(owner.claim).machineRoot;
-    const physicalMembership = (scope?: ProfilePublicationRead): string => {
-      const entries: (ReturnType<typeof inventoryFileIdentity> | { path: string; absent: true })[] = [];
-      const visit = (path: string): void => {
-        if (lstatSync(path, { throwIfNoEntry: false }) === undefined) { entries.push({ path, absent: true }); return; }
-        const entry = inventoryFileIdentity(path); entries.push(entry);
-        if (entry.directory) for (const name of readdirSync(path).sort()) visit(join(path, name));
-      };
-      const duoDocument = join(duoRoot, "machine", "duo-credentials", `${profileId}.json`);
-      const duoBackups = join(duoRoot, "machine", "duo-purpose-backups");
-      for (const path of [root, processLockRoot, duoDocument, duoBackups]) visit(path);
-      if (lstatSync(duoDocument, { throwIfNoEntry: false })?.isFile()) {
-        if (authorityWitness(scope) !== registry) throw new Error("credential-maintenance-inventory-changed");
-        const file = readPrivateFile(duoDocument, { label: "Duo credential", maxBytes: Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 });
-        if (file === undefined) throw new Error("duo-document-required");
-        let envelope: ReturnType<typeof DuoDocumentEnvelopeSchema.parse>;
-        try { envelope = DuoDocumentEnvelopeSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes))); }
-        catch { throw new Error("duo-purpose-plaintext-refused"); }
-        if (envelope.installationId !== binding.installationId || envelope.profileId !== profileId) throw new Error("duo-envelope-binding-mismatch");
-        if (initializationKeyId !== undefined && envelope.keyId !== initializationKeyId) throw Object.assign(
-          new Error("credential-initialization-retained-duo-key-mismatch"), { code: "CREDENTIAL_INITIALIZATION_RETAINED_DUO_KEY_MISMATCH" });
-        if (authorityWitness(scope) !== registry) throw new Error("credential-maintenance-inventory-changed");
-      }
-      return canonicalJsonStringify(entries);
-    };
-    const beforeKeyIntent = physicalMembership();
-    return Object.freeze({ assessCurrent(entriesAbsent: boolean): CredentialInventory {
-      authorize();
-      if (enumerate() !== before) throw new Error("credential-maintenance-inventory-changed");
-      const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
-      const settings = facts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
-        : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
-      const savedBrowserRoot = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
-        { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.paths.browserProfileRoot;
-      const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, profileBrowserClosure, writer);
-      const assessment = assessCredentialInventory({ profileRoot: root, entriesAbsent, inspectEncrypted: path => copies.inspectEncrypted(path),
-        backupPaths: [], loginDataPaths: membership.loginDataPaths, capturedSecrets: copies.capturedSecrets, capturedSecretsComplete: copies.capturedSecretsComplete });
-      if (enumerate() !== before) throw new Error("credential-maintenance-inventory-changed");
-      return assessment;
-    }, revalidateBeforeKeyIntent: (scope?: ProfilePublicationRead) => {
-      if (physicalMembership(scope) !== beforeKeyIntent) throw new Error("credential-maintenance-inventory-changed");
-    }, revalidate: () => {
-      authorize();
-      if (authorityWitness() !== registry || enumerate() !== before) throw new Error("credential-maintenance-inventory-changed");
-      const publicationMembership = physicalMembership();
-      return (scope?: ProfilePublicationRead) => { if (physicalMembership(scope) !== publicationMembership) throw new Error("credential-maintenance-inventory-changed"); };
-    } });
+export function composeProfileClosureInventory(input: Readonly<{ admission: RuntimeAdmission; database: AuthorityDatabase; hostFacts: HostConfigFacts; clock: Clock }>) {
+  const prepare = async (admission: RuntimeAdmission, custody: ReturnType<AuthorityDatabase["readProfileResourceCustody"]> | ReturnType<typeof AuthorityDatabase.readProfileMaintenanceInventory>) => {
+    assertCredentialCopyResourcesClosed(custody);
+    const settings = "settingsAuthority" in custody ? custody.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
+      : custody.settingsAuthority.record.saved?.settings ?? custody.settingsAuthority.record.initialization.settings.settings
+      : readSettings(input.database.authority).settings;
+    const config = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
+      { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
+    await probeRetainedBrowsersClosed({ browserClosure: profileBrowserClosure, admission, custody, config,
+      clock: input.clock, signal: new AbortController().signal });
+    admission.assertReadable();
+    enumerateProfileCredentialMembership(admission, custody, config.paths.browserProfileRoot, profileBrowserClosure);
   };
-}
-
-export function composeProfileCredentialInitializationInventory(input: Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; hostFacts: HostConfigFacts; clock: Clock }>) {
-  return (operation: SignUpOperation, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) =>
-    {
-      let current = operation;
-      const inventory = composeProfileCredentialMaintenanceInventory(input, { kind: "ordinary" }, () => { input.machine.assertProfileCredentialInitialization(input.admission, current); }, operation.credentialInitialization?.keyId)(writer, copies);
-      return Object.freeze({ revalidateBeforeKeyIntent: inventory.revalidateBeforeKeyIntent, revalidate: (next: SignUpOperation) => {
-        if (canonicalJsonStringify({ ...next, credentialInitialization: operation.credentialInitialization }) !== canonicalJsonStringify(operation)
-          || next.credentialInitialization?.mode !== operation.credentialInitialization?.mode
-          || next.credentialInitialization?.keyId !== operation.credentialInitialization?.keyId
-          || operation.credentialInitialization?.keyDocumentDigest !== undefined && next.credentialInitialization?.keyDocumentDigest !== operation.credentialInitialization.keyDocumentDigest
-          || operation.credentialInitialization?.keyFile !== undefined && canonicalJsonStringify(next.credentialInitialization?.keyFile) !== canonicalJsonStringify(operation.credentialInitialization.keyFile)
-          || canonicalJsonStringify(next.credentialInitialization !== undefined && next.credentialInitialization.mode !== "initial" ? next.credentialInitialization.source : null)
-            !== canonicalJsonStringify(operation.credentialInitialization !== undefined && operation.credentialInitialization.mode !== "initial" ? operation.credentialInitialization.source : null)) throw new Error("credential-initialization-inventory-owner-changed");
-        current = next;
-        return inventory.revalidate();
-      } });
-    };
-}
-
-export function composeProfileCredentialRepairInventory(input: Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; hostFacts: HostConfigFacts; clock: Clock }>) {
-  return (request: CredentialEraseInput, writer: Readonly<{ acquisitionId: string; pid: number }>, copies: CredentialInitializationCopyInspection) => {
-    const admission = input.admission.forCredentialRepairInventory(request);
-    try {
-      const inventory = composeProfileCredentialMaintenanceInventory({ ...input, admission }, { kind: "ordinary" }, () => admission.assertLive())(writer, copies);
-      return Object.freeze({ revalidate: inventory.revalidate, dispose: () => {
-        try { admission.release(); }
-        catch (error) { throw retainAuthoritySourceClosure([error], { admission }); }
-      } });
-    } catch (error) {
-      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission });
-      try { admission.release(); }
-      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission }); }
-      throw error;
-    }
-  };
-}
-
-
-export function composeProfilePendingLogoutInventory(input: Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; hostFacts: HostConfigFacts; clock: Clock }>) {
-  return (purpose: RuntimeAdmission, operation: LogoutOperation, copies: CredentialInitializationCopyInspection & Readonly<{ entriesAbsent: boolean }>) => {
-    purpose.assertPendingLogoutInventory(input.admission, operation);
-    const authorize = () => {
-      purpose.assertPendingLogoutInventory(input.admission, operation);
-      const installation = input.machine.readInstallationContext();
-      if (installation === undefined) throw new Error("credential-maintenance-installation-required");
-      const processLockRoot = join(installation.workspace, rebuildRuntimeIsolation.processLockRoot);
-      input.machine.assertFixedProcessLockRoot(installation.workspace, processLockRoot);
-      const orphans = inspectRuntimeProcessOrphans(processLockRoot), server = readRuntimeProcessLock(processLockRoot, "server");
-      if (orphans.staleServerRecords > 0 || server?.releasedAt === null && server.pid !== process.pid) {
-        throw new Error("credential-pending-logout-process-custody-unproved");
-      }
-    };
-    const inventory = composeProfileCredentialMaintenanceInventory({ ...input, admission: purpose }, { kind: "ordinary" }, authorize)(undefined, copies);
-    return Object.freeze({ assessment: inventory.assessCurrent(copies.entriesAbsent), revalidate: () => {
-      inventory.revalidateBeforeKeyIntent(); inventory.revalidate(); inventory.revalidateBeforeKeyIntent();
-    } });
-  };
-}
-
-
-export function composeProfileCredentialInventory(input: Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; database: AuthorityDatabase; hostFacts: HostConfigFacts; clock: Clock }>) {
-  const root = input.admission.stateRoot, profileId = input.admission.profileBinding.profileId;
-  const enumerate = () => input.database.withAuthorityReadSnapshot(() => {
-    input.admission.assertLive();
-    const custody = input.database.readProfileResourceCustody();
-    const saved = readSettings(input.database.authority);
-    const savedBrowserRoot = resolveConfigWithProvenance(saved.settings, input.hostFacts, input.clock,
-      { stateRoot: root, artifactRoot: input.admission.artifactRoot }).config.paths.browserProfileRoot;
-    return enumerateProfileCredentialMembership(input.admission, custody, savedBrowserRoot, profileBrowserClosure);
-  });
-  let prepared: { membership: ReturnType<typeof enumerate>; backups: Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[];
-    stopped?: ReturnType<typeof credentialCopyProcessCustody> } | undefined;
   return Object.freeze({
     async prepare(): Promise<void> {
-      const probe = input.database.withAuthorityReadSnapshot(() => {
-        input.admission.assertLive();
-        const custody = input.database.readProfileResourceCustody();
-        assertCredentialCopyResourcesClosed(custody);
-        const saved = readSettings(input.database.authority);
-        const config = resolveConfigWithProvenance(saved.settings,input.hostFacts,input.clock,
-          {stateRoot:root,artifactRoot:input.admission.artifactRoot}).config;
-        return {custody,config};
-      });
-      await probeRetainedBrowsersClosed({browserClosure:profileBrowserClosure,admission:input.admission,...probe,clock:input.clock,signal:new AbortController().signal});
-      const before = enumerate();
-      const backups: Awaited<ReturnType<typeof verifyBackupManifestAtPath>>[] = [];
-      for (const path of before.manifests) {
-        const verified = await verifyBackupManifestAtPath(input.admission, path);
-        assertCredentialBackupBinding(input.admission, verified, before.custody.upgrades);
-        backups.push(verified);
-      }
-      if (before.backupPaths.length !== backups.length || before.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("profile-inventory-backup-unverified");
-      const stopped = backups.some(backup => backup.manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) ? credentialCopyProcessCustody(input) : undefined;
-      const after = enumerate();
-      if (stopped !== undefined) {
-        assertCredentialCopyResourcesClosed(after.custody);
-        if (canonicalJsonStringify(stopped) !== canonicalJsonStringify(credentialCopyProcessCustody(input))) throw new Error("profile-inventory-membership-changed");
-      }
-      if (canonicalJsonStringify(before) !== canonicalJsonStringify(after)) throw new Error("profile-inventory-membership-changed");
-      prepared = { membership: after, backups, ...(stopped === undefined ? {} : { stopped }) };
+      input.admission.assertProfileRuntime();
+      const custody = input.database.readProfileResourceCustody();
+      await prepare(input.admission, custody);
+      input.admission.assertProfileRuntime();
+      if (canonicalJsonStringify(input.database.readProfileResourceCustody()) !== canonicalJsonStringify(custody)) throw new Error("profile-closure-source-changed");
     },
-    assess(fields: Readonly<{ admission: RuntimeAdmission; credentials: CredentialStore; operationId?: string;
-      capturedSecrets: readonly string[]; capturedSecretsComplete: boolean }>): CredentialInventory {
-      if (prepared === undefined) throw new Error("profile-inventory-unprepared");
-      if (fields.admission.stateRoot !== root || fields.admission.profileBinding.profileId !== profileId) throw new Error("profile-inventory-owner-mismatch");
-      assertCredentialStoreOwner(fields.credentials, fields.admission);
-      const stopped = prepared.stopped === undefined ? undefined : credentialCopyProcessCustody(input);
-      const before = enumerate();
-      if (stopped !== undefined) {
-        assertCredentialCopyResourcesClosed(before.custody);
-        if (canonicalJsonStringify(stopped) !== canonicalJsonStringify(prepared.stopped)) throw new Error("profile-inventory-membership-changed");
-      }
-      const stable = (value: ReturnType<typeof enumerate>) => ({ ...value, identities: value.identities.filter(entry => entry.path !== join(root, "credentials", "protected.json") && entry.path !== join(root, "credentials")) });
-      if (canonicalJsonStringify(stable(before)) !== canonicalJsonStringify(stable(prepared.membership))) throw new Error("profile-inventory-membership-changed");
-      const record = fields.operationId === undefined ? fields.credentials.read() : readForErasure(fields.credentials, fields.operationId);
-      const inventory = assessCredentialInventory({ profileRoot: root, entriesAbsent: record.entries.ucpathUserId === undefined && record.entries.ucpathPassword === undefined,
-        inspectEncrypted: path => inspectCredentialCopy(fields.credentials, path, fields.capturedSecrets),
-        backupPaths: [], loginDataPaths: before.loginDataPaths, capturedSecrets: fields.capturedSecrets, capturedSecretsComplete: fields.capturedSecretsComplete });
-      const backupPlaintext = [...inventory.backupPlaintext], unknownFormats = [...inventory.unknownFormats, ...before.unsupported];
-      const copies = assessProfileCredentialCopies(fields.admission, before, prepared.backups,
-        { ...fields, containsKey: value => inspectCredentialKeyCopy(fields.credentials, value), keyScanOverlap: 4095,
-          inspectEncrypted: path => inspectCredentialCopy(fields.credentials, path, fields.capturedSecrets) }, { kind: "ordinary" });
-      backupPlaintext.push(...copies.backupPlaintext); unknownFormats.push(...copies.unknownFormats);
-      const after = enumerate();
-      if (stopped !== undefined) {
-        assertCredentialCopyResourcesClosed(after.custody);
-        if (canonicalJsonStringify(stopped) !== canonicalJsonStringify(credentialCopyProcessCustody(input))) throw new Error("profile-inventory-membership-changed");
-      }
-      if (canonicalJsonStringify(before) !== canonicalJsonStringify(after)) throw new Error("profile-inventory-membership-changed");
-      return { ...inventory, backupPlaintext, unknownFormats,
-        logoutComplete: inventory.logoutComplete && backupPlaintext.length === 0 && unknownFormats.length === 0 };
+    async prepareStopped(admission: RuntimeAdmission): Promise<void> {
+      admission.assertPendingLogoutSettlementDatabase(join(admission.stateRoot, "state.db"));
+      await prepare(admission, AuthorityDatabase.readProfileMaintenanceInventory(admission));
+      admission.assertPendingLogoutSettlementDatabase(join(admission.stateRoot, "state.db"));
     },
   });
 }
@@ -445,15 +215,58 @@ export function composeProfileCredentialInventory(input: Readonly<{ machine: Run
 export function composeStoppedControlCredentialInventory(input: Readonly<{ claim: StoppedControlProfileInventory; hostFacts: HostConfigFacts; clock: Clock }>) {
   const admission = RuntimeAdmission.forStoppedControlInventory(input.claim);
   try {
-    const proof = attestStoppedControlCredentials(admission, input.claim, (copies) => composeProfileCredentialMaintenanceInventory({
-      machine: admission, admission, hostFacts: input.hostFacts, clock: input.clock,
-    }, { kind: "stopped-control", claim: input.claim }, () => admission.assertLive())(undefined, copies));
+    const source = admission.readStoppedControlCredentialInventorySource(input.claim);
+    const assess = (copies: StoppedCredentialCopyInspection) => {
+      const observe = () => {
+        source.revalidateSource();
+        const plan = source.pendingPlan();
+        if (plan !== undefined) inspectStoppedCanonicalConversion(admission, input.claim, plan);
+        const stages = plan === undefined ? [] : ["protected", "chatgpt"].map(kind => join(admission.stateRoot, "credentials", `.${source.binding.profileId}.${plan.operation.operationId}.${kind}.canonical.tmp`));
+        const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
+        assertCredentialCopyResourcesClosed(facts);
+        const settings = facts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
+          : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
+        const config = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
+          { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
+        assertRetainedBrowsersClosed(admission, facts, config, profileBrowserClosure);
+        const membership = enumerateProfileCredentialMembership(admission, facts, config.paths.browserProfileRoot, profileBrowserClosure, undefined, stages);
+        const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path));
+        if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("credential-maintenance-backup-membership-unproved");
+        const currentRecord = join(admission.stateRoot, "credentials", "chatgpt-account.json");
+        const assessment = assessProfileCredentialCopies(admission, { ...membership, copies: membership.copies.filter(path => path !== currentRecord) }, backups, copies,
+          { kind: "stopped-control", claim: input.claim });
+        if (assessment.backupPlaintext.length !== 0 || assessment.unknownFormats.length !== 0) throw new Error("credential-maintenance-copy-capture-incomplete");
+        const login = countProfileCredentialLoginRows(membership.loginDataPaths);
+        if (typeof login !== "number" || login > 0) throw new Error("credential-maintenance-login-copy-present");
+        const database = join(admission.stateRoot, "state.db");
+        for (const suffix of ["", "-wal", "-shm"]) {
+          const path = `${database}${suffix}`;
+          if (lstatSync(path, { throwIfNoEntry: false }) !== undefined && scanProfileCredentialCopy(path, copies.capturedSecrets, copies).containsSecret) throw new Error("credential-maintenance-live-authority-copy-present");
+        }
+        withAuthorityDatabaseReadOnly(admission, database, db => {
+          for (const table of migrationTableNames(source.schemaVersion)) for (const row of db.prepare(`SELECT * FROM ${table}`).iterate()) {
+            if (containsCredentialValue(row, copies.capturedSecrets) || copies.containsKey(row)) throw new Error("credential-maintenance-live-authority-copy-present");
+          }
+        });
+        source.revalidateSource();
+        const credentials = join(admission.stateRoot, "credentials"), protectedPath = join(credentials, "protected.json");
+        return canonicalJsonStringify({ ...membership,
+          copies: membership.copies.filter(path => path !== currentRecord),
+          identities: membership.identities.filter(entry => entry.path !== currentRecord && entry.path !== protectedPath && !stages.includes(entry.path)).map(entry =>
+            entry.path === credentials ? { path: entry.path, directory: entry.directory, device: entry.device, inode: entry.inode, mode: entry.mode } : entry),
+          binding: source.binding });
+      };
+      const before = observe();
+      const revalidate = () => { if (observe() !== before) throw new Error("credential-maintenance-inventory-changed"); };
+      return { revalidateBeforeKeyIntent: revalidate, revalidate: () => { revalidate(); return revalidate; } };
+    };
+    const proof = prepareStoppedCredentialConversion(admission, input.claim, assess);
     return Object.freeze({ proof, dispose() {
-      try { releaseStoppedControlCredentialAttestation(proof); admission.release(); }
+      try { releaseStoppedCredentialConversion(proof); admission.release(); }
       catch (error) { throw retainAuthoritySourceClosure([error], { admission: { admission, proof } }); }
     } });
   } catch (error) {
-    if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission });
+    if (hasUnprovedSourceClosure(error)) { admission.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission }); throw error; }
     try { admission.release(); }
     catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission }); }
     throw error;

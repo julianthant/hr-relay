@@ -1,7 +1,7 @@
 import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError } from "../../storage/source-closure.js";
 import type { RuntimeAdmission } from "../../storage/admission/admission.js";
-import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityDatabase, AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { localDatePart, type Clock } from "../../../rules/time/clock.js";
@@ -17,6 +17,17 @@ export class StartupCrashRecoveryRefusedError extends Error {
 }
 
 type CleanupCode = "RUN_CRASH_RESOURCES_RELEASED" | "RUN_STALE_QUEUE_CANCELLED" | "RUN_INTERRUPTED_BY_CRASH" | "RUN_CRASH_WRITE_UNRESOLVED";
+
+
+export function appendRecoveryNotification(repositories: AuthorityRepositories, code: CleanupCode, identity: unknown, now: string, runId?: string): void {
+  const fingerprint = sha256Hex(canonicalJsonStringify({ code, identity }));
+  if (repositories.notifications.findByDedupe(LOCAL_OPERATOR_ACTOR_ID, fingerprint) !== undefined) return;
+  repositories.notifications.create({ notificationId: lifecycleCommandId("startup-notification", fingerprint),
+    actorId: LOCAL_OPERATOR_ACTOR_ID, dedupeFingerprint: fingerprint, trigger: "storage", channel: "ping", status: "unread",
+    snooze: { state: "not-snoozed" }, title: code, summary: ERROR_CATALOG[code].text,
+    links: runId === undefined ? [{ kind: "storage", diagnosticFingerprint: fingerprint }] : [{ kind: "run", runId }],
+    count: 1, lastSeenAt: now, version: 1, createdAt: now, updatedAt: now });
+}
 
 type RecoveryInput = Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; database: AuthorityDatabase;
   lifecycle: RunRecordService; clock: Clock; lock: RuntimeLifetimeLock }>;
@@ -34,15 +45,8 @@ export function reconcileExitedWorker(input: RecoveryInput & {
 function reconcileInterruptedRuns(input: RecoveryInput, lock: RuntimeLifetimeLock,
   worker?: Readonly<{ workerId: string; leaseGeneration: number }>): void {
   const { machine, admission, database, lifecycle, clock } = input;
-  const notify = (code: CleanupCode, identity: unknown, runId?: string) => {
-    const fingerprint = sha256Hex(canonicalJsonStringify({ code, identity })), now = clock.now().toISOString();
-    if (database.authority.notifications.findByDedupe(LOCAL_OPERATOR_ACTOR_ID, fingerprint) !== undefined) return;
-    database.authority.notifications.create({ notificationId: lifecycleCommandId("startup-notification", fingerprint),
-      actorId: LOCAL_OPERATOR_ACTOR_ID, dedupeFingerprint: fingerprint, trigger: "storage", channel: "ping", status: "unread",
-      snooze: { state: "not-snoozed" }, title: code, summary: ERROR_CATALOG[code].text,
-      links: runId === undefined ? [{ kind: "storage", diagnosticFingerprint: fingerprint }] : [{ kind: "run", runId }],
-      count: 1, lastSeenAt: now, version: 1, createdAt: now, updatedAt: now });
-  };
+  const notify = (code: CleanupCode, identity: unknown, runId?: string) => appendRecoveryNotification(database.authority, code, identity, clock.now().toISOString(), runId);
+
   try {
     admission.assertProfileRuntime(); machine.assertLive();
     if (!(lock instanceof RuntimeLifetimeLock)) throw new Error("crash-recovery-lock-required");

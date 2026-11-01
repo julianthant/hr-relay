@@ -4,7 +4,7 @@ import { storageTree } from '../../../support/helpers/integration/storage-recove
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { createInstallationControlTestWorld } from "../../../support/helpers/backend/installation-control-world.js";
 import { randomUUID } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { RuntimeAdmission, acquireRecoveryRuntimeRelocation } from "../../../../src/backend/storage/admission/admission.js";
@@ -13,9 +13,6 @@ import { acquireInstallation, assertInstallationLease, inspectPendingRelocationR
 import { createStorageRelocationPlanReader } from "../../../../src/backend/storage/maintenance/storage-relocation-plans.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { storageRelocationDesiredDigest } from "../../../../src/rules/commands/commands.js";
-import { CredentialEraseInputSchema } from "../../../../src/models/config/credential-store.js";
-import { createCredentialPersistenceFixtures } from "../../../support/helpers/credential-persistence-fixtures.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { NonNegativeIntSchema } from "../../../../src/rules/identity/ids.js";
 
 
@@ -58,54 +55,6 @@ function settledMove(workspace: string, destination: RuntimePair, lifetime: Runt
     return { operationId, locator };
   } finally { held.release(); lease.release(); }
 }
-
-it.each(["credential key", "erasure journal", "Duo membership"] as const)(
-  "revalidates cached profile registry authority after %s changes",
-  async (change) => {
-    const persistence = createCredentialPersistenceFixtures([], randomUUID(), "2026-10-01T12:01:00.000Z");
-    const erasure = change === "erasure journal" ? await persistence.registeredFixture() : undefined;
-    const profile = erasure === undefined ? await createBoundProfileFixture() : {
-      machine: erasure.machine, admission: erasure.admission, close: persistence.releaseFixtures,
-    };
-    try {
-      if (erasure !== undefined) {
-        expect(erasure.store.apply(persistence.request({
-          commandId: randomUUID(), writeId: randomUUID(), expectedRevision: erasure.store.read().revision,
-          entries: { ucpathPassword: { set: "synthetic-erasure-value" } },
-        })).state).toBe("applied");
-        expect(erasure.erase(CredentialEraseInputSchema.parse({
-          commandId: randomUUID(), commandFingerprint: "b".repeat(64), writeId: randomUUID(),
-          expectedRevision: erasure.store.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-          updatedAt: "2026-10-01T12:02:00.000Z",
-        })).state).toBe("applied");
-      }
-      const registry = profile.machine.readProfileRegistry();
-      expect(profile.machine.readProfileRegistry()).toEqual(registry);
-      const id = profile.admission.profileBinding.profileId;
-      const machine = join(profile.machine.stateRoot, "machine");
-      const target = change === "credential key"
-        ? join(machine, "credential-keys", `${id}.json`)
-        : join(machine, "erasures", `${id}.json`);
-      const duoDirectory = join(machine, "duo-credentials");
-      const companion = join(duoDirectory, "unexpected-profile.json");
-      const hadDuoDirectory = existsSync(duoDirectory);
-      const authority = change === "Duo membership" ? undefined : { path: target, mode: statSync(target).mode & 0o777 };
-      try {
-        if (change === "Duo membership") {
-          mkdirSync(duoDirectory, { recursive: true, mode: 0o700 });
-          writeFileSync(companion, "{}", { mode: 0o600 });
-        } else if (authority !== undefined) chmodSync(authority.path, 0o644);
-        expect(() => profile.machine.readProfileRegistry()).toThrow();
-      } finally {
-        if (change === "Duo membership") {
-          unlinkSync(companion);
-          if (!hadDuoDirectory) rmdirSync(duoDirectory);
-        } else if (authority !== undefined) chmodSync(authority.path, authority.mode);
-      }
-      expect(profile.machine.readProfileRegistry()).toEqual(registry);
-    } finally { await profile.close(); }
-  },
-);
 
 it("adopts empty defaults, admits shared readers, and refuses lost locator and owner mismatch", async () => {
   const { workspace, pair, lifetime } = await fixture();

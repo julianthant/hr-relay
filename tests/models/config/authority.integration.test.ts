@@ -2,7 +2,7 @@ import { createWorkbookLibraryService } from "../../../src/backend/workbooks/wor
 import { createAuthorityAccountingTestWorld } from "../../support/helpers/backend/authority-accounting-world.js";
 import { authorityMutationCases, type MutationCase } from "../../support/helpers/backend/authority-accounting-world.js";
 import { default as assert } from "node:assert/strict";
-import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import { afterEach } from "vitest";
 import { describe } from "vitest";
@@ -67,7 +67,7 @@ describe("dry-run scenario result authority repository", () => {
 const { ATOMIC_WRITE_COMMIT, cleanup, databasePaths, CLOCK, OPERATOR_XLSX_EXPORT, FAILURE_RECORD, DIAGNOSTIC_BUNDLE, RUN_CHECKPOINT, COMMAND_AUDIT, OBSERVED_PRESENT_WRITE_INTENT, openDatabase, claimedWorkerId, prepareWorkerSlot, prepareRunning, prepareDelegationOwners, terminalizeForTrust, terminalFailureRequest, terminalSuccessRequest, INTAKE_MANIFEST, OCR_EXTRACTION, DRY_RUN_SCENARIO_RESULT } = createAuthorityAccountingTestWorld();
 
 describe("authority generation accounting", () => {
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 const heldProfiles: BoundProfileStorageFixture[] = [];
 afterEach(async () => {
   cleanup();

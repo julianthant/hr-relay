@@ -58,7 +58,7 @@ import { IdleRefreshCadenceSchema, LoginResultSchema, RetryPolicySchema, Session
 import { FreshnessPolicySchema, ProvenancePolicySchema, SubjectBindingSpecSchema, TaskEffectSchema } from "../../../src/models/task/task-contract.js";
 import { UiVerificationEvidenceManifestSchema, UiVerificationScenarioSchema } from "../../../src/models/ui/contracts.js";
 import { CRM_ONBOARDING_DISPLAYED_EID, CrmOnboardingDatesReadSchema, CrmOnboardingRecordReadSchema, CrmSubjectBindingSchema } from "../../../src/models/ui/crm-onboarding.js";
-import { ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE, ActivityPersonPseudonymSecretReferenceSchema, SECRET_FILE_SPECS, SECRET_SPECS, ProtectedSecretSourceSchema, SecretFileSpecSchema, SecretAvailabilitySchema, SecretSpecSchema } from "../../../src/models/config/secrets.js";
+import { ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE, ActivityPersonPseudonymSecretReferenceSchema, SECRET_SPECS, ProtectedSecretSourceSchema, SecretAvailabilitySchema, SecretSpecSchema } from "../../../src/models/config/secrets.js";
 import { ActivityPersonPseudonymEvidenceSchema, ActivityPersonPseudonymGenerationBindingSchema } from "../../../src/models/trust/activity-person-pseudonym.js";
 import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
 import { ActionEvidenceSchema, DecisionEvidenceSchema, EvidenceFactSchema, ReuseEvidenceSchema, RunEvidenceReceiptSchema, UncertaintyEvidenceSchema, VerificationEvidenceSchema } from "../../../src/models/trust/evidence.js";
@@ -968,7 +968,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "CrmOnboardingRecordRead", schema: CrmOnboardingRecordReadSchema, fixtures: [CRM_RECORD_READ] },
   { name: "CrmOnboardingDatesRead", schema: CrmOnboardingDatesReadSchema, fixtures: [CRM_DATES_READ] },
   { name: "SecretSpec", schema: SecretSpecSchema, fixtures: [SECRET_SPECS[0]] },
-  { name: "SecretFileSpec", schema: SecretFileSpecSchema, fixtures: [SECRET_FILE_SPECS[0]] },
   { name: "SecretAvailability", schema: SecretAvailabilitySchema, fixtures: [{ name: "ucpathPassword", source: "protected-store", state: "unknown", diagnostic: "registered source could not be read" }] },
   { name: "ProtectedSecretSource", schema: ProtectedSecretSourceSchema, fixtures: [{ read: () => ({}) }] },
   { name: "TestTargetRegistry", schema: TestTargetRegistrySchema, fixtures: [TEST_TARGET_REGISTRY] },

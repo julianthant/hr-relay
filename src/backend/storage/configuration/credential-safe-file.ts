@@ -16,6 +16,10 @@ export interface DirectoryIdentity {
   readonly inode: number;
 }
 
+export class PrivateFileReadTransitionError extends Error {
+  constructor(message: string) { super(message); this.name = "PrivateFileReadTransitionError"; }
+}
+
 export interface CredentialInventory {
   readonly entriesAbsent: boolean;
   readonly protectedPlaintext: boolean;
@@ -126,7 +130,7 @@ export function ensureChildDirectory(
 }
 
 interface PrivateFileOptions {
-  readonly label: "protected.json" | "lock" | "ChatGPT" | "Duo credential" | "erasure journal" | "authority database" | "managed data";
+  readonly label: "protected.json" | "lock" | "nonce lock" | "ChatGPT" | "Duo credential" | "erasure journal" | "authority database" | "managed data";
   readonly maxBytes: number;
   readonly allowedLinkCounts?: readonly number[];
 }
@@ -134,7 +138,7 @@ interface PrivateFileOptions {
 export function readPrivateFile(path: string, options: PrivateFileOptions): { bytes: Buffer; identity: DirectoryIdentity; stat: Stats } | undefined {
   const { label, maxBytes, allowedLinkCounts = [1] } = options;
   const ordinary = label === "authority database" || label === "managed data";
-  const lock = label === "lock", record = label === "ChatGPT" || label === "Duo credential" || label === "erasure journal" || ordinary;
+  const nonce = label === "nonce lock", lock = label === "lock" || nonce, record = lock || label === "protected.json" || label === "ChatGPT" || label === "Duo credential" || label === "erasure journal" || ordinary;
   const rule = ordinary ? "group-write" : "file-0600";
   const unavailable = lock ? "directory-integrity: credential lock is unavailable" : `credential store ${label} is unavailable`;
   const invalid = lock ? "directory-integrity: credential lock permissions or identity are invalid" : `directory-integrity: ${label} permissions or identity are invalid`;
@@ -155,16 +159,34 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
   try {
     const before = fstatSync(descriptor); descriptorIdentity = before;
     if (!before.isFile() || !allowedLinkCounts.includes(before.nlink) || privatePathRejects(path, before, rule)
-      || (lock && before.size > maxBytes)
-      || (record && (before.dev !== pathStatus.dev || before.ino !== pathStatus.ino))) throw new Error(invalid);
+      || (lock && before.size > maxBytes)) throw new Error(invalid);
     if (before.size > maxBytes) throw new Error(`document-too-large: credential store ${label} exceeds its private bound`);
     const bytes = readFileSync(descriptor), after = fstatSync(descriptor), live = lstatSync(path);
+    const moved = lock ? "directory-integrity: credential lock moved while it was read" : `directory-integrity: ${label} moved while it was read`;
+    const identityChanged = pathStatus.dev !== before.dev || pathStatus.ino !== before.ino
+      || live.dev !== before.dev || live.ino !== before.ino;
+    const descriptorStable = before.dev === after.dev && before.ino === after.ino && before.size === after.size
+      && before.mode === after.mode && before.uid === after.uid && before.mtimeMs === after.mtimeMs
+      && (before.nlink === after.nlink || after.nlink === 0)
+      && (before.ctimeMs === after.ctimeMs || after.nlink === 0);
+    const liveSafe = live.isFile() && !live.isSymbolicLink() && allowedLinkCounts.includes(live.nlink)
+      && !privatePathRejects(path, live, rule) && live.size <= maxBytes;
+    const liveMetadataStable = !record || (before.mode === live.mode && before.uid === live.uid && before.nlink === live.nlink);
+    if (identityChanged && descriptorStable && bytes.byteLength === before.size && liveSafe && liveMetadataStable) {
+      throw new PrivateFileReadTransitionError(moved);
+    }
+    const nonceContentChanged = before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs;
+    if (nonce && nonceContentChanged && !identityChanged && before.dev === after.dev && before.ino === after.ino
+      && before.mode === after.mode && before.uid === after.uid && before.nlink === after.nlink
+      && liveSafe && liveMetadataStable && after.size <= maxBytes && bytes.byteLength <= maxBytes) {
+      throw new PrivateFileReadTransitionError(moved);
+    }
     if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
       || before.mode !== after.mode || before.uid !== after.uid || before.nlink !== after.nlink
       || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs
       || live.dev !== before.dev || live.ino !== before.ino || bytes.byteLength !== before.size
       || (record && (before.mode !== live.mode || before.uid !== live.uid || before.nlink !== live.nlink))) {
-      throw new Error(lock ? "directory-integrity: credential lock moved while it was read" : `directory-integrity: ${label} moved while it was read`);
+      throw new Error(moved);
     }
     result = { bytes, stat: after, identity: { device: before.dev, inode: before.ino } };
   } catch (error) { primary = { error }; }
@@ -246,7 +268,7 @@ export function createPrivateLock(path: string, credentialDirectory: string, byt
 
 
 const PrivateFileLockSchema = z.strictObject({ nonce: z.uuid() });
-function assertPrivateLockBytes(bytes: Buffer): void {
+export function assertPrivateFileLockBytes(bytes: Buffer): void {
   try { PrivateFileLockSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))); }
   catch { throw new Error("directory-integrity: private lock is malformed"); }
 }
@@ -256,7 +278,7 @@ export function capturePriorPrivateFileLock(directory: string, name: string): ((
   const path = join(directory, name);
   const file = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });
   if (file === undefined) return undefined;
-  assertPrivateLockBytes(file.bytes);
+  assertPrivateFileLockBytes(file.bytes);
   return () => {
     if (!sameDirectory(parent, statDirectory(directory, "private lock parent", CREDENTIAL_DIRECTORY_MODE))) throw new Error("directory-integrity: prior private lock parent changed");
     const current = readPrivateFile(path, { label: "lock", maxBytes: 4_096 });

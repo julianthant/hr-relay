@@ -8,7 +8,6 @@ import * as nativeBrowserInventory from "../../../../src/backend/storage/mainten
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { z } from "zod";
 import { acquireInstallation, CompletedRestoreCustodySchema, type ExclusiveInstallationLease } from "../../../../src/backend/storage/admission/installation.js";
-import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { AuthorityDatabase as FixtureAuthorityDatabase } from "../../../support/helpers/synthetic-database-admission.js";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -28,43 +27,59 @@ import { manualClock, systemClock, type Clock } from "../../../../src/rules/time
 import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
 import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 import { spawn } from "node:child_process";
-import { CredentialEraseInputSchema } from "../../../../src/models/config/credential-store.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, rmSync, readdirSync, lstatSync } from "node:fs";
 import { join } from 'node:path';
 import { describe, it, vi } from "vitest";
-import { createBoundProfileFixture, readAuthenticatedCredentialFixture, signInBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
-import { createCredentialStore, captureCredentialErasureHead, verifyCredentialErasureHead } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createBoundProfileFixture, signInBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService, OfflineRestoreFailure, settleInterruptedAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
+import { createCanonicalCredentials, CanonicalCredentialHeadSchema } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
+import { DuoCredentialRecordSchema } from "../../../../src/models/config/duo-credential-store.js";
+import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { scaledMs } from "../../../support/time-scale.js";
 
 async function world(clock: Clock = systemClock) {
   const fixture = await createBoundProfileFixture();
   const profileId = fixture.admission.profileBinding.profileId;
-  const journalPath = join(fixture.machine.stateRoot, "machine", "erasures", profileId + ".json");
+  const headPath = join(fixture.machine.stateRoot, "machine", "credential-keys", profileId + ".json");
   const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot);
   let admission = fixture.admission;
   const renew = (select = false) => {
     if (select) createProfileRegistry(fixture.machine).advanceSession(profileId);
     admission = fixture.machine.admitProfile(profileId); return admission;
   };
-  const credentialInventories = {
-    repairInventory: (child: RuntimeAdmission, ...args: Parameters<ReturnType<typeof composeProfileCredentialRepairInventory>>) =>
-      composeProfileCredentialRepairInventory({ machine: fixture.machine, admission: child, clock, hostFacts: { primaryDisplay: null } })(...args),
-    initializationInventory: (child: RuntimeAdmission, ...args: Parameters<ReturnType<typeof composeProfileCredentialInitializationInventory>>) =>
-      composeProfileCredentialInitializationInventory({ machine: fixture.machine, admission: child, clock, hostFacts: { primaryDisplay: null } })(...args),
+  const store = () => createCredentialStore({ admission, stateRoot: fixture.stateRoot });
+  const sources = new Map<string, AuthorityDatabase>(), completed = new Map<string, { profileId: string; epoch: number }>();
+  const newSession = () => createProfileSession({ admission: fixture.machine, machineRoot: fixture.machine.stateRoot,
+    activity: { hasUnquiescedWork: () => false },
+    prepareLogout(id, owner) {
+      const database = AuthorityDatabase.open(owner, { path: fixture.path, busyTimeoutMs: 250 }, clock, undefined, undefined, undefined,
+        createCredentialStore({ admission: owner, stateRoot: owner.stateRoot }));
+      sources.set(id, database);
+      return { source: database.capturePendingLogoutSource(), intentFailed(error): never { throw error; } };
+    },
+    closeStorage(id) { sources.get(id)?.close(); },
+    completedLogout: id => completed.get(id),
+  });
+  const logout = async (token: string) => {
+    const result = currentSession.logOut(token, { at: "2026-10-21T12:01:00.000Z" });
+    assert.equal(result.state, "cancelling");
+    if (result.state !== "cancelling") throw new Error("fixture logout did not produce its actual operation");
+    const operation = LogoutOperationSchema.parse(JSON.parse(readFileSync(join(fixture.machine.stateRoot, "machine", "operations", `${result.operationId}.json`), "utf8")));
+    const database = sources.get(profileId); assert.ok(database);
+    const stopped = await database.settlePendingLogout(fixture.machine, operation, []);
+    await stopped.complete();
+    completed.set(operation.operationId, { profileId, epoch: operation.sessionGeneration + 1 });
+    stopped.dispose();
+    return currentSession.resumeLogout(operation.operationId);
   };
-  const store = () => createCredentialStore({ admission, stateRoot: fixture.stateRoot, erasureJournalAdmission: fixture.machine, erasureJournalPath: journalPath,
-    repairInventory: composeProfileCredentialRepairInventory({ machine: fixture.machine, admission, clock, hostFacts: { primaryDisplay: null } }) });
-  const newSession = () => createProfileSession({ admission: fixture.machine, machineRoot: fixture.machine.stateRoot, ...credentialInventories,
-    activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
   let currentSession = newSession();
   const session = () => currentSession;
   const signIn = () => {
@@ -92,7 +107,7 @@ async function world(clock: Clock = systemClock) {
   const closeController = (): Promise<void> => controllerClosure ??= (async () => {
     await currentSession.closeOnboarding(); currentSession.close(); await fixture.closeController();
   })();
-  return { ...fixture, profileId, journalPath, processLockRoot, credentialInventories, renew, store, session, signIn, backup, operation, restore, closeController, current: () => admission };
+  return { ...fixture, profileId, headPath, processLockRoot, renew, store, session, signIn, logout, backup, operation, restore, closeController, current: () => admission };
 }
 
 function childJob(script: string) {
@@ -230,11 +245,11 @@ describe("profile restore continuity", () => {
     try {
       const store = f.store(), protectedBefore = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
       const keyPath = join(f.machine.stateRoot, "machine", "credential-keys", `${f.profileId}.json`), metadata = readFileSync(keyPath);
-      const key = credentialKeyCustody.read(JSON.parse(metadata.toString("utf8")));
+      const key = credentialKeyCustody.read(CanonicalCredentialHeadSchema.parse(JSON.parse(metadata.toString("utf8"))).key);
       const manifestPath = await f.backup();
       const backupBytes = readFileSync(manifestPath.slice(0, -".manifest.json".length));
       assert.equal(backupBytes.includes(key.key), false); assert.equal(backupBytes.includes(Buffer.from(key.key, "base64")), false);
-      assert.equal("key" in JSON.parse(metadata.toString("utf8")), false);
+      assert.equal("key" in CanonicalCredentialHeadSchema.parse(JSON.parse(metadata.toString("utf8"))).key, false);
       const before = f.machine.readProfileRegistry().sessionGeneration;
       const old = f.current();
       const result = await f.restore().restore({ manifestPath }, f.operation());
@@ -251,7 +266,7 @@ describe("profile restore continuity", () => {
     } finally { await f.close(); }
   });
 
-  it("retains completed suspect custody across sign-in and real credential erasure inventory", async () => {
+  it("retains completed suspect custody across sign-in and actual retained-credential logout", async () => {
     const f = await world();
     let primary: { error: unknown } | undefined;
     try {
@@ -264,7 +279,7 @@ describe("profile restore continuity", () => {
       const copies = rows.map(row => ({ path: join(f.stateRoot, row.suspect.relativePath), bytes: readFileSync(join(f.stateRoot, row.suspect.relativePath)) }));
       const active = f.signIn();
       assert.deepEqual(f.current().readCompletedRestores(), rows);
-      assert.equal(f.session().logOut(active.token, { at: "2026-10-21T12:01:00.000Z" }).state, "wiped");
+      assert.equal((await f.logout(active.token)).state, "signed-out");
       const after = z.object({ completedRestores: z.array(CompletedRestoreCustodySchema) })
         .parse(JSON.parse(readFileSync(join(f.workspace, ".tracker", "control", "profile-registry.json"), "utf8")));
       assert.deepEqual(after.completedRestores, rows);
@@ -339,7 +354,7 @@ describe("profile restore continuity", () => {
     const key = entry.getPassword(); assert.ok(key !== null);
     try {
       const manifestPath = await f.backup(), authority = readFileSync(f.path), protectedBefore = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
-      credentialKeyCustody.delete(binding);
+      credentialKeyCustody.delete(CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(f.headPath, "utf8"))).key);
       await assert.rejects(async () => f.restore().restore({ manifestPath }, f.operation()), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
       assert.deepEqual(readFileSync(f.path), authority);
       assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), protectedBefore);
@@ -393,64 +408,6 @@ describe("profile restore continuity", () => {
     } finally { await f.close(); }
   });
 
-  it.each(["journal", "anchor", "both"] as const)("refuses %s rollback against independent current control", async kind => {
-    const f = await world();
-    try {
-      const active = f.signIn();
-      assert.equal(f.session().logOut(active.token, { at: "2026-10-21T12:01:00.000Z" }).state, "wiped");
-      const oldJournal = readFileSync(f.journalPath), oldAnchor = readFileSync(f.journalPath + ".authority");
-      const again = f.signIn();
-      assert.equal(f.session().logOut(again.token, { at: "2026-10-21T12:02:00.000Z" }).state, "wiped");
-      f.signIn();
-      if (kind !== "anchor") writeFileSync(f.journalPath, oldJournal, { mode: 0o600 });
-      if (kind !== "journal") writeFileSync(f.journalPath + ".authority", oldAnchor, { mode: 0o600 });
-      if (kind === "both") {
-        const anchor = JSON.parse(oldAnchor.toString("utf8")) as { epoch: number; device: number; inode: number };
-        const journal = JSON.parse(oldJournal.toString("utf8")) as { epoch: number };
-        const file = lstatSync(f.journalPath);
-        anchor.device = file.dev; anchor.inode = file.ino;
-        writeFileSync(f.journalPath + ".authority", JSON.stringify(anchor), { mode: 0o600 });
-        assert.equal(anchor.epoch, journal.epoch);
-        assert.equal(anchor.device, file.dev); assert.equal(anchor.inode, file.ino);
-      }
-      const bytes = readFileSync(f.path);
-      assert.throws(() => f.store().read());
-      assert.throws(() => captureCredentialErasureHead(f.store()));
-      assert.deepEqual(readFileSync(f.path), bytes);
-    } finally { await f.close(); }
-  });
-
-  it("settles an interrupted erase through its exact original command before restoring availability", async () => {
-    const f = await world();
-    try {
-      const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot, ...f.credentialInventories,
-        activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [],
-        credentialHooks: { afterErasureJournal: () => { throw new Error("synthetic-interrupted-erasure"); } } });
-      const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-21T12:00:00.000Z" });
-      assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("fixture-sign-in-refused");
-      assert.throws(() => session.logOut(active.token, { at: "2026-10-21T12:01:00.000Z" }), /synthetic-interrupted-erasure/);
-      const intentPath = join(f.workspace, ".tracker", "control", "profile-publication.json");
-      const intent = JSON.parse(readFileSync(intentPath, "utf8")) as { kind: string; request: { commandId: string; writeId: string; expectedRevision: number } };
-      assert.equal(intent.kind, "erasure");
-      const operations = f.machine.readProfileRegistry();
-      assert.equal(operations.profiles.find(row => row.profileId === f.profileId)?.lifecycle, "cancelling");
-      const directory = join(f.machine.stateRoot, "machine", "operations");
-      const files = readdirSync(directory).filter(name => name.endsWith(".json"));
-      assert.equal(files.length, 1);
-      const path = join(directory, files[0]);
-      const operation = JSON.parse(readFileSync(path, "utf8")) as { operationId: string; commandId: string; writeId: string; expectedRevision: number };
-      assert.deepEqual({ commandId: operation.commandId, writeId: operation.writeId, expectedRevision: operation.expectedRevision }, { commandId: intent.request.commandId, writeId: intent.request.writeId, expectedRevision: intent.request.expectedRevision });
-      assert.throws(() => f.store().read());
-      assert.equal(f.session().resumeLogout(operation.operationId).state, "wiped");
-      assert.equal(existsSync(intentPath), false);
-      const document = z.object({ history: z.array(z.object({ receipt: z.object({ commandId: z.string(), writeId: z.string() }) })) })
-        .parse(readAuthenticatedCredentialFixture(f.machine.stateRoot, f.profileId));
-      assert.equal(document.history.filter(entry => entry.receipt.commandId === operation.commandId).length, 1);
-      assert.equal(document.history.at(-1)?.receipt.writeId, operation.writeId);
-      assert.equal(readFileSync(join(f.stateRoot, "credentials", "protected.json")).includes(Buffer.from("disposable-fixture-password")), false);
-    } finally { await f.close(); }
-  });
-
   it.each(["missing-control", "foreign-control", "registry-and-profile", "missing-binding"] as const)("refuses %s before restore payload effects", async kind => {
     const f = await world();
     try {
@@ -496,53 +453,34 @@ describe("profile restore continuity", () => {
     } finally { await f.close(); }
   });
 
-  it("preserves external tombstones through SQLite restore and strips restored old credential plaintext", async () => {
+  it("preserves exact encrypted records and burned Duo counters across SQLite restore", async () => {
     const f = await world();
     try {
-      const manifestPath = await f.backup();
-      const old = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
-      const active = f.signIn();
-      assert.equal(f.session().logOut(active.token, { at: "2026-10-21T12:01:00.000Z" }).state, "wiped");
-      f.signIn();
-      const journal = readFileSync(f.journalPath), anchor = readFileSync(f.journalPath + ".authority");
-      const current = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
+      const manifestPath = await f.backup(), owner = createCanonicalCredentials(f.current());
+      const duo = DuoCredentialRecordSchema.parse(owner.readRecord("duo")?.value), credential = duo.credentials.find(row => row.state === "ready");
+      assert.ok(credential);
+      const requestId = randomUUID(), reserved = owner.reserveDuoCounter(credential.credentialId, requestId);
+      const paths = [f.headPath, join(f.stateRoot, "credentials", "protected.json"), join(f.stateRoot, "credentials", "chatgpt-account.json"),
+        join(f.machine.stateRoot, "machine", "duo-credentials", `${f.profileId}.json`)];
+      const before = paths.map(path => readFileSync(path));
       await f.restore().restore({ manifestPath }, f.operation());
-      assert.deepEqual(readFileSync(f.journalPath), journal);
-      assert.deepEqual(readFileSync(f.journalPath + ".authority"), anchor);
-      assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), current);
-      f.renew(true);
-      writeFileSync(join(f.stateRoot, "credentials", "protected.json"), old, { mode: 0o600 });
-      const repaired = f.store().read();
-      assert.equal(repaired.entries.ucpathPassword, undefined);
-      assert.equal(repaired.entries.ucpathUserId, undefined);
-      assert.deepEqual(readFileSync(f.journalPath), journal);
+      assert.deepEqual(paths.map(path => readFileSync(path)), before);
+      const fresh = createCanonicalCredentials(f.renew(true));
+      assert.throws(() => fresh.reserveDuoCounter(credential.credentialId, requestId), { code: "CREDENTIAL_CONFLICT" });
+      assert.ok(fresh.reserveDuoCounter(credential.credentialId, randomUUID()).count > reserved.count);
     } finally { await f.close(); }
   });
 
-  it("refuses erased evidence changed during staging and retains unchanged SQLite", async () => {
+  it("refuses external credential head changed during staging and retains unchanged SQLite", async () => {
     const f = await world();
+    const head = readFileSync(f.headPath);
     try {
       const manifestPath = await f.backup(), bytes = readFileSync(f.path);
-      const service = f.restore(async () => {
-        writeFileSync(f.journalPath, "{}", { mode: 0o600 });
-        writeFileSync(f.journalPath + ".authority", "{}", { mode: 0o600 });
-      });
+      const service = f.restore(async () => { writeFileSync(f.headPath, "{}", { mode: 0o600 }); });
       await assert.rejects(service.restore({ manifestPath }, f.operation()));
       assert.deepEqual(readFileSync(f.path), bytes);
-    } finally { await f.close(); }
-  });
-
-  it("refuses copied/fabricated opaque heads and an ordinary arbitrary erase identity", async () => {
-    const f = await world();
-    try {
-      const store = f.store(), head = captureCredentialErasureHead(store);
-      assert.throws(() => verifyCredentialErasureHead({ ...head }, f.stateRoot, f.journalPath, f.current().profileBinding), /unissued/);
-      const before = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
-      assert.throws(() => store.erase(CredentialEraseInputSchema.parse({ commandId: randomUUID(), writeId: randomUUID(), commandFingerprint: "b".repeat(64), expectedRevision: store.read().revision,
-        updatedAt: "2026-10-21T12:00:00.000Z", protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH })));
-      assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), before);
-      assert.equal(existsSync(f.journalPath), false);
-    } finally { await f.close(); }
+      assert.equal(readFileSync(f.headPath, "utf8"), "{}");
+    } finally { writeFileSync(f.headPath, head, { mode: 0o600 }); await f.close(); }
   });
 
   it("reports the replaced outcome after a rename that throws and refuses ordinary reuse", async () => {
@@ -749,7 +687,7 @@ describe("profile restore continuity", () => {
     } finally { failedRelease.mockRestore(); operation.release(); await f.close(); }
   });
 
-  it.each(["erase", "restore"] as const)("excludes a real concurrent controller during %s through the held kernel listener", async held => {
+  it.each(["logout", "restore"] as const)("excludes a real concurrent controller during %s through the held kernel listener", async held => {
     const f = await world();
     let owner: ReturnType<typeof childJob> | undefined, competitor: ReturnType<typeof childJob> | undefined;
     const ready = join(f.workspace, "child-ready"), release = join(f.workspace, "child-release");
@@ -759,13 +697,13 @@ describe("profile restore continuity", () => {
       const port = f.lifetime.port;
       await f.closeController();
       const imports = `
-        import { existsSync, writeFileSync } from "node:fs";
+        import { existsSync, readFileSync, writeFileSync } from "node:fs";
         import { join } from "node:path";
 
 
         import { acquireEntrypointAdmission } from './src/backend/storage/admission/bootstrap-admission.ts';
         import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from './src/backend/storage/admission/lifetime-lock.ts';
-        import { composeProfileCredentialRepairInventory } from './src/backend/app/composition/profile-credential-inventory.ts';
+        import { LogoutOperationSchema } from './src/models/profiles/profile.ts';
         import { systemClock } from './src/rules/time/clock.ts';
         import { createProfileSession } from './src/backend/profiles/profile-session.ts';
         import { createProfileRegistry } from './src/backend/profiles/registry.ts';
@@ -778,21 +716,26 @@ describe("profile restore continuity", () => {
         const ready=${JSON.stringify(ready)},release=${JSON.stringify(release)},processLockRoot=${JSON.stringify(f.processLockRoot)};
       `;
       const barrier = `writeFileSync(ready,'ready',{mode:0o600});const deadline=Date.now()+10000;while(!existsSync(release)){if(Date.now()>deadline)throw new Error('barrier-timeout');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);}`;
-      const erase = `const lifetime=await RuntimeLifetimeLock.acquire(port);const machine=acquireEntrypointAdmission(workspace,'shared',lifetime);try {
-        const session=createProfileSession({admission:machine,machineRoot:machine.stateRoot,activity:{hasUnquiescedWork:()=>false},backupPaths:()=>[],loginDataPaths:()=>[],repairInventory:(admission,request,writer,copies)=>composeProfileCredentialRepairInventory({machine,admission,clock:systemClock,hostFacts:{primaryDisplay:null}})(request,writer,copies),credentialHooks:{afterErasureJournal:()=>{${barrier}}}});
+      const logout = `const lifetime=await RuntimeLifetimeLock.acquire(port);const machine=acquireEntrypointAdmission(workspace,'exclusive',lifetime);let source,session;try {
+        session=createProfileSession({admission:machine,machineRoot:machine.stateRoot,activity:{hasUnquiescedWork:()=>false},
+          prepareLogout(id,owner){source=AuthorityDatabase.open(owner,{path:join(owner.stateRoot,'state.db'),busyTimeoutMs:250});return {source:source.capturePendingLogoutSource(),intentFailed(error){throw error;}};},
+          closeStorage(){source?.close();}});
         const active=session.signIn({email:'fixture@ucsd.edu',password:'disposable-fixture-password',at:'2026-10-21T12:00:00.000Z'});
         if(active.state!=='active')throw new Error('activation-refused');
-        const result=session.logOut(active.token,{at:'2026-10-21T12:01:00.000Z'});if(result.state!=='wiped')throw new Error('erase-not-wiped');
-      }finally{machine.release();await lifetime.close();}process.stdout.write('OWNER_DONE');`;
+        const result=session.logOut(active.token,{at:'2026-10-21T12:01:00.000Z'});if(result.state!=='cancelling'||!source)throw new Error('logout-not-cancelling');
+        ${barrier}
+        const operation=LogoutOperationSchema.parse(JSON.parse(readFileSync(join(machine.stateRoot,'machine','operations',result.operationId+'.json'),'utf8')));
+        const stopped=await source.settlePendingLogout(machine,operation,[]);await stopped.complete();stopped.dispose();
+      }finally{await session?.closeOnboarding();session?.close();source?.close();machine.release();await lifetime.close();}process.stdout.write('OWNER_DONE');`;
       const restore = `const lifetime=await RuntimeLifetimeLock.acquire(port);const machine=acquireEntrypointAdmission(workspace,'exclusive',lifetime);try {
         const child=machine.admitProfile(profileId);const root=child.stateRoot,path=join(root,'state.db');
-        const store=createCredentialStore({admission:child,stateRoot:root,erasureJournalAdmission:machine,erasureJournalPath:join(machine.stateRoot,'machine','erasures',profileId+'.json')});
+        const store=createCredentialStore({admission:child,stateRoot:root,});
 
         const proof=child.acquireOfflineMaintenance();
         const service=new OfflineAuthorityRestoreService(profileBrowserClosure, child,{authorityPath:path,suspectDirectory:join(root,'backups','suspects'),busyTimeoutMs:250,processLockRoot},async()=>{${barrier}},undefined,undefined,store);
         await service.restore({ manifestPath }, proof);
       }finally{machine.release();await lifetime.close();}process.stdout.write('OWNER_DONE');`;
-      owner = childJob(imports + (held === "erase" ? erase : restore));
+      owner = childJob(imports + (held === "logout" ? logout : restore));
       await waitForFile(ready);
       competitor = childJob(imports + `let refused=false;try{const candidate=await RuntimeLifetimeLock.acquire(port);try{throw new Error('competing-controller-admitted');}finally{await candidate.close();}}catch(error){if(error instanceof RuntimeAlreadyRunningError)refused=true;else throw error;}if(!refused)throw new Error('competing-controller-admitted');process.stdout.write('REFUSED');`);
       assert.equal(await competitor.done, 0);

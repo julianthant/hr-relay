@@ -1,3 +1,4 @@
+import { CanonicalCredentialHeadSchema, createCanonicalCredentials } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { withOperationProof } from "../../../src/backend/storage/configuration/credential-safe-file.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySourceClosure } from "../../../src/backend/storage/source-closure.js";
@@ -5,17 +6,15 @@ import { credentialKeyCustody } from "../../../src/backend/storage/configuration
 import type { ProfileOnboardingDuoProvider } from "../../../src/backend/profiles/onboarding-duo.js";
 import { registerBoundProfile, unregisterBoundProfile, assertBoundFixtureWorkersReleased, transferBoundFixtureWorkers, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission } from "./synthetic-database-admission.js";
 export { registerBoundProfile, unregisterBoundProfile, createBoundProfileCredentialStore, boundProfileCredentials, findProfileFixtureAdmission, profileFixtureStorageAdmission, boundProfileAdmission } from "./synthetic-database-admission.js";
-import { createCipheriv, createDecipheriv, generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
+import { createCipheriv, generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
-import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory } from "../../../src/backend/app/composition/profile-credential-inventory.js";
 import { systemClock, type Clock } from "../../../src/rules/time/clock.js";
 import { createProfileVerifiers } from "../../../src/backend/storage/configuration/verifier-store.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { tmpdir } from "node:os";
 import { createProfileSession } from "../../../src/backend/profiles/profile-session.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
-import { constants, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { cp } from "node:fs/promises";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -91,35 +90,27 @@ export function createCredentialStore(input: Omit<Parameters<typeof productionCr
 }
 
 export function readAuthenticatedCredentialFixture(machineRoot: string, profileId: string): unknown {
-  const bytes = readFileSync(join(machineRoot, "profiles", profileId, "credentials", "protected.json"));
-  if (bytes.byteLength > Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096) throw new Error("fixture-envelope-bound");
-  const envelope = JSON.parse(bytes.toString("utf8")) as { schemaVersion: number; algorithm: string; installationId: string; profileId: string; keyId: string; nonce: string; tag: string; ciphertext: string };
-  const key = credentialKeyCustody.read(JSON.parse(readFileSync(join(machineRoot, "machine", "credential-keys", `${profileId}.json`), "utf8")));
-  if (envelope.schemaVersion !== 4 || envelope.algorithm !== "aes-256-gcm" || envelope.profileId !== profileId
-    || key.profileId !== profileId || key.installationId !== envelope.installationId || key.keyId !== envelope.keyId) throw new Error("fixture-envelope-binding");
-  const keyBytes = Buffer.from(key.key, "base64"), nonce = Buffer.from(envelope.nonce, "base64"), tag = Buffer.from(envelope.tag, "base64");
-  if (keyBytes.length !== 32 || nonce.length !== 12 || tag.length !== 16
-    || keyBytes.toString("base64") !== key.key || nonce.toString("base64") !== envelope.nonce || tag.toString("base64") !== envelope.tag) throw new Error("fixture-envelope-parameters");
-  const decipher = createDecipheriv("aes-256-gcm", keyBytes, nonce, { authTagLength: 16 });
-  decipher.setAAD(Buffer.from(canonicalJsonStringify({ domain: "relay:protected-current:v4", schemaVersion: 4, algorithm: envelope.algorithm,
-    installationId: envelope.installationId, profileId, keyId: envelope.keyId }), "utf8"));
-  decipher.setAuthTag(tag);
-  const pending = decipher.update(Buffer.from(envelope.ciphertext, "base64")), final = decipher.final();
-  return JSON.parse(Buffer.concat([pending, final]).toString("utf8")) as unknown;
+  const admission = findProfileFixtureAdmission(join(machineRoot, "profiles", profileId));
+  if (admission === undefined) throw new Error("fixture-bound-profile-credential-owner-required");
+  const frame = createCanonicalCredentials(admission).readRecord("protected");
+  if (frame === undefined) throw new Error("fixture-protected-frame-required");
+  return frame.value;
 }
 
 export function rewriteAuthenticatedCredentialFixture(machineRoot: string, profileId: string, change: (payload: unknown) => unknown): void {
   const payload = change(readAuthenticatedCredentialFixture(machineRoot, profileId));
   const path = join(machineRoot, "profiles", profileId, "credentials", "protected.json");
-  const envelope = JSON.parse(readFileSync(path, "utf8")) as { schemaVersion: number; algorithm: string; installationId: string; profileId: string; keyId: string };
-  const key = credentialKeyCustody.read(JSON.parse(readFileSync(join(machineRoot, "machine", "credential-keys", `${profileId}.json`), "utf8")));
-  const bytes = Buffer.from(canonicalJsonStringify(payload));
+  const frame = JSON.parse(readFileSync(path, "utf8")) as { schemaVersion: number; kind: string; installationId: string; profileId: string;
+    generation: number; keyId: string; revision: number; nonce: string; tag: string; ciphertext: string };
+  const head = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(join(machineRoot, "machine", "credential-keys", `${profileId}.json`), "utf8")));
+  if (head.state !== "active" || head.profileId !== profileId || head.installationId !== frame.installationId || head.key.keyId !== frame.keyId) throw new Error("fixture-envelope-binding");
+  const key = credentialKeyCustody.read(head.key), nonce = randomBytes(12), { tag: _tag, ciphertext: _ciphertext, ...priorHeader } = frame,
+    header = { ...priorHeader, nonce: nonce.toString("base64") }, bytes = Buffer.from(canonicalJsonStringify({ revision: frame.revision, value: payload }));
   if (bytes.byteLength > 16 * 1024 * 1024) throw new Error("fixture-payload-bound");
-  const nonce = randomBytes(12), cipher = createCipheriv("aes-256-gcm", Buffer.from(key.key, "base64"), nonce, { authTagLength: 16 });
-  cipher.setAAD(Buffer.from(canonicalJsonStringify({ domain: "relay:protected-current:v4", schemaVersion: 4, algorithm: envelope.algorithm,
-    installationId: envelope.installationId, profileId, keyId: envelope.keyId })));
+  const cipher = createCipheriv("aes-256-gcm", Buffer.from(key.key, "base64"), nonce, { authTagLength: 16 });
+  cipher.setAAD(Buffer.from(canonicalJsonStringify(header)));
   const ciphertext = Buffer.concat([cipher.update(bytes), cipher.final()]);
-  writeFileSync(path, canonicalJsonStringify({ ...envelope, nonce: nonce.toString("base64"), ciphertext: ciphertext.toString("base64"), tag: cipher.getAuthTag().toString("base64") }), { mode: 0o600 });
+  writeFileSync(path, canonicalJsonStringify({ ...header, ciphertext: ciphertext.toString("base64"), tag: cipher.getAuthTag().toString("base64") }), { mode: 0o600 });
 }
 
 const failedBoundProfileFixtures = new Set<Readonly<{
@@ -188,9 +179,7 @@ export async function finishProfileOnboarding(session: Pick<ReturnType<typeof cr
 
 export function signInBoundProfileFixture(machine: RuntimeAdmission): void {
   const session = createProfileSession({ admission: machine, machineRoot: machine.stateRoot,
-    repairInventory: (admission, request, writer, copies) => composeProfileCredentialRepairInventory({ machine, admission, clock: systemClock, hostFacts: { primaryDisplay: null } })(request, writer, copies),
-    initializationInventory: (admission, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine, admission, clock: systemClock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
-    activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
+    activity: { hasUnquiescedWork: () => false } });
   try {
     const result = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-21T12:00:00.000Z" });
     if (result.state !== "active") throw new Error("fixture-sign-in-refused");
@@ -213,9 +202,7 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
       const fields = { firstName: "Fixture", lastName: "Example", email: "fixture@ucsd.edu",
         password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
       const session = createSyntheticProfileSession({ admission: machine, machineRoot: machine.stateRoot,
-        repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine, admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(request, writer, copies),
-        initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine, admission: child, clock: systemClock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
-        activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
+        activity: { hasUnquiescedWork: () => false } });
       const draft = options.pending === "storage" ? undefined : session.signUp(fields);
       if (draft !== undefined && draft.state !== "onboarding") throw new Error("fixture draft was not created");
       const operation = draft ?? machine.beginProfileSignUp({ firstName: fields.firstName, lastName: fields.lastName,
@@ -282,47 +269,21 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
 export type BoundProfileStorageFixture = Pick<Awaited<ReturnType<typeof createBoundProfileFixture>>,
   "workspace" | "stateRoot" | "path" | "machine" | "admission" | "close">;
 
-export function createClonedProfileFixtures() {
-  const seeds: { profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; snapshot: string; active: boolean }[] = [];
+export function createProfileFixtureSet() {
+  const fixtures = new Set<Awaited<ReturnType<typeof createBoundProfileFixture>>>();
   return {
     async create(this: void): Promise<BoundProfileStorageFixture> {
-      const root = realpathSync(tmpdir());
-      let seed = seeds.find(candidate => !candidate.active);
-      if (seed === undefined) {
-        const profile = await createBoundProfileFixture();
-        const directory = realpathSync(mkdtempSync(join(root, "relay-profile-seed-")));
-        seed = { profile, snapshot: join(directory, "profile"), active: true };
-        seeds.push(seed);
-        if (statSync(profile.stateRoot).dev !== statSync(directory).dev) throw new Error("fixture-clone-device-mismatch");
-        await cp(profile.stateRoot, seed.snapshot, { recursive: true, mode: constants.COPYFILE_FICLONE });
-      }
-      const current = seed;
-      const profile = current.profile;
-      if (statSync(current.snapshot).dev !== statSync(dirname(profile.stateRoot)).dev) throw new Error("fixture-clone-device-mismatch");
-      current.active = true;
-      assertBoundFixtureWorkersReleased(profile.admission);
-      profile.admission.release();
-      rmSync(profile.stateRoot, { recursive: true });
-      await cp(current.snapshot, profile.stateRoot, { recursive: true, mode: constants.COPYFILE_FICLONE });
-      profile.renewAfterRestore();
-      const admission = profile.admission;
+      const fixture = await createBoundProfileFixture(); fixtures.add(fixture);
       let closed = false;
-      return { workspace: profile.workspace, stateRoot: profile.stateRoot, path: profile.path, machine: profile.machine, admission,
+      return { workspace: fixture.workspace, stateRoot: fixture.stateRoot, path: fixture.path, machine: fixture.machine, admission: fixture.admission,
         async close() {
           if (closed) return;
-          assertBoundFixtureWorkersReleased(admission);
-          admission.release();
-          current.active = false;
-          closed = true;
+          assertBoundFixtureWorkersReleased(fixture.admission);
+          await fixture.close(); fixtures.delete(fixture); closed = true;
         } };
     },
     async close() {
-      if (seeds.some(seed => seed.active)) throw new Error("fixture-clone-still-held");
-      for (const seed of seeds) {
-        await seed.profile.close();
-        rmSync(dirname(seed.snapshot), { recursive: true });
-      }
-      seeds.length = 0;
+      if (fixtures.size !== 0) throw new Error("fixture-profile-still-held");
     },
   };
 }

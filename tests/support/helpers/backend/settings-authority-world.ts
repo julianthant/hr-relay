@@ -39,8 +39,7 @@ export function createSettingsAuthorityTestWorld() {
     const path = profile.path;
     const options = { path, busyTimeoutMs: 250, migrationOwner: "settings-test" };
     const credentialOptions = { stateRoot: root, ...(hooks === undefined ? {} : { hooks }) };
-    const store = admission === undefined ? createCredentialStore(credentialOptions) : nativeCredentialStore({ ...credentialOptions, admission,
-      erasureJournalAdmission: profile.machine, erasureJournalPath: join(profile.machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
+    const store = admission === undefined ? createCredentialStore(credentialOptions) : nativeCredentialStore({ ...credentialOptions, admission });
     const database = admission === undefined ? AuthorityDatabase.open(options, clock) : NativeAuthorityDatabase.open(admission, options, clock, undefined, undefined, undefined, store); databases.push(database);
     const pair = { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot };
     seedInitialSettingsRuntimeConfig(database, capturedInstantClock(NOW), pair);

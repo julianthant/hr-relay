@@ -3,7 +3,7 @@ import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySo
 import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { probeRestoreProfileBrowsersClosed, type ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { assertProfileRestoreDatabaseBinding } from "./profile-local-databases.js";
-import { assertCredentialStoreOwner, captureCredentialErasureHead } from "../configuration/credential-store.js";
+import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { AuthorityRestoreInput } from "../admission/installation.js";
 import { requireSupportedRecoverySchema } from "./recovery-admission.js";
@@ -215,7 +215,6 @@ export class OfflineAuthorityRestoreService {
   #clock: Clock;
   #fileOperations: OfflineRestoreFileOperations;
   #processLockRoot: string;
-  readonly #credentialStore: CredentialStore;
 
   constructor(
     browserClosure: ProfileBrowserClosure,
@@ -231,7 +230,6 @@ export class OfflineAuthorityRestoreService {
     this.#runtimeAdmission = requireRuntimeAdmission(runtimeAdmissionInput);
     this.#runtimeAdmission.assertProfileRestoreOwner(resolve(options.authorityPath));
     if (credentialStore === undefined) throw new Error("profile-restore-credential-owner-required");
-    this.#credentialStore = credentialStore;
     assertCredentialStoreOwner(credentialStore, this.#runtimeAdmission);
     this.#runtimeAdmission.assertStateRoot(resolve(options.suspectDirectory));
     this.#authorityPath = resolve(options.authorityPath);
@@ -277,7 +275,7 @@ export class OfflineAuthorityRestoreService {
     admission.assertOfflineMaintenance(restoreAdmission);
     assertOfflineMaintenanceForProcessRoot(restoreAdmission, this.#processLockRoot);
     const request = OfflineRestoreRequestSchema.parse(input);
-    const profile = admission.captureProfileRestore(captureCredentialErasureHead(this.#credentialStore, restoreAdmission));
+    const profile = admission.captureProfileRestore(restoreAdmission);
     assertProfileRestoreDatabaseBinding(this.#authorityPath, profile.binding);
     const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
     if (!existsSync(this.#authorityPath) || statSync(this.#authorityPath).size === 0) {

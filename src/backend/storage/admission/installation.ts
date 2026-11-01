@@ -1,15 +1,22 @@
+import { AuthorityDatabase } from "../sqlite/authority-database.js";
+import { emailKey, passwordMatches } from "../configuration/synthetic-verifier.js";
+import type { RuntimeAdmission } from "./admission.js";
+import { AuthorityBackupService, verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
+import { inspectAuthorityBackupReadOnly, openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
+import { CredentialMaintenanceHold, captureCanonicalCredentialStartupLocks, publishStoppedCanonicalCredentials, CanonicalCredentialConversionPlanSchema, type CanonicalCredentialConversionPlan, CanonicalCredentialRestoreSnapshotSchema, CanonicalCredentialHeadSchema, CanonicalCredentialPublicationSourceSchema } from "../configuration/canonical-credential-store.js";
+import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
 import { replacePrivateFile, privatePathRejects, writePrivateStage, fsyncPath } from "../private-path.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { assertOfflineMaintenanceOperation, OfflineMaintenanceOperationUnavailableError, offlineMaintenanceWorkspace, isOfflineMaintenanceOperationActive, type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
-import { ProfileStorageRelocationUnsupportedError } from "./admission-identity.js";
-import { credentialKeyCustody, CredentialKeyCustodyError, type CredentialKeyMigrationAdmission } from "../configuration/credential-key-custody.js";
-import { preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier, type PreparedProfileVerifier } from "../configuration/verifier-store.js";
+import { ProfileStorageRelocationUnsupportedError, requireRuntimeAdmission } from "./admission-identity.js";
+import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
+import { createProfileVerifiers, preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { retainedStorageBackup, SourceRecordSchema, StorageBackupSchema, inventory as backupFileInventory, file as backupFile } from "../maintenance/existing-data-backup-files.js";
-import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
+import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, hasUnprovedSourceClosure, retainUnprovedSourceOwners, rememberUnprovedSourceClosure, assertSourceClosuresProved } from "../source-closure.js";
 import { capturePriorPrivateFileLock, withPrivateFileLock, withOperationProof, outermostOperationProof, type PrivateFileLock, readPrivateFile, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
-import { erasureRequestIdentity, IncompleteProfileDraftCaptureSchema, profileAuthorityFileWitnesses, verifyIncompleteProfileDraft, type IncompleteProfileDraftWitness, unpublishedDraftAbortSourcePath, UnpublishedDraftAbortCaptureSchema, verifyUnpublishedDraftAbort, type UnpublishedDraftAbortWitness, CredentialKeyStagePublicationSchema, observeCredentialKeyStageIntent, assertCredentialKeyStageTransition, assertCredentialKeyStagePublication, verifyCommittedCredentialKeyStage, type CommittedCredentialKeyStage, type CredentialKeyStagePublication, CredentialInitializationPublicationSchema, assertCredentialInitializationPublication, verifyCommittedCredentialInitialization, verifyCommittedCredentialKey, type CommittedCredentialInitialization, type CredentialInitializationPublication, verifyCommittedCredentialWitness, CredentialKeyWitnessSchema, verifyCredentialKeyHead, assertCredentialKeyWitness, assertUnpublishedCredentialKey, verifyCommittedCredentialErasureOrigin, CredentialErasureHeadSchema, assertCredentialErasureHeadFiles, verifyCredentialErasureHead, verifyCredentialErasureIntent, type CredentialErasureHead, type VerifiedCredentialErasureHead, type VerifiedCredentialErasureIntent, type CommittedCredentialWitness, releaseStoppedControlCredentialAttestation, verifyStoppedControlCredentialAttestation, type StoppedControlCredentialAttestation, inspectProfileCredentialsForControlUpgrade } from "../configuration/credential-store.js";
-import { assertProfileRestoreDatabaseBinding, assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
+import { assertProfileRestoreDatabaseBinding, assertCanonicalProfileBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import { ProfileDatabaseBindingSchema, SignUpOperationSchema, LogoutOperationSchema, type ProfileOperation, ProfileRegistryDocumentSchema, advanceProfileRegistryDocument, ProfileRegistryRowSchema, ProfileVerifierDocumentSchema, ProfileOnboardingCompletionSchema, assertFinishedProfileOnboarding, deriveProfileNames, type ProfileRegistryDocument } from "../../../models/profiles/profile.js";
+import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
@@ -27,15 +34,12 @@ import { systemClock } from "../../../rules/time/clock.js";
 import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
 import { ActiveRuntimeConfigRecordSchema } from "../../../models/config/runtime-generation.js";
 import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
-import { DuoContinuityRowSchema, type DuoContinuityRow } from "../../../models/config/duo-credential-store.js";
-import { DuoPublicationCaptureSchema, assertDuoDocumentWitness, assertDuoPublishedFile, duoStagePath, prepareIssuedDuoTransaction, verifyIssuedDuoTransaction, resumeIssuedDuoTransaction, issuedDuoDraftOperation, readDuoPublicationEnvelope, type IssuedDuoTransaction } from "../configuration/duo-credential-store.js";
+import { readStoppedCredentialConversion, releaseStoppedCredentialConversion, type StoppedControlCredentialAttestation, StoppedDuoContinuityRowSchema as DuoContinuityRowSchema, type StoppedDuoContinuityRow as DuoContinuityRow, StoppedCredentialKeyWitnessSchema as CredentialKeyWitnessSchema, StoppedCredentialErasureHeadSchema as CredentialErasureHeadSchema } from "../configuration/credential-conversion.js";
 
 
 const ProfileOperationSchema = z.union([SignUpOperationSchema, LogoutOperationSchema]);
 const ProfileOperationMutationSchema = z.union([z.strictObject({ kind: z.literal("write"), operation: ProfileOperationSchema }), z.strictObject({ kind: z.literal("delete"), operationId: z.uuid() })]);
 const ProfileErasureHeadSchema = z.lazy(() => z.strictObject({ profileId: z.uuid(), originOperationId: z.uuid(), head: CredentialErasureHeadSchema, credentialKey: CredentialKeyWitnessSchema.optional() }));
-const ErasureRequestIdentitySchema = z.strictObject({ commandId: z.uuid(), writeId: z.uuid(), commandFingerprint: z.string().regex(/^[0-9a-f]{64}$/u), expectedRevision: z.number().int().nonnegative(), updatedAt: z.string().datetime(), requestReceipt: z.string().min(1) });
-export type ErasureRequestIdentity = z.infer<typeof ErasureRequestIdentitySchema>;
 const RestoreFileBindingSchema = z.strictObject({ dev: z.number().int().nonnegative(), ino: z.number().int().nonnegative(),
   byteSize: z.number().int().nonnegative(), sha256: z.string().regex(/^[0-9a-f]{64}$/u) });
 export const CompletedRestoreCustodySchema = z.strictObject({ operationId: z.uuid(), profile: ProfileDatabaseBindingSchema,
@@ -53,38 +57,39 @@ const StoppedPriorProfileContinuitySchema = z.discriminatedUnion("schemaVersion"
 const StoppedCurrentProfileContinuitySchema = PriorProfileContinuitySchema.extend({ schemaVersion: z.literal(3), duo: z.array(DuoContinuityRowSchema).max(10_000),
   completedRestores: z.array(CompletedRestoreCustodySchema).max(10_000).refine(rows => new Set(rows.map(row => row.operationId)).size === rows.length) })
   .refine(value => value.completedRestores.every(row => row.profile.installationId === value.installationId));
-const StoppedProfileRegistryDocumentSchema = ProfileRegistryDocumentSchema.omit({ installationId: true, revision: true }).extend({ schemaVersion: z.literal(2) });
-const StoppedProfileContinuitySchema = z.union([StoppedPriorProfileContinuitySchema, StoppedCurrentProfileContinuitySchema]);
-const ProfileContinuitySchema = z.strictObject({ schemaVersion: z.literal(4), installationId: z.uuid(),
+const StoppedProfileRegistryDocumentSchema = z.union([ProfileRegistryDocumentSchema.omit({ installationId: true, revision: true }).extend({ schemaVersion: z.literal(2) }), ProfileRegistryDocumentSchema]);
+const StoppedLogicalProfileContinuitySchema = z.strictObject({ schemaVersion: z.literal(4), installationId: z.uuid(),
   digest: z.string().regex(/^[0-9a-f]{64}$/u), revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   generation: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   operations: z.array(z.strictObject({ operationId: z.uuid(), digest: z.string().regex(/^[0-9a-f]{64}$/u) })),
   erasures: z.array(ProfileErasureHeadSchema).max(10_000), duo: z.array(DuoContinuityRowSchema).max(10_000),
   completedRestores: z.array(CompletedRestoreCustodySchema).max(10_000).refine(rows => new Set(rows.map(row => row.operationId)).size === rows.length) })
   .refine(value => value.completedRestores.every(row => row.profile.installationId === value.installationId));
+const StoppedProfileContinuitySchema = z.union([StoppedPriorProfileContinuitySchema, StoppedCurrentProfileContinuitySchema, StoppedLogicalProfileContinuitySchema]);
+const ProfileContinuitySchema = z.strictObject({ schemaVersion: z.literal(5), installationId: z.uuid(),
+  digest: z.string().regex(/^[0-9a-f]{64}$/u), revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  generation: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  operations: z.array(z.strictObject({ operationId: z.uuid(), digest: z.string().regex(/^[0-9a-f]{64}$/u) })),
+  completedRestores: z.array(CompletedRestoreCustodySchema).max(10_000).refine(rows => new Set(rows.map(row => row.operationId)).size === rows.length) })
+  .refine(value => value.completedRestores.every(row => row.profile.installationId === value.installationId));
+const ProfileAuthorityFilesSchema = z.array(z.strictObject({ suffix: z.enum(["", "-wal", "-shm", "-journal"]),
+  file: CanonicalCredentialPublicationSourceSchema.shape.head.optional() }));
+const DraftMembershipSchema = z.array(z.strictObject({ path: z.string(), directory: z.boolean(), device: z.number(), inode: z.number(), size: z.number(),
+  mode: z.number(), modified: z.number(), changed: z.number() }));
 const ProfilePublicationSchema = z.lazy(() => z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("onboarding-finish"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
     operation: SignUpOperationSchema, priorDocument: ProfileRegistryDocumentSchema, document: ProfileRegistryDocumentSchema,
     priorVerifiers: ProfileVerifierDocumentSchema, verifiers: ProfileVerifierDocumentSchema,
-    key: CredentialKeyWitnessSchema, head: CredentialErasureHeadSchema, pepper: CredentialKeyWitnessSchema.shape.file,
-    protectedFile: CredentialKeyWitnessSchema.shape.file, databases: IncompleteProfileDraftCaptureSchema.shape.databases }),
+    credentials: CanonicalCredentialPublicationSourceSchema, pepper: CanonicalCredentialPublicationSourceSchema.shape.head, databases: ProfileAuthorityFilesSchema }),
   z.strictObject({ kind: z.literal("incomplete-profile-draft"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
-    capture: IncompleteProfileDraftCaptureSchema, priorDocument: ProfileRegistryDocumentSchema, document: ProfileRegistryDocumentSchema,
+    capture: z.strictObject({ operation: SignUpOperationSchema, credentials: CanonicalCredentialPublicationSourceSchema,
+      membership: DraftMembershipSchema, databases: ProfileAuthorityFilesSchema }),
+    priorDocument: ProfileRegistryDocumentSchema, document: ProfileRegistryDocumentSchema,
     priorVerifiers: ProfileVerifierDocumentSchema, verifiers: ProfileVerifierDocumentSchema }),
   z.strictObject({ kind: z.literal("draft-abort"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
-    capture: UnpublishedDraftAbortCaptureSchema }),
-  z.strictObject({ kind: z.literal("draft-duo"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
-    capture: DuoPublicationCaptureSchema, priorOperation: SignUpOperationSchema, operation: SignUpOperationSchema }),
-  z.strictObject({ kind: z.literal("duo"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema, capture: DuoPublicationCaptureSchema }),
-  z.strictObject({ kind: z.literal("credential-key"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
-    priorDocument: ProfileRegistryDocumentSchema, document: ProfileRegistryDocumentSchema, capture: CredentialInitializationPublicationSchema }),
+    capture: z.strictObject({ operation: SignUpOperationSchema, head: CanonicalCredentialPublicationSourceSchema.shape.head, membership: DraftMembershipSchema, databases: ProfileAuthorityFilesSchema }) }),
   z.strictObject({ kind: z.literal("profile"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
-    document: ProfileRegistryDocumentSchema, duo: z.array(DuoContinuityRowSchema).max(10_000), operation: ProfileOperationMutationSchema.optional(), keyStage: CredentialKeyStagePublicationSchema.optional(), erasures: z.array(ProfileErasureHeadSchema).max(10_000) }),
-  z.strictObject({ kind: z.literal("draft-erasure"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
-    profileId: z.uuid(), request: ErasureRequestIdentitySchema, nextEpoch: z.number().int().positive(), nextDigest: z.string().regex(/^[0-9a-f]{64}$/u),
-    operation: SignUpOperationSchema, source: CredentialKeyWitnessSchema.shape.file, priorHead: z.strictObject({ state: z.literal("never-erased"), epoch: z.literal(0) }), settledHead: CredentialErasureHeadSchema.optional() }),
-  z.strictObject({ kind: z.literal("erasure"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
-    profileId: z.uuid(), request: ErasureRequestIdentitySchema, nextEpoch: z.number().int().positive(), nextDigest: z.string().regex(/^[0-9a-f]{64}$/u) }),
+    document: ProfileRegistryDocumentSchema, operation: ProfileOperationMutationSchema.optional() }),
 ]));
 
 const PairSchema = z.strictObject({ stateRoot: z.string().min(1), artifactRoot: z.string().min(1) });
@@ -104,13 +109,17 @@ const DigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
 const ControlUpgradeFileSchema = z.strictObject({ device: z.number().int().nonnegative(), inode: z.number().int().nonnegative(), digest: DigestSchema });
 
 const ControlUpgradeReceiptSchema = z.strictObject({ schemaVersion: z.literal(2), operationId: z.uuid(), installationId: z.uuid(),
+  phase: z.enum(["backing-up", "publishing"]),
+  credentials: z.array(z.strictObject({ profileId: z.uuid(), plan: CanonicalCredentialConversionPlanSchema })).max(10_000),
+  backups: z.array(z.strictObject({ profileId: z.uuid(), directory: z.string().regex(/^[0-9a-f-]{36}\.[0-9a-f-]{36}\.authority$/u),
+    verifiedBackup: z.strictObject({ manifest: AuthorityBackupManifestSchema, manifestSha256: DigestSchema }).optional() })).max(10_000),
   prior: StoppedProfileContinuitySchema, current: ProfileContinuitySchema,
   priorDocument: StoppedProfileRegistryDocumentSchema, document: ProfileRegistryDocumentSchema,
   priorRegistry: ControlUpgradeFileSchema, registryBackup: ControlUpgradeFileSchema, registryStage: ControlUpgradeFileSchema,
   priorControl: ControlUpgradeFileSchema, priorMarker: ControlUpgradeFileSchema,
   controlBackup: ControlUpgradeFileSchema, markerBackup: ControlUpgradeFileSchema,
   controlStage: ControlUpgradeFileSchema, markerStage: ControlUpgradeFileSchema,
-  retained: z.array(z.strictObject({ name: z.string().regex(/^[0-9a-f-]{36}\.(?:control|marker)\.before\.json$|^[0-9a-f-]{36}\.receipt\.json$/u), file: ControlUpgradeFileSchema })),
+  retained: z.array(z.strictObject({ name: z.string().regex(/^[0-9a-f-]{36}\.(?:registry|control|marker)\.before\.json$|^[0-9a-f-]{36}\.receipt\.json$/u), file: ControlUpgradeFileSchema })),
   sourceEvidence: z.string().max(16 * 1024 * 1024) });
 
 const GenerationSchema = z.number().int().nonnegative();
@@ -161,7 +170,7 @@ const JournalBase = { schemaVersion: z.literal(2), operationId: z.uuid(), instal
   plan: PlanBindingSchema, restoreAdmissionId: z.uuid(), retentions: z.array(RetentionSchema).min(1).max(2),
   pinnedEntries: z.array(PinnedEntrySchema) };
 const ProfileRestoreContextSchema = z.lazy(() => z.strictObject({ binding: ProfileDatabaseBindingSchema, continuity: ProfileContinuitySchema,
-  head: CredentialErasureHeadSchema, credentialKey: CredentialKeyWitnessSchema }));
+  credentials: CanonicalCredentialRestoreSnapshotSchema }));
 export type ProfileRestoreContext = z.infer<typeof ProfileRestoreContextSchema>;
 export const AuthorityRestoreInputSchema = z.strictObject({ operationId: z.uuid(), profile: ProfileRestoreContextSchema,
   authorityPath: z.string().min(1), stagedPath: z.string().min(1), suspectPath: z.string().min(1),
@@ -221,7 +230,7 @@ export type RelocationPreparationVerifier = (source: RuntimeLocator, destination
   operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationPreparation;
 export type RelocationActivationVerifier = (source: RuntimeLocator, destination: RuntimePair,
   operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationActivationIntent;
-export type InstallationLease = Readonly<{ lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock; mode: "shared" | "exclusive"; locator: RuntimeLocator;
+export type InstallationLease = Readonly<{ retainSourceClosure(error: unknown): void; lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock; mode: "shared" | "exclusive"; locator: RuntimeLocator;
   assertHeld(): void; assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string): void;
   beginOfflineMaintenance(): OfflineMaintenanceOperation;
   offlineMaintenanceOperation(): OfflineMaintenanceOperation;
@@ -233,30 +242,23 @@ export type InstallationLease = Readonly<{ lifetime: RuntimeLifetimeLock | Worke
   flatStoreMigrationPending(): boolean;
   eraseFlatStoreCredentials(restore: OfflineMaintenanceOperation): void;
   startCleanFlatStore(restore: OfflineMaintenanceOperation): void;
-  commitProfileDuo(transaction: IssuedDuoTransaction): void;
-  assertDraftDuoPublicationRecovery(operationId: string, profileId: string, generation: number): z.infer<typeof SignUpOperationSchema>;
-  abortUnpublishedProfile(witness: UnpublishedDraftAbortWitness): void;
-  reclassifyIncompleteProfile(witness: IncompleteProfileDraftWitness): void;
-  commitProfileDuoIntent(transaction: IssuedDuoTransaction): void;
+  abortUnpublishedProfile(operation: z.infer<typeof SignUpOperationSchema>, head?: z.infer<typeof CanonicalCredentialPublicationSourceSchema.shape.head>): boolean;
+  reclassifyIncompleteProfile(profile: RuntimeAdmission): void;
+  resumeIncompleteProfileDraft(profileId: string, restore: OfflineMaintenanceOperation): boolean;
+  assertColdPendingLogout(operation: z.infer<typeof LogoutOperationSchema>): void;
   capturePendingProfileLogout(operation: z.infer<typeof LogoutOperationSchema>): Readonly<{ assertHeld(): void }>;
   captureStoppedProfileUpgrade(profileId: string): Readonly<{ assertHeld(): void }>;
   captureProfileUpgradeHandoff(profileId: string): Readonly<{ consume(next: InstallationLease): void }>;
-  assertProfileErasureHead(profileId: string, head: CredentialErasureHead): void;
-  resumeProfileErasure(profileId: string, request: ErasureRequestIdentity, head: CredentialErasureHead): void;
-  assertDraftErasureJournalRecovery(profileId: string, request: ErasureRequestIdentity, digest: string): void;
-  beginProfileErasure(profileId: string, witness: VerifiedCredentialErasureIntent): void;
-  settleProfileErasure(profileId: string, request: ErasureRequestIdentity, witness: VerifiedCredentialErasureHead): void;
-  assertProfileCredentialKeyAnchor(profileId: string): boolean;
-  publishProfileCredentialInitialization(profileId: string, witness: CommittedCredentialInitialization): void;
-  publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, witness: CommittedCredentialWitness, verifier: PreparedProfileVerifier): void;
+  publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, profile: RuntimeAdmission): void;
   publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument): void;
-  beginProfileSignUp(fields: Omit<z.infer<typeof SignUpOperationSchema>, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding">): z.infer<typeof SignUpOperationSchema>;
-  publishProfileOperation(operation: ProfileOperation | string, keyStage?: CommittedCredentialKeyStage): void;
-  readProfileCredentialKeyStage(operation: z.infer<typeof SignUpOperationSchema>): CredentialKeyStagePublication | undefined;
+  beginProfileSignUp(fields: Omit<z.infer<typeof SignUpOperationSchema>, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding" | "credentials">): z.infer<typeof SignUpOperationSchema>;
+  publishProfileOperation(operation: ProfileOperation | string): void;
+  completeStoppedLogout(admission: RuntimeAdmission, operation: z.infer<typeof LogoutOperationSchema>, restore: OfflineMaintenanceOperation, source: AuthorityDatabase): void;
+  publishStoppedLogoutSettlement(admission: RuntimeAdmission, expected: z.infer<typeof LogoutOperationSchema>, next: z.infer<typeof LogoutOperationSchema>, restore: OfflineMaintenanceOperation, source: AuthorityDatabase): void;
   readInstallationContext(): Readonly<{ workspace: string; locator: RuntimeLocator; receipts: readonly RelocationCompletionReceipt[] }>;
   release(): void }>;
 export type ExclusiveInstallationLease = InstallationLease & Readonly<{
-  captureProfileRestore(profileId: string, witness: VerifiedCredentialErasureHead): ProfileRestoreContext;
+  captureProfileRestore(profileId: string, credentials: z.infer<typeof CanonicalCredentialRestoreSnapshotSchema>): ProfileRestoreContext;
   assertProfileRestoreHeld(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void;
   readAuthorityRestore(operationId: string): AuthorityRestoreInput;
   beginAuthorityRestore(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void;
@@ -623,7 +625,6 @@ function withInstallationControl<T>(control: string, callback: (held: PrivateFil
 }
 class ActiveProfilePublicationRead {
   #active = true;
-  #keyStage: CredentialKeyStagePublication | undefined;
   readonly #control: string;
   readonly #workspace: string;
   readonly #locator: RuntimeLocator;
@@ -642,18 +643,11 @@ class ActiveProfilePublicationRead {
     this.assertHeld();
     if (this.#locator.stateRoot !== stateRoot || this.#operationId !== operationId) fail("credential-key-stage-publication-scope-mismatch");
   }
-  verifyKeyStage(witness: CommittedCredentialKeyStage): CredentialKeyStagePublication {
-    return verifyCommittedCredentialKeyStage(witness, this.#locator.stateRoot, this, capture => {
-      if (capture.key.binding.installationId !== this.#locator.installationId) fail("credential-key-stage-publication-scope-mismatch");
-      if (this.#keyStage !== undefined && canonicalJsonStringify(this.#keyStage) !== canonicalJsonStringify(capture)) fail("credential-key-stage-publication-scope-mismatch");
-      this.#keyStage = capture;
-    });
-  }
   read(): ProfileRegistryDocument {
     this.assertHeld();
     const current = readLocator(this.#control, this.#workspace);
     if (!equalLocator(current, this.#locator)) fail("profile-machine-authority-changed");
-    return readMachineRegistry(this.#control, this.#locator, false, undefined, this.#keyStage, this.#operationId);
+    return readMachineRegistry(this.#control, this.#locator, false, this.#operationId);
   }
   expire(): void { this.#active = false; }
 }
@@ -1015,16 +1009,28 @@ function completedRestoreCustody(input: AuthorityRestoreInput, locator: RuntimeL
   return record;
 }
 
+function assertRestoreCredentialSnapshot(locator: RuntimeLocator, profile: ProfileRestoreContext): void {
+  const { credentials, binding } = profile;
+  if (binding.installationId !== locator.installationId || canonicalJsonStringify(credentials.binding) !== canonicalJsonStringify(binding)) fail("profile-restore-credential-binding-mismatch");
+  const path = join(locator.stateRoot, "machine", "credential-keys", `${binding.profileId}.json`), file = readPrivateFile(path, { label: "lock", maxBytes: 25 * 1024 * 1024 });
+  if (file === undefined || createHash("sha256").update(file.bytes).digest("hex") !== credentials.digest) fail("profile-restore-credential-head-changed");
+  const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+  if (head.state !== "active" || head.installationId !== binding.installationId || head.profileId !== binding.profileId
+    || head.key.installationId !== binding.installationId || head.key.profileId !== binding.profileId
+    || head.key.keyId !== credentials.keyId || head.generation !== credentials.generation
+    || canonicalJsonStringify(head.counters) !== canonicalJsonStringify(credentials.counters)
+    || canonicalJsonStringify(head.retired) !== canonicalJsonStringify(credentials.retired)) fail("profile-restore-credential-head-changed");
+  credentialKeyCustody.read(head.key);
+}
+
 function checkRestoreInput(locator: RuntimeLocator, input: AuthorityRestoreInput): void {
   for (const path of [input.authorityPath, input.stagedPath, input.suspectPath, input.manifestPath, input.backupPath]) {
     if (!isAbsolute(path) || resolve(path) !== path) fail("restore path must be absolute and canonical");
     assertNoSymlinkComponents(path);
   }
   const root = join(locator.stateRoot, "profiles", input.profile.binding.profileId);
-  assertCredentialKeyWitness(join(locator.stateRoot, "machine", "credential-keys", `${input.profile.binding.profileId}.json`), input.profile.credentialKey, input.profile.binding);
   if (input.profile.binding.installationId !== locator.installationId || input.profile.continuity.installationId !== locator.installationId) fail("restore profile installation mismatch");
-  const head = input.profile.continuity.erasures.find(row => row.profileId === input.profile.binding.profileId);
-  if (head === undefined || canonicalJsonStringify(head.head) !== canonicalJsonStringify(input.profile.head)) fail("restore profile erasure context mismatch");
+  assertRestoreCredentialSnapshot(locator, input.profile);
   if (input.authorityPath !== join(root, "state.db")
     || input.stagedPath !== join(root, `.restore-${input.operationId}.sqlite.tmp`)
     || dirname(input.suspectPath) !== join(root, "backups", "suspects")
@@ -1120,114 +1126,46 @@ function profileOperationInventory(machineRoot: string) {
   });
 }
 
-function profileRegistryWitness(installationId: string, path: string, document: ProfileRegistryDocument, erasures: readonly z.infer<typeof ProfileErasureHeadSchema>[], duo: readonly DuoContinuityRow[], completedRestores: readonly CompletedRestoreCustody[]) {
+function profileRegistryWitness(installationId: string, path: string, document: ProfileRegistryDocument, completedRestores: readonly CompletedRestoreCustody[]) {
   privateFile(path);
   if (document.installationId !== installationId) fail("profile-registry-installation-mismatch");
-  return ProfileContinuitySchema.parse({ schemaVersion: 4, installationId, revision: document.revision,
+  return ProfileContinuitySchema.parse({ schemaVersion: 5, installationId, revision: document.revision,
     digest: createHash("sha256").update(canonicalJsonStringify(document)).digest("hex"),
-    generation: document.sessionGeneration, erasures, duo, completedRestores, operations: profileOperationInventory(dirname(dirname(path))) });
+    generation: document.sessionGeneration, completedRestores, operations: profileOperationInventory(dirname(dirname(path))) });
 }
 
-function assertProfileCredentialKeyMembership(locator: RuntimeLocator, heads: readonly z.infer<typeof ProfileErasureHeadSchema>[], stagedPublication?: CredentialKeyStagePublication): void {
+function assertProfileCredentialKeyMembership(locator: RuntimeLocator, heads: readonly z.infer<typeof ProfileErasureHeadSchema>[]): void {
   const directory = join(locator.stateRoot, "machine", "credential-keys");
-  if (!lstatMaybe(directory)) {
-    if (heads.some(row => row.credentialKey !== undefined)) fail("credential-key-required");
-    return;
-  }
-  privateDirectory(directory);
-  const operations = profileOperationInventory(locator.stateRoot).map(row => readProfileEvidence(
-    join(locator.stateRoot, "machine", "operations", `${row.operationId}.json`), ProfileOperationSchema));
-  if (stagedPublication !== undefined) assertCredentialKeyStagePublication(locator.stateRoot, stagedPublication);
-  for (const name of readdirSync(directory).sort()) {
-    if (stagedPublication !== undefined && (name === `.credential-key.${stagedPublication.operation.operationId}.tmp` || name === `${stagedPublication.operation.profileId}.json`)) continue;
-    if (name.startsWith(".credential-key.")) {
-      const matching = operations.filter(operation => operation.kind === "sign-up" && name === `.credential-key.${operation.operationId}.tmp`
-        && operation.credentialInitialization?.keyFile !== undefined);
-      const operation = matching[0];
-      if (matching.length !== 1 || operation?.kind !== "sign-up" || operation.credentialInitialization === undefined) fail("profile-credential-key-unowned");
-      const witness = { keyId: operation.credentialInitialization.keyId, binding: { installationId: locator.installationId, profileId: operation.profileId }, file: operation.credentialInitialization.keyFile };
-      assertCredentialKeyWitness(join(directory, name), CredentialKeyWitnessSchema.parse(witness), witness.binding);
-      if (lstatMaybe(join(directory, `${operation.profileId}.json`))) fail("credential-key-stage-outcome-uncertain");
-      continue;
+  assertNoSymlinkComponents(directory); privateDirectory(directory);
+  const expected = heads.filter(row => row.credentialKey !== undefined).map(row => `${row.profileId}.json`).sort();
+  if (canonicalJsonStringify(readdirSync(directory).sort()) !== canonicalJsonStringify(expected)) fail("profile-credential-key-unowned");
+  for (const row of heads) {
+    const anchor = row.credentialKey;
+    if (anchor === undefined) fail("profile-control-upgrade-credential-conversion-required");
+    const file = readPrivateFile(join(directory, `${row.profileId}.json`), { label: "lock", maxBytes: 4096 });
+    if (file === undefined) fail("credential-key-required");
+    const raw = z.looseObject({ schemaVersion: z.union([z.literal(1), z.literal(2)]), installationId: z.uuid(), profileId: z.uuid(), keyId: z.uuid(), legacyWitness: z.literal(true).optional() })
+      .parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+    if (raw.installationId !== locator.installationId || raw.profileId !== row.profileId || raw.keyId !== anchor.keyId
+      || anchor.binding.installationId !== raw.installationId || anchor.binding.profileId !== raw.profileId) fail("profile-credential-key-unowned");
+    let bytes = file.bytes;
+    if (raw.schemaVersion === 2 && raw.legacyWitness === true) {
+      const metadata = z.strictObject({ schemaVersion: z.literal(2), installationId: z.uuid(), profileId: z.uuid(), keyId: z.uuid(), keyDigest: DigestSchema, legacyWitness: z.literal(true) }).parse(raw);
+      const { legacyWitness: _legacyWitness, ...native } = metadata;
+      bytes = Buffer.from(`${canonicalJsonStringify(credentialKeyCustody.read(native))}\n`);
     }
-    if (!/^[0-9a-f-]{36}\.json$/u.test(name)) fail("profile-credential-key-unowned");
-    const profileId = z.uuid().parse(name.slice(0, -5)), binding = { installationId: locator.installationId, profileId };
-    const anchor = heads.find(row => row.profileId === profileId)?.credentialKey;
-    if (anchor !== undefined) assertCredentialKeyWitness(join(directory, name), anchor, binding);
-    else {
-      const matching = operations.filter(operation => operation.kind === "sign-up" && operation.profileId === profileId && operation.credentialInitialization !== undefined);
-      const operation = matching[0];
-      if (matching.length !== 1 || operation?.kind !== "sign-up" || operation.credentialInitialization === undefined) fail("profile-credential-key-unowned");
-      assertUnpublishedCredentialKey(join(directory, name), operation.credentialInitialization, binding);
-    }
+    if (file.identity.device !== anchor.file.device || file.identity.inode !== anchor.file.inode
+      || createHash("sha256").update(bytes).digest("hex") !== anchor.file.digest) fail("profile-credential-key-unowned");
   }
-  for (const operation of operations) if (operation.kind === "sign-up" && operation.credentialInitialization?.keyFile !== undefined
-    && !heads.some(row => row.profileId === operation.profileId && row.credentialKey !== undefined)
-    && stagedPublication?.operation.operationId !== operation.operationId) {
-    assertCredentialKeyStagePublication(locator.stateRoot, { priorOperation: operation, operation,
-      key: { keyId: operation.credentialInitialization.keyId, binding: { installationId: locator.installationId, profileId: operation.profileId }, file: operation.credentialInitialization.keyFile } });
-  }
-  for (const row of heads) if (row.credentialKey !== undefined) assertCredentialKeyWitness(join(directory, `${row.profileId}.json`), row.credentialKey,
-    { installationId: locator.installationId, profileId: row.profileId });
 }
 
-function admitCredentialKeyMigration(control: string, locator: RuntimeLocator, stoppedControlForward: boolean): CredentialKeyMigrationAdmission {
-  return (name, candidate) => {
-    const continuity = stoppedControlForward
-      ? readProfileEvidence(join(control, "profile-registry.json"), z.union([ProfileContinuitySchema, StoppedProfileContinuitySchema]))
-      : readProfileEvidence(join(control, "profile-registry.json"), ProfileContinuitySchema);
-    readProfileEvidence(join(locator.stateRoot, "machine", "profile-registry-version.json"), z.strictObject({ schemaVersion: z.literal(continuity.schemaVersion + 1) }));
-    const profileId = candidate.binding.profileId, canonical = name === `${profileId}.json`;
-    const same = (value: unknown) => canonicalJsonStringify(value) === canonicalJsonStringify(candidate);
-    if (continuity.installationId !== locator.installationId || candidate.binding.installationId !== locator.installationId) throw new CredentialKeyCustodyError("CREDENTIAL_KEYCHAIN_MISMATCH");
-    const anchor = continuity.erasures.find(row => row.profileId === profileId)?.credentialKey;
-    if (canonical && anchor !== undefined) {
-      if (!same(anchor)) throw new CredentialKeyCustodyError("CREDENTIAL_KEYCHAIN_MISMATCH");
-      return;
-    }
-    if (continuity.schemaVersion === 1) throw new CredentialKeyCustodyError("CREDENTIAL_KEYCHAIN_MISMATCH");
-    const operations = profileOperationInventory(locator.stateRoot);
-    for (const retained of continuity.operations) {
-      const observed = operations.find(row => row.operationId === retained.operationId);
-      if (canonicalJsonStringify(observed) !== canonicalJsonStringify(retained)) continue;
-      const operation = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${retained.operationId}.json`), ProfileOperationSchema);
-      if (operation.kind !== "sign-up" || operation.profileId !== profileId || !canonical && name !== `.credential-key.${operation.operationId}.tmp`) continue;
-      const initialization = operation.credentialInitialization;
-      if (initialization?.keyId === candidate.keyId && initialization.keyDocumentDigest === candidate.file.digest
-        && (initialization.keyFile === undefined ? canonical : canonicalJsonStringify(initialization.keyFile) === canonicalJsonStringify(candidate.file))) return;
-    }
-    const intentPath = join(control, "profile-publication.json");
-    if (lstatMaybe(intentPath)) {
-      const intent = readProfileEvidence(intentPath, ProfilePublicationSchema);
-      if (intent.kind === "profile" && intent.keyStage !== undefined && intent.installationId === locator.installationId) {
-        const capture = intent.keyStage, operation = capture.operation;
-        assertCredentialKeyStageTransition(capture);
-        const document = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), ProfileRegistryDocumentSchema);
-        const current = profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document, intent.erasures, intent.duo, intent.prior.completedRestores);
-        const observed = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), SignUpOperationSchema);
-        const others = (rows: typeof current.operations) => rows.filter(row => row.operationId !== operation.operationId);
-        const priorState = canonicalJsonStringify(observed) === canonicalJsonStringify(capture.priorOperation);
-        if ((canonical || name === `.credential-key.${operation.operationId}.tmp`) && same(capture.key)
-          && intent.operation?.kind === "write" && canonicalJsonStringify(intent.operation.operation) === canonicalJsonStringify(operation)
-          && canonicalJsonStringify(intent.document) === canonicalJsonStringify(document)
-          && canonicalJsonStringify(intent.erasures) === canonicalJsonStringify(intent.prior.erasures)
-          && canonicalJsonStringify(others(current.operations)) === canonicalJsonStringify(others(intent.prior.operations))
-          && (!priorState || canonicalJsonStringify(current) === canonicalJsonStringify(intent.prior))
-          && canonicalJsonStringify(capture.registry) === canonicalJsonStringify(document)
-          && (canonicalJsonStringify(continuity) === canonicalJsonStringify(intent.prior) || canonicalJsonStringify(continuity) === canonicalJsonStringify(current))
-          && (canonicalJsonStringify(observed) === canonicalJsonStringify(capture.priorOperation) || canonicalJsonStringify(observed) === canonicalJsonStringify(operation))) return;
-      }
-    }
-    throw new CredentialKeyCustodyError("CREDENTIAL_KEYCHAIN_MISMATCH");
-  };
-}
 
 function readProfilePublicationSource(control: string, locator: RuntimeLocator) {
   if (lstatMaybe(join(control, "device-recertification.json"))) fail("device-recertification-pending");
   const path = join(locator.stateRoot, "machine", "profiles.json");
   if (lstatMaybe(join(control, "profile-control-upgrade.json"))) fail("profile-control-upgrade-pending");
   assertNoSymlinkComponents(path);
-  readProfileEvidence(join(locator.stateRoot, "machine", "profile-registry-version.json"), z.strictObject({ schemaVersion: z.literal(5) }));
+  readProfileEvidence(join(locator.stateRoot, "machine", "profile-registry-version.json"), z.strictObject({ schemaVersion: z.literal(6) }));
   const document = readProfileEvidence(path, ProfileRegistryDocumentSchema);
   readProfileEvidence(join(locator.stateRoot, "machine", "profile-verifiers.json"), ProfileVerifierDocumentSchema);
   const pepperPath = join(locator.stateRoot, "machine", "profile-pepper");
@@ -1238,131 +1176,44 @@ function readProfilePublicationSource(control: string, locator: RuntimeLocator) 
   return { path, document, witnessPath, witness };
 }
 
-function readMachineRegistry(control: string, locator: RuntimeLocator, recoverPublication = true, credentialPublication?: CredentialInitializationPublication, stagedPublication?: CredentialKeyStagePublication, publicationOperationId?: string): ProfileRegistryDocument {
-  const { path, document, witnessPath, witness } = readProfilePublicationSource(control, locator);
+function readMachineRegistry(control: string, locator: RuntimeLocator, recoverPublication = true, publicationOperationId?: string): ProfileRegistryDocument {
+  const { path, document, witness, witnessPath } = readProfilePublicationSource(control, locator);
   const intentPath = join(control, "profile-publication.json");
   if (lstatMaybe(intentPath)) {
     const intent = readProfileEvidence(intentPath, ProfilePublicationSchema);
-    if (publicationOperationId !== undefined) {
-      const operationId = intent.kind === "credential-key" ? intent.capture.operation.operationId
-        : intent.kind === "profile" && intent.operation?.kind === "write" ? intent.operation.operation.operationId : undefined;
-      if (operationId !== publicationOperationId) fail("profile-publication-read-operation-mismatch");
-    }
-    if (intent.kind === "onboarding-finish") {
-      if (!recoverPublication) fail("profile-onboarding-finish-pending");
-      prepareProfileOnboardingFinish(control, locator, intent)();
-      return readMachineRegistry(control, locator, false);
-    }
-    if (intent.kind === "draft-erasure") {
-      assertDraftErasureSource(locator, document, intent);
-      if (canonicalJsonStringify(witness) !== canonicalJsonStringify(intent.prior)
-        || canonicalJsonStringify(profileRegistryWitness(locator.installationId, path, document, witness.erasures, witness.duo, witness.completedRestores)) !== canonicalJsonStringify(witness)) fail("profile-draft-erasure-control-changed");
-      assertErasureMembership(document, witness.erasures); assertProfileCredentialKeyMembership(locator, witness.erasures); assertDuoMembership(locator, document, witness.duo);
-      for (const row of witness.erasures) assertCredentialErasureHeadFiles(erasurePath(locator, row.profileId), row.head);
+    const operationId = intent.kind === "profile" ? intent.operation?.kind === "write" ? intent.operation.operation.operationId : undefined
+      : intent.kind === "onboarding-finish" ? intent.operation.operationId : intent.capture.operation.operationId;
+    if (publicationOperationId !== undefined && operationId !== publicationOperationId) fail("profile-publication-read-operation-mismatch");
+    if (intent.kind === "profile") {
+      if (!recoverPublication && publicationOperationId === undefined) fail("profile-registry-publication-pending");
+      const finish = prepareProfileRegistryPublication(control, locator, path, document, witness, intent);
+      if (recoverPublication) finish();
       return document;
     }
-    if (intent.kind === "incomplete-profile-draft") {
-      if (!recoverPublication) fail("profile-incomplete-reclassification-pending");
-      prepareIncompleteProfileDraft(control, locator, intent)();
-      return readMachineRegistry(control, locator, false);
-    }
+    if (intent.kind === "onboarding-finish") assertOnboardingFinishPublicationDocument(locator, intent);
     if (intent.kind === "draft-abort") {
-      if (!recoverPublication) fail("profile-draft-abort-pending");
-      prepareUnpublishedDraftAbort(control, locator, document, witness, intent)();
-      return readMachineRegistry(control, locator, false);
+      const operation = intent.capture.operation;
+      if (document.activeProfileId !== null || document.revision !== intent.prior.revision || document.sessionGeneration !== intent.prior.generation
+        || createHash("sha256").update(canonicalJsonStringify(document)).digest("hex") !== intent.prior.digest
+        || document.profiles.some(row => row.profileId === operation.profileId) || operation.onboarding?.abort === undefined) fail("profile-draft-abort-invalid");
     }
-    assertProfileCredentialKeyMembership(locator, witness.erasures, intent.kind === "profile" ? intent.keyStage : stagedPublication);
-    if (intent.kind === "duo" || intent.kind === "draft-duo") { fail("duo-publication-pending"); }
-    assertDuoMembership(locator, document, intent.kind === "profile"
-      ? intent.duo.filter(row => document.profiles.some(profile => profile.profileId === row.profileId)) : witness.duo);
-    if (intent.kind === "credential-key") {
-      const capture = intent.capture, profileId = capture.operation.profileId;
-      const priorRow = intent.prior.erasures.find(row => row.profileId === profileId);
-      if (intent.installationId !== locator.installationId || capture.key.binding.installationId !== locator.installationId || priorRow === undefined || priorRow.credentialKey !== undefined
-        || intent.document.installationId !== locator.installationId || intent.document.revision !== intent.prior.revision + 1
-        || intent.document.activeProfileId !== null || intent.document.sessionGeneration !== intent.prior.generation + 1
-        || !Number.isSafeInteger(intent.document.sessionGeneration)) fail("profile-key-publication-invalid");
-      if (createHash("sha256").update(canonicalJsonStringify(intent.priorDocument)).digest("hex") !== intent.prior.digest
-        || canonicalJsonStringify(advanceProfileRegistryDocument(intent.priorDocument, { activeProfileId: null, sessionGeneration: intent.priorDocument.sessionGeneration + 1 })) !== canonicalJsonStringify(intent.document)) fail("profile-key-publication-registry-invalid");
-      const operationPath = join(locator.stateRoot, "machine", "operations", `${capture.operation.operationId}.json`);
-      if (canonicalJsonStringify(readProfileEvidence(operationPath, SignUpOperationSchema)) !== canonicalJsonStringify(capture.operation)
-        || canonicalJsonStringify(priorRow.head) !== canonicalJsonStringify(capture.head)) fail("profile-key-publication-intent-changed");
-      assertCredentialInitializationPublication(locator.stateRoot, erasurePath(locator, profileId), capture);
-      const erasures = intent.prior.erasures.map(row => row.profileId === profileId ? { ...row, credentialKey: capture.key } : row);
-      const published = profileRegistryWitness(locator.installationId, path, document, erasures, intent.prior.duo, intent.prior.completedRestores);
-      if (canonicalJsonStringify(witness) !== canonicalJsonStringify(intent.prior)
-        && canonicalJsonStringify(witness) !== canonicalJsonStringify(published)) fail("profile-key-publication-continuity-changed");
-      if (canonicalJsonStringify(document) !== canonicalJsonStringify(intent.document)) {
-        if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, path, document, intent.prior.erasures, intent.prior.duo, intent.prior.completedRestores)) !== canonicalJsonStringify(intent.prior)) fail("profile-key-publication-registry-changed");
-      }
-      for (const row of intent.prior.erasures) {
-        assertCredentialErasureHeadFiles(erasurePath(locator, row.profileId), row.head);
-        if (row.credentialKey !== undefined) assertCredentialKeyWitness(join(locator.stateRoot, "machine", "credential-keys", `${row.profileId}.json`), row.credentialKey, { installationId: locator.installationId, profileId: row.profileId });
-      }
-      if (credentialPublication === undefined) return document;
-      if (!recoverPublication || canonicalJsonStringify(credentialPublication) !== canonicalJsonStringify(capture)) fail("profile-key-publication-fresh-inventory-required");
-      if (canonicalJsonStringify(document) !== canonicalJsonStringify(intent.document)) {
-        if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, path, document, intent.prior.erasures, intent.prior.duo, intent.prior.completedRestores)) !== canonicalJsonStringify(intent.prior)
-          || canonicalJsonStringify(advanceProfileRegistryDocument(document, { activeProfileId: null, sessionGeneration: document.sessionGeneration + 1 })) !== canonicalJsonStringify(intent.document)) fail("profile-key-publication-registry-changed");
-        atomicJson(path, intent.document);
-      }
-      atomicJson(witnessPath, profileRegistryWitness(locator.installationId, path, intent.document, erasures, intent.prior.duo, intent.prior.completedRestores));
-      unlinkSync(intentPath); fsyncPath(control);
-      return readMachineRegistry(control, locator, false);
-    }
-    if (intent.kind === "erasure") {
-      if (intent.installationId !== locator.installationId) fail("profile-erasure-publication-uncertain");
-      const publishedHead = witness.erasures.find(row => row.profileId === intent.profileId)?.head;
-      const settled = publishedHead?.state === "established" && publishedHead.epoch === intent.nextEpoch && publishedHead.journal.digest === intent.nextDigest
-        && canonicalJsonStringify({ ...witness, erasures: intent.prior.erasures }) === canonicalJsonStringify(intent.prior);
-      if (!settled && canonicalJsonStringify(intent.prior) !== canonicalJsonStringify(witness)) fail("profile-erasure-publication-uncertain");
-      if (canonicalJsonStringify(witness) !== canonicalJsonStringify(profileRegistryWitness(locator.installationId, path, document, witness.erasures, witness.duo, witness.completedRestores))) fail("profile-registry-continuity-mismatch");
-      assertErasureMembership(document, witness.erasures);
-      for (const row of witness.erasures) if (row.profileId !== intent.profileId) assertCredentialErasureHeadFiles(erasurePath(locator, row.profileId), row.head);
-      return document;
-    }
-    if (intent.keyStage !== undefined) {
-      assertProfileRegistryPublicationDocument(locator, intent);
-      const capture = intent.keyStage, id = capture.operation.operationId;
-      if (intent.installationId !== locator.installationId || canonicalJsonStringify(capture.registry) !== canonicalJsonStringify(document) || intent.operation?.kind !== "write"
-        || canonicalJsonStringify(intent.operation.operation) !== canonicalJsonStringify(capture.operation)
-        || canonicalJsonStringify(intent.document) !== canonicalJsonStringify(document)
-        || canonicalJsonStringify(intent.erasures) !== canonicalJsonStringify(intent.prior.erasures)) fail("credential-key-stage-publication-invalid");
-      assertCredentialKeyStagePublication(locator.stateRoot, capture);
-      const operationPath = join(locator.stateRoot, "machine", "operations", `${id}.json`);
-      const observed = readProfileEvidence(operationPath, SignUpOperationSchema), current = profileRegistryWitness(locator.installationId, path, document, intent.erasures, intent.duo, intent.prior.completedRestores);
-      const others = (rows: typeof current.operations) => rows.filter(row => row.operationId !== id);
-      const priorState = canonicalJsonStringify(observed) === canonicalJsonStringify(capture.priorOperation);
-      if ((!priorState && canonicalJsonStringify(observed) !== canonicalJsonStringify(capture.operation))
-        || canonicalJsonStringify(others(current.operations)) !== canonicalJsonStringify(others(intent.prior.operations))
-        || canonicalJsonStringify(witness) !== canonicalJsonStringify(intent.prior) && canonicalJsonStringify(witness) !== canonicalJsonStringify(current)
-        || priorState && canonicalJsonStringify(current) !== canonicalJsonStringify(intent.prior)) fail("credential-key-stage-operation-changed");
-      assertErasureMembership(document, intent.prior.erasures);
-      for (const row of intent.prior.erasures) assertCredentialErasureHeadFiles(erasurePath(locator, row.profileId), row.head);
-      if (stagedPublication === undefined) return document;
-      if (!recoverPublication && publicationOperationId === id
-        && canonicalJsonStringify(stagedPublication) === canonicalJsonStringify(capture)) return document;
-      if (!recoverPublication || canonicalJsonStringify(stagedPublication) !== canonicalJsonStringify(capture)) fail("credential-key-stage-fresh-owner-required");
-      if (priorState) atomicJson(operationPath, capture.operation);
-      atomicJson(witnessPath, profileRegistryWitness(locator.installationId, path, document, intent.erasures, intent.duo, intent.prior.completedRestores));
-      unlinkSync(intentPath); fsyncPath(control);
-      return readMachineRegistry(control, locator, false);
-    }
-    if (!recoverPublication) fail("profile-registry-publication-busy");
-    prepareProfileRegistryPublication(control, locator, path, document, witness, intent)();
-  } else if (canonicalJsonStringify(witness) !== canonicalJsonStringify(profileRegistryWitness(locator.installationId, path, document, witness.erasures, witness.duo, witness.completedRestores))) {
-    fail("profile-registry-continuity-mismatch");
+    // Credential publication settles only through its captured owner, never a registry read.
+    if (intent.installationId !== locator.installationId) fail("profile-publication-installation-mismatch");
+    const prior = intent.kind === "draft-abort" ? undefined : intent.priorDocument;
+    const next = intent.kind === "draft-abort" ? undefined : intent.document;
+    if (prior !== undefined && next !== undefined && canonicalJsonStringify(document) !== canonicalJsonStringify(prior)
+      && canonicalJsonStringify(document) !== canonicalJsonStringify(next)) fail("profile-publication-registry-changed");
+    const expected = profileRegistryWitness(locator.installationId, path, document, intent.prior.completedRestores);
+    if (canonicalJsonStringify(witness) !== canonicalJsonStringify(intent.prior)
+      && canonicalJsonStringify(witness) !== canonicalJsonStringify(expected)) fail("profile-publication-control-changed");
+    return document;
   }
-  const current = readProfileEvidence(witnessPath, ProfileContinuitySchema);
-  assertErasureMembership(document, current.erasures);
-  assertDuoMembership(locator, document, current.duo);
-  assertProfileCredentialKeyMembership(locator, current.erasures, stagedPublication);
-  for (const row of current.erasures) {
-    assertCredentialErasureHeadFiles(erasurePath(locator, row.profileId), row.head);
-    if (row.credentialKey !== undefined) assertCredentialKeyWitness(join(locator.stateRoot, "machine", "credential-keys", `${row.profileId}.json`), row.credentialKey, { installationId: locator.installationId, profileId: row.profileId });
-  }
+  if (canonicalJsonStringify(profileRegistryWitness(locator.installationId, path, document, witness.completedRestores)) !== canonicalJsonStringify(witness)) fail("profile-registry-continuity-mismatch");
+  for (const record of witness.completedRestores) assertCompletedRestoreCustody(locator, record);
+  privateFile(witnessPath);
   return document;
 }
+
 function assertProfileRegistryPublicationDocument(locator: RuntimeLocator,
   intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "profile" }>): void {
   const { prior, document } = intent;
@@ -1378,24 +1229,8 @@ function prepareProfileRegistryPublication(control: string, locator: RuntimeLoca
   document: ProfileRegistryDocument, witness: z.infer<typeof ProfileContinuitySchema>,
   intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "profile" }>): () => void {
   assertProfileRegistryPublicationDocument(locator, intent);
-  assertProfileCredentialKeyMembership(locator, witness.erasures, intent.keyStage);
-  assertDuoMembership(locator, document, intent.duo.filter(row => document.profiles.some(profile => profile.profileId === row.profileId)));
-  const retainedDuo = intent.duo.filter(row => intent.prior.duo.some(prior => prior.profileId === row.profileId));
-  const addedDuo = intent.duo.filter(row => !intent.prior.duo.some(prior => prior.profileId === row.profileId));
-  if (canonicalJsonStringify(retainedDuo) !== canonicalJsonStringify(intent.prior.duo) || addedDuo.length > 1
-    || addedDuo.some(row => {
-      const profile = intent.document.profiles.find(profile => profile.profileId === row.profileId);
-      if (profile === undefined) return true;
-      const operation = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${profile.registration.operationId}.json`), SignUpOperationSchema);
-      assertFinishedProfileOnboarding(operation);
-      return operation.profileId !== row.profileId || canonicalJsonStringify(operation.onboarding?.duo) !== canonicalJsonStringify(row);
-    })) fail("duo-registration-membership-changed");
-  const retainedHeads = intent.erasures.filter(row => intent.prior.erasures.some(prior => prior.profileId === row.profileId));
-  if (canonicalJsonStringify(retainedHeads) !== canonicalJsonStringify(intent.prior.erasures)) fail("profile-erasure-publication-heads-changed");
-  const addedHeads = intent.erasures.filter(row => !intent.prior.erasures.some(prior => prior.profileId === row.profileId));
-  if (addedHeads.length > 1 || addedHeads.some(row => row.credentialKey === undefined || row.head.state !== "never-erased" || !document.profiles.some(profile => profile.profileId === row.profileId && profile.registration.operationId === row.originOperationId))) fail("profile-erasure-publication-origin-invalid");
   if (intent.installationId !== locator.installationId || canonicalJsonStringify(intent.document) !== canonicalJsonStringify(document)) fail("profile-registry-publication-uncertain");
-  const published = profileRegistryWitness(locator.installationId, path, document, intent.erasures, intent.duo, intent.prior.completedRestores);
+  const published = profileRegistryWitness(locator.installationId, path, document, intent.prior.completedRestores);
   if (intent.operation !== undefined) {
     const mutation = intent.operation;
     const operationId = mutation.kind === "write" ? mutation.operation.operationId : mutation.operationId;
@@ -1417,9 +1252,7 @@ function prepareProfileRegistryPublication(control: string, locator: RuntimeLoca
 function assertDuoMembership(locator: RuntimeLocator, document: ProfileRegistryDocument, rows: readonly DuoContinuityRow[]): void {
   if (rows.length !== document.profiles.length || new Set(rows.map(row => row.profileId)).size !== rows.length
     || rows.some(row => !document.profiles.some(profile => profile.profileId === row.profileId))) fail("duo-profile-membership-mismatch");
-  const drafts = draftDuoRows(locator, document);
-  const allRows = [...rows, ...drafts];
-  if (new Set(allRows.map(row => row.profileId)).size !== allRows.length) fail("duo-draft-membership-mismatch");
+  const allRows = rows;
   const directory = join(locator.stateRoot, "machine", "duo-credentials");
   assertNoSymlinkComponents(directory);
   if (lstatMaybe(directory)) {
@@ -1427,16 +1260,11 @@ function assertDuoMembership(locator: RuntimeLocator, document: ProfileRegistryD
     const expected = allRows.filter(row => row.state !== "never-initialized").map(row => `${row.profileId}.json`).sort();
     if (canonicalJsonStringify(readdirSync(directory).sort()) !== canonicalJsonStringify(expected)) fail("duo-document-membership-mismatch");
   }
-  for (const row of allRows) assertDuoDocumentWitness(locator.stateRoot, row);
-}
-
-function draftDuoRows(locator: RuntimeLocator, document: ProfileRegistryDocument): DuoContinuityRow[] {
-  return profileOperationInventory(locator.stateRoot).flatMap(entry => {
-    const operation = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${entry.operationId}.json`), ProfileOperationSchema);
-    if (operation.kind !== "sign-up" || operation.onboarding === undefined || document.profiles.some(row => row.profileId === operation.profileId)) return [];
-    if (operation.onboarding.duo.profileId !== operation.profileId) fail("duo-draft-membership-mismatch");
-    return [operation.onboarding.duo];
-  });
+  for (const row of allRows) {
+    const path = join(directory, `${row.profileId}.json`);
+    if (row.state === "never-initialized") { if (lstatMaybe(path)) fail("duo-document-membership-mismatch"); }
+    else if (!sameControlUpgradeFile(path, row.document, 25 * 1024 * 1024)) fail("duo-document-custody-changed");
+  }
 }
 
 function profileOnboardingCompletion(operation: z.infer<typeof SignUpOperationSchema>) {
@@ -1453,90 +1281,78 @@ function profileOnboardingCompletion(operation: z.infer<typeof SignUpOperationSc
       softwareInterceptionDisabled: true, operatorConfirmedAt: touch.operatorConfirmedAt } });
 }
 
-function prepareProfileOnboardingFinish(control: string, locator: RuntimeLocator,
-  intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "onboarding-finish" }>): () => void {
-  const { operation, prior, priorDocument, document, priorVerifiers, verifiers } = intent, profileId = operation.profileId;
+function assertOnboardingFinishPublicationDocument(locator: RuntimeLocator,
+  intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "onboarding-finish" }>): void {
+  const { operation, prior, priorDocument, document, priorVerifiers, verifiers } = intent;
   const added = document.profiles.filter(row => !priorDocument.profiles.some(prior => prior.profileId === row.profileId));
   const verifier = verifiers.profiles.filter(row => !priorVerifiers.profiles.some(prior => prior.profileId === row.profileId));
-  if (intent.installationId !== locator.installationId || operation.phase !== "publishing" || added.length !== 1 || verifier.length !== 1
-    || added[0]?.profileId !== profileId || verifier[0]?.profileId !== profileId || verifier[0].emailKey !== operation.emailKey
+  if (intent.installationId !== locator.installationId || operation.phase !== "publishing" || operation.credentials.phase !== "ready"
+    || added.length !== 1 || verifier.length !== 1 || added[0]?.profileId !== operation.profileId || verifier[0]?.profileId !== operation.profileId
+    || verifier[0].emailKey !== operation.emailKey || priorVerifiers.profiles.some(row => row.emailKey === operation.emailKey)
+    || priorDocument.installationId !== locator.installationId || document.installationId !== locator.installationId
+    || priorDocument.activeProfileId !== null || priorDocument.revision !== prior.revision || priorDocument.sessionGeneration !== prior.generation
+    || createHash("sha256").update(canonicalJsonStringify(priorDocument)).digest("hex") !== prior.digest
     || canonicalJsonStringify(document) !== canonicalJsonStringify(advanceProfileRegistryDocument(priorDocument, { profiles: [...priorDocument.profiles, added[0]] }))
     || canonicalJsonStringify(verifiers) !== canonicalJsonStringify({ ...priorVerifiers, profiles: [...priorVerifiers.profiles, verifier[0]] })
-    || priorVerifiers.profiles.some(row => row.emailKey === operation.emailKey)
+    || added[0].firstName !== operation.firstName || added[0].lastName !== operation.lastName || added[0].createdAt !== operation.createdAt
+    || added[0].lifecycle !== "ready" || added[0].credentialState !== "saved" || added[0].duoState !== "ready"
     || added[0].registration.operationId !== operation.operationId || added[0].registration.commandId !== operation.commandId
-    || added[0].registration.writeId !== operation.writeId || canonicalJsonStringify(added[0].registration.onboardingCompletion) !== canonicalJsonStringify(profileOnboardingCompletion(operation))
-    || createHash("sha256").update(canonicalJsonStringify(priorDocument)).digest("hex") !== prior.digest
-    || intent.head.state !== "never-erased" || intent.key.binding.profileId !== profileId || intent.key.binding.installationId !== locator.installationId) fail("profile-onboarding-finish-invalid");
+    || added[0].registration.writeId !== operation.writeId || operation.expectedRevision === undefined
+    || added[0].registration.credentialRevision !== operation.expectedRevision + 1
+    || canonicalJsonStringify(added[0].registration.onboardingCompletion) !== canonicalJsonStringify(profileOnboardingCompletion(operation))) fail("profile-onboarding-finish-invalid");
+  const current = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), SignUpOperationSchema);
+  if (canonicalJsonStringify(current) !== canonicalJsonStringify(operation)) fail("profile-onboarding-finish-operation-changed");
+}
+
+function prepareProfileOnboardingFinish(control: string, locator: RuntimeLocator,
+  intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "onboarding-finish" }>, revalidate: () => void): () => void {
+  assertOnboardingFinishPublicationDocument(locator, intent);
+  const { operation, prior, priorDocument, document, priorVerifiers, verifiers } = intent;
+  const root = join(locator.stateRoot, "profiles", operation.profileId), registryPath = join(locator.stateRoot, "machine", "profiles.json"),
+    verifierPath = join(locator.stateRoot, "machine", "profile-verifiers.json");
   const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
   if (pepper === undefined || pepper.bytes.length !== 32 || pepper.identity.device !== intent.pepper.device || pepper.identity.inode !== intent.pepper.inode
     || createHash("sha256").update(pepper.bytes).digest("hex") !== intent.pepper.digest) fail("profile-onboarding-finish-pepper-changed");
-  const root = join(locator.stateRoot, "profiles", profileId), registryPath = join(locator.stateRoot, "machine", "profiles.json");
-  assertCanonicalProfileBinding(join(root, "state.db"), intent.key.binding);
+  revalidate(); assertCanonicalProfileBinding(join(root, "state.db"), { installationId: locator.installationId, profileId: operation.profileId });
   if (canonicalJsonStringify(profileAuthorityFileWitnesses(root)) !== canonicalJsonStringify(intent.databases)) fail("profile-onboarding-finish-source-changed");
-  assertCredentialKeyWitness(join(locator.stateRoot, "machine", "credential-keys", `${profileId}.json`), intent.key, intent.key.binding);
-  assertCredentialErasureHeadFiles(erasurePath(locator, profileId), intent.head);
-  const protectedFile = readPrivateFile(join(root, "credentials", "protected.json"), { label: "protected.json", maxBytes: Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 });
-  if (protectedFile === undefined || protectedFile.identity.device !== intent.protectedFile.device || protectedFile.identity.inode !== intent.protectedFile.inode
-    || createHash("sha256").update(protectedFile.bytes).digest("hex") !== intent.protectedFile.digest) fail("profile-onboarding-finish-source-changed");
-  if (canonicalJsonStringify(readStrict(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), SignUpOperationSchema)) !== canonicalJsonStringify(operation)) fail("profile-onboarding-finish-operation-changed");
-  const duo = DuoContinuityRowSchema.parse(operation.onboarding?.duo); assertDuoDocumentWitness(locator.stateRoot, duo);
-  const verifierPath = join(locator.stateRoot, "machine", "profile-verifiers.json"), currentVerifiers = readStrict(verifierPath, ProfileVerifierDocumentSchema);
-  const currentDocument = readStrict(registryPath, ProfileRegistryDocumentSchema), before = canonicalJsonStringify(currentDocument) === canonicalJsonStringify(priorDocument);
-  const after = canonicalJsonStringify(currentDocument) === canonicalJsonStringify(document), verifierBefore = canonicalJsonStringify(currentVerifiers) === canonicalJsonStringify(priorVerifiers);
-  const verifierAfter = canonicalJsonStringify(currentVerifiers) === canonicalJsonStringify(verifiers);
+  const currentVerifiers = readStrict(verifierPath, ProfileVerifierDocumentSchema), currentDocument = readStrict(registryPath, ProfileRegistryDocumentSchema);
+  const before = canonicalJsonStringify(currentDocument) === canonicalJsonStringify(priorDocument), after = canonicalJsonStringify(currentDocument) === canonicalJsonStringify(document),
+    verifierBefore = canonicalJsonStringify(currentVerifiers) === canonicalJsonStringify(priorVerifiers), verifierAfter = canonicalJsonStringify(currentVerifiers) === canonicalJsonStringify(verifiers);
   if (!before && !after || !verifierBefore && !verifierAfter || after && !verifierAfter) fail("profile-onboarding-finish-order-invalid");
-  const erasures = [...prior.erasures, { profileId, originOperationId: operation.operationId, head: intent.head, credentialKey: intent.key }], duos = [...prior.duo, duo];
   const continuity = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
   if (canonicalJsonStringify(continuity) !== canonicalJsonStringify(prior)
-    && (!after || canonicalJsonStringify(continuity) !== canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, document, erasures, duos, prior.completedRestores)))) fail("profile-onboarding-finish-control-changed");
+    && (!after || canonicalJsonStringify(continuity) !== canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, document, prior.completedRestores)))) fail("profile-onboarding-finish-control-changed");
   return () => {
-    if (verifierBefore) atomicJson(verifierPath, verifiers);
-    if (before) atomicJson(registryPath, document);
-    atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, registryPath, document, erasures, duos, prior.completedRestores));
-    unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
+    revalidate(); if (verifierBefore) atomicJson(verifierPath, verifiers);
+    revalidate(); if (before) atomicJson(registryPath, document);
+    revalidate(); atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, registryPath, document, prior.completedRestores));
+    revalidate(); unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
   };
-}
-
-function assertDraftErasureSource(locator: RuntimeLocator, document: ProfileRegistryDocument,
-  intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "draft-erasure" }>): void {
-  const operation = intent.operation, draft = operation.onboarding;
-  if (intent.installationId !== locator.installationId || operation.profileId !== intent.profileId || operation.phase !== "applying"
-    || operation.credentialInitialization?.mode !== "initial" || draft?.abort === undefined || draft.finish !== undefined || draft.duo.state === "registered"
-    || draft.attempts.some(attempt => attempt.providerClosedAt === undefined) || document.profiles.some(row => row.profileId === intent.profileId)
-    || canonicalJsonStringify(intent.request) !== canonicalJsonStringify(erasureRequestIdentity(draft.abort))) fail("profile-draft-erasure-intent-invalid");
-  const path = join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`);
-  if (canonicalJsonStringify(readProfileEvidence(path, SignUpOperationSchema)) !== canonicalJsonStringify(operation)) fail("profile-draft-erasure-operation-changed");
-  const source = readPrivateFile(unpublishedDraftAbortSourcePath(join(locator.stateRoot, "profiles", intent.profileId), operation),
-    { label: "protected.json", maxBytes: Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 });
-  if (source === undefined || source.identity.device !== intent.source.device || source.identity.inode !== intent.source.inode
-    || createHash("sha256").update(source.bytes).digest("hex") !== intent.source.digest) fail("profile-draft-abort-source-changed");
 }
 
 function prepareIncompleteProfileDraft(control: string, locator: RuntimeLocator,
   intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "incomplete-profile-draft" }>): () => void {
   const { capture, prior, priorDocument, document, priorVerifiers, verifiers } = intent, operation = capture.operation;
-  const target = priorDocument.profiles.find(row => row.profileId === operation.profileId), binding = capture.key.binding;
+  const target = priorDocument.profiles.find(row => row.profileId === operation.profileId), binding = { installationId: locator.installationId, profileId: operation.profileId };
   if (intent.installationId !== locator.installationId || binding.installationId !== locator.installationId || binding.profileId !== operation.profileId
     || target === undefined || target.registration.onboardingCompletion !== undefined || target.duoState !== "not-set-up" || target.migratedFromLegacy !== undefined
     || target.registration.operationId !== operation.operationId || target.registration.commandId !== operation.commandId || target.registration.writeId !== operation.writeId
-    || operation.phase !== "applying" || operation.onboarding?.duo.state !== "never-initialized" || operation.onboarding.attempts.length !== 0
+    || operation.phase !== "applying" || operation.credentials.phase !== "ready" || operation.onboarding === undefined || operation.onboarding.attempts.length !== 0
     || operation.onboarding.finish !== undefined || operation.onboarding.abort !== undefined
-    || prior.duo.find(row => row.profileId === operation.profileId)?.state !== "never-initialized"
     || canonicalJsonStringify(document) !== canonicalJsonStringify(advanceProfileRegistryDocument(priorDocument, { profiles: priorDocument.profiles.filter(row => row.profileId !== operation.profileId),
       activeProfileId: priorDocument.activeProfileId === operation.profileId ? null : priorDocument.activeProfileId, sessionGeneration: priorDocument.sessionGeneration + 1 }))
     || canonicalJsonStringify(verifiers) !== canonicalJsonStringify({ ...priorVerifiers, profiles: priorVerifiers.profiles.filter(row => row.profileId !== operation.profileId) })
     || priorVerifiers.profiles.filter(row => row.profileId === operation.profileId).length !== 1) fail("profile-incomplete-reclassification-invalid");
   if (createHash("sha256").update(canonicalJsonStringify(priorDocument)).digest("hex") !== prior.digest
-    || prior.generation !== priorDocument.sessionGeneration || prior.erasures.find(row => row.profileId === operation.profileId)?.originOperationId !== operation.operationId
-    || canonicalJsonStringify(prior.erasures.find(row => row.profileId === operation.profileId)?.credentialKey) !== canonicalJsonStringify(capture.key)) fail("profile-incomplete-prior-changed");
+    || prior.generation !== priorDocument.sessionGeneration || prior.revision !== priorDocument.revision) fail("profile-incomplete-prior-changed");
   const root = join(locator.stateRoot, "profiles", operation.profileId), registryPath = join(locator.stateRoot, "machine", "profiles.json");
   if (canonicalJsonStringify(unpublishedDraftAbortMembership(root)) !== canonicalJsonStringify(capture.membership)) fail("profile-incomplete-copy-membership-changed");
   assertCanonicalProfileBinding(join(root, "state.db"), binding);
   if (canonicalJsonStringify(profileAuthorityFileWitnesses(root)) !== canonicalJsonStringify(capture.databases)) fail("profile-incomplete-source-changed");
-  assertCredentialKeyWitness(join(locator.stateRoot, "machine", "credential-keys", `${operation.profileId}.json`), capture.key, binding);
-  const protectedFile = readPrivateFile(join(root, "credentials", "protected.json"), { label: "protected.json", maxBytes: Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 });
-  if (protectedFile === undefined || protectedFile.identity.device !== capture.protectedFile.device || protectedFile.identity.inode !== capture.protectedFile.inode
-    || createHash("sha256").update(protectedFile.bytes).digest("hex") !== capture.protectedFile.digest) fail("profile-incomplete-source-changed");
+  const sources = [{ path: join(locator.stateRoot, "machine", "credential-keys", `${operation.profileId}.json`), file: capture.credentials.head },
+    ...capture.credentials.files.map(file => ({ path: file.kind === "duo" ? join(locator.stateRoot, "machine", "duo-credentials", `${operation.profileId}.json`)
+      : join(root, "credentials", file.kind === "protected" ? "protected.json" : "chatgpt-account.json"), file: { device: file.device, inode: file.inode, digest: file.digest } }))];
+  for (const source of sources) if (!sameControlUpgradeFile(source.path, source.file, 25 * 1024 * 1024)) fail("profile-incomplete-source-changed");
   const currentDocument = readProfileEvidence(registryPath, ProfileRegistryDocumentSchema), verifierPath = join(locator.stateRoot, "machine", "profile-verifiers.json");
   const currentVerifiers = readProfileEvidence(verifierPath, ProfileVerifierDocumentSchema), operationPath = join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`);
   const operationPresent = lstatMaybe(operationPath) !== undefined;
@@ -1544,157 +1360,61 @@ function prepareIncompleteProfileDraft(control: string, locator: RuntimeLocator,
   const isPrior = canonicalJsonStringify(currentDocument) === canonicalJsonStringify(priorDocument), isNext = canonicalJsonStringify(currentDocument) === canonicalJsonStringify(document);
   const verifierPrior = canonicalJsonStringify(currentVerifiers) === canonicalJsonStringify(priorVerifiers), verifierNext = canonicalJsonStringify(currentVerifiers) === canonicalJsonStringify(verifiers);
   if (!isPrior && !isNext || !verifierPrior && !verifierNext || !operationPresent && (!isPrior || !verifierPrior) || isNext && !verifierNext) fail("profile-incomplete-reclassification-order-invalid");
-  const nextErasures = prior.erasures.filter(row => row.profileId !== operation.profileId), nextDuo = prior.duo.filter(row => row.profileId !== operation.profileId);
   const current = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-  const next = profileRegistryWitness(locator.installationId, registryPath, currentDocument, nextErasures, nextDuo, prior.completedRestores);
+  const next = profileRegistryWitness(locator.installationId, registryPath, currentDocument, prior.completedRestores);
   if (canonicalJsonStringify(current) !== canonicalJsonStringify(prior) && (!isNext || !operationPresent || canonicalJsonStringify(current) !== canonicalJsonStringify(next))) fail("profile-incomplete-control-changed");
   return () => {
-    if (!operationPresent) atomicJson(operationPath, operation);
-    if (verifierPrior) atomicJson(verifierPath, verifiers);
-    if (isPrior) atomicJson(registryPath, document);
-    atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, registryPath, document, nextErasures, nextDuo, prior.completedRestores));
-    unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
+    const revalidate = () => { prepareIncompleteProfileDraft(control, locator, intent); };
+    revalidate(); if (!operationPresent) atomicJson(operationPath, operation);
+    revalidate(); if (verifierPrior) atomicJson(verifierPath, verifiers);
+    revalidate(); if (isPrior) atomicJson(registryPath, document);
+    revalidate(); atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, registryPath, document, prior.completedRestores));
+    revalidate(); unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
   };
 }
 
 function prepareUnpublishedDraftAbort(control: string, locator: RuntimeLocator, document: ProfileRegistryDocument,
   witness: z.infer<typeof ProfileContinuitySchema>, intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "draft-abort" }>): () => void {
-  const { capture, prior } = intent, operation = capture.operation, draft = operation.onboarding;
-  if (intent.installationId !== locator.installationId || capture.key.binding.installationId !== locator.installationId
-    || capture.key.binding.profileId !== operation.profileId || operation.phase !== "applying" || operation.credentialInitialization?.mode !== "initial"
-    || draft?.abort === undefined || draft.finish !== undefined || draft.duo.state === "registered"
-    || draft.attempts.some(attempt => attempt.providerClosedAt === undefined) || capture.head.state !== "established"
-    || document.profiles.some(row => row.profileId === operation.profileId)) fail("profile-draft-abort-invalid");
-  const root = join(locator.stateRoot, "profiles", operation.profileId), operationPath = join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`);
-  const keyPath = join(locator.stateRoot, "machine", "credential-keys", `${operation.profileId}.json`), protectedPath = join(root, "credentials", "protected.json");
-  const operationPresent = lstatMaybe(operationPath) !== undefined, keyPresent = lstatMaybe(keyPath) !== undefined;
-  const path = join(locator.stateRoot, "machine", "profiles.json"), current = profileRegistryWitness(locator.installationId, path, document, prior.erasures, prior.duo, prior.completedRestores);
+  const { capture, prior } = intent, operation = capture.operation, abort = operation.onboarding?.abort;
+  if (intent.installationId !== locator.installationId || operation.phase !== "applying" || abort === undefined
+    || operation.onboarding?.finish !== undefined || operation.onboarding?.attempts.some(attempt => attempt.providerClosedAt === undefined)
+    || document.activeProfileId !== null || document.profiles.some(row => row.profileId === operation.profileId)) fail("profile-draft-abort-invalid");
+  const root = join(locator.stateRoot, "profiles", operation.profileId), operationPath = join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`),
+    headPath = join(locator.stateRoot, "machine", "credential-keys", `${operation.profileId}.json`);
+  const headFile = readPrivateFile(headPath, { label: "lock", maxBytes: 25 * 1024 * 1024 });
+  if (headFile === undefined || canonicalJsonStringify({ ...headFile.identity, digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
+  const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(headFile.bytes)));
+  if (head.state !== "erased" || head.installationId !== locator.installationId || head.profileId !== operation.profileId
+    || head.key.installationId !== head.installationId || head.key.profileId !== head.profileId || head.key.keyId !== operation.credentials.keyId
+    || head.operationId !== abort.operationId || head.generation !== abort.generation) fail("profile-draft-abort-head-changed");
+  if (lstatMaybe(join(locator.stateRoot, "machine", "credential-operations", `${operation.profileId}.json`))
+    || lstatMaybe(join(locator.stateRoot, "machine", "duo-credentials", `${operation.profileId}.json`))) fail("profile-draft-abort-credential-operation-pending");
+  const current = profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document, prior.completedRestores);
   const others = (value: typeof current) => ({ ...value, operations: value.operations.filter(row => row.operationId !== operation.operationId) });
   if (canonicalJsonStringify(others(current)) !== canonicalJsonStringify(others(prior))
     || canonicalJsonStringify(witness) !== canonicalJsonStringify(prior) && canonicalJsonStringify(witness) !== canonicalJsonStringify(current)) fail("profile-draft-abort-control-changed");
-  const prepareRemoval = () => {
-    assertCredentialErasureHeadFiles(erasurePath(locator, operation.profileId), capture.head);
-    const rootPresent = lstatMaybe(root) !== undefined;
-    if (rootPresent) {
-      const remaining = unpublishedDraftAbortMembership(root);
-      if (remaining.some(entry => {
-        const original = capture.membership.find(prior => prior.path === entry.path);
-        return original === undefined || original.device !== entry.device || original.inode !== entry.inode
-          || original.directory !== entry.directory || !entry.directory && (original.size !== entry.size || original.modified !== entry.modified || original.changed !== entry.changed);
-      })) fail("profile-draft-abort-membership-changed");
+  const operationPresent = lstatMaybe(operationPath) !== undefined, rootPresent = lstatMaybe(root) !== undefined;
+  if (operationPresent && canonicalJsonStringify(readProfileEvidence(operationPath, SignUpOperationSchema)) !== canonicalJsonStringify(operation)
+    || rootPresent && !operationPresent) fail("profile-draft-abort-order-invalid");
+  if (rootPresent) {
+    const remaining = unpublishedDraftAbortMembership(root);
+    for (const entry of remaining) {
+      const original = capture.membership.find(prior => prior.path === entry.path);
+      if (original === undefined || original.device !== entry.device || original.inode !== entry.inode || original.mode !== entry.mode
+        || original.directory !== entry.directory || !entry.directory && (original.size !== entry.size || original.modified !== entry.modified || original.changed !== entry.changed)) fail("profile-draft-abort-membership-changed");
     }
-    const duoPath = join(locator.stateRoot, "machine", "duo-credentials", `${operation.profileId}.json`);
-    const duoPresent = lstatMaybe(duoPath) !== undefined;
-    if (duoPresent) {
-      assertDuoDocumentWitness(locator.stateRoot, draft.duo);
-    }
-    return () => {
-      if (rootPresent) { rmSync(root, { recursive: true }); fsyncPath(dirname(root)); }
-      if (duoPresent) { unlinkSync(duoPath); fsyncPath(dirname(duoPath)); }
-      atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, path, document, prior.erasures, prior.duo, prior.completedRestores));
-      unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
-    };
-  };
-  if (!operationPresent && !keyPresent) return prepareRemoval();
-  const sourcePath = unpublishedDraftAbortSourcePath(root, operation), sourcePresent = lstatMaybe(sourcePath) !== undefined;
-  const membership = unpublishedDraftAbortMembership(root);
-  const afterSource = (entries: typeof membership) => entries.filter(entry => entry.path !== relative(root, sourcePath))
-    .map(entry => entry.path === "credentials" ? { ...entry, size: 0, modified: 0, changed: 0 } : entry);
-  if (canonicalJsonStringify(membership) !== canonicalJsonStringify(capture.membership)
-    && (sourcePresent || canonicalJsonStringify(afterSource(membership)) !== canonicalJsonStringify(afterSource(capture.membership)))) fail("profile-draft-abort-membership-changed");
-  if (sourcePresent) {
-    const source = readPrivateFile(sourcePath, { label: "protected.json", maxBytes: Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 });
-    if (source === undefined || source.identity.device !== capture.abortSource.device || source.identity.inode !== capture.abortSource.inode
-      || createHash("sha256").update(source.bytes).digest("hex") !== capture.abortSource.digest) fail("profile-draft-abort-source-changed");
+    for (const database of profileAuthorityFileWitnesses(root)) if (database.file !== undefined
+      && canonicalJsonStringify(database) !== canonicalJsonStringify(capture.databases.find(file => file.suffix === database.suffix))) fail("profile-draft-abort-database-changed");
+    if (lstatMaybe(join(root, "credentials", "protected.json")) || lstatMaybe(join(root, "credentials", "chatgpt-account.json"))) fail("profile-draft-abort-credentials-remain");
   }
-  assertCredentialErasureHeadFiles(erasurePath(locator, operation.profileId), capture.head);
-  const protectedFile = readPrivateFile(protectedPath, { label: "protected.json", maxBytes: Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 });
-  if (protectedFile === undefined || canonicalJsonStringify({ device: protectedFile.identity.device, inode: protectedFile.identity.inode,
-    digest: createHash("sha256").update(protectedFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.protectedFile)) fail("profile-draft-abort-erasure-changed");
-  if (operationPresent) {
-    if (canonicalJsonStringify(readProfileEvidence(operationPath, SignUpOperationSchema)) !== canonicalJsonStringify(operation)
-      || canonicalJsonStringify(current) !== canonicalJsonStringify(prior)) fail("profile-draft-abort-operation-changed");
-  } else if (keyPresent) fail("profile-draft-abort-order-invalid");
-  if (sourcePresent) {
-    if (!keyPresent || !operationPresent) fail("profile-draft-abort-order-invalid");
-  }
-  if (keyPresent) assertCredentialKeyWitness(keyPath, capture.key, capture.key.binding);
-  prepareRemoval();
   return () => {
-    if (sourcePresent) { unlinkSync(sourcePath); fsyncPath(dirname(sourcePath)); }
-    if (keyPresent) { unlinkSync(keyPath); fsyncPath(dirname(keyPath)); }
-    credentialKeyCustody.delete(capture.key.binding);
+    if (rootPresent) { rmSync(root, { recursive: true }); fsyncPath(dirname(root)); }
     if (operationPresent) { unlinkSync(operationPath); fsyncPath(dirname(operationPath)); }
-    prepareRemoval()();
+    atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document, prior.completedRestores));
+    unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
   };
 }
 
-function settleDraftDuoPublication(control: string, locator: RuntimeLocator, document: ProfileRegistryDocument,
-  witness: z.infer<typeof ProfileContinuitySchema>, intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "draft-duo" }>): void {
-  const { capture, priorOperation, operation, prior } = intent;
-  if (intent.installationId !== locator.installationId || priorOperation.onboarding === undefined || operation.onboarding === undefined
-    || priorOperation.phase !== "applying" || document.profiles.some(row => row.profileId === capture.profileId)
-    || priorOperation.profileId !== capture.profileId || capture.profileId !== capture.prior.profileId || capture.profileId !== capture.next.profileId
-    || capture.next.state === "never-initialized" || capture.next.revision !== capture.prior.revision + 1
-    || canonicalJsonStringify(priorOperation.onboarding.duo) !== canonicalJsonStringify(capture.prior)
-    || canonicalJsonStringify(operation) !== canonicalJsonStringify({ ...priorOperation, onboarding: { ...priorOperation.onboarding, duo: capture.next } })) fail("duo-draft-publication-invalid");
-  const operationPath = join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`);
-  const observed = readProfileEvidence(operationPath, SignUpOperationSchema);
-  if (canonicalJsonStringify(observed) !== canonicalJsonStringify(priorOperation)
-    && canonicalJsonStringify(observed) !== canonicalJsonStringify(operation)) fail("duo-draft-authority-changed");
-  const path = join(locator.stateRoot, "machine", "profiles.json"), current = profileRegistryWitness(locator.installationId, path, document, prior.erasures, prior.duo, prior.completedRestores);
-  const others = (value: typeof current) => ({ ...value, operations: value.operations.filter(row => row.operationId !== operation.operationId) });
-  if (canonicalJsonStringify(others(current)) !== canonicalJsonStringify(others(prior))
-    || canonicalJsonStringify(witness) !== canonicalJsonStringify(prior) && canonicalJsonStringify(witness) !== canonicalJsonStringify(current)) fail("duo-draft-publication-control-changed");
-  if (canonicalJsonStringify(observed) === canonicalJsonStringify(priorOperation)
-    && canonicalJsonStringify(current) !== canonicalJsonStringify(prior)) fail("duo-draft-publication-source-changed");
-  const directory = join(locator.stateRoot, "machine", "duo-credentials"), canonical = join(directory, `${capture.profileId}.json`), stage = duoStagePath(locator.stateRoot, capture);
-  assertNoSymlinkComponents(directory); privateDirectory(directory);
-  const allRows = [...prior.duo, ...draftDuoRows(locator, document)];
-  const expected = allRows.filter(row => row.profileId !== capture.profileId && row.state !== "never-initialized").map(row => `${row.profileId}.json`);
-  for (const row of allRows) if (row.profileId !== capture.profileId) assertDuoDocumentWitness(locator.stateRoot, row);
-  if (lstatMaybe(stage)) {
-    if (canonicalJsonStringify(observed) !== canonicalJsonStringify(priorOperation) || canonicalJsonStringify(witness) !== canonicalJsonStringify(prior)) fail("duo-draft-publication-stage-after-control");
-    assertDuoPublishedFile(stage, capture); assertDuoDocumentWitness(locator.stateRoot, capture.prior);
-    expected.push(basename(stage));
-    if (capture.prior.state !== "never-initialized") expected.push(basename(canonical));
-  } else { assertDuoPublishedFile(canonical, capture); expected.push(basename(canonical)); }
-  if (canonicalJsonStringify(readdirSync(directory).sort()) !== canonicalJsonStringify(expected.sort())) fail("duo-draft-publication-membership-changed");
-  if (lstatMaybe(stage)) { renameSync(stage, canonical); fsyncPath(directory); }
-  assertDuoPublishedFile(canonical, capture);
-  if (canonicalJsonStringify(observed) === canonicalJsonStringify(priorOperation)) atomicJson(operationPath, operation);
-  atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, path, document, prior.erasures, prior.duo, prior.completedRestores));
-  unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
-}
-
-function settleDuoPublication(control: string, locator: RuntimeLocator, document: ProfileRegistryDocument,
-  witness: z.infer<typeof ProfileContinuitySchema>, intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "duo" }>): void {
-  const { capture, prior } = intent;
-  if (intent.installationId !== locator.installationId || capture.profileId !== capture.prior.profileId
-    || capture.profileId !== capture.next.profileId || capture.next.state === "never-initialized" || capture.next.revision !== capture.prior.revision + 1
-    || canonicalJsonStringify(prior.duo.find(row => row.profileId === capture.profileId)) !== canonicalJsonStringify(capture.prior)
-    || canonicalJsonStringify(profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document, prior.erasures, prior.duo, prior.completedRestores)) !== canonicalJsonStringify(prior)) fail("duo-publication-prior-changed");
-  const next = { ...prior, duo: prior.duo.map(row => row.profileId === capture.profileId ? capture.next : row) };
-  if (canonicalJsonStringify(witness) !== canonicalJsonStringify(prior) && canonicalJsonStringify(witness) !== canonicalJsonStringify(next)) fail("duo-publication-control-changed");
-  const directory = join(locator.stateRoot, "machine", "duo-credentials"), canonical = join(directory, `${capture.profileId}.json`), stage = duoStagePath(locator.stateRoot, capture);
-  assertNoSymlinkComponents(directory); privateDirectory(directory);
-  const expected = prior.duo.filter(row => row.state !== "never-initialized" && row.profileId !== capture.profileId).map(row => `${row.profileId}.json`);
-  if (lstatMaybe(stage)) {
-    if (canonicalJsonStringify(witness) !== canonicalJsonStringify(prior)) fail("duo-publication-stage-after-control");
-    assertDuoPublishedFile(stage, capture); assertDuoDocumentWitness(locator.stateRoot, capture.prior);
-    expected.push(basename(stage));
-    if (capture.prior.state !== "never-initialized") expected.push(basename(canonical));
-  } else { assertDuoPublishedFile(canonical, capture); expected.push(basename(canonical)); }
-  if (canonicalJsonStringify(readdirSync(directory).sort()) !== canonicalJsonStringify(expected.sort())) fail("duo-publication-membership-changed");
-  for (const row of prior.duo) if (row.profileId !== capture.profileId) assertDuoDocumentWitness(locator.stateRoot, row);
-  if (lstatMaybe(stage)) { renameSync(stage, canonical); fsyncPath(directory); }
-  assertDuoPublishedFile(canonical, capture);
-  atomicJson(join(control, "profile-registry.json"), next);
-  assertDuoPublishedFile(canonical, capture);
-  unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
-}
-
-function erasurePath(locator: RuntimeLocator, profileId: string): string { return join(locator.stateRoot, "machine", "erasures", profileId + ".json"); }
 function assertErasureMembership(document: ProfileRegistryDocument, heads: readonly z.infer<typeof ProfileErasureHeadSchema>[]): void {
   if (heads.length !== document.profiles.length || new Set(heads.map(row => row.profileId)).size !== heads.length
     || heads.some(head => !document.profiles.some(row => row.profileId === head.profileId && row.registration.operationId === head.originOperationId))) fail("profile-erasure-membership-mismatch");
@@ -1781,28 +1501,29 @@ function readProfileUpgradeAuthority(control: string, workspace: string, locator
   const document = readMachineRegistry(control, locator, false);
   const row = document.profiles.find(entry => entry.profileId === id);
   if (row?.lifecycle !== "ready" || row.credentialState !== "saved") fail("profile-stopped-upgrade-ready-required");
-  const continuity = readProfileEvidence(join(control, "profile-registry.json"), ProfileContinuitySchema);
-  const head = continuity.erasures.find(entry => entry.profileId === id);
-  if (head?.credentialKey === undefined) fail("profile-stopped-upgrade-key-required");
-  const journal = erasurePath(locator, id), key = join(locator.stateRoot, "machine", "credential-keys", `${id}.json`);
-  const files = [journal, `${journal}.authority`, key].map(path => {
-    const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
-    if (file === undefined) {
-      if (path === key || head.head.state !== "never-erased") fail("profile-stopped-upgrade-evidence-required");
-      return { path, absent: true };
-    }
-    return { path, identity: file.identity, digest: createHash("sha256").update(file.bytes).digest("hex") };
-  });
+  const key = join(locator.stateRoot, "machine", "credential-keys", `${id}.json`);
+  const headFile = readPrivateFile(key, { label: "lock", maxBytes: 25 * 1024 * 1024 });
+  if (headFile === undefined) fail("profile-stopped-upgrade-key-required");
+  const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(headFile.bytes)));
+  if (head.state !== "active" || head.installationId !== locator.installationId || head.profileId !== id
+    || head.key.installationId !== head.installationId || head.key.profileId !== head.profileId) fail("profile-stopped-upgrade-key-required");
+  credentialKeyCustody.read(head.key);
+  const pending = join(locator.stateRoot, "machine", "credential-operations", `${id}.json`);
+  if (lstatMaybe(pending)) fail("profile-stopped-upgrade-credential-operation-pending");
+  const files = [key, join(locator.stateRoot, "profiles", id, "credentials", "protected.json"),
+    join(locator.stateRoot, "profiles", id, "credentials", "chatgpt-account.json"), join(locator.stateRoot, "machine", "duo-credentials", `${id}.json`)].map(path => {
+      const file = readPrivateFile(path, { label: "protected.json", maxBytes: 25 * 1024 * 1024 });
+      if (file === undefined) fail("profile-stopped-upgrade-evidence-required");
+      return { path, identity: file.identity, digest: createHash("sha256").update(file.bytes).digest("hex") };
+    });
   if (profileObservation(control, locator) !== before || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-stopped-upgrade-observation-changed");
   assertHeld();
   const directories = [control, join(locator.stateRoot, "machine"), join(locator.stateRoot, "machine", "credential-keys"),
-    join(locator.stateRoot, "machine", "erasures"), join(locator.stateRoot, "machine", "operations")].map(path => {
-    if (lstatSync(path, { throwIfNoEntry: false }) === undefined && path === join(locator.stateRoot, "machine", "erasures")
-      && head.head.state === "never-erased") return { path, absent: true };
-    privateDirectory(path);
-    const info = lstatSync(path);
-    return { path, device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid };
-  });
+    join(locator.stateRoot, "machine", "credential-operations"), join(locator.stateRoot, "machine", "operations")].map(path => {
+      privateDirectory(path);
+      const info = lstatSync(path);
+      return { path, device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid };
+    });
   return canonicalJsonStringify({ document, observation: before, files, directories });
 }
 
@@ -1817,7 +1538,7 @@ function initializeMachineRegistry(control: string, locator: RuntimeLocator): vo
     else if (canonicalJsonStringify(readStrict(path, z.unknown())) !== canonicalJsonStringify(value)) fail("profile-machine-initialization-changed");
   };
   const document = ProfileRegistryDocumentSchema.parse({ schemaVersion: 3, installationId: locator.installationId, revision: 0, profiles: [], activeProfileId: null, sessionGeneration: 0 });
-  publish(join(directory, "profile-registry-version.json"), { schemaVersion: 5 });
+  publish(join(directory, "profile-registry-version.json"), { schemaVersion: 6 });
   publish(join(directory, "profiles.json"), document);
   publish(join(directory, "profile-verifiers.json"), { schemaVersion: 1, profiles: [] });
   const pepperPath = join(directory, "profile-pepper");
@@ -1825,7 +1546,7 @@ function initializeMachineRegistry(control: string, locator: RuntimeLocator): vo
   const pepper = readPrivateFile(pepperPath, { label: "lock", maxBytes: 32 });
   if (pepper?.bytes.length !== 32) fail("profile-machine-pepper-invalid");
   fsyncPath(pepperPath); fsyncPath(directory);
-  publish(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, join(directory, "profiles.json"), document, [], [], []));
+  publish(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, join(directory, "profiles.json"), document, []));
 }
 
 function adopt(control: string, workspace: string, defaultPair: RuntimePair, verifier?: AuthorityVerifier,
@@ -1946,6 +1667,18 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
     return;
   }
   if (!lstatMaybe(machine)) return;
+  const operationDirectory = join(machine, "operations");
+  if (lstatMaybe(operationDirectory) !== undefined) {
+    assertNoSymlinkComponents(operationDirectory); privateDirectory(operationDirectory);
+    for (const name of readdirSync(operationDirectory)) {
+      if (!/^[0-9a-f-]{36}\.json$/u.test(name)) fail("profile-operation-identity-mismatch");
+      const file = readPrivateFile(join(operationDirectory, name), { label: "lock", maxBytes: 1_048_576 });
+      if (file === undefined) fail("profile-operation-identity-mismatch");
+      const version = z.looseObject({ schemaVersion: z.number().int(), kind: z.string(), phase: z.string() }).parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+      if (version.kind === "logout" && version.schemaVersion !== 2) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED", {
+        cause: new Error(version.phase === "complete" ? "profile-control-upgrade-legacy-logout-completion-unproved" : "profile-control-upgrade-legacy-logout-epoch-unproved") });
+    }
+  }
   const marker = readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() }));
   const pending = join(control, "profile-control-upgrade.json");
   if (lstatMaybe(join(control, "device-recertification.json"))) fail("profile-control-upgrade-pending-conversion-unsupported");
@@ -1955,7 +1688,7 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
     validateStoppedControlUpgrade(control, locator, readControlUpgradeReceipt(pending));
     return;
   }
-  if (marker.schemaVersion === 5) {
+  if (marker.schemaVersion === 6) {
     const document = readProfileEvidence(join(machine, "profiles.json"), ProfileRegistryDocumentSchema);
     const continuity = readProfileEvidence(join(control, "profile-registry.json"), ProfileContinuitySchema);
     if (document.installationId !== locator.installationId || continuity.installationId !== locator.installationId) fail("profile-registry-installation-mismatch");
@@ -1968,15 +1701,28 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
       if (file === undefined || !JournalSchema.safeParse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes))).success) fail("profile-control-upgrade-pending-conversion-unsupported");
     }
     if (!lstatMaybe(join(control, "profile-publication.json")) && !lstatMaybe(join(control, "journal.json"))
-      && canonicalJsonStringify(profileRegistryWitness(locator.installationId, join(machine, "profiles.json"), document, continuity.erasures, continuity.duo, continuity.completedRestores)) !== canonicalJsonStringify(continuity)) fail("profile-registry-continuity-mismatch");
+      && canonicalJsonStringify(profileRegistryWitness(locator.installationId, join(machine, "profiles.json"), document, continuity.completedRestores)) !== canonicalJsonStringify(continuity)) fail("profile-registry-continuity-mismatch");
     return;
   }
   if (!stoppedForward) fail("profile-control-upgrade-required");
-  if (![2, 3, 4].includes(marker.schemaVersion)) fail("profile-control-upgrade-pending-conversion-unsupported");
+  if (![2, 3, 4, 5].includes(marker.schemaVersion)) fail("profile-control-upgrade-pending-conversion-unsupported");
   for (const name of ["profile-publication.json", "journal.json"]) if (lstatMaybe(join(control, name))) fail("profile-control-upgrade-pending-conversion-unsupported");
   const prior = readProfileEvidence(join(control, "profile-registry.json"), StoppedProfileContinuitySchema);
   if (marker.schemaVersion !== prior.schemaVersion + 1) fail("profile-control-upgrade-prior-mismatch");
   assertPriorRegistryLogicalBinding(locator, prior, readProfileEvidence(join(machine, "profiles.json"), StoppedProfileRegistryDocumentSchema));
+}
+
+function assertStoppedLogoutMaintenance(lease: InstallationLease, operation: OfflineMaintenanceOperation): void {
+  assertInstallationLease(lease);
+  const lifetime = lease.lifetime, workspace = lease.readInstallationContext().workspace;
+  if (!(lifetime instanceof RuntimeLifetimeLock)) fail("profile-logout-controller-required");
+  lifetime.assertOfflineMaintenance(operation, workspace);
+  if (!equalLocator(readLocator(join(workspace, CONTROL), workspace), lease.locator)) fail("profile-logout-locator-changed");
+}
+
+function logoutIdentity(operation: z.infer<typeof LogoutOperationSchema>): string {
+  const { phase: _phase, settlement: _settlement, ...identity } = operation;
+  return canonicalJsonStringify(identity);
 }
 
 export function acquireInstallation(workspacePath: string, mode: "shared", lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock, options?: { machine?: true; readonlyControl?: true }): InstallationLease;
@@ -1993,7 +1739,9 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     lifetime.assertAdmissionOperation(options?.offlineOperation, workspace);
     if (options?.offlineOperation !== undefined) assertNoOldBuildRuntimeArtifacts(workspace);
   }
-  preflightProfileFormats(join(workspace, CONTROL), workspace, options?.stoppedControlForward === true);
+  const coldLogoutObservations = new Map<string, string>();
+  try { preflightProfileFormats(join(workspace, CONTROL), workspace, options?.stoppedControlForward === true); }
+  catch (error) { lifetime.retainSourceClosure(error); throw error; }
   if (lifetime instanceof RuntimeLifetimeLock) lifetime.initializeWorkspace(workspace, () => {
     lifetime.assertStartupWorkspace(workspace);
     const control = join(workspace, CONTROL);
@@ -2006,22 +1754,36 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (lstatMaybe(installationPath) !== undefined) {
       const priorLocator = rawLocator(control, workspace), machine = join(priorLocator.stateRoot, "machine");
       assertNoSymlinkComponents(machine);
+      const marker = lstatMaybe(join(machine, "profile-registry-version.json")) === undefined ? undefined
+        : readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() }));
+      if (marker?.schemaVersion === 6) {
+        readMachineRegistry(control, priorLocator, false);
+        for (const entry of profileOperationInventory(priorLocator.stateRoot)) {
+          const operation = readProfileEvidence(join(machine, "operations", `${entry.operationId}.json`), ProfileOperationSchema);
+          if (operation.kind !== "logout" || operation.phase === "complete") continue;
+          const source = lstatSync(join(priorLocator.stateRoot, "profiles", operation.profileId, "state.db"));
+          if (!source.isFile() || source.nlink !== 1 || privatePathRejects(join(priorLocator.stateRoot, "profiles", operation.profileId, "state.db"), source, "owner")
+            || source.dev !== operation.source.database.device || source.ino !== operation.source.database.inode) fail("profile-logout-native-source-changed");
+          lifetime.assertStartupWorkspace(workspace);
+          coldLogoutObservations.set(operation.operationId, logoutIdentity(operation));
+        }
+        removals.push(...captureCanonicalCredentialStartupLocks(lifetime, workspace, priorLocator.stateRoot, priorLocator.installationId));
+      }
       for (const name of [".profile-ops.lock", ".profile-registry.lock"]) {
         if (lstatMaybe(join(machine, name)) === undefined) continue;
         if (!equalLocator(readLocator(control, workspace, options?.recoverRelocation, options?.recoverAuthorityRestore), priorLocator)) fail("profile-machine-authority-changed");
         const pending = lstatMaybe(join(control, "profile-publication.json")) === undefined ? undefined
           : readStrict(join(control, "profile-publication.json"), ProfilePublicationSchema);
-        if (pending?.kind === "duo" || pending?.kind === "draft-duo") authenticateDuoPublication(control, priorLocator);
-        else if (pending?.kind === "onboarding-finish") {
+        if (pending?.kind === "onboarding-finish") {
           readProfilePublicationSource(control, priorLocator);
-          prepareProfileOnboardingFinish(control, priorLocator, pending);
+          assertOnboardingFinishPublicationDocument(priorLocator, pending);
         } else if (pending?.kind === "incomplete-profile-draft") {
           readProfilePublicationSource(control, priorLocator);
           prepareIncompleteProfileDraft(control, priorLocator, pending);
         } else if (pending?.kind === "draft-abort") {
           const source = readProfilePublicationSource(control, priorLocator);
           prepareUnpublishedDraftAbort(control, priorLocator, source.document, source.witness, pending);
-        } else if (pending?.kind === "profile" && pending.keyStage === undefined) {
+        } else if (pending?.kind === "profile") {
           const source = readProfilePublicationSource(control, priorLocator);
           prepareProfileRegistryPublication(control, priorLocator, source.path, source.document, source.witness, pending);
         } else readMachineRegistry(control, priorLocator, false);
@@ -2052,6 +1814,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   }
   privateDirectory(control);
   const localAdmission: LocalAdmission = Object.freeze({ mode });
+  const sourceFailures = new Set<unknown>();
   const releaseExclusive = mode === "exclusive" && lifetime instanceof RuntimeLifetimeLock
     ? lifetime.retainExclusiveAdmission(workspace, options?.offlineOperation) : undefined;
   let resolvedLocator: RuntimeLocator;
@@ -2060,11 +1823,6 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (peers.some((peer) => mode === "exclusive" || peer.mode === "exclusive")) fail("installation lease busy");
     if (options?.recoverRelocation) assertLocalRestoreHeld(options.recoverRelocation.restoreAdmission);
     const resolved = existsSync(join(control, "installation.json")) ? readLocator(control, workspace, mode === "exclusive" ? options?.recoverRelocation : undefined, mode === "exclusive" ? options?.recoverAuthorityRestore : undefined) : (mode === "exclusive" && options?.defaultPair ? adopt(control, workspace, options.defaultPair, options.verifyExisting, options.initializeFresh, options.machine) : fail("installation locator missing"));
-    const publicationPath = join(control, "profile-publication.json");
-    const publication = lstatMaybe(publicationPath) ? readProfileEvidence(publicationPath, ProfilePublicationSchema) : undefined;
-    credentialKeyCustody.migrateDirectory(join(resolved.stateRoot, "machine", "credential-keys"), resolved.installationId, admitCredentialKeyMigration(control, resolved, options?.stoppedControlForward === true), options?.readonlyControl !== true && peers.length === 0
-      && (publication === undefined || publication.kind === "profile" && publication.keyStage !== undefined)
-      && !lstatMaybe(join(control, "profile-control-upgrade.json")) && !lstatMaybe(join(control, "journal.json")));
     if (options?.machine === true) readMachineRegistry(control, resolved, options.readonlyControl !== true);
     return resolved;
   }); } catch (error) {
@@ -2078,7 +1836,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (failure instanceof AggregateError) { const errors: readonly unknown[] = failure.errors; pending.push(...errors); }
       if (failure instanceof Error && failure.cause !== undefined) pending.push(failure.cause);
     }
-    if (!closureUnproved) releaseExclusive?.();
+    if (closureUnproved) lifetime.retainSourceClosure(error);
+    else releaseExclusive?.();
     throw error;
   }
   const admissions = installationAdmissions.get(control) ?? new Set<LocalAdmission>();
@@ -2108,213 +1867,153 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     outermostOperationProof()?.slots.delete("symlink-free");
     dropProfileRegistryProof(control, locator);
     try { return withInstallationControl(control, callback); }
+    catch (error) {
+      if (rememberUnprovedSourceClosure(sourceFailures, error)) lifetime.retainSourceClosure(error);
+      throw error;
+    }
     finally { dropProfileRegistryProof(control, locator); }
   }
-  function publishOperation(input: ProfileOperation | string, creating: boolean, keyStageWitness?: CommittedCredentialKeyStage): void {
-      mutate(held => {
-        const scope = new ActiveProfilePublicationRead(control, workspace, locator, typeof input === "string" ? input : input.operationId, held, assertHeld);
-        try {
-        assertHeld();
-        const current = readLocator(control, workspace);
-        if (!equalLocator(current, locator)) fail("profile-machine-authority-changed");
-        const keyStage = keyStageWitness === undefined ? undefined : scope.verifyKeyStage(keyStageWitness);
-        if (keyStage !== undefined && (typeof input === "string" || canonicalJsonStringify(input) !== canonicalJsonStringify(keyStage.operation))) fail("credential-key-stage-operation-mismatch");
-        const priorPending = lstatMaybe(join(control, "profile-publication.json")) ? readStrict(join(control, "profile-publication.json"), ProfilePublicationSchema) : undefined;
-        const resumedKeyStage = keyStage !== undefined && priorPending?.kind === "profile" && priorPending.keyStage !== undefined;
-        const document = readMachineRegistry(control, locator, true, undefined, keyStage);
-        if (resumedKeyStage) return;
-        if (keyStage !== undefined && canonicalJsonStringify(keyStage.registry) !== canonicalJsonStringify(document)) fail("credential-key-stage-prior-registry-changed");
-        if (lstatMaybe(join(control, "profile-publication.json"))) {
-          const intent = readStrict(join(control, "profile-publication.json"), ProfilePublicationSchema);
-          if (intent.kind === "erasure" && typeof input !== "string" && input.kind === "logout" && input.profileId === intent.profileId) {
-            const current = readStrict(join(locator.stateRoot, "machine", "operations", input.operationId + ".json"), LogoutOperationSchema);
-            if (canonicalJsonStringify(current) === canonicalJsonStringify(input)) return;
-          }
-          fail("profile-erasure-publication-pending");
-        }
-        if (typeof input !== "string") {
-          const path = join(locator.stateRoot, "machine", "operations", `${input.operationId}.json`);
-          if (!lstatMaybe(path)) {
-            if (input.kind === "sign-up" && !creating && !document.profiles.some(row => row.profileId === input.profileId)) fail("profile-signup-intent-unissued");
-            if (input.kind === "logout" && !document.profiles.some(row => row.profileId === input.profileId)) fail("profile-logout-unregistered");
-          } else {
-            const before = readStrict(path, ProfileOperationSchema);
-            if (keyStage !== undefined && canonicalJsonStringify(before) !== canonicalJsonStringify(keyStage.priorOperation)) fail("credential-key-stage-prior-operation-changed");
-            if (before.kind !== input.kind || before.profileId !== input.profileId) fail("profile-operation-identity-mismatch");
-            if (before.kind === "sign-up" && input.kind === "sign-up"
-              && (before.commandId !== input.commandId || before.writeId !== input.writeId || before.emailKey !== input.emailKey
-                || before.firstName !== input.firstName || before.lastName !== input.lastName || before.createdAt !== input.createdAt
-                || before.commandFingerprint !== input.commandFingerprint || (before.expectedRevision !== undefined && before.expectedRevision !== input.expectedRevision))) fail("profile-signup-intent-changed");
-            if (before.kind === "sign-up" && input.kind === "sign-up" && before.credentialInitialization !== undefined) {
-              const prior = before.credentialInitialization, next = input.credentialInitialization;
-              const stable = (value: typeof prior) => { const { phase: _phase, keyDocumentDigest: _digest, keyFile: _file, ...identity } = value; return identity; };
-              if (next === undefined || canonicalJsonStringify(stable(next)) !== canonicalJsonStringify(stable(prior))
-                || prior.keyDocumentDigest !== undefined && next.keyDocumentDigest !== prior.keyDocumentDigest
-                || prior.keyFile !== undefined && canonicalJsonStringify(next.keyFile) !== canonicalJsonStringify(prior.keyFile)
-                || ["admitted", "key-published", "document-published"].indexOf(next.phase) < ["admitted", "key-published", "document-published"].indexOf(prior.phase)) fail("profile-credential-initialization-intent-changed");
-            }
-          }
-        }
-        const operation = typeof input === "string" ? { kind: "delete" as const, operationId: z.uuid().parse(input) }
-          : { kind: "write" as const, operation: ProfileOperationSchema.parse(input) };
-        const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-        atomicJson(join(control, "profile-publication.json"), { kind: "profile", schemaVersion: 1, installationId: locator.installationId, prior, document, operation,
-          ...(keyStage === undefined ? {} : { keyStage }), erasures: prior.erasures, duo: prior.duo });
-        if (keyStageWitness !== undefined) {
-          observeCredentialKeyStageIntent(keyStageWitness);
-          scope.verifyKeyStage(keyStageWitness);
-        }
-        const directory = join(locator.stateRoot, "machine", "operations");
-        if (!lstatMaybe(directory)) { mkdirSync(directory, { mode: 0o700 }); fsyncPath(dirname(directory)); }
-        privateDirectory(directory);
-        const id = operation.kind === "write" ? operation.operation.operationId : operation.operationId;
-        const path = join(directory, `${id}.json`);
-        if (operation.kind === "write") atomicJson(path, operation.operation);
-        else if (lstatMaybe(path)) { privateFile(path); unlinkSync(path); fsyncPath(directory); }
-        atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document, prior.erasures, prior.duo, prior.completedRestores));
-        unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
-        } finally { scope.expire(); }
-      });
-  }
-  function publishRegistry(expected: ProfileRegistryDocument | undefined, document: ProfileRegistryDocument | undefined,
-    registration?: { operation: z.infer<typeof SignUpOperationSchema>; witness: CommittedCredentialWitness; verifier: PreparedProfileVerifier }): void {
-      mutate(() => {
-        assertHeld();
-        const current = readLocator(control, workspace);
-        if (!equalLocator(current, locator)) fail("profile-machine-authority-changed");
-        const before = readMachineRegistry(control, locator);
-        if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-erasure-publication-pending");
-        let next: ProfileRegistryDocument;
-        if (registration !== undefined) {
-          const pending = readStrict(join(locator.stateRoot, "machine", "operations", `${registration.operation.operationId}.json`), SignUpOperationSchema);
-          if (canonicalJsonStringify(pending) !== canonicalJsonStringify(registration.operation) || pending.phase !== "publishing"
-            || before.profiles.some(row => row.profileId === pending.profileId)) fail("profile-signup-intent-mismatch");
-          const onboardingCompletion = profileOnboardingCompletion(pending);
-          const revision = verifyCommittedCredentialWitness(registration.witness, join(locator.stateRoot, "profiles", pending.profileId),
-            join(locator.stateRoot, "machine", "erasures", `${pending.profileId}.json`), pending);
-          const row = ProfileRegistryRowSchema.parse({ profileId: pending.profileId, ...deriveProfileNames(pending.firstName, pending.lastName),
-            registration: { operationId: pending.operationId, commandId: pending.commandId, writeId: pending.writeId, credentialRevision: revision, onboardingCompletion },
-            createdAt: pending.createdAt, lastSignedInAt: pending.createdAt,
-            credentialState: "saved", duoState: "ready", lifecycle: "ready" });
-          next = advanceProfileRegistryDocument(before, { profiles: [...before.profiles, row] });
+  function publishOperation(input: ProfileOperation | string, creating: boolean): void {
+    mutate(held => {
+      const current = () => { assertHeld(); lifetime.assertRuntimeAvailable(); held.assertHeld(); };
+      current();
+      if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
+      const document = readMachineRegistry(control, locator);
+      if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-publication-pending");
+      const directory = join(locator.stateRoot, "machine", "operations");
+      if (typeof input !== "string") {
+        const path = join(directory, `${input.operationId}.json`);
+        if (!lstatMaybe(path)) {
+          if (input.kind === "sign-up" && !creating) fail("profile-signup-intent-unissued");
+          if (input.kind === "logout" && !document.profiles.some(row => row.profileId === input.profileId)) fail("profile-logout-unregistered");
         } else {
-          next = ProfileRegistryDocumentSchema.parse(document);
-          if (next.profiles.length !== before.profiles.length || next.profiles.some(row => {
-            const original = before.profiles.find(prior => prior.profileId === row.profileId);
-            return original === undefined || canonicalJsonStringify({ ...row, credentialState: original.credentialState, duoState: original.duoState,
-              lifecycle: original.lifecycle, lastSignedInAt: original.lastSignedInAt }) !== canonicalJsonStringify(original);
-          })) fail("profile-registry-registration-required");
+          const before = readStrict(path, ProfileOperationSchema);
+          if (before.kind !== input.kind || before.profileId !== input.profileId) fail("profile-operation-identity-mismatch");
+          if (before.kind === "sign-up" && input.kind === "sign-up") {
+            const stable = (operation: z.infer<typeof SignUpOperationSchema>) => ({ operationId: operation.operationId, profileId: operation.profileId,
+              commandId: operation.commandId, writeId: operation.writeId, emailKey: operation.emailKey, firstName: operation.firstName,
+              lastName: operation.lastName, createdAt: operation.createdAt, commandFingerprint: operation.commandFingerprint,
+              credentials: { operationId: operation.credentials.operationId, keyId: operation.credentials.keyId, generation: operation.credentials.generation } });
+            if (canonicalJsonStringify(stable(before)) !== canonicalJsonStringify(stable(input))
+              || before.expectedRevision !== undefined && before.expectedRevision !== input.expectedRevision
+              || before.credentials.phase === "ready" && (input.credentials.phase !== "ready" || input.credentials.protectedRevision !== before.credentials.protectedRevision)
+              || before.onboarding?.abort !== undefined && canonicalJsonStringify(input.onboarding?.abort) !== canonicalJsonStringify(before.onboarding.abort)
+              || before.onboarding?.finish !== undefined && canonicalJsonStringify(input.onboarding?.finish) !== canonicalJsonStringify(before.onboarding.finish)) fail("profile-signup-intent-changed");
+          }
         }
-        if ((expected !== undefined && canonicalJsonStringify(before) !== canonicalJsonStringify(expected))
-          || next.sessionGeneration < before.sessionGeneration || next.installationId !== before.installationId || next.revision !== before.revision + 1) fail("profile-registry-publication-conflict");
-        const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-        const erasures = registration === undefined ? prior.erasures : [...prior.erasures, { profileId: registration.operation.profileId,
-          originOperationId: registration.operation.operationId, head: verifyCommittedCredentialErasureOrigin(registration.witness), credentialKey: verifyCommittedCredentialKey(registration.witness) }];
-        const duo: DuoContinuityRow[] = registration === undefined ? prior.duo : [...prior.duo,
-          DuoContinuityRowSchema.parse(registration.operation.onboarding?.duo)];
-        if (registration !== undefined) {
-          const root = join(locator.stateRoot, "profiles", registration.operation.profileId), verifierPath = join(locator.stateRoot, "machine", "profile-verifiers.json");
-          const priorVerifiers = readStrict(verifierPath, ProfileVerifierDocumentSchema), verifier = verifyPreparedProfileVerifier(registration.verifier, locator.stateRoot, registration.operation.profileId, registration.operation.emailKey);
-          if (verifier.profileId !== registration.operation.profileId || verifier.emailKey !== registration.operation.emailKey
-            || priorVerifiers.profiles.some(row => row.profileId === verifier.profileId || row.emailKey === verifier.emailKey)) fail("profile-onboarding-verifier-binding-invalid");
-          const protectedFile = readPrivateFile(join(root, "credentials", "protected.json"), { label: "protected.json", maxBytes: Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 });
-          if (protectedFile === undefined) fail("profile-onboarding-finish-source-required");
-          const intent = ProfilePublicationSchema.parse({ kind: "onboarding-finish", schemaVersion: 1, installationId: locator.installationId, prior,
-            operation: registration.operation, priorDocument: before, document: next, priorVerifiers, verifiers: { ...priorVerifiers, profiles: [...priorVerifiers.profiles, verifier] },
-            key: verifyCommittedCredentialKey(registration.witness), head: verifyCommittedCredentialErasureOrigin(registration.witness),
-            pepper: preparedProfileVerifierPepperWitness(registration.verifier, locator.stateRoot, registration.operation.profileId, registration.operation.emailKey),
-            protectedFile: { device: protectedFile.identity.device, inode: protectedFile.identity.inode, digest: createHash("sha256").update(protectedFile.bytes).digest("hex") },
-            databases: profileAuthorityFileWitnesses(root) });
-          if (intent.kind !== "onboarding-finish") fail("profile-onboarding-finish-invalid");
-          verifyCommittedCredentialWitness(registration.witness, root, erasurePath(locator, registration.operation.profileId), registration.operation);
-          verifyPreparedProfileVerifier(registration.verifier, locator.stateRoot, registration.operation.profileId, registration.operation.emailKey);
-          atomicJson(join(control, "profile-publication.json"), intent);
-          prepareProfileOnboardingFinish(control, locator, intent)(); readMachineRegistry(control, locator, false); return;
-        }
-        atomicJson(join(control, "profile-publication.json"), { kind: "profile", schemaVersion: 1, installationId: locator.installationId, prior, document: next, erasures, duo });
-        const path = join(locator.stateRoot, "machine", "profiles.json");
-        atomicJson(path, next);
-        atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, path, next, erasures, duo, prior.completedRestores));
-        unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
-      });
+      }
+      const operation = typeof input === "string" ? { kind: "delete" as const, operationId: z.uuid().parse(input) }
+        : { kind: "write" as const, operation: ProfileOperationSchema.parse(input) };
+      const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
+      current(); atomicJson(join(control, "profile-publication.json"), { kind: "profile", schemaVersion: 1, installationId: locator.installationId, prior, document, operation });
+      if (!lstatMaybe(directory)) { current(); mkdirSync(directory, { mode: 0o700 }); fsyncPath(dirname(directory)); }
+      privateDirectory(directory);
+      const id = operation.kind === "write" ? operation.operation.operationId : operation.operationId, path = join(directory, `${id}.json`);
+      current();
+      if (operation.kind === "write") atomicJson(path, operation.operation);
+      else if (lstatMaybe(path)) { privateFile(path); unlinkSync(path); fsyncPath(directory); }
+      current(); atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document, prior.completedRestores));
+      current(); unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
+    });
   }
-  function publishIssuedDuo(transaction: IssuedDuoTransaction, phase: "settle" | "durable-intent") {
-      mutate(() => {
-        assertHeld();
-        if (!equalLocator(readLocator(control, workspace), locator)) fail("duo-machine-authority-changed");
-        const intentPath = join(control, "profile-publication.json");
-        if (phase === "settle" && lstatMaybe(intentPath)) {
-          const pending = readStrict(intentPath, ProfilePublicationSchema);
-          if (pending.kind === "duo" || pending.kind === "draft-duo") {
-            if (pending.kind === "draft-duo" && issuedDuoDraftOperation(transaction) !== pending.operation.operationId) fail("duo-draft-operation-required");
-            const registryDocument = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), ProfileRegistryDocumentSchema);
-            resumeIssuedDuoTransaction(transaction, pending.capture);
-            const priorContinuity = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-            if (pending.kind === "draft-duo") settleDraftDuoPublication(control, locator, registryDocument, priorContinuity, pending);
-            else settleDuoPublication(control, locator, registryDocument, priorContinuity, pending);
-            verifyIssuedDuoTransaction(transaction, pending.capture);
-            readMachineRegistry(control, locator, false);
-            assertHeld();
+
+  function publishRegistry(expected: ProfileRegistryDocument | undefined, document: ProfileRegistryDocument | undefined,
+    registration?: { operation: z.infer<typeof SignUpOperationSchema>; profile: RuntimeAdmission; lease: InstallationLease }): void {
+    mutate(held => {
+      const current = () => { assertHeld(); lifetime.assertRuntimeAvailable(); held.assertHeld(); };
+      current();
+      if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-machine-authority-changed");
+      const before = readMachineRegistry(control, locator), intentPath = join(control, "profile-publication.json");
+      if (registration !== undefined) {
+        const { operation } = registration, scope = new ActiveProfilePublicationRead(control, workspace, locator, operation.operationId, held, current);
+        try {
+          const inspect = () => { current(); return requireRuntimeAdmission(registration.profile).readProfileRegistration(registration.lease, operation, scope); };
+          const captured = inspect();
+          if (lstatMaybe(intentPath)) {
+            const pending = readStrict(intentPath, ProfilePublicationSchema);
+            if (pending.kind !== "onboarding-finish" || canonicalJsonStringify(pending.operation) !== canonicalJsonStringify(operation)) fail("profile-onboarding-finish-pending");
+            const revalidate = () => {
+              const next = inspect();
+              if (next.revision !== captured.revision || canonicalJsonStringify(next.credentials) !== canonicalJsonStringify(pending.credentials)) fail("profile-onboarding-finish-source-changed");
+              const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 }),
+                verifier = pending.verifiers.profiles.find(row => row.profileId === operation.profileId);
+              if (pepper === undefined || verifier === undefined || emailKey(pepper.bytes, next.email) !== operation.emailKey
+                || !passwordMatches(next.password, verifier)) fail("profile-onboarding-finish-verifier-changed");
+            };
+            revalidate(); prepareProfileOnboardingFinish(control, locator, pending, revalidate)(); return;
+          }
+          if (before.profiles.some(row => row.profileId === operation.profileId)) {
+            const row = before.profiles.find(row => row.profileId === operation.profileId);
+            if (row?.registration.operationId !== operation.operationId || row.registration.commandId !== operation.commandId
+              || row.registration.writeId !== operation.writeId || row.registration.credentialRevision !== captured.revision
+              || canonicalJsonStringify(row.registration.onboardingCompletion) !== canonicalJsonStringify(profileOnboardingCompletion(operation))) fail("profile-signup-intent-mismatch");
             return;
           }
-        }
-        const document = readMachineRegistry(control, locator);
-        if (lstatMaybe(intentPath)) fail("duo-publication-pending");
-        const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-        const draftOperationId = issuedDuoDraftOperation(transaction);
-        if (draftOperationId !== undefined) {
-          const operation = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${draftOperationId}.json`), SignUpOperationSchema);
-          if (operation.onboarding === undefined || operation.profileId !== transaction.profileId) fail("duo-draft-operation-required");
-          const capture = prepareIssuedDuoTransaction(transaction, locator.stateRoot, document, operation.onboarding.duo, operation);
-          if (capture !== undefined) {
-            const intent = ProfilePublicationSchema.parse({ kind: "draft-duo", schemaVersion: 1, installationId: locator.installationId, prior, capture,
-              priorOperation: operation, operation: { ...operation, onboarding: { ...operation.onboarding, duo: capture.next } } });
-            if (intent.kind !== "draft-duo") fail("duo-publication-kind-invalid");
-            atomicJson(intentPath, intent);
-            if (phase === "durable-intent") fail("duo-publication-pending");
-            settleDraftDuoPublication(control, locator, document, prior, intent);
-            readMachineRegistry(control, locator, false);
-          }
-          verifyIssuedDuoTransaction(transaction, capture);
-          assertHeld();
+          const verifierOwner = createProfileVerifiers(locator.stateRoot), prepared = verifierOwner.prepare(operation.profileId, captured.email, captured.password),
+            verifier = verifyPreparedProfileVerifier(prepared, locator.stateRoot, operation.profileId, operation.emailKey),
+            verifierPath = join(locator.stateRoot, "machine", "profile-verifiers.json"), priorVerifiers = readStrict(verifierPath, ProfileVerifierDocumentSchema);
+          if (priorVerifiers.profiles.some(row => row.profileId === operation.profileId || row.emailKey === operation.emailKey)) fail("profile-onboarding-verifier-binding-invalid");
+          const row = ProfileRegistryRowSchema.parse({ profileId: operation.profileId, ...deriveProfileNames(operation.firstName, operation.lastName),
+            registration: { operationId: operation.operationId, commandId: operation.commandId, writeId: operation.writeId,
+              credentialRevision: captured.revision, onboardingCompletion: profileOnboardingCompletion(operation) },
+            createdAt: operation.createdAt, lastSignedInAt: operation.createdAt, credentialState: "saved", duoState: "ready", lifecycle: "ready" }),
+            next = advanceProfileRegistryDocument(before, { profiles: [...before.profiles, row] }),
+            prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema), root = join(locator.stateRoot, "profiles", operation.profileId);
+          const intent = ProfilePublicationSchema.parse({ kind: "onboarding-finish", schemaVersion: 1, installationId: locator.installationId,
+            prior, operation, priorDocument: before, document: next, priorVerifiers, verifiers: { ...priorVerifiers, profiles: [...priorVerifiers.profiles, verifier] },
+            credentials: captured.credentials, pepper: preparedProfileVerifierPepperWitness(prepared, locator.stateRoot, operation.profileId, operation.emailKey), databases: profileAuthorityFileWitnesses(root) });
+          if (intent.kind !== "onboarding-finish") fail("profile-onboarding-finish-invalid");
+          const revalidate = () => {
+            const next = inspect();
+            if (next.revision !== captured.revision || canonicalJsonStringify(next.credentials) !== canonicalJsonStringify(captured.credentials)) fail("profile-onboarding-finish-source-changed");
+            const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
+            if (pepper === undefined || emailKey(pepper.bytes, next.email) !== operation.emailKey || !passwordMatches(next.password, verifier)) fail("profile-onboarding-finish-verifier-changed");
+          };
+          revalidate(); verifyPreparedProfileVerifier(prepared, locator.stateRoot, operation.profileId, operation.emailKey);
+          current(); atomicJson(intentPath, intent);
+          prepareProfileOnboardingFinish(control, locator, intent, revalidate)();
           return;
-        }
-        const row = prior.duo.find(value => value.profileId === transaction.profileId);
-        if (row === undefined) fail("duo-profile-unregistered");
-        const capture = prepareIssuedDuoTransaction(transaction, locator.stateRoot, document, row);
-        if (capture !== undefined) {
-          const intent = ProfilePublicationSchema.parse({ kind: "duo", schemaVersion: 1, installationId: locator.installationId, prior, capture });
-          if (intent.kind !== "duo") fail("duo-publication-kind-invalid");
-          atomicJson(intentPath, intent);
-          if (phase === "durable-intent") fail("duo-publication-pending");
-          settleDuoPublication(control, locator, document, prior, intent);
-          readMachineRegistry(control, locator, false);
-        }
-        verifyIssuedDuoTransaction(transaction, capture);
-        assertHeld();
-      });
-    }
-  function reclassifyDraft(witness: IncompleteProfileDraftWitness): void {
+        } finally { scope.expire(); }
+      }
+      if (lstatMaybe(intentPath)) fail("profile-publication-pending");
+      const next = ProfileRegistryDocumentSchema.parse(document);
+      if (next.profiles.length !== before.profiles.length || next.profiles.some(row => {
+        const original = before.profiles.find(prior => prior.profileId === row.profileId);
+        return original === undefined || canonicalJsonStringify({ ...row, lifecycle: original.lifecycle, lastSignedInAt: original.lastSignedInAt }) !== canonicalJsonStringify(original);
+      })) fail("profile-registry-registration-required");
+      if (expected !== undefined && canonicalJsonStringify(before) !== canonicalJsonStringify(expected)
+        || next.installationId !== before.installationId || next.revision !== before.revision + 1 || next.sessionGeneration < before.sessionGeneration) fail("profile-registry-publication-conflict");
+      const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
+      current(); atomicJson(intentPath, { kind: "profile", schemaVersion: 1, installationId: locator.installationId, prior, document: next });
+      const path = join(locator.stateRoot, "machine", "profiles.json");
+      current(); atomicJson(path, next);
+      current(); atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, path, next, prior.completedRestores));
+      current(); unlinkSync(intentPath); fsyncPath(control);
+    });
+  }
+
+  function reclassifyDraft(profile: RuntimeAdmission, owner: InstallationLease): void {
     mutate(() => {
       assertHeld();
       if (mode !== "exclusive") fail("profile-incomplete-stopped-authority-required");
-      const before = readMachineRegistry(control, locator), capture = verifyIncompleteProfileDraft(witness, locator.stateRoot);
+      const before = readMachineRegistry(control, locator), capture = requireRuntimeAdmission(profile).readIncompleteProfileRegistration(owner);
       const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-      if (!prior.erasures.some(row => row.profileId === capture.operation.profileId && row.originOperationId === capture.operation.operationId
-        && canonicalJsonStringify(row.credentialKey) === canonicalJsonStringify(capture.key))) fail("profile-incomplete-key-anchor-changed");
       const priorVerifiers = readProfileEvidence(join(locator.stateRoot, "machine", "profile-verifiers.json"), ProfileVerifierDocumentSchema);
       const intent = ProfilePublicationSchema.parse({ kind: "incomplete-profile-draft", schemaVersion: 1, installationId: locator.installationId, prior, capture,
         priorDocument: before, document: advanceProfileRegistryDocument(before, { profiles: before.profiles.filter(row => row.profileId !== capture.operation.profileId), activeProfileId: before.activeProfileId === capture.operation.profileId ? null : before.activeProfileId,
           sessionGeneration: before.sessionGeneration + 1 }), priorVerifiers,
         verifiers: { ...priorVerifiers, profiles: priorVerifiers.profiles.filter(row => row.profileId !== capture.operation.profileId) } });
       if (intent.kind !== "incomplete-profile-draft") fail("profile-incomplete-reclassification-invalid");
-      verifyIncompleteProfileDraft(witness, locator.stateRoot);
+      if (canonicalJsonStringify(profile.readIncompleteProfileRegistration(owner, capture.operation)) !== canonicalJsonStringify(capture)) fail("profile-incomplete-source-changed");
       atomicJson(join(control, "profile-publication.json"), intent);
       prepareIncompleteProfileDraft(control, locator, intent)();
       readMachineRegistry(control, locator, false); assertHeld();
     });
   }
   const shared = Object.freeze({
+    retainSourceClosure(error: unknown): void {
+      if (rememberUnprovedSourceClosure(sourceFailures, error)) lifetime.retainSourceClosure(error);
+    },
     lifetime,
     mode,
     locator: publicLocator,
@@ -2471,43 +2170,45 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         return document;
       });
     },
-    assertDraftDuoPublicationRecovery(operationId: string, profileId: string, generation: number) {
-      assertHeld();
-      if (!equalLocator(readLocator(control, workspace), locator)) fail("duo-draft-authority-changed");
-      const intent = readStrict(join(control, "profile-publication.json"), ProfilePublicationSchema);
-      if (intent.kind !== "draft-duo" || intent.installationId !== locator.installationId || intent.operation.operationId !== operationId
-        || intent.operation.profileId !== profileId || intent.operation.onboarding?.generation !== generation) fail("duo-draft-recovery-intent-mismatch");
-      const path = join(locator.stateRoot, "machine", "profiles.json"), document = readProfileEvidence(path, ProfileRegistryDocumentSchema);
-      if (document.profiles.some(row => row.profileId === profileId)
-        || createHash("sha256").update(canonicalJsonStringify(document)).digest("hex") !== intent.prior.digest) fail("duo-draft-recovery-source-changed");
-      const operation = readStrict(join(locator.stateRoot, "machine", "operations", `${operationId}.json`), SignUpOperationSchema);
-      if (canonicalJsonStringify(operation) !== canonicalJsonStringify(intent.priorOperation)
-        && canonicalJsonStringify(operation) !== canonicalJsonStringify(intent.operation)) fail("duo-draft-recovery-operation-changed");
-      return operation;
-    },
-    commitProfileDuo(transaction: IssuedDuoTransaction) { publishIssuedDuo(transaction, "settle"); },
-    reclassifyIncompleteProfile(witness: IncompleteProfileDraftWitness) { reclassifyDraft(witness); },
-    abortUnpublishedProfile(witness: UnpublishedDraftAbortWitness) {
-      mutate(() => {
-        assertHeld();
-        if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-draft-abort-machine-changed");
-        const document = readMachineRegistry(control, locator), capture = verifyUnpublishedDraftAbort(witness, locator.stateRoot);
-        const operationPath = join(locator.stateRoot, "machine", "operations", `${capture.operation.operationId}.json`);
-        if (canonicalJsonStringify(readProfileEvidence(operationPath, SignUpOperationSchema)) !== canonicalJsonStringify(capture.operation)) fail("profile-draft-abort-operation-changed");
-        const pending = readStrict(join(control, "profile-publication.json"), ProfilePublicationSchema);
-        if (pending.kind !== "draft-erasure" || canonicalJsonStringify(pending.operation) !== canonicalJsonStringify(capture.operation)
-          || canonicalJsonStringify(pending.source) !== canonicalJsonStringify(capture.abortSource)
-          || canonicalJsonStringify(pending.settledHead) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-erasure-custody-required");
-        const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-        const intent = ProfilePublicationSchema.parse({ kind: "draft-abort", schemaVersion: 1, installationId: locator.installationId, prior, capture });
-        if (intent.kind !== "draft-abort") fail("profile-draft-abort-kind-invalid");
-        verifyUnpublishedDraftAbort(witness, locator.stateRoot);
-        atomicJson(join(control, "profile-publication.json"), intent);
-        prepareUnpublishedDraftAbort(control, locator, document, prior, intent)();
+    reclassifyIncompleteProfile(profile: RuntimeAdmission) { reclassifyDraft(profile, this); },
+    resumeIncompleteProfileDraft(profileId: string, restore: OfflineMaintenanceOperation): boolean {
+      return mutate(() => {
+        assertStoppedMachineMaintenance(this, restore);
+        const path = join(control, "profile-publication.json");
+        if (lstatMaybe(path) === undefined) return false;
+        const intent = readStrict(path, ProfilePublicationSchema);
+        if (intent.kind !== "incomplete-profile-draft" || intent.capture.operation.profileId !== z.uuid().parse(profileId)) fail("profile-incomplete-publication-owner-mismatch");
+        prepareIncompleteProfileDraft(control, locator, intent)();
         readMachineRegistry(control, locator, false); assertHeld();
+        return true;
       });
     },
-    commitProfileDuoIntent(transaction: IssuedDuoTransaction) { publishIssuedDuo(transaction, "durable-intent"); },
+    abortUnpublishedProfile(input: z.infer<typeof SignUpOperationSchema>, head?: z.infer<typeof CanonicalCredentialPublicationSourceSchema.shape.head>) {
+      return mutate(() => {
+        assertHeld(); lifetime.assertRuntimeAvailable();
+        if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-draft-abort-machine-changed");
+        const operation = SignUpOperationSchema.parse(input), document = readMachineRegistry(control, locator), intentPath = join(control, "profile-publication.json"),
+          prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
+        let intent = lstatMaybe(intentPath) ? readStrict(intentPath, ProfilePublicationSchema) : undefined;
+        if (intent === undefined) {
+          if (head === undefined) {
+            const original = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), SignUpOperationSchema);
+            if (canonicalJsonStringify(original) !== canonicalJsonStringify(operation) || operation.onboarding?.abort === undefined) fail("profile-draft-abort-operation-changed");
+            return false;
+          }
+          const root = join(locator.stateRoot, "profiles", operation.profileId);
+          assertCanonicalProfileBinding(join(root, "state.db"), { installationId: locator.installationId, profileId: operation.profileId });
+          intent = ProfilePublicationSchema.parse({ kind: "draft-abort", schemaVersion: 1, installationId: locator.installationId, prior,
+            capture: { operation, head, membership: unpublishedDraftAbortMembership(root), databases: profileAuthorityFileWitnesses(root) } });
+          if (intent.kind !== "draft-abort") fail("profile-draft-abort-kind-invalid");
+          prepareUnpublishedDraftAbort(control, locator, document, prior, intent);
+          atomicJson(intentPath, intent);
+        }
+        if (intent.kind !== "draft-abort" || canonicalJsonStringify(intent.capture.operation) !== canonicalJsonStringify(operation)) fail("profile-draft-abort-operation-changed");
+        prepareUnpublishedDraftAbort(control, locator, document, prior, intent)();
+        readMachineRegistry(control, locator, false); assertHeld(); return true;
+      });
+    },
     captureProfileUpgradeHandoff(profileId: string) {
       if (mode !== "shared") fail("profile-upgrade-handoff-shared-required");
       const id = z.uuid().parse(profileId);
@@ -2531,6 +2232,101 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (read() !== original) fail("profile-stopped-upgrade-authority-changed");
       } });
     },
+    completeStoppedLogout(admission: RuntimeAdmission, input: z.infer<typeof LogoutOperationSchema>, restore: OfflineMaintenanceOperation, source: AuthorityDatabase): void {
+      mutate(() => {
+        assertStoppedLogoutMaintenance(this, restore);
+        const operation = LogoutOperationSchema.parse(input);
+        admission.assertPendingLogoutCompletionOwner(this, operation, restore);
+        if (!(source instanceof AuthorityDatabase)) fail("profile-logout-native-completion-required");
+        const operationPath = join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), publicationPath = join(control, "profile-publication.json");
+        let removed = lstatMaybe(operationPath) === undefined;
+        const guard = () => {
+          assertStoppedLogoutMaintenance(this, restore); source.assertPendingLogoutCompletion(admission, operation);
+          if (removed ? lstatMaybe(operationPath) !== undefined : canonicalJsonStringify(readProfileEvidence(operationPath, LogoutOperationSchema)) !== canonicalJsonStringify(operation)) fail("profile-logout-completion-operation-changed");
+        };
+        guard();
+        let document = readMachineRegistry(control, locator, false);
+        const row = document.profiles.find(profile => profile.profileId === operation.profileId);
+        if (document.activeProfileId !== null || document.sessionGeneration !== operation.sessionGeneration + 1
+          || row === undefined || row.lifecycle !== "ready" && row.lifecycle !== "cancelling" || operation.settlement?.phase !== "done") fail("profile-logout-completion-epoch-changed");
+        if (lstatMaybe(operationPath) === undefined) {
+          if (row.lifecycle !== "ready" || lstatMaybe(publicationPath)) fail("profile-logout-completion-prefix-uncertain");
+          return;
+        }
+        if (canonicalJsonStringify(readProfileEvidence(operationPath, LogoutOperationSchema)) !== canonicalJsonStringify(operation)) fail("profile-logout-completion-operation-changed");
+        if (lstatMaybe(publicationPath)) {
+          const pending = readStrict(publicationPath, ProfilePublicationSchema);
+          if (pending.kind !== "profile" || pending.operation !== undefined && (pending.operation.kind !== "delete" || pending.operation.operationId !== operation.operationId)) fail("profile-logout-completion-publication-foreign");
+          const current = readProfilePublicationSource(control, locator);
+          guard(); prepareProfileRegistryPublication(control, locator, current.path, current.document, current.witness, pending)();
+          document = readMachineRegistry(control, locator, false);
+        }
+        if (document.profiles.find(profile => profile.profileId === operation.profileId)?.lifecycle !== "ready") {
+          const next = advanceProfileRegistryDocument(document, { profiles: document.profiles.map(profile => profile.profileId === operation.profileId ? { ...profile, lifecycle: "ready" } : profile) });
+          const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
+          const intent = ProfilePublicationSchema.parse({ kind: "profile", schemaVersion: 1, installationId: locator.installationId, prior, document: next });
+          if (intent.kind !== "profile") fail("profile-logout-completion-publication-foreign");
+          if (Buffer.byteLength(JSON.stringify(intent)) > 1_048_576) fail("profile-logout-settlement-evidence-too-large");
+          guard(); atomicJson(publicationPath, intent);
+          guard(); atomicJson(join(locator.stateRoot, "machine", "profiles.json"), next);
+          guard(); atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), next, prior.completedRestores));
+          guard(); unlinkSync(publicationPath); fsyncPath(control);
+          document = next;
+        }
+        const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
+        const intent = ProfilePublicationSchema.parse({ kind: "profile", schemaVersion: 1, installationId: locator.installationId, prior, document,
+          operation: { kind: "delete", operationId: operation.operationId } });
+        if (Buffer.byteLength(JSON.stringify(intent)) > 1_048_576) fail("profile-logout-settlement-evidence-too-large");
+        guard(); atomicJson(publicationPath, intent);
+        guard(); unlinkSync(operationPath); removed = true; fsyncPath(dirname(operationPath));
+        guard(); atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document, prior.completedRestores));
+        guard(); unlinkSync(publicationPath); fsyncPath(control);
+      });
+    },
+    assertColdPendingLogout(input: z.infer<typeof LogoutOperationSchema>): void {
+      assertHeld();
+      if (!(lifetime instanceof RuntimeLifetimeLock)) fail("profile-logout-cold-controller-required");
+      const operation = LogoutOperationSchema.parse(input);
+      if (coldLogoutObservations.get(operation.operationId) !== logoutIdentity(operation)) fail("profile-logout-cold-source-unobserved");
+      const current = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), LogoutOperationSchema);
+      if (logoutIdentity(current) !== logoutIdentity(operation)) fail("profile-logout-cold-source-changed");
+      const path = join(locator.stateRoot, "profiles", operation.profileId, "state.db"), source = lstatSync(path);
+      if (!source.isFile() || source.nlink !== 1 || privatePathRejects(path, source, "owner")
+        || source.dev !== operation.source.database.device || source.ino !== operation.source.database.inode) fail("profile-logout-native-source-changed");
+    },
+    publishStoppedLogoutSettlement(admission: RuntimeAdmission, expected: z.infer<typeof LogoutOperationSchema>, input: z.infer<typeof LogoutOperationSchema>, restore: OfflineMaintenanceOperation, source: AuthorityDatabase): void {
+      mutate(() => {
+        assertStoppedLogoutMaintenance(this, restore);
+        requireRuntimeAdmission(admission).assertPendingLogoutPublicationOwner(this, restore);
+        if (!(source instanceof AuthorityDatabase)) fail("profile-logout-native-publication-owner-required");
+        const next = LogoutOperationSchema.parse(input);
+        if (Buffer.byteLength(JSON.stringify(next)) > 1_048_576) fail("profile-logout-settlement-evidence-too-large");
+        source.assertPendingLogoutPublication(admission, next);
+        const path = join(locator.stateRoot, "machine", "operations", `${expected.operationId}.json`);
+        const { settlement: beforeSettlement, ...beforeIdentity } = expected, { settlement: afterSettlement, ...afterIdentity } = next;
+        if (canonicalJsonStringify(readProfileEvidence(path, LogoutOperationSchema)) !== canonicalJsonStringify(expected)
+          || canonicalJsonStringify(afterIdentity) !== canonicalJsonStringify(beforeIdentity)) fail("profile-logout-settlement-operation-changed");
+        const beforePhase = expected.settlement?.phase, afterPhase = next.settlement?.phase;
+        if (!(beforePhase === undefined && afterPhase === "prepared" || beforePhase === "prepared" && afterPhase === "commit-intent"
+          || beforePhase === "commit-intent" && afterPhase === "done")) fail("profile-logout-settlement-transition-refused");
+        if (beforeSettlement !== undefined && afterSettlement !== undefined) {
+          const { phase: _beforePhase, after: beforeAfter, ...beforeInputs } = beforeSettlement;
+          const { phase: _afterPhase, after: afterAfter, ...afterInputs } = afterSettlement;
+          if (canonicalJsonStringify(beforeInputs) !== canonicalJsonStringify(afterInputs) || beforeAfter !== undefined && beforeAfter !== afterAfter) fail("profile-logout-settlement-input-changed");
+        }
+        const document = readMachineRegistry(control, locator, false), row = document.profiles.find(profile => profile.profileId === expected.profileId);
+        if (document.activeProfileId !== null || document.sessionGeneration !== expected.sessionGeneration + 1 || row?.lifecycle !== "cancelling") fail("profile-logout-settlement-epoch-changed");
+        const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
+        const intent = ProfilePublicationSchema.parse({ kind: "profile", schemaVersion: 1, installationId: locator.installationId, prior, document,
+          operation: { kind: "write", operation: next } });
+        if (intent.kind !== "profile") fail("profile-logout-settlement-transition-refused");
+        if (Buffer.byteLength(JSON.stringify(intent)) > 1_048_576) fail("profile-logout-settlement-evidence-too-large");
+        if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-publication-pending");
+        atomicJson(join(control, "profile-publication.json"), intent);
+        atomicJson(path, next);
+        prepareProfileRegistryPublication(control, locator, join(locator.stateRoot, "machine", "profiles.json"), document, prior, intent)();
+      });
+    },
     capturePendingProfileLogout(input: z.infer<typeof LogoutOperationSchema>) {
       const operation = LogoutOperationSchema.parse(input);
       const read = () => mutate(() => {
@@ -2538,7 +2334,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-pending-logout-locator-changed");
         const document = readMachineRegistry(control, locator, false);
         const row = document.profiles.find(entry => entry.profileId === operation.profileId);
-        if (document.activeProfileId !== null || row?.lifecycle !== "cancelling" || operation.phase === "complete") {
+        if (document.activeProfileId !== null || document.sessionGeneration !== operation.sessionGeneration + 1 || (row?.lifecycle !== "cancelling" && !(row?.lifecycle === "ready" && operation.settlement?.phase === "done")) || operation.phase === "complete") {
           fail("profile-pending-logout-unavailable");
         }
         const file = readPrivateFile(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
@@ -2557,196 +2353,25 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (read() !== original) fail("profile-pending-logout-authority-changed");
       } });
     },
-    assertProfileErasureHead(profileId: string, head: CredentialErasureHead) {
-      assertHeld();
-      readMachineRegistry(control, locator, false);
-      if (lstatMaybe(join(control, "profile-publication.json"))) {
-        const pending = readStrict(join(control, "profile-publication.json"), ProfilePublicationSchema);
-        if (pending.kind === "draft-erasure") {
-          if (pending.profileId !== profileId || head.state !== "established" || head.epoch !== pending.nextEpoch || head.journal.digest !== pending.nextDigest) fail("profile-draft-erasure-head-mismatch");
-          assertCredentialErasureHeadFiles(erasurePath(locator, profileId), head);
-          return;
-        }
-        const credentialKey = pending.kind === "credential-key" && pending.capture.operation.profileId === profileId
-          && canonicalJsonStringify(pending.capture.head) === canonicalJsonStringify(head);
-        const stage = pending.kind === "profile" ? pending.keyStage : undefined;
-        const priorHead = pending.prior.erasures.find(row => row.profileId === profileId);
-        const stagedKey = stage?.operation.profileId === profileId && (priorHead === undefined
-          ? head.state === "never-erased" && !stage.registry.profiles.some(row => row.profileId === profileId)
-          : canonicalJsonStringify(priorHead.head) === canonicalJsonStringify(head));
-        if (!credentialKey && !stagedKey) fail("profile-erasure-publication-pending");
-      }
-      const continuity = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-      const row = continuity.erasures.find(row => row.profileId === profileId);
-      // Setup has no published origin; only verified registration establishes it.
-      if (row === undefined) {
-        const pending = profileOperationInventory(locator.stateRoot).some(row => {
-          const operation = readStrict(join(locator.stateRoot, "machine", "operations", row.operationId + ".json"), ProfileOperationSchema);
-          return operation.kind === "sign-up" && operation.profileId === profileId;
-        });
-        if (!pending || head.state !== "never-erased") fail("profile-erasure-origin-missing");
-      } else if (canonicalJsonStringify(row.head) !== canonicalJsonStringify(head)) fail("profile-erasure-continuity-mismatch");
-    },
-    assertDraftErasureJournalRecovery(profileId: string, request: ErasureRequestIdentity, digest: string) {
-      assertHeld();
-      const intent = readStrict(join(control, "profile-publication.json"), ProfilePublicationSchema);
-      if (intent.kind !== "draft-erasure" || intent.profileId !== profileId || intent.settledHead !== undefined
-        || intent.nextDigest !== digest || canonicalJsonStringify(intent.request) !== canonicalJsonStringify(request)) fail("profile-draft-erasure-journal-recovery-refused");
-      assertDraftErasureSource(locator, readMachineRegistry(control, locator, false), intent);
-    },
-    resumeProfileErasure(profileId: string, request: ErasureRequestIdentity, head: CredentialErasureHead) {
-      assertHeld();
-      const pending = lstatMaybe(join(control, "profile-publication.json"));
-      if (pending === undefined) { shared.assertProfileErasureHead(profileId, head); return; }
-      const intent = readStrict(join(control, "profile-publication.json"), ProfilePublicationSchema);
-      if (intent.kind === "draft-erasure") {
-        if (intent.profileId !== profileId || canonicalJsonStringify(intent.request) !== canonicalJsonStringify(request)
-          || head.state !== "never-erased" && (head.epoch !== intent.nextEpoch || head.journal.digest !== intent.nextDigest)) fail("profile-draft-erasure-intent-outcome-uncertain");
-        readMachineRegistry(control, locator, false); assertCredentialErasureHeadFiles(erasurePath(locator, profileId), head); return;
-      }
-      if (intent.kind !== "erasure" || intent.profileId !== profileId || intent.installationId !== locator.installationId
-        || canonicalJsonStringify(intent.request) !== canonicalJsonStringify(request)) fail("profile-erasure-intent-mismatch");
-      readMachineRegistry(control, locator, false);
-      const prior = intent.prior.erasures.find(row => row.profileId === profileId);
-      if (prior === undefined || (canonicalJsonStringify(prior.head) !== canonicalJsonStringify(head)
-        && (head.state !== "established" || head.epoch !== intent.nextEpoch || head.journal.digest !== intent.nextDigest))) fail("profile-erasure-intent-outcome-uncertain");
-    },
-    beginProfileErasure(profileId: string, witness: VerifiedCredentialErasureIntent) {
-      const root = join(locator.stateRoot, "profiles", profileId), journalPath = erasurePath(locator, profileId);
-      const capture = verifyCredentialErasureIntent(witness, root, journalPath, { installationId: locator.installationId, profileId });
-      mutate(() => {
-        assertHeld(); readMachineRegistry(control, locator, false);
-        if (lstatMaybe(join(control, "journal.json"))) fail("profile-erasure-operation-busy");
-        if (lstatMaybe(join(control, "profile-publication.json"))) {
-          const pending = readStrict(join(control, "profile-publication.json"), ProfilePublicationSchema);
-          if (pending.kind === "draft-erasure") {
-            if (capture.draftAbort === undefined || pending.profileId !== profileId || canonicalJsonStringify(pending.request) !== canonicalJsonStringify(capture.request)
-              || canonicalJsonStringify(pending.operation) !== canonicalJsonStringify(capture.draftAbort.operation)
-              || canonicalJsonStringify(pending.source) !== canonicalJsonStringify(capture.draftAbort.source)
-              || pending.nextEpoch !== capture.nextEpoch || pending.nextDigest !== capture.nextDigest) fail("profile-draft-erasure-intent-mismatch");
-            return;
-          }
-          if (pending.kind !== "erasure" || pending.profileId !== profileId || pending.installationId !== locator.installationId
-            || canonicalJsonStringify(pending.request) !== canonicalJsonStringify(capture.request) || pending.nextEpoch !== capture.nextEpoch
-            || pending.nextDigest !== capture.nextDigest || canonicalJsonStringify(pending.prior.erasures.find(row => row.profileId === profileId)?.head) !== canonicalJsonStringify(capture.prior)) fail("profile-erasure-intent-mismatch");
-          return;
-        }
-        const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-        if (capture.draftAbort !== undefined) {
-          if (capture.prior.state !== "never-erased" || prior.erasures.some(row => row.profileId === profileId)) fail("profile-draft-erasure-prior-invalid");
-          const intent = ProfilePublicationSchema.parse({ kind: "draft-erasure", schemaVersion: 1, installationId: locator.installationId, prior, profileId,
-            request: capture.request, nextEpoch: capture.nextEpoch, nextDigest: capture.nextDigest,
-            operation: capture.draftAbort.operation, source: capture.draftAbort.source, priorHead: capture.prior });
-          if (intent.kind !== "draft-erasure") fail("profile-draft-erasure-intent-invalid");
-          assertDraftErasureSource(locator, readMachineRegistry(control, locator, false), intent);
-          atomicJson(join(control, "profile-publication.json"), intent); return;
-        }
-        const matching = prior.operations.map(row => readStrict(join(locator.stateRoot, "machine", "operations", row.operationId + ".json"), ProfileOperationSchema))
-          .filter(operation => operation.kind === "logout" && operation.profileId === profileId && operation.phase === "erasing"
-            && operation.commandId === capture.request.commandId && operation.writeId === capture.request.writeId
-            && operation.expectedRevision === capture.request.expectedRevision && operation.at === capture.request.updatedAt);
-        if (matching.length !== 1 || capture.request.commandFingerprint !== "b".repeat(64)) fail("profile-erasure-intent-mismatch");
-        const row = prior.erasures.find(row => row.profileId === profileId);
-        if (row === undefined || canonicalJsonStringify(row.head) !== canonicalJsonStringify(capture.prior)) fail("profile-erasure-continuity-mismatch");
-        verifyCredentialErasureIntent(witness, root, journalPath, { installationId: locator.installationId, profileId });
-        atomicJson(join(control, "profile-publication.json"), { kind: "erasure", schemaVersion: 1, installationId: locator.installationId,
-          prior, profileId, request: capture.request, nextEpoch: capture.nextEpoch, nextDigest: capture.nextDigest });
-      });
-    },
-    settleProfileErasure(profileId: string, request: ErasureRequestIdentity, witness: VerifiedCredentialErasureHead) {
-      const root = join(locator.stateRoot, "profiles", profileId), journalPath = erasurePath(locator, profileId);
-      const head = verifyCredentialErasureHead(witness, root, journalPath, { installationId: locator.installationId, profileId });
-      mutate(() => {
-        assertHeld();
-        if (!lstatMaybe(join(control, "profile-publication.json"))) { shared.assertProfileErasureHead(profileId, head); return; }
-        const intent = readStrict(join(control, "profile-publication.json"), ProfilePublicationSchema);
-        if (intent.kind === "draft-erasure") {
-          if (intent.profileId !== profileId || canonicalJsonStringify(intent.request) !== canonicalJsonStringify(request) || head.state !== "established"
-            || head.epoch !== intent.nextEpoch || head.journal.digest !== intent.nextDigest) fail("profile-draft-erasure-settlement-mismatch");
-          assertDraftErasureSource(locator, readMachineRegistry(control, locator, false), intent);
-          if (intent.settledHead !== undefined && canonicalJsonStringify(intent.settledHead) !== canonicalJsonStringify(head)) fail("profile-draft-erasure-settlement-changed");
-          atomicJson(join(control, "profile-publication.json"), { ...intent, settledHead: head }); return;
-        }
-        if (intent.kind !== "erasure" || intent.installationId !== locator.installationId || intent.profileId !== profileId
-          || canonicalJsonStringify(intent.request) !== canonicalJsonStringify(request) || head.state !== "established"
-          || head.epoch !== intent.nextEpoch || head.journal.digest !== intent.nextDigest) fail("profile-erasure-settlement-mismatch");
-        const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-        const next = { ...intent.prior, erasures: intent.prior.erasures.map(row => row.profileId === profileId ? { ...row, head } : row) };
-        if (canonicalJsonStringify(prior) !== canonicalJsonStringify(intent.prior)
-          && canonicalJsonStringify(prior) !== canonicalJsonStringify(next)) fail("profile-erasure-settlement-control-changed");
-        verifyCredentialErasureHead(witness, root, journalPath, { installationId: locator.installationId, profileId });
-        atomicJson(join(control, "profile-registry.json"), next);
-        unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
-      });
-    },
-    assertProfileCredentialKeyAnchor(profileId: string) {
-      shared.readProfileRegistry();
-      const continuity = readProfileEvidence(join(control, "profile-registry.json"), ProfileContinuitySchema);
-      const row = continuity.erasures.find(entry => entry.profileId === profileId);
-      if (row?.credentialKey === undefined) return false;
-      assertCredentialKeyWitness(join(locator.stateRoot, "machine", "credential-keys", `${profileId}.json`), row.credentialKey,
-        { installationId: locator.installationId, profileId });
-      return true;
-    },
-    publishProfileCredentialInitialization(profileId: string, witness: CommittedCredentialInitialization) {
-      mutate(held => {
-        const scope = new ActiveProfilePublicationRead(control, workspace, locator, witness.operationId, held, assertHeld);
-        try {
-        assertHeld();
-        const capture = verifyCommittedCredentialInitialization(witness, locator.stateRoot,
-          erasurePath(locator, profileId), scope);
-        if (lstatMaybe(join(control, "profile-publication.json"))) {
-          const pending = readStrict(join(control, "profile-publication.json"), ProfilePublicationSchema);
-          if (pending.kind !== "credential-key" || canonicalJsonStringify(pending.capture) !== canonicalJsonStringify(capture)) fail("profile-key-publication-intent-changed");
-          readMachineRegistry(control, locator, true, capture);
-          return;
-        }
-        const before = readMachineRegistry(control, locator);
-        if (capture.operation.profileId !== profileId) fail("profile-key-publication-profile-mismatch");
-        const prior = readProfileEvidence(join(control, "profile-registry.json"), ProfileContinuitySchema);
-        const row = prior.erasures.find(entry => entry.profileId === profileId);
-        if (row === undefined) fail("profile-key-publication-unregistered");
-        if (row.credentialKey !== undefined) {
-          if (canonicalJsonStringify(row.credentialKey) !== canonicalJsonStringify(capture.key)) fail("profile-key-anchor-replacement-refused");
-          return;
-        }
-        if (canonicalJsonStringify(row.head) !== canonicalJsonStringify(capture.head)) fail("profile-key-publication-head-changed");
-        const next = advanceProfileRegistryDocument(before, { activeProfileId: null, sessionGeneration: before.sessionGeneration + 1 });
-        if (!Number.isSafeInteger(next.sessionGeneration)) fail("profile-key-publication-generation-invalid");
-        const operationPath = join(locator.stateRoot, "machine", "operations", `${capture.operation.operationId}.json`);
-        if (canonicalJsonStringify(readProfileEvidence(operationPath, SignUpOperationSchema)) !== canonicalJsonStringify(capture.operation)) fail("profile-key-publication-intent-changed");
-        atomicJson(join(control, "profile-publication.json"), { kind: "credential-key", schemaVersion: 1, installationId: locator.installationId, prior, priorDocument: before, document: next, capture });
-        readMachineRegistry(control, locator, true, capture);
-        } finally { scope.expire(); }
-      });
-    },
     publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument) { publishRegistry(expected, document); },
-    publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, witness: CommittedCredentialWitness, verifier: PreparedProfileVerifier) { publishRegistry(undefined, undefined, { operation, witness, verifier }); },
-    beginProfileSignUp(fields: Omit<z.infer<typeof SignUpOperationSchema>, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding">) {
-      const profileId = randomUUID();
-      const operation = SignUpOperationSchema.parse({ ...fields, credentialInitialization: fields.credentialInitialization ?? { mode: "initial", keyId: randomUUID(), phase: "admitted" }, schemaVersion: 1, kind: "sign-up", phase: "applying",
-        operationId: randomUUID(), profileId, commandId: randomUUID(), writeId: randomUUID(),
-        onboarding: { accountId: randomUUID(), generation: 1, attempts: [], duo: { state: "never-initialized", profileId, revision: 0 } } });
+    publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, profile: RuntimeAdmission) { publishRegistry(undefined, undefined, { operation, profile, lease: this }); },
+    beginProfileSignUp(fields: Omit<z.infer<typeof SignUpOperationSchema>, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding" | "credentials">) {
+      const profileId = randomUUID(), operationId = randomUUID();
+      const operation = SignUpOperationSchema.parse({ ...fields, schemaVersion: 2, kind: "sign-up", phase: "applying",
+        operationId, profileId, commandId: randomUUID(), writeId: randomUUID(),
+        credentials: { operationId, keyId: randomUUID(), generation: 1, phase: "planned" },
+        onboarding: { accountId: randomUUID(), generation: 1, attempts: [] } });
       publishOperation(operation, true);
       return operation;
     },
-    readProfileCredentialKeyStage(operation: z.infer<typeof SignUpOperationSchema>) {
-      assertHeld(); readMachineRegistry(control, locator, false);
-      if (!lstatMaybe(join(control, "profile-publication.json"))) return undefined;
-      const pending = readProfileEvidence(join(control, "profile-publication.json"), ProfilePublicationSchema);
-      if (pending.kind === "credential-key" && canonicalJsonStringify(pending.capture.operation) === canonicalJsonStringify(operation)) return undefined;
-      if (pending.kind !== "profile" || pending.keyStage === undefined
-        || canonicalJsonStringify(pending.keyStage.priorOperation) !== canonicalJsonStringify(operation)
-          && canonicalJsonStringify(pending.keyStage.operation) !== canonicalJsonStringify(operation)) fail("credential-key-stage-intent-changed");
-      return pending.keyStage;
-    },
-    publishProfileOperation(input: ProfileOperation | string, keyStage?: CommittedCredentialKeyStage) { publishOperation(input, false, keyStage); },
+    publishProfileOperation(input: ProfileOperation | string) { publishOperation(input, false); },
 
     readInstallationContext() {
       const receipts = shared.readRelocationReceipts();
       return Object.freeze({ workspace, locator: publicLocator, receipts });
     },
     release() {
+      assertSourceClosuresProved(sourceFailures);
       if (released) return;
       assertHeld();
       if (offlineOperation !== undefined && isOfflineMaintenanceOperationActive(offlineOperation)) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-busy");
@@ -2785,20 +2410,17 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   }
   const exclusive: ExclusiveInstallationLease = Object.freeze({
     ...shared,
-    captureProfileRestore(profileId, witness) {
+    captureProfileRestore(profileId, credentials) {
       assertHeld();
-      shared.readCompletedRestores(profileId);
-      const root = join(locator.stateRoot, "profiles", profileId);
-      const binding = { installationId: locator.installationId, profileId };
-      const head = verifyCredentialErasureHead(witness, root, erasurePath(locator, profileId), binding);
+      this.readCompletedRestores(profileId);
+      const binding = { installationId: locator.installationId, profileId }, root = join(locator.stateRoot, "profiles", profileId);
       readMachineRegistry(control, locator, false);
       if (lstatMaybe(join(control, "profile-publication.json")) || lstatMaybe(join(control, "journal.json"))) fail("profile-restore-operation-busy");
       const continuity = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-      const member = continuity.erasures.find(row => row.profileId === profileId);
-      if (member === undefined || canonicalJsonStringify(member.head) !== canonicalJsonStringify(head)) fail("profile-restore-erasure-mismatch");
       assertProfileRestoreDatabaseBinding(join(root, "state.db"), binding);
-      const credentialKey = verifyCredentialKeyHead(witness, root, binding);
-      return ProfileRestoreContextSchema.parse({ binding, continuity, head, credentialKey });
+      const context = ProfileRestoreContextSchema.parse({ binding, continuity, credentials });
+      assertRestoreCredentialSnapshot(locator, context);
+      return context;
     },
     assertProfileRestoreHeld(input, restore) {
       assertHeld(); assertLocalRestoreHeld(restore);
@@ -2807,7 +2429,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         || canonicalJsonStringify(pending.restore) !== canonicalJsonStringify(input)
         || canonicalJsonStringify(pending.source) !== canonicalJsonStringify(locator)) fail("profile-restore-custody-mismatch");
       checkRestoreInput(locator, input);
-      assertCredentialErasureHeadFiles(erasurePath(locator, input.profile.binding.profileId), input.profile.head);
+      assertRestoreCredentialSnapshot(locator, input.profile);
       if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-restore-erasure-pending");
       if (pending.invalidation === undefined) {
         readMachineRegistry(control, locator, false);
@@ -2838,7 +2460,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-restore-erasure-pending");
         const continuity = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
         if (canonicalJsonStringify(continuity) !== canonicalJsonStringify(parsed.profile.continuity)) fail("profile-restore-control-changed");
-        assertCredentialErasureHeadFiles(erasurePath(locator, parsed.profile.binding.profileId), parsed.profile.head);
+        assertRestoreCredentialSnapshot(locator, parsed.profile);
         if (existsSync(join(control, "journal.json"))) fail("installation operation already pending");
         if (canonicalJsonStringify(rawLocator(control, workspace)) !== canonicalJsonStringify(locator)) fail("restore source locator changed");
         sameRestoreFile(parsed.authorityPath, parsed.live); sameRestoreFile(parsed.stagedPath, parsed.staged);
@@ -2886,7 +2508,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         }
         sameRestoreFile(parsed.authorityPath, outcome === "replaced" ? parsed.staged : parsed.live);
         assertRestoreSuspect(parsed);
-        assertCredentialErasureHeadFiles(erasurePath(locator, parsed.profile.binding.profileId), parsed.profile.head);
+        assertRestoreCredentialSnapshot(locator, parsed.profile);
         if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-restore-erasure-pending");
         const continuityPath = join(control, "profile-registry.json"), registryPath = join(locator.stateRoot, "machine", "profiles.json");
         const continuity = readStrict(continuityPath, ProfileContinuitySchema);
@@ -2902,14 +2524,13 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           if (invalidation === undefined) fail("profile-restore-invalidation-missing");
           if (invalidation.priorDocument.installationId !== locator.installationId || invalidation.document.installationId !== locator.installationId
             || canonicalJsonStringify(invalidation.continuity) !== canonicalJsonStringify(parsed.profile.continuity)
-            || canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, invalidation.priorDocument,
-              invalidation.continuity.erasures, invalidation.continuity.duo, invalidation.continuity.completedRestores)) !== canonicalJsonStringify(invalidation.continuity)
+            || canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, invalidation.priorDocument, invalidation.continuity.completedRestores)) !== canonicalJsonStringify(invalidation.continuity)
             || canonicalJsonStringify(invalidation.document) !== canonicalJsonStringify(advanceProfileRegistryDocument(invalidation.priorDocument,
               { activeProfileId: null, sessionGeneration: invalidation.priorDocument.sessionGeneration + 1 }))) fail("profile-restore-invalidation-uncertain");
           const currentDocument = readStrict(registryPath, ProfileRegistryDocumentSchema);
           if (canonicalJsonStringify(currentDocument) !== canonicalJsonStringify(invalidation.document)
             && canonicalJsonStringify(currentDocument) !== canonicalJsonStringify(invalidation.priorDocument)) fail("profile-restore-invalidation-uncertain");
-          const nextContinuity = profileRegistryWitness(locator.installationId, registryPath, invalidation.document, invalidation.continuity.erasures, invalidation.continuity.duo, invalidation.continuity.completedRestores);
+          const nextContinuity = profileRegistryWitness(locator.installationId, registryPath, invalidation.document, invalidation.continuity.completedRestores);
           if (canonicalJsonStringify(continuity) !== canonicalJsonStringify(invalidation.continuity)
             && canonicalJsonStringify(continuity) !== canonicalJsonStringify(nextContinuity)
             && canonicalJsonStringify(continuity) !== canonicalJsonStringify({ ...nextContinuity, completedRestores })) fail("profile-restore-invalidation-control-changed");
@@ -3180,7 +2801,7 @@ export interface StoppedProfileControlUpgradeAdmission {
   registeredProfileIds(): readonly string[];
   profileInventory(profileId: string): StoppedControlProfileInventory;
   recordProfileInventory(claim: StoppedControlProfileInventory, proof: StoppedControlCredentialAttestation): void;
-  run(plan: boolean): Readonly<{ state: "current" | "planned" | "upgraded"; runtimeAccess: "onboarding-incomplete" | "unchanged"; profileCount: number; receiptId?: string }>;
+  run(plan: boolean): Promise<Readonly<{ state: "current" | "planned" | "upgraded"; runtimeAccess: "onboarding-incomplete" | "unchanged"; profileCount: number; receiptId?: string }>>;
   release(): void;
 }
 
@@ -3189,7 +2810,11 @@ export interface StoppedControlProfileInventory { readonly profileId: string }
 const stoppedControlInventories = new WeakMap<StoppedControlProfileInventory, Readonly<{
   binding: z.infer<typeof ProfileDatabaseBindingSchema>; stateRoot: string; artifactRoot: string; machineRoot: string; locator: RuntimeLocator;
   key: z.infer<typeof CredentialKeyWitnessSchema>; head: z.infer<typeof CredentialErasureHeadSchema>;
-  assertHeld(): void; revalidateSource(): void; readInstallationContext(): ReturnType<InstallationLease["readInstallationContext"]>;
+  duo: DuoContinuityRow; schemaVersion: 8 | 9 | 10 | 11; conversionOperationId: string; backupDirectory: string;
+  pendingPlan(): CanonicalCredentialConversionPlan | undefined;
+  assertCanonicalConversion(operationId: string, digest: string): void;
+  assertCanonicalPublication(operationId: string, digest: string): void;
+  assertHeld(): void; revalidateSource(): void; retainSourceClosure(error: unknown): void; readInstallationContext(): ReturnType<InstallationLease["readInstallationContext"]>;
 }>>();
 
 export function requireStoppedControlProfileInventory(value: StoppedControlProfileInventory) {
@@ -3201,7 +2826,7 @@ export function requireStoppedControlProfileInventory(value: StoppedControlProfi
 
 function readControlUpgradeReceipt(path: string): z.infer<typeof ControlUpgradeReceiptSchema> {
   assertNoSymlinkComponents(path);
-  const file = readPrivateFile(path, { label: "lock", maxBytes: 16 * 1024 * 1024 });
+  const file = readPrivateFile(path, { label: "lock", maxBytes: 128 * 1024 * 1024 });
   if (file === undefined) fail("profile-control-upgrade-evidence-missing");
   const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes));
   if (!z.looseObject({ schemaVersion: z.literal(2) }).safeParse(value).success) fail("profile-control-upgrade-pending-conversion-unsupported");
@@ -3220,6 +2845,8 @@ function sameControlUpgradeFile(path: string, expected: z.infer<typeof ControlUp
 }
 
 function assertPriorRegistryLogicalBinding(locator: RuntimeLocator, prior: z.infer<typeof StoppedProfileContinuitySchema>, document: z.infer<typeof StoppedProfileRegistryDocumentSchema>): void {
+  if (prior.schemaVersion === 4 ? document.schemaVersion !== 3 || document.installationId !== locator.installationId
+    || prior.revision !== document.revision : document.schemaVersion !== 2) fail("profile-control-upgrade-prior-mismatch");
   const operations = profileOperationInventory(locator.stateRoot);
   const logicalOperations = prior.operations.map(({ operationId, digest }) => ({ operationId, digest }));
   if (prior.installationId !== locator.installationId || prior.generation !== document.sessionGeneration
@@ -3227,24 +2854,27 @@ function assertPriorRegistryLogicalBinding(locator: RuntimeLocator, prior: z.inf
     || canonicalJsonStringify(logicalOperations) !== canonicalJsonStringify(operations)) fail("profile-control-upgrade-prior-mismatch");
 }
 
-function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typeof StoppedProfileContinuitySchema>, document = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), StoppedProfileRegistryDocumentSchema)): string {
+function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typeof StoppedProfileContinuitySchema>, document = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), StoppedProfileRegistryDocumentSchema), plans: readonly { profileId: string; plan: CanonicalCredentialConversionPlan }[] = []): string {
+  if (document.profiles.some(row => row.credentialState === "wiped")) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED", { cause: new Error("profile-control-upgrade-wiped-credentials-unproved") });
   const machine = join(locator.stateRoot, "machine");
   if (document.profiles.some(row => row.lifecycle !== "ready" || row.credentialState !== "saved")) fail("profile-control-upgrade-pending-conversion-unsupported");
   assertPriorRegistryLogicalBinding(locator, prior, document);
   const currentDocument = ProfileRegistryDocumentSchema.parse({ ...document, schemaVersion: 3, installationId: locator.installationId, revision: 1 });
-  if (prior.schemaVersion === 1 && lstatMaybe(join(machine, "duo-credentials"))) fail("profile-control-upgrade-duo-material-present");
-  if (prior.schemaVersion !== 1) assertDuoMembership(locator, currentDocument, prior.duo);
+  if (plans.length !== 0 && (plans.length !== document.profiles.length || new Set(plans.map(row => row.profileId)).size !== plans.length
+    || plans.some(row => !document.profiles.some(profile => profile.profileId === row.profileId)))) fail("profile-control-upgrade-plan-membership");
+  if (plans.length === 0 && prior.schemaVersion === 1 && lstatMaybe(join(machine, "duo-credentials"))) fail("profile-control-upgrade-duo-material-present");
+  if (plans.length === 0 && prior.schemaVersion !== 1) assertDuoMembership(locator, currentDocument, prior.duo);
   for (const profile of document.profiles) {
     const suspects = join(locator.stateRoot, "profiles", profile.profileId, "backups", "suspects");
     assertNoSymlinkComponents(suspects);
-    if (prior.schemaVersion === 3) {
+    if (prior.schemaVersion >= 3 && "completedRestores" in prior) {
       for (const record of prior.completedRestores.filter(row => row.profile.profileId === profile.profileId)) assertCompletedRestoreCustody(locator, record);
     } else if (lstatMaybe(suspects)) {
       privateDirectory(suspects);
       if (readdirSync(suspects).length !== 0) fail("profile-control-upgrade-suspect-custody-unproved");
     }
   }
-  const known = new Set(["profiles.json", "profile-registry-version.json", "profile-verifiers.json", "profile-pepper", "credential-keys", "erasures", "operations", ...(prior.schemaVersion !== 1 ? ["duo-credentials"] : [])]);
+  const known = new Set(["profiles.json", "profile-registry-version.json", "profile-verifiers.json", "profile-pepper", "credential-keys", "erasures", "operations", ...(prior.schemaVersion !== 1 || plans.length !== 0 ? ["duo-credentials"] : []), ...(plans.length !== 0 ? ["credential-operations"] : [])]);
   privateDirectory(machine);
   if (readdirSync(machine).some(name => !known.has(name))) fail("profile-control-upgrade-machine-membership-unknown");
   const verifiers = readProfileEvidence(join(machine, "profile-verifiers.json"), ProfileVerifierDocumentSchema);
@@ -3254,31 +2884,32 @@ function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typ
   if (pepper === undefined || pepper.bytes.length !== 32) fail("profile-control-upgrade-pepper-invalid");
   const pendingOperations = profileOperationInventory(locator.stateRoot).map(row => readProfileEvidence(join(machine, "operations", `${row.operationId}.json`), ProfileOperationSchema));
   if (pendingOperations.some(operation => operation.kind !== "logout" || operation.phase !== "complete")) fail("profile-control-upgrade-operation-pending");
-  assertErasureMembership(currentDocument, prior.erasures); assertProfileCredentialKeyMembership(locator, prior.erasures);
+  assertErasureMembership(currentDocument, prior.erasures);
+  if (plans.length === 0) assertProfileCredentialKeyMembership(locator, prior.erasures);
   const profiles = prior.erasures.map(row => {
     if (row.credentialKey === undefined) fail("profile-control-upgrade-credential-conversion-required");
     const root = join(locator.stateRoot, "profiles", row.profileId), path = join(root, "state.db");
     assertCanonicalProfileBinding(path, { installationId: locator.installationId, profileId: row.profileId });
     const metadata = lstatSync(path);
-    const protectedDocument = inspectProfileCredentialsForControlUpgrade(locator.stateRoot,
-      { installationId: locator.installationId, profileId: row.profileId }, row.credentialKey, row.head);
-    return { profileId: row.profileId, protectedDocument, database: { device: metadata.dev, inode: metadata.ino,
+    const conversion = plans.find(plan => plan.profileId === row.profileId)?.plan.operation;
+    const credentialFiles = [join(locator.stateRoot, "machine", "credential-keys", `${row.profileId}.json`),
+      join(root, "credentials", "protected.json"), join(root, "credentials", "chatgpt-account.json")].map(path => {
+      const file = readPrivateFile(path, { label: "protected.json", maxBytes: 25 * 1024 * 1024 });
+      const actual = file === undefined ? { state: "absent" as const } : { state: "present" as const,
+        ...file.identity, digest: createHash("sha256").update(file.bytes).digest("hex") };
+      if (conversion === undefined) return { path, file: actual };
+      const head = dirname(path) === join(machine, "credential-keys");
+      const planned = head ? conversion.priorHead : conversion.files.find(file => file.kind === (basename(path) === "protected.json" ? "protected" : "chatgpt"))?.prior;
+      if (planned === undefined) fail("profile-control-upgrade-plan-membership");
+      const published = head ? Buffer.from(canonicalJsonStringify(conversion.head)) : Buffer.from(conversion.files.find(file => file.kind === (basename(path) === "protected.json" ? "protected" : "chatgpt"))?.bytes ?? "", "base64");
+      if (canonicalJsonStringify(actual) !== canonicalJsonStringify(planned) && (file === undefined || !file.bytes.equals(published))) fail("profile-control-upgrade-credential-source-changed");
+      return { path, file: planned };
+    });
+    return { profileId: row.profileId, credentialFiles, database: { device: metadata.dev, inode: metadata.ino,
       size: metadata.size, modified: metadata.mtimeMs, changed: metadata.ctimeMs } };
   });
   return canonicalJsonStringify({ prior, profiles, verifiers: controlUpgradeFile(join(machine, "profile-verifiers.json")), pepper: controlUpgradeFile(join(machine, "profile-pepper")) });
 }
-
-export function readIssuedDuoContinuity(lease: InstallationLease, profileId: string): Readonly<DuoContinuityRow> {
-  assertInstallationLease(lease);
-  lease.assertHeld();
-  const continuity = readStrict(join(lease.readInstallationContext().workspace, CONTROL, "profile-registry.json"), ProfileContinuitySchema);
-  const row = continuity.duo.find((value) => value.profileId === profileId);
-  if (row === undefined) fail("duo-profile-unregistered");
-  const snapshot = DuoContinuityRowSchema.parse(row);
-  if (snapshot.state !== "never-initialized") Object.freeze(snapshot.document);
-  return Object.freeze(snapshot);
-}
-
 
 export function inspectFlatOfflineRunMaintenance(workspacePath: string) {
   const workspace = realpathSync(workspacePath), control = join(workspace, CONTROL);
@@ -3310,87 +2941,16 @@ export function assertStoppedMachineMaintenance(lease: InstallationLease, restor
   if (!equalLocator(readLocator(join(workspace, CONTROL), workspace), lease.locator)) fail("profile-control-upgrade-locator-changed");
 }
 
-export interface DuoPublicationRecoveryClaim { readonly profileId: string }
-const duoPublicationRecoveries = new WeakMap<DuoPublicationRecoveryClaim, {
-  lease: InstallationLease; restore: OfflineMaintenanceOperation; intent: Extract<z.infer<typeof ProfilePublicationSchema>, { kind: "duo" | "draft-duo" }>;
-  path: string; digest: string;
-}>();
-
-function authenticateStoppedDuoPublication(lease: InstallationLease, restore: OfflineMaintenanceOperation) {
-  assertStoppedMachineMaintenance(lease, restore);
-  const workspace = lease.readInstallationContext().workspace;
-  return authenticateDuoPublication(join(workspace, CONTROL), lease.locator);
-}
-
-function authenticateDuoPublication(control: string, locator: RuntimeLocator) {
-  const intentPath = join(control, "profile-publication.json");
-  if (lstatMaybe(intentPath) === undefined) fail("duo-publication-recovery-absent");
-  const intent = readStrict(intentPath, ProfilePublicationSchema);
-  if (intent.kind !== "duo" && intent.kind !== "draft-duo") fail("duo-publication-pending");
-  const capture = intent.capture;
-  const stage = duoStagePath(locator.stateRoot, capture);
-  const canonical = join(locator.stateRoot, "machine", "duo-credentials", `${capture.profileId}.json`);
-  const path = lstatMaybe(stage) !== undefined ? stage : canonical;
-  assertDuoPublishedFile(path, capture);
-  const file = readPrivateFile(path, { label: "Duo credential", maxBytes: 16 * 1024 * 1024 });
-  if (file === undefined) fail("duo-document-required");
-  const digest = createHash("sha256").update(file.bytes).digest("hex");
-  if (digest !== capture.next.document.digest || file.identity.device !== capture.next.document.device || file.identity.inode !== capture.next.document.inode) fail("duo-publication-file-changed");
-  const envelope = readDuoPublicationEnvelope(file.bytes);
-  if (envelope.profileId !== capture.profileId || envelope.installationId !== locator.installationId || envelope.revision !== capture.next.revision
-    || envelope.purpose !== "relay:duo-credential:v1") fail("duo-publication-prior-changed");
-  const registryPath = join(locator.stateRoot, "machine", "profiles.json");
-  const document = readProfileEvidence(registryPath, ProfileRegistryDocumentSchema);
-  if (createHash("sha256").update(canonicalJsonStringify(document)).digest("hex") !== intent.prior.digest
-) fail("profile-control-upgrade-source-changed");
-  const continuity = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-  const nextContinuity = intent.kind === "draft-duo"
-    ? profileRegistryWitness(locator.installationId, registryPath, document, intent.prior.erasures, intent.prior.duo, intent.prior.completedRestores)
-    : { ...intent.prior, duo: intent.prior.duo.map((row) => row.profileId === capture.profileId ? capture.next : row) };
-  if (intent.kind === "draft-duo") {
-    const operation = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${intent.operation.operationId}.json`), SignUpOperationSchema);
-    if (document.profiles.some(row => row.profileId === capture.profileId)
-      || canonicalJsonStringify(operation) !== canonicalJsonStringify(intent.priorOperation)
-        && canonicalJsonStringify(operation) !== canonicalJsonStringify(intent.operation)) fail("duo-draft-authority-changed");
-  }
-  if (canonicalJsonStringify(continuity) !== canonicalJsonStringify(intent.prior)
-    && canonicalJsonStringify(continuity) !== canonicalJsonStringify(nextContinuity)) fail("duo-publication-prior-changed");
-  if (intent.kind === "duo" && !document.profiles.some((row) => row.profileId === capture.profileId)) fail("duo-profile-unregistered");
-  return { intent, path, digest, document };
-}
-
-export function issueStoppedDuoPublicationRecovery(lease: InstallationLease, restore: OfflineMaintenanceOperation): DuoPublicationRecoveryClaim {
-  const authenticated = authenticateStoppedDuoPublication(lease, restore);
-  const claim = Object.freeze({ profileId: authenticated.intent.capture.profileId });
-  duoPublicationRecoveries.set(claim, { lease, restore, intent: authenticated.intent, path: authenticated.path, digest: authenticated.digest });
-  return claim;
-}
-
-export function completeStoppedDuoPublicationRecovery(claim: DuoPublicationRecoveryClaim): { revision: number } {
-  const issued = duoPublicationRecoveries.get(claim);
-  if (issued === undefined) fail("duo-publication-recovery-unissued");
-  duoPublicationRecoveries.delete(claim);
-  const workspace = issued.lease.readInstallationContext().workspace;
-  return withInstallationControl(join(workspace, CONTROL), () => {
-  issued.lease.assertHeld();
-  const again = authenticateStoppedDuoPublication(issued.lease, issued.restore);
-  if (again.path !== issued.path || again.digest !== issued.digest || canonicalJsonStringify(again.intent) !== canonicalJsonStringify(issued.intent)) fail("duo-publication-file-changed");
-  const control = join(workspace, CONTROL);
-  const continuity = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-  if (issued.intent.kind === "draft-duo") settleDraftDuoPublication(control, issued.lease.locator, again.document, continuity, issued.intent);
-  else settleDuoPublication(control, issued.lease.locator, again.document, continuity, issued.intent);
-  if (lstatMaybe(join(control, "profile-publication.json")) !== undefined) fail("duo-publication-pending");
-  return { revision: issued.intent.capture.next.revision };
-  });
-}
-
 function convertedProfileRegistry(locator: RuntimeLocator, prior: z.infer<typeof StoppedProfileRegistryDocumentSchema>): ProfileRegistryDocument {
+  if (prior.schemaVersion === 3) {
+    if (prior.installationId !== locator.installationId) fail("profile-registry-installation-mismatch");
+    return prior;
+  }
   return ProfileRegistryDocumentSchema.parse({ ...prior, schemaVersion: 3, installationId: locator.installationId, revision: 1 });
 }
 function convertedProfileControl(locator: RuntimeLocator, prior: z.infer<typeof StoppedProfileContinuitySchema>, document: ProfileRegistryDocument) {
-  return profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document, prior.erasures,
-    prior.schemaVersion === 1 ? document.profiles.map(row => ({ profileId: row.profileId, state: "never-initialized", revision: 0 })) : prior.duo,
-    prior.schemaVersion === 3 ? prior.completedRestores : []);
+  return profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document,
+    prior.schemaVersion >= 3 && "completedRestores" in prior ? prior.completedRestores : []);
 }
 function validateStoppedControlUpgrade(control: string, locator: RuntimeLocator, receipt: z.infer<typeof ControlUpgradeReceiptSchema>) {
   const backupDirectory = join(control, "profile-control-upgrades"), registryPath = join(locator.stateRoot, "machine", "profiles.json"),
@@ -3398,12 +2958,27 @@ function validateStoppedControlUpgrade(control: string, locator: RuntimeLocator,
   if (receipt.installationId !== locator.installationId
     || canonicalJsonStringify(convertedProfileRegistry(locator, receipt.priorDocument)) !== canonicalJsonStringify(receipt.document)
     || canonicalJsonStringify(convertedProfileControl(locator, receipt.prior, receipt.document)) !== canonicalJsonStringify(receipt.current)
-    || priorControlUpgradeEvidence(locator, receipt.prior, receipt.priorDocument) !== receipt.sourceEvidence) fail("profile-control-upgrade-source-changed");
+    || priorControlUpgradeEvidence(locator, receipt.prior, receipt.priorDocument, receipt.credentials) !== receipt.sourceEvidence) fail("profile-control-upgrade-source-changed");
   const prefix = join(backupDirectory, receipt.operationId);
   privateDirectory(backupDirectory);
-  const expectedNames = [...receipt.retained.map(row => row.name), ...["registry", "control", "marker"].map(role => `${receipt.operationId}.${role}.before.json`),
+  const expectedNames = [...receipt.retained.map(row => row.name), ...receipt.backups.filter(row => lstatMaybe(join(backupDirectory, row.directory))).map(row => row.directory), ...["registry", "control", "marker"].map(role => `${receipt.operationId}.${role}.before.json`),
     ...["registry.stage", "control.stage", "marker.stage", "receipt.json"].filter(suffix => lstatMaybe(`${prefix}.${suffix}`)).map(suffix => `${receipt.operationId}.${suffix}`)];
   if (canonicalJsonStringify(readdirSync(backupDirectory).sort()) !== canonicalJsonStringify(expectedNames.sort())) fail("profile-control-upgrade-backup-membership");
+  for (const row of receipt.backups) {
+    if (row.directory !== `${receipt.operationId}.${row.profileId}.authority` || !receipt.document.profiles.some(profile => profile.profileId === row.profileId)) fail("profile-control-upgrade-backup-membership");
+    const directory = join(backupDirectory, row.directory);
+    if (row.verifiedBackup !== undefined && lstatMaybe(directory) === undefined) fail("profile-control-upgrade-backup-changed");
+    if (lstatMaybe(directory) !== undefined) {
+      assertNoSymlinkComponents(directory); privateDirectory(directory);
+      if (row.verifiedBackup !== undefined) {
+        const name = row.verifiedBackup.manifest.backupFileName;
+        if (canonicalJsonStringify(readdirSync(directory).sort()) !== canonicalJsonStringify([name, `${name}.manifest.json`].sort())
+          || controlUpgradeFile(join(directory, `${name}.manifest.json`), 64_000).digest !== row.verifiedBackup.manifestSha256
+          || row.verifiedBackup.manifest.byteSize > 512 * 1024 * 1024
+          || controlUpgradeFile(join(directory, name), 512 * 1024 * 1024).digest !== row.verifiedBackup.manifest.sha256) fail("profile-control-upgrade-backup-changed");
+      }
+    }
+  }
   for (const row of receipt.retained) if (!sameControlUpgradeFile(join(backupDirectory, row.name), row.file, 16 * 1024 * 1024)) fail("profile-control-upgrade-retained-changed");
   for (const [role, expected] of [["registry", receipt.registryBackup], ["control", receipt.controlBackup], ["marker", receipt.markerBackup]] as const) {
     if (!sameControlUpgradeFile(`${prefix}.${role}.before.json`, expected)) fail("profile-control-upgrade-backup-changed");
@@ -3424,7 +2999,7 @@ function validateStoppedControlUpgrade(control: string, locator: RuntimeLocator,
   const staged = (role: string, path: string) => lstatMaybe(`${prefix}.${role}.stage`) ? `${prefix}.${role}.stage` : path;
   if (canonicalJsonStringify(readProfileEvidence(staged("registry", registryPath), ProfileRegistryDocumentSchema)) !== canonicalJsonStringify(receipt.document)
     || canonicalJsonStringify(readProfileEvidence(staged("control", controlPath), ProfileContinuitySchema)) !== canonicalJsonStringify(receipt.current)) fail("profile-control-upgrade-stage-diverged");
-  readProfileEvidence(staged("marker", markerPath), z.strictObject({ schemaVersion: z.literal(5) }));
+  readProfileEvidence(staged("marker", markerPath), z.strictObject({ schemaVersion: z.literal(6) }));
   return stages;
 }
 
@@ -3446,13 +3021,15 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
   const lease = heldLease ?? acquireInstallation(workspace, "exclusive", lifetime, { stoppedControlForward: true, offlineOperation: restore }), locator = lease.locator, control = join(workspace, CONTROL);
   const markerPath = join(locator.stateRoot, "machine", "profile-registry-version.json"), controlPath = join(control, "profile-registry.json");
   const intentPath = join(control, "profile-control-upgrade.json"), backupDirectory = join(control, "profile-control-upgrades");
+  const conversionOperationId = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath).operationId : randomUUID();
   const inventorySnapshots = new Set<ReturnType<typeof createReadonlyAuthoritySnapshot>>();
   const issuedInventoryClaims = new Set<StoppedControlProfileInventory>();
   const inventoryProofs = new Map<string, { claim: StoppedControlProfileInventory; proof: StoppedControlCredentialAttestation }>();
-  const publicationProofs = (profiles: readonly z.infer<typeof ProfileRegistryRowSchema>[], consume: boolean): (() => void)[] => profiles.map(profile => {
+  const publicationProofs = (profiles: readonly z.infer<typeof ProfileRegistryRowSchema>[]): (() => void)[] => profiles.map(profile => {
     const entry = inventoryProofs.get(profile.profileId);
     if (entry === undefined) fail("profile-control-upgrade-inventory-required");
-    return verifyStoppedControlCredentialAttestation(entry.proof, entry.claim, consume);
+    const inventory = readStoppedCredentialConversion(entry.proof, entry.claim);
+    return () => { inventory.revalidate(); };
   });
   function held(): void {
     lease.assertHeld(); assertRestoreHeld(workspace, restore);
@@ -3469,7 +3046,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
       fsyncPath(dirname(path)); fsyncPath(backupDirectory);
     }
     for (const [path, , , after] of stages) if (!sameControlUpgradeFile(path, after)) fail("profile-control-upgrade-readback-failed");
-    if (priorControlUpgradeEvidence(locator, receipt.prior, receipt.priorDocument) !== receipt.sourceEvidence) fail("profile-control-upgrade-source-changed");
+    if (priorControlUpgradeEvidence(locator, receipt.prior, receipt.priorDocument, receipt.credentials) !== receipt.sourceEvidence) fail("profile-control-upgrade-source-changed");
     for (const revalidate of afterPublication) revalidate();
     if (lstatMaybe(`${prefix}.receipt.json`)) {
       if (canonicalJsonStringify(readControlUpgradeReceipt(`${prefix}.receipt.json`)) !== canonicalJsonStringify(receipt)) fail("profile-control-upgrade-receipt-changed");
@@ -3482,8 +3059,8 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     machineControlCurrent(): boolean {
       held();
       const observedMarker = readProfileEvidence(markerPath, z.strictObject({ schemaVersion: z.number().int() }));
-      if (![2, 3, 4, 5].includes(observedMarker.schemaVersion)) fail("profile-control-upgrade-pending-conversion-unsupported");
-      return observedMarker.schemaVersion === 5;
+      if (![2, 3, 4, 5, 6].includes(observedMarker.schemaVersion)) fail("profile-control-upgrade-pending-conversion-unsupported");
+      return observedMarker.schemaVersion === 6;
     },
     upgradeIntentPresent(): boolean {
       held();
@@ -3505,36 +3082,64 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         || (!sameControlUpgradeFile(markerPath, pending.priorMarker) && !sameControlUpgradeFile(markerPath, pending.markerStage))) fail("profile-control-upgrade-publication-uncertain");
       if (!prior.erasures.some(row => row.profileId === z.uuid().parse(profileId))) fail("profile-control-upgrade-profile-unavailable");
       const priorDocument = pending?.priorDocument ?? readProfileEvidence(registryPath, StoppedProfileRegistryDocumentSchema);
-      const evidence = priorControlUpgradeEvidence(locator, prior, priorDocument), controlIdentity = controlUpgradeFile(controlPath), markerIdentity = controlUpgradeFile(markerPath);
+      const evidence = priorControlUpgradeEvidence(locator, prior, priorDocument, pending?.credentials), controlIdentity = controlUpgradeFile(controlPath), markerIdentity = controlUpgradeFile(markerPath);
       const snapshot = createReadonlyAuthoritySnapshot(join(locator.stateRoot, "profiles", profileId, "state.db"));
       inventorySnapshots.add(snapshot);
       const revalidateSource = () => {
         held(); snapshot.assertUnchanged();
-        if (priorControlUpgradeEvidence(locator, prior, priorDocument) !== evidence) fail("profile-control-upgrade-inventory-source-changed");
+        if (priorControlUpgradeEvidence(locator, prior, priorDocument, lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath).credentials : undefined) !== evidence) fail("profile-control-upgrade-inventory-source-changed");
       };
       const assertHeld = () => {
         held(); snapshot.assertUnchanged();
-        if (!sameControlUpgradeFile(controlPath, controlIdentity) || !sameControlUpgradeFile(markerPath, markerIdentity)) fail("profile-control-upgrade-inventory-expired");
+        if (lstatMaybe(intentPath)) {
+          const receipt = readControlUpgradeReceipt(intentPath);
+          if (receipt.operationId !== conversionOperationId) fail("profile-control-upgrade-inventory-expired");
+          validateStoppedControlUpgrade(control, locator, receipt);
+        } else if (!sameControlUpgradeFile(controlPath, controlIdentity) || !sameControlUpgradeFile(markerPath, markerIdentity)) fail("profile-control-upgrade-inventory-expired");
         revalidateSource();
       };
       const binding = ProfileDatabaseBindingSchema.parse({ installationId: locator.installationId, profileId });
+      const databaseBinding = readProfileDatabaseBinding(join(locator.stateRoot, "profiles", profileId, "state.db"));
+      if (databaseBinding.state !== "bound" || ![8, 9, 10, 11].includes(databaseBinding.schemaVersion)
+        || canonicalJsonStringify(databaseBinding.binding) !== canonicalJsonStringify(binding)) fail("profile-control-upgrade-database-schema-unsupported");
+      const schemaVersion = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11)]).parse(databaseBinding.schemaVersion);
+      const pendingPlan = () => {
+        held();
+        const receipt = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath) : undefined;
+        if (receipt !== undefined && receipt.operationId !== conversionOperationId) fail("profile-control-upgrade-inventory-expired");
+        return receipt?.credentials.find(row => row.profileId === profileId)?.plan;
+      };
+      const assertCanonicalConversion = (operationId: string, digest: string) => {
+        held(); snapshot.assertUnchanged();
+        const plan = pendingPlan();
+        if (plan === undefined || operationId !== conversionOperationId || plan.operation.operationId !== operationId || plan.digest !== digest) fail("profile-control-upgrade-conversion-owner-mismatch");
+      };
+      const assertCanonicalPublication = (operationId: string, digest: string) => {
+        assertCanonicalConversion(operationId, digest);
+        const receipt = readControlUpgradeReceipt(intentPath);
+        if (receipt.phase !== "publishing" || receipt.backups.length !== receipt.document.profiles.length
+          || receipt.backups.some(row => row.verifiedBackup === undefined)) fail("profile-control-upgrade-verified-backup-required");
+      };
       const stateRoot = join(locator.stateRoot, "profiles", profileId), issued = Object.freeze({ profileId });
       const credential = prior.erasures.find(row => row.profileId === profileId);
       if (credential?.credentialKey === undefined) fail("profile-control-upgrade-credential-conversion-required");
       stoppedControlInventories.set(issued, Object.freeze({ binding: Object.freeze(binding), stateRoot, artifactRoot: join(stateRoot, "artifacts"), machineRoot: locator.stateRoot,
-        key: credential.credentialKey, head: credential.head, locator: Object.freeze({ ...locator }), assertHeld, revalidateSource,
-        readInstallationContext: () => { assertHeld(); return lease.readInstallationContext(); } }));
+        key: credential.credentialKey, head: credential.head,
+        duo: prior.schemaVersion === 1 ? { state: "never-initialized" as const, profileId, revision: 0 as const } : prior.duo.find(row => row.profileId === profileId) ?? fail("duo-profile-membership-mismatch"),
+        schemaVersion, conversionOperationId, backupDirectory: join(backupDirectory, `${conversionOperationId}.${profileId}.authority`), pendingPlan, assertCanonicalConversion, assertCanonicalPublication, locator: Object.freeze({ ...locator }), assertHeld, revalidateSource,
+        retainSourceClosure: error => lease.retainSourceClosure(error), readInstallationContext: () => { assertHeld(); return lease.readInstallationContext(); } }));
       assertHeld(); issuedInventoryClaims.add(issued);
       return issued;
     },
     recordProfileInventory(claim: StoppedControlProfileInventory, proof: StoppedControlCredentialAttestation): void {
       held();
       if (!issuedInventoryClaims.has(claim) || inventoryProofs.has(claim.profileId)) fail("profile-control-upgrade-attestation-owner-mismatch");
-      verifyStoppedControlCredentialAttestation(proof, claim, false);
+      readStoppedCredentialConversion(proof, claim);
       inventoryProofs.set(claim.profileId, { claim, proof });
     },
-    run(plan: boolean) {
-      return withInstallationControl(control, () => {
+    async run(plan: boolean) {
+      try {
+      const prepared = withInstallationControl(control, () => {
         held();
         const pending = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath) : undefined;
         const registrations = pending?.priorDocument ?? readProfileEvidence(registryPath,
@@ -3543,8 +3148,8 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
           ? "onboarding-incomplete" as const : "unchanged" as const;
         if (pending !== undefined) {
           if (plan) fail("profile-control-upgrade-recovery-required");
-          finish(pending, publicationProofs(pending.document.profiles, true));
-          return { state: "upgraded" as const, runtimeAccess, profileCount: pending.document.profiles.length, receiptId: pending.operationId };
+          publicationProofs(pending.document.profiles);
+          return { receipt: pending, runtimeAccess };
         }
         if (this.machineControlCurrent()) return { state: "current" as const, runtimeAccess, profileCount: readMachineRegistry(control, locator, false).profiles.length };
         const prior = readProfileEvidence(controlPath, StoppedProfileContinuitySchema);
@@ -3552,10 +3157,15 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         const sourceEvidence = priorControlUpgradeEvidence(locator, prior, priorDocument);
         const document = convertedProfileRegistry(locator, priorDocument), current = convertedProfileControl(locator, prior, document);
         const retained = lstatMaybe(backupDirectory) ? readdirSync(backupDirectory).sort().map(name => ({ name, file: controlUpgradeFile(join(backupDirectory, name), 16 * 1024 * 1024) })) : [];
-        const operationId = randomUUID();
+        const operationId = conversionOperationId;
         ControlUpgradeReceiptSchema.shape.retained.parse(retained);
         if (Buffer.byteLength(JSON.stringify({ prior, current, priorDocument, document, sourceEvidence, retained })) + 4096 > 16 * 1024 * 1024) fail("profile-control-upgrade-evidence-too-large");
-        const afterPublication = publicationProofs(document.profiles, !plan);
+        const preparedCredentials = document.profiles.map(profile => {
+          const entry = inventoryProofs.get(profile.profileId);
+          if (entry === undefined) fail("profile-control-upgrade-inventory-required");
+          return { profileId: profile.profileId, plan: readStoppedCredentialConversion(entry.proof, entry.claim).plan };
+        });
+        const afterPublication = publicationProofs(document.profiles);
         if (plan) return { state: "planned" as const, runtimeAccess, profileCount: document.profiles.length };
         if (!lstatMaybe(backupDirectory)) { mkdirSync(backupDirectory, { mode: 0o700 }); fsyncPath(control); }
         privateDirectory(backupDirectory);
@@ -3573,17 +3183,82 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         }
         writePrivateStage(`${prefix}.registry.stage`, Buffer.from(JSON.stringify(document)));
         writePrivateStage(`${prefix}.control.stage`, Buffer.from(JSON.stringify(current)));
-        writePrivateStage(`${prefix}.marker.stage`, Buffer.from(JSON.stringify({ schemaVersion: 5 })));
+        writePrivateStage(`${prefix}.marker.stage`, Buffer.from(JSON.stringify({ schemaVersion: 6 })));
         fsyncPath(backupDirectory);
         const receipt = ControlUpgradeReceiptSchema.parse({ schemaVersion: 2, operationId, installationId: locator.installationId,
+          phase: "backing-up", credentials: preparedCredentials,
+          backups: document.profiles.map(profile => ({ profileId: profile.profileId, directory: `${operationId}.${profile.profileId}.authority` })),
           prior, current, priorDocument, document, retained, priorRegistry: before[0], priorControl: before[1], priorMarker: before[2],
           registryBackup: controlUpgradeFile(`${prefix}.registry.before.json`), controlBackup: controlUpgradeFile(`${prefix}.control.before.json`), markerBackup: controlUpgradeFile(`${prefix}.marker.before.json`),
           registryStage: controlUpgradeFile(`${prefix}.registry.stage`), controlStage: controlUpgradeFile(`${prefix}.control.stage`), markerStage: controlUpgradeFile(`${prefix}.marker.stage`), sourceEvidence });
         if (!sameControlUpgradeFile(registryPath, receipt.priorRegistry) || !sameControlUpgradeFile(controlPath, receipt.priorControl) || !sameControlUpgradeFile(markerPath, receipt.priorMarker)
           || priorControlUpgradeEvidence(locator, prior, priorDocument) !== sourceEvidence) fail("profile-control-upgrade-source-changed");
-        atomicJson(intentPath, receipt); finish(receipt, afterPublication);
-        return { state: "upgraded" as const, runtimeAccess, profileCount: document.profiles.length, receiptId: operationId };
+        if (Buffer.byteLength(JSON.stringify(receipt)) > 128 * 1024 * 1024) fail("profile-control-upgrade-evidence-too-large");
+        for (const revalidate of afterPublication) revalidate();
+        atomicJson(intentPath, receipt);
+        return { receipt, runtimeAccess };
       });
+      if (!("receipt" in prepared)) return prepared;
+      let receipt = prepared.receipt;
+      if (receipt === undefined) fail("profile-control-upgrade-evidence-missing");
+      for (const row of receipt.backups) {
+        const entry = inventoryProofs.get(row.profileId);
+        if (entry === undefined) fail("profile-control-upgrade-inventory-required");
+        const inventory = readStoppedCredentialConversion(entry.proof, entry.claim), admission = inventory.admission;
+        inventory.revalidate();
+        const sourceInfo = requireStoppedControlProfileInventory(entry.claim), databasePath = join(sourceInfo.stateRoot, "state.db");
+        const before = inspectAuthorityBackupReadOnly(admission, databasePath, sourceInfo.schemaVersion);
+        const directory = join(backupDirectory, row.directory);
+        let manifest = row.verifiedBackup?.manifest;
+        if (manifest === undefined) {
+          if (lstatMaybe(directory) !== undefined && readdirSync(directory).length !== 0) {
+            const names = readdirSync(directory);
+            const manifests = names.filter(name => /^authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite\.manifest\.json$/u.test(name));
+            const name = manifests[0];
+            if (names.length !== 2 || manifests.length !== 1 || name === undefined || !names.includes(name.slice(0, -14))) fail("profile-control-upgrade-backup-recovery-required");
+            manifest = AuthorityBackupManifestSchema.parse((await verifyBackupManifestAtPath(admission, join(directory, name))).manifest);
+          } else {
+            const source = openAuthorityBackupSourceReadOnly(admission, databasePath, 250, sourceInfo.schemaVersion);
+            let primary: { error: unknown } | undefined;
+            try {
+              const report = await new AuthorityBackupService(admission, source, { directory }).request({ trigger: "schema-migration", requiredGeneration: before.authorityGeneration });
+              manifest = AuthorityBackupManifestSchema.parse(report.manifests[0]);
+            } catch (error) { primary = { error }; }
+            if (primary !== undefined && hasUnprovedSourceClosure(primary.error)) {
+              admission.retainSourceClosure(primary.error); retainUnprovedSourceOwners(primary.error, { admission: { admission, source }, restore }); throw primary.error;
+            }
+            try { source.close(); }
+            catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { admission: { admission, source }, restore }); }
+            if (primary !== undefined) throw primary.error;
+          }
+        }
+        if (manifest === undefined) fail("profile-control-upgrade-backup-recovery-required");
+        const verified = await verifyBackupManifestAtPath(admission, join(directory, `${manifest.backupFileName}.manifest.json`));
+        const copy = admission.verifiedReadOnlyCopy(verified.backupPath, manifest.sha256);
+        try {
+          const observed = inspectAuthorityBackupReadOnly(copy, verified.backupPath, sourceInfo.schemaVersion);
+          if (observed.installationId !== sourceInfo.binding.installationId || observed.profileId !== sourceInfo.binding.profileId
+            || observed.schemaVersion !== before.schemaVersion || observed.authorityGeneration !== before.authorityGeneration
+            || observed.authorityContentFingerprint !== before.authorityContentFingerprint) fail("profile-control-upgrade-backup-source-mismatch");
+        } finally { copy.release(); }
+        inventory.revalidate();
+        const verifiedBackup = { manifest: AuthorityBackupManifestSchema.parse(manifest), manifestSha256: controlUpgradeFile(verified.manifestPath, 64_000).digest };
+        receipt = ControlUpgradeReceiptSchema.parse({ ...receipt, backups: receipt.backups.map(backup => backup.profileId === row.profileId ? { ...backup, verifiedBackup } : backup) });
+        withInstallationControl(control, () => { held(); const currentReceipt = ControlUpgradeReceiptSchema.parse(receipt); validateStoppedControlUpgrade(control, locator, currentReceipt); atomicJson(intentPath, currentReceipt); });
+      }
+      receipt = ControlUpgradeReceiptSchema.parse({ ...receipt, phase: "publishing" });
+      withInstallationControl(control, () => { held(); const currentReceipt = ControlUpgradeReceiptSchema.parse(receipt); validateStoppedControlUpgrade(control, locator, currentReceipt); atomicJson(intentPath, currentReceipt); });
+      for (const row of receipt.credentials) {
+        const entry = inventoryProofs.get(row.profileId);
+        if (entry === undefined) fail("profile-control-upgrade-inventory-required");
+        publishStoppedCanonicalCredentials(readStoppedCredentialConversion(entry.proof, entry.claim).admission, entry.claim, row.plan);
+      }
+      withInstallationControl(control, () => finish(receipt, publicationProofs(receipt.document.profiles)));
+      return { state: "upgraded" as const, runtimeAccess: prepared.runtimeAccess, profileCount: receipt.document.profiles.length, receiptId: receipt.operationId };
+      } catch (error) {
+        if (hasUnprovedSourceClosure(error)) { lease.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission: { lease, inventoryProofs, inventorySnapshots }, restore }); }
+        throw error;
+      }
     },
     release() {
       try {
@@ -3591,15 +3266,18 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
           snapshot.dispose();
           inventorySnapshots.delete(snapshot);
         }
-        for (const entry of inventoryProofs.values()) releaseStoppedControlCredentialAttestation(entry.proof);
+        for (const entry of inventoryProofs.values()) releaseStoppedCredentialConversion(entry.proof);
         inventoryProofs.clear(); issuedInventoryClaims.clear();
         if (ownsLease) { restore.release(); lease.release(); }
       } catch (error) {
         if (hasUnprovedSourceClosure(error)) {
+          lease.retainSourceClosure(error);
           retainUnprovedSourceOwners(error, { admission: { lease, inventorySnapshots, inventoryProofs }, restore });
           throw error;
         }
-        throw retainAuthoritySourceClosure([error], { admission: { lease, inventorySnapshots, inventoryProofs }, restore });
+        const failure = retainAuthoritySourceClosure([error], { admission: { lease, inventorySnapshots, inventoryProofs }, restore });
+        lease.retainSourceClosure(failure);
+        throw failure;
       }
     },
   });

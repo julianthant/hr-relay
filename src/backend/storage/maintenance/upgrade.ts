@@ -254,7 +254,7 @@ export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, in
   const ownsRestore = false;
   let control: ReturnType<RuntimeAdmission["beginStoppedMachineControlUpgrade"]> | undefined;
   const inventories: Array<{ dispose(): void }> = [];
-  let result: ReturnType<StoppedMachineControl["run"]> | undefined;
+  let result: Awaited<ReturnType<StoppedMachineControl["run"]>> | undefined;
   let primary: { error: unknown } | undefined;
   try {
     control = machine.beginStoppedMachineControlUpgrade(restore);
@@ -266,9 +266,9 @@ export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, in
         control.recordProfileInventory(claim, inventory.proof);
       }
     }
-    const report = control.run(input.plan);
+    const report = await control.run(input.plan);
     if (!input.plan && report.state === "upgraded") {
-      const readback = control.run(false);
+      const readback = await control.run(false);
       if (readback.state !== "current" || readback.profileCount !== report.profileCount || readback.runtimeAccess !== report.runtimeAccess) throw new Error("profile-control-upgrade-readback-failed");
     }
     result = report;
@@ -281,7 +281,9 @@ export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, in
 export function releaseStoppedMachineControlUpgrade(control: { release(): void } | undefined, restore: OfflineMaintenanceOperation, ownsRestore: boolean,
   held: Readonly<{ primary?: { readonly error: unknown }; inventories?: readonly { dispose(): void }[]; admission?: RuntimeAdmission }> = {}): void {
   const retain = (errors: readonly unknown[]): never => {
-    throw retainAuthoritySourceClosure(errors, { restore, admission: { admission: held.admission, control, inventories: held.inventories } });
+    const failure = retainAuthoritySourceClosure(errors, { restore, admission: { admission: held.admission, control, inventories: held.inventories } });
+    held.admission?.retainSourceClosure(failure);
+    throw failure;
   };
   if (held.primary !== undefined && hasUnprovedSourceClosure(held.primary.error)) retain([held.primary.error]);
   try { control?.release(); }

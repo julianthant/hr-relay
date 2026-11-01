@@ -143,8 +143,8 @@ it("upgrades a genuinely READY bound profile with unchanged historical rows, cre
     assert.deepEqual(storageTree(join(f.machine.stateRoot, "machine")), machineBefore);
     const fresh = f.machine.admitProfile(f.binding.profileId);
     try {
-      const credentials = createCredentialStore({ admission: fresh, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
-        erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${f.binding.profileId}.json`) });
+      const credentials = createCredentialStore({ admission: fresh, stateRoot: f.stateRoot,
+        });
       const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock, undefined, undefined, undefined, credentials);
       try {
         assert.equal(database.authority.assistantModelPreference.get(), undefined);

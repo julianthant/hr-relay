@@ -23,8 +23,8 @@ it("preserves supported authenticated retained saved-but-inactive Settings acros
   const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const hostFacts = { primaryDisplay: null };
   const runtimeStoragePair = { stateRoot: f.admission.stateRoot, artifactRoot: f.admission.artifactRoot };
-  const credentials = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
-    erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${f.admission.profileBinding.profileId}.json`) });
+  const credentials = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot,
+    });
   const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "profile-settings-test" },
     clock, undefined, undefined, undefined, credentials);
   try {
@@ -77,8 +77,8 @@ it("preserves supported authenticated retained saved-but-inactive Settings acros
 
 it("binds browser roots and selected Settings resolution to the genuine ordinary profile child", async () => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
-  const credentials = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
-    erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${f.admission.profileBinding.profileId}.json`) });
+  const credentials = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot,
+    });
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission, credentials, clock, hostFacts: { primaryDisplay: null } });
   try {
     const contained = join(f.stateRoot, "custom-browser");

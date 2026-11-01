@@ -1,5 +1,5 @@
 import { afterAll, describe, it } from "vitest";
-import { createClonedProfileFixtures, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
@@ -14,7 +14,7 @@ import { ManualScheduler } from "../../../support/helpers/phase1f-executor-harne
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { CommandRequestSchema, ParkedWriteCheckResultSchema } from "../../../../src/rules/commands/commands.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const NOW = "2026-09-18T18:00:00.000Z";

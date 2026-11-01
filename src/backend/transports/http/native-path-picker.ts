@@ -6,7 +6,7 @@ import type { NativePathField, NativePathPickerRequest, NativePathPickerResponse
 const TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_BYTES = 8192;
 const CANCELLED = "__HRAUTO_NATIVE_PICKER_CANCELLED__";
-const FILE_FIELDS = new Set<NativePathField>(["paths.duoCredential", "paths.i9CheckTrackerPath"]);
+const FILE_FIELDS = new Set<NativePathField>(["paths.i9CheckTrackerPath"]);
 
 const FOLDER_SCRIPT = `on run argv
   try

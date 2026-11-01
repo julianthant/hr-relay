@@ -1,5 +1,5 @@
 import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
-import { createClonedProfileFixtures, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
 import { readFileSync,rmSync,writeFileSync } from "node:fs";
@@ -46,7 +46,7 @@ interface Fixture {
   readonly sourceReads: number[];
 }
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 const disposers: (() => void | Promise<void>)[] = [];
 afterEach(async () => {

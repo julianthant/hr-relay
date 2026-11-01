@@ -245,8 +245,7 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
     admission = machine.admitProfile(selected.profileId);
     const profileAdmission = admission;
     const stateRoot = profileAdmission.stateRoot;
-    const credentials = createCredentialStore({ admission: profileAdmission, stateRoot, erasureJournalAdmission: machine,
-      erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
+    const credentials = createCredentialStore({ admission: profileAdmission, stateRoot });
     assertNoMigratedEnvironmentKeys();
     database = AuthorityDatabase.open(profileAdmission, { path: selected.authorityPath, busyTimeoutMs: 5000, migrationOwner: "live-smoke" },
       systemClock, undefined, undefined, undefined, credentials);
@@ -257,7 +256,7 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
     const record = database.withAuthorityTransaction(repositories => readSettings(repositories));
     const config = resolveConfigWithProvenance(record.settings, hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay)),
       systemClock, { stateRoot, artifactRoot: admission.artifactRoot }).config;
-    const duo = createDuoCredentialStore(profileAdmission, machine, systemClock);
+    const duo = createDuoCredentialStore(profileAdmission, systemClock);
     const profileRunId = randomUUID();
   await withSmokeWorker(openedDatabase, async (slot, gates) => {
   const { workerId, ordinal } = slot;

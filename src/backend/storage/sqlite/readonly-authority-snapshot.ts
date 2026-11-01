@@ -1,5 +1,5 @@
 import { privatePathRejects } from "../private-path.js";
-import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
+import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
 import { z } from "zod";
 import { DatabaseSync } from "node:sqlite";
 import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
@@ -197,8 +197,13 @@ export function openReadOnlyDatabase(path: string, busyTimeoutMs: number): Datab
 export function withAuthorityDatabaseReadOnly<Result>(admission:RuntimeAdmission,pathInput:string,read:(database:DatabaseSync)=>Result,busyTimeoutMs=250):Result {
  return withOperationProof(() => {
    const path=resolve(pathInput);
-   requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
-   return withReadonlyAuthoritySnapshot(path, read, busyTimeoutMs);
+   const owner = requireRuntimeAdmission(admission);
+   owner.assertReadOnlyAuthorityDatabase(path);
+   try { return withReadonlyAuthoritySnapshot(path, read, busyTimeoutMs); }
+   catch (error) {
+     if (hasUnprovedSourceClosure(error)) { owner.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission: owner }); }
+     throw error;
+   }
  });
 }
 

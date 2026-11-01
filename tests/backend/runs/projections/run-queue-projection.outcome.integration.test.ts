@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../../src/models/trust/evidence-identity.js";
 import { FingerprintSchema, PositiveIntSchema, RunIdSchema, TraceIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -9,7 +9,7 @@ import { DAY, instantOffsetOf, receiptWithOutputOf, traceOf, uuidOf } from "../.
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const { world, runRecordOf, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld();
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 afterEach(cleanup);
 afterAll(() => profiles.close());
 

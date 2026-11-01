@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../helpers/admission-fixture.js";
 import nativeFs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { vi } from "vitest";
@@ -130,7 +130,7 @@ export async function executePreflightCorpus(transform?: (runners: readonly Pref
     assert.equal(manifest.fixture,"fixtures/preflight/environment-doctor.json");
     assert.deepEqual(manifest.requiredAssertions,[`reports-${fault.injection}`]);
   }
-  const profiles = createClonedProfileFixtures();
+  const profiles = createProfileFixtureSet();
   const executions:CorpusExecution[]=[];
   let actionCount=0, externalCommitCount=0;
   const launch = vi.spyOn(chromium,"launch").mockImplementation(()=>{actionCount++;throw new Error("Corpus attempted a browser launch");});

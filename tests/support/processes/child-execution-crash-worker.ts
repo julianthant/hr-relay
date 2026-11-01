@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { catalogCodeForThrown } from "../../../src/models/failures/error-catalog.js";
 import { z } from "zod";
-import { join } from "node:path";
 import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
@@ -27,8 +26,8 @@ stage = "profile";
 const registry = createProfileRegistry(machine), selected = registry.read().activeProfileId;
 assert.ok(selected);
 const admission = machine.admitProfile(selected);
-const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
-  erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected}.json`) });
+const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot,
+  });
 let database: AuthorityDatabase | undefined;
 let observed = false;
 stage = "graph";

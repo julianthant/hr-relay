@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import { runRecordColumns } from "../../../../../src/backend/storage/sqlite/run-record-row.js";
 
 import assert from "node:assert/strict";
@@ -16,7 +16,7 @@ import { insertMeasuredSearchRun } from "../../../../support/helpers/backend/cro
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 function restoreSearchRun(h: Awaited<ReturnType<typeof harness>>, run: RunRecord): void {

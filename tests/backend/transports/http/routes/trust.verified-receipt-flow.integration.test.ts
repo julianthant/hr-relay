@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { singleAppliedRunId } from "../../../../support/fixtures/operator-command-fixtures.js";
 
@@ -17,7 +17,7 @@ import { fixtureDescriptor } from "../../../../support/fixtures/descriptor-fixtu
 import { sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { AuthorityDatabase } from "../../../../support/helpers/synthetic-storage-admission.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {

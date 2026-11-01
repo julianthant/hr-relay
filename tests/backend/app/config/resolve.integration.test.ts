@@ -38,7 +38,6 @@ import { settingsFixture } from "../../../support/helpers/backend/settings-activ
 import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { EXECUTOR_WORKER_ID, ManualScheduler, happySessionHarness, recordingLogger, recordingTimelineEmitter } from "../../../support/helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { requireSecretFile } from "../../../../src/models/config/secrets.js";
 
 {
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
@@ -283,9 +282,7 @@ const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?
  if (active.state !== 'active') throw new Error('config fixture sign-in refused');
  const currentAdmission = owner.machine.admitProfile(active.profileId);
  acquired.admission = currentAdmission;
- const credentials = createOwnedCredentialStore({ admission: currentAdmission, stateRoot,
-   erasureJournalAdmission: owner.machine,
-   erasureJournalPath: join(owner.machine.stateRoot, 'machine', 'erasures', `${active.profileId}.json`) });
+ const credentials = createOwnedCredentialStore({ admission: currentAdmission, stateRoot });
  const dashboard = await composeDashboardRuntime({ lifetimeLock: owner.lifetime, admission: owner.machine, profile: { runtime: profile, token: active.token },
    isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 });
  try {
@@ -369,15 +366,10 @@ onTestFinished(cleanupOriginalFixture);
 {
 describe("closed secret access", () => {
 
-  it("does not accept an arbitrary secret-file path", () => {
-
-    const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date("2026-08-10T12:00:00-07:00"))).config;
-    const config = {
-      ...resolved,
-      paths: { ...resolved.paths, duoCredential: "/nonexistent-rebuild-secret-root/duo-webauthn.json" },
-    };
-    assert.equal(requireSecretFile.length, 2);
-    assert.throws(() => requireSecretFile("duoWebauthnCredential", config), /registered rebuild credential path/);
+  it("exposes no credential-file reader", async () => {
+    const secrets = await import("../../../../src/models/config/secrets.js");
+    assert.equal(Object.hasOwn(secrets, "requireSecretFile"), false);
+    assert.equal(Object.hasOwn(secrets, "resolveSecretFileIdentity"), false);
   });
 });
 }

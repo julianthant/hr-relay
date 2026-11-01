@@ -1,8 +1,7 @@
-import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readdirSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import type { Config } from "../../../models/config/schema.js";
 import { defaultBrowserProfileRoot } from "../../app/config/runtime-paths.js";
-import { resolveSecretFileIdentity } from "../../../models/config/secrets.js";
 
 type PathKey = "paths.browserProfileRoot" | "paths.duoCredential" | "paths.duoExtensionDir";
 
@@ -55,10 +54,6 @@ function validateProfile(path: string, installationDefault: string, config: Conf
   if (protectedRoots.some(root => path === root || path.startsWith(`${root}${sep}`) || root.startsWith(`${path}${sep}`))) {
     fail(key, "overlaps-runtime-location");
   }
-  if (path !== installationDefault
-    && (path === config.paths.duoCredential || config.paths.duoCredential.startsWith(`${path}${sep}`))) {
-    fail(key, "contains-duo-credential");
-  }
   if (ownedDirectory(key, path, true)) {
     if (path !== installationDefault) {
       let entries;
@@ -90,27 +85,6 @@ function validateProfile(path: string, installationDefault: string, config: Conf
   }
 }
 
-function validateCredential(config: Config): void {
-  const key = "paths.duoCredential";
-  const path = config.paths.duoCredential;
-  requiredPath(key, path);
-  let descriptor: number;
-  try { descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW); }
-  catch { fail(key, "private-file-unavailable"); }
-  try {
-    const named = lstatSync(path);
-    const opened = fstatSync(descriptor);
-    if (!named.isFile() || !opened.isFile() || named.isSymbolicLink() || named.dev !== opened.dev || named.ino !== opened.ino
-      || opened.nlink !== 1 || opened.uid !== (process.getuid?.() ?? -1) || (opened.mode & 0o777) !== 0o600
-      || opened.size < 1 || opened.size > 64_000) fail(key, "private-file-required");
-  } catch (error) {
-    if (error instanceof OrdinaryPathValidationError) throw error;
-    fail(key, "private-file-unavailable");
-  } finally { closeSync(descriptor); }
-  try { resolveSecretFileIdentity("duoWebauthnCredential", config); }
-  catch { fail(key, "credential-identity-unavailable"); }
-}
-
 function validateExtension(path: string): void {
   const key = "paths.duoExtensionDir";
   requiredPath(key, path);
@@ -135,9 +109,9 @@ export function validateOrdinaryPathChanges(
   candidate: Config,
   installationDefault: () => string = defaultBrowserProfileRoot,
 ): void {
+  if (previous.paths.duoCredential !== candidate.paths.duoCredential) fail("paths.duoCredential", "retired-setting");
   if (previous.paths.browserProfileRoot !== candidate.paths.browserProfileRoot) {
     validateProfile(candidate.paths.browserProfileRoot, installationDefault(), candidate);
   }
-  if (previous.paths.duoCredential !== candidate.paths.duoCredential) validateCredential(candidate);
   if (previous.paths.duoExtensionDir !== candidate.paths.duoExtensionDir) validateExtension(candidate.paths.duoExtensionDir);
 }

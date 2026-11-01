@@ -126,7 +126,7 @@ it("admits simultaneous native captures in separate processes without duplicate 
       const lifetime=await WorkerRuntimeLifetimeLock.receive(${f.profile.lifetime.port},()=>process.exit(1));
       const machine=acquireSharedRuntimeAdmission(${JSON.stringify(f.profile.workspace)},lifetime);
       const admission=machine.admitProfile(${JSON.stringify(f.profile.admission.profileBinding.profileId)});
-      const credentials=createCredentialStore({admission,stateRoot:admission.stateRoot,erasureJournalAdmission:machine,erasureJournalPath:join(machine.stateRoot,'machine','erasures',admission.profileBinding.profileId+'.json')});
+      const credentials=createCredentialStore({admission,stateRoot:admission.stateRoot,});
       const clock=manualClock(new Date(${clock}));
       const db=AuthorityDatabase.open(admission,{path:${JSON.stringify(f.path)},busyTimeoutMs:5000,migrationOwner:'concurrent-diagnostic'},clock,undefined,undefined,undefined,credentials);
       const service=createDiagnosticCaptureService({authority:db.authority,artifacts:createContentAddressedArtifactWriter({admission}),clock,ids:{uuid:randomUUID}});

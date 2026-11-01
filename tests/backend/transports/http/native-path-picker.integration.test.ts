@@ -30,8 +30,8 @@ describe("native macOS path picker", () => {
     const picker = createNativePathPicker({ platform: "darwin", execute });
     assert.deepEqual(await picker.pick({ field: "paths.stateRoot", initialPath: p.folder }, controller().signal),
       { state: "selected", field: "paths.stateRoot", path: p.folder });
-    assert.deepEqual(await picker.pick({ field: "paths.duoCredential", initialPath: p.file }, controller().signal),
-      { state: "selected", field: "paths.duoCredential", path: p.file });
+    assert.deepEqual(await picker.pick({ field: "paths.i9CheckTrackerPath", initialPath: p.file }, controller().signal),
+      { state: "selected", field: "paths.i9CheckTrackerPath", path: p.file });
     assert.equal(seen.length, 2);
     assert.ok(seen.every(call => call.file === "/usr/bin/osascript"));
     assert.match(seen[0]?.args[1] ?? "", /choose folder/u);
@@ -81,7 +81,7 @@ describe("native macOS path picker", () => {
     assert.equal((await pending).state, "selected");
   });
 
-  it("derives folder or file selection for all nine fields", async () => {
+  it("derives folder or file selection for all eight fields", async () => {
     const p = paths();
     const calls: string[] = [];
     const picker = createNativePathPicker({ platform: "darwin", execute: async (_file, args) => {
@@ -93,7 +93,7 @@ describe("native macOS path picker", () => {
     for (const field of fields) {
       assert.equal((await picker.pick({ field }, controller().signal)).state, "selected");
     }
-    assert.deepEqual(calls, ["folder", "folder", "folder", "folder", "folder", "folder", "folder", "file", "file"]);
+    assert.deepEqual(calls, ["folder", "folder", "folder", "folder", "folder", "folder", "folder", "file"]);
   });
 
   it("releases the single-dialog gate after a request aborts", async () => {

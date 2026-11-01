@@ -1,3 +1,5 @@
+import { upgradeStoppedMachineControl } from "../../../src/backend/storage/maintenance/upgrade.js";
+import { composeStoppedControlCredentialInventory } from "../../../src/backend/app/composition/profile-credential-inventory.js";
 import { ProfileVerifierDocumentSchema } from "../../../src/models/profiles/profile.js";
 import { DatabaseSync } from "node:sqlite";
 import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
@@ -19,7 +21,7 @@ import { capturedInstantClock } from "../../../src/rules/time/clock.js";
 import { ledgerCommitFixture } from "../../support/fixtures/ledger-projection-fixtures.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
-import nativeFs, { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import nativeFs, { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -35,6 +37,9 @@ import { createHistoricalIncompleteProfileFixture, historicalIncompleteProfileFi
 
 async function historicalPrematureFixture() {
   const fixture = await createHistoricalIncompleteProfileFixture();
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace, fixture.lifetime);
+  try { await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock, composeStoppedControlCredentialInventory); }
+  finally { maintenance.release(); }
   return { ...fixture, root: fixture.workspace, fields: historicalIncompleteProfileFields,
     keyBytes: readFileSync(fixture.keyPath), protectedBytes: readFileSync(fixture.protectedPath), databaseBytes: readFileSync(fixture.databasePath) };
 }
@@ -53,7 +58,7 @@ it("withdraws historical publication but retains the draft when browser cleanup 
   assert.equal(readFileSync(f.keyPath).equals(f.keyBytes), true); assert.equal(readFileSync(f.databasePath).equals(f.databaseBytes), true); assert.equal(readFileSync(f.protectedPath).equals(f.protectedBytes), true);
   const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(f.operationPath, "utf8")));
   assert.equal(operation.operationId, f.operation.operationId); assert.equal(operation.commandId, f.operation.commandId); assert.equal(operation.writeId, f.operation.writeId);
-  assert.equal(operation.onboarding?.duo.state, "never-initialized"); assert.equal(operation.onboarding?.finish, undefined);
+  assert.equal(operation.credentials.phase, "ready"); assert.equal(operation.onboarding?.attempts.length, 0); assert.equal(operation.onboarding?.finish, undefined);
   machine.release();
   const resumedMachine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime), profile = composeProfileRuntime({ admission: resumedMachine,
      hostFacts: { primaryDisplay: null }, clock: systemClock });
@@ -88,10 +93,38 @@ for (const boundary of ["intent", "operation", "verifier", "registry", "continui
     finally { renameSpy.mockRestore(); unlinkSpy.mockRestore(); syncBuiltinESMExports(); }
     assert.equal(fired, true); machine.release();
     const recovered = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
+    await recovered.reclassifyIncompleteProfileAsDraft(f.profileId);
     assert.equal(recovered.readProfileRegistry().profiles.length, 0); assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(f.verifierPath, "utf8"))).profiles.length, 0);
     assert.equal(SignUpOperationSchema.parse(JSON.parse(readFileSync(f.operationPath, "utf8"))).profileId, f.profileId);
     assert.equal(readFileSync(f.keyPath).equals(f.keyBytes), true); assert.equal(readFileSync(f.databasePath).equals(f.databaseBytes), true); assert.equal(readFileSync(f.protectedPath).equals(f.protectedBytes), true);
     assert.equal(existsSync(intentPath), false); recovered.release(); await f.close();
+  });
+}
+
+for (const boundary of ["operation", "verifier", "registry"] as const) {
+  it(`holds changed credential source after the ${boundary} withdrawal prefix`, async () => {
+    const f = await historicalPrematureFixture(), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
+    const intentPath = join(f.root, ".tracker", "control", "profile-publication.json"), rename = nativeFs.renameSync;
+    const target = boundary === "operation" ? f.operationPath : boundary === "verifier" ? f.verifierPath : f.registryPath;
+    let fired = false;
+    const fault = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
+      rename(source, destination);
+      if (!fired && String(destination) === target && existsSync(intentPath)) { fired = true; throw new Error("fixture withdrawal prefix"); }
+    });
+    syncBuiltinESMExports();
+    try { await assert.rejects(machine.reclassifyIncompleteProfileAsDraft(f.profileId)); }
+    finally { fault.mockRestore(); syncBuiltinESMExports(); }
+    assert.equal(fired, true); machine.release();
+    const registry = readFileSync(f.registryPath), verifiers = readFileSync(f.verifierPath), intent = readFileSync(intentPath);
+    const savedSource = join(f.root, "owned-protected-source.saved");
+    renameSync(f.protectedPath, savedSource);
+    writeFileSync(f.protectedPath, f.protectedBytes, { mode: 0o600, flag: "wx" });
+    assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime), /profile-incomplete-(?:copy-membership|source)-changed/u);
+    assert.deepEqual(readFileSync(f.registryPath), registry); assert.deepEqual(readFileSync(f.verifierPath), verifiers);
+    assert.deepEqual(readFileSync(intentPath), intent); assert.deepEqual(readFileSync(f.protectedPath), f.protectedBytes);
+    assert.deepEqual(readFileSync(savedSource), f.protectedBytes); assert.deepEqual(readFileSync(f.keyPath), f.keyBytes);
+    assert.deepEqual(readFileSync(f.databasePath), f.databaseBytes);
+    await f.close();
   });
 }
 
@@ -141,6 +174,7 @@ it("holds a tampered withdrawal intent and recovers only its exact sealed origin
   assert.equal(readFileSync(f.registryPath).equals(registry), true); assert.equal(readFileSync(f.verifierPath).equals(verifiers), true);
   assert.equal(readFileSync(f.databasePath).equals(f.databaseBytes), true); assert.equal(readFileSync(f.keyPath).equals(f.keyBytes), true);
   writeFileSync(intentPath, original, { mode: 0o600 });
+  await machine.reclassifyIncompleteProfileAsDraft(f.profileId);
   assert.equal(machine.readProfileRegistry().profiles.length, 0); assert.equal(existsSync(intentPath), false);
   machine.release(); await f.close();
 });

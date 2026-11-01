@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import { Hono } from "hono";
 import assert from "node:assert/strict";
 import { composeDataQueries } from "../../../../../src/backend/app/composition/dashboard/data.js";
@@ -9,7 +9,7 @@ import { RerunValuesResponseSchema } from "../../../../../src/models/dashboard/r
 import { rerunValuesHarness } from "../../../../support/fixtures/rerun-values-fixtures.js";
 import { makeWorld } from "../../../../support/helpers/backend/dashboard-harness.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const disposers: (() => void | Promise<void>)[] = [];

@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import { SectionUnavailableError } from "../../../../src/backend/runs/commands/refusals.js";
 import { buildRunSection } from "../../../../src/backend/runs/queries/run-detail.js";
@@ -21,7 +21,7 @@ import { kualiReceiptEvidence, seedPersonLookupExitRun } from "../../../support/
 import { personLookupDescriptor, separationsKualiFinalizationDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 {

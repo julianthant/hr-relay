@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from '../../../../src/backend/storage/sqlite/authority-database.js';
 import { resolveConfigWithProvenance } from '../../../../src/backend/app/config/resolve.js';
 import { readBootSettings } from '../../../../src/backend/runtime/settings/settings-runtime.js';
@@ -16,7 +16,7 @@ import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from "../../../../s
 import { AssistantModelPreferenceCommandRequestSchema, CommandIdentityConflictError } from "../../../../src/rules/commands/commands.js";
 import type { CommandKernelDependencies } from "../../../../src/backend/runs/commands/command-kernel.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const world = createCommandKernelTestWorld();

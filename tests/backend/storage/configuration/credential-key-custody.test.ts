@@ -14,18 +14,18 @@ function fixture() {
 }
 
 it("creates and reads exactly 32 random bytes under the installation/profile account, without a secret in metadata", () => {
-  const f = fixture(), metadata = f.custody.create(f.identity);
+  const f = fixture(), metadata = f.custody.create(f.identity, () => {});
   assert.deepEqual([...f.entries.keys()], [`${f.identity.installationId}:${f.identity.profileId}`]);
   const key = f.custody.read(metadata);
   assert.equal(Buffer.from(key.key, "base64").length, 32);
   assert.equal(JSON.stringify(metadata).includes(key.key), false);
   assert.equal("key" in metadata, false);
   assert.equal(key.keyId, f.identity.keyId);
-  assert.throws(() => f.custody.create(f.identity), { code: "CREDENTIAL_KEYCHAIN_MISMATCH" });
+  assert.throws(() => f.custody.create(f.identity, () => {}), { code: "CREDENTIAL_KEYCHAIN_MISMATCH" });
 });
 
 it("refuses missing, foreign and substituted entries without generating a replacement", () => {
-  const f = fixture(), metadata = f.custody.create(f.identity), original = f.custody.read(metadata).key;
+  const f = fixture(), metadata = f.custody.create(f.identity, () => {}), original = f.custody.read(metadata).key;
   f.entries.clear();
   assert.throws(() => f.custody.read(metadata), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
   assert.equal(f.entries.size, 0);
@@ -37,9 +37,9 @@ it("refuses missing, foreign and substituted entries without generating a replac
 });
 
 it("deletes only the bound entry and verifies absence, including repeated deletion", () => {
-  const f = fixture(), metadata = f.custody.create(f.identity), other = { ...f.identity, profileId: randomUUID() };
-  f.custody.create(other);
-  f.custody.delete(f.identity); f.custody.delete(f.identity);
+  const f = fixture(), metadata = f.custody.create(f.identity, () => {}), other = { ...f.identity, profileId: randomUUID() };
+  f.custody.create(other, () => {});
+  f.custody.delete(metadata); f.custody.delete(metadata);
   assert.equal(f.entries.size, 1);
   assert.throws(() => f.custody.read(metadata), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
 });
@@ -47,11 +47,11 @@ it("deletes only the bound entry and verifies absence, including repeated deleti
 it("redacts OS errors and refuses unproved mutation readbacks", () => {
   const f = fixture(), secretError = new Error("synthetic-secret-must-not-escape");
   const unavailable = createCredentialKeyCustody({ ...f.store, get: () => { throw secretError; } });
-  assert.throws(() => unavailable.create(f.identity), (error: unknown) => error instanceof CredentialKeyCustodyError
+  assert.throws(() => unavailable.create(f.identity, () => {}), (error: unknown) => error instanceof CredentialKeyCustodyError
     && error.code === "CREDENTIAL_KEYCHAIN_UNAVAILABLE" && !String(error).includes(secretError.message) && error.cause === undefined);
-  assert.throws(() => createCredentialKeyCustody({ ...f.store, set: () => { throw secretError; } }).create(f.identity), { code: "CREDENTIAL_KEYCHAIN_UNCERTAIN" });
-  f.custody.create(f.identity);
-  assert.throws(() => createCredentialKeyCustody({ ...f.store, delete: () => undefined }).delete(f.identity), { code: "CREDENTIAL_KEYCHAIN_UNCERTAIN" });
+  assert.throws(() => createCredentialKeyCustody({ ...f.store, set: () => { throw secretError; } }).create(f.identity, () => {}), { code: "CREDENTIAL_KEYCHAIN_UNCERTAIN" });
+  const metadata = f.custody.create(f.identity, () => {});
+  assert.throws(() => createCredentialKeyCustody({ ...f.store, delete: () => undefined }).delete(metadata), { code: "CREDENTIAL_KEYCHAIN_UNCERTAIN" });
 });
 
 it("passes only the fake keychain into a child with a stripped environment", () => {

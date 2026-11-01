@@ -42,8 +42,8 @@ try {
   const selected = captureSelectedProfileStorage(machine);
   const child = machine.admitProfile(selected.profileId);
   admission = child;
-  const credentials = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalAdmission: machine,
-    erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
+  const credentials = createCredentialStore({ admission: child, stateRoot: child.stateRoot,
+    });
   database = AuthorityDatabase.open(child, { path: selected.authorityPath, busyTimeoutMs: 5000, migrationOwner: "browser-control-config" },
     systemClock, undefined, undefined, undefined, credentials);
   const resolvedConfig = resolveConfigWithProvenance(readSettings(database.authority).settings, hostConfigFacts({}), systemClock,

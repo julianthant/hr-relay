@@ -19,7 +19,8 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { ChatGptCredentialRecordSchema, createChatGptCredentialRepository, createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { ChatGptCredentialRecordSchema, createChatGptCredentialRepository } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
@@ -109,14 +110,16 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
     context.admission.assertLive();
     assert.equal((await runtime.session.revalidateAuthority(active.token, captured.snapshot)).state, "available");
     assert.equal((await runtime.session.revalidateAuthority(active.token, { ...captured.snapshot })).state, "refused");
+    assert.equal(context.database.getMeta().profileId, active.profileId);
     const logout = runtime.session.logOut(active.token, { at: clock.now().toISOString() });
     assert.equal(logout.state, "cancelling");
     const operation = runtime.session.logoutOperations()[0]; assert.ok(operation);
     assert.equal((await runtime.session.readCurrentAuthority(active.token)).state, "refused");
     assert.throws(() => context.protectedSecrets.read());
     await runtime.awaitClosurePreparation(active.profileId);
-    assert.equal(context.database.getMeta().profileId, active.profileId);
-    assert.equal(runtime.session.resumeLogout(operation.operationId).state, "wiped");
+    assert.throws(() => context.database.getMeta(), /closed/u);
+    assert.deepEqual(credentialSnapshot(credentialPath), credentialBytes);
+    assert.equal(runtime.session.resumeLogout(operation.operationId).state, "signed-out");
     assert.throws(() => context.database.getMeta(), /closed/u);
     assert.throws(() => context.admission.assertLive());
     const next = runtime.session.signIn({ email: fields.email, password: fields.password, at: clock.now().toISOString() });
@@ -246,8 +249,8 @@ it("requires the same actual profile credential owner for canonical offline rest
     assert.throws(() => signedOut.assertCredentialRead(), /profile-session-not-current/u); signedOut.release();
     const fresh = f.renewAfterRestore().admission;
     try {
-      const store = createCredentialStore({ admission: fresh, stateRoot: fresh.stateRoot, erasureJournalAdmission: f.machine,
-        erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${fresh.profileBinding.profileId}.json`) });
+      const store = createCredentialStore({ admission: fresh, stateRoot: fresh.stateRoot,
+        });
       assert.equal(store.read().entries.ucpathPassword?.value, "disposable-fixture-password");
     } finally { fresh.release(); }
   } finally { await context.account.close(); context.database.close(); await f.close(); }
@@ -303,7 +306,7 @@ for(const failure of ["busy","unproved"] as const)it(`retains logout credentials
     const operation=runtime.session.logoutOperations()[0];assert.ok(operation);
     assert.equal(runtime.session.resumeLogout(operation.operationId).state,"cancelling");
     const retained=LogoutOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot,"machine","operations",`${operation.operationId}.json`),"utf8")));
-    assert.equal(retained.commandId,undefined);assert.equal(retained.writeId,undefined);assert.equal(retained.expectedRevision,undefined);
+    assert.equal("commandId" in retained,false);assert.equal("writeId" in retained,false);assert.equal("expectedRevision" in retained,false);
     assert.deepEqual(readFileSync(protectedPath),protectedBefore);assert.deepEqual(readFileSync(keyPath),keyBefore);assert.equal(existsSync(journalPath),false);
     assert.equal(probe.mock.calls.length,1);
     assert.equal(inventoryProbe.mock.calls[0]?.[0].admission,context.admission);

@@ -58,6 +58,11 @@ export type WorkerLifecycle = z.infer<typeof WorkerLifecycleSchema>;
 export const LIVE_WORKER_STATES = Object.freeze(["starting", "idle", "busy", "waiting", "paused", "stopping"] as const);
 
 export const WorkerClaimLifetimeSchema = z.strictObject({ membershipRevision: PositiveIntSchema, leaseGeneration: PositiveIntSchema });
+export const RunClaimTokenSchema = z.strictObject({ workerId: WorkerIdSchema, claimGeneration: PositiveIntSchema });
+export type RunClaimToken = z.infer<typeof RunClaimTokenSchema>;
+export const CanonicalCrashRecoveryRequestSchema = z.strictObject({ commandId: CommandIdSchema, runId: RunIdSchema,
+  expectedVersion: PositiveIntSchema, claim: RunClaimTokenSchema, workerLifetime: WorkerClaimLifetimeSchema, now: IsoInstantSchema });
+
 
 export const WorkerControlBasisSchema = z.strictObject({
   leaseGeneration: PositiveIntSchema,

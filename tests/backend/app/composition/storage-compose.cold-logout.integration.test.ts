@@ -1,264 +1,180 @@
-import * as readonlySnapshots from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
-import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import assert from "node:assert/strict";
-import { createHash, randomUUID } from "node:crypto";
-import { spawn } from "node:child_process";
-import { once } from "node:events";
-import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
-import { copyFileSync, existsSync, readFileSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { it, vi } from "vitest";
-import { z } from "zod";
 import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
-import { composeProfileCredentialRepairInventory, composeProfilePendingLogoutInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
-import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createCredentialStore, preparePendingLogoutInventory, readForErasure } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { ensureChildDirectory } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
+import { ChatGptCredentialRecordSchema, createChatGptCredentialRepository } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../../src/models/config/protected-settings.js";
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
-import { CredentialEraseInputSchema } from "../../../../src/models/config/credential-store.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { createBoundProfileFixture, readAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
+import { runLogoutSettlementCase } from "../../../support/helpers/credential-source-retention.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-async function fixture() {
-  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
-  // This busy answer admits cancellation only; the restarted canonical owner proves closure.
-  const session = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine, activity: { hasUnquiescedWork: () => true } });
-  const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
+const fields = { email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-21T12:01:00.000Z" };
+
+async function fixture(phase: "admitted" | "cancelling" | "incomplete" = "cancelling") {
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date(fields.at));
+  const credentials = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot });
+  assert.equal(credentials.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), writeId: randomUUID(),
+    commandFingerprint: "a".repeat(64), expectedRevision: credentials.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
+    updatedAt: fields.at, entries: { ucpathUserId: { set: "synthetic-user" }, ucpathPassword: { set: "synthetic-password" } } })).state, "applied");
+  await createChatGptCredentialRepository({ admission: f.admission, stateRoot: f.stateRoot }).withLock(async tx => tx.replace(ChatGptCredentialRecordSchema.parse({
+    schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: "oaiapp_synthetic",
+    registration: { subject: "synthetic", name: "Synthetic Operator", email: "synthetic@example.edu" },
+    session: { accessToken: "synthetic-access", refreshToken: "synthetic-refresh", idToken: "synthetic-id", expiresAt: "2026-10-21T13:00:00.000Z",
+      earliestRefreshAt: null, scopes: ["offline_access", "resource.invoke", "chatgpt.tokens.use.direct"], usePlan: true, usage: "available" },
+  }), null));
+  const canonical = createCanonicalCredentials(f.admission);
+  const records = ["protected", "duo", "chatgpt"] as const;
+  const values = records.map(kind => { const record = canonical.readRecord(kind); assert.ok(record); return record; });
+  const session = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine,
+    activity: { hasUnquiescedWork: () => true },
+    prepareLogout: () => {
+      assert.ok(database);
+      return { source: database.capturePendingLogoutSource(), intentFailed(error: unknown): never { throw error; } };
+    } });
+  const active = session.signIn(fields);
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("fixture activation refused");
-  clock.advanceWall(60_000);
-  const held = session.logOut(active.token, { at: clock.now().toISOString() });
-  assert.equal(held.state, "cancelling"); if (held.state !== "cancelling") throw new Error("fixture cancellation refused"); assert.ok(held.operationId);
-  const operationPath = join(f.machine.stateRoot, "machine", "operations", `${held.operationId}.json`);
+  const owner = f.machine.admitProfile(active.profileId);
+  const database = AuthorityDatabase.open(owner, { path: f.path, openMode: "read-write" }, clock, undefined, undefined, undefined,
+    createCredentialStore({ admission: owner, stateRoot: owner.stateRoot }));
+  const binding = database.getMeta(), source = database.capturePendingLogoutSource();
+  const paths = [join(f.stateRoot, "credentials", "protected.json"), join(f.stateRoot, "credentials", "chatgpt-account.json"),
+    join(f.machine.stateRoot, "machine", "duo-credentials", `${active.profileId}.json`),
+    join(f.machine.stateRoot, "machine", "credential-keys", `${active.profileId}.json`)];
+  const retained = paths.map(path => ({ path, bytes: readFileSync(path) }));
+  const interruption = new Error("synthetic logout intent interruption"), publish = Object.getOwnPropertyDescriptors(RuntimeAdmission.prototype).publishProfileOperation.value;
+  assert.ok(publish);
+  const fault = phase === "admitted" ? vi.spyOn(RuntimeAdmission.prototype, "publishProfileOperation").mockImplementation(function (this: RuntimeAdmission, operation) {
+    publish.call(this, operation);
+    if (this === f.machine && typeof operation !== "string" && operation.kind === "logout") throw interruption;
+  }) : undefined;
+  try {
+    if (phase === "admitted") assert.throws(() => session.logOut(active.token, { at: fields.at }), error => error === interruption);
+    else assert.equal(session.logOut(active.token, { at: fields.at }).state, "cancelling");
+  } finally { fault?.mockRestore(); }
+  const pending = session.logoutOperations()[0]; assert.ok(pending);
+  const operationPath = join(f.machine.stateRoot, "machine", "operations", `${pending.operationId}.json`);
   const readOperation = () => LogoutOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
-  session.close();
-  const owner = f.machine.admitProfileSettlement(held.operationId);
-  const actualInventory = composeProfilePendingLogoutInventory({ machine: f.machine, admission: owner, clock, hostFacts: { primaryDisplay: null } });
-  const store = createCredentialStore({ admission: owner, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
-    erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${active.profileId}.json`), pendingLogoutInventory: actualInventory,
-    repairInventory: composeProfileCredentialRepairInventory({ machine: f.machine, admission: owner, clock, hostFacts: { primaryDisplay: null } }) });
-  return { f, owner, store, clock, operationPath, readOperation, profileId: active.profileId,
-    restart() {
-      owner.release(); f.admission.release(); f.machine.release();
-      const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
+  if (phase === "incomplete") f.machine.publishProfileOperation({ ...readOperation(), phase });
+  const operation = readOperation();
+  assert.equal(operation.sessionGeneration, active.epoch);
+  assert.deepEqual(operation.source, source);
+  let stopped = false;
+  const stop = async () => {
+    if (stopped) return;
+    session.close(); database.close(); owner.release(); await f.closeController(); stopped = true;
+  };
+  return { f, clock, active, database, operation, operationPath, readOperation, binding, retained,
+    assertRetained() { for (const item of retained) assert.deepEqual(readFileSync(item.path), item.bytes); },
+    async restart() {
+      await stop();
+      const lifetime = await RuntimeLifetimeLock.acquire(f.lifetime.port);
+      const machine = acquireEntrypointAdmission(f.workspace, "exclusive", lifetime);
       const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
-      return { machine, runtime, async close() { await runtime.close(); machine.release(); await f.close(); } };
+      return { machine, runtime, async close() { await runtime.close(); machine.release(); await lifetime.close(); await f.close(); } };
     },
-    async close() { owner.release(); await f.close(); } };
+    async close() { await stop(); await f.close(); }, records, values };
 }
 
-for (const phase of ["early", "captured", "incomplete", "journal", "erased"] as const) it(`finishes genuine cold ${phase} cancellation without ordinary authority or replacement erasure identity`, async () => {
-  const f = await fixture();
-  let operation = f.readOperation();
-  if (phase === "early") appendEmergencyFault({ stateRoot: f.f.stateRoot, code: "SYNTHETIC", build: "fixture", error: new Error("synthetic diagnostic"), now: f.clock.now() });
-  else {
-    operation = LogoutOperationSchema.parse({ ...operation, phase: phase === "incomplete" ? "incomplete" : "erasing", commandId: randomUUID(), writeId: randomUUID(),
-      expectedRevision: readForErasure(f.store, operation.operationId).revision });
-    f.f.machine.publishProfileOperation(operation);
-    if (phase === "journal") {
-      const interrupted = new Error("synthetic erasure-journal interruption");
-      const crashing = createCredentialStore({ admission: f.owner, stateRoot: f.f.stateRoot, erasureJournalAdmission: f.f.machine,
-        erasureJournalPath: join(f.f.machine.stateRoot, "machine", "erasures", `${f.profileId}.json`),
-        hooks: { afterErasureJournal: () => { throw interrupted; } },
-        repairInventory: composeProfileCredentialRepairInventory({ machine: f.f.machine, admission: f.owner, clock: f.clock, hostFacts: { primaryDisplay: null } }) });
-      assert.throws(() => crashing.erase(CredentialEraseInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
-        expectedRevision: operation.expectedRevision, commandFingerprint: "b".repeat(64), protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: operation.at })), error => error === interrupted);
-      assert.equal(existsSync(join(f.f.workspace, ".tracker", "control", "profile-publication.json")), true);
-    }
-    if (phase === "erased") assert.equal(f.store.erase(CredentialEraseInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
-      expectedRevision: operation.expectedRevision, commandFingerprint: "b".repeat(64), protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: operation.at })).state, "applied");
-  }
-  const before = AuthorityDatabase.readProfileMaintenanceInventory(f.owner), selection = f.f.machine.readProfileRegistry();
-  const originalBinding = f.owner.profileBinding;
-  const stopped = f.restart();
+for (const phase of ["admitted", "cancelling", "incomplete"] as const) it(`finishes genuine cold Logout2 ${phase} while retaining every canonical credential`, async () => {
+  const f = await fixture(phase), stopped = await f.restart();
   try {
-    assert.throws(() => stopped.runtime.selectedContext("unissued"));
-    const authorized = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
+    assert.throws(() => stopped.runtime.selectedContext(f.active.token));
+    const authorized = stopped.runtime.session.authorizeLogoutContinuation(fields);
     assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("fresh verifier refused continuation");
-    const result = authorized.resume();
+    assert.equal(authorized.resume().state, "cancelling");
     assert.equal(authorized.resume().state, "refused");
-    assert.equal(result.state, "wiped"); if (result.state !== "wiped") throw new Error("cold closure did not finish");
-    assert.equal(result.inventory.logoutComplete, true);
+    await stopped.runtime.awaitClosurePreparation(f.active.profileId);
+    assert.equal(stopped.runtime.session.resumeLogout(f.operation.operationId).state, "signed-out");
     assert.equal(existsSync(f.operationPath), false);
-    const registry = stopped.machine.readProfileRegistry(), row = registry.profiles.find(value => value.profileId === f.profileId);
-    assert.equal(registry.activeProfileId, null); assert.equal(registry.sessionGeneration, selection.sessionGeneration);
-    assert.equal(row?.credentialState, "wiped"); assert.equal(row?.lifecycle, "ready");
-    assert.throws(() => stopped.runtime.selectedContext("unissued"));
-    const payload = z.object({ record: z.object({ revision: z.number(), entries: z.object({ ucpathUserId: z.unknown().optional(), ucpathPassword: z.unknown().optional() }) }),
-      latestRequest: z.object({ kind: z.literal("erase"), request: CredentialEraseInputSchema }) }).parse(readAuthenticatedCredentialFixture(stopped.machine.stateRoot, f.profileId));
-    assert.equal(payload.record.entries.ucpathUserId, undefined); assert.equal(payload.record.entries.ucpathPassword, undefined);
-    assert.equal(payload.latestRequest.request.updatedAt, operation.at);
-    if (phase !== "early") {
-      assert.equal(payload.latestRequest.request.commandId, operation.commandId); assert.equal(payload.latestRequest.request.writeId, operation.writeId);
-      assert.equal(payload.latestRequest.request.expectedRevision, operation.expectedRevision);
-    }
-    const sourceBytes = readFileSync(f.f.path);
-    const copy = stopped.machine.verifiedReadOnlyCopy(f.f.path, createHash('sha256').update(sourceBytes).digest('hex'));
-    try {
-      const binding = z.strictObject({ installationId: z.uuid(), profileId: z.uuid(), authorityGeneration: z.number().int().nonnegative() })
-        .parse(withAuthorityDatabaseReadOnly(copy, f.f.path, database => database.prepare(
-          'SELECT installation_id AS installationId,profile_id AS profileId,authority_generation AS authorityGeneration FROM database_states').get()));
-      assert.equal(binding.installationId, originalBinding.installationId);
-      assert.equal(binding.profileId, f.profileId);
-      assert.equal(binding.authorityGeneration, before.authorityGeneration);
-      assert.equal(readFileSync(f.f.path).equals(sourceBytes), true);
-    } finally { copy.release(); }
+    const registry = stopped.machine.readProfileRegistry(), row = registry.profiles.find(value => value.profileId === f.active.profileId);
+    assert.equal(registry.activeProfileId, null); assert.equal(registry.sessionGeneration, f.active.epoch + 1);
+    assert.equal(row?.credentialState, "saved"); assert.equal(row?.lifecycle, "ready");
+    f.assertRetained();
+    assert.throws(() => stopped.runtime.selectedContext(f.active.token));
+    const active = stopped.runtime.session.signIn(fields);
+    assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("retained credentials did not allow sign-in");
+    const context = stopped.runtime.selectedContext(active.token), canonical = createCanonicalCredentials(context.admission);
+    assert.deepEqual(f.records.map(kind => canonical.readRecord(kind)), f.values);
+    assert.equal(context.database.getMeta().installationId, f.binding.installationId);
+    assert.equal(context.database.getMeta().profileId, f.active.profileId);
+    f.assertRetained();
   } finally { await stopped.close(); }
 });
 
-it("refuses incomplete late captured values with a surviving clean canonical log instead of blessing tombstones", async () => {
+it("refuses a second composition under the same live controller before a stopped database open", async () => {
+  const f = await fixture(), runtime = composeProfileRuntime({ admission: f.f.machine, clock: f.clock, hostFacts: { primaryDisplay: null } });
+  const resume = vi.spyOn(AuthorityDatabase, "resumePendingLogout");
+  try {
+    const before = readFileSync(f.f.path), operation = readFileSync(f.operationPath);
+    const authorized = runtime.session.authorizeLogoutContinuation(fields);
+    assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("fresh verifier refused continuation");
+    assert.throws(() => authorized.resume(), /profile-logout-cold-source-unobserved/u);
+    assert.equal(authorized.resume().state, "refused"); assert.equal(resume.mock.calls.length, 0);
+    assert.deepEqual(readFileSync(f.f.path), before); assert.deepEqual(readFileSync(f.operationPath), operation);
+    f.assertRetained();
+    assert.equal(f.database.getMeta().profileId, f.active.profileId);
+  } finally { resume.mockRestore(); await runtime.close(); await f.close(); }
+});
+
+for (const dimension of ["sessionGeneration", "source", "operationId"] as const) it(`binds genuine cold boot observation to immutable ${dimension}`, async () => {
+  const f = await fixture(), stopped = await f.restart();
+  try {
+    stopped.machine.assertColdPendingLogout(f.operation);
+    const changed = LogoutOperationSchema.parse({ ...f.operation,
+      ...(dimension === "sessionGeneration" ? { sessionGeneration: f.operation.sessionGeneration + 1 }
+        : dimension === "source" ? { source: { database: { ...f.operation.source.database, inode: f.operation.source.database.inode + 1 } } }
+          : { operationId: randomUUID() }) });
+    const before = readFileSync(f.f.path), operation = readFileSync(f.operationPath);
+    assert.throws(() => stopped.machine.assertColdPendingLogout(changed), /profile-logout-cold-source-unobserved/u);
+    assert.deepEqual(readFileSync(f.f.path), before); assert.deepEqual(readFileSync(f.operationPath), operation); f.assertRetained();
+  } finally { await stopped.close(); }
+});
+
+it("does not issue ordinary authority from an incorrect cold verifier", async () => {
+  const f = await fixture(), stopped = await f.restart();
+  try {
+    const operation = readFileSync(f.operationPath), before = readFileSync(f.f.path);
+    assert.equal(stopped.runtime.session.authorizeLogoutContinuation({ ...fields, password: "incorrect-synthetic-password" }).state, "refused");
+    assert.throws(() => stopped.runtime.selectedContext(f.active.token));
+    assert.deepEqual(readFileSync(f.operationPath), operation); assert.deepEqual(readFileSync(f.f.path), before); f.assertRetained();
+  } finally { await stopped.close(); }
+});
+
+it("keeps the actual old database open while revoking its ordinary source-capture capability", async () => {
   const f = await fixture();
-  let operation = f.readOperation();
-  operation = LogoutOperationSchema.parse({ ...operation, phase: "erasing", commandId: randomUUID(), writeId: randomUUID(), expectedRevision: readForErasure(f.store, operation.operationId).revision });
-  f.f.machine.publishProfileOperation(operation);
-  assert.equal(f.store.erase(CredentialEraseInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId, expectedRevision: operation.expectedRevision,
-    commandFingerprint: "b".repeat(64), protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: operation.at })).state, "applied");
-  appendEmergencyFault({ stateRoot: f.f.stateRoot, code: "SYNTHETIC", build: "fixture", error: new Error("synthetic diagnostic"), now: f.clock.now() });
-  const protectedPath = join(f.f.stateRoot, "credentials", "protected.json"), priorProtected = readFileSync(protectedPath), priorOperation = readFileSync(f.operationPath);
-  const stopped = f.restart();
   try {
-    const authorized = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
-    assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("fresh verifier refused continuation");
-    assert.throws(() => authorized.resume(), /credential-maintenance-copy-capture-incomplete/u);
-    assert.equal(authorized.resume().state, "refused");
-    assert.equal(readFileSync(protectedPath).equals(priorProtected), true);
-    assert.equal(readFileSync(f.operationPath).equals(priorOperation), true);
-    assert.equal(stopped.machine.readProfileRegistry().profiles.find(row => row.profileId === f.profileId)?.lifecycle, "cancelling");
+    assert.equal(f.database.getMeta().profileId, f.active.profileId);
+    const operation = readFileSync(f.operationPath), bytes = readFileSync(f.f.path);
+    assert.throws(() => f.database.capturePendingLogoutSource());
+    assert.deepEqual(readFileSync(f.operationPath), operation); assert.deepEqual(readFileSync(f.f.path), bytes); f.assertRetained();
+    const registry = f.f.machine.readProfileRegistry();
+    assert.equal(registry.sessionGeneration, f.operation.sessionGeneration + 1); assert.equal(registry.activeProfileId, null);
+  } finally { await f.close(); }
+});
+
+it("does not transfer a genuine boot observation to an operation published after that boot", async () => {
+  const f = await fixture(), stopped = await f.restart();
+  try {
+    const changed = LogoutOperationSchema.parse({ ...f.operation, at: "2026-10-21T12:02:00.000Z" });
+    stopped.machine.publishProfileOperation(changed);
+    const operation = readFileSync(f.operationPath), bytes = readFileSync(f.f.path);
+    assert.throws(() => stopped.machine.assertColdPendingLogout(changed), /profile-logout-cold-source-unobserved/u);
+    assert.throws(() => stopped.machine.assertColdPendingLogout(f.operation), /profile-logout-cold-source-changed/u);
+    assert.deepEqual(readFileSync(f.operationPath), operation); assert.deepEqual(readFileSync(f.f.path), bytes); f.assertRetained();
   } finally { await stopped.close(); }
 });
 
-for (const mutation of ["copy", "process-root", "key", "head"] as const) it(`revalidates actual ${mutation} membership around constructor-owned private inspection`, async () => {
-  const f = await fixture(), operation = f.readOperation();
-  if (mutation === "head") {
-    const machineRoot = join(f.f.machine.stateRoot, "machine");
-    ensureChildDirectory(machineRoot, join(machineRoot, "erasures"), "erasure journal", 0o700, 0o700);
-  }
-  const actual = composeProfilePendingLogoutInventory({ machine: f.f.machine, admission: f.owner, clock: f.clock, hostFacts: { primaryDisplay: null } });
-  let restore: (() => void) | undefined, mutated = false;
-  const store = createCredentialStore({ admission: f.owner, stateRoot: f.f.stateRoot, erasureJournalAdmission: f.f.machine,
-    erasureJournalPath: join(f.f.machine.stateRoot, "machine", "erasures", `${f.profileId}.json`),
-    pendingLogoutInventory: (purpose, current, copies) => {
-      const proof = actual(purpose, current, copies);
-      if (mutation === "copy" || mutation === "process-root") {
-        const path = join(mutation === "copy" ? f.f.stateRoot : join(f.f.workspace, rebuildRuntimeIsolation.processLockRoot), "unexpected-copy");
-        writeFileSync(path, "synthetic", { mode: 0o600 }); restore = () => unlinkSync(path);
-      } else {
-        const path = mutation === "key" ? join(f.f.machine.stateRoot, "machine", "credential-keys", `${f.profileId}.json`)
-          : join(f.f.machine.stateRoot, "machine", "erasures", `${f.profileId}.json.authority`);
-        if (mutation === "head" && !existsSync(path)) {
-          writeFileSync(path, "{}", { mode: 0o600 }); restore = () => unlinkSync(path);
-        } else {
-          const retained = `${path}.retained`; renameSync(path, retained); copyFileSync(retained, path); restore = () => { unlinkSync(path); renameSync(retained, path); };
-        }
-      }
-      mutated = true;
-      return proof;
-    } });
-  const before = readFileSync(join(f.f.stateRoot, "credentials", "protected.json"));
-  try {
-    assert.throws(() => preparePendingLogoutInventory(store, operation));
-    assert.equal(mutated, true, "actual canonical inventory must succeed before the injected mutation");
-    assert.equal(readFileSync(join(f.f.stateRoot, "credentials", "protected.json")).equals(before), true);
-    assert.equal(f.readOperation().commandId, undefined);
-  } finally { restore?.(); await f.close(); }
-});
-
-it("rejects a genuine live process record and an unavailable observation before any erase identity is captured", async () => {
-  const f = await fixture(), operation = f.readOperation();
-  const lock = acquireRuntimeProcessLock({ processLockRoot: join(f.f.workspace, rebuildRuntimeIsolation.processLockRoot), name: "workers", pid: process.pid,
-    admission: { kind: "unbound-worker", authorityPath: f.f.path } }, f.clock);
-  const kill = process.kill.bind(process);
-  try {
-    assert.throws(() => preparePendingLogoutInventory(f.store, operation), /process-custody-unproved/u);
-    const observationFailure = new Error("synthetic OS observation unavailable");
-    vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
-      if (pid === process.pid && signal === 0) throw observationFailure;
-      return kill(pid, signal);
-    });
-    assert.throws(() => preparePendingLogoutInventory(f.store, operation));
-    assert.equal(f.readOperation().commandId, undefined);
-  } finally { vi.restoreAllMocks(); lock.release(); await f.close(); }
-});
-
-
-it("refuses a symlink at the actual saved browser root before erasure or database effects", async () => {
-  const f = await fixture(), operation = f.readOperation(), facts = AuthorityDatabase.readProfileMaintenanceInventory(f.owner);
-  const settings = facts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
-    : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
-  const browserRoot = resolveConfigWithProvenance(settings, { primaryDisplay: null }, f.clock,
-    { stateRoot: f.f.stateRoot, artifactRoot: f.owner.artifactRoot }).config.paths.browserProfileRoot;
-  symlinkSync(join(f.f.stateRoot, "credentials"), browserRoot, "dir");
-  try {
-    assert.throws(() => preparePendingLogoutInventory(f.store, operation));
-    assert.equal(f.readOperation().commandId, undefined);
-  } finally {
-    unlinkSync(browserRoot);
-    assert.equal(AuthorityDatabase.readProfileMaintenanceInventory(f.owner).authorityGeneration, facts.authorityGeneration);
-    await f.close();
-  }
-});
-
-it("refuses the unreleased process record of an actual exited child without inventing an idle owner", async () => {
-  const f = await fixture(), child = spawn(process.execPath, ["-e", "process.stdout.write('ready');setInterval(()=>{},1000)"], { stdio: ["ignore", "pipe", "pipe"] });
-  let lock: ReturnType<typeof acquireRuntimeProcessLock> | undefined;
-  try {
-    await once(child.stdout, "data"); assert.ok(child.pid);
-    lock = acquireRuntimeProcessLock({ processLockRoot: join(f.f.workspace, rebuildRuntimeIsolation.processLockRoot), name: "workers", pid: child.pid,
-      admission: { kind: "unbound-worker", authorityPath: f.f.path } }, f.clock);
-    const exited = once(child, "exit"); child.kill("SIGTERM"); await exited;
-    assert.throws(() => preparePendingLogoutInventory(f.store, f.readOperation()), /process-custody-unproved/u);
-    assert.equal(f.readOperation().commandId, undefined);
-  } finally {
-    if (child.exitCode === null && child.signalCode === null) { const exited = once(child, "exit"); child.kill("SIGTERM"); await exited; }
-    lock?.release(); await f.close();
-  }
-});
-
-
-it("requires the genuine verifier and revokes one-use cold continuations on operation change and owner close", async () => {
-  const f = await fixture(), operation = f.readOperation(), before = readFileSync(join(f.f.stateRoot, "credentials", "protected.json"));
-  const stopped = f.restart();
-  try {
-    const wrong = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@ucsd.edu", password: "incorrect-synthetic-password", at: f.clock.now().toISOString() });
-    assert.equal(wrong.state, "refused");
-    assert.equal(readFileSync(join(f.f.stateRoot, "credentials", "protected.json")).equals(before), true);
-    const authorized = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
-    assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("fresh verifier refused continuation");
-    stopped.machine.publishProfileOperation({ ...operation, phase: "incomplete" });
-    assert.equal(authorized.resume().state, "refused");
-    assert.equal(authorized.resume().state, "refused");
-    assert.equal(f.readOperation().commandId, undefined);
-    const closed = stopped.runtime.session.authorizeLogoutContinuation({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: f.clock.now().toISOString() });
-    assert.equal(closed.state, "authorized"); if (closed.state !== "authorized") throw new Error("fresh verifier refused continuation");
-    await stopped.runtime.close();
-    assert.equal(closed.resume().state, "refused");
-    assert.equal(readFileSync(join(f.f.stateRoot, "credentials", "protected.json")).equals(before), true);
-    assert.equal(f.readOperation().commandId, undefined);
-    assert.throws(() => stopped.runtime.selectedContext("unissued"));
-  } finally { await stopped.close(); }
-});
-
-
-it("disposes the exact retained pending inventory copy and fences its returned revalidation before releasing profile custody", async () => {
-  const f = await fixture(), capture = readonlySnapshots.createReadonlyAuthoritySnapshot, copies: string[] = [];
-  const observer = vi.spyOn(readonlySnapshots, "createReadonlyAuthoritySnapshot").mockImplementation(path => {
-    const snapshot = capture(path); copies.push(snapshot.path); return snapshot;
+for (const boundary of ["prepared", "commit-intent", "after-commit", "done", "ready", "unlink", "writer-close", "third-image", "unknown-copy", "live-process", "browser-root", "key-replacement", "snapshot-disposal", "process-observation", "unknown", "browser-busy", "browser-unproved", "process-root-copy", "exited-process"] as const)
+  it(`proves native Logout2 ${boundary} custody in an owned child before cleanup`, async () => {
+    await runLogoutSettlementCase(boundary);
   });
-  let inventory: ReturnType<typeof preparePendingLogoutInventory> | undefined;
-  try {
-    inventory = preparePendingLogoutInventory(f.store, f.readOperation());
-    assert.equal(copies.filter(path => existsSync(path)).length, 1);
-    inventory.revalidate();
-    assert.equal(copies.filter(path => existsSync(path)).length, 1);
-    inventory.dispose();
-    assert.equal(copies.every(path => !existsSync(path)), true);
-    assert.throws(() => inventory?.revalidate(), /missing or released admission/u);
-    f.owner.assertLive(); f.f.machine.assertLive();
-  } finally { inventory?.dispose(); observer.mockRestore(); await f.close(); }
-});

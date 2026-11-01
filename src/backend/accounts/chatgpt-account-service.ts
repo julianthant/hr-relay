@@ -8,7 +8,8 @@ import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { privateEqual } from "../../rules/validation/private-equal.js";
 import { type RuntimeAdmission } from "../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../storage/admission/admission-identity.js";
-import { createChatGptCredentialRepository, ChatGptCredentialError, type ChatGptCredentialRecord, type ChatGptCredentialRepositoryOptions } from "../storage/configuration/credential-store.js";
+import { createChatGptCredentialRepository, ChatGptCredentialError, type ChatGptCredentialRecord, type ChatGptCredentialRepositoryOptions, type ChatGptCredentialTransaction } from "../storage/configuration/chatgpt-credential-repository.js";
+import { hasUnprovedSourceClosure } from "../storage/source-closure.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 
 const AUTH = "https://auth.openai.com", RESOURCE = "https://api.openai.com/v1";
@@ -102,20 +103,36 @@ async function interruptible<T>(operation: Promise<T>, signal: AbortSignal): Pro
 }
 
 export function createChatGptAccountService(options: ChatGptAccountServiceOptions) {
-  const repository = createChatGptCredentialRepository({ admission: options.admission, stateRoot: options.stateRoot, ...options.credentialHooks });
+  const credentialRepository = createChatGptCredentialRepository({ admission: options.admission, stateRoot: options.stateRoot, ...options.credentialHooks });
   const transport = options.fetch ?? fetch, clock = options.clock;
   const requests = new Set<AbortController>();
   const accesses = new Set<Promise<ChatGptCredentialRecord>>();
   const inferenceLifetimes = new Set<Promise<void>>();
-  const closureFailures = new Map<ChatGptResourceClosureUnprovedError, readonly unknown[]>();
-  function retainResponseClosure(error: ChatGptResourceClosureUnprovedError, ...owners: readonly unknown[]): void {
+  const closureFailures = new Map<Error, readonly unknown[]>();
+  function retainResourceClosure(error: Error, ...owners: readonly unknown[]): void {
     closureFailures.set(error, [...(closureFailures.get(error) ?? []), ...owners]);
   }
+  function retainCredentialClosure(error: unknown): void {
+    if (error instanceof Error && hasUnprovedSourceClosure(error)) retainResourceClosure(error, credentialRepository, options.admission);
+  }
+  function assertResourceClosure(): void {
+    if (closureFailures.size > 0) throw new ChatGptResourceClosureUnprovedError(new AggregateError([...closureFailures.keys()], "ChatGPT resource closure is unproved"));
+  }
+  const repository = {
+    read(): ChatGptCredentialRecord | undefined {
+      try { return credentialRepository.read(); }
+      catch (error) { retainCredentialClosure(error); throw error; }
+    },
+    async withLock<T>(operation: (transaction: ChatGptCredentialTransaction) => Promise<T>): Promise<T> {
+      try { return await credentialRepository.withLock(operation); }
+      catch (error) { retainCredentialClosure(error); throw error; }
+    },
+  };
   let closed = false, generation = 0;
   let rejectedSessionToken: string | undefined;
   let planFailureToken: string | undefined;
   let pending: { cancel(): Promise<void> } | undefined;
-  let signingOut = false;
+  let signOutLifetime: Promise<ChatGptSignedOut> | undefined;
   function active(): void { if (closed) throw fault("CHATGPT_SERVICE_CLOSED"); options.admission.assertLive(); }
   async function request(url: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
     active();
@@ -134,7 +151,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
           requests.delete(controller);
           if (failures.length !== 0) {
             const error = new ChatGptResourceClosureUnprovedError(new AggregateError(failures, "ChatGPT transport closure failed"));
-            retainResponseClosure(error, reader, response, controller); throw error;
+            retainResourceClosure(error, reader, response, controller); throw error;
           }
         })();
         return readerClosure;
@@ -158,7 +175,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       });
       return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
     }
-    catch { requests.delete(controller); throw fault(signal?.aborted === true || controller.signal.aborted ? "CHATGPT_OCR_CANCELLED" : "CHATGPT_AUTH_UNAVAILABLE"); }
+    catch (error) { retainCredentialClosure(error); requests.delete(controller); throw fault(signal?.aborted === true || controller.signal.aborted ? "CHATGPT_OCR_CANCELLED" : "CHATGPT_AUTH_UNAVAILABLE"); }
   }
   async function discovery(signal?: AbortSignal) {
     const result = DiscoverySchema.safeParse(await boundedJson(await request(`${AUTH}/.well-known/openid-configuration`, {}, signal)));
@@ -214,7 +231,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       ? { state: "expired" as const }
       : current?.session != null && planFailureToken !== undefined && privateEqual(current.session.accessToken, planFailureToken)
         ? { state: "unavailable" as const } : publicState(current, clock.nowMs());
-    const availability = closed ? "closed" : pending !== undefined || signingOut ? "pending"
+    const availability = closed ? "closed" : pending !== undefined || signOutLifetime !== undefined ? "pending"
       : state.state === "connected" ? state.planUsage === "enabled" ? "available" : state.planUsage === "disabled" ? "disabled" : "limit-reached"
         : state.state;
     return Object.freeze({ revision: current === undefined ? null : current.revision, attemptGeneration: generation, availability });
@@ -246,7 +263,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     }
   }
   async function signIn(input: ChatGptSignInRequest): Promise<ChatGptAuthorization> {
-    active(); if (pending !== undefined || signingOut) throw fault("CHATGPT_AUTH_BUSY");
+    active(); if (pending !== undefined || signOutLifetime !== undefined) throw fault("CHATGPT_AUTH_BUSY");
     if (typeof input.usePlan !== "boolean") throw fault("CHATGPT_AUTH_INVALID");
     const attemptGeneration = ++generation;
     let startupComplete = false, finishStartup!: () => void;
@@ -348,30 +365,40 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     }
   }
   async function signOut(): Promise<ChatGptSignedOut> {
-    active(); if (signingOut) throw fault("CHATGPT_AUTH_BUSY");
-    signingOut = true;
-    try {
-      const attempt = pending; ++generation; rejectedSessionToken = undefined; planFailureToken = undefined;
+    active(); if (signOutLifetime !== undefined) throw fault("CHATGPT_AUTH_BUSY");
+    const epoch = ++generation;
+    const assertCurrent = () => { active(); if (epoch !== generation) throw fault("CHATGPT_AUTH_CANCELLED"); };
+    const operation = (async (): Promise<ChatGptSignedOut> => {
+      const attempt = pending; rejectedSessionToken = undefined; planFailureToken = undefined;
       for (const controller of requests) controller.abort();
-      await attempt?.cancel(); if (pending === attempt) pending = undefined;
-      await Promise.allSettled([...accesses]);
-      await Promise.all([...inferenceLifetimes]);
-      if (closureFailures.size > 0) throw new ChatGptResourceClosureUnprovedError(new AggregateError([...closureFailures.keys()], "ChatGPT resource closure is unproved"));
-      return await repository.withLock(async transaction => {
+      await attempt?.cancel(); if (pending === attempt) pending = undefined; assertCurrent();
+      await Promise.allSettled([...accesses]); assertCurrent();
+      await Promise.all([...inferenceLifetimes]); assertCurrent(); assertResourceClosure();
+      return repository.withLock(async transaction => {
+        assertCurrent();
         const current = transaction.read(); if (current === undefined || current.session === null || current.registration === null || current.clientId === null) return { state: "signed-out", remoteRevocation: "not-needed" };
         let remoteRevocation: "confirmed" | "unconfirmed" | "not-needed" = current.session.refreshToken === null ? "not-needed" : "unconfirmed";
         try { if (current.session.refreshToken !== null) {
-          const discovered = await discovery();
+          const discovered = await discovery(); assertCurrent();
           const response = await request(discovered.revocation, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams({ token: current.session.refreshToken, token_type_hint: "refresh_token", client_id: current.clientId }) });
-          if (response.status === 200 && await boundedEmptyResponse(response)) remoteRevocation = "confirmed";
-          else await response.body?.cancel();
+          try {
+            assertCurrent();
+            if (response.status === 200 && await boundedEmptyResponse(response)) remoteRevocation = "confirmed";
+          } finally { await response.body?.cancel(); }
+          assertCurrent();
         }
-        } catch { remoteRevocation = "unconfirmed"; }
+        } catch (error) {
+          retainCredentialClosure(error); assertResourceClosure(); assertCurrent(); remoteRevocation = "unconfirmed";
+        }
+        assertCurrent(); assertResourceClosure();
         transaction.replace({ ...current, revision: current.revision + 1, session: null }, current.revision);
         return { state: "signed-out", remoteRevocation };
       });
-    } finally { signingOut = false; }
+    })();
+    signOutLifetime = operation;
+    try { return await operation; }
+    finally { if (signOutLifetime === operation) signOutLifetime = undefined; }
   }
   async function access(signal: AbortSignal | undefined, expected: ChatGptAccountAuthority, assertCurrent: () => void): Promise<ChatGptCredentialRecord> {
     const epoch = generation;
@@ -483,7 +510,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       operation.assertCurrent();
       return result;
     } catch (error) {
-      if (error instanceof ChatGptResourceClosureUnprovedError) retainResponseClosure(error, operation);
+      if (error instanceof ChatGptResourceClosureUnprovedError) retainResourceClosure(error, operation);
       throw error;
     } finally { operation.close(); }
   }
@@ -565,7 +592,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         && cause instanceof ChatGptAccountError && cause.code === "CHATGPT_OCR_CANCELLED") throw cause;
       const error = new ChatGptResourceClosureUnprovedError(outcome.kind === "value" ? cause
         : new AggregateError([outcome.error, cause], "ChatGPT response and closure failed"));
-      retainResponseClosure(error, response); outcome = { kind: "error", error };
+      retainResourceClosure(error, response); outcome = { kind: "error", error };
     }
     if (outcome.kind === "error") throw outcome.error;
     return outcome.value;
@@ -828,7 +855,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         const failedClosure = (cause: unknown): void => {
           const error = new ChatGptResourceClosureUnprovedError(outcome.kind === "value" ? cause
             : new AggregateError([outcome.error, cause], "ChatGPT response and closure failed"));
-          retainResponseClosure(error, reader, response, operation); outcome = { kind: "error", error };
+          retainResourceClosure(error, reader, response, operation); outcome = { kind: "error", error };
         };
         let readerReleased = false;
         try { await reader.cancel(); readerReleased = true; }
@@ -842,10 +869,20 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     } finally { if (capturedOperation === undefined) operation.close(); }
   }
   async function close(): Promise<void> {
-    const attempt = pending; closed = true; ++generation; rejectedSessionToken = undefined; planFailureToken = undefined; await attempt?.cancel(); if (pending === attempt) pending = undefined;
-    for (const controller of requests) controller.abort(); await Promise.allSettled([...accesses]);
+    const attempt = pending, signOut = signOutLifetime;
+    closed = true; ++generation; rejectedSessionToken = undefined; planFailureToken = undefined;
+    await attempt?.cancel(); if (pending === attempt) pending = undefined;
+    for (const controller of requests) controller.abort();
+    await Promise.allSettled([...accesses]);
     await Promise.all([...inferenceLifetimes]);
-    if (closureFailures.size > 0) throw new ChatGptResourceClosureUnprovedError(new AggregateError([...closureFailures.keys()], "ChatGPT resource closure is unproved"));
+    let signOutFailure: unknown;
+    try { await signOut; }
+    catch (error) {
+      if (!(error instanceof ChatGptAccountError) || !["CHATGPT_SERVICE_CLOSED", "CHATGPT_AUTH_CANCELLED", "CHATGPT_OCR_CANCELLED"].includes(error.code)) signOutFailure = error;
+    }
+    assertResourceClosure();
+    if (signOutFailure instanceof Error) throw signOutFailure;
+    if (signOutFailure !== undefined) throw new Error("ChatGPT sign-out failed", { cause: signOutFailure });
   }
   return Object.freeze({ readAccount, readAuthority, revalidateAuthority, signIn, signOut, extractText, withOcrOperation, listAssistantModels, prepareAssistantModelPreference, inferAssistant, verifyAssistantCapability, captureAssistantModelPolicy, close });
 }
