@@ -63,8 +63,7 @@ for (const entry of ['service', 'command'] as const) it(`retains actual stopped 
     const inspected = entry === 'service' ? failure.cause : failure;
     assert.ok(inspected instanceof AuthoritySourceClosureUnprovedError);
     assert.equal(inspected.errors.length, 1); assert.equal(inspected.errors[0], inspected.cause);
-    assert.ok(inspected.cause instanceof AuthoritySourceClosureUnprovedError);
-    let sourceFailure: unknown = inspected.cause;
+    let sourceFailure: unknown = inspected;
     const wrappers = new Set<AuthoritySourceClosureUnprovedError>();
     while (sourceFailure instanceof AuthoritySourceClosureUnprovedError && sourceFailure.cause instanceof AuthoritySourceClosureUnprovedError) {
       assert.equal(wrappers.has(sourceFailure), false);

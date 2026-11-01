@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { readPrivateFile } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 import { it } from "vitest";
 import { assertCredentialStoreOwner } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
 it("checks current credential ownership, root permissions and released authority in order", async () => {
@@ -14,7 +13,7 @@ it("checks current credential ownership, root permissions and released authority
     const owner = profile.admission;
     const store = boundProfileCredentials(owner);
     assert.doesNotThrow(() => assertCredentialStoreOwner(store, owner));
-    const sibling = profile.machine.admitProfile(createProfileRegistry(profile.machine).storageClaim(owner.profileBinding.profileId));
+    const sibling = profile.machine.admitProfile(owner.profileBinding.profileId);
     try {
       assert.throws(() => assertCredentialStoreOwner(store, sibling), /credential-store-owner-mismatch/u);
       assert.throws(() => assertCredentialStoreOwner(store, profile.machine), /credential-store-owner-mismatch/u);

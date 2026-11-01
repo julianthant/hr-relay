@@ -317,6 +317,10 @@ Workflow authentication uses the admitted encrypted Duo store below; it does not
 `credential-store.ts` exposes the protected-settings store and the ChatGPT account repository.
 Both use `credential-safe-file.ts` for ancestry and identity checks, owned 0700 directories,
 0600 files, no-follow reads, fsync, atomic replacement, and lock-file safety.
+`storage/private-path.ts` owns their privacy policies, including trusted sticky ancestors and
+distinct private-file and managed-data permissions, plus exclusive stages, replacement and durable
+flushes. Unavailable ownership evidence refuses access. SQLite's descriptor observer executes the
+same self-contained privacy policy; operation identity and content checks remain with its caller.
 Each record retains its own transaction and recovery contract.
 
 The same private-file primitive serializes installation mutation at
@@ -367,13 +371,27 @@ backups. A missing or corrupt current witness refuses instead of supplying an em
 Same-enrollment backups remain readable, and restore still refuses a backup that would lower a burned
 counter. Decrypt refuses during pending publication; that check does not change the separate
 same-issued or stopped publication settlement. Erase does not delete or import `duo-webauthn.json`.
-`storage upgrade --machine-control` acquires the same stopped maintenance admission and converts
-continuity schema 1/marker 2 or schema 2/marker 3 into strict continuity schema 3/marker 4. Ordinary
-startup reads only the current pair. Conversion preserves existing Duo continuity and requires
-authenticated empty suspect membership before publishing an empty completed-restore history. An
-unbound suspect or an existing prior upgrade directory remains a hold. The operation backs up both
-control files before mutation and reads them back; these are not profile SQLite or Duo-key backups.
+The current registry document is schema 3: its installation ID matches the locator, and every
+registry publication advances its safe-integer revision exactly once. The session epoch remains a
+separate counter. Control schema 4 binds that revision, epoch, canonical content digest and logical
+operation IDs/digests; marker 5 selects this current format. A byte-identical closed-file replacement keeps the same logical ownership; a fresh open validates
+the current file. General persisted inode/device
+continuity and device recertification are absent. Exact credential, Duo, restore and open-descriptor
+proofs retain their operation-specific physical checks.
+
+`storage upgrade --machine-control` converts settled registry schema 2 with control 1/2/3 and marker
+2/3/4 under the same stopped maintenance owner. Its one journal records exact registry/control/marker
+backups and stages, supports only unchanged publication prefixes, and seeds registry revision 1.
+Existing completed upgrade artifacts remain an exact preserved inventory. Unsupported old pending
+journals refuse before startup lock cleanup, key migration or publication replay. Older formats remain
+stopped-only; ordinary startup accepts only the current tuple. Conversion preserves existing Duo and
+completed-restore custody. Sources without completed-restore custody require authenticated empty
+suspect membership. These backups contain control files, not profile SQLite or Duo keys.
 A failed snapshot close retains its maintenance admission.
+
+Current relocation commands require an issued bound owner and refuse unsupported registered roots.
+Ownerless or unbound plan/resume requests refuse before creating maintenance; status and historical
+receipt inspection remain read-only. Pending bytes remain untouched by that refusal.
 
 Completed restores append exact profile, operation, source generation, outcome and retained suspect
 file identities to `control/profile-registry.json` before removing the restore journal. Recovery
@@ -545,13 +563,24 @@ and the artifact root cannot contain the state root.
 `locator.json`, journals, and relocation receipts. Root ownership uses
 `.runtime-owner.json`; `.runtime-source-fence.json` is a negative witness. An established missing or
 malformed locator refuses. Source markers and retained data never select a fallback installation.
-`RuntimeAdmission` rechecks held custody and exact permitted storage paths throughout use.
-Shared and exclusive admission handles retain in-process mode exclusion and revocation. The kernel-held
-lifetime listener owns process exclusion: bootstrap binds the dedicated configured loopback `lockPort`
-before installation admission and holds it through shutdown. A busy port refuses with
-`RUNTIME_ALREADY_RUNNING`. Workers receive the listening handle over IPC before storage admission;
-each worker retains its copy through parent disconnect and its write-safe drain. The port stays held
-while any parent or worker copy remains open. Standalone and offline commands acquire the same port.
+`RuntimeAdmission` is the single storage-capability facade. Its private profile access capture binds a
+registered profile's setup or ready state and current session generation. `admitProfile(profileId)`
+issues setup or runtime access, `admitProfileSettlement(operationId)` binds the matching durable logout
+operation, and `admitStoppedProfile(profileId, operation)` requires the current ready profile and binds
+it to the exact live native maintenance operation. Each validates its registration before opening
+profile paths or a database. `assertLive()` proves held custody; it does not authorize ordinary data access. SQLite
+repository reads and writes, credential metadata reads, and artifact callbacks check current readable,
+writable, or credential access. Root ordinary runtime access refuses while stopped maintenance is
+active or shutdown is closing. Worker ordinary access also requires connected IPC. Explicit close,
+drain, and restore paths retain their held custody after ordinary access is revoked.
+
+The kernel-held lifetime listener owns process exclusion. Bootstrap binds the dedicated configured
+loopback `lockPort` before installation admission and holds it through shutdown. A busy port refuses
+with `RUNTIME_ALREADY_RUNNING`. Workers receive the listening handle over IPC before storage
+admission. Each worker retains its copy through parent disconnect and its write-safe drain. Controller
+close waits for each owned child process's actual `close` event before closing the listener. Standalone
+and offline commands acquire the same port. Existing source-byte, closure, credential, profile-creation,
+erasure, and restore witness checks remain in force.
 
 `acquireEntrypointAdmission` adopts or initializes the genuinely empty default installation before
 serving it. It verifies an existing native database read-only; initial authority creation uses a
@@ -561,7 +590,9 @@ with a missing database does not become fresh merely because owner markers survi
 The controller publishes machine registry and profile-operation changes synchronously through their
 atomic files and journals. Worker machine-control admission is read-only: it checks current locator,
 registry continuity, operations and erasure evidence, and refuses pending publication that needs
-controller repair. Releasing a parent admission revokes its derived profile children.
+controller repair. Browser factory, login, and driver operations recheck their required `assertCurrent`
+callback around actions, awaits, and results. Session close and capture restoration can still use their
+owned resources after revocation. Releasing a parent admission revokes its derived profile children.
 
 `secure-env-bootstrap.ts` accepts only `cli` and `test-target-document-number` runners and awaits
 the selected runner. Production dashboard bundle validation precedes installation admission.
@@ -752,7 +783,7 @@ verification or recovery holds continue to block closure.
 
 Profile erasure publishes its canonical journal transition through the existing installation control publication intent. Control retains a typed head and verified registration origin for every registered profile; missing, substituted or rolled-back journal/anchor evidence blocks protected availability. Only the actual credential owner can issue the value-free capture and exact erase-intent witness. Interrupted erasure retains its original command/write/receipt and permits only authenticated settlement; ordinary reads and writes cannot treat the pending transition as available.
 
-Offline profile restore requires the exact workspace-bound `OfflineMaintenanceOperation` issued by the genuine root lifetime. Recovery can issue that operation before admission and passes the same object into the exclusive installation lease. Each explicit command consumes it once and retains it through validation, source IO, and owned closure. Copies, foreign roots, expired operations, and replay refuse before effects. Runtime lock artifacts from an older build produce `RUNTIME_OLD_BUILD_ARTIFACTS` without interpretation or deletion. Restore binds canonical profile SQLite, verified backup physical origin, current control, and the external erasure head. Replacement invalidates selected sessions idempotently through the existing restore journal. Recovery acknowledges the exact observed outcome without repeating replacement. Current credentials and machine evidence remain outside the SQLite payload. Whole-machine rollback without an independent retained witness and profile restore after unsupported whole-machine relocation refuse before staging.
+Offline profile restore requires the exact workspace-bound `OfflineMaintenanceOperation` issued by the genuine root lifetime. Recovery can issue that operation before admission and passes the same object into the exclusive installation lease. Each explicit command consumes it once and retains it through validation, source IO, and owned closure. Copies, foreign roots, expired operations, and replay refuse before effects. Runtime lock artifacts from an older build produce `RUNTIME_OLD_BUILD_ARTIFACTS` without interpretation or deletion. Restore binds canonical profile SQLite, verified backup physical origin, current control, and the external erasure head. Replacement invalidates selected sessions idempotently through the existing restore journal. Its saved prior registry document must match captured logical control, and its saved successor must be exactly one revision and session epoch forward with selection cleared before any replay writes. Recovery acknowledges the exact observed outcome without repeating replacement. Current credentials and machine evidence remain outside the SQLite payload. Whole-machine rollback without an independent retained witness and profile restore after unsupported whole-machine relocation refuse before staging.
 
 Source snapshot removal, isolated binding/login-copy database close, authenticated source/control descriptors, stopped backup descriptors and actual restore/process-custody close paths are owned closure boundaries. Failed closure raises `AuthoritySourceClosureUnprovedError` from the pure `storage/source-closure.ts` and retains the exact failed resource privately for the failure lifetime. Validation failures remain ordinary when actual database and snapshot cleanup succeeds; an uncertain close never authorizes exclusive-admission release or automatic retry.
 

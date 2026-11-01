@@ -1,3 +1,4 @@
+import { hasUnprovedSourceClosure } from "../../storage/source-closure.js";
 import type { BrowserContext } from "playwright";
 import { z } from "zod";
 import type { Config } from "../../../models/config/schema.js";
@@ -68,7 +69,7 @@ export async function provisionWorkflowDuo(input: Readonly<{
       await call("reply", [id, { ok: true, value }]); signingCurrent();
     }
   })().catch(async error => {
-    if (!stopped) failure = error instanceof Error ? error : new Error("duo-signing-unavailable", { cause: error });
+    if (!stopped || hasUnprovedSourceClosure(error)) failure = error instanceof Error ? error : new Error("duo-signing-unavailable", { cause: error });
     try { await stopWorker(); }
     catch (stopError) { failure = new AggregateError([error, stopError], "duo-broker-stop-unproved", { cause: stopError }); }
   });
@@ -77,6 +78,7 @@ export async function provisionWorkflowDuo(input: Readonly<{
     const outcomes = await Promise.allSettled([stopWorker(), pump]);
     const errors: unknown[] = [];
     for (const result of outcomes) if (result.status === "rejected") { const reason: unknown = result.reason; errors.push(reason); }
+    if (hasUnprovedSourceClosure(failure) && !errors.includes(failure)) errors.push(failure);
     if (errors.length > 0) throw new AggregateError(errors, "duo-broker-stop-unproved");
   } });
 }

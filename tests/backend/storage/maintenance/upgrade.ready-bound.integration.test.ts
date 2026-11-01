@@ -107,7 +107,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     assert.equal(prior.installationId, binding.installationId);
     assert.equal(prior.profileId, binding.profileId);
   } finally { raw.close(); }
-  const claim = profile.machine.issueRegisteredProfileClaim(binding.profileId);
+  const claim = binding.profileId;
   const processLockRoot = join(profile.workspace, rebuildRuntimeIsolation.processLockRoot);
   return { ...profile, binding, claim, command, saved, processLockRoot,
     acquireRestore: () => profile.machine.acquireOfflineMaintenance() };
@@ -141,7 +141,7 @@ it("upgrades a genuinely READY bound profile with unchanged historical rows, cre
     assert.equal(after.database_upgrades?.length, (before.database_upgrades?.length ?? 0) + 1);
     assert.equal(digest(join(f.stateRoot, "credentials", "protected.json")), protectedBefore);
     assert.deepEqual(storageTree(join(f.machine.stateRoot, "machine")), machineBefore);
-    const fresh = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(f.binding.profileId));
+    const fresh = f.machine.admitProfile(f.binding.profileId);
     try {
       const credentials = createCredentialStore({ admission: fresh, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
         erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${f.binding.profileId}.json`) });
@@ -158,7 +158,7 @@ it("upgrades a genuinely READY bound profile with unchanged historical rows, cre
       } finally { database.close(); }
     } finally { fresh.release(); }
     const currentBefore = storageTree(f.stateRoot);
-    assert.equal((await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.machine.issueRegisteredProfileClaim(f.binding.profileId), { plan: false, hostFacts }, systemClock)).state, "already-upgraded");
+    assert.equal((await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.binding.profileId, { plan: false, hostFacts }, systemClock)).state, "already-upgraded");
     assert.deepEqual(storageTree(f.stateRoot), currentBefore);
   } finally { await f.close(); }
 });
@@ -185,7 +185,7 @@ it("confines the issued READY purpose and its verified backup copy to their exac
     assert.throws(() => issued.stoppedStagedAuthority(join(f.stateRoot, `.restore-${randomUUID()}.sqlite.tmp`)), { message: "profile-stopped-upgrade-exclusive-refused" });
     const backed = await prepareStoppedBackupClosure(profileBrowserClosure, issued, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, issued, f.stateRoot, systemClock, f.processLockRoot, restore));
     const manifest = backed.manifests[0]; assert.ok(manifest);
-    const verified = verifyStoppedBackupManifestAtPath(issued, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(f.path));
+    const verified = verifyStoppedBackupManifestAtPath(issued, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`));
     const copy = issued.verifiedReadOnlyCopy(verified.backupPath, verified.manifest.sha256);
     try {
       assert.equal(inspectAuthorityBackupReadOnly(copy, verified.backupPath, 8).schemaVersion, 8);
@@ -198,14 +198,15 @@ it("confines the issued READY purpose and its verified backup copy to their exac
   } finally { owner?.release(); restore.release(); await f.close(); }
 });
 
-it("refuses cloned claims, copied or foreign restore handles, and released restore custody without source effects", async () => {
+it("refuses malformed or foreign profile selectors and copied, foreign or released restore custody without source effects", async () => {
   const f = await readyBoundEight(), foreign = await readyBoundEight(), restore = f.acquireRestore(), other = foreign.acquireRestore();
   try {
     const before = storageTree(f.stateRoot);
-    await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, { ...f.claim }, restore, systemClock, hostFacts), { message: "profile-storage-claim-unissued" });
+    // @ts-expect-error The runtime boundary must also refuse an untyped selector.
+    await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, { profileId: f.claim }, restore, systemClock, hostFacts), /Invalid input: expected string/u);
     await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, { ...restore }, systemClock, hostFacts), { code: "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE" });
     await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, other, systemClock, hostFacts), { code: "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE" });
-    await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, foreign.claim, restore, systemClock, hostFacts), { message: "profile-storage-claim-unissued" });
+    await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, foreign.claim, restore, systemClock, hostFacts), { message: "profile-storage-claim-unregistered" });
     restore.release();
     await assert.rejects(f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, restore, systemClock, hostFacts), { code: "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE" });
     assert.deepEqual(storageTree(f.stateRoot), before);
@@ -257,7 +258,7 @@ it("requires a real verified own backup before changing the ready source schema"
     assert.deepEqual(storageTree(f.stateRoot), before);
     const backed = await prepareStoppedBackupClosure(profileBrowserClosure, owner, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, owner, f.stateRoot, systemClock, f.processLockRoot, restore));
     const manifest = backed.manifests[0]; assert.ok(manifest);
-    const verified = verifyStoppedBackupManifestAtPath(owner, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(f.path));
+    const verified = verifyStoppedBackupManifestAtPath(owner, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`));
     const backedBefore = storageTree(f.stateRoot);
     assert.throws(() => AuthorityDatabase.upgradeStopped(owner, f.path, f.processLockRoot, systemClock,
       inspection.authorityContentFingerprint, { ...verified, manifest: { ...verified.manifest, sha256: FingerprintSchema.parse("0".repeat(64)) } }, verifyStoppedBackupManifestAtPath),
@@ -267,7 +268,7 @@ it("requires a real verified own backup before changing the ready source schema"
     try {
       const changed = Buffer.from(original); changed[0] = (changed[0] ?? 0) ^ 1;
       writeFileSync(verified.backupPath, changed);
-      assert.throws(() => verifyStoppedBackupManifestAtPath(owner, verified.manifestPath, AuthorityDatabase.sourceDatabaseIdentity(f.path)),
+      assert.throws(() => verifyStoppedBackupManifestAtPath(owner, verified.manifestPath),
         { message: "profile-maintenance-backup-digest-mismatch" });
       assert.deepEqual(rawEight(f.path), sourceBefore);
     } finally { writeFileSync(verified.backupPath, original); }
@@ -281,7 +282,7 @@ it("refuses changed source content inside the real migration transaction and can
     const inspection = AuthorityDatabase.inspectStoppedUpgrade(owner, f.path, f.processLockRoot, systemClock);
     const backed = await prepareStoppedBackupClosure(profileBrowserClosure, owner, restore, systemClock, f.processLockRoot).then(closure => backupStoppedAuthority(closure, owner, f.stateRoot, systemClock, f.processLockRoot, restore));
     const manifest = backed.manifests[0]; assert.ok(manifest);
-    const verified = verifyStoppedBackupManifestAtPath(owner, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(f.path));
+    const verified = verifyStoppedBackupManifestAtPath(owner, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`));
     const raw = new DatabaseSync(f.path);
     const original = raw.prepare("SELECT updated_at FROM database_states WHERE id=1").get()?.updated_at;
     assert.ok(typeof original === "string");
@@ -318,13 +319,14 @@ it("revokes READY custody on a same-byte key replacement even after exact origin
   }
 });
 
-it("revokes READY custody when the real registry advances its session generation", async () => {
+it("excludes registry session mutation while READY maintenance custody is held", async () => {
   const f = await readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, restore, systemClock, hostFacts);
   try {
     const before = storageTree(f.stateRoot), registry = f.machine.readProfileRegistry();
-    f.machine.publishProfileRegistry(registry, { ...registry, activeProfileId: null, sessionGeneration: registry.sessionGeneration + 1 });
-    assert.throws(() => owner.assertLive(), { message: "profile-storage-claim-generation-changed" });
+    assert.throws(() => f.machine.publishProfileRegistry(registry, { ...registry, activeProfileId: null, sessionGeneration: registry.sessionGeneration + 1 }), /offline-maintenance-busy/u);
+    assert.deepEqual(f.machine.readProfileRegistry(), registry);
+    owner.assertLive();
     assert.deepEqual(storageTree(f.stateRoot), before);
   } finally { owner.release(); restore.release(); await f.close(); }
 });
@@ -349,15 +351,17 @@ it("refuses loss of the authenticated never-erased head instead of treating it a
   }
 });
 
-it("revokes READY custody on an actual new machine operation with no native effects", async () => {
+it("excludes a new signup operation while READY maintenance custody is held", async () => {
   const f = await readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, restore, systemClock, hostFacts);
   try {
     const before = storageTree(f.stateRoot);
     const emailKey = createProfileVerifiers(f.machine.stateRoot).emailKeyFor(`${randomUUID()}@example.invalid`);
-    f.machine.beginProfileSignUp({ firstName: "Upgrade", lastName: "Pending", createdAt: IsoInstantSchema.parse(systemClock.now().toISOString()),
-      emailKey, commandFingerprint: "a".repeat(64) });
-    assert.throws(() => owner.assertLive(), { message: "profile-storage-claim-unavailable" });
+    const registry = f.machine.readProfileRegistry();
+    assert.throws(() => f.machine.beginProfileSignUp({ firstName: "Upgrade", lastName: "Pending", createdAt: IsoInstantSchema.parse(systemClock.now().toISOString()),
+      emailKey, commandFingerprint: "a".repeat(64) }), /offline-maintenance-busy/u);
+    assert.deepEqual(f.machine.readProfileRegistry(), registry);
+    owner.assertLive();
     assert.deepEqual(storageTree(f.stateRoot), before);
   } finally { owner.release(); restore.release(); await f.close(); }
 });
@@ -434,7 +438,7 @@ it.each([9, 10] as const)("upgrades supported schema %s to the current version w
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows);
     }
-    const fresh = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(f.binding.profileId));
+    const fresh = f.machine.admitProfile(f.binding.profileId);
     try { assert.equal(fresh.profileMaintenanceSchemaVersion(), CURRENT_AUTHORITY_SCHEMA_VERSION); }
     finally { fresh.release(); }
   } finally { await f.close(); }

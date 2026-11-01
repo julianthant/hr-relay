@@ -15,7 +15,6 @@ import { WorkerClaimLifetimeSchema } from "../../../src/models/run/worker.js";
 import { CommandIdSchema, RunIdSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { basename, dirname, resolve } from "node:path";
 
 const parentStop = new AbortController();
@@ -61,7 +60,7 @@ const pause = () => {
 };
 const clock = manualClock(new Date(data.now));
 const machine = acquireSharedRuntimeAdmission(resolve(dirname(data.path), "../../../.."), lifetime);
-const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(basename(dirname(data.path))));
+const admission = machine.admitProfile(basename(dirname(data.path)));
 const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
   erasureJournalPath: resolve(machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
 const database = AuthorityDatabase.open(admission, { path: data.path, busyTimeoutMs: 250, migrationOwner: "race-proof" },

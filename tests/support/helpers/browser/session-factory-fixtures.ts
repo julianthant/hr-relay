@@ -239,6 +239,7 @@ export function createBrowserSessionFactoryFixtures(
       scheduler,
       slotOrdinal: () => 1,
       newSessionId: () => SESSION_ID,
+      assertCurrent: () => undefined,
       admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 7, resetRequired: false })),
       bindings,
       launcher: harness.launcher,

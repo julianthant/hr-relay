@@ -8,17 +8,17 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/browser/onboarding-duo-provider.ts",
-    "sha256": "2c63de7dc1a35ce450aebb8527533a58d3f408e56700ce7a740432edb3962820",
+    "sha256": "77171ff75659e0aa8b995ef8fe9901c5d9fffc71f0cab2b806fe166697f7368f",
     "reason": "Failed UNKNOWN retention or failure-report callbacks retain both causes and leave attempt/browser closure unproved. Context or broker termination revokes the owner and settles the attempt; physical profile deletion waits for owner cleanup and keeps all private-path and native closure checks. Worker stop failure remains uncertain until pump/report settlement and enclosing browser closure are proved; replacement or relaunch remains refused after unproved cleanup."
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "d496771af5a1bbc30ac767fe4ea70cd24c6aeac2625795c319efc91efc8e3fef",
+    "sha256": "fbbb47581d6dbd136934729f43f27f1c2b762363a86ebcdd2dd50095d161f1f2",
     "reason": "Startup source-closure uncertainty records failed producer closure before unwind, retaining dependent database and admission custody. Selected-context open failure retains typed custody uncertainty and rethrows. Upgrade cleanup clears exclusiveOwner only after release. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and immediate stop promises, whose callers await and propagate failures before storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately. Required native browser closure failures follow the same upgrade rejection and custody-retention path."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "5bd506d55727f8afac19bad81c28a6725a41362970d64fcdaddd70519995b5a2",
+    "sha256": "68f12a2459f6959934a857dcba5ad17a62c772e12d7226cf1d25d3624c02da58",
     "reason": "The bound native open validates authority in one SQLite snapshot before protected values are read. Failed opening cleanup retains the actual native database, issued admission and both original/close errors as custody uncertainty. Other open failures close the actual database before admission release and aggregate cleanup errors. Runtime cleanup releases admission only after proven database and browser closure. Maintenance failure stops rescheduling and signals the worker stop controller; composition surfaces the failure. Actual root or inherited lifetime custody remains held through shutdown."
   },
   {
@@ -28,17 +28,17 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
       "path": "src/backend/storage/artifacts/content-addressed-artifact-writer.ts",
-      "sha256": "8f7b049c2d8625ca8d072fa1d5bdb27eba6acf0187b3530f8a4e79dc9937e54f",
+      "sha256": "dcdf682261c2bda36edcd48a41e2a510a01c00f64420f3053293e1cfb1889ce6",
       "reason": "Only ENOENT denotes no diagnostic stage directory (empty inventory, zero reclaimed stages or bytes) or an already absent captured file; all other errors rethrow. EEXIST verifies exact winner bytes; custody and cleanup failures throw or aggregate."
   },
   {
     "path": "src/backend/storage/sqlite/storage-doctor.ts",
-    "sha256": "4c4caa82a69ab726740576666d28eb766353953e9ad9c927a20e72bb07aee780",
-    "reason": "ENOENT alone denotes no backup directory; failed authority, credential, recovery or backup inspection publishes explicit unavailable, degraded or invalid health, and relocation-history verification failure makes restore unavailable."
+    "sha256": "33d005a81b249911e1aa17cb2c98c68942634da585755c62f8c12b68c559b671",
+    "reason": "ENOENT alone denotes no backup directory; failed authority, credential, recovery or backup inspection publishes explicit unavailable, degraded or invalid health, and failed logical backup identity verification makes restore unavailable."
   },
   {
     "path": "src/backend/app/composition/dashboard/notification-health.ts",
-    "sha256": "56ee76a497e98b2ea1c369b50d1ce84b70c6b33fd260315a775a9dab420996f0",
+    "sha256": "8daaad37d471b8375ffe38b3302b545baaaed4628c7e76c5c56466a52d859192",
     "reason": "Failure booleans trigger explicit failed health notifications; they never claim a healthy read."
   },
   {
@@ -68,7 +68,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "475b74df5e3ae89607887ec628d31966338d6df0443d5f2cb41fbbbe6ab05160",
+      "sha256": "c8ff6bacb2f7f05fbcaf5a273bc1cb6c3e18f3756490e00ea39bb5bd24d842ec",
     "reason": "Only ENOENT returns explicit path absence; callers check it before creation or refusal, and other filesystem failures rethrow. Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
   },
   {
@@ -113,22 +113,22 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "055ead0db94c3a2b1a0d2514d4d6df7e24066994d4562ea23a2d305491736c71",
+    "sha256": "2f6f12fdf14a09bcd81c3fdb26f08a4a7f0f266d63954a8e03724081a6ec32bd",
     "reason": "Failed constructor cleanup retains the actual native database and admission with both opening and close failures. Failed rollback retains database custody with the original failure; successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or named search refusal, never validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody releases; required native browser closure precedes cancellation."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
-    "sha256": "9d126991d2a6b2aae868121c86137f04626a2dac4c49c418b54ef963571ccfd4",
+    "sha256": "617dece9ee983ba7a688706584bee1dbc2c1fc57c10d6b13c3fb94eba920138c",
     "reason": "Only ENOENT returns absent source metadata; the caller rejects a missing main database and permits absent optional sidecars. Unsafe or changed sources throw. Construction and read failures rethrow after private cleanup; failed database close or snapshot disposal retains the resource owners and original causes as source-closure uncertainty, never a read result."
   },
   {
     "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
-    "sha256": "61467990efe4e97ded7b4f8af942880a1c93da793bc96e098e8daf404b4e26da",
+    "sha256": "81da3e5033cbc122260b7faf349de37f927de8a583d98cdd1a3eaffc87c80de2",
     "reason": "Unproved startup proof source closure retains the original opened resource, admission and process handles before any dependent cleanup. Failed admission releases custody only after the opened resource closes successfully; close and release failures retain custody and original errors. Descriptor-bound worker/recovery reads aggregate any read and close failures, then rethrow; receipt absence alone preserves ordinary stale-owner refusal. Restore-publication cleanup preserves primary failures and refuses uncertain closure; failed worker handoff marks custody uncertain before any replacement release."
   },
   {
     "path": "src/backend/systems/browser-shared/ucsd-sso.ts",
-    "sha256": "c3b38dbff40e3b3b1406f08e4cc230f97a71e820ac1b362859c823d5b6de1ca4",
+    "sha256": "4b4aceac9796ee6d65bb2197e33fe2e28ef8d482db8e3c302339df4dc21607cb",
     "reason": "The navigation rejection observer preserves the original promise raced by the training-reminder wait; the landing wait owns timeout and diagnosis. An empty diagnostic title accompanies LANDING_PROBE_UNAVAILABLE and a thrown BrowserLandingStallError with the original landing cause, never authenticated success. Probe uncertainty stays explicit; initiated clicks drain before settlement, and compound click, disposal and landing failures retain their causes."
   },
   {
@@ -148,17 +148,17 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/bootstrap/secure-env-bootstrap.ts",
-    "sha256": "5c842a5699e7d1cc055d523ac3b8486c8701f93cc418d0dc0ac7e8991c8b069c",
+    "sha256": "c4ce0816b7a4d9ce005da9d8ab03966886daa202f8234e0710768dd0637f1727",
     "reason": "The root listener or inherited lifetime is acquired before admission. Unproved source closure retains admission and rethrows; typed runtime or source-closure uncertainty retains the outer lifetime, while settled paths await its close. Stopped maintenance releases admission only when custody was not retained. No failed bootstrap becomes successful runtime admission. The real browser closure port is supplied to dashboard admission and offline cancellation without changing the failure-retention path."
   },
   {
     "path": "src/backend/storage/configuration/duo-credential-store.ts",
-    "sha256": "9870880d0a2bf0c71149f7b8a602e193585d94282497074458b934ef6a705bc0",
+    "sha256": "4f8e91e62e6729858ec94736b28d5ccd485f0e2cd05e2bf76250ed3b10479c62",
     "reason": "The census clears only parsed envelope metadata when arbitrary file bytes fail UTF-8, JSON or envelope validation; filesystem failures propagate. Matching canonical bytes or digest still classify the file unauthorized, and valid same-profile envelopes distinguish managed backups. Restore and erase refuse unauthorized copies; no canonical credential read or publication failure becomes success."
   },
   {
     "path": "src/backend/storage/sqlite/backup-inspection.ts",
-    "sha256": "361392559d62ba18705f8baf9a3843d69cd9eccaa48c9bb269d09c877a109ef6",
+    "sha256": "b66b5731012aa0bbc9359a5e158b0978059eed93970b09a9e505dc9f35c1143c",
     "reason": "Snapshot and database cleanup failures accumulate and rethrow as source-closure uncertainty; the empty list is the accumulator, and the original inspection error is never dropped."
   },
 ] as const;

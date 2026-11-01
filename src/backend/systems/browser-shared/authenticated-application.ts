@@ -26,14 +26,19 @@ function describeCause(error: unknown): string {
 
 // Require a nonempty session cookie on the exact expected domain without logging its value.
 export async function probeSessionCookie(page: Page, input: Readonly<{
+  assertCurrent: () => void;
   name: string;
   domainSuffix: string;
   issuer: string;
 }>): Promise<ObservedFact> {
+  input.assertCurrent();
   let issued: readonly { name: string; domain: string; value: string }[];
   try {
+    input.assertCurrent();
     issued = await page.context().cookies();
+    input.assertCurrent();
   } catch (error) {
+    input.assertCurrent();
     return {
       holds: false,
       detail: `the browser context store could not be read, so ${input.issuer} cannot be proven: ${describeCause(error)}`,
@@ -59,13 +64,18 @@ export async function probeSessionCookie(page: Page, input: Readonly<{
 
 // A failed absence probe is not proof that the sign-in form is absent.
 export async function probeAbsentControl(page: Page, input: Readonly<{
+  assertCurrent: () => void;
   selector: string;
   description: string;
 }>): Promise<ObservedFact> {
+  input.assertCurrent();
   let present: number;
   try {
+    input.assertCurrent();
     present = await page.locator(input.selector).count();
+    input.assertCurrent();
   } catch (error) {
+    input.assertCurrent();
     return {
       holds: false,
       detail: `${input.description} could not be probed, so its absence is unproven: ${describeCause(error)}`,
@@ -84,7 +94,9 @@ export async function assertAuthenticatedApplication(
 
   refusal = "the login could not prove the authenticated application",
 ): Promise<AuthenticatedApplicationEvidence> {
+  context.assertCurrent();
   const probe = await verify(context);
+  context.assertCurrent();
   if (!probe.authenticated) {
     throw new BrowserLoginError(system, "verify-landing", `${refusal}: ${probe.reason}`, context.page.url());
   }
@@ -108,24 +120,37 @@ export function defineVerifiedLoginRecipe(input: Readonly<{
   ceremony: (context: SystemLoginContext, token: DuoCeremonyLeaseToken) => Promise<void>;
 }>): SystemLoginRecipe {
   return async (context: SystemLoginContext): Promise<LoginResult> => {
-    const probe = async (): Promise<AuthenticationProbe> => input.verify(context);
+    context.assertCurrent();
+    const probe = async (): Promise<AuthenticationProbe> => {
+      context.assertCurrent();
+      const result = await input.verify(context);
+      context.assertCurrent();
+      return result;
+    };
     if ((await probe()).authenticated) {
       await assertAuthenticatedApplication(input.system, context, input.verify);
       return LoginResultSchema.parse("already-authenticated");
     }
+    context.assertCurrent();
     await input.navigate(context);
+    context.assertCurrent();
     if ((await probe()).authenticated) {
       await assertAuthenticatedApplication(input.system, context, input.verify);
       return LoginResultSchema.parse("already-authenticated");
     }
+    context.assertCurrent();
     await context.duoCeremony.withCeremony(async (token) => {
       const ceremony = async () => {
+        context.assertCurrent();
         await input.ceremony(context, token);
+        context.assertCurrent();
         await assertAuthenticatedApplication(input.system, context, input.verify);
+        context.assertCurrent();
       };
       if (context.withDuoSigningScope === undefined) await ceremony();
       else await context.withDuoSigningScope(token, ceremony);
     });
+    context.assertCurrent();
     return LoginResultSchema.parse("logged-in");
   };
 }

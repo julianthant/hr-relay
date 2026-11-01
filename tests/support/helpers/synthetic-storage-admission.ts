@@ -8,7 +8,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { AuthorityBackupService as RealAuthorityBackupService, verifyBackupManifestAtPath as realVerifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService as RealOfflineAuthorityRestoreService } from "../../../src/backend/storage/sqlite/offline-restore.js";
 import { backupStoppedAuthority as realBackupStoppedAuthority, upgradeStorage as realUpgradeStorage } from "../../../src/backend/storage/maintenance/upgrade.js";
-import { doctorAuthorityStorage as realDoctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
+import { summarizeBackupHealth as realSummarizeBackupHealth, doctorAuthorityStorage as realDoctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
 import type { composeStorageCommand as realComposeStorageCommand } from "../../../src/backend/app/composition/storage-compose.js";
 import { createCredentialStore as realCreateCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import type { composeTestDataCommand as realComposeTestDataCommand } from "../../../src/backend/app/test-data/compose.js";
@@ -72,8 +72,8 @@ export class OfflineAuthorityRestoreService extends RealOfflineAuthorityRestoreS
   }
 }
 
-export async function verifyBackupManifestAtPath(path: string, sourceIdentity?: string) {
-  return realVerifyBackupManifestAtPath(syntheticStateRoot(backupRoot(path)), path, sourceIdentity);
+export async function verifyBackupManifestAtPath(path: string) {
+  return realVerifyBackupManifestAtPath(syntheticStateRoot(backupRoot(path)), path);
 }
 
 export async function backupStoppedAuthority(browserClosure: ProfileBrowserClosure, stateRoot: string, clock: Parameters<typeof realBackupStoppedAuthority>[3],
@@ -90,6 +90,12 @@ export async function upgradeStorage(browserClosure: ProfileBrowserClosure, inpu
   return operation === undefined
     ? withOfflineMaintenance(admission, issued => realUpgradeStorage(browserClosure, admission, input, clock, issued))
     : realUpgradeStorage(browserClosure, admission, input, clock, operation);
+}
+
+export function summarizeBackupHealth(input: Parameters<typeof realSummarizeBackupHealth>[1], generation: number | undefined,
+  clock?: Parameters<typeof realSummarizeBackupHealth>[3]) {
+  const directory = (input as { backupDirectory: string }).backupDirectory;
+  return realSummarizeBackupHealth(syntheticStateRoot(backupRoot(join(directory, "copy.sqlite"))), input, generation, clock);
 }
 
 export async function doctorAuthorityStorage(options: Parameters<typeof realDoctorAuthorityStorage>[1], clock?: Parameters<typeof realDoctorAuthorityStorage>[2]) {

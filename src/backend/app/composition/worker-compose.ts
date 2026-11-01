@@ -442,7 +442,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   let protectedAuthority: ReturnType<typeof createCredentialStore>;
   try {
     selected.assertCurrent();
-    issued = machine.admitProfile(machine.issueRegisteredProfileClaim(selected.profileId));
+    issued = machine.admitProfile(selected.profileId);
     protectedAuthority = createCredentialStore({ admission: issued, stateRoot, erasureJournalAdmission: machine,
       erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
   } catch (error) {

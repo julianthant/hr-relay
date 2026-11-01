@@ -599,6 +599,7 @@ async function composeDashboardRuntimeStartup(
       liveGeneration = { state: "unavailable" };
     }
     return summarizeBackupHealth(
+      admission,
       { backupDirectory },
       liveGeneration.state === "known" ? liveGeneration.value : undefined,
       clock,
@@ -1064,9 +1065,9 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       const exclusive = acquireExclusiveRuntimeAdmission(context.workspace, input.lifetimeLock);
       exclusiveOwner = exclusive;
       try {
-        const claim = consumeAuthenticatedProfileUpgrade(authorization, exclusive);
-        const sourceVersion = readProfileDatabaseBinding(join(exclusive.stateRoot, "profiles", claim.profileId, "state.db")).schemaVersion;
-        const report = await upgradeReadyProfileStorage(profileBrowserClosure, exclusive, claim, { plan: false, hostFacts: facts }, clock);
+        const profileId = consumeAuthenticatedProfileUpgrade(authorization, exclusive);
+        const sourceVersion = readProfileDatabaseBinding(join(exclusive.stateRoot, "profiles", profileId, "state.db")).schemaVersion;
+        const report = await upgradeReadyProfileStorage(profileBrowserClosure, exclusive, profileId, { plan: false, hostFacts: facts }, clock);
         if (report.state !== "upgraded" || report.fromSchemaVersion !== sourceVersion || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-upgrade-readback-unproved");
       } catch (error) {
         if (!(error instanceof AuthoritySourceClosureUnprovedError)) {

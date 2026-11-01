@@ -2,7 +2,6 @@ import { assertRuntimeLifetimeHeld, runtimeLifetimeLock } from "../../../../supp
 import type { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import { composeProfileCredentialInventory } from "../../../../../src/backend/app/composition/profile-credential-inventory.js";
 import type { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
-import { createProfileRegistry } from "../../../../../src/backend/profiles/registry.js";
 import { createCredentialStore } from "../../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase as CanonicalAuthorityDatabase, AuthorityDatabaseOptionsSchema, AuthoritySchemaVersionError } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import type { Clock } from "../../../../../src/rules/time/clock.js";
@@ -49,7 +48,7 @@ function selectedProfile(fixture: Awaited<ReturnType<typeof createBoundProfileFi
   const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
   assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("startup fixture sign-in refused");
-  const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
+  const admission = machine.admitProfile(active.profileId);
   storage.admission = admission;
   const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
     erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${active.profileId}.json`) });
@@ -454,7 +453,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         at: clock.now().toISOString() });
       assert.equal(signedIn.state, "active");
       if (signedIn.state !== "active") throw new Error("corruption-fixture-signin-refused");
-      const admission = owner.machine.admitProfile(createProfileRegistry(owner.machine).storageClaim(signedIn.profileId));
+      const admission = owner.machine.admitProfile(signedIn.profileId);
       storage.admission = admission;
       const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: owner.machine,
         erasureJournalPath: join(owner.machine.stateRoot, "machine", "erasures", `${signedIn.profileId}.json`) });

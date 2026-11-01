@@ -1,5 +1,6 @@
+import { fsyncPath, privatePathRejects } from "../private-path.js";
 import { randomUUID } from "node:crypto";
-import { closeSync, constants, fstatSync, fsyncSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { privateEqual } from "../../../rules/validation/private-equal.js";
@@ -70,7 +71,7 @@ export function assertNoDuplicateKeys(text: string, label: string): void {
 
 export interface TestDataLocalAccess {
   readonly open: (path: string, flags: number) => number;
-  readonly inspect: (descriptor: number) => Readonly<{ isFile: () => boolean; mode: number; size: number }>;
+  readonly inspect: (descriptor: number) => Readonly<Pick<Stats, "isFile" | "isSymbolicLink" | "mode" | "uid" | "dev" | "ino" | "size">>;
   readonly read: (descriptor: number) => Buffer;
   readonly close: (descriptor: number) => void;
 }
@@ -104,7 +105,7 @@ export function readTestDataLocalConfig(
   try {
     const metadata = access.inspect(descriptor);
     if (!metadata.isFile()) throw new TestDataLocalConfigError(`${TEST_DATA_LOCAL_CONFIG_PATH} is not a regular file`);
-    if ((metadata.mode & 0o077) !== 0) {
+    if (privatePathRejects(localPath, metadata, "private")) {
       throw new TestDataLocalConfigError(`${TEST_DATA_LOCAL_CONFIG_PATH} must be private to its owner (mode 0600)`);
     }
     if (metadata.size > TEST_DATA_LOCAL_MAXIMUM_BYTES) {
@@ -255,15 +256,6 @@ export interface TestDataLocalWriteAccess extends TestDataLocalAccess {
   readonly rename: (from: string, to: string) => void;
   readonly remove: (path: string) => void;
   readonly randomUUID: () => string;
-}
-
-function fsyncPath(path: string): void {
-  const descriptor = openSync(path, constants.O_RDONLY);
-  try {
-    fsyncSync(descriptor);
-  } finally {
-    closeSync(descriptor);
-  }
 }
 
 const DEFAULT_LOCAL_WRITE_ACCESS: TestDataLocalWriteAccess = {

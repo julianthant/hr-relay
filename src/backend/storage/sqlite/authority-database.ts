@@ -1,8 +1,9 @@
+import { privatePathRejects } from "../private-path.js";
 import { clearOperationProofSlots, revalidateOperationProof, outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
 import { assertOfflineMaintenanceForProcessRoot, type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
-import { authoritySourceDatabaseIdentity } from "./database-identity.js";
+import { authoritySourceDatabaseIdentity, type AuthorityBackupExpectedSource } from "./database-identity.js";
 import { CanonicalCrashRecoveryRequestSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalClaimNextRequestSchema, WorkerStandingRecoveryRequestSchema, RunClaimOutcomeSchema, RunClaimRequestSchema, RunClaimTokenSchema, RunHeartbeatOutcomeSchema, RunHeartbeatRequestSchema, RunItemQuerySchema, RunPresentationRequestSchema, RunInjectPatchesRequestSchema, RunPriorityBumpRequestSchema, RunRequeueRequestSchema, RunResumeRequestSchema, RunTransitionRequestSchema, RunUpdateOutcomeSchema, StartPlanConsumeOutcomeSchema, StartPlanConsumeRequestSchema, WorkerControlRequestSchema, WorkerLifecycleRequestSchema, WorkerPoolPlanOutcomeSchema, WorkerPoolPlanRequestSchema, WorkerStartOutcomeSchema, WorkerStartRequestSchema, WorkerUpdateOutcomeSchema, type RunClaimOutcome, type RunHeartbeatOutcome, type RunUpdateOutcome, type StartPlanConsumeOutcome, type WorkerPoolPlanOutcome, type WorkerStartOutcome, type WorkerUpdateOutcome } from "./run-store-contracts.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
 import { retainAuthoritySourceClosure } from "../source-closure.js";
@@ -1185,7 +1186,7 @@ function removeRelocationCopyInspectionCompanions(path: string): void {
   for (const candidate of [`${path}-wal`, `${path}-shm`]) {
     const info = lstatSync(candidate, { throwIfNoEntry: false });
     if (info !== undefined && (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1
-      || (process.getuid && info.uid !== process.getuid()) || (info.mode & 0o022) !== 0
+      || privatePathRejects(candidate, info, "group-write")
       || (candidate.endsWith("-wal") && info.size !== 0))) {
       throw new Error("storage-relocation: stage authority inspection created unsafe companion");
     }
@@ -1330,7 +1331,7 @@ function readAuthorityUpgradeRecords(database: DatabaseSync) {
     .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
 }
 
-function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission: RuntimeAdmission, path: string, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string, expectedSourceDatabaseIdentity: string) => VerifiedBackup) {
+function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission: RuntimeAdmission, path: string, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string) => VerifiedBackup) {
   requireRuntimeAdmission(admission);
   const version = readIntPragma(database, "user_version");
   if (version === CURRENT_AUTHORITY_SCHEMA_VERSION) return inspectNormalAuthority(database);
@@ -1350,7 +1351,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
     if (backup === undefined || expectedFingerprint === undefined) throw new Error("upgrade-verified-backup-required");
     if (purpose === "ready") {
       if (verifyBackup === undefined) throw new Error("stopped-backup-verifier-required");
-      const verified = verifyBackup(admission, backup.manifestPath, AuthorityDatabase.sourceDatabaseIdentity(path));
+      const verified = verifyBackup(admission, backup.manifestPath);
       if (canonicalJsonStringify(verified) !== canonicalJsonStringify(backup)
         || verified.manifest.installationId !== binding.installationId || verified.manifest.profileId !== binding.profileId) throw new Error("profile-stopped-upgrade-backup-changed");
     }
@@ -1754,11 +1755,12 @@ export class AuthorityDatabase implements Disposable {
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
     credentials?: CredentialStore,
-    purpose: "ordinary" | "profile-initialization" | "stopped-restore-projection" = "ordinary",
+    purpose: "ordinary" | "profile-initialization" | "stopped-restore-projection" | "stopped-span-root-repair" = "ordinary",
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
-    this.#admission.assertAuthorityDatabase(options.path);
+    if (purpose === "stopped-span-root-repair") this.#admission.assertReadOnlyAuthorityDatabase(options.path);
+    else this.#admission.assertAuthorityDatabase(options.path);
     if (credentials !== undefined) assertCredentialStoreOwner(credentials, this.#admission);
     const binding = this.#admission.profileBinding;
     const existed = options.path !== ":memory:" && existsSync(options.path);
@@ -1772,7 +1774,7 @@ export class AuthorityDatabase implements Disposable {
     if (existed) {
       requireDatabaseSourcePath(options.path);
       const identity = lstatSync(options.path);
-      if (!identity.isFile() || identity.nlink !== 1 || (process.getuid !== undefined && identity.uid !== process.getuid())) throw new Error("profile-database-identity-invalid");
+      if (!identity.isFile() || identity.nlink !== 1 || privatePathRejects(options.path, identity, "owner")) throw new Error("profile-database-identity-invalid");
     }
     if (existed && statSync(options.path).size === 0) {
       throw new Error(`authority database ${options.path} exists but is empty; refusing to replace it`);
@@ -1910,7 +1912,7 @@ export class AuthorityDatabase implements Disposable {
   static readProfileRestoreBrowserInventory(admission: RuntimeAdmission, processLockRoot: string, restore: OfflineMaintenanceOperation) {
     const owner = requireRuntimeAdmission(admission), path = join(owner.stateRoot, "state.db");
     const assertHeld = () => {
-      owner.assertExclusive(); owner.assertProfileRuntime();
+      owner.assertStoppedProfile(restore);
       const context = owner.readInstallationContext();
       if (context === undefined) throw new Error("profile-restore-context-required");
       owner.assertFixedProcessLockRoot(context.workspace, processLockRoot);
@@ -2043,6 +2045,13 @@ export class AuthorityDatabase implements Disposable {
     return new AuthorityDatabase(admission, options, clock, undefined, undefined, undefined, undefined, "stopped-restore-projection");
   }
 
+  static openStoppedSpanRootRepair(admission: RuntimeAdmission, input: unknown, operation: OfflineMaintenanceOperation, clock: Clock = systemClock): AuthorityDatabase {
+    admission.assertStoppedProfile(operation);
+    const options = AuthorityDatabaseOptionsSchema.parse(input);
+    if (options.path !== join(admission.stateRoot, "state.db") || options.openMode !== "read-write") throw new Error("profile-span-root-repair-path-refused");
+    return new AuthorityDatabase(admission, options, clock, undefined, undefined, undefined, undefined, "stopped-span-root-repair");
+  }
+
   static initializeProfile(admission: RuntimeAdmission, clock: Clock = systemClock): void {
     admission.assertProfileInitialization();
     const path = join(admission.stateRoot, "state.db");
@@ -2051,8 +2060,8 @@ export class AuthorityDatabase implements Disposable {
     database.close();
   }
 
-  static sourceDatabaseIdentity(path: string): string {
-    return authoritySourceDatabaseIdentity(path);
+  static sourceDatabaseIdentity(source: AuthorityBackupExpectedSource): string {
+    return authoritySourceDatabaseIdentity(source);
   }
 
   static inspectExistingReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
@@ -2089,7 +2098,7 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  static upgradeStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string, expectedSourceDatabaseIdentity: string) => VerifiedBackup) {
+  static upgradeStopped(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string) => VerifiedBackup) {
     requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
     const before = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
     if (before.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return before;
@@ -2222,7 +2231,8 @@ export class AuthorityDatabase implements Disposable {
   }
 
   getSourceDatabaseIdentity(): string {
-    return AuthorityDatabase.sourceDatabaseIdentity(this.#path);
+    this.#assertOpen();
+    return AuthorityDatabase.sourceDatabaseIdentity(this.#admission.authorityBackupExpectedSource());
   }
 
   async onlineBackupTo(destinationPath: string): Promise<number> {
@@ -2291,9 +2301,15 @@ export class AuthorityDatabase implements Disposable {
     return this.#withReadSnapshot(() => readManagedArtifactReferencesFromDatabase(this.#database, candidate));
   }
 
-  reclaimPendingDiagnostics(): number {
-    return this.withAuthorityTransaction(() => reclaimDiagnosticStages(this.#admission,
-      ref => this.readManagedArtifactReferences(ref).length > 0));
+  static reclaimStoppedDiagnostics(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock,
+    operation: OfflineMaintenanceOperation): number {
+    requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
+    admission.assertOfflineMaintenance(operation);
+    return withAuthorityDatabaseReadOnly(admission, path, database => {
+      const inspection = inspectNormalAuthority(database), binding = admission.profileBinding;
+      if (inspection.installationId !== binding.installationId || inspection.profileId !== binding.profileId) throw new Error("profile-maintenance-binding-mismatch");
+      return reclaimDiagnosticStages(admission, ref => readManagedArtifactReferencesFromDatabase(database, ref).length > 0, operation);
+    });
   }
 
   sweepOrdinaryDiagnostics(now: string): Readonly<{ purged: readonly string[]; retainedBytes: number }> {
@@ -3361,6 +3377,7 @@ export class AuthorityDatabase implements Disposable {
 
   #assertOpen(): void {
     if (this.#closed || !this.#database.isOpen) throw new Error("authority database is closed");
+    this.#admission.assertLive();
     const expected = this.#admission.profileBinding;
     const actual = ProfileDatabaseBindingSchema.parse(this.#database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get());
     if (actual.installationId !== expected.installationId || actual.profileId !== expected.profileId) throw new Error("profile-database-binding-mismatch");

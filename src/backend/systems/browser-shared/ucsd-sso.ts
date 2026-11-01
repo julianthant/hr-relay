@@ -31,30 +31,41 @@ const DUO_TERMINAL_REFUSAL_PATTERN = /login request .*(?:canceled|cancelled) or 
 export function abortIfCancelled(
   system: BrowserSystemId,
   step: BrowserLoginStep,
-  context: Pick<SystemLoginContext, "page" | "signal">,
+  context: Pick<SystemLoginContext, "page" | "signal" | "assertCurrent">,
 ): void {
+  context.assertCurrent();
   if (!context.signal.aborted) return;
   throw new BrowserLoginError(system, step, "the session was cancelled", context.page.url());
 }
 
 // Playwright waits take no AbortSignal; race cancellation so the session can release promptly.
 export async function raceCancellation<Result>(
-  operation: Promise<Result>,
+  operation: () => Promise<Result>,
   system: BrowserSystemId,
   step: BrowserLoginStep,
-  context: Pick<SystemLoginContext, "page" | "signal">,
+  context: Pick<SystemLoginContext, "page" | "signal" | "assertCurrent">,
 ): Promise<Result> {
   abortIfCancelled(system, step, context);
   let removeListener = (): void => undefined;
   const cancelled = new Promise<never>((_resolve, reject) => {
     const listener = (): void => {
+      try { context.assertCurrent(); } catch (error) {
+        reject(error instanceof Error ? error : new Error("Browser session authority refused", { cause: error }));
+        return;
+      }
       reject(new BrowserLoginError(system, step, "the session was cancelled", context.page.url()));
     };
     context.signal.addEventListener("abort", listener, { once: true });
     removeListener = (): void => context.signal.removeEventListener("abort", listener);
   });
   try {
-    return await Promise.race([operation, cancelled]);
+    const owned = Promise.resolve().then(() => {
+      abortIfCancelled(system, step, context);
+      return operation();
+    });
+    const result = await Promise.race([owned, cancelled]);
+    abortIfCancelled(system, step, context);
+    return result;
   } finally {
     removeListener();
   }
@@ -86,6 +97,7 @@ function passwordField(page: Page): Locator {
 export async function submitOnboardingSsoCredentials(page: Page,
   acquire: () => Promise<Readonly<{ userId: string; password: string }>>,
   assertCurrent: () => void, timeout: number): Promise<void> {
+  assertCurrent();
   const url = page.url(), path = "/tritON/profile/SAML2/Redirect/SSO";
   const allowed = (value: string) => {
     const parsed = URL.parse(value);
@@ -148,13 +160,18 @@ export function ssoSubmitButton(page: Page): Locator {
 }
 
 
-export async function isSsoFormPresent(page: Page): Promise<boolean> {
-  return await ssoSubmitButton(page).count() > 0;
+export async function isSsoFormPresent(page: Page, assertCurrent: () => void): Promise<boolean> {
+  assertCurrent();
+  const count = await ssoSubmitButton(page).count();
+  assertCurrent();
+  return count > 0;
 }
 
 
-async function probeSsoFormAbsent(page: Page): Promise<ObservedFact> {
+async function probeSsoFormAbsent(page: Page, assertCurrent: () => void): Promise<ObservedFact> {
+  assertCurrent();
   return probeAbsentControl(page, {
+    assertCurrent,
     selector: `${SSO_SUBMIT_SELECTOR}, ${SSO_USERNAME_SELECTOR}`,
     description: "the UCSD TritON SSO form",
   });
@@ -166,14 +183,17 @@ export async function waitForSsoForm(
   context: SystemLoginContext,
   token: DuoCeremonyLeaseToken,
 ): Promise<void> {
+  context.assertCurrent();
   assertDuoCeremonyLeaseToken(token, { system });
+  context.assertCurrent();
   await raceCancellation(
-    ssoSubmitButton(context.page)
+    () => ssoSubmitButton(context.page)
       .waitFor({ state: "visible", timeout: context.config.timeouts.navigationMs }),
     system,
     "sso-form",
     context,
   ).catch((error: unknown) => {
+    context.assertCurrent();
     if (error instanceof BrowserLoginError) throw error;
     throw new BrowserLoginError(
       system,
@@ -183,6 +203,7 @@ export async function waitForSsoForm(
       { cause: error },
     );
   });
+  context.assertCurrent();
 }
 
 
@@ -191,17 +212,25 @@ export async function fillSsoCredentials(
   context: SystemLoginContext,
   token: DuoCeremonyLeaseToken,
 ): Promise<void> {
+  context.assertCurrent();
   assertDuoCeremonyLeaseToken(token, { system });
   const timeout = context.config.timeouts.navigationMs;
 
+  context.assertCurrent();
   await requireMatchedField(system, context, usernameField(context.page), "username", SSO_USERNAME_SELECTOR);
+  context.assertCurrent();
   await requireMatchedField(system, context, passwordField(context.page), "password", SSO_PASSWORD_SELECTOR);
+  context.assertCurrent();
   try {
     await usernameField(context.page).fill(context.credentials.userId, { timeout });
+    context.assertCurrent();
     recordBrowserAction("typed", "ucsd.sso.username");
+    context.assertCurrent();
     await passwordField(context.page).fill(context.credentials.password, { timeout });
+    context.assertCurrent();
     recordBrowserAction("typed", "ucsd.sso.password");
   } catch (error) {
+    context.assertCurrent();
     throw new BrowserLoginError(
       system,
       "credential-fill",
@@ -219,10 +248,14 @@ async function requireMatchedField(
   role: "username" | "password",
   anchors: string,
 ): Promise<void> {
+  context.assertCurrent();
   let matches: number;
   try {
+    context.assertCurrent();
     matches = await field.count();
+    context.assertCurrent();
   } catch (error) {
+    context.assertCurrent();
     throw new BrowserLoginError(
       system,
       "credential-fill",
@@ -246,13 +279,17 @@ export async function submitSsoForm(
   context: SystemLoginContext,
   token: DuoCeremonyLeaseToken,
 ): Promise<void> {
+  context.assertCurrent();
 
   assertDuoCeremonyLeaseToken(token, { system });
   abortIfCancelled(system, "sso-submit", context);
   try {
+    context.assertCurrent();
     await ssoSubmitButton(context.page).click({ timeout: context.config.timeouts.navigationMs });
+    context.assertCurrent();
     recordBrowserAction("clicked", "ucsd.sso.submit");
   } catch (error) {
+    context.assertCurrent();
     throw new BrowserLoginError(
       system,
       "sso-submit",
@@ -268,20 +305,28 @@ function duoTerminalRefusalLocator(page: Page): Locator {
 }
 
 // Only a terminal refusal settles this arm; the parallel landing wait owns its timeout.
-async function observeDuoTerminalRefusal(page: Page, timeoutMs: number): Promise<"duo-refused"> {
+async function observeDuoTerminalRefusal(page: Page, timeoutMs: number, assertCurrent: () => void): Promise<"duo-refused"> {
+  assertCurrent();
   try {
     await duoTerminalRefusalLocator(page).waitFor({ state: "visible", timeout: timeoutMs });
+    assertCurrent();
   } catch {
+    assertCurrent();
     return await new Promise<"duo-refused">(() => undefined);
   }
   return "duo-refused";
 }
 
-async function observeStaleRequest(page: Page, timeoutMs: number): Promise<"stale-request"> {
+async function observeStaleRequest(page: Page, timeoutMs: number, assertCurrent: () => void): Promise<"stale-request"> {
+  assertCurrent();
   try {
     await page.getByText(STALE_REQUEST_TEXT).first().waitFor({ state: "visible", timeout: timeoutMs });
+    assertCurrent();
     if (URL.parse(page.url())?.hostname === "a5.ucsd.edu") return "stale-request";
-  } catch { /* The landing arm owns timeout and diagnosis. */ }
+  } catch {
+    assertCurrent();
+  }
+  assertCurrent();
   return await new Promise<"stale-request">(() => undefined);
 }
 
@@ -293,14 +338,19 @@ async function observeTrainingReminder(
   isWaiting: () => boolean,
   ownClick: (operation: Promise<void>) => void,
 ): Promise<"TRAINING_REMINDER_REPEATED"> {
+  context.assertCurrent();
   const control = context.page.locator(TRAINING_REMINDER_SELECTOR).first();
   const remaining = (): number => Math.max(1, deadline - systemClock.monotonicMs());
   try {
+    context.assertCurrent();
     await control.waitFor({ state: "visible", timeout: remaining() });
+    context.assertCurrent();
   } catch {
+    context.assertCurrent();
     return await new Promise<"TRAINING_REMINDER_REPEATED">(() => undefined);
   }
   if (!isWaiting() || URL.parse(context.page.url())?.hostname !== "a5.ucsd.edu") {
+    context.assertCurrent();
     return await new Promise<"TRAINING_REMINDER_REPEATED">(() => undefined);
   }
   const navigated = context.page.waitForEvent("framenavigated", {
@@ -308,13 +358,17 @@ async function observeTrainingReminder(
   });
   void navigated.catch(() => undefined);
   const click = (async (): Promise<void> => {
+    context.assertCurrent();
     try {
       const element = await control.elementHandle({ timeout: remaining() });
       if (element === null) throw new Error("training reminder control disappeared");
       let clickFailure: unknown;
       try {
+        context.assertCurrent();
         if (!isWaiting() || URL.parse(context.page.url())?.hostname !== "a5.ucsd.edu") return;
+        context.assertCurrent();
         await element.click({ timeout: remaining() });
+        context.assertCurrent();
         recordBrowserAction("clicked", "ucsd.sso.training-reminder-continue");
       } catch (error) {
         clickFailure = error;
@@ -331,14 +385,24 @@ async function observeTrainingReminder(
   })();
   ownClick(click);
   await click;
+  context.assertCurrent();
   if (!isWaiting()) return await new Promise<"TRAINING_REMINDER_REPEATED">(() => undefined);
   try {
+    context.assertCurrent();
     await Promise.race([navigated, control.waitFor({ state: "hidden", timeout: remaining() })]);
-    if (isWaiting()) await control.waitFor({ state: "visible", timeout: remaining() });
+    context.assertCurrent();
+    if (isWaiting()) {
+      context.assertCurrent();
+      await control.waitFor({ state: "visible", timeout: remaining() });
+      context.assertCurrent();
+    }
     if (isWaiting() && URL.parse(context.page.url())?.hostname === "a5.ucsd.edu") {
       return "TRAINING_REMINDER_REPEATED";
     }
-  } catch { /* The landing arm owns timeout and diagnosis. */ }
+  } catch {
+    context.assertCurrent();
+  }
+  context.assertCurrent();
   return await new Promise<"TRAINING_REMINDER_REPEATED">(() => undefined);
 }
 
@@ -350,6 +414,7 @@ export async function waitForAuthenticatedLanding(
   landed: (url: string) => boolean,
   timeoutMs: number,
 ): Promise<void> {
+  context.assertCurrent();
   assertDuoCeremonyLeaseToken(token, { system });
   const remaining = context.acquisitionRemainingMs?.() ?? timeoutMs + 1_000;
   const landingMs = Math.max(1, Math.min(timeoutMs, remaining - Math.min(1_000, remaining / 2)));
@@ -359,12 +424,13 @@ export async function waitForAuthenticatedLanding(
   const isWaiting = (): boolean => waiting && !context.signal.aborted
     && systemClock.monotonicMs() < deadline && !landed(context.page.url());
   try {
+    context.assertCurrent();
     const result = await raceCancellation(
-      Promise.race<"landed" | "duo-refused" | "stale-request" | "TRAINING_REMINDER_REPEATED">([
+      () => Promise.race<"landed" | "duo-refused" | "stale-request" | "TRAINING_REMINDER_REPEATED">([
         context.page.waitForURL((url) => landed(url.href), { timeout: landingMs })
           .then(() => "landed"),
-        observeDuoTerminalRefusal(context.page, landingMs),
-        observeStaleRequest(context.page, landingMs),
+        observeDuoTerminalRefusal(context.page, landingMs, context.assertCurrent),
+        observeStaleRequest(context.page, landingMs, context.assertCurrent),
         observeTrainingReminder(system, context, deadline, isWaiting, operation => { activeClick = operation; }),
       ]),
       system,
@@ -400,18 +466,22 @@ export async function waitForAuthenticatedLanding(
     }
   } catch (error) {
     if (error instanceof BrowserLoginError) throw error;
+    context.assertCurrent();
     const observed = URL.parse(context.page.url());
     let title = "";
     let diagnosis: BrowserLandingStallCode | "duo-refused" = "LANDING_PROBE_UNAVAILABLE";
     const budget = Math.max(1, Math.min(900, (context.acquisitionRemainingMs?.() ?? 1_000) - 100));
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const result = await raceCancellation(Promise.race([
+      context.assertCurrent();
+      const result = await raceCancellation(() => Promise.race([
         Promise.all([describeStalledLanding(context), context.page.title()]),
         new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("landing diagnosis deadline")), budget); }),
       ]), system, "duo-clearance", context);
+      context.assertCurrent();
       [diagnosis, title] = result;
     } catch (probeError) {
+      context.assertCurrent();
       if (context.signal.aborted) throw probeError;
     } finally {
       clearTimeout(timer);
@@ -428,21 +498,35 @@ export async function waitForAuthenticatedLanding(
 }
 
 async function describeStalledLanding(
-  context: Pick<SystemLoginContext, "page">,
+  context: Pick<SystemLoginContext, "page" | "assertCurrent">,
 ): Promise<BrowserLandingStallCode | "duo-refused"> {
+  context.assertCurrent();
   try {
-    if (URL.parse(context.page.url())?.hostname === "a5.ucsd.edu"
-      && await context.page.getByText(STALE_REQUEST_TEXT).count() > 0) return "SHIBBOLETH_STALE_REQUEST";
+    if (URL.parse(context.page.url())?.hostname === "a5.ucsd.edu") {
+      const count = await context.page.getByText(STALE_REQUEST_TEXT).count();
+      context.assertCurrent();
+      if (count > 0) return "SHIBBOLETH_STALE_REQUEST";
+    }
     const host = URL.parse(context.page.url())?.hostname;
     if (host === DUO_HOST || host?.endsWith(`.${DUO_HOST}`)) {
       try {
-        if (await duoTerminalRefusalLocator(context.page).count() > 0) return "duo-refused";
-      } catch { return "DUO_REFUSAL_UNPROVEN"; }
+        context.assertCurrent();
+        const count = await duoTerminalRefusalLocator(context.page).count();
+        context.assertCurrent();
+        if (count > 0) return "duo-refused";
+      } catch {
+        context.assertCurrent();
+        return "DUO_REFUSAL_UNPROVEN";
+      }
       return "DUO_PROMPT_STALLED";
     }
-    if (await isSsoFormPresent(context.page)) return "SSO_FIRST_FACTOR_REJECTED";
+    if (await isSsoFormPresent(context.page, context.assertCurrent)) return "SSO_FIRST_FACTOR_REJECTED";
+    context.assertCurrent();
     return "AUTHENTICATED_LANDING_MISSING";
-  } catch { return "LANDING_PROBE_UNAVAILABLE"; }
+  } catch {
+    context.assertCurrent();
+    return "LANDING_PROBE_UNAVAILABLE";
+  }
 }
 
 
@@ -450,20 +534,28 @@ export async function verifyUcsdAuthenticatedApplication(
   system: BrowserSystemId,
   page: Page,
   input: Readonly<{
+    assertCurrent: () => void;
     urlIsApplication: (url: string) => boolean;
     urlRefusal: string;
     positive: () => Promise<ObservedFact>;
     additionalAbsences?: readonly (() => Promise<ObservedFact>)[];
   }>,
 ): Promise<AuthenticationProbe> {
+  input.assertCurrent();
   const url = page.url();
   if (!input.urlIsApplication(url)) return { authenticated: false, reason: input.urlRefusal };
 
+  input.assertCurrent();
   const positive = await input.positive();
+  input.assertCurrent();
   if (!positive.holds) return { authenticated: false, reason: positive.detail };
 
-  const absences = [await probeSsoFormAbsent(page)];
-  for (const absence of input.additionalAbsences ?? []) absences.push(await absence());
+  const absences = [await probeSsoFormAbsent(page, input.assertCurrent)];
+  for (const absence of input.additionalAbsences ?? []) {
+    input.assertCurrent();
+    absences.push(await absence());
+  }
+  input.assertCurrent();
   const present = absences.find((fact) => !fact.holds);
   if (present !== undefined) return { authenticated: false, reason: present.detail };
 

@@ -469,7 +469,7 @@ const BACKUP_VERIFICATION = {
 };
 const BACKUP_MANIFEST = {
   kind: "hrauto-authority-backup",
-  manifestVersion: 3,
+  manifestVersion: 4,
   backupFileName: "authority-g4.sqlite",
   sourceDatabaseIdentity: HASH_B,
   applicationId: 1_217_249_861,

@@ -38,12 +38,19 @@ export const ProfileRegistryRowSchema = z.strictObject({
 export type ProfileRegistryRow = z.infer<typeof ProfileRegistryRowSchema>;
 
 export const ProfileRegistryDocumentSchema = z.strictObject({
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(3),
+  installationId: z.uuid(),
+  revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   profiles: z.array(ProfileRegistryRowSchema),
   sessionGeneration: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   activeProfileId: ProfileIdSchema.nullable(),
 });
 export type ProfileRegistryDocument = z.infer<typeof ProfileRegistryDocumentSchema>;
+
+export function advanceProfileRegistryDocument(current: ProfileRegistryDocument,
+  patch: Partial<Omit<ProfileRegistryDocument, "schemaVersion" | "installationId" | "revision">>): ProfileRegistryDocument {
+  return ProfileRegistryDocumentSchema.parse({ ...current, ...patch, schemaVersion: current.schemaVersion, installationId: current.installationId, revision: current.revision + 1 });
+}
 
 export const ProfileAuthoritySnapshotSchema = z.strictObject({
   profileId: ProfileIdSchema,

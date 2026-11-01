@@ -1,3 +1,4 @@
+import { fsyncPath, writePrivateStage, replacePrivateFile } from "../private-path.js";
 import { randomUUID } from "node:crypto";
 import { lstatSync, readdirSync, type Stats } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
@@ -9,7 +10,7 @@ import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { observeProcessIdentity } from "../sqlite/runtime-process-locks.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 
-import { ChatGptCredentialLockSchema as LockSchema, CREDENTIAL_DIRECTORY_MODE, noSymlinkAncestry, statDirectory, ensureChildDirectory, removeExactPath, readPrivateFile, fsyncPath, createPrivateLock, writePrivateStage, replacePrivateFile, companionCredentialEntries, type DirectoryIdentity } from "./credential-safe-file.js";
+import { ChatGptCredentialLockSchema as LockSchema, CREDENTIAL_DIRECTORY_MODE, noSymlinkAncestry, statDirectory, ensureChildDirectory, removeExactPath, readPrivateFile, createPrivateLock, companionCredentialEntries, type DirectoryIdentity } from "./credential-safe-file.js";
 const MAX_BYTES = 64_000;
 const text = z.string().min(1).max(16_384);
 const ClientIdSchema = z.string().regex(/^oaiapp_[A-Za-z0-9_-]+$/u);

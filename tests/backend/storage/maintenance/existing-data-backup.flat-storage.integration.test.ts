@@ -87,8 +87,18 @@ it("backs up an adopted native6 flat source without login, preserves source iden
     const manifest = report.manifests[0]; assert.ok(manifest);
     admission.release();
     admission = await acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime);
-    const verified = verifyStoppedBackupManifestAtPath(admission, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), AuthorityDatabase.sourceDatabaseIdentity(f.databasePath));
+    const verified = verifyStoppedBackupManifestAtPath(admission, join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`));
     assert.equal(verified.manifest.schemaVersion, 6); assert.equal(verified.manifest.installationId, undefined); assert.equal(verified.manifest.profileId, undefined);
+    assert.equal(verified.manifest.sourceDatabaseIdentity, verified.manifest.authorityContentFingerprint);
+    const manifestBytes = readFileSync(verified.manifestPath);
+    try {
+      writeFileSync(verified.manifestPath, JSON.stringify({ ...verified.manifest, sourceDatabaseIdentity: "f".repeat(64) }));
+      assert.equal(verifyStoppedBackupManifestAtPath(admission, verified.manifestPath).manifest.authorityContentFingerprint,
+        verified.manifest.authorityContentFingerprint);
+      writeFileSync(verified.manifestPath, JSON.stringify({ ...verified.manifest, authorityContentFingerprint: "e".repeat(64),
+        verification: { ...verified.manifest.verification, authorityContentFingerprint: "e".repeat(64) } }));
+      assert.throws(() => verifyStoppedBackupManifestAtPath(admission, verified.manifestPath), /backup-predecessor-source-mismatch/u);
+    } finally { writeFileSync(verified.manifestPath, manifestBytes); }
     const record = JSON.parse(readFileSync(report.coupledBackup.backupPath, "utf8")) as { claimId?: string; profileId?: string; files: { path: string }[] };
     assert.equal(record.claimId, undefined); assert.equal(record.profileId, undefined);
     for (const path of ["profile/credentials/protected.json", "control/installation.json", "workspace-data/reports/historical-report.csv", `profile/artifacts/${f.artifact.split("/").at(-1) ?? ""}`]) assert.ok(record.files.some(entry => entry.path === path), path);

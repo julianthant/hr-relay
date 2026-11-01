@@ -71,7 +71,7 @@ describe("cold login action note secrecy", () => {
         const operation = gate.withCeremony(token => withBrowserActionNotes(clock, async () => {
           await fillSsoCredentials("ucpath", { page, config: ConfigSchema.parse(CONFIG_SNAPSHOT.config), credentials,
             instance: "prod", label: "synthetic-cold-login", signal: SIGNAL, duoCeremony: gate,
-            recordEvidence: () => undefined }, token);
+            assertCurrent: () => undefined, recordEvidence: () => undefined }, token);
           if (failed) throw new Error("synthetic downstream login failure");
         }, actions => {
           capturedBytes = JSON.stringify(actions);

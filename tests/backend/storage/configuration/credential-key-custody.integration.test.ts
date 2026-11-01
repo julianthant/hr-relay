@@ -1,3 +1,5 @@
+import { writeStoppedProfileControlPredecessor } from "../../../support/fixtures/storage/stopped-profile-control-predecessor.js";
+import { readProfilePublicationRegistry, type ProfilePublicationRead } from "../../../../src/backend/storage/admission/installation.js";
 import { z } from "zod";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import assert from "node:assert/strict";
@@ -21,15 +23,20 @@ import { composeStoppedControlCredentialInventory } from "../../../../src/backen
 import { createHistoricalIncompleteProfileFixture } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 
-function initializePendingCredentials(f: Awaited<ReturnType<typeof createBoundProfileFixture>>, hooks?: Parameters<typeof createCredentialStore>[0]["hooks"]): void {
+function initializePendingCredentials(f: Awaited<ReturnType<typeof createBoundProfileFixture>>, hooks?: Parameters<typeof createCredentialStore>[0]["hooks"], observePublication?: (scope: ProfilePublicationRead | undefined) => void): void {
   if (!existsSync(f.path)) AuthorityDatabase.initializeProfile(f.admission);
   const operationPath = join(f.machine.stateRoot, "machine", "operations");
   const name = readdirSync(operationPath)[0]; assert.ok(name);
   const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(operationPath, name), "utf8")));
   const store = createCredentialStore({ hooks, admission: f.admission, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
     erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${f.admission.profileBinding.profileId}.json`),
-    initializationInventory: (current, writer, copies) => composeProfileCredentialInitializationInventory({ machine: f.machine,
-      admission: f.admission, clock: systemClock, hostFacts: { primaryDisplay: null } })(current, writer, copies) });
+    initializationInventory: (current, writer, copies) => {
+      const inventory = composeProfileCredentialInitializationInventory({ machine: f.machine,
+        admission: f.admission, clock: systemClock, hostFacts: { primaryDisplay: null } })(current, writer, copies);
+      return { ...inventory, revalidateBeforeKeyIntent(scope) {
+        observePublication?.(scope); inventory.revalidateBeforeKeyIntent(scope);
+      } };
+    } });
   store.migrateHistory({ operation });
 }
 
@@ -135,7 +142,7 @@ it("migrates a stopped installation at startup, retains readable ciphertext and 
     writeFileSync(controlPath, JSON.stringify(control)); writeFileSync(keyPath, legacy);
     credentialKeyCustody.delete(binding);
     const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
-    const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(binding.profileId));
+    const admission = machine.admitProfile(binding.profileId);
     try {
       const store = createCredentialStore({ admission, stateRoot: f.stateRoot, erasureJournalAdmission: machine,
         erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${binding.profileId}.json`) });
@@ -272,6 +279,7 @@ it("migrates an original schema-1 key before supported stopped prior-control con
   const f = await createHistoricalIncompleteProfileFixture();
   try {
     const key = credentialKeyCustody.read(JSON.parse(readFileSync(f.keyPath, "utf8"))), legacy = Buffer.from(encodePrivate(key)), identity = statSync(f.keyPath);
+    const currentRegistry = writeStoppedProfileControlPredecessor(f, 1);
     const current = z.looseObject({ erasures: z.array(z.looseObject({ credentialKey: z.looseObject({ file: z.looseObject({ digest: z.string() }) }) })) })
       .parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
     const { duo: _duo, completedRestores: _completedRestores, ...prior } = current;
@@ -280,7 +288,7 @@ it("migrates an original schema-1 key before supported stopped prior-control con
     writeFileSync(f.markerPath, JSON.stringify({ schemaVersion: 2 }));
     writeFileSync(f.keyPath, legacy);
     credentialKeyCustody.delete(key);
-    const before = [f.registryPath, f.verifierPath, f.protectedPath, f.databasePath].map(path => ({ path, bytes: readFileSync(path) }));
+    const before = [f.registryPath, f.verifierPath, f.protectedPath, f.databasePath].map(path => ({ path, bytes: path === f.registryPath ? currentRegistry : readFileSync(path) }));
     const control = readFileSync(f.controlPath), marker = readFileSync(f.markerPath);
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
     try {
@@ -309,6 +317,7 @@ it("refuses a changed legacy key witness during stopped prior-control admission 
   try {
     const key = credentialKeyCustody.read(JSON.parse(readFileSync(f.keyPath, "utf8")));
     const legacy = Buffer.from(encodePrivate(key));
+    writeStoppedProfileControlPredecessor(f, 1);
     const current = z.looseObject({ erasures: z.array(z.looseObject({ credentialKey: z.looseObject({ file: z.looseObject({ digest: z.string() }) }) })) })
       .parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
     const { duo: _duo, completedRestores: _completedRestores, ...prior } = current;
@@ -322,5 +331,46 @@ it("refuses a changed legacy key witness during stopped prior-control admission 
     assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime), { code: "CREDENTIAL_KEYCHAIN_MISMATCH" });
     assert.deepEqual(paths.map(path => readFileSync(path)), before);
     assert.deepEqual(FakeKeyringEntry.snapshot(), entries);
+  } finally { await f.close(); }
+});
+
+
+it("keeps setup current inside its genuine key publication and refuses foreign or expired publication scopes", async () => {
+  const f = await createBoundProfileFixture({ pending: "storage" });
+  const scopes: ProfilePublicationRead[] = [];
+  let checkedPendingIntent = false;
+  const registry = f.machine.readProfileRegistry();
+  try {
+    initializePendingCredentials(f, undefined, scope => {
+      if (scope === undefined) return;
+      assert.deepEqual(readProfilePublicationRegistry(scope), registry);
+      assert.throws(() => scope.assertOperation(f.machine.stateRoot, randomUUID()), /publication-scope-mismatch/u);
+      checkedPendingIntent ||= existsSync(join(f.workspace, ".tracker", "control", "profile-publication.json"));
+      scopes.push(scope);
+    });
+    assert.equal(checkedPendingIntent, true);
+    assert.equal(existsSync(join(f.workspace, ".tracker", "control", "profile-publication.json")), false);
+    for (const scope of scopes) assert.throws(() => readProfilePublicationRegistry(scope), /profile-publication-read-expired/u);
+    f.admission.assertCredentialRead();
+  } finally { await f.close(); }
+});
+
+it("refuses current logical registry drift before legacy key migration can publish", async () => {
+  const f = await createHistoricalIncompleteProfileFixture();
+  try {
+    const key = credentialKeyCustody.read(JSON.parse(readFileSync(f.keyPath, "utf8")));
+    const legacy = Buffer.from(encodePrivate(key));
+    const control = z.looseObject({ erasures: z.array(z.looseObject({ credentialKey: z.looseObject({ file: z.looseObject({ digest: z.string() }) }) })) })
+      .parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
+    for (const row of control.erasures) row.credentialKey.file.digest = createHash("sha256").update(legacy).digest("hex");
+    writeFileSync(f.controlPath, JSON.stringify(control)); writeFileSync(f.keyPath, legacy);
+    credentialKeyCustody.delete(key);
+    const registry = z.looseObject({ revision: z.number() }).parse(JSON.parse(readFileSync(f.registryPath, "utf8")));
+    writeFileSync(f.registryPath, JSON.stringify({ ...registry, revision: registry.revision + 1 }));
+    const paths = [f.controlPath, f.markerPath, f.keyPath, f.registryPath, f.verifierPath, f.protectedPath, f.databasePath];
+    const before = paths.map(path => readFileSync(path)), keychain = FakeKeyringEntry.snapshot();
+    assert.throws(() => RuntimeAdmission.acquireMachine(f.workspace, "exclusive", f.lifetime), /profile-registry-continuity-mismatch/u);
+    assert.deepEqual(paths.map(path => readFileSync(path)), before);
+    assert.deepEqual(FakeKeyringEntry.snapshot(), keychain);
   } finally { await f.close(); }
 });

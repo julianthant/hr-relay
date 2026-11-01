@@ -3,7 +3,7 @@ import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySo
 import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { probeRestoreProfileBrowsersClosed, type ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { assertProfileRestoreDatabaseBinding } from "./profile-local-databases.js";
-import { captureCredentialErasureHead } from "../configuration/credential-store.js";
+import { assertCredentialStoreOwner, captureCredentialErasureHead } from "../configuration/credential-store.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { AuthorityRestoreInput } from "../admission/installation.js";
 import { requireSupportedRecoverySchema } from "./recovery-admission.js";
@@ -229,11 +229,10 @@ export class OfflineAuthorityRestoreService {
     this.#browserClosure = browserClosure;
     const options = OfflineRestoreOptionsSchema.parse(input);
     this.#runtimeAdmission = requireRuntimeAdmission(runtimeAdmissionInput);
-    this.#runtimeAdmission.assertExclusive();
-    this.#runtimeAdmission.assertProfileRuntime();
+    this.#runtimeAdmission.assertProfileRestoreOwner(resolve(options.authorityPath));
     if (credentialStore === undefined) throw new Error("profile-restore-credential-owner-required");
     this.#credentialStore = credentialStore;
-    this.#runtimeAdmission.assertAuthorityDatabase(resolve(options.authorityPath));
+    assertCredentialStoreOwner(credentialStore, this.#runtimeAdmission);
     this.#runtimeAdmission.assertStateRoot(resolve(options.suspectDirectory));
     this.#authorityPath = resolve(options.authorityPath);
     this.#suspectDirectory = resolve(options.suspectDirectory);
@@ -249,16 +248,20 @@ export class OfflineAuthorityRestoreService {
     this.#runtimeAdmission.assertOfflineMaintenance(operation);
     operation.consume();
     let report: OfflineRestoreReport | undefined, primary: Error | undefined;
-    try { report = await this.#restoreHeld(input, operation); }
+    let stopped: RuntimeAdmission | undefined;
+    try {
+      stopped = this.#runtimeAdmission.forStoppedMaintenance(operation);
+      report = await this.#restoreHeld(input, operation, stopped);
+    }
     catch (error) {
       primary = error instanceof Error ? error : new OfflineRestoreFailure(report === undefined ? "unchanged" : "replaced",
         "offline authority restore failed", error);
     }
     if (primary !== undefined && hasUnprovedSourceClosure(primary)) {
-      retainUnprovedSourceOwners(primary, { admission: this.#runtimeAdmission, restore: operation });
+      retainUnprovedSourceOwners(primary, { admission: stopped ?? this.#runtimeAdmission, restore: operation });
       throw primary;
     }
-    try { operation.release(); }
+    try { if (stopped !== this.#runtimeAdmission) stopped?.release(); operation.release(); }
     catch (error) {
       throw new OfflineRestoreFailure(primary instanceof OfflineRestoreFailure ? primary.authorityState : report === undefined ? "unchanged" : "replaced",
         "offline authority restore exclusive operation release failed",
@@ -269,30 +272,30 @@ export class OfflineAuthorityRestoreService {
     return report;
   }
 
-  async #restoreHeld(input: unknown, restoreAdmission: OfflineMaintenanceOperation): Promise<OfflineRestoreReport> {
-    this.#runtimeAdmission.assertExclusive();
-    this.#runtimeAdmission.assertOfflineMaintenance(restoreAdmission);
+  async #restoreHeld(input: unknown, restoreAdmission: OfflineMaintenanceOperation, admission: RuntimeAdmission): Promise<OfflineRestoreReport> {
+    admission.assertExclusive();
+    admission.assertOfflineMaintenance(restoreAdmission);
     assertOfflineMaintenanceForProcessRoot(restoreAdmission, this.#processLockRoot);
     const request = OfflineRestoreRequestSchema.parse(input);
-    const profile = this.#runtimeAdmission.captureProfileRestore(captureCredentialErasureHead(this.#credentialStore));
+    const profile = admission.captureProfileRestore(captureCredentialErasureHead(this.#credentialStore, restoreAdmission));
     assertProfileRestoreDatabaseBinding(this.#authorityPath, profile.binding);
-    const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(this.#authorityPath);
+    const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
     if (!existsSync(this.#authorityPath) || statSync(this.#authorityPath).size === 0) {
       throw new Error(`suspect authority database ${this.#authorityPath} is missing or empty`);
     }
 
-    const verified = await verifyBackupManifestAtPath(this.#runtimeAdmission,request.manifestPath, sourceDatabaseIdentity);
+    const verified = await verifyBackupManifestAtPath(admission,request.manifestPath);
     requireSupportedRecoverySchema(verified.manifest.schemaVersion);
     if (verified.manifest.installationId !== profile.binding.installationId || verified.manifest.profileId !== profile.binding.profileId) throw new Error("profile-restore-backup-binding-mismatch");
-    validateStorageRelocationRestoreCandidate({ admission: this.#runtimeAdmission,
+    validateStorageRelocationRestoreCandidate({ admission: admission,
       activeAuthorityPath: this.#authorityPath, verifiedBackup: verified });
     let authorityState: OfflineRestoreAuthorityState = "unchanged";
     let restoreReport: OfflineRestoreReport | undefined;
     let restoreError: OfflineRestoreFailure | undefined;
     try {
       restoreReport = await (async (): Promise<OfflineRestoreReport> => {
-        this.#runtimeAdmission.assertOfflineMaintenance(restoreAdmission);
-        await probeRestoreProfileBrowsersClosed(this.#runtimeAdmission, this.#processLockRoot, restoreAdmission, this.#clock, this.#browserClosure);
+        admission.assertOfflineMaintenance(restoreAdmission);
+        await probeRestoreProfileBrowsersClosed(admission, this.#processLockRoot, restoreAdmission, this.#clock, this.#browserClosure);
         mkdirSync(this.#suspectDirectory, { recursive: true, mode: 0o700 });
         const token = randomUUID();
         const compactTime = this.#clock.now().toISOString().replaceAll(/[^0-9]/g, "");
@@ -320,7 +323,7 @@ export class OfflineAuthorityRestoreService {
             verified.manifest,
             `staged restore ${basename(stagedPath)}`,
           );
-          stagedAdmission = this.#runtimeAdmission.stoppedStagedAuthority(stagedPath);
+          stagedAdmission = admission.stoppedStagedAuthority(stagedPath);
           const beforeProjection = inspectAuthorityBackupReadOnly(
             stagedAdmission,
             stagedPath,
@@ -366,7 +369,7 @@ export class OfflineAuthorityRestoreService {
             companions: (["-wal", "-shm"] as const).filter(suffix => existsSync(`${this.#authorityPath}${suffix}`))
               .map(suffix => ({ suffix, binding: fileIdentity(`${this.#authorityPath}${suffix}`), suspect: fileIdentity(`${suspectPath}${suffix}`) })),
           };
-          this.#runtimeAdmission.beginAuthorityRestore(restoreBinding, restoreAdmission);
+          admission.beginAuthorityRestore(restoreBinding, restoreAdmission);
           restoreJournalHeld = true;
           const displacedCompanions: DisplacedCompanion[] = [];
           let authorityReplaced = false;
@@ -399,7 +402,7 @@ export class OfflineAuthorityRestoreService {
               displacedCompanions.push({ livePath: companion, displacedPath });
             }
             (this.#fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
-            this.#runtimeAdmission.assertAuthorityRestoreCurrent(restoreBinding, restoreAdmission);
+            admission.assertAuthorityRestoreCurrent(restoreBinding, restoreAdmission);
             replacementAttempted = true;
             this.#fileOperations.atomicReplace(stagedPath, this.#authorityPath);
             authorityReplaced = true;
@@ -493,8 +496,8 @@ export class OfflineAuthorityRestoreService {
         stagedAdmission?.release();
         if (restoreJournalHeld && restoreBinding !== undefined && (authorityState === "unchanged" || authorityState === "replaced")) {
           try {
-            this.#runtimeAdmission.settleAuthorityRestore(restoreBinding, authorityState, () => {
-              const actual = inspectAuthorityBackupReadOnly(this.#runtimeAdmission, this.#authorityPath,
+            admission.settleAuthorityRestore(restoreBinding, authorityState, () => {
+              const actual = inspectAuthorityBackupReadOnly(admission, this.#authorityPath,
                 verified.manifest.schemaVersion, this.#busyTimeoutMs);
               return { authorityGeneration: actual.authorityGeneration,
                 authorityContentFingerprint: actual.authorityContentFingerprint };
@@ -559,8 +562,9 @@ export async function settleInterruptedAuthorityRestore(input: Readonly<{
   assertOfflineMaintenanceForProcessRoot(input.restoreAdmission, input.processLockRoot);
   const binding = admission.readAuthorityRestore(input.operationId);
   if (resolve(input.manifestPath) !== binding.manifestPath) throw new Error("restore-recovery-manifest-binding-mismatch");
-  const verified = await verifyBackupManifestAtPath(admission, binding.manifestPath, binding.sourceDatabaseIdentity);
-  if (verified.backupPath !== binding.backupPath || verified.manifest.sha256 !== binding.backupSha256
+  const verified = await verifyBackupManifestAtPath(admission, binding.manifestPath);
+  if (verified.backupPath !== binding.backupPath || verified.manifest.sourceDatabaseIdentity !== binding.sourceDatabaseIdentity
+    || verified.manifest.sha256 !== binding.backupSha256
     || verified.manifest.authorityGeneration !== binding.authorityGeneration
     || verified.manifest.authorityContentFingerprint !== binding.authorityContentFingerprint) {
     throw new Error("restore-recovery-backup-authority-binding-mismatch");

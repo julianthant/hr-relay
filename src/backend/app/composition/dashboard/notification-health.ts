@@ -22,7 +22,7 @@ export async function readNotificationHealth(input: { admission: RuntimeAdmissio
   const backupRoot = join(stateRoot, "backups", "authority");
   if (existsSync(backupRoot)) {
     for (const file of readdirSync(backupRoot).filter(name => name.endsWith(".manifest.json"))) {
-      try { await verifyBackupManifestAtPath(input.admission,join(backupRoot, file), AuthorityDatabase.sourceDatabaseIdentity(join(stateRoot, "state.db"))); }
+      try { await verifyBackupManifestAtPath(input.admission,join(backupRoot, file)); }
       catch { backupFailed = true; }
     }
   }

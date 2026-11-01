@@ -31,7 +31,7 @@ async function pending(f?: Awaited<ReturnType<typeof createBoundProfileFixture>>
   const path = join(f.machine.stateRoot, "machine", "operations", `${result.operationId}.json`);
   const operation = LogoutOperationSchema.parse(JSON.parse(readFileSync(path, "utf8")));
   session.close();
-  const owner = f.machine.admitProfile(createProfileRegistry(f.machine).settlementClaim(operation.operationId));
+  const owner = f.machine.admitProfileSettlement(operation.operationId);
   const store = createCredentialStore({ admission: owner, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
     erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${operation.profileId}.json`) });
   return { f, owner, store, operation, path, async close() { owner.release(); await f.close(); } };
@@ -55,7 +55,7 @@ it("issues exact early pending-logout inspection without runtime, credential, da
     assert.throws(() => AuthorityDatabase.open(purpose, { path: f.f.path, busyTimeoutMs: 250, migrationOwner: "refused" }));
     assert.throws(() => createCredentialStore({ admission: purpose, stateRoot: purpose.stateRoot,
       erasureJournalAdmission: f.f.machine, erasureJournalPath: join(f.f.machine.stateRoot, "machine", "erasures", `${f.operation.profileId}.json`) }));
-    const sibling = f.f.machine.admitProfile(createProfileRegistry(f.f.machine).settlementClaim(f.operation.operationId));
+    const sibling = f.f.machine.admitProfileSettlement(f.operation.operationId);
     try { assert.throws(() => purpose.assertPendingLogoutInventory(sibling, f.operation)); }
     finally { sibling.release(); }
     assert.throws(() => purpose.assertPendingLogoutInventory(f.owner, { ...f.operation, operationId: randomUUID() }));

@@ -3,7 +3,7 @@ import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/n
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { composeProfileCredentialInitializationInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { storageRecoveryFixture, credentialTrap } from "../../../support/helpers/integration/storage-recovery-fixture.js";
+import { storageRecoveryFixture, credentialTrap, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, lstatSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,7 +27,7 @@ it.each([6, 7])("keeps pending setup database-only until canonical binding, then
   try {
     const operation = machine.beginProfileSignUp({ emailKey: "a".repeat(64), firstName: "Alex", lastName: "Rivera",
       createdAt: IsoInstantSchema.parse("2026-09-06T12:00:00.000Z"), commandFingerprint: "b".repeat(64) });
-    const setup = machine.admitProfile(machine.issueRegisteredProfileClaim(operation.profileId));
+    const setup = machine.admitProfile(operation.profileId);
     const path = join(setup.stateRoot, "state.db");
     const journalPath = join(machine.stateRoot, "machine", "erasures", `${operation.profileId}.json`);
     const store = createCredentialStore({ admission: setup, stateRoot: setup.stateRoot,
@@ -63,9 +63,16 @@ it.each([6, 7])("keeps pending setup database-only until canonical binding, then
     assert.equal(upgraded.state, "upgraded");
     assert.equal(upgraded.fromSchemaVersion, version);
     assert.equal(upgraded.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    store.migrateHistory({ operation });
-    assert.equal(store.read().revision, request.expectedRevision);
-    assert.equal(store.apply(request).state, "applied");
+    if (version === 6) {
+      const retained = storageTree(workspace);
+      assert.throws(() => store.migrateHistory({ operation }), /backup-profile-binding-required/u);
+      assert.deepEqual(storageTree(workspace), retained);
+      assert.throws(() => store.apply(request), /credential-key-required/u);
+    } else {
+      store.migrateHistory({ operation });
+      assert.equal(store.read().revision, request.expectedRevision);
+      assert.equal(store.apply(request).state, "applied");
+    }
     setup.release();
     assert.throws(() => setup.forStoppedProfileUpgrade(), /released admission/u);
   } finally { machine.release(); rmSync(workspace, { recursive: true, force: true }); }

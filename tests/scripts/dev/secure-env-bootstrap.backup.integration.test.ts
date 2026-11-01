@@ -1,3 +1,6 @@
+import { acquireInstallation } from "../../../src/backend/storage/admission/installation.js";
+import { advanceProfileRegistryDocument } from "../../../src/models/profiles/profile.js";
+import { StoppedAuthorityBackupManifestSchema } from "../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { testProcessImport } from "../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -22,7 +25,7 @@ import { createProfileRegistry } from "../../../src/backend/profiles/registry.js
 import { composeStorageCommand } from "../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
-import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../src/backend/storage/source-closure.js";
 import { runSecureEnvironmentBootstrap } from "../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 
@@ -99,10 +102,9 @@ it("backs up a current installation through real bootstrap admission and persist
   assert.deepEqual(readFileSync(join(fixture.stateRoot, "state.db")), source);
   assert.ok(result.stdout.includes(manifest.backupFileName));
   const machine = acquireEntrypointAdmission(fixture.workspace, "exclusive", fixture.lifetime);
-  const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(fixture.profileId));
+  const admission = machine.admitProfile(fixture.profileId);
   try {
-    const verified = await verifyBackupManifestAtPath(admission, manifestPath,
-      AuthorityDatabase.sourceDatabaseIdentity(join(fixture.stateRoot, "state.db")));
+    const verified = await verifyBackupManifestAtPath(admission, manifestPath);
     assert.deepEqual(verified.manifest, manifest);
     assert.equal(verified.backupPath, join(fixture.backupDirectory, manifest.backupFileName));
   } finally { admission.release(); machine.release(); }
@@ -140,13 +142,15 @@ for (const change of ["no-selection", "unfinished", "foreign-binding"] as const)
 }
 
 it("refuses a selected profile generation change during backup instead of reporting success", async () => {
-  const fixture = await installation(), machine = acquireEntrypointAdmission(fixture.workspace, "exclusive", fixture.lifetime);
-  const registry = createProfileRegistry(machine), rename = nativeFs.renameSync.bind(nativeFs);
+  const fixture = await installation(), lease = acquireInstallation(fixture.workspace, "exclusive", fixture.lifetime);
+  const machine = RuntimeAdmission.fromInstallationLease(lease), rename = nativeFs.renameSync.bind(nativeFs);
   const path = join(fixture.stateRoot, "state.db"), before = readFileSync(path); let changed = false;
   const spy = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, target) => {
     rename(source, target);
     if (!changed && String(target).startsWith(`${fixture.backupDirectory}/`) && String(target).endsWith(".manifest.json")) {
-      changed = true; registry.advanceSession(fixture.profileId);
+      changed = true;
+      const current = lease.readProfileRegistry();
+      lease.publishProfileRegistry(current, advanceProfileRegistryDocument(current, { activeProfileId: fixture.profileId, sessionGeneration: current.sessionGeneration + 1 }));
     }
   });
   syncBuiltinESMExports();
@@ -271,7 +275,7 @@ it("runs the unchanged explicit CLI backup on a stopped adopted flat source with
     assert.match(result.stdout, /backup: verified/u); assert.match(result.stdout, /private coupled companions/u);
     const manifests = readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json"));
     assert.equal(manifests.length, 1);
-    assert.equal(parseBackupManifestFile(join(f.stateRoot, "backups", "authority", manifests[0] ?? "")).schemaVersion, 6);
+    assert.equal(StoppedAuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(f.stateRoot, "backups", "authority", manifests[0] ?? ""), "utf8"))).schemaVersion, 6);
     for (const [index, path] of paths.entries()) assert.deepEqual(readFileSync(path), before[index]);
     for (const path of [join(f.stateRoot, "profiles"), join(f.stateRoot, "machine"), join(f.workspace, ".tracker", "control", "profile-registry.json"),
       join(f.workspace, ".tracker", "control", "profile-owner-claims"), join(f.workspace, ".tracker", "control", "profile-flat-claim.json")]) assert.equal(existsSync(path), false);

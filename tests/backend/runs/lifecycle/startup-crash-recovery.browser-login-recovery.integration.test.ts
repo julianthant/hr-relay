@@ -120,7 +120,7 @@ it("recovers an actual hard-crashed standalone reservation with no worker lease 
     assert.deepEqual(await exited, [null, "SIGKILL"]);
     lock = await RuntimeLifetimeLock.acquire(port);
     machine = acquireEntrypointAdmission(installation.workspace, "shared", lock);
-    admission = machine.admitProfile(machine.issueRegisteredProfileClaim(binding.profileId));
+    admission = machine.admitProfile(binding.profileId);
     const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
       erasureJournalPath: join(machine.stateRoot, "machine", "erasures", binding.profileId + ".json") });
     database = AuthorityDatabase.open(admission, { path: join(f.root, "state.db"), busyTimeoutMs: 250,

@@ -314,8 +314,12 @@ it("refuses the real child return after its registered profile session epoch adv
   let retained: RunRecord | undefined;
   let childResult: ReturnType<typeof f.database.authority.runResults.get>;
   let observed = 0;
+  let owner: ReturnType<typeof testWorkerLifetime> | undefined;
+  let childId: string | undefined;
   await assert.rejects(executeAfterCompletedChild(f, () => {
     retained = f.currentRoot();
+    owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);
+    childId = f.child().envelope.runId;
     childResult = f.database.authority.runResults.get(f.child().envelope.runId);
     assert.ok(childResult);
     observed++;
@@ -323,30 +327,36 @@ it("refuses the real child return after its registered profile session epoch adv
   }), /profile-storage-claim-generation-changed/u);
   assert.equal(observed, 1);
   assert.ok(retained);
+  assert.ok(owner);
+  assert.ok(childId);
   assert.equal(registry.read().activeProfileId, null);
   assert.equal(registry.read().sessionGeneration, initial.sessionGeneration + 1);
-  assert.deepEqual(f.currentRoot(), retained);
-  assert.equal(f.database.authority.runResults.get(f.root.envelope.runId), undefined);
-  assert.deepEqual(f.database.authority.runResults.get(f.child().envelope.runId), childResult);
-  assert.equal(f.database.authority.runs.listChildren(f.root.envelope.runId).length, 1);
-  assert.equal(f.database.authority.writeIntents.listByRun(f.root.envelope.runId).length, 0);
-  const owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);
-  const retainedRun = retained;
+  const retainedRun = retained, retainedOwner = owner;
   assert.throws(() => f.execution.lifecycle.assertCurrentExecution({ runId: retainedRun.envelope.runId,
-    claim: { workerId: owner.workerId, claimGeneration: retainedRun.claimGeneration } }), /profile-storage-claim-generation-changed/u);
-  assert.throws(() => f.database.assertWorkerLifecycleRelease(owner.workerId), /worker-lifecycle-release-unproved/u);
-  const reset = f.database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
+    claim: { workerId: retainedOwner.workerId, claimGeneration: retainedRun.claimGeneration } }), /profile-storage-claim-generation-changed/u);
+  const database = f.profile.renewAfterSessionChange(f.database, f.clock);
+  f.replaceClosedDatabase(database);
+  const currentRoot = () => { const run = database.authority.runs.get(f.root.envelope.runId); assert.ok(run); return run; };
+  const lifecycle = canonicalChildExecution(f.deps, database, f.path,
+    id => f.modules.find(module => module.descriptor.id === id)?.descriptor).lifecycle;
+  assert.deepEqual(currentRoot(), retained);
+  assert.equal(database.authority.runResults.get(f.root.envelope.runId), undefined);
+  assert.deepEqual(database.authority.runResults.get(childId), childResult);
+  assert.equal(database.authority.runs.listChildren(f.root.envelope.runId).length, 1);
+  assert.equal(database.authority.writeIntents.listByRun(f.root.envelope.runId).length, 0);
+  assert.throws(() => database.assertWorkerLifecycleRelease(retainedOwner.workerId), /worker-lifecycle-release-unproved/u);
+  const reset = database.withAuthorityTransaction(repositories => admitWorkerReset(repositories, {
     commandId: randomUUID(), family: "worker-browser", type: "stop-worker", source: "dashboard",
     requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: {
-      workerId: owner.workerId, membershipRevision: owner.member.membershipRevision,
-      controlBasis: { leaseGeneration: owner.lease.leaseGeneration, controlRevision: owner.lease.controlRevision },
+      workerId: retainedOwner.workerId, membershipRevision: retainedOwner.member.membershipRevision,
+      controlBasis: { leaseGeneration: retainedOwner.lease.leaseGeneration, controlRevision: retainedOwner.lease.controlRevision },
     },
   }, randomUUID(), f.clock.now().toISOString()));
-  f.database.authority.workerControls.transition(reset.commandId, "admitted", { state: "executing", startedAt: f.clock.now().toISOString() });
-  f.execution.lifecycle.settleResetWork(reset.reset);
-  terminal(f.currentRoot(), "cancelled");
-  assert.deepEqual(f.database.authority.runResults.get(f.child().envelope.runId), childResult);
-  assert.equal(registry.read().activeProfileId, null);
+  database.authority.workerControls.transition(reset.commandId, "admitted", { state: "executing", startedAt: f.clock.now().toISOString() });
+  lifecycle.settleResetWork(reset.reset);
+  terminal(currentRoot(), "cancelled");
+  assert.deepEqual(database.authority.runResults.get(childId), childResult);
+  assert.equal(registry.read().activeProfileId, f.profile.admission.profileBinding.profileId);
 });
 
 for (const policy of ["cascade", "independent"] as const) {

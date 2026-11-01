@@ -287,7 +287,7 @@ function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock>)
 function driveTimecardRead(script: Script): Promise<unknown> {
   const clock = manualClock(new Date("2026-08-27T18:00:00.000Z"));
   const page = fakeTimecardPage(script, clock);
-  const driver = createNewKronosTimecardDriver(page, clock);
+  const driver = createNewKronosTimecardDriver(() => undefined, page, clock);
   return driver.readSeparationTimecard({
     employeeId: EMPLOYEE_ID,
     rangeStart: "6/1/2026",
@@ -563,7 +563,7 @@ function driverFor(script: FakeSearchScript): {
 } {
   const clock = manualClock(new Date("2026-08-27T18:00:00.000Z"));
   const fake = fakeSearchPage(script, clock);
-  const driver = createNewKronosTimecardDriver(fake.page, clock);
+  const driver = createNewKronosTimecardDriver(() => undefined, fake.page, clock);
   return {
     search: (searchTimeoutMs) => driver.searchEmployee({ employeeId: "10776990", searchTimeoutMs }),
     polls: fake.polls,

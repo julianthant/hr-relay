@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { withBrowserActionNotes, type BrowserAction } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { BrowserLandingStallError, BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
-import { waitForAuthenticatedLanding } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
+import { fillSsoCredentials, submitSsoForm, waitForAuthenticatedLanding } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createSystemSessionTestWorld } from "../../../support/helpers/backend/system-session-world.js";
 
@@ -335,3 +335,33 @@ it("retains both click and bound-element disposal failures", async () => {
     assert.deepEqual(world.harness.actions(), []);
   } finally { world.cleanup(); }
 });
+
+
+for (const revokeAfterUsername of [false, true]) {
+  it(`fences the next credential action after username fill (revoked: ${revokeAfterUsername})`, async () => {
+    const { context, harness } = await contextFor({ url: REMINDER });
+    let current = true;
+    const refusal = new Error("fixture browser owner revoked");
+    const guarded = { ...context, assertCurrent: () => { if (!current) throw refusal; } };
+    const originalLocator = context.page.locator.bind(context.page);
+    context.page.locator = (selector, options) => {
+      const locator = originalLocator(selector, options);
+      if (selector.includes("ssousername")) {
+        const fill = locator.fill.bind(locator);
+        locator.fill = async (value, options) => {
+          await fill(value, options);
+          if (revokeAfterUsername) current = false;
+        };
+      }
+      return locator;
+    };
+    const operation = context.duoCeremony.withCeremony(async token => {
+      await fillSsoCredentials("ucpath", guarded, token);
+      await submitSsoForm("ucpath", guarded, token);
+    });
+    if (revokeAfterUsername) await assert.rejects(operation, error => error === refusal);
+    else await operation;
+    assert.equal(harness.filled().length, revokeAfterUsername ? 1 : 2);
+    assert.deepEqual(harness.actions(), revokeAfterUsername ? [] : ["click:sso-submit"]);
+  });
+}

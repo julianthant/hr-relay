@@ -1,4 +1,5 @@
 import { testProcessImport } from "../../compiled-process.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { randomUUID } from "node:crypto";
 import { RunRecordSchema, runClaim } from "../../../../src/models/run/record.js";
 import { WorkerPoolMemberSchema, type WorkerPoolMember } from "../../../../src/models/run/worker-slot.js";
@@ -12,7 +13,6 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { FakeKeyringEntry, credentialKeychainTestEnvironment } from "../credential-keychain-fake.js";
 import { acquireEntrypointAdmission } from '../../../../src/backend/storage/admission/bootstrap-admission.js';
-import { createProfileRegistry } from '../../../../src/backend/profiles/registry.js';
 import { registerBoundProfile, unregisterBoundProfile, createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT, COMMAND_FIXTURES, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
@@ -154,7 +154,7 @@ export function createStorageRestoreTestWorld() {
           port, manifestPath: receipt.manifestPath, async closeRootListener() {
             assert.equal(heldRoot.kind, "inherited-child");
             const closed = nextMessage(); child.send({ state: "close-root-listener" });
-            assert.deepEqual((await closed)[0], { state: "root-listener-closed" });
+            assert.deepEqual((await closed)[0], { state: "root-listener-closing" });
           } });
         if (heldRoot.kind === "inherited-child") {
           const closed = nextMessage(); child.send({ state: "release-inherited" });
@@ -185,7 +185,7 @@ export function createStorageRestoreTestWorld() {
       workspace = receipt.workspace;
       lifetimeLock = await RuntimeLifetimeLock.acquire(port);
       machine = acquireEntrypointAdmission(receipt.workspace, 'exclusive', lifetimeLock);
-      admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(receipt.profileId));
+      admission = machine.admitProfile(receipt.profileId);
       assert.equal(admission.stateRoot, receipt.stateRoot);
       assert.equal(admission.profileBinding.installationId, receipt.installationId);
       registerBoundProfile(admission, machine); registered = true;
@@ -204,7 +204,8 @@ export function createStorageRestoreTestWorld() {
         authorityPath: receipt.authorityPath, backupDirectory: join(receipt.stateRoot, "backups", "authority"),
         processLockRoot: receipt.processLockRoot, renewAfterRestore() {
           unregisterBoundProfile(heldAdmission); heldAdmission.release();
-          heldAdmission = heldMachine.admitProfile(createProfileRegistry(heldMachine).storageClaim(receipt.profileId));
+          createProfileRegistry(heldMachine).advanceSession(receipt.profileId);
+          heldAdmission = heldMachine.admitProfile(receipt.profileId);
           registerBoundProfile(heldAdmission, heldMachine);
         } };
       database = open(paths);
@@ -213,7 +214,7 @@ export function createStorageRestoreTestWorld() {
           closeDatabase();
           unregisterBoundProfile(heldAdmission); heldAdmission.release(); heldMachine.release();
           heldMachine = acquireEntrypointAdmission(receipt.workspace, "shared", heldLifetime);
-          heldAdmission = heldMachine.admitProfile(createProfileRegistry(heldMachine).storageClaim(receipt.profileId));
+          heldAdmission = heldMachine.admitProfile(receipt.profileId);
           registerBoundProfile(heldAdmission, heldMachine);
           await heldLifetime.share(successor);
         } catch (error) {

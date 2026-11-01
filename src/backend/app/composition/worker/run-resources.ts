@@ -44,7 +44,6 @@ export function createRunResourcesFactory(input:Readonly<{
   input.assertBrowserRoot(config.paths.browserProfileRoot);
   return Object.freeze({
    sessionFactory:input.sessionFactory??input.createSessionFactory?.(profiles)??new PlaywrightWorkerSessionFactory({config,protectedSecrets:input.protectedSecrets,isolation:input.isolation,clock:input.clock,scheduler:input.scheduler,newSessionId:()=>input.ids.uuid(),
-    ...(input.duo===undefined?{}:{duo:input.duo}),assertCurrent:input.assertProfileOwner,
     ...profiles,...(input.onDebug===undefined?{}:{onDebug:(workerId,event)=>input.onDebug?.("session",workerId,event)})}),
    duoCeremony:input.duoCeremony??composeDuoCeremonyGateFactory({config,...(input.duo===undefined?{}:{duo:input.duo}),leases:input.authority.duoCeremonyLeases,clock:input.clock,scheduler:input.scheduler,
     ...(input.onDebug===undefined?{}:{onDebug:(workerId,event)=>input.onDebug?.("duo",workerId,event)})}),
@@ -73,7 +72,7 @@ export function createRunResourcesFactory(input:Readonly<{
 export type BrowserProfileAuthority = Pick<BrowserSessionFactoryOptions, "slotOrdinal" | "admitProfile" | "duo" | "assertCurrent">;
 export function createBrowserProfileAuthority(input: Readonly<{duo?:DuoSigningSource;authority:AuthorityRepositories;assertProfileOwner:(workerId:WorkerId)=>void}>): BrowserProfileAuthority {
  return {
-    ...(input.duo===undefined?{}:{duo:input.duo}),assertCurrent:input.assertProfileOwner,
+    ...(input.duo===undefined?{}:{duo:input.duo}),assertCurrent:workerId=>input.assertProfileOwner(workerId),
     slotOrdinal:(workerId,system)=>{
      input.assertProfileOwner(workerId);
      const slot=input.authority.workerSlots.get(workerId);

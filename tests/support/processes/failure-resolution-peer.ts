@@ -4,7 +4,6 @@ import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admi
 import { WorkerRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { join } from "node:path";
-import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { basename, dirname, resolve } from "node:path";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { FailureResolutionCommandSchema } from "../../../src/rules/commands/commands.js";
@@ -16,7 +15,7 @@ const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[3])
 parentStop.signal.throwIfAborted();
 const clock = manualClock(new Date(NOW));
 const machine = acquireSharedRuntimeAdmission(resolve(dirname(path), "../../../.."), lifetime);
-const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(basename(dirname(path))));
+const admission = machine.admitProfile(basename(dirname(path)));
 const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
   erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
 const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 5000, migrationOwner: "diagnostics-peer" }, clock, undefined, undefined, undefined, credentials);

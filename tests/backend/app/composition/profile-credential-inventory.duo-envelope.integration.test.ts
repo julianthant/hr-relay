@@ -29,7 +29,7 @@ for (const content of ["valid", "changed", "malformed", "foreign", "plaintext"] 
   const draft = session.signUp({ firstName: "Fixture", lastName: "Example", email: "fixture@ucsd.edu", password: "disposable-fixture-password", createdAt: systemClock.now().toISOString() });
   assert.equal(draft.state, "onboarding");
   if (draft.state !== "onboarding") throw new Error("genuine draft required");
-  const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(draft.profileId));
+  const admission = machine.admitProfile(draft.profileId);
   try {
     const randomBytes = nativeCrypto.randomBytes;
     const spy = vi.spyOn(nativeCrypto, "randomBytes").mockImplementation((size: number, callback?: (error: Error | null, bytes: Buffer<ArrayBuffer>) => void) => {

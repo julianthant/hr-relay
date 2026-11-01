@@ -26,7 +26,7 @@ const machine = acquireSharedRuntimeAdmission(repoRoot, lifetimeLock);
 stage = "profile";
 const registry = createProfileRegistry(machine), selected = registry.read().activeProfileId;
 assert.ok(selected);
-const admission = machine.admitProfile(registry.storageClaim(selected));
+const admission = machine.admitProfile(selected);
 const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
   erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected}.json`) });
 let database: AuthorityDatabase | undefined;

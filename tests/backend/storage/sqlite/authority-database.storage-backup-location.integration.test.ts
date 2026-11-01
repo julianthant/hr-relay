@@ -12,7 +12,7 @@ import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
-it("refuses a foreign physical origin even with matching profile UUIDs before staging", async () => {
+it("refuses inconsistent logical identity even with matching profile UUIDs before staging", async () => {
   const f = await createBoundProfileFixture();
   try {
     const directory = join(f.stateRoot, "backups", "authority");

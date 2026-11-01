@@ -1,3 +1,4 @@
+import { boundProfileAdmission } from "../synthetic-database-admission.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -68,7 +69,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     assert.equal(owner.lease.processId, home.processId);
     assert.equal(owner.lease.processId, process.pid);
     assert.equal(realpathSync(path), home.path);
-    assert.equal(database.getSourceDatabaseIdentity(), AuthorityDatabase.sourceDatabaseIdentity(home.path));
+    assert.equal(database.getSourceDatabaseIdentity(), AuthorityDatabase.sourceDatabaseIdentity(boundProfileAdmission(home.path).authorityBackupExpectedSource()));
     stage = "claim";
     const next = lifecycle.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: owner.workerId,
       workerLifetime: owner.workerLifetime, runtimeConfig: { generation: runtime.generation,

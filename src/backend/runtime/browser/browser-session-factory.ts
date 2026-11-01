@@ -1,3 +1,4 @@
+import { privatePathRejects } from "../../storage/private-path.js";
 import { provisionWorkflowDuo } from "./workflow-duo-provider.js";
 import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
@@ -13,7 +14,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 
 import { lstatSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
-import type { BrowserContext, Page } from "playwright";
+import type { BrowserContext, Frame, Page } from "playwright";
 import type {
   BrowserSessionCloseProof,
   BrowserSessionCloseReason,
@@ -66,12 +67,12 @@ export type BrowserProfileAdmission = z.infer<typeof BrowserProfileAdmissionSche
 export interface BrowserSessionFactoryOptions {
   readonly config: Config;
   readonly duo?: DuoSigningSource;
-  readonly assertCurrent?: (workerId: WorkerId) => void;
   readonly protectedSecrets: ProtectedSecretSource;
   readonly isolation: RuntimeIsolation;
   readonly clock: Clock;
   readonly scheduler: BrowserDeadlineScheduler;
   readonly newSessionId: () => string;
+  readonly assertCurrent: (workerId: WorkerId) => void;
   readonly slotOrdinal: (workerId: WorkerId, system: BrowserSystemId) => number;
   readonly admitProfile: (input: Readonly<{ workerId: WorkerId; system: BrowserSystemId; instance: RuntimeInstance;
     configFingerprint: Fingerprint; signInFingerprint: Fingerprint; browserMode: BrowserPresentationMode; profileDirectory: string }>) => Promise<BrowserProfileAdmission>;
@@ -145,6 +146,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
 
   async probeProfile(input: Parameters<WorkerBrowserSessionFactory["probeProfile"]>[0]): Promise<void> {
     input.signal.throwIfAborted();
+    this.#options.assertCurrent(WorkerIdSchema.parse(input.workerId));
     const { config, clock, scheduler } = this.#options, system = BrowserSystemIdSchema.parse(input.system);
     const profileDirectory = workerProfileDirectory({ profileRoot: config.paths.browserProfileRoot,
       slotOrdinal: this.#options.slotOrdinal(WorkerIdSchema.parse(input.workerId), system), system });
@@ -160,6 +162,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       if (error instanceof BrowserProfileStillClosingError || error instanceof ProfileCustodyUnavailableError) throw error;
       throw new BrowserSessionClosureUnprovedError([error], `${system} native profile probe closure is unproved`, { cause: error });
     }
+    this.#options.assertCurrent(WorkerIdSchema.parse(input.workerId));
   }
 
   async open(input: Readonly<{
@@ -178,6 +181,12 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
   }>): Promise<WorkerBrowserResource> {
     const { config } = this.#options;
     const workerId = WorkerIdSchema.parse(input.workerId);
+    let refusal: Readonly<{ error: unknown }> | undefined;
+    const assertCurrent = (): void => {
+      if (refusal !== undefined) throw refusal.error;
+      this.#options.assertCurrent(workerId);
+    };
+    assertCurrent();
     WorkflowIdSchema.parse(input.workflowId);
     const system = BrowserSystemIdSchema.parse(input.system);
     const configFingerprint = FingerprintSchema.parse(input.configFingerprint);
@@ -198,6 +207,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     const signInFingerprint = browserSignInFingerprint(config, this.#options.protectedSecrets, system, instance, this.#options.duo);
     const profileIdentity = { workerId, system, instance, configFingerprint, signInFingerprint, browserMode, profileDirectory };
     const { profileRevision, resetRequired, ...admittedIdentity } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(profileIdentity));
+    assertCurrent();
     if (canonicalJsonStringify(admittedIdentity) !== canonicalJsonStringify(profileIdentity)) throw new ProfileCustodyUnavailableError();
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
@@ -213,41 +223,66 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       } catch (error) {
         throw new BrowserSessionClosureUnprovedError([error], `${system} browser profile reset did not close its launch probe`, { cause: error });
       }
+      assertCurrent();
       deleteOwnedBrowserProfile(config.paths.browserProfileRoot, profileDirectory);
       profileReservations.add(profileDirectory);
     }
+    assertCurrent();
     const context = await this.#launchProfile(profileDirectory, browserMode, input.acceptDownloads, system);
 
     const lifecycle = observeContextLifecycle(context);
     let signingToken: DuoCeremonyLeaseToken | undefined;
     try {
       this.#owned.set(profileDirectory, { context, lifecycle });
+      assertCurrent();
       if (config.features.duoWebAuthn) {
         const source = this.#options.duo;
         if (source === undefined) throw new DuoProvisioningError();
         const duo = await provisionWorkflowDuo({ context, config, source, accountName: requireSecret("ucpathUserId", this.#options.protectedSecrets),
           assertSigningScope: () => {
+            assertCurrent();
             assertDuoCeremonyLeaseToken(signingToken, { system });
             if (signingToken.holder.workerId !== workerId || signingToken.credentialKey !== source.identity()
               || this.#options.clock.nowMs() >= Date.parse(signingToken.expiresAt)) throw new DuoProvisioningError();
           },
-          assertOwner: () => { input.signal.throwIfAborted(); this.#options.assertCurrent?.(workerId);
+          assertOwner: () => { input.signal.throwIfAborted(); assertCurrent();
             if (lifecycle.closed() || this.#owned.get(profileDirectory)?.context !== context) throw new DuoProvisioningError(); } }).catch(error => { throw new DuoProvisioningError({ cause: error }); });
         this.#owned.set(profileDirectory, { context, lifecycle, duo });
       }
+      assertCurrent();
       const existing = context.pages();
       const page = existing[0] ?? await context.newPage();
-      const diagnostics = attachBrowserDiagnostics(page, this.#options.clock);
+      assertCurrent();
+      const recordEvidence = (evidence: AuthenticatedApplicationEvidence): void => { assertCurrent(); this.#options.onAuthenticationEvidence?.(evidence); };
       let pageVersion = 1;
-      const onNavigation = this.#options.onNavigation;
-      page.on("framenavigated", (frame) => {
+      const detach = (): void => {
+        page.off("framenavigated", navigated);
+        page.off("frameattached", frameChanged);
+        page.off("framedetached", frameChanged);
+      };
+      const observeEvent = (): Readonly<{ state: "current" | "revoked" }> => {
+        try { assertCurrent(); return { state: "current" }; }
+        catch (error) {
+          const errors = [error];
+          refusal = { error };
+          try { detach(); } catch (cleanupError) { errors.push(cleanupError); }
+          try { diagnostics.dispose(); } catch (cleanupError) { errors.push(cleanupError); }
+          if (errors.length > 1) refusal = { error: new AggregateError(errors, "Browser event subscription cleanup failed") };
+          return { state: "revoked" };
+        }
+      };
+      const navigated = (frame: Frame): void => {
+        if (observeEvent().state === "revoked") return;
         pageVersion += 1;
-        if (frame === page.mainFrame()) onNavigation?.(frame.url());
-      });
-      page.on("frameattached", () => { pageVersion += 1; });
-      page.on("framedetached", () => { pageVersion += 1; });
+        if (frame === page.mainFrame()) this.#options.onNavigation?.(frame.url());
+      };
+      const frameChanged = (): void => { if (observeEvent().state === "current") pageVersion += 1; };
+      const diagnostics = attachBrowserDiagnostics(page, this.#options.clock, observeEvent);
+      page.on("framenavigated", navigated);
+      page.on("frameattached", frameChanged);
+      page.on("framedetached", frameChanged);
       const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
-      const emit = (phase: DebugEvent["phase"], code?: string): void => this.#options.onDebug?.(workerId, { phase, correlationId: sessionId, ...(code === undefined ? {} : { code }) });
+      const emit = (phase: DebugEvent["phase"], code?: string): void => { assertCurrent(); this.#options.onDebug?.(workerId, { phase, correlationId: sessionId, ...(code === undefined ? {} : { code }) }); };
       const label = `worker ${workerId} ${system} session`;
       const resource: WorkerBrowserResource = {
         sessionId,
@@ -260,41 +295,64 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         profileRevision,
         acceptDownloads: input.acceptDownloads,
         exclusive: input.exclusive,
-        driver: binding.createDriver(page, this.#options.clock),
-        beginDiagnostics: () => diagnostics.begin(),
+        driver: binding.createDriver(page, this.#options.clock, assertCurrent),
+        beginDiagnostics: () => { assertCurrent(); diagnostics.begin(); },
         endDiagnostics: () => diagnostics.end(),
         screenshot: async (sampleLabels?: readonly string[]): Promise<BrowserScreenshotEvidence> => {
+          assertCurrent();
           const version = pageVersion;
           const identity = { pageVersion: version, sessionId, observedAt: this.#options.clock.now().toISOString() };
           const unavailable = (reason: Extract<BrowserScreenshotEvidence, { state: "unavailable" }>["reason"]): BrowserScreenshotEvidence => Object.freeze({ ...identity, state: "unavailable", reason });
           if (page.isClosed()) return unavailable("page-closed");
           try {
-            const proof = await binding.verifyAuthenticated({ page, config, recordEvidence: this.#recordEvidence });
+            const proof = await binding.verifyAuthenticated({ page, config, recordEvidence, assertCurrent });
+            assertCurrent();
             if (!proof.authenticated) return unavailable("authentication-unverified");
             const frames = page.frames();
             const secretControls = 'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete="current-password"], input[autocomplete="new-password"]';
-            for (const frame of frames) if (await frame.locator(secretControls).count() > 0) return unavailable("secret-controls-present");
+            for (const frame of frames) {
+              assertCurrent();
+              const count = await frame.locator(secretControls).count();
+              assertCurrent();
+              if (count > 0) return unavailable("secret-controls-present");
+            }
             if (pageVersion !== version) return unavailable("page-changed");
             const capture = await captureFullPage(page, {
               ...(sampleLabels === undefined ? {} : { sampleLabels }),
+              assertCurrent,
               secretControls,
               afterCapture: async () => {
-                const after = await binding.verifyAuthenticated({ page, config, recordEvidence: this.#recordEvidence });
+                assertCurrent();
+                const after = await binding.verifyAuthenticated({ page, config, recordEvidence, assertCurrent });
+                assertCurrent();
                 if (!after.authenticated || pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
               },
               mask: () => page.frames().map(frame => frame.locator(UCPATH_PENDING_READ_RECIPES.ssn)),
               assertSafe: async () => {
+                assertCurrent();
                 if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
-                for (const frame of page.frames()) if (await frame.locator(secretControls).count() > 0) throw new FullPageCaptureRefusedError("secret-controls-present");
+                for (const frame of page.frames()) {
+                  assertCurrent();
+                  const count = await frame.locator(secretControls).count();
+                  assertCurrent();
+                  if (count > 0) throw new FullPageCaptureRefusedError("secret-controls-present");
+                }
                 if (pageVersion !== version) throw new FullPageCaptureRefusedError("page-changed");
               },
             });
+            assertCurrent();
             if (pageVersion !== version) return unavailable("page-changed");
-            for (const frame of frames) if (await frame.locator(secretControls).count() > 0) return unavailable("secret-controls-present");
+            for (const frame of frames) {
+              assertCurrent();
+              const count = await frame.locator(secretControls).count();
+              assertCurrent();
+              if (count > 0) return unavailable("secret-controls-present");
+            }
             if (pageVersion !== version) return unavailable("page-changed");
             return Object.freeze({ ...identity, state: "available", ...capture, diagnosticAttachments: diagnostics.snapshot() });
           } catch (error) {
             if (error instanceof FullPageCaptureRestoreError) throw error;
+            assertCurrent();
             if (error instanceof FullPageCaptureRefusedError) return unavailable(error.reason);
             if (pageVersion !== version) return unavailable("page-changed");
             return unavailable("verification-failed");
@@ -302,6 +360,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         },
         authentication: {
           authenticate: async (requested: BrowserSystemId, options): Promise<"logged-in" | "already-authenticated"> => {
+            assertCurrent();
             if (requested !== system) {
               throw new Error(`${system} browser session cannot authenticate ${requested}`);
             }
@@ -310,28 +369,33 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
                 `${system} browser session was opened for instance ${instance} but login requested ${options.instance}`,
               );
             }
+            const claimStaleRequestRecovery = input.claimStaleRequestRecovery;
+            const acquisitionRemainingMs = input.acquisitionRemainingMs;
             const loginContext: SystemLoginContext = {
               page,
+              assertCurrent,
               config,
               instance,
               label,
               signal: options.signal ?? input.signal,
               credentials: readSsoCredentials(this.#options.protectedSecrets),
-              recordEvidence: this.#recordEvidence,
+              recordEvidence,
               duoCeremony: input.duoCeremony,
               withDuoSigningScope: async (token, run) => {
+                assertCurrent();
                 assertDuoCeremonyLeaseToken(token, { system });
                 if (signingToken !== undefined || token.holder.workerId !== workerId) throw new DuoProvisioningError();
                 signingToken = token;
-                try { return await run(); } finally { signingToken = undefined; }
+                try { const result = await run(); assertCurrent(); return result; } finally { signingToken = undefined; }
               },
-              ...(input.claimStaleRequestRecovery === undefined ? {} : { claimStaleRequestRecovery: input.claimStaleRequestRecovery }),
-              ...(input.acquisitionRemainingMs === undefined ? {} : { acquisitionRemainingMs: input.acquisitionRemainingMs }),
+              ...(claimStaleRequestRecovery === undefined ? {} : { claimStaleRequestRecovery: () => { assertCurrent(); return claimStaleRequestRecovery.call(input); } }),
+              ...(acquisitionRemainingMs === undefined ? {} : { acquisitionRemainingMs: () => { assertCurrent(); return acquisitionRemainingMs.call(input); } }),
             };
             emit("started");
             try {
               this.#owned.get(profileDirectory)?.duo?.assertCurrent();
               const result = await binding.login(loginContext);
+              assertCurrent();
               this.#owned.get(profileDirectory)?.duo?.assertCurrent();
               emit("settled");
               return result;
@@ -339,14 +403,16 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
           },
         },
         reset: async (resetInput): Promise<void> => {
-          await this.#resetToNeutralState(binding, page, instance, label, resetInput.signal);
+          assertCurrent();
+          await this.#resetToNeutralState(binding, page, instance, label, resetInput.signal, assertCurrent, recordEvidence);
           emit("reset");
         },
         close: async (closeInput): Promise<BrowserSessionCloseProof> => {
+          detach();
           await this.#closeWithProof(context, lifecycle, system, closeInput.reason);
           this.#releaseProfile(profileDirectory);
           diagnostics.dispose();
-          emit("released");
+          if (observeEvent().state === "current") emit("released");
           return Object.freeze({ sessionId, system, pagesClosed: true, contextClosed: true });
         },
       };
@@ -377,6 +443,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     browserMode?: BrowserPresentationMode;
   }>): Promise<Readonly<{ profileDirectory: string }>> {
     const { config } = this.#options;
+    this.#options.assertCurrent(input.workerId);
     const browserMode = browserModeFor(input.browserMode, config.browser.headless);
     const profileDirectory = workerProfileDirectory({
       profileRoot: config.paths.browserProfileRoot,
@@ -386,6 +453,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     const instance = RuntimeInstanceSchema.parse(input.instance);
     const identity = { ...input, instance, browserMode, profileDirectory, signInFingerprint: browserSignInFingerprint(config, this.#options.protectedSecrets, input.system, instance, this.#options.duo) };
     const { profileRevision: _revision, resetRequired: _reset, ...admitted } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(identity));
+    this.#options.assertCurrent(input.workerId);
     if (canonicalJsonStringify(admitted) !== canonicalJsonStringify(identity)) throw new ProfileCustodyUnavailableError();
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
@@ -429,10 +497,6 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     profileReservations.delete(profileDirectory);
   }
 
-  readonly #recordEvidence = (evidence: AuthenticatedApplicationEvidence): void => {
-    this.#options.onAuthenticationEvidence?.(evidence);
-  };
-
   // Neutral reset must pass the same authenticated-application proof as login.
   async #resetToNeutralState(
     binding: BrowserSystemBinding,
@@ -440,19 +504,23 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     instance: RuntimeInstance,
     label: string,
     signal: AbortSignal,
+    assertCurrent: () => void,
+    recordEvidence: (evidence: AuthenticatedApplicationEvidence) => void,
   ): Promise<void> {
     const { config } = this.#options;
     if (signal.aborted) {
       throw new Error(`${binding.system} neutral reset was cancelled before navigation`);
     }
     const entry = resolveSystemEntryUrl(config, binding.system, instance, label);
+    assertCurrent();
     await page.goto(entry, {
       waitUntil: "domcontentloaded",
       timeout: config.timeouts.navigationMs,
     });
+    assertCurrent();
     await assertAuthenticatedApplication(
       binding.system,
-      { page, config, recordEvidence: this.#recordEvidence },
+      { page, config, recordEvidence, assertCurrent },
       binding.verifyAuthenticated,
       "the neutral reset did not land on the authenticated application; the session is no longer reusable",
     );
@@ -490,7 +558,7 @@ export function deleteOwnedBrowserProfile(profileRoot: string, profileDirectory:
   const verify = (path: string): void => {
     const metadata = lstatSync(path, { throwIfNoEntry: false });
     if (metadata === undefined) return;
-    if (metadata.isSymbolicLink() || metadata.uid !== (process.getuid?.() ?? -1) || (metadata.mode & 0o022) !== 0
+    if (metadata.isSymbolicLink() || privatePathRejects(path, metadata, "group-write")
       || !(metadata.isDirectory() || metadata.isFile()) || metadata.isFile() && metadata.nlink !== 1) throw new ProfileCustodyUnavailableError();
     if (metadata.isDirectory()) for (const name of readdirSync(path)) {
       if (["SingletonLock", "SingletonSocket", "SingletonCookie"].includes(name)) throw new ProfileCustodyUnavailableError();

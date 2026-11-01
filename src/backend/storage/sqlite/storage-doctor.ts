@@ -32,7 +32,6 @@ import { storageHealthCauseFromError } from "./authority-boot.js";
 import { parseBackupManifestFile } from "./backup-service.js";
 import {
   BackupHealthSchema,
-  PreviousLocationBackupSchema,
   RestoreCandidateSchema,
   SpanAuthorityReconciliationSchema,
   SpanAuthorityRunRootSchema,
@@ -682,6 +681,7 @@ export function summarizeSpanAuthorityReconciliation(input: unknown): SpanAuthor
 
 
 export function summarizeBackupHealth(
+  admissionInput: RuntimeAdmission,
   input: unknown,
   liveAuthorityGeneration: number | undefined,
   clock: Clock = systemClock,
@@ -691,7 +691,11 @@ export function summarizeBackupHealth(
   if (basename(directory) !== "authority" || basename(dirname(directory)) !== "backups") {
     throw new Error("backup-summary-directory-shape-mismatch");
   }
-  const activeIdentity = AuthorityDatabase.sourceDatabaseIdentity(join(dirname(dirname(directory)), "state.db"));
+  const admission = requireRuntimeAdmission(admissionInput);
+  admission.assertStateRoot(directory);
+  const expected = admission.authorityBackupExpectedSource();
+  if (expected.kind !== "profile") throw new Error("profile-backup-binding-required");
+  const activeIdentity = AuthorityDatabase.sourceDatabaseIdentity(expected);
   let manifests: string[];
   try {
     if (!lstatSync(directory).isDirectory()) return "missing";
@@ -705,7 +709,8 @@ export function summarizeBackupHealth(
     let authorityGeneration: number;
     try {
       const manifest = parseBackupManifestFile(join(directory, name));
-      if (manifest.sourceDatabaseIdentity !== activeIdentity) continue;
+      if (manifest.sourceDatabaseIdentity !== activeIdentity || manifest.installationId !== expected.binding.installationId
+        || manifest.profileId !== expected.binding.profileId) continue;
       const copy = lstatSync(join(directory, manifest.backupFileName));
       if (!copy.isFile() || copy.size !== manifest.byteSize) continue;
       createdAtMs = Date.parse(manifest.createdAt);
@@ -738,10 +743,6 @@ type CandidateWithMtime = Readonly<{
   candidate: RestoreCandidate;
   modifiedMs: number;
 }>;
-type PreviousWithMtime = Readonly<{
-  backup: z.infer<typeof PreviousLocationBackupSchema>;
-  modifiedMs: number;
-}>;
 
 async function inspectCandidates(
   admission: RuntimeAdmission,
@@ -749,35 +750,22 @@ async function inspectCandidates(
   authorityInspection: AuthorityCopyInspection | undefined,
   stateRoot: string,
   clock: Clock,
-): Promise<Readonly<{ current: readonly CandidateWithMtime[]; previous: readonly PreviousWithMtime[] }>> {
+): Promise<readonly CandidateWithMtime[]> {
   requireDatabaseSourcePath(join(directory, "probe"));
-  try { lstatSync(directory); } catch (error) { if (errnoCode(error) === "ENOENT") return { current: [], previous: [] }; throw error; }
+  try { lstatSync(directory); } catch (error) { if (errnoCode(error) === "ENOENT") return []; throw error; }
   const manifestNames = readdirSync(directory, { withFileTypes: true })
     .filter((entry) => entry.name.endsWith(".manifest.json"))
     .map(({ name }) => name)
     .sort();
   const candidates: CandidateWithMtime[] = [];
-  const previous: PreviousWithMtime[] = [];
   for (const manifestFileName of manifestNames) {
     const manifestPath = join(directory, manifestFileName);
     const modifiedMs = lstatSync(manifestPath).mtimeMs;
     try {
       requireDatabaseSourcePath(manifestPath);
-      const { verified, origin, selection } = await verifyBackupLocationEvidence(admission, join(stateRoot, "state.db"), manifestPath);
+      const { verified, selection } = await verifyBackupLocationEvidence(admission, join(stateRoot, "state.db"), manifestPath);
       const ageMs = clock.nowMs() - Date.parse(verified.manifest.createdAt);
       if (ageMs < 0) throw new Error(`backup manifest ${manifestFileName} was created in the future`);
-      if (origin === "previous-location") {
-        previous.push({ modifiedMs, backup: PreviousLocationBackupSchema.parse({
-          selection,
-          schemaVersion: verified.manifest.schemaVersion,
-          manifestFileName,
-          backupFileName: verified.manifest.backupFileName,
-          createdAt: verified.manifest.createdAt,
-          authorityGeneration: verified.manifest.authorityGeneration,
-          restoreEligibility: "not-admitted",
-        }) });
-        continue;
-      }
       const generationGap = authorityInspection === undefined
         ? { state: "unavailable" as const, reason: "live authority generation is unavailable" }
         : {
@@ -824,8 +812,7 @@ async function inspectCandidates(
       });
     }
   }
-  return { current: candidates.sort((left, right) => right.modifiedMs - left.modifiedMs),
-    previous: previous.sort((left, right) => right.modifiedMs - left.modifiedMs) };
+  return candidates.sort((left, right) => right.modifiedMs - left.modifiedMs);
 }
 
 /** No credential value or value-bearing error may escape this presence observer. */
@@ -853,7 +840,7 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
       || backupDirectory !== join(stateRoot, "backups", "authority")) {
       throw new Error("runtime-admission: storage doctor roots differ from active locator");
     }
-    const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
+    const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
     let authorityInspection: AuthorityCopyInspection | undefined;
     let authorityCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
     try {
@@ -870,12 +857,9 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
 
     const initialRecovery = inspectStorageRecovery(admission, sourceDatabaseIdentity);
     let candidates: readonly CandidateWithMtime[] = [];
-    let previous: readonly PreviousWithMtime[] = [];
     let candidateInspectionFailed = false;
     try {
-      const inspected = await inspectCandidates(admission,backupDirectory, authorityInspection, stateRoot, clock);
-      candidates = inspected.current;
-      previous = inspected.previous;
+      candidates = await inspectCandidates(admission,backupDirectory, authorityInspection, stateRoot, clock);
     } catch { candidateInspectionFailed = true; }
     const first = candidates[0];
     const latestVerified = candidates
@@ -896,9 +880,7 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
         cause: StorageHealthCauseSchema.parse({
           code: candidates.length === 0 ? "backup-missing" : "backup-invalid",
           summary: candidates.length === 0
-            ? previous.length > 0
-              ? "no current-location authority backup exists; verified previous-location backups remain preserved"
-              : `no authority backup manifests exist in ${basename(backupDirectory)}`
+            ? `no authority backup manifests exist in ${basename(backupDirectory)}`
             : `no verified compatible authority backup exists in ${basename(backupDirectory)}`,
         }),
       });
@@ -982,7 +964,6 @@ export async function doctorAuthorityStorage(admission: RuntimeAdmission, input:
       spanAuthority,
       backup,
       restoreCandidates: candidates.map(({ candidate }) => candidate),
-      ...(previous.length === 0 ? {} : { previousLocationBackups: previous.map(({ backup }) => backup) }),
     });
   });
 }

@@ -93,7 +93,8 @@ describe("worker browser session factory", () => {
       const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
         scheduler: NEVER_SCHEDULER, slotOrdinal: () => 1, newSessionId: () => SESSION_ID,
         protectedSecrets: { read: () => { secretReads++; throw new Error("probe must not read credentials"); } },
-        admitProfile: async input => { profileAdmissions++; return BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 1, resetRequired: true }); },
+        assertCurrent: () => undefined,
+      admitProfile: async input => { profileAdmissions++; return BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 1, resetRequired: true }); },
         bindings: { ucpath: { ...binding, login: async () => { logins++; throw new Error("probe must not log in"); } } }, launcher: native.launcher });
       await factory.probeProfile({ workerId: WORKER_ID, system: "ucpath", signal: new AbortController().signal });
       assert.equal(native.launches().length, 1); assert.equal(native.contextClosed(), true);
@@ -527,7 +528,8 @@ describe("worker browser session factory", () => {
         scheduler: NEVER_SCHEDULER,
         slotOrdinal: () => 1,
     newSessionId: () => SESSION_ID,
-    admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 7, resetRequired: false })),
+    assertCurrent: () => undefined,
+      admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, profileRevision: 7, resetRequired: false })),
         bindings: recordingBindings({ verify: verifier.verify }),
         launcher: harness.launcher,
         onAuthenticationEvidence: (observed) => evidence.push(observed),
@@ -717,7 +719,8 @@ describe("required profile custody admission", () => {
       const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
         scheduler: NEVER_SCHEDULER, slotOrdinal: () => 1, newSessionId: () => SESSION_ID,
         protectedSecrets: protectedSecretSource({}), bindings: recordingBindings(),
-        admitProfile: () => Promise.reject(new ProfileCustodyUnavailableError()),
+        assertCurrent: () => undefined,
+      admitProfile: () => Promise.reject(new ProfileCustodyUnavailableError()),
         launcher: { launch: input => { launches += 1; return harness.launcher.launch(input); } },
       });
       await assert.rejects(factory.open(OPEN_INPUT), ProfileCustodyUnavailableError);
@@ -732,7 +735,8 @@ describe("required profile custody admission", () => {
       const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
         scheduler: NEVER_SCHEDULER, slotOrdinal: () => 1, newSessionId: () => SESSION_ID,
         protectedSecrets: protectedSecretSource({}), bindings: recordingBindings(),
-        admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, configFingerprint: OTHER_FINGERPRINT, profileRevision: 7, resetRequired: false })),
+        assertCurrent: () => undefined,
+      admitProfile: input => Promise.resolve(BrowserProfileAdmissionSchema.parse({ ...input, configFingerprint: OTHER_FINGERPRINT, profileRevision: 7, resetRequired: false })),
         launcher: { launch: input => { launches += 1; return harness.launcher.launch(input); } },
       });
       await assert.rejects(factory.open(OPEN_INPUT), ProfileCustodyUnavailableError);

@@ -13,7 +13,6 @@ import { WorkerRuntimeLifetimeLock } from "../../../src/backend/storage/admissio
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { join, resolve } from "node:path";
 import { captureSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
-import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { bindWorkerProcessAdmission } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
@@ -57,7 +56,7 @@ let credentials: ReturnType<typeof createCredentialStore> | undefined;
 if (machine === undefined) admission = RuntimeAdmission.syntheticFixture(dbPath);
 else {
   const selected = captureSelectedProfileStorage(machine);
-  admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(selected.profileId));
+  admission = machine.admitProfile(selected.profileId);
   if (dbPath !== join(admission.stateRoot, "state.db") || lockRoot !== join(repoRoot, rebuildRuntimeIsolation.processLockRoot)) {
     admission.release(); machine.release();
     throw new Error("worker-stub-cli fixture storage pair mismatch");

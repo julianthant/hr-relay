@@ -1,4 +1,5 @@
 import { testProcessImport } from "../../support/compiled-process.js";
+import { advanceProfileRegistryDocument } from "../../../src/models/profiles/profile.js";
 import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { PrivateFileLockUnavailableError, withOperationProof } from "../../../src/backend/storage/configuration/credential-safe-file.js";
 import { FakeKeyringEntry } from "../../support/helpers/credential-keychain-fake.js";
@@ -539,7 +540,7 @@ describe("profile session", () => {
       throw new Error("credential receipt is missing");
     }
     const machine = machineAdmissions.get(root); assert.ok(machine);
-    const prior = machine.readProfileRegistry(); machine.publishProfileRegistry(prior, { ...prior, activeProfileId: null });
+    const prior = machine.readProfileRegistry(); machine.publishProfileRegistry(prior, advanceProfileRegistryDocument(prior, { activeProfileId: null }));
     machine.publishProfileOperation(SignUpOperationSchema.parse({
       schemaVersion: 1,
       kind: "sign-up",
@@ -704,7 +705,7 @@ it("captures and freshly revalidates each independent authority constituent on t
     }),
     () => {
       const machine = machineAdmissions.get(root); assert.ok(machine);
-      const child = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
+      const child = machine.admitProfile(active.profileId);
       const store = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalPath: join(root, "machine", "erasures", `${active.profileId}.json`), erasureJournalAdmission: machine });
       assert.equal(store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: "23232323-2323-4323-8323-232323232323", writeId: "24242424-2424-4424-8424-242424242424", commandFingerprint: "d".repeat(64), expectedRevision: store.read().revision,
         protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-09-06T12:02:00.000Z", entries: { timekeeperName: { set: "ZZ" } } })).state, "applied");
@@ -940,7 +941,7 @@ it("joins the real token-free account source with the exact admitted profile roo
   assert.equal(active.state, "active"); if (active.state !== "active") return;
   const stateRoot = join(root, "profiles", active.profileId);
   const machine = machineAdmissions.get(root); assert.ok(machine);
-  const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
+  const admission = machine.admitProfile(active.profileId);
   let calls = 0;
   const clock = manualClock(new Date("2026-09-06T12:00:00.000Z"));
   const account = createChatGptAccountService({ admission, stateRoot, clock, fetch: async () => { calls++; throw new Error("unexpected transport"); } });
@@ -980,12 +981,12 @@ it("checks independently changed durable selection, generation and lifecycle bef
     const credentials = readFileSync(protectedPath);
     const machine = machineAdmissions.get(root); assert.ok(machine);
     const prior = ProfileRegistryDocumentSchema.parse(JSON.parse(before.toString()));
-    machine.publishProfileRegistry(prior, mutate(prior));
+    machine.publishProfileRegistry(prior, advanceProfileRegistryDocument(prior, mutate(prior)));
     const stale = session.readFile(active.token, "absent");
     assert.equal("state" in stale && stale.state === "refused" && stale.code, "PROFILE_SESSION_STALE");
     assert.deepEqual(readFileSync(protectedPath), credentials);
     const changed = machine.readProfileRegistry();
-    machine.publishProfileRegistry(changed, { ...prior, sessionGeneration: changed.sessionGeneration });
+    machine.publishProfileRegistry(changed, advanceProfileRegistryDocument(changed, { ...prior, sessionGeneration: changed.sessionGeneration }));
   }
 });
 

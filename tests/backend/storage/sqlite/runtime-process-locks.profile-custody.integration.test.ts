@@ -13,7 +13,7 @@ for (const refuseChildClose of [false, true]) it(`closes actual profile storage 
   const processLockRoot = join(f.workspace, "process-locks");
   const initial = acquireRuntimeProcessLock({ processLockRoot, name: "workers", pid: process.pid,
     admission: { kind: "unbound-worker", authorityPath: f.path } }, clock);
-  const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(f.path);
+  const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(f.admission.authorityBackupExpectedSource());
   const snapshot = () => observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, clock);
   const events: string[] = [];
   const fault = new Error("synthetic worker admission refusal");
@@ -50,6 +50,6 @@ it("retains the opened database, profile and process when startup proof has unpr
       open: () => database, admit: () => { throw failure; }, close: () => { closed.push("database"); },
       releaseStorageCustody: () => { closed.push("profile"); } }), WorkerProcessCustodyUncertainError);
     assert.deepEqual(closed, []); f.admission.assertLive(); assert.ok(database.getMeta());
-    assert.equal(observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.path) }, clock).processLocks.workers.state, "active");
+    assert.equal(observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(f.admission.authorityBackupExpectedSource()) }, clock).processLocks.workers.state, "active");
   } finally { database.close(); initial.release(); await f.close(); }
 });

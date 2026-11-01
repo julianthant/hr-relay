@@ -1,3 +1,4 @@
+import { privatePathRejects } from "../../storage/private-path.js";
 import { DuoAssertionRequestSchema } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
 import { lstatSync, mkdirSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
@@ -299,7 +300,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     try {
       if (!isAbsolute(options.browserRoot) || realpathSync(options.browserRoot) !== options.browserRoot || !isAbsolute(options.extensionDirectory)) throw new Error("root");
       const root = lstatSync(options.browserRoot);
-      if (!root.isDirectory() || root.isSymbolicLink() || root.uid !== process.getuid?.() || (root.mode & 0o077) !== 0) throw new Error("root");
+      if (!root.isDirectory() || root.isSymbolicLink() || privatePathRejects(options.browserRoot, root, "private")) throw new Error("root");
     } catch { throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root"); }
     const ownerIdentity={operationId:owner.operationId,profileId:owner.profileId,accountId:owner.accountId,generation:owner.generation};
     const assertOwner=()=>{owner.assertCurrent();if(!sameOwner(owner,ownerIdentity))throw new ProfileOnboardingDuoProviderError("refused","scope");};

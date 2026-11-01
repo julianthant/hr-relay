@@ -1,3 +1,4 @@
+import { privatePathRejects } from "../private-path.js";
 import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync,
   readSync, unlinkSync, writeSync, type Stats } from "node:fs";
@@ -47,7 +48,7 @@ function inside(parent: string, path: string): boolean {
 function assertOwned(path: string, kind: "file" | "directory"): Stats {
   const info = lstatSync(path);
   if (info === undefined) throw new Error(`relocation-inventory: missing ${kind} at ${path}`);
-  if (info.isSymbolicLink() || (process.getuid && info.uid !== process.getuid()) || (info.mode & 0o022) !== 0
+  if (info.isSymbolicLink() || privatePathRejects(path, info, "group-write")
     || (kind === "file" ? !info.isFile() || info.nlink !== 1 : !info.isDirectory())) {
     throw new Error(`relocation-inventory: unsafe ${kind} shape at ${path}`);
   }
@@ -147,7 +148,7 @@ function validateName(role: "state" | "artifact", relativePath: string, kind: "f
   }
   if (top === undefined) throw new Error("relocation-inventory: empty state entry");
   if (parts.length === 1) {
-    if (top === "credentials" && (lstatSync(path).mode & 0o7777) !== 0o700) throw new Error("relocation-inventory: ChatGPT credential directory is not private");
+    if (top === "credentials" && privatePathRejects(path, lstatSync(path), "directory-0700")) throw new Error("relocation-inventory: ChatGPT credential directory is not private");
     if (kind === "file" ? ROOT_FILES.has(top) : ROOT_DIRECTORIES.has(top)) return;
     throw new Error(`relocation-inventory: unknown state entry ${top}`);
   }
@@ -166,9 +167,9 @@ function validateName(role: "state" | "artifact", relativePath: string, kind: "f
   if (top === "credentials") {
     if (parts.length !== 2 || kind !== "file" || !CREDENTIAL_FILES.has(name)) throw new Error("relocation-inventory: unknown credentials entry");
     if (name !== "protected.json" && name !== "chatgpt-account.json" && name !== "duo-webauthn.json") throw new Error("relocation-inventory: credential write lock is present");
-    if (name === "duo-webauthn.json" && ((lstatSync(path).mode & 0o7777) !== 0o600 || lstatSync(path).size > 64_000)) throw new Error("relocation-inventory: unsafe Duo credential");
+    if (name === "duo-webauthn.json" && (privatePathRejects(path, lstatSync(path), "file-0600") || lstatSync(path).size > 64_000)) throw new Error("relocation-inventory: unsafe Duo credential");
     if (name === "chatgpt-account.json") {
-      if ((lstatSync(path).mode & 0o7777) !== 0o600) throw new Error("relocation-inventory: unknown or unsafe ChatGPT credentials entry");
+      if (privatePathRejects(path, lstatSync(path), "file-0600")) throw new Error("relocation-inventory: unknown or unsafe ChatGPT credentials entry");
       if (lstatSync(path).size > 64_000) throw new Error("relocation-inventory: malformed ChatGPT credentials");
       verifyChatGptCredentialBytes(safeBytes(path));
     }
@@ -208,9 +209,6 @@ export async function verifyRelocationBackupTree(input: Readonly<{ admission: Ru
   const witness = input.operation.verifiedSourceControlEntries();
   if (inventory.source.stateRoot !== input.stateRoot || witness.source.stateRoot !== input.stateRoot
     || input.admission.stateRoot !== input.stateRoot) throw new Error("relocation-inventory: backup source is not operation-bound");
-  const allowedSourceIdentities = new Set([inventory.source,
-    ...input.operation.readPriorReceipts().map((receipt) => receipt.source)]
-    .map((pair) => AuthorityDatabase.sourceDatabaseIdentity(join(pair.stateRoot, "state.db"))));
   const backups = join(input.stateRoot, "backups");
   if (lstatSync(backups, { throwIfNoEntry: false }) === undefined) return;
   assertOwned(backups, "directory");
@@ -223,9 +221,6 @@ export async function verifyRelocationBackupTree(input: Readonly<{ admission: Ru
   const expected = new Set<string>();
   for (const name of names.filter((candidate) => candidate.endsWith(".manifest.json"))) {
     const verified = await verifyBackupManifestAtPath(input.admission, join(root, name));
-    if (!allowedSourceIdentities.has(verified.manifest.sourceDatabaseIdentity)) {
-      throw new Error("relocation-inventory: backup belongs to an unrecognized source identity");
-    }
     expected.add(name);
     expected.add(verified.manifest.backupFileName);
   }
@@ -466,7 +461,7 @@ export function copyRelocationFile(input: Readonly<{ sourceAdmission: RuntimeAdm
     if (existing.nlink === 2 && temporary !== undefined && temporary.nlink === 2
       && existing.isFile() && temporary.isFile() && !existing.isSymbolicLink() && !temporary.isSymbolicLink()
       && existing.dev === temporary.dev && existing.ino === temporary.ino
-      && (process.getuid === undefined || existing.uid === process.getuid()) && (existing.mode & 0o022) === 0) {
+      && !privatePathRejects(destinationPath, existing, "group-write")) {
       if (existing.size !== source.size || byteDigest(input.file.sourcePath) !== byteDigest(destinationPath)) {
         throw new Error("relocation-inventory: published destination bytes disagree with source");
       }

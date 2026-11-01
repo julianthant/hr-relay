@@ -8,8 +8,23 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import type { DuoAssertionRequest } from "../../../../src/backend/storage/configuration/duo-signing.js";
 import { fixtureDuoSigningSource, fixtureWorkflowWorker } from "../../../support/helpers/browser/duo-signing.js";
+import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure } from "../../../../src/backend/storage/source-closure.js";
 
 const config = resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date("2026-11-01T00:00:00Z"))).config;
+function retainsSourceFailure(error: unknown, ...expected: Error[]): boolean {
+  const pending: unknown[] = [error], seen = new Set<unknown>();
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (seen.has(value)) continue;
+    seen.add(value);
+    if (value instanceof AggregateError) { const errors: readonly unknown[] = value.errors; pending.push(...errors); }
+    if (value instanceof Error && value.cause !== undefined) pending.push(value.cause);
+  }
+  assert.equal(hasUnprovedSourceClosure(error), true);
+  for (const value of expected) assert.ok(seen.has(value), "shutdown must retain the original error identity");
+  return true;
+}
+
 function world(options: { noMatch?: boolean; noScope?: boolean; failSign?: boolean; failStop?: boolean } = {}) {
   const broker = fixtureWorkflowWorker();
   const signed: DuoAssertionRequest[] = [];
@@ -36,6 +51,52 @@ function world(options: { noMatch?: boolean; noScope?: boolean; failSign?: boole
 }
 
 describe("backend workflow Duo bridge", () => {
+  for (const sourceOperation of ["sign", "assertCurrent"] as const) it(`retains a wrapped source closure failure from ${sourceOperation} before stop`, async () => {
+    const w = world(), owner = await w.open();
+    const closure = new AuthoritySourceClosureUnprovedError([new Error("synthetic source remains open")]);
+    const failure = new Error("synthetic signing wrapper", { cause: closure });
+    if (sourceOperation === "sign") w.source.sign = async request => { w.signed.push(request); throw failure; };
+    else w.source.assertCurrent = () => { throw failure; };
+    w.request(); await w.stopped;
+    assert.deepEqual(w.replies, []);
+    await assert.rejects(owner.stop(), error => retainsSourceFailure(error, failure, closure));
+    await assert.rejects(owner.stop(), error => retainsSourceFailure(error, failure, closure));
+    assert.equal(w.signed.length, sourceOperation === "sign" ? 1 : 0);
+  });
+
+  for (const unprovedClosure of [true, false]) it(`${unprovedClosure ? "retains source closure failure" : "allows normal cancellation"} when blocked signing rejects after stop`, async () => {
+    const w = world();
+    const closure = new AuthoritySourceClosureUnprovedError([new Error("synthetic source remains open")]);
+    const failure = unprovedClosure ? new Error("synthetic signing wrapper", { cause: closure }) : new Error("synthetic cancelled signing");
+    let enterSign: (() => void) | undefined, rejectSign: ((error: Error) => void) | undefined;
+    const entered = new Promise<void>(resolve => { enterSign = resolve; });
+    w.source.sign = request => { w.signed.push(request); enterSign?.(); return new Promise((_resolve, reject) => { rejectSign = reject; }); };
+    const owner = await w.open(); w.request(); await entered;
+    const stopping = owner.stop();
+    const outcome = unprovedClosure ? assert.rejects(stopping, error => retainsSourceFailure(error, failure, closure)) : assert.doesNotReject(stopping);
+    await w.stopped;
+    assert.ok(rejectSign); rejectSign(failure);
+    await outcome;
+    if (unprovedClosure) await assert.rejects(owner.stop(), error => retainsSourceFailure(error, failure, closure));
+    else await assert.doesNotReject(owner.stop());
+    assert.equal(w.signed.length, 1);
+    assert.deepEqual(w.replies, []);
+  });
+
+  it("retains both the wrapped source failure and worker-stop failure across repeated stop", async () => {
+    const w = world();
+    const closure = new AuthoritySourceClosureUnprovedError([new Error("synthetic source remains open")]);
+    const failure = new Error("synthetic signing wrapper", { cause: closure }), stopFailure = new Error("synthetic worker stop failed");
+    const stop = w.broker.owner.stop.bind(w.broker.owner);
+    w.broker.owner.stop = () => { stop(); throw stopFailure; };
+    w.source.sign = async request => { w.signed.push(request); throw failure; };
+    const owner = await w.open(); w.request(); await w.stopped;
+    await assert.rejects(owner.stop(), error => retainsSourceFailure(error, failure, closure, stopFailure));
+    await assert.rejects(owner.stop(), error => retainsSourceFailure(error, failure, closure, stopFailure));
+    assert.equal(w.signed.length, 1);
+    assert.deepEqual(w.replies, []);
+  });
+
   it("installs no credentials and waits without a ceremony, but refuses a signing request outside its actual lease", async () => {
     const w = world({ noScope: true }); const owner = await w.open();
     assert.deepEqual(w.broker.installed.map(args => [...args]), [[]]);

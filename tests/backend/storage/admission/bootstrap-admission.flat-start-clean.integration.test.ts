@@ -1,3 +1,4 @@
+import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import assert from "node:assert/strict";
 import nativeFs, { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -66,8 +67,8 @@ for (const fault of ["write", "verification"] as const) {
   });
 }
 
-for (const boundary of ["database", "registry"] as const) {
-  it(`resumes the verified migration after interrupted ${boundary} removal or publication`, async () => {
+for (const boundary of ["database", "registry"] as const) for (const tampered of [false, true]) {
+  it(`${tampered ? "refuses changed backup binding" : "resumes verified migration"} after interrupted ${boundary} removal or publication`, async () => {
     const f = await createHistoricalFlatProfileFixture(), unlink = nativeFs.unlinkSync, rename = nativeFs.renameSync;
     let interrupted = false;
     const unlinkSpy = vi.spyOn(nativeFs, "unlinkSync").mockImplementation(path => {
@@ -83,6 +84,17 @@ for (const boundary of ["database", "registry"] as const) {
     finally { unlinkSpy.mockRestore(); renameSpy.mockRestore(); syncBuiltinESMExports(); }
     try {
       assert.equal(interrupted, true);
+      if (tampered) {
+        const path = join(f.workspace, ".tracker", "control", "flat-start-clean.json");
+        const original = readFileSync(path, "utf8");
+        const changed = original.replace(/("backupDigest"\s*:\s*")[a-f0-9]{64}/u, (_match, prefix: string) => `${prefix}${"0".repeat(64)}`);
+        assert.notEqual(changed, original);
+        nativeFs.writeFileSync(path, changed, { mode: 0o600 });
+        const before = storageTree(f.workspace);
+        await assert.rejects(acquireDashboardEntrypointAdmission(profileBrowserClosure, f.workspace, "shared", f.lifetime), /flat-start-clean-intent-changed/u);
+        assert.deepEqual(storageTree(f.workspace), before);
+        return;
+      }
       const machine = await acquireDashboardEntrypointAdmission(profileBrowserClosure, f.workspace, "shared", f.lifetime);
       try {
         assert.deepEqual(machine.readProfileRegistry().profiles, []);

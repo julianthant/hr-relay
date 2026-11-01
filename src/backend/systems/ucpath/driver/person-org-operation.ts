@@ -397,6 +397,7 @@ function lastNameFromDisplayedName(displayedName: string): string {
 }
 
 function outputFor(
+  assertCurrent: () => void,
   input: z.output<typeof SearchPersonOrgInputSchema>,
   results: readonly UcpathCandidate[],
 ): SearchPersonOrgOutput {
@@ -417,6 +418,7 @@ function outputFor(
   }
   const selected = selectPreferredUcpathCandidate(parsedResults);
   if (selected === null) throw new Error("Person Org resolved selection has no candidate");
+  assertCurrent();
   recordBrowserAction("read", "ucpath.person-org.person", JSON.stringify(selected));
   return SearchPersonOrgOutputSchema.parse({
     results: parsedResults,
@@ -425,6 +427,7 @@ function outputFor(
 }
 
 async function candidatesFromGrid(
+  assertCurrent: () => void,
   pagePort: PersonOrgPagePort,
   rows: readonly PersonOrgResultGridRow[],
 ): Promise<readonly UcpathCandidate[]> {
@@ -433,6 +436,7 @@ async function candidatesFromGrid(
   for (let index = 0; index < sdcmpRows.length; index += 1) {
     const row = sdcmpRows[index];
     if (row === undefined) throw new Error(`Person Org SDCMP row ${String(index)} disappeared`);
+    assertCurrent();
     const detail = await pagePort.drill(row.rowIndex);
     if (detail.observedEid !== row.emplId) {
       throw new Error(
@@ -441,14 +445,18 @@ async function candidatesFromGrid(
     }
     const candidate = candidateFromDetail(detail, row.lastName);
     candidates.push(candidate);
+    assertCurrent();
     recordBrowserAction("read", "ucpath.person-org.candidate", JSON.stringify(candidate));
+    assertCurrent();
     const restored = await pagePort.returnToResults();
     if (JSON.stringify(restored) !== JSON.stringify(rows)) throw new Error("Person Org results changed while returning from a candidate");
   }
+  assertCurrent();
   return candidates;
 }
 
-async function verifySelectedGridDetail(pagePort: PersonOrgPagePort, rows: readonly PersonOrgResultGridRow[], candidates: readonly UcpathCandidate[], selected: UcpathCandidate | null): Promise<void> {
+async function verifySelectedGridDetail(assertCurrent: () => void, pagePort: PersonOrgPagePort, rows: readonly PersonOrgResultGridRow[], candidates: readonly UcpathCandidate[], selected: UcpathCandidate | null): Promise<void> {
+  assertCurrent();
   if (selected === null) return;
   const index = candidates.findIndex(candidate => JSON.stringify(candidate) === JSON.stringify(selected));
   const row = rows.filter(({ businessUnit }) => businessUnit === "SDCMP")[index];
@@ -457,45 +465,59 @@ async function verifySelectedGridDetail(pagePort: PersonOrgPagePort, rows: reado
   if (detail.observedEid !== row.emplId || JSON.stringify(candidateFromDetail(detail, row.lastName)) !== JSON.stringify(selected)) {
     throw new Error("Person Org selected detail changed before capture");
   }
+  assertCurrent();
 }
 
 async function candidatesFromOutcome(
+  assertCurrent: () => void,
   pagePort: PersonOrgPagePort,
   outcome: PersonOrgSearchPageOutcome,
   expectedLastName: string,
 ): Promise<readonly UcpathCandidate[]> {
+  assertCurrent();
   if (outcome.kind === "not-found") return [];
   if (outcome.kind === "detail") return [candidateFromDetail(outcome.detail, expectedLastName)];
-  return candidatesFromGrid(pagePort, outcome.rows);
+  return candidatesFromGrid(assertCurrent, pagePort, outcome.rows);
 }
 
 export async function searchPersonOrgWithPagePort(
+  assertCurrent: () => void,
   pagePort: PersonOrgPagePort,
   inputValue: z.output<typeof SearchPersonOrgInputSchema>,
 ): Promise<SearchPersonOrgOutput> {
   const input = SearchPersonOrgInputSchema.parse(inputValue);
   if (input.kind === "by-eid") {
+    assertCurrent();
     const outcome = await pagePort.search({ kind: "by-eid", eid: input.emplId });
     let candidates: readonly UcpathCandidate[];
     if (outcome.kind === "grid") {
       if (outcome.rows.length === 0 || outcome.rows.some(({ emplId }) => emplId !== input.emplId)) {
         throw new Error(`Person Org EID ${directIdentifierDisplay(input.emplId)} returned an unexpected results grid`);
       }
-      candidates = await candidatesFromGrid(pagePort, outcome.rows);
+      assertCurrent();
+      candidates = await candidatesFromGrid(assertCurrent, pagePort, outcome.rows);
     } else {
       const expectedLastName = outcome.kind === "detail"
         ? lastNameFromDisplayedName(outcome.detail.displayedName)
         : "";
-      candidates = await candidatesFromOutcome(pagePort, outcome, expectedLastName);
+      assertCurrent();
+      candidates = await candidatesFromOutcome(assertCurrent, pagePort, outcome, expectedLastName);
     }
     for (const candidate of candidates) {
       if (candidate.emplId !== input.emplId) {
         throw new Error(`Person Org EID search expected ${directIdentifierDisplay(input.emplId)} but observed ${directIdentifierDisplay(candidate.emplId)}`);
       }
     }
-    if (candidates.length > 0) recordBrowserAction("read", "ucpath.person-org.employment-instances", JSON.stringify(candidates));
-    const output = outputFor(input, candidates);
-    if (outcome.kind === "grid") await verifySelectedGridDetail(pagePort, outcome.rows, candidates, output.selection.selected);
+    if (candidates.length > 0) {
+      assertCurrent();
+      recordBrowserAction("read", "ucpath.person-org.employment-instances", JSON.stringify(candidates));
+    }
+    const output = outputFor(assertCurrent, input, candidates);
+    if (outcome.kind === "grid") {
+      assertCurrent();
+      await verifySelectedGridDetail(assertCurrent, pagePort, outcome.rows, candidates, output.selection.selected);
+    }
+    assertCurrent();
     return output;
   }
 
@@ -505,21 +527,30 @@ export async function searchPersonOrgWithPagePort(
   let results: readonly UcpathCandidate[] = [];
   let finalGrid: Readonly<{ rows: readonly PersonOrgResultGridRow[]; candidates: readonly UcpathCandidate[] }> | undefined;
   for (const [index, attempt] of attempts.entries()) {
+    assertCurrent();
     recordBrowserAction("read", "ucpath.person-org.search-attempt", `Search ${index + 1} of ${attempts.length}: ${attempt.lastName}, ${attempt.name}`);
+    assertCurrent();
     const outcome = await pagePort.search({ kind: "by-name", lastName: attempt.lastName, givenName: attempt.name });
     const total = outcome.kind === "grid" ? outcome.rows.length : outcome.kind === "detail" ? 1 : 0;
     const sdcmp = outcome.kind === "grid" ? outcome.rows.filter(({ businessUnit }) => businessUnit === "SDCMP").length : total;
+    assertCurrent();
     recordBrowserAction("read", "ucpath.person-org.search-results", JSON.stringify({ total, sdcmp }));
-    const observed = await candidatesFromOutcome(pagePort, outcome, attempt.lastName);
+    assertCurrent();
+    const observed = await candidatesFromOutcome(assertCurrent, pagePort, outcome, attempt.lastName);
     finalGrid = outcome.kind === "grid" ? { rows: outcome.rows, candidates: observed } : undefined;
     const removed = input.keepNonHdh ? [] : observed.filter(({ hdh }) => !hdh);
     results = input.keepNonHdh ? observed : observed.filter(({ hdh }) => hdh);
+    assertCurrent();
     recordBrowserAction("read", "ucpath.person-org.department-filter", JSON.stringify(removed.map(({ emplId, name, department }) => ({ emplId, name, department }))));
     if (observed.length > 0) break;
   }
 
-  const output = outputFor(input, results);
-  if (finalGrid !== undefined) await verifySelectedGridDetail(pagePort, finalGrid.rows, finalGrid.candidates, output.selection.selected);
+  const output = outputFor(assertCurrent, input, results);
+  if (finalGrid !== undefined) {
+    assertCurrent();
+    await verifySelectedGridDetail(assertCurrent, pagePort, finalGrid.rows, finalGrid.candidates, output.selection.selected);
+  }
+  assertCurrent();
   return output;
 }
 
@@ -547,34 +578,61 @@ export function parsePersonOrgGridRows(
   });
 }
 
-async function readRequiredText(locator: Locator, label: string): Promise<string> {
+async function readRequiredText(assertCurrent: () => void, locator: Locator, label: string): Promise<string> {
+  assertCurrent();
   const text = await locator.textContent();
   if (text === null || text.trim().length === 0) throw new Error(`Person Org ${label} rendered without text`);
+  assertCurrent();
   return text.trim();
 }
 
-function playwrightViewTogglePort(page: Page, id: ElementId, label: string): PersonOrgViewTogglePort {
+function playwrightViewTogglePort(assertCurrent: () => void, page: Page, id: ElementId, label: string): PersonOrgViewTogglePort {
   const toggle = (): Locator => resolveUcpathElement(page, id);
   return {
-    count: () => toggle().count(),
-    readText: () => readRequiredText(toggle(), `${label} View All state`),
-    readHref: () => toggle().getAttribute("href"),
-    click: async () => {
-      await toggle().click();
-      recordBrowserAction("clicked", id);
+    count: async () => {
+      assertCurrent();
+      const result = await toggle().count();
+      assertCurrent();
+      return result;
     },
-    waitForExpanded: () => toggle().filter({ hasText: /^View [1-9]\d*$/u }).waitFor({
-      state: "visible",
-      timeout: OUTCOME_TIMEOUT_MS,
-    }),
+    readText: async () => {
+      assertCurrent();
+      const result = await readRequiredText(assertCurrent, toggle(), `${label} View All state`);
+      assertCurrent();
+      return result;
+    },
+    readHref: async () => {
+      assertCurrent();
+      const result = await toggle().getAttribute("href");
+      assertCurrent();
+      return result;
+    },
+    click: async () => {
+      assertCurrent();
+      await toggle().click();
+      assertCurrent();
+      recordBrowserAction("clicked", id);
+      assertCurrent();
+    },
+    waitForExpanded: async () => {
+      assertCurrent();
+      const result = await toggle().filter({ hasText: /^View [1-9]\d*$/u }).waitFor({
+        state: "visible",
+        timeout: OUTCOME_TIMEOUT_MS,
+      });
+      assertCurrent();
+      return result;
+    },
   };
 }
 
-async function ensureResultsExpanded(page: Page): Promise<void> {
+async function ensureResultsExpanded(assertCurrent: () => void, page: Page): Promise<void> {
+  assertCurrent();
   await ensurePersonOrgViewAllExpanded(
-    playwrightViewTogglePort(page, UCPATH_PERSON_ORG_RESULTS_VIEW_TOGGLE, "Person Org search results"),
+    playwrightViewTogglePort(assertCurrent, page, UCPATH_PERSON_ORG_RESULTS_VIEW_TOGGLE, "Person Org search results"),
     "Person Org search results",
   );
+  assertCurrent();
 }
 
 
@@ -684,50 +742,63 @@ async function readJobSummaryWithPagePort(
 }
 
 async function ensureEmploymentInstancesExpanded(
+  assertCurrent: () => void,
   page: Page,
 ): Promise<"already-complete" | "expanded"> {
-  return ensurePersonOrgViewAllExpanded(
-    playwrightViewTogglePort(
+  const result = await ensurePersonOrgViewAllExpanded(
+    playwrightViewTogglePort(assertCurrent,
       page,
       UCPATH_PERSON_ORG_EMPLOYMENT_VIEW_TOGGLE,
       "Person Org Employment Instances",
     ),
     "Person Org Employment Instances",
   );
+  assertCurrent();
+  return result;
 }
 
-async function readObservedText(page: Page, id: string): Promise<string> {
+async function readObservedText(assertCurrent: () => void, page: Page, id: string): Promise<string> {
   const locator = page.frameLocator(UCPATH_PENDING_READ_RECIPES.frame).locator(id);
+  assertCurrent();
   await locator.waitFor({ state: "attached", timeout: OUTCOME_TIMEOUT_MS });
+  assertCurrent();
   const text = await locator.textContent();
   if (text === null) throw new Error("Person Org required field rendered without text");
+  assertCurrent();
   return text.trim() === "Active" ? "" : text.trim();
 }
 
-async function extractDetail(page: Page): Promise<PersonOrgDetail> {
-  const eid = EidSchema.parse(await readRequiredText(
+async function extractDetail(assertCurrent: () => void, page: Page): Promise<PersonOrgDetail> {
+  assertCurrent();
+  const eid = EidSchema.parse(await readRequiredText(assertCurrent,
     resolveUcpathElement(page, UCPATH_PERSON_ORG_EID_DISPLAY),
     "displayed EID",
   ));
-  const displayedName = await readRequiredText(
+  assertCurrent();
+  const displayedName = await readRequiredText(assertCurrent,
     resolveUcpathElement(page, UCPATH_PERSON_ORG_NAME_DISPLAY),
     `displayed name for EID ${directIdentifierDisplay(eid)}`,
   );
-  const employmentInstances = await ensureEmploymentInstancesExpanded(page);
+  assertCurrent();
+  const employmentInstances = await ensureEmploymentInstancesExpanded(assertCurrent, page);
+  assertCurrent();
   const rows = await resolveUcpathElement(page, UCPATH_PERSON_ORG_ASSIGNMENTS_GRID)
     .locator("tr")
     .evaluateAll((elements) => elements.map((row) =>
       Array.from((row as HTMLTableRowElement).cells).map((cell) => cell.textContent?.trim() ?? "")
     ));
-  return PersonOrgDetailSchema.parse({
+  assertCurrent();
+  const result = PersonOrgDetailSchema.parse({
     observedEid: eid,
     displayedName,
     cells: rows,
     employmentInstances,
-    startDate: await readObservedText(page, UCPATH_PENDING_READ_RECIPES.startDate),
-    terminationDate: await readObservedText(page, UCPATH_PENDING_READ_RECIPES.terminationDate),
-    terminationReason: await readObservedText(page, UCPATH_PENDING_READ_RECIPES.terminationReason),
+    startDate: await readObservedText(assertCurrent, page, UCPATH_PENDING_READ_RECIPES.startDate),
+    terminationDate: await readObservedText(assertCurrent, page, UCPATH_PENDING_READ_RECIPES.terminationDate),
+    terminationReason: await readObservedText(assertCurrent, page, UCPATH_PENDING_READ_RECIPES.terminationReason),
   });
+  assertCurrent();
+  return result;
 }
 
 // PeopleSoft criteria banners render on every list page; their presence is not a no-results signal.
@@ -770,113 +841,169 @@ export function classifyPersonOrgSearchOutcome(observed: Readonly<{
   return Object.freeze({ kind: "not-found" as const, marker: bannerText });
 }
 
-async function visible(locator: Locator): Promise<boolean> {
-  return locator.isVisible();
+async function visible(assertCurrent: () => void, locator: Locator): Promise<boolean> {
+  assertCurrent();
+  const result = await locator.isVisible();
+  assertCurrent();
+  return result;
 }
 
-function createPlaywrightPersonOrgPage(page: Page): PersonOrgPagePort {
+function createPlaywrightPersonOrgPage(assertCurrent: () => void, page: Page): PersonOrgPagePort {
   const navigateToSearch = async (): Promise<void> => {
+    assertCurrent();
     await page.goto(PERSON_ORG_SUMMARY_URL, {
       waitUntil: "domcontentloaded",
       timeout: OUTCOME_TIMEOUT_MS,
     });
+    assertCurrent();
     recordBrowserAction("opened", "ucpath.person-org.summary");
     const navigation = resolveUcpathElement(page, UCPATH_PERSON_ORG_NAVIGATION_LINK);
+    assertCurrent();
     await navigation.waitFor({ state: "visible", timeout: OUTCOME_TIMEOUT_MS });
     // The step control routes through the nav collection's content frame, so
     // clicking before that frame holds a document is silently dropped.
-    await waitForUcpathContentFrameDocument(page, OUTCOME_TIMEOUT_MS);
+    assertCurrent();
+    await waitForUcpathContentFrameDocument(assertCurrent, page, OUTCOME_TIMEOUT_MS);
+    assertCurrent();
     await navigation.click();
+    assertCurrent();
     recordBrowserAction("clicked", UCPATH_PERSON_ORG_NAVIGATION_LINK);
-    await waitForUcpathState(page, UCPATH_PERSON_ORG_SEARCH_READY);
+    assertCurrent();
+    await waitForUcpathState(assertCurrent, page, UCPATH_PERSON_ORG_SEARCH_READY);
+    assertCurrent();
   };
 
   return {
     async search(query) {
+      assertCurrent();
       await navigateToSearch();
       const eidInput = resolveUcpathElement(page, UCPATH_PERSON_ORG_EID_INPUT);
       const lastNameInput = resolveUcpathElement(page, UCPATH_PERSON_ORG_LAST_NAME_INPUT);
       const givenNameInput = resolveUcpathElement(page, UCPATH_PERSON_ORG_GIVEN_NAME_INPUT);
+      assertCurrent();
       await eidInput.fill("");
+      assertCurrent();
       recordBrowserAction("cleared", UCPATH_PERSON_ORG_EID_INPUT);
+      assertCurrent();
       await lastNameInput.fill("");
+      assertCurrent();
       recordBrowserAction("cleared", UCPATH_PERSON_ORG_LAST_NAME_INPUT);
+      assertCurrent();
       await givenNameInput.fill("");
+      assertCurrent();
       recordBrowserAction("cleared", UCPATH_PERSON_ORG_GIVEN_NAME_INPUT);
       if (query.kind === "by-eid") {
+        assertCurrent();
         await eidInput.fill(query.eid);
+        assertCurrent();
         recordBrowserAction("typed", UCPATH_PERSON_ORG_EID_INPUT, query.eid);
       }
       else {
+        assertCurrent();
         await lastNameInput.fill(query.lastName);
+        assertCurrent();
         recordBrowserAction("typed", UCPATH_PERSON_ORG_LAST_NAME_INPUT, query.lastName);
+        assertCurrent();
         await givenNameInput.fill(query.givenName);
+        assertCurrent();
         recordBrowserAction("typed", UCPATH_PERSON_ORG_GIVEN_NAME_INPUT, query.givenName);
       }
+      assertCurrent();
       await resolveUcpathElement(page, UCPATH_PERSON_ORG_SEARCH_BUTTON).click();
+      assertCurrent();
       recordBrowserAction("clicked", UCPATH_PERSON_ORG_SEARCH_BUTTON);
 
       const criteriaBanner = resolveUcpathElement(page, UCPATH_PERSON_ORG_NO_RESULTS_STATUS);
       const displayedEid = resolveUcpathElement(page, UCPATH_PERSON_ORG_EID_DISPLAY);
       const resultsGrid = resolveUcpathElement(page, UCPATH_PERSON_ORG_RESULTS_GRID);
       // Playwright or locators form a union; first permits waiting when several readiness signals coexist.
+      assertCurrent();
       await criteriaBanner.or(displayedEid).or(resultsGrid).first().waitFor({
         state: "visible",
         timeout: OUTCOME_TIMEOUT_MS,
       });
+      assertCurrent();
       const [bannerVisible, detailVisible, gridVisible] = await Promise.all([
-        visible(criteriaBanner),
-        visible(displayedEid),
-        visible(resultsGrid),
+        visible(assertCurrent, criteriaBanner),
+        visible(assertCurrent, displayedEid),
+        visible(assertCurrent, resultsGrid),
       ]);
+      assertCurrent();
       const outcome = classifyPersonOrgSearchOutcome({
         bannerVisible,
         detailVisible,
         gridVisible,
-        bannerText: bannerVisible ? await readRequiredText(criteriaBanner, "search criteria banner") : undefined,
+        bannerText: bannerVisible ? await readRequiredText(assertCurrent, criteriaBanner, "search criteria banner") : undefined,
       });
-      if (outcome.kind === "not-found") return { kind: "not-found", marker: outcome.marker };
-      if (outcome.kind === "detail") return { kind: "detail", detail: await extractDetail(page) };
-      await ensureResultsExpanded(page);
+      if (outcome.kind === "not-found") {
+        assertCurrent();
+        return { kind: "not-found", marker: outcome.marker };
+      }
+      if (outcome.kind === "detail") {
+        assertCurrent();
+        const detail = await extractDetail(assertCurrent, page);
+        assertCurrent();
+        return { kind: "detail", detail };
+      }
+      assertCurrent();
+      await ensureResultsExpanded(assertCurrent, page);
+      assertCurrent();
       const cellsByRow = await resultsGrid.locator("tr").evaluateAll((elements) => elements.map((row) =>
         Array.from((row as HTMLTableRowElement).cells).map((cell) => cell.textContent?.trim() ?? "")
       ));
+      assertCurrent();
       return { kind: "grid", rows: parsePersonOrgGridRows(cellsByRow) };
     },
     async drill(rowIndex) {
+      assertCurrent();
       await resolveUcpathIndexedElement(page, UCPATH_PERSON_ORG_RESULT_DRILL_IN, rowIndex).click();
+      assertCurrent();
       recordBrowserAction("clicked", UCPATH_PERSON_ORG_RESULT_DRILL_IN);
-      return extractDetail(page);
+      const result = await extractDetail(assertCurrent, page);
+      assertCurrent();
+      return result;
     },
     async returnToResults() {
+      assertCurrent();
       await resolveUcpathElement(page, UCPATH_PERSON_ORG_RETURN_TO_SEARCH).click();
+      assertCurrent();
       recordBrowserAction("clicked", UCPATH_PERSON_ORG_RETURN_TO_SEARCH);
+      assertCurrent();
       await resolveUcpathElement(page, UCPATH_PERSON_ORG_RESULTS_GRID).waitFor({
         state: "visible",
         timeout: OUTCOME_TIMEOUT_MS,
       });
-      await ensureResultsExpanded(page);
+      assertCurrent();
+      await ensureResultsExpanded(assertCurrent, page);
+      assertCurrent();
       const cellsByRow = await resolveUcpathElement(page, UCPATH_PERSON_ORG_RESULTS_GRID).locator("tr").evaluateAll((elements) => elements.map((row) =>
         Array.from((row as HTMLTableRowElement).cells).map((cell) => cell.textContent?.trim() ?? "")
       ));
+      assertCurrent();
       return parsePersonOrgGridRows(cellsByRow);
     },
   };
 }
 
 export async function searchPersonOrgOnPage(
+  assertCurrent: () => void,
   page: Page,
   input: z.output<typeof SearchPersonOrgInputSchema>,
 ): Promise<SearchPersonOrgOutput> {
-  return searchPersonOrgWithPagePort(createPlaywrightPersonOrgPage(page), input);
+  const result = await searchPersonOrgWithPagePort(assertCurrent, createPlaywrightPersonOrgPage(assertCurrent, page), input);
+  assertCurrent();
+  return result;
 }
 
 export async function readJobSummaryOnPage(
+  assertCurrent: () => void,
   page: Page,
   input: Readonly<{ emplId: Eid }>,
   observedAt: string,
 ): Promise<UcpathJobSummaryRead> {
-  return readJobSummaryWithPagePort(createPlaywrightPersonOrgPage(page), input, observedAt);
+  const result = await readJobSummaryWithPagePort(createPlaywrightPersonOrgPage(assertCurrent, page), input, observedAt);
+  assertCurrent();
+  return result;
 }
 
 export const UCPATH_PERSON_ORG_OPERATION_ELEMENTS: readonly ElementId[] = Object.freeze([

@@ -515,7 +515,7 @@ for (const control of ["wrong-password", "locked", "forged", "reused", "verifier
         ? "runtime-control: profile-upgrade-handoff-authority-changed" : "profile-upgrade-handoff-source-changed" });
       proved = true; return;
     }
-    assert.equal(consumeAuthenticatedProfileUpgrade(authorization, owner).phase, "runtime");
+    assert.equal(consumeAuthenticatedProfileUpgrade(authorization, owner), f.binding.profileId);
     assert.throws(() => consumeAuthenticatedProfileUpgrade(authorization, owner), error => error instanceof ProfileSessionRefusedError && error.code === "PROFILE_UPGRADE_UNAVAILABLE");
     proved = true;
   } finally { if (proved) { session.close(); exclusive?.release(); f.machine.release(); await f.profile.close(); } }

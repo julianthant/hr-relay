@@ -1,3 +1,4 @@
+import * as credentialFiles from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import { onboardingProfileDirectory } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
@@ -56,7 +57,7 @@ function retainDraftBrowserDirectory(f: Awaited<ReturnType<typeof privateDraftFi
 
 async function draftFixture() {
   const base = await privateDraftFixture(), { root, machine, profile, draft } = base;
-  const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(draft.profileId));
+  const admission = machine.admitProfile(draft.profileId);
   const store = createDraftDuoCredentialStore(admission, machine, draft.operationId, 1, systemClock), pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const armedAt = systemClock.nowMs();
   const input = { credentialId: randomUUID(), scope: { armId: randomUUID(), contextId: randomBytes(16).toString("hex"), tabId: 1, accountId: randomUUID(),
@@ -161,22 +162,28 @@ it("rejects database schema drift introduced by the final canonical Duo document
   try {
     const purpose = issueDraftDuoCredentialPurpose(f.admission, f.machine, f.draft.operationId, 1);
     const documentPath = join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`);
-    const bytes = readFileSync(documentPath), target = nativeFs.statSync(documentPath), revision = f.store.read().revision;
-    const read = nativeFs.readFileSync;
-    let reads = 0;
-    const spy = vi.spyOn(nativeFs, "readFileSync").mockImplementation((...args: Parameters<typeof read>) => {
-      const result = read(...args);
-      if (typeof args[0] === "number") {
-        const observed = nativeFs.fstatSync(args[0]);
-        if (observed.dev === target.dev && observed.ino === target.ino && ++reads === 2) db.exec("PRAGMA user_version=0");
+    const bytes = readFileSync(documentPath), revision = f.store.read().revision;
+    const read = credentialFiles.readPrivateFile;
+    const decipher = nativeCrypto.createDecipheriv;
+    let decryptions = 0, injected = false;
+    const decipherSpy = vi.spyOn(nativeCrypto, "createDecipheriv").mockImplementation((...args: Parameters<typeof decipher>) => {
+      decryptions++;
+      return decipher(...args);
+    });
+    const spy = vi.spyOn(credentialFiles, "readPrivateFile").mockImplementation((path, options) => {
+      const result = read(path, options);
+      if (!injected && decryptions === 2 && path === documentPath && options.label === "Duo credential") {
+        injected = true;
+        db.exec("PRAGMA user_version=0");
       }
       return result;
     });
     syncBuiltinESMExports();
     try {
       assert.throws(() => openDuoCredentialDocument(purpose, bytes, revision), /profile-database-schema-mismatch/u);
-      assert.equal(reads, 2);
-    } finally { spy.mockRestore(); syncBuiltinESMExports(); }
+      assert.equal(decryptions, 2);
+      assert.equal(injected, true);
+    } finally { spy.mockRestore(); decipherSpy.mockRestore(); syncBuiltinESMExports(); }
   } finally { db.exec(`PRAGMA user_version=${String(version)}`); db.close(); await f.close(); }
 });
 
@@ -243,14 +250,20 @@ it("recovers a draft's durable counter intent through stopped authenticated main
   assert.throws(() => f.store.interruptReserve(f.input.credentialId), /Duo credential commit|uncertain/u);
   f.admission.release(); await f.profile.close(); f.machine.release();
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
-  const recovered = maintenance.recoverInterruptedDuoPublication();
-  assert.equal(recovered.revision, 3);
-  assert.equal(maintenance.readProfileRegistry().profiles.length, 0);
-  const admission = maintenance.admitProfile(maintenance.issueRegisteredProfileClaim(profileId));
-  const fresh = createDraftDuoCredentialStore(admission, maintenance, f.draft.operationId, 1, systemClock);
-  assert.equal(fresh.read().credentials[0]?.credentialId, f.input.credentialId);
-  assert.ok((fresh.read().credentials[0]?.highWater ?? 0) > 0);
-  admission.release(); maintenance.release(); rmSync(f.root, { recursive: true });
+  try {
+    const recovered = maintenance.recoverInterruptedDuoPublication();
+    assert.equal(recovered.revision, 3);
+    assert.equal(maintenance.readProfileRegistry().profiles.length, 0);
+  } finally { maintenance.release(); }
+  const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime);
+  let admission: RuntimeAdmission | undefined;
+  try {
+    admission = machine.admitProfile(profileId);
+    const fresh = createDraftDuoCredentialStore(admission, machine, f.draft.operationId, 1, systemClock);
+    assert.equal(fresh.read().credentials[0]?.credentialId, f.input.credentialId);
+    assert.ok((fresh.read().credentials[0]?.highWater ?? 0) > 0);
+  } finally { admission?.release(); machine.release(); rmSync(f.root, { recursive: true }); }
+
 });
 
 for (const boundary of ["source", "journal", "erase", "intent", "source-unlink", "key-unlink", "keychain-before-delete", "keychain-after-delete", "operation-unlink", "root-removal"] as const) {
@@ -464,7 +477,7 @@ it("limits finished publishing to value-free metadata and refuses key provisioni
   assert.ok(draft?.finish);
   const key = draft.attempts.find(entry => entry.method === "key"); assert.ok(key?.scope); assert.ok(key.ceremony);
   const scope = key.scope, credentialId = key.ceremony.credentialId;
-  const admission = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(f.draft.profileId));
+  const admission = f.machine.admitProfile(f.draft.profileId);
   const store = createDraftDuoCredentialStore(admission, f.machine, operation.operationId, draft.generation, systemClock);
   assert.deepEqual(store.readForScope(scope).map(entry => entry.credentialId), [credentialId]);
   const signingRequest = { credentialId: "AQID", requestId: randomUUID(), rpId: "duosecurity.com" as const, origin: scope.origin, challenge: "AQID" };
@@ -637,7 +650,7 @@ it("keeps a pending signup key unsigned until exact scoped proof confirms it, th
     },
   };
   const f = await privateDraftFixture(provider);
-  const admission = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(f.draft.profileId));
+  const admission = f.machine.admitProfile(f.draft.profileId);
   try {
     await f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, "key");
     assert.ok(capability);

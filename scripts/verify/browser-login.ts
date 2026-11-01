@@ -1,7 +1,7 @@
 import { createDuoCredentialStore } from "../../src/backend/storage/configuration/duo-credential-store.js";
 import type { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
 import { captureSelectedProfileStorage, RuntimeCustodyUncertainError } from "../../src/backend/app/composition/storage-compose.js";
-import { AuthoritySourceClosureUnprovedError } from "../../src/backend/storage/source-closure.js";
+import { hasUnprovedSourceClosure } from "../../src/backend/storage/source-closure.js";
 import { reconcileStartupCrash } from "../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { RunRecordService } from "../../src/backend/runs/lifecycle/run-record-service.js";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../src/models/failures/error-catalog.js";
@@ -178,7 +178,7 @@ export async function withSmokeWorker(
   for (const gate of gates) {
     try { gate.dispose(errors[0]); } catch (error) { released = false; errors.push(error); }
   }
-  if (!released || errors.some(error => error instanceof SmokeSessionClosureError)) throw new RuntimeCustodyUncertainError(errors);
+  if (!released || errors.some(error => error instanceof SmokeSessionClosureError || hasUnprovedSourceClosure(error))) throw new RuntimeCustodyUncertainError(errors);
   try {
     const hold = database.authority.workerSlots.verification(slot.workerId);
     if (hold === undefined) throw new Error("live-smoke-verification-reservation-missing");
@@ -226,7 +226,7 @@ async function main(): Promise<void> {
   const lock = await acquireRuntimeLifetimeLock(rebuildRuntimeIsolation.lockPort);
   let retain = false;
   try { await runAdmittedSmoke(lock); }
-  catch (error) { retain = error instanceof RuntimeCustodyUncertainError || error instanceof AuthoritySourceClosureUnprovedError; throw error; }
+  catch (error) { retain = error instanceof RuntimeCustodyUncertainError || hasUnprovedSourceClosure(error); throw error; }
   finally { if (!retain) await lock.close(); }
 }
 
@@ -242,7 +242,7 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
   let admission: RuntimeAdmission | undefined, database: AuthorityDatabase | undefined, operationFailure: { error: unknown } | undefined;
   try {
     const selected = captureSelectedProfileStorage(machine);
-    admission = machine.admitProfile(machine.issueRegisteredProfileClaim(selected.profileId));
+    admission = machine.admitProfile(selected.profileId);
     const profileAdmission = admission;
     const stateRoot = profileAdmission.stateRoot;
     const credentials = createCredentialStore({ admission: profileAdmission, stateRoot, erasureJournalAdmission: machine,
@@ -364,7 +364,7 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
   }, systemClock, { lock, ...profileAdmission.profileBinding, profileRunId, system, credentialKey: duoCeremonyCredentialKey(config, duo) });
   } catch (error) { operationFailure = { error }; }
   try {
-    if (!(operationFailure?.error instanceof RuntimeCustodyUncertainError) && !(operationFailure?.error instanceof AuthoritySourceClosureUnprovedError)) {
+    if (!(operationFailure?.error instanceof RuntimeCustodyUncertainError) && !hasUnprovedSourceClosure(operationFailure?.error)) {
       database?.close(); admission?.release(); machine.release();
     }
   } catch (error) { throw new RuntimeCustodyUncertainError(operationFailure === undefined ? [error] : [operationFailure.error, error]); }

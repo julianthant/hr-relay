@@ -10,7 +10,6 @@ import { it } from "vitest";
 import { composeSelectedProfileStorage } from "../../../../src/backend/app/composition/storage-compose.js";
 import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createCredentialStore, readForErasure, observeCredentialPresence } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { CredentialEraseInputSchema } from "../../../../src/models/config/credential-store.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
@@ -47,7 +46,7 @@ for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-muta
     const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
     assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("genuine profile sign-in refused");
-    const child = f.machine.admitProfile(createProfileRegistry(f.machine).storageClaim(active.profileId));
+    const child = f.machine.admitProfile(active.profileId);
     held.child = child;
     const journalPath = join(f.machine.stateRoot, "machine", "erasures", `${active.profileId}.json`);
     const store = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalAdmission: f.machine, erasureJournalPath: journalPath });
@@ -62,7 +61,7 @@ for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-muta
     const operationPath = join(f.machine.stateRoot, "machine", "operations", `${erased.operationId}.json`);
     const operation = LogoutOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
     f.machine.publishProfileOperation({ ...operation, phase: "erasing" });
-    const settlement = f.machine.admitProfile(createProfileRegistry(f.machine).settlementClaim(erased.operationId));
+    const settlement = f.machine.admitProfileSettlement(erased.operationId);
     held.settlement = settlement;
     const retained = createCredentialStore({ admission: settlement, stateRoot: settlement.stateRoot, erasureJournalAdmission: f.machine, erasureJournalPath: journalPath,
       ...(copy === "missing-owner" ? {} : { repairInventory: (request, writer, copies) => {

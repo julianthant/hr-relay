@@ -141,10 +141,12 @@ const hasVisibleSsSmartHrSettlementSignal = (selectors: Readonly<{
 };
 
 async function observeSsSmartHrSettlement(
+  assertCurrent: () => void,
   resultRows: Locator,
   noResults: Locator,
   receipt: Locator,
 ): Promise<SsSmartHrSettlementObservation> {
+  assertCurrent();
   const [
     resultRowCount,
     resultRowVisible,
@@ -160,6 +162,7 @@ async function observeSsSmartHrSettlement(
     receipt.count(),
     receipt.first().isVisible(),
   ]);
+  assertCurrent();
   return {
     resultRowCount,
     resultRowVisible,
@@ -214,6 +217,7 @@ const captureSsSmartHrSettlementDiagnostic = (selectors: Readonly<{
 };
 
 async function evaluateSsSmartHrSettlementDiagnostic(
+  assertCurrent: () => void,
   page: Page,
   selectors: Readonly<{
     criteriaBanner: string;
@@ -233,10 +237,13 @@ async function evaluateSsSmartHrSettlementDiagnostic(
     cancelBound = (): void => { clearTimeout(handle); };
   });
   try {
-    return await Promise.race([
+    assertCurrent();
+    const result = await Promise.race([
       page.evaluate(captureSsSmartHrSettlementDiagnostic, selectors),
       diagnosticTimedOut,
     ]);
+    assertCurrent();
+    return result;
   } finally {
     cancelBound();
   }
@@ -247,21 +254,26 @@ function detailUrl(transactionId: string): string {
 }
 
 // PeopleSoft renders editable values as inputs and read-only values as spans with the same record-field ID.
-async function textOf(locator: Locator): Promise<string> {
+async function textOf(assertCurrent: () => void, locator: Locator): Promise<string> {
+  assertCurrent();
   const isFormControl = await locator.evaluate(
     (node) => node instanceof HTMLInputElement
       || node instanceof HTMLTextAreaElement
       || node instanceof HTMLSelectElement,
   );
+  assertCurrent();
   const value = isFormControl ? await locator.inputValue() : await locator.innerText();
+  assertCurrent();
   return value.trim();
 }
 
 // Read each entire result row because PeopleSoft can change column order.
 async function scanTransactionIds(
+  assertCurrent: () => void,
   resultRows: Locator,
   expectedRowCount: number,
 ): Promise<readonly string[]> {
+  assertCurrent();
   const rows = await resultRows.all();
   if (rows.length !== expectedRowCount) {
     throw new Error(
@@ -271,12 +283,14 @@ async function scanTransactionIds(
   }
   const ids: string[] = [];
   for (const [index, row] of rows.entries()) {
+    assertCurrent();
     if (!(await row.isVisible())) {
       throw new Error(
         `the SS Smart HR result row ${String(index + 1)} was not visible; `
         + "hidden rows cannot contribute current settlement authority",
       );
     }
+    assertCurrent();
     const text = await row.innerText();
     const matches = [...new Set(text.match(/T\d{6,}/gu) ?? [])]
       .filter((id) => TRANSACTION_ID.test(id));
@@ -297,19 +311,25 @@ async function scanTransactionIds(
       "the SS Smart HR result rows repeated one stable transaction id; each row must be distinct",
     );
   }
+  assertCurrent();
   return ids;
 }
 
 async function readTransactionDetail(
+  assertCurrent: () => void,
   page: Page,
   transactionId: string,
   emplId: Eid,
 ): Promise<UcpathTransactionRow> {
+  assertCurrent();
   await page.goto(detailUrl(transactionId), { waitUntil: "domcontentloaded", timeout: SCAN_BOUND_MS });
+  assertCurrent();
   recordBrowserAction("opened", "ucpath.smart-hr.transaction-detail");
   const receipt = resolveUcpathElement(page, UCPATH_SS_SMART_HR_RECEIPT_DISPLAY);
+  assertCurrent();
   await receipt.waitFor({ state: "visible", timeout: SCAN_BOUND_MS });
-  const displayedId = await textOf(receipt);
+  assertCurrent();
+  const displayedId = await textOf(assertCurrent, receipt);
   if (displayedId !== transactionId) {
     // An unknown transaction ID silently renders the search form; require both detail markers.
     throw new Error(
@@ -317,12 +337,14 @@ async function readTransactionDetail(
       + `${JSON.stringify(transactionId)}; refusing to read one transaction as another`,
     );
   }
+  assertCurrent();
   const [approvalStatus, startDate, action, displayedName] = await Promise.all([
-    textOf(resolveUcpathElement(page, UCPATH_SS_SMART_HR_APPROVAL_STATUS_DISPLAY)),
-    textOf(page.locator(DRIVER_ANCHOR.detailStartDate)),
-    textOf(page.locator(DRIVER_ANCHOR.detailAction)),
-    textOf(page.locator(DRIVER_ANCHOR.detailName)),
+    textOf(assertCurrent, resolveUcpathElement(page, UCPATH_SS_SMART_HR_APPROVAL_STATUS_DISPLAY)),
+    textOf(assertCurrent, page.locator(DRIVER_ANCHOR.detailStartDate)),
+    textOf(assertCurrent, page.locator(DRIVER_ANCHOR.detailAction)),
+    textOf(assertCurrent, page.locator(DRIVER_ANCHOR.detailName)),
   ]);
+  assertCurrent();
   return {
     transactionId,
     // The search filter echoes the supplied EID; use the displayed name for subject proof.
@@ -335,6 +357,7 @@ async function readTransactionDetail(
 }
 
 export async function scanTerminationTransactionsOnPage(
+  assertCurrent: () => void,
   page: Page,
   input: Readonly<{ emplId: Eid; transactionId?: string }>,
   observedAt: string,
@@ -354,12 +377,19 @@ export async function scanTerminationTransactionsOnPage(
     "the SS Smart HR transaction scan failed: "
     + (error instanceof Error ? error.message : String(error));
   try {
+    assertCurrent();
     await page.goto(SEARCH_URL, { waitUntil: "domcontentloaded", timeout: SCAN_BOUND_MS });
+    assertCurrent();
     recordBrowserAction("opened", "ucpath.smart-hr.search");
-    await waitForUcpathState(page, UCPATH_SS_SMART_HR_SEARCH_READY);
+    assertCurrent();
+    await waitForUcpathState(assertCurrent, page, UCPATH_SS_SMART_HR_SEARCH_READY);
+    assertCurrent();
     await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_EID_INPUT).fill(input.emplId);
+    assertCurrent();
     recordBrowserAction("typed", UCPATH_SS_SMART_HR_SEARCH_EID_INPUT, input.emplId);
+    assertCurrent();
     await page.locator(DRIVER_ANCHOR.searchEmplIdOperator).selectOption(EQUALS_OPERATOR);
+    assertCurrent();
     recordBrowserAction("selected", "ucpath.smart-hr.search-operator", EQUALS_OPERATOR);
     const autoDrilledReceipt = resolveUcpathElement(
       page,
@@ -367,7 +397,8 @@ export async function scanTerminationTransactionsOnPage(
     );
     const resultRows = page.locator(DRIVER_ANCHOR.searchResultRow);
     const noResults = page.getByText(NO_RESULTS_MARKER);
-    const beforeSearch = await observeSsSmartHrSettlement(
+    assertCurrent();
+    const beforeSearch = await observeSsSmartHrSettlement(assertCurrent,
       resultRows,
       noResults,
       autoDrilledReceipt,
@@ -388,15 +419,19 @@ export async function scanTerminationTransactionsOnPage(
     if (receiptRecipe.kind !== "css") {
       throw new Error("the SS Smart HR receipt settlement signal requires its proven CSS anchor");
     }
+    assertCurrent();
     await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_BUTTON).click();
+    assertCurrent();
     recordBrowserAction("clicked", UCPATH_SS_SMART_HR_SEARCH_BUTTON);
     try {
+      assertCurrent();
       await page.waitForFunction(hasVisibleSsSmartHrSettlementSignal, {
         resultRow: DRIVER_ANCHOR.searchResultRow,
         receipt: receiptRecipe.selector,
         noResultsText: NO_RESULTS_TEXT,
       }, { timeout: SCAN_BOUND_MS, polling: 50 });
     } catch (error) {
+      assertCurrent();
       if (!(error instanceof Error && error.name === "TimeoutError")) {
         throw error;
       }
@@ -415,8 +450,9 @@ export async function scanTerminationTransactionsOnPage(
             { cause: error },
           );
         }
+        assertCurrent();
         diagnostic = UcpathSsSmartHrSettlementDiagnosticSchema.parse(
-          await evaluateSsSmartHrSettlementDiagnostic(page, {
+          await evaluateSsSmartHrSettlementDiagnostic(assertCurrent, page, {
             criteriaBanner: DRIVER_ANCHOR.searchCriteriaBanner,
             resultRow: DRIVER_ANCHOR.searchResultRow,
             errorRegion: DRIVER_ANCHOR.errorBanner,
@@ -424,11 +460,14 @@ export async function scanTerminationTransactionsOnPage(
           },
         ));
       } catch {
+        assertCurrent();
         diagnostic = SETTLEMENT_CAPTURE_FAILED;
       }
+      assertCurrent();
       return unreadable(failureReason(settlementError), diagnostic);
     }
-    const afterSearch = await observeSsSmartHrSettlement(
+    assertCurrent();
+    const afterSearch = await observeSsSmartHrSettlement(assertCurrent,
       resultRows,
       noResults,
       autoDrilledReceipt,
@@ -468,6 +507,7 @@ export async function scanTerminationTransactionsOnPage(
     }
     const [settled] = settledStates;
     if (settled === "empty") {
+      assertCurrent();
       return UcpathTransactionScanSchema.parse({
         state: "read",
         emplId: input.emplId,
@@ -478,7 +518,8 @@ export async function scanTerminationTransactionsOnPage(
     }
     let ids: readonly string[];
     if (settled === "single-detail") {
-      const transactionId = await textOf(autoDrilledReceipt);
+      assertCurrent();
+      const transactionId = await textOf(assertCurrent, autoDrilledReceipt);
       if (!TRANSACTION_ID.test(transactionId)) {
         throw new Error(
           "the SS Smart HR auto-drilled detail rendered no stable T transaction id",
@@ -486,11 +527,16 @@ export async function scanTerminationTransactionsOnPage(
       }
       ids = [transactionId];
     } else {
-      ids = await scanTransactionIds(resultRows, afterSearch.resultRowCount);
+      assertCurrent();
+      ids = await scanTransactionIds(assertCurrent, resultRows, afterSearch.resultRowCount);
     }
     if (input.transactionId !== undefined) ids = ids.filter(id => id === input.transactionId);
     const rows: UcpathTransactionRow[] = [];
-    for (const id of ids) rows.push(await readTransactionDetail(page, id, input.emplId));
+    for (const id of ids) {
+      assertCurrent();
+      rows.push(await readTransactionDetail(assertCurrent, page, id, input.emplId));
+    }
+    assertCurrent();
     return UcpathTransactionScanSchema.parse({
       state: "read",
       emplId: input.emplId,
@@ -499,6 +545,7 @@ export async function scanTerminationTransactionsOnPage(
       observedAt,
     });
   } catch (error) {
+    assertCurrent();
     return unreadable(failureReason(error), NOT_INDETERMINATE_SETTLEMENT);
   }
 }
@@ -523,39 +570,59 @@ function resolveReasonOption(
 }
 
 async function readReasonOptions(
+  assertCurrent: () => void,
   page: Page,
 ): Promise<readonly { readonly value: string; readonly label: string }[]> {
+  assertCurrent();
   const raw = await resolveUcpathElement(page, UCPATH_SMART_HR_REASON_CODE_SELECT)
     .evaluate((node) => [...(node as HTMLSelectElement).options].map(
       (option) => ({ value: option.value, label: option.text.trim() }),
     ));
+  assertCurrent();
   return raw.filter((option) => option.value.length > 0);
 }
 
 async function stageTerminationOnPage(
+  assertCurrent: () => void,
   page: Page,
   input: UcpathTerminationTarget,
   observedAt: string,
 ): Promise<UcpathTerminationStaging> {
+  assertCurrent();
   await page.goto(WIZARD_URL, { waitUntil: "domcontentloaded", timeout: STEP_BOUND_MS });
+  assertCurrent();
   recordBrowserAction("opened", "ucpath.smart-hr.wizard");
-  await waitForUcpathState(page, UCPATH_SMART_HR_SETUP_READY);
+  assertCurrent();
+  await waitForUcpathState(assertCurrent, page, UCPATH_SMART_HR_SETUP_READY);
+  assertCurrent();
   await resolveUcpathElement(page, UCPATH_SMART_HR_TEMPLATE_INPUT).fill(input.template);
+  assertCurrent();
   recordBrowserAction("typed", UCPATH_SMART_HR_TEMPLATE_INPUT, input.template);
+  assertCurrent();
   await resolveUcpathElement(page, UCPATH_SMART_HR_TRANSACTION_DATE_INPUT).fill(input.effectiveDate);
+  assertCurrent();
   recordBrowserAction("typed", UCPATH_SMART_HR_TRANSACTION_DATE_INPUT, input.effectiveDate);
+  assertCurrent();
   await resolveUcpathElement(page, UCPATH_SMART_HR_CREATE_TRANSACTION_BUTTON).click();
+  assertCurrent();
   recordBrowserAction("clicked", UCPATH_SMART_HR_CREATE_TRANSACTION_BUTTON);
-  await waitForUcpathState(page, UCPATH_SMART_HR_DETAILS_READY);
+  assertCurrent();
+  await waitForUcpathState(assertCurrent, page, UCPATH_SMART_HR_DETAILS_READY);
 
+  assertCurrent();
   await resolveUcpathElement(page, UCPATH_SMART_HR_DETAILS_EID_INPUT).fill(input.emplId);
+  assertCurrent();
   recordBrowserAction("typed", UCPATH_SMART_HR_DETAILS_EID_INPUT, input.emplId);
+  assertCurrent();
   await page.keyboard.press("Tab");
+  assertCurrent();
   recordBrowserAction("pressed", "ucpath.smart-hr.details-eid-tab");
   const nameDisplay = page.locator(DRIVER_ANCHOR.wizardPersonName);
   try {
+    assertCurrent();
     await nameDisplay.waitFor({ state: "visible", timeout: STEP_BOUND_MS });
   } catch (error) {
+    assertCurrent();
 
     throw new UcpathEmplIdNotRecognizedError({
       emplId: input.emplId,
@@ -563,14 +630,17 @@ async function stageTerminationOnPage(
       cause: error,
     });
   }
+  assertCurrent();
   const observedName = (await nameDisplay.innerText()).trim();
-  const observedEmplRecord = await textOf(page.locator(DRIVER_ANCHOR.wizardEmplRecord));
+  assertCurrent();
+  const observedEmplRecord = await textOf(assertCurrent, page.locator(DRIVER_ANCHOR.wizardEmplRecord));
   if (observedEmplRecord.length === 0 || observedEmplRecord !== input.emplRecord) {
     throw new UcpathEmploymentRecordMismatchError(input.emplRecord, observedEmplRecord);
   }
   // The job effective date is disabled and derived by UCPath; inspect it without filling.
   const jobEffectiveDate = page.locator(DRIVER_ANCHOR.wizardJobEffectiveDate);
-  const observedEffectiveDate = await textOf(jobEffectiveDate);
+  assertCurrent();
+  const observedEffectiveDate = await textOf(assertCurrent, jobEffectiveDate);
   if (observedEffectiveDate !== input.effectiveDate) {
     throw new Error(
       `UCPath derived job effective date ${JSON.stringify(observedEffectiveDate)} from the `
@@ -579,40 +649,63 @@ async function stageTerminationOnPage(
       + "than filing a termination the idempotency probe never asked about",
     );
   }
-  const options = await readReasonOptions(page);
+  assertCurrent();
+  const options = await readReasonOptions(assertCurrent, page);
   const reason = resolveReasonOption(options, input.reasonCode);
+  assertCurrent();
   await resolveUcpathElement(page, UCPATH_SMART_HR_REASON_CODE_SELECT)
     .selectOption({ value: reason.value });
+  assertCurrent();
   recordBrowserAction("selected", UCPATH_SMART_HR_REASON_CODE_SELECT, reason.value);
+  assertCurrent();
   await resolveUcpathElement(page, UCPATH_SMART_HR_CONTINUE_BUTTON).click();
+  assertCurrent();
   recordBrowserAction("clicked", UCPATH_SMART_HR_CONTINUE_BUTTON);
-  await waitForUcpathState(page, UCPATH_SMART_HR_INFORMATION_READY);
+  assertCurrent();
+  await waitForUcpathState(assertCurrent, page, UCPATH_SMART_HR_INFORMATION_READY);
 
   const override = resolveUcpathElement(page, UCPATH_SMART_HR_OVERRIDE_LDW_CHECKBOX);
   // UCPath can pre-check the override and prefill transaction date minus one day; verify before changing either.
+  assertCurrent();
   if (!await override.isChecked()) {
+    assertCurrent();
     await override.check();
+    assertCurrent();
     recordBrowserAction("checked", UCPATH_SMART_HR_OVERRIDE_LDW_CHECKBOX);
   }
   const ldw = resolveUcpathElement(page, UCPATH_SMART_HR_LAST_DATE_WORKED_INPUT);
+  assertCurrent();
   await ldw.fill(input.lastDateWorked);
+  assertCurrent();
   recordBrowserAction("typed", UCPATH_SMART_HR_LAST_DATE_WORKED_INPUT, input.lastDateWorked);
+  assertCurrent();
   await ldw.blur();
+  assertCurrent();
   await resolveUcpathElement(page, UCPATH_SMART_HR_INITIATOR_COMMENTS_FIELD)
     .fill(input.initiatorComments);
+  assertCurrent();
   recordBrowserAction("typed", UCPATH_SMART_HR_INITIATOR_COMMENTS_FIELD, input.initiatorComments);
+  assertCurrent();
   await resolveUcpathElement(page, UCPATH_SMART_HR_TRANSACTION_COMMENTS_FIELD)
     .fill(input.initiatorComments);
+  assertCurrent();
   recordBrowserAction("typed", UCPATH_SMART_HR_TRANSACTION_COMMENTS_FIELD, input.initiatorComments);
-  await waitForUcpathState(page, UCPATH_SMART_HR_TERMINATION_STAGED);
+  assertCurrent();
+  await waitForUcpathState(assertCurrent, page, UCPATH_SMART_HR_TERMINATION_STAGED);
 
-  const transactionIdDisplay = await textOf(page.locator(DRIVER_ANCHOR.wizardTransactionIdDisplay));
+  assertCurrent();
+  const transactionIdDisplay = await textOf(assertCurrent, page.locator(DRIVER_ANCHOR.wizardTransactionIdDisplay));
   if (transactionIdDisplay !== "NEW") {
     throw new Error(
       `the staged Smart HR wizard displays Transaction ID ${JSON.stringify(transactionIdDisplay)} `
       + 'rather than "NEW"; a staged wizard that already carries a number is not a staged wizard',
     );
   }
+  assertCurrent();
+  const lastDateWorked = await ldw.inputValue();
+  assertCurrent();
+  const lastDateWorkedOverridden = await override.isChecked();
+  assertCurrent();
   return UcpathTerminationStagingSchema.parse({
     stagedPageState: UCPATH_SMART_HR_TERMINATION_STAGED,
     emplId: input.emplId,
@@ -623,8 +716,8 @@ async function stageTerminationOnPage(
     effectiveDate: observedEffectiveDate,
     resolvedReasonOption: reason.label,
     observedReasonOptions: options.map((option) => option.label),
-    lastDateWorked: await ldw.inputValue(),
-    lastDateWorkedOverridden: await override.isChecked(),
+    lastDateWorked,
+    lastDateWorkedOverridden,
     transactionIdDisplay: "NEW",
     observedAt,
   });
@@ -633,7 +726,8 @@ async function stageTerminationOnPage(
 
 
 // The staged subject belongs to Page C; Page-B anchors cannot prove the page held at the fence.
-export async function readStagedWizardSubjectOnPage(page: Page): Promise<string> {
+export async function readStagedWizardSubjectOnPage(assertCurrent: () => void, page: Page): Promise<string> {
+  assertCurrent();
   const name = await page.evaluate(() => {
     const cells = [...document.querySelectorAll("td")];
     const labels = cells.filter((cell) => (cell.textContent ?? "").trim() === "Name:");
@@ -659,24 +753,30 @@ export async function readStagedWizardSubjectOnPage(page: Page): Promise<string>
       + "subject on this page to bind the write to",
     );
   }
+  assertCurrent();
   return name.name;
 }
 
 // Bind the name within the verified EID row; column-count drift must not rebind the person.
-export async function readInProgressSubjectOnPage(page: Page, emplId: Eid): Promise<string> {
+export async function readInProgressSubjectOnPage(assertCurrent: () => void, page: Page, emplId: Eid): Promise<string> {
   const names: string[] = [];
+  assertCurrent();
   for (const row of await page.locator('tr[id^="trHR_TBH_EULST_VW$0_row"]').all()) {
     const eid = row.locator('span[id^="EMPLID$"]');
+    assertCurrent();
     if (await eid.count() !== 1) {
       throw new Error("a Transactions in Progress row has no unique Person ID control");
     }
+    assertCurrent();
     if ((await eid.innerText()).trim() !== emplId) continue;
     const name = row.locator('a[id^="NAME$"]');
+    assertCurrent();
     if (await name.count() !== 1) {
       throw new Error(
         `a Transactions in Progress row for ${directIdentifierDisplay(emplId)} has no unique Name control`,
       );
     }
+    assertCurrent();
     const text = (await name.innerText()).trim();
     if (text.length === 0) {
       throw new Error(
@@ -692,6 +792,7 @@ export async function readInProgressSubjectOnPage(page: Page, emplId: Eid): Prom
       `the Transactions in Progress grid renders ${String(names.length)} rows and ${String(normalized.size)} distinct names for Empl ID ${directIdentifierDisplay(emplId)}; exactly one subject is required to bind a sweep`,
     );
   }
+  assertCurrent();
   return names[0];
 }
 
@@ -747,12 +848,14 @@ export function joinPendingSweepGridRows(
 }
 
 async function stagePendingTerminationSweepOnPage(
+  assertCurrent: () => void,
   page: Page,
   input: UcpathPendingSweepTarget,
   observedAt: string,
 ): Promise<UcpathPendingSweepStaging> {
 
-  const current = await scanTerminationTransactionsOnPage(
+  assertCurrent();
+  const current = await scanTerminationTransactionsOnPage(assertCurrent,
     page,
     { emplId: input.emplId },
     observedAt,
@@ -764,19 +867,25 @@ async function stagePendingTerminationSweepOnPage(
       + "the exact machine-observed pending set changed or is already gone, so no checkbox may be selected",
     );
   }
+  assertCurrent();
   await page.goto(WIZARD_URL, { waitUntil: "domcontentloaded", timeout: STEP_BOUND_MS });
+  assertCurrent();
   recordBrowserAction("opened", "ucpath.smart-hr.wizard");
-  await waitForUcpathState(page, UCPATH_SMART_HR_SETUP_READY);
+  assertCurrent();
+  await waitForUcpathState(assertCurrent, page, UCPATH_SMART_HR_SETUP_READY);
   const text = async (row: Locator, selector: string, field: string): Promise<string> => {
     const matches = row.locator(selector);
+    assertCurrent();
     const count = await matches.count();
     if (count !== 1) {
       throw new Error(
         `a Transactions in Progress row exposed ${String(count)} ${field} controls; exactly one is required for an exact-set join`,
       );
     }
+    assertCurrent();
     const value = (await matches.innerText()).trim();
     if (value.length === 0) throw new Error(`a Transactions in Progress row rendered an empty ${field}`);
+    assertCurrent();
     return value;
   };
   const gridRows = page.locator('tr[id^="trHR_TBH_EULST_VW$0_row"]');
@@ -784,16 +893,21 @@ async function stagePendingTerminationSweepOnPage(
     facts: Omit<UcpathInProgressRow, "transactionId">;
     checkbox: Locator;
   }>> = [];
+  assertCurrent();
   for (const row of await gridRows.all()) {
+    assertCurrent();
     const emplId = EidSchema.parse(await text(row, 'span[id^="EMPLID$"]', "Person ID"));
+    assertCurrent();
     const action = await text(row, 'span[id^="ACTION$"]', "Action");
     if (emplId !== input.emplId || !isUcpathTerminationAction(action)) continue;
     const checkbox = row.locator('input[type="checkbox"][id^="SELECT$"]');
+    assertCurrent();
     if (await checkbox.count() !== 1) {
       throw new Error(
         `a Transactions in Progress row for ${directIdentifierDisplay(input.emplId)} has no unique Select checkbox; refusing before selection`,
       );
     }
+    assertCurrent();
     candidates.push({
       facts: {
         transactionType: await text(row, 'span[id^="TBH_TMPL_TXN_TYP$"]', "Transaction Type"),
@@ -809,17 +923,22 @@ async function stagePendingTerminationSweepOnPage(
   const joined = joinPendingSweepGridRows(input, candidates.map(({ facts }) => facts));
   const selected = joined.map(({ selected: row }) => row);
   for (const { candidateIndex } of joined) {
+    assertCurrent();
     await candidates[candidateIndex].checkbox.check();
+    assertCurrent();
     recordBrowserAction("checked", "ucpath.smart-hr.pending-transaction");
   }
   for (const { candidateIndex } of joined) {
     const candidate = candidates[candidateIndex];
+    assertCurrent();
     if (!(await candidate.checkbox.isChecked())) {
       throw new Error("a uniquely joined Transactions in Progress checkbox did not remain selected; refusing before the fence");
     }
   }
 
-  const observedName = await readInProgressSubjectOnPage(page, input.emplId);
+  assertCurrent();
+  const observedName = await readInProgressSubjectOnPage(assertCurrent, page, input.emplId);
+  assertCurrent();
   return UcpathPendingSweepStagingSchema.parse({
     stagedPageState: UCPATH_SMART_HR_TERMINATION_STAGED,
     emplId: input.emplId,
@@ -837,16 +956,20 @@ type CommitRefusalObservation =
   | Readonly<{ state: "refused"; message: string }>
   | Readonly<{ state: "no-refusal-rendered" }>;
 
-async function observeCommitRefusal(page: Page): Promise<CommitRefusalObservation> {
+async function observeCommitRefusal(assertCurrent: () => void, page: Page): Promise<CommitRefusalObservation> {
   const banner = page.locator(DRIVER_ANCHOR.errorBanner).filter({ hasText: /\S/u }).first();
   try {
+    assertCurrent();
     await banner.waitFor({ state: "visible", timeout: COMMIT_REFUSAL_OBSERVE_MS });
   } catch (error) {
+    assertCurrent();
     if (error instanceof Error && error.name === "TimeoutError") {
+      assertCurrent();
       return { state: "no-refusal-rendered" };
     }
     throw error;
   }
+  assertCurrent();
   const message = (await banner.innerText()).trim();
   if (message.length === 0) {
 
@@ -855,11 +978,13 @@ async function observeCommitRefusal(page: Page): Promise<CommitRefusalObservatio
       + "it could be read; the submit's outcome is unobserved",
     );
   }
+  assertCurrent();
   return { state: "refused", message };
 }
 
 /** The two commit controls, and nothing else, behind an unforgeable token. */
 async function commitOnPage(
+  assertCurrent: () => void,
   page: Page,
   id: ElementId,
   capability: MutationCapability,
@@ -869,14 +994,19 @@ async function commitOnPage(
     throw new Error(`the UCPath driver refuses to commit through ${String(id)}`);
   }
   const locator = resolveUcpathElement(page, id);
+  assertCurrent();
   await locator.waitFor({ state: "visible", timeout: STEP_BOUND_MS });
+  assertCurrent();
   await locator.click();
+  assertCurrent();
   recordBrowserAction("clicked", id);
 
-  const refusal = await observeCommitRefusal(page);
+  assertCurrent();
+  const refusal = await observeCommitRefusal(assertCurrent, page);
   if (refusal.state === "refused") {
     throw new UcpathCommitRefusedError({ elementId: id, refusal: refusal.message });
   }
+  assertCurrent();
   return UiActionProofSchema.parse({ elementId: id, effect: "external-commit", performed: true });
 }
 

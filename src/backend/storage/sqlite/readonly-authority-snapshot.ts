@@ -1,3 +1,4 @@
+import { privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { z } from "zod";
 import { DatabaseSync } from "node:sqlite";
@@ -19,7 +20,7 @@ function identity(stats: BigIntStats): string {
 function inspect(path: string): BigIntStats | undefined {
   try {
     const stats = lstatSync(path, { bigint: true });
-    if (!stats.isFile() || stats.isSymbolicLink()) throw new Error("authority-readonly-source-unsafe");
+    if (!stats.isFile() || stats.nlink !== 1n || privatePathRejects(path, stats, "group-write")) throw new Error("authority-readonly-source-unsafe");
     return stats;
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;

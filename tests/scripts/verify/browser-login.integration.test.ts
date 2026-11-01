@@ -3,6 +3,7 @@ import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { randomUUID } from "node:crypto";
 import { RuntimeLifetimeLockReleasedError, type RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { RuntimeCustodyUncertainError } from "../../../src/backend/app/composition/storage-compose.js";
+import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure } from "../../../src/backend/storage/source-closure.js";
 import { chmodSync, existsSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import assert from "node:assert/strict";
 import { join } from "node:path";
@@ -85,6 +86,31 @@ async function withSmokeWorker(database: AuthorityDatabase, operation: Parameter
 }
 
 describe("registered browser-login smoke lifecycle", () => {
+  it("retains verification membership and original errors when a wrapped source closure is unproved", async () => {
+    const { database, lock } = await fixture();
+    const closure = new AuthoritySourceClosureUnprovedError([new Error("synthetic source still open")]);
+    const failure = new Error("synthetic smoke wrapper", { cause: closure });
+    const retire = vi.spyOn(database, "retireVerificationWorker");
+    let workerId: string | undefined;
+    await expect(withSmokeWorker(database, async slot => {
+      workerId = slot.workerId;
+      throw failure;
+    })).rejects.toSatisfy((error: unknown) => {
+      assert.ok(error instanceof RuntimeCustodyUncertainError);
+      assert.equal(error.errors[0], failure);
+      assert.equal(error.cause, failure);
+      assert.equal(hasUnprovedSourceClosure(error), true);
+      return true;
+    });
+    expect(retire).not.toHaveBeenCalled();
+    assert.ok(workerId);
+    expect(database.authority.workerSlots.get(workerId)?.retiredAt).toBeNull();
+    expect(database.authority.workerSlots.verification(workerId)?.slot.workerId).toBe(workerId);
+    expect(database.authority.workerSlots.verifications("person-lookup")).toHaveLength(1);
+    expect(database.authority.workerPools.get("person-lookup")).toMatchObject({ desiredWorkers: 1, version: 1 });
+    lock.assertHeld();
+  });
+
   it("reproduces the old unregistered worker FK refusal without touching live state", async () => {
     const { database } = await fixture();
     expect(() => database.authority.duoCeremonyLeases.acquire({ credentialKey, workerId: "live-smoke-worker-1",
@@ -244,7 +270,8 @@ describe("registered browser-login smoke lifecycle", () => {
             newSessionId: () => "00000000-0000-4000-8000-000000000001",
             bindings: helpers.recordingBindings(),
             launcher: { launch: input => { mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 }); return Promise.reject(failure); } },
-            admitProfile: createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root,
+            assertCurrent: () => undefined,
+      admitProfile: createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root,
               workerId: slot.workerId, ordinal: slot.ordinal, system: "ucpath", profileRoot }),
           });
           const manager = new WorkerSessionManager({ workerId: slot.workerId, workflowId: slot.workflow,
@@ -306,7 +333,8 @@ describe("registered browser-login smoke lifecycle", () => {
               launches += 1;
               return current.launcher.launch(input);
             } },
-            admitProfile: createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root,
+            assertCurrent: () => undefined,
+      admitProfile: createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root,
               workerId: slot.workerId, ordinal: slot.ordinal, system: "ucpath", profileRoot: config.paths.browserProfileRoot }),
             bindings: { ucpath: { ...binding, login: context => context.duoCeremony.withCeremony(async token => {
               logins += 1;
@@ -367,7 +395,8 @@ describe("registered browser-login smoke lifecycle", () => {
               const close = context.close.bind(context);
               context.close = async options => { closeStarted(); await heldClose; await close(options); };
               return context;
-            } }, admitProfile: createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root, workerId: slot.workerId, ordinal: slot.ordinal,
+            } }, assertCurrent: () => undefined,
+      admitProfile: createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root, workerId: slot.workerId, ordinal: slot.ordinal,
               system: "ucpath", profileRoot: config.paths.browserProfileRoot }),
             bindings: { ucpath: { ...binding, login: context => context.duoCeremony.withCeremony(async () => {
               expect(database.authority.duoCeremonyLeases.get(credentialKey)?.state).toBe("held");

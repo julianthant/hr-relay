@@ -1,3 +1,4 @@
+import { retainAuthoritySourceClosure } from "../../../src/backend/storage/source-closure.js";
 import { createCredentialStore as productionCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import type { CredentialStore } from "../../../src/models/config/credential-store.js";
 import { AuthorityDatabase as RealAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../src/backend/storage/sqlite/authority-database.js";
@@ -17,6 +18,34 @@ export function registerBoundProfile(admission: RuntimeAdmission, machine: Runti
   const prior = boundProfiles.get(admission.stateRoot);
   if (prior !== undefined && prior.workers.size !== 0) throw new Error("fixture-worker-custody-retained");
   boundProfiles.set(admission.stateRoot, { admission, machine, credentials, workers: new Set() });
+}
+
+export function transferBoundFixtureWorkers(prior: RealAuthorityDatabase, admission: RuntimeAdmission, machine: RuntimeAdmission, clock: Clock): RealAuthorityDatabase {
+  const entry = boundProfiles.get(admission.stateRoot);
+  if (entry === undefined || entry.machine !== machine) throw new Error("fixture-bound-profile-owner-required");
+  const retained = [...entry.workers];
+  if (retained.some(worker => worker.database !== prior)) throw new Error("fixture-worker-custody-retained");
+  const path = join(admission.stateRoot, "state.db");
+  const credentials = productionCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
+    erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
+  const successor = RealAuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "fixture-session-change" }, clock,
+    undefined, undefined, undefined, credentials);
+  for (const worker of retained) {
+    const member = successor.authority.workerSlots.get(worker.workerId), lease = successor.authority.workerLeases.get(worker.workerId);
+    if (member === undefined || member.retiredAt !== null || lease?.leaseGeneration !== worker.generation || lease?.processId !== worker.processId) {
+      successor.close(); throw new Error("fixture-worker-lifetime-replaced");
+    }
+  }
+  entry.workers.clear();
+  try { prior.close(); }
+  catch (error) {
+    for (const worker of retained) entry.workers.add(worker);
+    throw retainAuthoritySourceClosure([error], { database: successor, admission: { admission, prior, workers: retained } });
+  }
+  registerBoundProfile(admission, machine);
+  for (const worker of retained) registerBoundFixtureWorker({ ...worker, database: successor, path });
+  fixturePaths.set(successor, path);
+  return successor;
 }
 
 export function unregisterBoundProfile(admission: RuntimeAdmission): void {
@@ -57,7 +86,7 @@ export function stopSyntheticDatabaseWorkers(input: Pick<Parameters<typeof regis
 export function registerBoundFixtureWorker(input: FixtureWorker & Readonly<{ path: string }>): void {
   const admission = boundProfileAdmission(input.path);
   const entry = boundProfiles.get(admission.stateRoot);
-  if (entry?.admission !== admission || input.database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(input.path)) {
+  if (entry?.admission !== admission || input.database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())) {
     throw new Error("fixture-worker-database-owner-mismatch");
   }
   if ([...entry.workers].some(worker => worker.workerId === input.workerId)) throw new Error("fixture-worker-owner-already-retained");
@@ -102,7 +131,7 @@ if (failures.length !== 0) throw new AggregateError(failures, "fixture-worker-cl
 
 export function boundFixtureWorker(database: RealAuthorityDatabase, path: string, workerId: string): boolean {
   const admission = boundProfileAdmission(path), entry = boundProfiles.get(admission.stateRoot);
-  if (entry?.admission !== admission || database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(path)) return false;
+  if (entry?.admission !== admission || database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())) return false;
   const owner = [...entry.workers].find(worker => worker.database === database && worker.workerId === workerId);
   if (owner === undefined) return false;
   const lease = database.authority.workerLeases.get(workerId), slot = database.authority.workerSlots.get(workerId);

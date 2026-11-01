@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, ProtectedStoreRecordSchema } from "../../../../src/models/config/protected-settings.js";
@@ -115,7 +115,7 @@ export async function createHistoricalFlatProfileFixture(options: { unknownWrite
   writeFileSync(protectedPath, JSON.stringify({ schemaVersion: 2, record, history }), { mode: 0o600 });
   const machine = RuntimeAdmission.acquireInitial(workspace, lifetime, (pair, inspection) => {
     const facts = withAuthorityDatabaseReadOnly(inspection, databasePath, database => inspectNativeAuthority(database, 6));
-    return { kind: "verified-existing", pair, authorityGeneration: facts.authorityGeneration, databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(databasePath) };
+    return { kind: "verified-existing", pair, authorityGeneration: facts.authorityGeneration, databaseIdentity: facts.authorityContentFingerprint };
   }, () => { throw new Error("existing flat fixture must never initialize fresh data"); });
   assert.equal(machine.locator.stateRoot, stateRoot); machine.release();
   return { workspace, lifetime, stateRoot, artifactRoot, processLockRoot, databasePath, protectedPath, artifact, reportPath, record, request, browser,

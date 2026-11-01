@@ -1,3 +1,4 @@
+import { fsyncPath, privatePathRejects } from "../private-path.js";
 import { proveProfileRootsUnused } from "../maintenance/process-closure.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 
@@ -130,8 +131,7 @@ function startupClosureDirectory(root: string) {
   const directory = join(root, STARTUP_PROCESS_CLOSURE_DIRECTORY);
   if (!existsSync(directory)) return undefined;
   const info = lstatSync(directory);
-  if (!info.isDirectory() || info.isSymbolicLink() || realpathSync(directory) !== directory || (info.mode & 0o777) !== 0o700
-    || process.getuid !== undefined && info.uid !== process.getuid()) throw new Error("startup-process-closure-directory-unsafe");
+  if (!info.isDirectory() || info.isSymbolicLink() || realpathSync(directory) !== directory || privatePathRejects(directory, info, "directory-0700")) throw new Error("startup-process-closure-directory-unsafe");
   if (readdirSync(directory).some(name => !/^[0-9a-f-]{36}\.json$/u.test(name) || !z.uuid().safeParse(name.slice(0, -5)).success)) throw new Error("startup-process-closure-publication-uncertain");
   return directory;
 }
@@ -432,18 +432,6 @@ function restoreAdmissionPath(root: string): string {
   return join(root, RESTORE_ADMISSION_FILE);
 }
 
-function fsyncPath(path: string): void {
-  const descriptor = openSync(path, "r");
-  let primary: { error: unknown } | undefined;
-  let descriptorIdentity: ReturnType<typeof fstatSync> | undefined;
-  try { descriptorIdentity = fstatSync(descriptor); fsyncSync(descriptor); }
-  catch (error) { primary = { error }; }
-  try { closeSync(descriptor); }
-  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
-    { descriptor: { descriptor, ...(descriptorIdentity === undefined ? {} : { identity: descriptorIdentity }) } }); }
-  if (primary !== undefined) throw primary.error;
-}
-
 type SingletonRole = "server" | "live-smoke" | "geocode";
 const GeocodeReleaseSchema = z.strictObject({ generation: PositiveIntSchema, acquisitionId: z.uuid(), releasedAt: IsoInstantSchema });
 export interface GeocodeFileCustody { readonly dev: number; readonly ino: number; readonly size: number; readonly mtimeMs: number }
@@ -451,33 +439,33 @@ export interface GeocodeFileCustody { readonly dev: number; readonly ino: number
 function claimDirectory(root: string, role: SingletonRole, create = false): string {
   if (create) mkdirSync(root, { recursive: true, mode: 0o700 });
   const parent = lstatSync(root);
-  if (!parent.isDirectory() || parent.isSymbolicLink() || (parent.mode & 0o077) !== 0 || (process.getuid !== undefined && parent.uid !== process.getuid())) throw new Error(`${role}-root-unsafe`);
+  if (!parent.isDirectory() || parent.isSymbolicLink() || privatePathRejects(root, parent, "private")) throw new Error(`${role}-root-unsafe`);
   const directory = join(root, `${role}-claims`);
   if (create) mkdirSync(directory, { mode: 0o700, recursive: true });
   const stat = lstatSync(directory);
-  if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 || (process.getuid !== undefined && stat.uid !== process.getuid())) throw new Error(`${role}-directory-unsafe`);
+  if (!stat.isDirectory() || stat.isSymbolicLink() || privatePathRejects(directory, stat, "private")) throw new Error(`${role}-directory-unsafe`);
   return directory;
 }
 function claimFilePath(root: string, role: SingletonRole, name: string): string {
   if (!/^[a-zA-Z0-9.-]+$/u.test(name) || name.startsWith(".")) throw new Error(`${role}-file-name-invalid`);
   return join(claimDirectory(root, role), name);
 }
-function privateClaimFile(fd: number, role: SingletonRole): GeocodeFileCustody {
+function privateClaimFile(path: string, fd: number, role: SingletonRole): GeocodeFileCustody {
   const stat = fstatSync(fd);
-  if (!stat.isFile() || stat.nlink !== 1 || (stat.mode & 0o077) !== 0 || (stat.mode & 0o600) !== 0o600 || (process.getuid !== undefined && stat.uid !== process.getuid()) || stat.size > 65_536) throw new Error(`${role}-file-unsafe`);
+  if (!stat.isFile() || stat.nlink !== 1 || privatePathRejects(path, stat, "private-read-write") || stat.size > 65_536) throw new Error(`${role}-file-unsafe`);
   return { dev: stat.dev, ino: stat.ino, size: stat.size, mtimeMs: stat.mtimeMs };
 }
 function custodyEquals(a: GeocodeFileCustody, b: GeocodeFileCustody): boolean { return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs; }
 
 /** Descriptor reads never follow custody links. */
 function readClaimRuntimeFile(root: string, role: SingletonRole, name: string): Readonly<{ text: string; custody: GeocodeFileCustody }> {
-  const fd = openSync(claimFilePath(root, role, name), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  const path = claimFilePath(root, role, name), fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   let descriptorIdentity: object | undefined;
   const read = () => {
-    const custody = privateClaimFile(fd, role); descriptorIdentity = custody;
+    const custody = privateClaimFile(path, fd, role); descriptorIdentity = custody;
     const bytes = Buffer.alloc(65_537); let length = 0;
     for (;;) { const count = readSync(fd, bytes, length, bytes.length - length, null); length += count; if (length > 65_536) throw new Error(`${role}-file-oversize`); if (count === 0) break; }
-    if (!custodyEquals(custody, privateClaimFile(fd, role)) || length !== custody.size) throw new Error(`${role}-file-changed`);
+    if (!custodyEquals(custody, privateClaimFile(path, fd, role)) || length !== custody.size) throw new Error(`${role}-file-changed`);
     return { text: bytes.subarray(0, length).toString("utf8"), custody };
   };
   let result: ReturnType<typeof read> | undefined, primary: { error: unknown } | undefined;
@@ -491,9 +479,9 @@ function readClaimRuntimeFile(root: string, role: SingletonRole, name: string): 
 }
 function writeClaimRuntimeFileExclusive(root: string, role: SingletonRole, name: string, text: string): GeocodeFileCustody {
   claimDirectory(root, role, true);
-  const fd = openSync(claimFilePath(root, role, name), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  const path = claimFilePath(root, role, name), fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
   let result: GeocodeFileCustody | undefined, primary: { error: unknown } | undefined;
-  try { writeFileSync(fd, text, "utf8"); fsyncSync(fd); result = privateClaimFile(fd, role); }
+  try { writeFileSync(fd, text, "utf8"); fsyncSync(fd); result = privateClaimFile(path, fd, role); }
   catch (error) { primary = { error }; }
   try { closeSync(fd); }
   catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
@@ -519,7 +507,7 @@ function readSingletonClaims(root: string, role: SingletonRole): readonly z.outp
   if (lstatSync(lockPath(root, role), { throwIfNoEntry: false }) !== undefined) throw new Error(`${role}-mutable-lock-unsupported`);
   const parent = lstatSync(root, { throwIfNoEntry: false });
   if (parent === undefined) return [];
-  if (!parent.isDirectory() || parent.isSymbolicLink() || (parent.mode & 0o077) !== 0 || (process.getuid !== undefined && parent.uid !== process.getuid())) throw new Error(`${role}-root-unsafe`);
+  if (!parent.isDirectory() || parent.isSymbolicLink() || privatePathRejects(root, parent, "private")) throw new Error(`${role}-root-unsafe`);
   if (lstatSync(join(root, `${role}-claims`), { throwIfNoEntry: false }) === undefined) return [];
   const directory = claimDirectory(root, role);
   {
@@ -603,7 +591,7 @@ function writeWorkerProcessLockFile(root: string, record: WorkerProcessLockFile)
   for (const path of [root, directory]) {
     const stat = lstatSync(path);
     if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(path) !== resolve(path)
-      || (stat.mode & 0o077) !== 0 || process.getuid !== undefined && stat.uid !== process.getuid()) throw new Error("worker-process-custody-directory-unsafe");
+      || privatePathRejects(path, stat, "private")) throw new Error("worker-process-custody-directory-unsafe");
   }
   const temporaryPath = join(directory, `.${record.acquisitionId}-${randomUUID()}.tmp`);
   const finalPath = workerProcessLockPath(root, record.acquisitionId);
@@ -747,9 +735,8 @@ export function acquireRuntimeRestoreAdmission(
       if (realpathSync(root) !== root) throw new Error("restore-admission-root-unsafe");
       const directory = lstatSync(root), file = lstatSync(lockPath), current = readRestoreAdmission(root);
       const observed = observeProcessIdentity(process.pid);
-      if (!directory.isDirectory() || directory.isSymbolicLink() || (directory.mode & 0o077) !== 0
-        || !file.isFile() || file.isSymbolicLink() || file.nlink !== 1 || (file.mode & 0o777) !== 0o600
-        || process.getuid !== undefined && (file.uid !== process.getuid() || directory.uid !== process.getuid())
+      if (!directory.isDirectory() || directory.isSymbolicLink() || privatePathRejects(root, directory, "private")
+        || !file.isFile() || file.nlink !== 1 || privatePathRejects(lockPath, file, "file-0600")
         || file.dev !== before.dev || file.ino !== before.ino
         || canonicalJsonStringify(current) !== canonicalJsonStringify(record)
         || record.pid !== process.pid || observed.state !== "alive" || record.processIdentity.platform !== observed.identity.platform
@@ -762,8 +749,7 @@ export function acquireRuntimeRestoreAdmission(
 export function readProcessCustodyFile(path: string, maxBytes = 1_048_576) {
   const parent = dirname(path), before = lstatSync(path);
   if (realpathSync(parent) !== parent || !lstatSync(parent).isDirectory() || !before.isFile() || before.isSymbolicLink()
-    || before.nlink !== 1 || before.size > maxBytes || (before.mode & 0o077) !== 0
-    || process.getuid !== undefined && before.uid !== process.getuid()) throw new Error("worker-process-recovery-file-unsafe");
+    || before.nlink !== 1 || before.size > maxBytes || privatePathRejects(path, before, "private")) throw new Error("worker-process-recovery-file-unsafe");
   const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   let bytes: Buffer | undefined, primary: { error: unknown } | undefined;
   try {
@@ -807,7 +793,7 @@ export function assertWorkerProcessRecoveryCapture(capture: WorkerProcessRecover
     const stat = lstatSync(root.path);
     if (realpathSync(root.path) !== root.path || !stat.isDirectory() || stat.isSymbolicLink()
       || stat.dev !== root.device || stat.ino !== root.inode || stat.mode !== root.mode || stat.uid !== root.owner
-      || (stat.mode & 0o022) !== 0 || process.getuid !== undefined && stat.uid !== process.getuid()) throw new Error("worker-process-recovery-root-changed");
+      || privatePathRejects(root.path, stat, "group-write")) throw new Error("worker-process-recovery-root-changed");
   }
 }
 
@@ -844,8 +830,7 @@ export function workerProcessRecoveryProved(root: string, record: WorkerProcessL
   const directory = join(root, WORKER_PROCESS_RECOVERY_DIRECTORY);
   const stat = lstatSync(directory, { throwIfNoEntry: false });
   if (stat === undefined) return false;
-  if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(directory) !== directory || (stat.mode & 0o077) !== 0
-    || process.getuid !== undefined && stat.uid !== process.getuid()) throw new Error("worker-process-recovery-receipt-unsafe");
+  if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(directory) !== directory || privatePathRejects(directory, stat, "private")) throw new Error("worker-process-recovery-receipt-unsafe");
   for (const name of readdirSync(directory)) if (!/^[0-9a-f-]{36}\.json$/u.test(name) || !z.uuid().safeParse(name.slice(0, -5)).success) throw new Error("worker-process-recovery-publication-uncertain");
   const path = join(directory, `${record.acquisitionId}.json`);
   if (lstatSync(path, { throwIfNoEntry: false }) === undefined) return false;
@@ -1056,44 +1041,6 @@ export function inspectRuntimeProcessOrphans(
     if (record.releasedAt === null && !recordOwnerIsAlive(record, observer) && !workerProcessRecoveryProved(root, record, observer)) staleWorkerRecords += 1;
   }
   return Object.freeze({ staleServerRecords, staleWorkerRecords });
-}
-
-export function inspectStoppedDeviceRecertificationCustody(processLockRoot: string) {
-  if (process.platform !== "darwin") throw new Error("device-recertification-boot-unproved");
-  const boot = spawnSync("/usr/sbin/sysctl", ["-n", "kern.boottime"], { encoding: "utf8" });
-  const seconds = /^\{\s*sec = (\d+),/u.exec(boot.stdout)?.[1];
-  if (boot.error !== undefined || boot.status !== 0 || seconds === undefined) throw new Error("device-recertification-boot-unproved");
-  const bootStartedAt = Number(seconds) * 1000;
-  if (!Number.isSafeInteger(bootStartedAt) || bootStartedAt <= 0) throw new Error("device-recertification-boot-unproved");
-  const root = resolve(processLockRoot);
-  for (const role of ["server", "live-smoke", "geocode"] as const) {
-    if (existsSync(join(root, `${role}-claims`)) && readdirSync(claimDirectory(root, role)).some(name => name.startsWith(".") || name.endsWith(".tmp") || name.endsWith(".channel.json"))) throw new Error("device-recertification-process-custody-unproved");
-  }
-  const workerDirectory = join(root, WORKER_PROCESS_LOCK_DIRECTORY), workerStat = lstatSync(workerDirectory, { throwIfNoEntry: false });
-  if (workerStat !== undefined && (!workerStat.isDirectory() || workerStat.isSymbolicLink() || (workerStat.mode & 0o077) !== 0
-    || process.getuid !== undefined && workerStat.uid !== process.getuid() || readdirSync(workerDirectory).some(name => name.startsWith(".")))) throw new Error("device-recertification-worker-custody-unproved");
-  const singletons = (["server", "live-smoke", "geocode"] as const).flatMap(role => readSingletonClaims(root, role));
-  readRuntimeProcessLock(root, "workers");
-  const workers = [...iterateWorkerProcessLocks(root)];
-  if (workers.some(record => record.releasedAt === null)) throw new Error("device-recertification-worker-custody-unproved");
-  const retained = singletons.filter(record => record.releasedAt === null);
-  for (const record of retained) {
-    const startedAt = Number(record.processIdentity.startToken) * 1000;
-    if (record.name !== "server" || record.processIdentity.platform !== "darwin" || !/^\d+$/u.test(record.processIdentity.startToken)
-      || !Number.isSafeInteger(startedAt) || startedAt <= 0 || startedAt >= bootStartedAt
-      || Date.parse(record.acquiredAt) >= bootStartedAt || Date.parse(record.acquiredAt) < startedAt
-      || observeProcessIdentity(record.pid).state !== "gone") throw new Error("device-recertification-server-custody-unproved");
-  }
-  const files = ["server-claims", "live-smoke-claims", "geocode-claims", WORKER_PROCESS_LOCK_DIRECTORY].flatMap(name => {
-    const directory = join(root, name);
-    if (!existsSync(directory)) return [];
-    return ["", ...readdirSync(directory).sort()].map(child => {
-      const info = lstatSync(join(directory, child));
-      return { path: `${name}/${child}`, device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid,
-        links: info.nlink, size: info.size, modified: info.mtimeMs, changed: info.ctimeMs };
-    });
-  });
-  return { bootStartedAt, singletons, workers, files };
 }
 
 export function runtimeProcessLockIsActive(processLockRoot: string, name: RuntimeProcessLockName): boolean {

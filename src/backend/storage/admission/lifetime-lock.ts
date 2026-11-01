@@ -40,23 +40,62 @@ export class OfflineMaintenanceOperationUnavailableError extends Error {
 }
 
 export type OfflineMaintenanceOperation = Readonly<{ operationId: string; assertHeld(): void; assertAvailable(): void; consume(): void; release(): void }>;
-const operationOwners = new WeakMap<OfflineMaintenanceOperation, { root: RuntimeLifetimeLock; workspace: string }>();
+const maintenanceToken = Symbol("stopped-maintenance");
+
+class StoppedMaintenance {
+  readonly operationId = randomUUID();
+  readonly #root: RuntimeLifetimeLock;
+  readonly #workspace: string;
+  readonly #release: () => void;
+  #consumed = false;
+  #expired = false;
+
+  constructor(token: typeof maintenanceToken, root: RuntimeLifetimeLock, workspace: string, release: () => void) {
+    if (token !== maintenanceToken) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-unissued");
+    this.#root = root;
+    this.#workspace = workspace;
+    this.#release = release;
+    Object.freeze(this);
+  }
+
+  static active(operation: OfflineMaintenanceOperation): operation is StoppedMaintenance {
+    return typeof operation === "object" && operation !== null && #root in operation && !operation.#expired;
+  }
+
+  static workspace(operation: OfflineMaintenanceOperation): string {
+    if (!StoppedMaintenance.active(operation)) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-unissued");
+    operation.#root.assertOfflineMaintenance(operation, operation.#workspace);
+    return operation.#workspace;
+  }
+
+  static ownedBy(operation: OfflineMaintenanceOperation, root: RuntimeLifetimeLock, workspace: string): boolean {
+    return StoppedMaintenance.active(operation) && operation.#root === root && operation.#workspace === workspace;
+  }
+
+  readonly assertHeld = (): void => { StoppedMaintenance.workspace(this); };
+  readonly assertAvailable = (): void => {
+    this.assertHeld();
+    if (this.#consumed) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-already-consumed");
+  };
+  readonly consume = (): void => { this.assertAvailable(); this.#consumed = true; };
+  readonly release = (): void => {
+    if (this.#expired) return;
+    this.assertHeld();
+    this.#release();
+    this.#expired = true;
+  };
+}
 
 export function isOfflineMaintenanceOperationActive(operation: OfflineMaintenanceOperation): boolean {
-  return operationOwners.has(operation);
+  return StoppedMaintenance.active(operation);
 }
 
 export function offlineMaintenanceWorkspace(operation: OfflineMaintenanceOperation): string {
-  const owner = operationOwners.get(operation);
-  if (owner === undefined) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-unissued");
-  owner.root.assertOfflineMaintenance(operation, owner.workspace);
-  return owner.workspace;
+  return StoppedMaintenance.workspace(operation);
 }
 
 export function assertOfflineMaintenanceOperation(operation: OfflineMaintenanceOperation, workspace: string): void {
-  const owner = operationOwners.get(operation);
-  if (owner === undefined || owner.workspace !== workspace) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-unissued");
-  owner.root.assertOfflineMaintenance(operation, workspace);
+  if (StoppedMaintenance.workspace(operation) !== workspace) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-unissued");
 }
 
 export class RuntimeLifetimeLock {
@@ -91,6 +130,12 @@ export class RuntimeLifetimeLock {
 
   assertHeld(): void {
     if (!this.#server.listening) throw new RuntimeLifetimeLockReleasedError();
+  }
+
+  assertRuntimeAvailable(): void {
+    this.assertHeld();
+    if (this.#closing !== undefined) throw new RuntimeLifetimeLockReleasedError();
+    if (this.#exclusiveOperation !== undefined) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-busy");
   }
 
   bindWorkspace(workspace: string): void {
@@ -160,33 +205,19 @@ export class RuntimeLifetimeLock {
     if (this.#exclusiveOperation !== undefined) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-busy");
     let finish: () => void = () => { throw new Error("offline-maintenance-completion-unissued"); };
     const completion = new Promise<void>(resolve => { finish = resolve; });
-    let expired = false, consumed = false;
-    const operation: OfflineMaintenanceOperation = Object.freeze({
-      operationId: randomUUID(),
-      assertHeld: () => { assertOfflineMaintenanceOperation(operation, workspace); },
-      assertAvailable: () => {
-        operation.assertHeld();
-        if (consumed) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-already-consumed");
-      },
-      consume: () => { operation.assertAvailable(); consumed = true; },
-      release: () => {
-        if (expired) return;
-        this.assertOfflineMaintenance(operation, workspace);
-        operationOwners.delete(operation);
-        this.#exclusiveOperation = undefined;
-        expired = true;
-        finish();
-      },
+    const operation = new StoppedMaintenance(maintenanceToken, this, workspace, () => {
+      this.assertOfflineMaintenance(operation, workspace);
+      this.#exclusiveOperation = undefined;
+      finish();
     });
     this.#exclusiveOperation = { operation, completion };
-    operationOwners.set(operation, { root: this, workspace });
     return operation;
   }
 
   assertOfflineMaintenance(operation: OfflineMaintenanceOperation, workspace: string): void {
     this.assertHeld();
     if (this.#workspace !== workspace || this.#exclusiveOperation?.operation !== operation
-      || operationOwners.get(operation)?.root !== this) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-unissued");
+      || !StoppedMaintenance.ownedBy(operation, this, workspace)) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-unissued");
     if (this.#children.size !== 0) throw new Error("runtime-lifetime-owned-children-unclosed");
   }
 
@@ -214,6 +245,7 @@ export class RuntimeLifetimeLock {
   close(): Promise<void> {
     return this.#closing ??= (async () => {
       if (this.#exclusiveOperation !== undefined) await this.#exclusiveOperation.completion;
+      if (this.#children.size !== 0) await Promise.all([...this.#children].map(child => new Promise<void>(resolve => { child.once("close", () => resolve()); })));
       await closeListener(this.#server);
     })();
   }
@@ -272,6 +304,11 @@ export class WorkerRuntimeLifetimeLock {
 
   assertHeld(): void {
     if (!this.#server.listening) throw new RuntimeLifetimeLockReleasedError();
+  }
+
+  assertRuntimeAvailable(): void {
+    this.assertHeld();
+    if (!process.connected || this.#closing !== undefined) throw new RuntimeLifetimeLockReleasedError();
   }
 
   assertWorkspace(workspace: string): void {

@@ -109,13 +109,19 @@ function resolveRecipe(root: PanelRoot, id: ElementId): Locator {
 }
 
 // Wait for exactly one node; WFD chrome renders after route settlement.
-async function exactlyOne(clock: Clock, root: PanelRoot, id: ElementId): Promise<Locator> {
+async function exactlyOne(assertCurrent: () => void, clock: Clock, root: PanelRoot, id: ElementId): Promise<Locator> {
   const candidates = resolveRecipe(root, id);
+  assertCurrent();
   const settled = await pollUntil(clock, CONTROL_TIMEOUT_MS, async () => {
+    assertCurrent();
     const count = await candidates.count();
+    assertCurrent();
     return count === 0 ? null : count;
   });
-  if (settled.value === 1) return candidates;
+  if (settled.value === 1) {
+    assertCurrent();
+    return candidates;
+  }
   const observed = settled.value === null ? 0 : settled.value;
   throw new NewKronosDriverError(
     `semantic element ${id} resolved to ${String(observed)} nodes after ${String(settled.waitedMs)}ms, `
@@ -144,21 +150,27 @@ async function pollUntil<T>(
   }
 }
 
-export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKronosTimecardDriver {
+export function createNewKronosTimecardDriver(assertCurrent: () => void, page: Page, clock: Clock): NewKronosTimecardDriver {
   const nowIso = (): string => IsoInstantSchema.parse(clock.now().toISOString());
 
   // Choose search context by the state's anchor; unloaded and populated search panels expose different controls.
   const resolvePanelRoot = async (
     anchor: ElementId,
   ): Promise<{ root: PanelRoot; context: PanelContext }> => {
+    assertCurrent();
     const probe = await pollUntil<{ root: PanelRoot; context: PanelContext }>(clock, PANEL_CONTEXT_TIMEOUT_MS, async () => {
       const frame = page.frameLocator(NEW_KRONOS_PORTAL_FRAME_SELECTOR);
+      assertCurrent();
       if (await resolveRecipe(frame, anchor).count() > 0) {
+        assertCurrent();
         return { root: frame, context: "portal-frame" };
       }
+      assertCurrent();
       if (await resolveRecipe(page, anchor).count() > 0) {
+        assertCurrent();
         return { root: page, context: "top-level" };
       }
+      assertCurrent();
       return null;
     });
     if (probe.value === null) {
@@ -168,11 +180,13 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
         + `${String(PANEL_CONTEXT_TIMEOUT_MS)}ms — the panel is not in the state this step needs`,
       );
     }
+    assertCurrent();
     return probe.value;
   };
 
   /** Read WFD's own `Total [N]` / `Selected [N]` counters. */
   const readCounters = async (root: PanelRoot): Promise<{ total: number | null; selected: number | null }> => {
+    assertCurrent();
     const texts = await root.locator("p.totals-counter").allTextContents();
     const parse = (label: string): number | null => {
       const row = texts.find((text) => text.replace(/\s+/gu, " ").trim().startsWith(label));
@@ -180,11 +194,14 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
       const match = /\[(\d+)\]/u.exec(row);
       return match?.[1] === undefined ? null : Number(match[1]);
     };
+    assertCurrent();
     return { total: parse("Total"), selected: parse("Selected") };
   };
 
 
-  const readSlatFacts = async (root: PanelRoot): Promise<SlatRenderFact[]> => resolveRecipe(root, NEW_KRONOS_SEARCH_RESULT_SLAT)
+  const readSlatFacts = async (root: PanelRoot): Promise<SlatRenderFact[]> => {
+    assertCurrent();
+    const result = await resolveRecipe(root, NEW_KRONOS_SEARCH_RESULT_SLAT)
     .evaluateAll((rows, tabularDataSelector) => rows.map((row) => {
       const aria = row.getAttribute("aria-label");
       const text = row.textContent;
@@ -193,6 +210,9 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
         : (typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "");
       return { label, cardRendered: row.querySelector(tabularDataSelector) !== null };
     }), NEW_KRONOS_SLAT_TABULAR_DATA_SELECTOR);
+    assertCurrent();
+    return result;
+  };
 
   /** Every rendered candidate off its row's identity, or a refusal naming the row that has none. */
   const candidatesFrom = (slats: readonly SlatRenderFact[]): NewKronosSearchCandidate[] => slats.map((slat) => {
@@ -210,6 +230,7 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
   const selectEmployeeInPanel = async (
     employeeId: string,
   ): Promise<{ root: PanelRoot; context: PanelContext }> => {
+    assertCurrent();
     const read = await searchEmployee({ employeeId, searchTimeoutMs: PANEL_SEARCH_TIMEOUT_MS });
     if (read.state !== "resolved") {
       throw new NewKronosDriverError(
@@ -219,25 +240,38 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
     }
     // After a search the panel's query field collapses into `Show Search`, so
     // the Go To button is what proves the context from here on.
-    return resolvePanelRoot(NEW_KRONOS_SEARCH_GO_TO_BUTTON);
+    const result = await resolvePanelRoot(NEW_KRONOS_SEARCH_GO_TO_BUTTON);
+    assertCurrent();
+    return result;
   };
 
   const searchEmployee = async (
     input: Readonly<{ employeeId: string; searchTimeoutMs: number }>,
   ): Promise<NewKronosSearchRead> => {
 
+    assertCurrent();
     await closeSearchPanel();
 
-    const openButton = await exactlyOne(clock, page, NEW_KRONOS_SEARCH_OPEN_BUTTON);
+    assertCurrent();
+    const openButton = await exactlyOne(assertCurrent, clock, page, NEW_KRONOS_SEARCH_OPEN_BUTTON);
+    assertCurrent();
     await openButton.click({ timeout: CONTROL_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("clicked", NEW_KRONOS_SEARCH_OPEN_BUTTON);
 
+    assertCurrent();
     const { root, context } = await resolvePanelRoot(NEW_KRONOS_SEARCH_QUERY_FIELD);
-    const queryField = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_QUERY_FIELD);
+    assertCurrent();
+    const queryField = await exactlyOne(assertCurrent, clock, root, NEW_KRONOS_SEARCH_QUERY_FIELD);
+    assertCurrent();
     await queryField.fill(input.employeeId, { timeout: CONTROL_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("typed", NEW_KRONOS_SEARCH_QUERY_FIELD, input.employeeId);
-    const submit = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_SUBMIT_BUTTON);
+    assertCurrent();
+    const submit = await exactlyOne(assertCurrent, clock, root, NEW_KRONOS_SEARCH_SUBMIT_BUTTON);
+    assertCurrent();
     await submit.click({ timeout: CONTROL_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("clicked", NEW_KRONOS_SEARCH_SUBMIT_BUTTON);
 
     // Poll both search contexts; a real result wins over a briefly overlapping no-results sentinel.
@@ -245,26 +279,33 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
     // WFD briefly renders results with its sentinel; require consecutive sentinel-only polls for absence.
     let sentinelStreak = 0;
     let hydratingAtLastPoll: readonly SlatRenderFact[] | null = null;
+    assertCurrent();
     const outcome = await pollUntil(clock, input.searchTimeoutMs, async () => {
       hydratingAtLastPoll = null;
       for (const candidateRoot of roots) {
         // Count frames before reading; timecard navigation can remove the portal iframe.
+        assertCurrent();
         if (await resolveRecipe(candidateRoot, NEW_KRONOS_SEARCH_RESULT_SLAT).count() === 0) continue;
+        assertCurrent();
         const slats = await readSlatFacts(candidateRoot);
         const verdict = judgeSearchRender(slats);
         if (verdict === "results") {
+          assertCurrent();
           return { kind: "results" as const, root: candidateRoot, slats };
         }
         if (verdict === "hydrating") {
           // Rows exist, so whatever the sentinel says it is the loading state.
           sentinelStreak = 0;
           hydratingAtLastPoll = slats;
+          assertCurrent();
           return null;
         }
       }
       for (const candidateRoot of roots) {
+        assertCurrent();
         if (await resolveRecipe(candidateRoot, NEW_KRONOS_SEARCH_NO_RESULTS_TEXT).count() > 0) {
           sentinelStreak++;
+          assertCurrent();
           return sentinelStreak >= NO_RESULTS_STABLE_POLLS
             ? { kind: "sentinel" as const, root: candidateRoot }
             : null;
@@ -272,6 +313,7 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
       }
 
       sentinelStreak = 0;
+      assertCurrent();
       return null;
     });
 
@@ -288,6 +330,7 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
 
     if (outcome.value === null) {
 
+      assertCurrent();
       return NewKronosSearchReadSchema.parse({
         state: "no-signal",
         query: input.employeeId,
@@ -300,6 +343,7 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
     }
 
     if (outcome.value.kind === "sentinel") {
+      assertCurrent();
       return NewKronosSearchReadSchema.parse({
         state: "no-results",
         query: input.employeeId,
@@ -311,6 +355,7 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
 
     const resultRoot = outcome.value.root;
     const candidates = candidatesFrom(outcome.value.slats);
+    assertCurrent();
     const counters = await readCounters(resultRoot);
     if (counters.total === null) {
       throw new NewKronosDriverError(
@@ -328,6 +373,7 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
     }
     const matched = candidates.find(({ employeeId }) => employeeId === input.employeeId);
     if (matched === undefined) {
+      assertCurrent();
       return NewKronosSearchReadSchema.parse({
         state: "no-match",
         query: input.employeeId,
@@ -342,13 +388,23 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
     const checkbox = resolveRecipe(resultRoot, NEW_KRONOS_SEARCH_RESULT_SLAT)
       .nth(candidates.indexOf(matched))
       .getByRole("checkbox", { name: "Select Item", exact: true });
+    assertCurrent();
     await checkbox.check({ timeout: CONTROL_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("checked", NEW_KRONOS_SEARCH_RESULT_SLAT);
 
+    assertCurrent();
     const enabled = await pollUntil(clock, SELECTION_TIMEOUT_MS, async () => {
       const goTo = resolveRecipe(resultRoot, NEW_KRONOS_SEARCH_GO_TO_BUTTON);
-      if (await goTo.count() !== 1) return null;
-      return await goTo.isEnabled() ? true : null;
+      assertCurrent();
+      if (await goTo.count() !== 1) {
+        assertCurrent();
+        return null;
+      }
+      assertCurrent();
+      const result = await goTo.isEnabled() ? true : null;
+      assertCurrent();
+      return result;
     });
     if (enabled.value === null) {
       throw new NewKronosDriverError(
@@ -356,6 +412,7 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
         + `${String(SELECTION_TIMEOUT_MS)}ms — no slat is registered, so the timecard cannot be opened`,
       );
     }
+    assertCurrent();
     const afterSelect = await readCounters(resultRoot);
     if (afterSelect.selected === null) {
       throw new NewKronosDriverError(
@@ -371,6 +428,7 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
       );
     }
 
+    assertCurrent();
     return NewKronosSearchReadSchema.parse({
       state: "resolved",
       query: input.employeeId,
@@ -387,34 +445,49 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
   const closeSearchPanel = async (): Promise<void> => {
     for (const root of [page.frameLocator(NEW_KRONOS_PORTAL_FRAME_SELECTOR), page]) {
       const close = resolveRecipe(root, NEW_KRONOS_SEARCH_CLOSE_BUTTON);
+      assertCurrent();
       if (await close.count() !== 1) continue;
+      assertCurrent();
       await close.click({ timeout: CONTROL_TIMEOUT_MS });
+      assertCurrent();
       recordBrowserAction("clicked", NEW_KRONOS_SEARCH_CLOSE_BUTTON);
       return;
     }
+    assertCurrent();
   };
 
   // WFD masked date controls revert fill calls; use the verified typing path.
   const setRangeField = async (id: ElementId, value: string, label: string): Promise<void> => {
-    const field = await exactlyOne(clock, page, id);
+    assertCurrent();
+    const field = await exactlyOne(assertCurrent, clock, page, id);
+    assertCurrent();
     await field.click({ timeout: CONTROL_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("clicked", id);
+    assertCurrent();
     const priorValue = await field.inputValue();
+    assertCurrent();
     await field.press("ControlOrMeta+a", { timeout: CONTROL_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("selected", id);
+    assertCurrent();
     await field.pressSequentially(value, { delay: 60, timeout: CONTROL_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("typed", id, value);
     const wanted = parseTimecardDate(value, `${label} date`);
     // The last value the poll actually SAW, so the refusal below reports the
     // observation instead of re-reading a field that may already have moved.
     let lastObserved = "";
+    assertCurrent();
     const settled = await pollUntil(clock, RANGE_FIELD_SETTLE_TIMEOUT_MS, async () => {
+      assertCurrent();
       const raw = await field.inputValue();
       lastObserved = raw;
       const parsed = /^\d{1,2}\/\d{1,2}\/\d{4}$/u.test(raw.trim())
         ? parseTimecardDate(raw.trim(), `${label} readback`)
         : null;
       // WFD date padding varies between fields; compare calendar days rather than strings.
+      assertCurrent();
       return parsed !== null && parsed.getTime() === wanted.getTime() ? raw : null;
     });
     if (settled.value === null) {
@@ -425,10 +498,13 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
         + `${String(RANGE_FIELD_SETTLE_TIMEOUT_MS)}ms; refusing to apply a wrong timecard window`,
       );
     }
+    assertCurrent();
   };
 
   const readPeriodLabel = async (): Promise<string> => {
-    const label = await exactlyOne(clock, page, NEW_KRONOS_TIMECARD_PERIOD_LABEL);
+    assertCurrent();
+    const label = await exactlyOne(assertCurrent, clock, page, NEW_KRONOS_TIMECARD_PERIOD_LABEL);
+    assertCurrent();
     const text = await label.textContent();
     if (text === null) {
       throw new NewKronosDriverError(
@@ -436,6 +512,7 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
         + "and an unreadable window is never an applied one",
       );
     }
+    assertCurrent();
     return text.replace(/\s+/gu, " ").trim();
   };
 
@@ -456,7 +533,9 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
       scrollTop: number;
       scrollHeight: number;
       clientHeight: number;
-    }> => page.evaluate(() => {
+    }> => {
+      assertCurrent();
+      const result = await page.evaluate(() => {
       const viewports = [...document.querySelectorAll(".ui-grid-viewport")];
       const dateViewport = viewports[0];
       const dataViewport = viewports[viewports.length - 1];
@@ -512,13 +591,18 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
         clientHeight: dataViewport.clientHeight,
       };
     });
+      assertCurrent();
+      return result;
+    };
 
     // Scroll each grid viewport, but read the data body; pinned regions can share the scroll control.
     const scrollGridTo = async (top: number): Promise<{
       scrollTop: number;
       scrollHeight: number;
       clientHeight: number;
-    }> => page.evaluate((position: number) => {
+    }> => {
+      assertCurrent();
+      const result = await page.evaluate((position: number) => {
       const viewports = [...document.querySelectorAll(".ui-grid-viewport")];
       for (const viewport of viewports) viewport.scrollTop = Math.max(0, position);
       const driver = viewports[viewports.length - 1];
@@ -530,7 +614,11 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
           clientHeight: driver.clientHeight,
         };
     }, top);
+      assertCurrent();
+      return result;
+    };
 
+    assertCurrent();
     const opening = await harvestOnce();
     const headers = opening.headers;
     if (opening.viewportCount < 2) {
@@ -564,15 +652,22 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
     const columns = resolveTimecardColumns(headers);
     const cellAt = (cells: readonly string[], column: keyof typeof columns): string =>
       cells[columns[column]] ?? "";
+    assertCurrent();
     const read = await readVirtualizedGrid(
       {
         harvest: async () => {
+          assertCurrent();
           const harvest = await harvestOnce();
           validateHarvest(harvest);
+          assertCurrent();
           return harvest;
         },
         scrollTo: scrollGridTo,
-        settle: async () => { await tick(POLL_INTERVAL_MS); },
+        settle: async () => {
+          assertCurrent();
+          await tick(POLL_INTERVAL_MS);
+          assertCurrent();
+        },
         refuse: (message: string) => new NewKronosDriverError(message),
       },
       applied,
@@ -592,6 +687,7 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
       period: cellAt(row.cells, "Period"),
       absence: cellAt(row.cells, "Absence"),
     }));
+    assertCurrent();
     return { rows, headers: [...headers], scrollSteps: read.scrollSteps };
   };
 
@@ -599,36 +695,58 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
     input: Readonly<{ employeeId: string; rangeStart: string; rangeEnd: string }>,
   ): Promise<NewKronosTimecardRead> => {
 
+    assertCurrent();
     const { root } = await selectEmployeeInPanel(input.employeeId);
 
 
-    const goTo = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_GO_TO_BUTTON);
+    assertCurrent();
+    const goTo = await exactlyOne(assertCurrent, clock, root, NEW_KRONOS_SEARCH_GO_TO_BUTTON);
+    assertCurrent();
     if (!(await goTo.isEnabled())) {
       throw new NewKronosDriverError(
         `the Go To control is disabled for EID ${directIdentifierDisplay(input.employeeId)} — no employee is selected in the search `
         + "panel, so the timecard cannot be opened; this is a navigation failure, not an empty timecard",
       );
     }
+    assertCurrent();
     await goTo.click({ timeout: CONTROL_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("clicked", NEW_KRONOS_SEARCH_GO_TO_BUTTON);
 
-    const optionReady = await pollUntil(clock, CONTROL_TIMEOUT_MS, async () =>
-      await resolveRecipe(root, NEW_KRONOS_SEARCH_GO_TO_TIMECARD_OPTION).count() === 1 ? true : null);
+    assertCurrent();
+    const optionReady = await pollUntil(clock, CONTROL_TIMEOUT_MS, async () => {
+      assertCurrent();
+      const result = await resolveRecipe(root, NEW_KRONOS_SEARCH_GO_TO_TIMECARD_OPTION).count() === 1 ? true : null;
+      assertCurrent();
+      return result;
+    });
     if (optionReady.value === null) {
       throw new NewKronosDriverError(
         `the Go To menu never rendered exactly one "Timecard" option within ${String(CONTROL_TIMEOUT_MS)}ms `
         + `for EID ${directIdentifierDisplay(input.employeeId)} — the timecard could not be opened`,
       );
     }
-    const option = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_GO_TO_TIMECARD_OPTION);
+    assertCurrent();
+    const option = await exactlyOne(assertCurrent, clock, root, NEW_KRONOS_SEARCH_GO_TO_TIMECARD_OPTION);
+    assertCurrent();
     await option.click({ timeout: CONTROL_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("clicked", NEW_KRONOS_SEARCH_GO_TO_TIMECARD_OPTION);
 
+    assertCurrent();
     const landed = await pollUntil(clock, TIMECARD_NAVIGATION_TIMEOUT_MS, async () => {
-      if (!page.url().includes(NEW_KRONOS_TIMECARD_ROUTE)) return null;
-      return await resolveRecipe(page, NEW_KRONOS_TIMECARD_EMPLOYEE_ID).count() === 1 ? true : null;
+      assertCurrent();
+      if (!page.url().includes(NEW_KRONOS_TIMECARD_ROUTE)) {
+        assertCurrent();
+        return null;
+      }
+      assertCurrent();
+      const result = await resolveRecipe(page, NEW_KRONOS_TIMECARD_EMPLOYEE_ID).count() === 1 ? true : null;
+      assertCurrent();
+      return result;
     });
     if (landed.value === null) {
+      assertCurrent();
       throw new NewKronosDriverError(
         `Go To -> Timecard did not reach ${NEW_KRONOS_TIMECARD_ROUTE} with an identifiable employee header `
         + `within ${String(TIMECARD_NAVIGATION_TIMEOUT_MS)}ms for EID ${directIdentifierDisplay(input.employeeId)} `
@@ -637,9 +755,12 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
     }
 
     // Close search before proving the timecard subject; its input echo can masquerade as identity.
+    assertCurrent();
     await closeSearchPanel();
 
-    const idNode = await exactlyOne(clock, page, NEW_KRONOS_TIMECARD_EMPLOYEE_ID);
+    assertCurrent();
+    const idNode = await exactlyOne(assertCurrent, clock, page, NEW_KRONOS_TIMECARD_EMPLOYEE_ID);
+    assertCurrent();
     const idText = await idNode.textContent();
     const observedEmployeeId = idText === null ? "" : idText.trim();
 
@@ -651,7 +772,10 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
     }
 
     const nameNode = page.locator("#combo_inptxt");
-    const nameTitle = await nameNode.count() === 1 ? await nameNode.getAttribute("title") : null;
+    assertCurrent();
+    const nameCount = await nameNode.count();
+    assertCurrent();
+    const nameTitle = nameCount === 1 ? await nameNode.getAttribute("title") : null;
     const observedDisplayName = nameTitle === null ? "" : nameTitle.trim();
     if (observedDisplayName.length === 0) {
       throw new NewKronosDriverError(
@@ -669,31 +793,47 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
     } as const;
 
     // Apply the window. Everything below runs on the SAME page visit.
-    const trigger = await exactlyOne(clock, page, NEW_KRONOS_TIMECARD_PERIOD_TRIGGER);
+    assertCurrent();
+    const trigger = await exactlyOne(assertCurrent, clock, page, NEW_KRONOS_TIMECARD_PERIOD_TRIGGER);
+    assertCurrent();
     await trigger.click({ timeout: CONTROL_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("clicked", NEW_KRONOS_TIMECARD_PERIOD_TRIGGER);
-    const selectRange = await exactlyOne(clock, page, NEW_KRONOS_TIMECARD_SELECT_RANGE_BUTTON);
+    assertCurrent();
+    const selectRange = await exactlyOne(assertCurrent, clock, page, NEW_KRONOS_TIMECARD_SELECT_RANGE_BUTTON);
+    assertCurrent();
     await selectRange.click({ timeout: CONTROL_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("clicked", NEW_KRONOS_TIMECARD_SELECT_RANGE_BUTTON);
+    assertCurrent();
     await setRangeField(NEW_KRONOS_TIMECARD_RANGE_START_FIELD, input.rangeStart, "start");
+    assertCurrent();
     await setRangeField(NEW_KRONOS_TIMECARD_RANGE_END_FIELD, input.rangeEnd, "end");
     // Setting the end can nudge the start (the widget auto-advances between the
     // two tabs), so the start is re-proved before Apply.
+    assertCurrent();
     await setRangeField(NEW_KRONOS_TIMECARD_RANGE_START_FIELD, input.rangeStart, "start (re-proof)");
-    const apply = await exactlyOne(clock, page, NEW_KRONOS_TIMECARD_RANGE_APPLY_BUTTON);
+    assertCurrent();
+    const apply = await exactlyOne(assertCurrent, clock, page, NEW_KRONOS_TIMECARD_RANGE_APPLY_BUTTON);
+    assertCurrent();
     await apply.click({ timeout: CONTROL_TIMEOUT_MS });
+    assertCurrent();
     recordBrowserAction("clicked", NEW_KRONOS_TIMECARD_RANGE_APPLY_BUTTON);
 
     const requested = {
       start: parseTimecardDate(input.rangeStart, "requested range start"),
       end: parseTimecardDate(input.rangeEnd, "requested range end"),
     };
+    assertCurrent();
     const applied = await pollUntil(clock, RANGE_APPLY_TIMEOUT_MS, async () => {
+      assertCurrent();
       const label = await readPeriodLabel();
       const parsed = parseAppliedRangeLabel(label);
+      assertCurrent();
       return parsed !== null && rangesAreSameDays(parsed, requested) ? { label, parsed } : null;
     });
     if (applied.value === null) {
+      assertCurrent();
       const label = await readPeriodLabel();
       throw new NewKronosDriverError(
         `the timecard period label reads ${JSON.stringify(label)} after applying `
@@ -702,6 +842,7 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
       );
     }
 
+    assertCurrent();
     const { rows, headers, scrollSteps } = await readGrid(applied.value.parsed);
     const fold = foldSeparationTimecard(rows, applied.value.parsed);
     const daysCovered = new Set(rows.map((row) => `${String(row.month)}/${String(row.day)}`)).size;
@@ -709,6 +850,7 @@ export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKron
       row.punchIn !== "" || row.punchOut !== "" || row.payCode !== ""
       || row.amount !== "" || row.daily !== "" || row.absence !== "").length;
 
+    assertCurrent();
     return NewKronosTimecardReadSchema.parse({
       subject,
       range: {

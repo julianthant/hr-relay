@@ -1,3 +1,4 @@
+import { privatePathRejects } from "../../storage/private-path.js";
 import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, openSync, readFileSync, lstatSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -22,7 +23,7 @@ export function stageFastDuoExtension(sourceRoot: string, destination: string, m
     const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
       const before = fstatSync(descriptor);
-      if (!before.isFile() || before.nlink !== 1 || before.uid !== process.getuid?.() || (before.mode & 0o022) !== 0) throw new FastDuoExtensionError();
+      if (!before.isFile() || before.nlink !== 1 || privatePathRejects(path, before, "group-write")) throw new FastDuoExtensionError();
       const bytes = readFileSync(descriptor);
       const after = fstatSync(descriptor);
       const observed = lstatSync(path);

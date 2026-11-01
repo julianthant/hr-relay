@@ -270,7 +270,7 @@ describe("SS Smart HR transaction scan", () => {
           async selectOption() {}, async click() {}, async count() { return 0; },
           async isVisible() { return false; },
         };
-        await scanTerminationTransactionsOnPage({
+        await scanTerminationTransactionsOnPage(() => undefined, {
           async goto() {}, locator() { return locator; }, getByText() { return locator; },
           async waitForFunction(callback) { captured = callback.toString(); throw Error("captured"); },
         }, { emplId: "10800000" }, "2026-09-07T00:00:00.000Z");
@@ -288,13 +288,13 @@ describe("SS Smart HR transaction scan", () => {
       ["hidden detail", singleResultAutoDrillPage(undefined, 1, undefined, "none", "none", undefined, undefined,
         undefined, { browserPredicateSource, autoReceiptVisible: false }), "unreadable"],
     ] as const) {
-      const scan = await scanTerminationTransactionsOnPage(page, { emplId: EID }, OBSERVED_AT);
+      const scan = await scanTerminationTransactionsOnPage(() => undefined, page, { emplId: EID }, OBSERVED_AT);
       assert.equal(scan.state, expected, scan.state === "unreadable" ? `${label}: ${scan.reason}` : label);
     }
   });
 
   it("reads the one transaction when PeopleSoft auto-drills a single search result", async () => {
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage(),
       { emplId: EID },
       OBSERVED_AT,
@@ -310,7 +310,7 @@ describe("SS Smart HR transaction scan", () => {
   });
 
   it("refuses an auto-drilled detail page without one stable transaction id", async () => {
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage("not-a-transaction"),
       { emplId: EID },
       OBSERVED_AT,
@@ -323,7 +323,7 @@ describe("SS Smart HR transaction scan", () => {
   });
 
   it("refuses ambiguous transaction-id controls on an auto-drilled detail page", async () => {
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage("T009000001", 2),
       { emplId: EID },
       OBSERVED_AT,
@@ -338,7 +338,7 @@ describe("SS Smart HR transaction scan", () => {
   it("retains transaction ids in the refusal when the keyed auto-drill reread resolves another transaction", async () => {
     const requestedId = "T009000001";
     const renderedId = "T009000999";
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage(requestedId, 1, renderedId),
       { emplId: EID },
       OBSERVED_AT,
@@ -352,7 +352,7 @@ describe("SS Smart HR transaction scan", () => {
   });
 
   it("refuses a co-present result row and auto-drilled detail as an ambiguous settlement", async () => {
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage("T009000001", 1, "T009000001", "row"),
       { emplId: EID },
       OBSERVED_AT,
@@ -364,7 +364,7 @@ describe("SS Smart HR transaction scan", () => {
   });
 
   it("refuses a co-present no-results marker and detail rather than manufacturing absence", async () => {
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage("T009000001", 1, "T009000001", "empty"),
       { emplId: EID },
       OBSERVED_AT,
@@ -376,7 +376,7 @@ describe("SS Smart HR transaction scan", () => {
   });
 
   it("returns an empty read only for one visible current no-results marker", async () => {
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage("", 0, "", "empty"),
       { emplId: EID },
       OBSERVED_AT,
@@ -392,7 +392,7 @@ describe("SS Smart HR transaction scan", () => {
   });
 
   it("refuses duplicate no-results markers", async () => {
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage(
         "",
         0,
@@ -414,7 +414,7 @@ describe("SS Smart HR transaction scan", () => {
   });
 
   it("refuses a hidden no-results marker rather than manufacturing absence", async () => {
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage(
         "",
         0,
@@ -436,7 +436,7 @@ describe("SS Smart HR transaction scan", () => {
   });
 
   it("refuses a populated result grid whose rows expose no stable transaction id", async () => {
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage("", 0, "", "row"),
       { emplId: EID },
       OBSERVED_AT,
@@ -450,7 +450,7 @@ describe("SS Smart HR transaction scan", () => {
   for (const staleState of ["row", "empty", "detail"] as const) {
     it(`refuses a stale ${staleState} marker present before the current search`, async () => {
       const transactionId = staleState === "detail" ? "T009000001" : "";
-      const scan = await scanTerminationTransactionsOnPage(
+      const scan = await scanTerminationTransactionsOnPage(() => undefined,
         singleResultAutoDrillPage(
           transactionId,
           staleState === "detail" ? 1 : 0,
@@ -483,7 +483,7 @@ describe("SS Smart HR transaction scan", () => {
       action: "HIR",
       displayedName: "Person, Second",
     } as const;
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage(
         firstId,
         0,
@@ -517,7 +517,7 @@ describe("SS Smart HR transaction scan", () => {
     const firstId = "T009000001", secondId = "T009000002";
     const page = singleResultAutoDrillPage(firstId, 0, firstId, "row", "none", [firstId, secondId]);
     const opened = vi.spyOn(page, "goto");
-    const scan = await scanTerminationTransactionsOnPage(page, { emplId: EID, transactionId: secondId }, OBSERVED_AT);
+    const scan = await scanTerminationTransactionsOnPage(() => undefined, page, { emplId: EID, transactionId: secondId }, OBSERVED_AT);
     assert.equal(scan.state, "read"); if (scan.state !== "read") throw new Error("read required");
     assert.deepEqual(scan.rows.map(row => row.transactionId), [secondId]);
     assert.equal(scan.scannedRowCount, 1);
@@ -529,7 +529,7 @@ describe("SS Smart HR transaction scan", () => {
     const firstId = "T009000001";
     const page = singleResultAutoDrillPage(firstId);
     const opened = vi.spyOn(page, "goto");
-    const scan = await scanTerminationTransactionsOnPage(page, { emplId: EID, transactionId: "T999999999" }, OBSERVED_AT);
+    const scan = await scanTerminationTransactionsOnPage(() => undefined, page, { emplId: EID, transactionId: "T999999999" }, OBSERVED_AT);
     assert.equal(scan.state, "read"); if (scan.state !== "read") throw new Error("read required");
     assert.deepEqual(scan.rows, []);
     assert.equal(opened.mock.calls.some(([url]) => url.includes("UC_TRANSACT_ID=")), false);
@@ -537,7 +537,7 @@ describe("SS Smart HR transaction scan", () => {
 
   it("refuses a keyed result-row reread whose receipt is absent", async () => {
     const transactionId = "T009000001";
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage(
         transactionId,
         0,
@@ -560,7 +560,7 @@ describe("SS Smart HR transaction scan", () => {
 
   it("refuses a keyed result-row reread whose receipt is present but hidden", async () => {
     const transactionId = "T009000001";
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage(
         transactionId,
         0,
@@ -583,7 +583,7 @@ describe("SS Smart HR transaction scan", () => {
 
   it("refuses a row with no id even when an unrelated body id masks the count", async () => {
     const unrelatedId = "T009000002";
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage(
         unrelatedId,
         0,
@@ -604,7 +604,7 @@ describe("SS Smart HR transaction scan", () => {
 
   it("refuses duplicate transaction ids across distinct result rows", async () => {
     const duplicateId = "T009000001";
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage(
         duplicateId,
         0,
@@ -626,7 +626,7 @@ describe("SS Smart HR transaction scan", () => {
   it("refuses a result set containing a hidden row", async () => {
     const firstId = "T009000001";
     const secondId = "T009000002";
-    const scan = await scanTerminationTransactionsOnPage(
+    const scan = await scanTerminationTransactionsOnPage(() => undefined,
       singleResultAutoDrillPage(
         firstId,
         0,
@@ -656,7 +656,7 @@ describe("SS Smart HR transaction scan", () => {
       () => new Error("fixture page closed during settlement"),
     );
 
-    const scan = await scanTerminationTransactionsOnPage(page, { emplId: EID }, OBSERVED_AT);
+    const scan = await scanTerminationTransactionsOnPage(() => undefined, page, { emplId: EID }, OBSERVED_AT);
 
     assert.equal(scan.state, "unreadable");
     if (scan.state !== "unreadable") return;
@@ -683,7 +683,7 @@ describe("SS Smart HR transaction scan", () => {
       searchEnabled: true,
     }));
 
-    const scan = await scanTerminationTransactionsOnPage(page, { emplId: EID }, OBSERVED_AT);
+    const scan = await scanTerminationTransactionsOnPage(() => undefined, page, { emplId: EID }, OBSERVED_AT);
 
     assert.equal(scan.state, "unreadable");
     if (scan.state !== "unreadable") return;
@@ -712,7 +712,7 @@ describe("SS Smart HR transaction scan", () => {
       throw new Error("raw evaluation failure that must not escape");
     });
 
-    const scan = await scanTerminationTransactionsOnPage(page, { emplId: EID }, OBSERVED_AT);
+    const scan = await scanTerminationTransactionsOnPage(() => undefined, page, { emplId: EID }, OBSERVED_AT);
 
     assert.equal(scan.state, "unreadable");
     if (scan.state !== "unreadable") return;
@@ -735,7 +735,7 @@ describe("SS Smart HR transaction scan", () => {
       const page = indeterminateSearchPage(
         async () => await new Promise<never>(() => undefined),
       );
-      const scanPromise = scanTerminationTransactionsOnPage(page, { emplId: EID }, OBSERVED_AT);
+      const scanPromise = scanTerminationTransactionsOnPage(() => undefined, page, { emplId: EID }, OBSERVED_AT);
       await vi.advanceTimersByTimeAsync(0);
       const outcomePromise = Promise.race([
         scanPromise.then((scan) => ({ state: "settled" as const, scan })),
@@ -771,7 +771,7 @@ describe("SS Smart HR transaction scan", () => {
       goto: async () => { throw new Error(`search page navigation failed for ${EID}, suffix ${String(EID).slice(-4)}, transaction T1234567`); },
     } as unknown as Page;
 
-    const scan = await scanTerminationTransactionsOnPage(page, { emplId: EID }, OBSERVED_AT);
+    const scan = await scanTerminationTransactionsOnPage(() => undefined, page, { emplId: EID }, OBSERVED_AT);
 
     assert.equal(scan.state, "unreadable");
     if (scan.state !== "unreadable") return;

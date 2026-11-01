@@ -68,7 +68,7 @@ diagnostic stages: 0 reclaimed, 1 retained; retained evidence remains budget-acc
     retainedFixtureOwners.push(sharedOwners);
     let sharedPrimary: { error: unknown } | undefined;
     try {
-      const shared = sharedMachine.admitProfile(sharedMachine.issueRegisteredProfileClaim(profileId));
+      const shared = sharedMachine.admitProfile(profileId);
       sharedOwners.admission = shared;
       await assert.rejects(withOfflineMaintenance(shared, operation => upgradeStorage(profileBrowserClosure, shared, input, clock, operation)), /exclusive installation authority required/u);
     } catch (error) { sharedPrimary = { error }; sharedOwners.primary = error; }

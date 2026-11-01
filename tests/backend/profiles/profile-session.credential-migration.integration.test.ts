@@ -51,7 +51,7 @@ for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt
   const fields = { email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() };
   const active = peer.signIn(fields); assert.equal(active.state, "active");
   if (active.state !== "active") throw new Error("genuine current-format sign-in refused");
-  const child = f.machine.admitProfile(createProfileRegistry(f.machine).storageClaim(active.profileId));
+  const child = f.machine.admitProfile(active.profileId);
   const duo = createDuoCredentialStore(child, f.machine, clock);
   duo.erase(); assert.equal(duo.read().state, "erased");
   const store = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalAdmission: f.machine,
@@ -217,7 +217,7 @@ for (const mode of ["replace-v3", "prove-v2"] as const) for (const interruptedAt
     for (const scope of anchorScopes) assert.throws(() => readProfilePublicationRegistry(scope), /profile-publication-read-expired/u);
     assert.equal(f.machine.readProfileRegistry().sessionGeneration, epoch + 2);
     assert.equal(peer.prepareCurrentStorage(active.token).state, "refused");
-    const current = f.machine.admitProfile(createProfileRegistry(f.machine).storageClaim(active.profileId));
+    const current = f.machine.admitProfile(active.profileId);
     try {
       const converted = createCredentialStore({ admission: current, stateRoot: current.stateRoot, erasureJournalAdmission: f.machine,
         erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${active.profileId}.json`) });

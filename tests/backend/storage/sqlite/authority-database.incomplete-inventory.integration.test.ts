@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { z } from "zod";
@@ -60,24 +60,21 @@ function corruptFixture(database: DatabaseSync, sql: string, ...values: (string 
   try { database.prepare(sql).run(...values); }
   finally { for (const trigger of triggers) database.exec(trigger.sql); }
 }
-function drift(f: Fixture) {
-  const path = f.controlPath;
-  const value = z.object({ device: z.number(), erasures: z.array(z.object({ credentialKey: z.object({ file: z.object({ device: z.number() }).passthrough() }).passthrough() }).passthrough()) }).passthrough()
-    .parse(JSON.parse(readFileSync(path, "utf8")));
-  value.device += 4;
-  const key = value.erasures[0]?.credentialKey; assert.ok(key); key.file.device += 4;
-  writeFileSync(path, JSON.stringify(value));
+async function reclassify(f: Fixture): Promise<void> {
+  const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  try { await machine.reclassifyIncompleteProfileAsDraft(f.profileId); }
+  finally { machine.release(); }
 }
 for (const repeat of [false, true]) it(`prepares production settings initialization with repeat activation ${repeat} without changing authority`, async () => {
   const f = await createHistoricalIncompleteProfileFixture();
   try {
     const database = new DatabaseSync(f.databasePath);
     try { initialize(database, repeat); } finally { database.close(); }
-    drift(f);
     const before = [f.databasePath, f.registryPath, f.keyPath, f.protectedPath].map(path => readFileSync(path));
-    const held = await RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(f.workspace, f.lifetime);
-    try { assert.match(held.capture.digest, /^[0-9a-f]{64}$/u); }
-    finally { held.release(); }
+    const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+    const child = machine.forStoppedIncompleteProfileInventory(f.profileId);
+    try { assert.equal(AuthorityDatabase.readIncompleteOnboardingInventory(child).empty, true); }
+    finally { child.release(); machine.release(); }
     assert.deepEqual([f.databasePath, f.registryPath, f.keyPath, f.protectedPath].map(path => readFileSync(path)), before);
   } finally { await f.close(); }
 });
@@ -159,12 +156,9 @@ for (const problem of ["operator-command", "operator-audit", "extra-audit", "com
         if (problem === "active-snapshot-time") database.prepare("UPDATE settings SET updated_at=?,payload_json=json_set(payload_json,'$.active.activatedAt',?)").run(initial.capturedAt, initial.capturedAt);
         if (problem === "active-generation") database.prepare("UPDATE settings SET payload_json=json_set(payload_json,'$.active.generation',3)").run();
       } finally { database.close(); }
-      drift(f); const before = readFileSync(f.databasePath), continuity = readFileSync(f.controlPath);
-      let unexpected: Awaited<ReturnType<typeof RuntimeAdmission.prepareStoppedDeviceContinuityRecertification>> | undefined;
-      try {
-        await assert.rejects(async () => { unexpected = await RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(f.workspace, f.lifetime); },
-          (error: unknown) => error instanceof Error && (!(problem === "unbound-snapshot" || problem === "intermediate-startup") || /profile-incomplete-inventory-snapshot-unbound/u.test(error.message)));
-      } finally { unexpected?.release(); }
+      const before = readFileSync(f.databasePath), continuity = readFileSync(f.controlPath);
+      await assert.rejects(reclassify(f),
+        (error: unknown) => error instanceof Error && (!(problem === "unbound-snapshot" || problem === "intermediate-startup") || /profile-incomplete-inventory-snapshot-unbound/u.test(error.message)));
       assert.deepEqual(readFileSync(f.databasePath), before); assert.deepEqual(readFileSync(f.controlPath), continuity);
     } finally { await f.close(); }
   });
@@ -231,8 +225,8 @@ for (const activity of ["business", "deleted-history", "artifact-reference", "wo
         }
         inspectNativeAuthority(database);
       } finally { database.close(); }
-      drift(f); const before = readFileSync(f.databasePath);
-      await assert.rejects(RuntimeAdmission.prepareStoppedDeviceContinuityRecertification(f.workspace, f.lifetime), /profile-incomplete-activity-present/u);
+      const before = readFileSync(f.databasePath);
+      await assert.rejects(reclassify(f), /profile-incomplete-activity-present/u);
       assert.deepEqual(readFileSync(f.databasePath), before);
     } finally { await f.close(); }
   });

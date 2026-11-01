@@ -20,15 +20,18 @@ afterEach(()=>{faults.root="";faults.listings=0;faults.onList=undefined;faults.o
 function fixture() {
   const root=realpathSync(mkdtempSync(join(tmpdir(),"relay-recovery-inventory-")));
   const admission=RuntimeAdmission.syntheticFixture(join(root,"state.db"));
-  const identity=AuthorityDatabase.sourceDatabaseIdentity(join(root,"state.db"));
+  const source = { kind: "profile" as const, binding: {
+    installationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002" } };
+  const observer = { stateRoot: admission.stateRoot, assertLive: () => admission.assertLive(), authorityBackupExpectedSource: () => source };
+  const identity=AuthorityDatabase.sourceDatabaseIdentity(source);
   cleanups.push(()=>{admission.release();rmSync(root,{recursive:true,force:true});});
   const staged=join(root,".restore-11111111-1111-4111-8111-111111111111.sqlite.tmp");
-  return {root,admission,identity,staged,read:()=>inspectStorageRecovery(admission,identity)};
+  return {root,admission,observer,identity,staged,read:()=>inspectStorageRecovery(observer,identity)};
 }
 describe("native recovery evidence inventory",()=>{
   it("reports clear only behind admitted live ownership and exact source identity",()=>{
     const f=fixture();expect(f.read().report.state).toBe("clear");
-    expect(inspectStorageRecovery(f.admission,"b".repeat(64)).report.state).toBe("unavailable");
+    expect(inspectStorageRecovery(f.observer,"b".repeat(64)).report.state).toBe("unavailable");
     f.admission.release();expect(()=>f.read()).toThrow(/released/u);
   });
   it("detects genuine staging and displaced companions as interrupted, binds identities, and never treats them as readiness",()=>{

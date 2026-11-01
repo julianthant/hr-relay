@@ -46,6 +46,7 @@ export function createSystemSessionTestWorld() {
         label: "worker person-lookup-worker-1 session",
         signal,
         credentials: CREDENTIALS,
+        assertCurrent: () => undefined,
         recordEvidence: (evidence) => recorded.push(evidence),
 
         duoCeremony: {

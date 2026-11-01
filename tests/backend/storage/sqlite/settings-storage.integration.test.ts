@@ -103,7 +103,7 @@ describe("SQLite settings authority", () => {
       const path = ${JSON.stringify(f.path)};
       const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
       const machine = acquireSharedRuntimeAdmission(${JSON.stringify(f.repoRoot)}, lifetime);
-      const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(basename(dirname(path))));
+      const admission = machine.admitProfile(basename(dirname(path)));
       const store = createCredentialStore({ admission, stateRoot: ${JSON.stringify(f.root)}, erasureJournalAdmission: machine,
         erasureJournalPath: join(machine.stateRoot, 'machine', 'erasures', admission.profileBinding.profileId + '.json') });
       const db = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 50, migrationOwner: 'r9-child' }, clock, undefined, undefined, undefined, store);
