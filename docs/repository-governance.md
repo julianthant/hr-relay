@@ -25,9 +25,23 @@ before locking them. Add the Cursor Bugbot check when its name is known; do not 
 
 CI takes Node from `package.json` engines and caches npm. Routine test suites are macOS:
 required unit, integration, architecture and parity on `macos-15` Apple Silicon runners.
-Static and privacy stay on Ubuntu. CI runs no Windows jobs. Integration runs as four shards; the required
-check remains `integration (macos-15)`, which fails unless every shard succeeded. Desktop parity
-uses headless Chromium and existing references; CI never updates references or uploads HR evidence.
+Static, privacy and the four required suite summaries stay on Ubuntu. CI runs no Windows jobs.
+A full run uses five concurrent macOS groups: twenty integration shards distributed around unit,
+serial architecture and two parity shards. Each group runs its assigned suites in sequence.
+The release runner starts after these groups finish. This fits the five-job macOS limit without
+an extra runner wave; other workflows and GitHub runner availability can still cause queueing.
+
+PR path filters select affected suites; pushes to `staging` or `main` always select all routine
+suites. Markdown-only PRs run static and privacy without test runners. The required suite names
+stay unchanged: each summary succeeds for a deliberately omitted suite, or requires every
+scheduled group to succeed. Failed change detection, failed groups and cancelled selected groups
+fail the summaries. The [test reference](rebuild/reference/guards-and-tests.md#2-vitest-selection-and-commands)
+owns the selection rules and membership proof. Markdown-only release PRs also omit coverage and perf.
+
+Playwright browser caches use `~/Library/Caches/ms-playwright`, keyed by runner OS, architecture,
+macOS image, browser set and `package-lock.json` digest. An exact hit skips installation; a miss
+installs the required browsers. There are no partial-key restores. Desktop parity uses headless
+Chromium and existing references; CI never updates references or uploads HR evidence.
 
 ## Privacy check
 
