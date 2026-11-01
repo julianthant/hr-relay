@@ -24,6 +24,19 @@ it_m0('formats typed spreadsheet dates while preserving raw and unmapped cell va
 function bytes(value: Uint8Array): ArrayBuffer { return new Uint8Array(value).buffer; }
 
 describe_m1('XLSX / CSV editor round trips', () => {
+  it_m1('copies only visible pooled bytes independently of surrounding storage', () => {
+    const allocation = Buffer.allocUnsafe(32).fill(7);
+    const visible = allocation.subarray(8, 12);
+    const source = bytes(visible);
+    assert_m1.equal(source.byteLength, 4);
+    const original = new Uint8Array(source).slice();
+    allocation[0] = 99;
+    assert_m1.deepEqual([...visible], [7, 7, 7, 7]);
+    assert_m1.deepEqual(new Uint8Array(source), original);
+    visible[0] = 8;
+    assert_m1.notDeepEqual([...visible], [...original]);
+    assert_m1.deepEqual(new Uint8Array(source), original);
+  });
   it_m1('imports color-filtered Excel tables with all records, fills and other sheets intact', async () => {
     const source = bytes(readFileSync_m1(new URL('../../../support/fixtures/spreadsheet/color-filtered-roster.xlsx', import.meta.url)));
     const original = new Uint8Array(source).slice();

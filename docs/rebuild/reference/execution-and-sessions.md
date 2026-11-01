@@ -284,6 +284,11 @@ runtime admission. Shutdown does not create a backup.
 `src/backend/storage/sqlite/runtime-process-locks.ts` owns acquisition-specific process records
 and OS process-birth checks. Database closure precedes their release.
 
+The Darwin OS census in `src/backend/storage/maintenance/process-closure.ts` observes a filesystem
+descriptor only when its name is a non-NUL absolute path equal to its normalized resolution. A
+snapshot with an unresolved filesystem descriptor proves nothing; up to five descriptor snapshots
+are taken, and only a fully resolved one proves the roots unused. A root match in any snapshot refuses.
+
 An abandoned bound-worker process record can also be settled by explicit offline
 `storage recover-worker-process --acquisition <uuid> --plan --json`, followed by
 `--acquisition <uuid> --capture <digest> --apply --json`. Plan reads existing custody without

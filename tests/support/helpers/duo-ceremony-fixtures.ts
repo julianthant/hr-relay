@@ -1,6 +1,6 @@
 
 import assert from "node:assert/strict";
-import { createBoundProfileFixture } from "./admission-fixture.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "./admission-fixture.js";
 import type { MonotonicDeadlineScheduler } from "../../../src/backend/runtime/scheduling/deadline-scheduler.js";
 import {
   createDuoCeremonyGateFactory,
@@ -28,8 +28,8 @@ const realScheduler: MonotonicDeadlineScheduler = {
   },
 };
 
-export async function openDuoCeremonyLeaseDatabase(clock: Clock): Promise<AuthorityDatabase> {
-  const profile = await createBoundProfileFixture();
+export async function openDuoCeremonyLeaseDatabase(clock: Clock, profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture): Promise<AuthorityDatabase> {
+  const profile = await profileFixture();
   const database = AuthorityDatabase.open(
     { path: profile.path, busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock,
   );
@@ -41,8 +41,9 @@ export async function openDuoCeremonyLeaseDatabase(clock: Clock): Promise<Author
 export async function fixtureDuoCeremonyGates(
   clock: Clock = systemClock,
   scheduler: MonotonicDeadlineScheduler = realScheduler,
+  profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture,
 ): Promise<DuoCeremonyGateFactory> {
-  return duoCeremonyGatesOver(await openDuoCeremonyLeaseDatabase(clock), clock, scheduler);
+  return duoCeremonyGatesOver(await openDuoCeremonyLeaseDatabase(clock, profileFixture), clock, scheduler);
 }
 
 

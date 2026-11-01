@@ -13,7 +13,7 @@ if (container === null) throw new Error("parity dashboard root missing");
 const client = createDashboardClient({ baseUrl: window.location.origin });
 const fixture = new URLSearchParams(location.search).get("fixture");
 const controlPreviews = import.meta.glob<{ ControlPreview: ComponentType }>("../support/helpers/dashboard/controls/*-preview.tsx");
-const previewLoader = controlPreviews[`../support/helpers/dashboard/controls/${fixture}-preview.tsx`];
+const previewLoader = new Map(Object.entries(controlPreviews)).get(`../support/helpers/dashboard/controls/${fixture}-preview.tsx`);
 const ControlPreview = previewLoader ? lazy(() => previewLoader().then(module => ({ default: module.ControlPreview }))) : undefined;
 const composition = fixture === "hub-served"
   ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), assistant: "served" as const })

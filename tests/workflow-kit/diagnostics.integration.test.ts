@@ -83,7 +83,6 @@ describe("worker browser sessions", () => {
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT, undefined, {
       runId: "00000000-0000-4000-8000-000000000099",
       descriptorFingerprint: RUN_FINGERPRINT,
-      captureBrowserScreenshots: true,
     });
 
     await sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "ok");

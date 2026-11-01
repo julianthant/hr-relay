@@ -78,6 +78,24 @@ afterEach_m0(_afterEachFixture0);
     await act_m0(async () => [...document.querySelectorAll('button')].find(node => node.textContent === 'Import selected columns')?.click());
     assert_m0(confirmed); assert_m0.equal(confirmed.sheets[0].width, 1); assert_m0.equal(confirmed.sheets[0].columnBindings![0].fieldId, 'fullName'); assert_m0.equal(confirmed.sheets[0].rows[0].cells[0].value, 'Field 0');
   });
+  it_m0('places the header-row control immediately before the column search', async () => {
+    const book = newEditableWorkbook_m0();
+    function Harness() {
+      const [document, change] = useState_m0(prepareSpreadsheetColumns_m0(book)); const trigger = useRef_m0<HTMLButtonElement>(null);
+      return createElement_m0(SpreadsheetColumnImport_m0, { open: true, document, onChange: change, onOpenChange: () => undefined, onCancel: () => undefined, onConfirm: () => undefined, returnFocus: trigger });
+    }
+    const host = document.createElement('div'); document.body.append(host); root = createRoot_m0(host); await act_m0(async () => root?.render(createElement_m0(Harness)));
+    const header = document.querySelector('[aria-label="Header row"]');
+    const search = document.querySelector('input[aria-label="Find import column"]');
+    assert_m0(header instanceof HTMLElement && search instanceof HTMLElement);
+    let group: HTMLElement | null = header;
+    while (group && !group.contains(search)) group = group.parentElement;
+    assert_m0(group instanceof HTMLElement && group !== header);
+    const row = group.parentElement;
+    assert_m0(row instanceof HTMLElement && row.childElementCount === 2 && row.lastElementChild === group);
+    assert_m0(row.firstElementChild?.textContent?.includes('Keep all columns in this sheet'));
+    assert_m0.equal(header.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING, Node.DOCUMENT_POSITION_FOLLOWING);
+  });
 });
 }
 
