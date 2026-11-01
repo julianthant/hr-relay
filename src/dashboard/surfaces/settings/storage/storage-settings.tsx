@@ -1,3 +1,4 @@
+import { BackupRestoreControls } from "../general/settings-relocation.js";
 import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { SkeletonText } from "../../shared/loading/loading.js";
@@ -136,6 +137,7 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
         {doctor.state === "running" ? "Running checks…" : doctor.state === "reading" ? "Loading last check…" : report === undefined ? "Run storage checks" : "Run checks again"}
       </Button>
     } />
+    <BodySection title="Backup and Restore"><BackupRestoreControls state="unavailable" /></BodySection>
     <BodySection title="Status">
       {doctor.state === "reading" && <span role="status" aria-label="Loading storage checks" className="sr-only">Loading storage checks</span>}
       {authority !== "healthy" && report !== undefined && <p className="diagnostic-status">Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></p>}

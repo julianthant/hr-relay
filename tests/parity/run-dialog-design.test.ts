@@ -1,3 +1,4 @@
+import { setSwitchChecked } from "./helpers/switch-choice.js";
 import { AuthoritySourceClosureUnprovedError } from '../../src/backend/storage/source-closure.js';
 
 import { expect } from "@playwright/test";
@@ -45,7 +46,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
       expect((await dialog.getByRole("button", { name: "None Workbook · Optional", exact: true }).boundingBox())!.height).toBe(36);
       await expect(dialog.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
-      await dialog.getByRole("checkbox", { name: "Dry run", exact: true }).check();
+      await setSwitchChecked(dialog.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true }), true);
 
       await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
       await expect(dialog.getByRole("button", { name: "Start dry run", exact: true })).toBeVisible();

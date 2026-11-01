@@ -23,12 +23,12 @@ afterEach(() => { if (root !== undefined) act(() => root?.unmount()); host?.remo
 async function idle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 750)); }); }
 
 describe("storage relocation Paths controls", () => {
-  it("guards an uncertain plan on exit without claiming cancellation or a moved folder", async () => {
+  it("guards an uncertain ordinary path save on exit without claiming it was saved", async () => {
     let guard: ((proceed: () => void) => void) | undefined;
     let exits = 0;
     const client = { editableSettings: () => Promise.resolve(FIXTURE_EDITABLE_SETTINGS),
       storageRelocationPlans: () => Promise.resolve(INITIAL),
-      pickSettingsPath: () => Promise.resolve({ state: "selected", field: "paths.artifactRoot", path: "/tmp/new-artifacts" }),
+      pickSettingsPath: () => Promise.resolve({ state: "selected", field: "paths.downloadsDir", path: "/tmp/new-artifacts" }),
       executeCommand: () => Promise.reject(new Error("synthetic lost response")),
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -38,19 +38,19 @@ describe("storage relocation Paths controls", () => {
       preflight: [], onSection: () => undefined, onExitGuardChange: next => { guard = next; },
     }) }) })); });
     await act(async () => undefined);
-    const change = host.querySelector('[data-settings-path="paths.artifactRoot"] button[aria-label="Change Artifact folder"]');
-    if (!(change instanceof HTMLButtonElement)) throw new Error("artifact picker action missing");
+    const change = host.querySelector('[data-settings-path="paths.downloadsDir"] button[aria-label="Change Downloads"]');
+    if (!(change instanceof HTMLButtonElement)) throw new Error("downloads picker action missing");
     await act(async () => { change.click(); await Promise.resolve(); }); await idle();
     assert.ok(guard);
     await act(async () => guard?.(() => { exits += 1; }));
     assert.equal(exits, 0);
-    assert.match(document.body.textContent ?? "", /Leave with an unconfirmed plan\?/u);
-    assert.match(document.body.textContent ?? "", /does not mean folders moved/u);
+    assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
+    assert.doesNotMatch(document.body.textContent ?? "", /folders moved|Saved location plan/u);
     const keep = [...document.querySelectorAll("button")].find(button => button.textContent === "Keep editing");
     if (keep === undefined) throw new Error("keep-editing action missing");
     await act(async () => keep.click());
     assert.equal(exits, 0);
-    assert.ok(host.querySelector('[data-settings-path="paths.artifactRoot"] .ds-path-control button'));
+    assert.ok(host.querySelector('[data-settings-path="paths.downloadsDir"] .ds-path-control button'));
   });
   it("autosaves a selected ordinary path and ignores cancelled selection", async () => {
     const commands: unknown[] = [];
@@ -69,7 +69,7 @@ describe("storage relocation Paths controls", () => {
       preflight: [], onSection: () => undefined, onExitGuardChange: () => undefined,
     }) }) })));
     await act(async () => undefined);
-    const change = host.querySelector('[data-settings-path="paths.downloadsDir"] button[aria-label="Change Downloads directory"]');
+    const change = host.querySelector('[data-settings-path="paths.downloadsDir"] button[aria-label="Change Downloads"]');
     if (!(change instanceof HTMLButtonElement)) throw new Error("downloads picker action missing");
     await act(async () => { change.click(); await Promise.resolve(); });
     await idle();

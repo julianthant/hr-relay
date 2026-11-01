@@ -74,3 +74,8 @@
 }
 .settings-tab-body .ds-form-group > .ds-result-row,
 .settings-tab-body .diagnostic-check-entry > .ds-result-row { padding-inline:18px; }
+
+.app-data-path-control { width:300px;max-width:100%; }
+.app-data-path-control .app-data-path { flex:1;min-width:0; }
+.app-data-path-control input { font-family:var(--font-data);font-size:12px;color:var(--ui-muted);text-overflow:ellipsis; }
+.app-data-path-control > button { width:32px;height:32px;flex:none; }

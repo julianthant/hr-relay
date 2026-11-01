@@ -69,31 +69,35 @@
       - button "2 Options": Options
     - listitem:
       - button "3 Confirm" [disabled]: Confirm
-  - heading "Run options" [level=3]
-  - paragraph: Set how this work enters the queue.
   - region "Options":
-    - checkbox "Customize steps"
-    - text: Customize steps Choose optional steps.
-    - checkbox "Dry run"
-    - text: Dry run Stop before submission.
-    - checkbox "Capture screenshots" [checked]
-    - text: Capture screenshots Keep browser captures. Workbook · Optional
-    - button "None Workbook · Optional": None
-    - paragraph: Choose an already imported workbook for reference or results.
-    - group "Priority":
-      - text: Priority
-      - radio "Interactive" [checked]
-      - text: Interactive
-      - radio "Bulk"
-      - text: Bulk
-    - paragraph: "Interactive: work you’re waiting on. Bulk: background batches; interactive runs take priority."
-    - group "Browser mode":
-      - text: Browser mode
-      - radio "Headed" [checked]
-      - text: Headed
-      - radio "Headless"
-      - text: Headless
-    - paragraph: Open visible browser windows.
+    - heading "Run" [level=2]
+    - group "Run options":
+      - checkbox "Customize steps"
+      - text: Customize steps Choose optional steps.
+      - switch "Dry run Fill and check every step without submitting."
+      - text: Dry run Fill and check every step without submitting. Screenshots
+      - paragraph: Required by this workflow.
+      - text: Always on Priority
+      - paragraph: Interactive runs go first.
+      - group "Priority":
+        - text: Priority
+        - radio "Interactive" [checked]
+        - text: Interactive
+        - radio "Bulk"
+        - text: Bulk
+      - text: Browser
+      - paragraph: Headless runs in the background.
+      - group "Browser mode":
+        - text: Browser mode
+        - radio "Headed" [checked]
+        - text: Headed
+        - radio "Headless"
+        - text: Headless
+    - heading "Separations" [level=2]
+    - group "Workflow options":
+      - text: Workbook · Optional
+      - button "None Workbook · Optional": None
+      - paragraph: Choose an already imported workbook for reference or results.
     - text: Active policy
     - paragraph: Refuse overlapping subject runs
     - paragraph: Fixed by this workflow.

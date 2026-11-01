@@ -68,6 +68,7 @@ export function computeDashboardBuildInputDigest(repoRoot: string, buildScript: 
   const root = resolve(repoRoot);
   const files: string[] = [];
   for (const inputRoot of INPUT_ROOTS) filesUnder(join(root, inputRoot), files);
+  if (buildScript === PARITY_BUILD_COMMAND) filesUnder(join(root, "tests/support/helpers/dashboard/controls"), files);
   for (const inputFile of [...INPUT_FILES, ...(buildScript === PARITY_BUILD_COMMAND ? PARITY_INPUT_FILES : [])]) {
     const path = join(root, inputFile);
     if (!lstatSync(path).isFile()) throw new Error(`dashboard build input is not a regular file: ${inputFile}`);

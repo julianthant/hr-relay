@@ -41,7 +41,7 @@
       - link "Keyboard":
         - /url: "?settings=keyboard"
     - heading "General" [level=1]
-    - paragraph: ChatGPT account, appearance, and browser preferences.
+    - paragraph: ChatGPT account, appearance, and account controls.
     - heading "ChatGPT account" [level=2]
     - group "ChatGPT account":
       - text: Use your ChatGPT plan
@@ -56,6 +56,10 @@
     - group "Assistant permission":
       - text: Assistant permission Choose when Relay asks before taking an action.
       - button "Ask only before submits"
+    - heading "Account" [level=2]
+    - group "Account":
+      - text: Delete account Account deletion is unavailable. Try again when connected.
+      - button "Delete account" [disabled]
     - heading "Employment" [level=2]
     - group "Employment":
       - text: Job end date (required)

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, Minus, Monitor, Plus, RotateCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, LockKeyhole, Minus, Monitor, Plus, RotateCw } from "lucide-react";
 import { Select, Button, Dialog, DialogContent, DialogTrigger, IconButton } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import type { LogScreenshot } from "./log-feed-model.js";
@@ -19,17 +19,17 @@ function CaptureImage({ screenshot, className, style, eager = false, onFailure, 
     }, () => { if (element.isConnected) { setProblem("Screenshot could not be loaded."); onFailure?.(); } });
   }} />;
 }
-function CapturePreview({ screenshot, onChoose }: { screenshot: LogScreenshot; onChoose: (button: HTMLButtonElement) => void }) {
+function CapturePreview({ screenshot, onChoose, submit = false }: { screenshot: LogScreenshot; submit?: boolean; onChoose: (button: HTMLButtonElement) => void }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  return <figure className="log-capture" data-kind={screenshot.kind}>
-    <div className="log-capture-header"><span><Monitor aria-hidden className="size-3.5" />{screenshot.system ?? "Capture"}</span><span>{captureKindLabel(screenshot.kind)}</span></div>
+  return <figure className={cn("log-capture", submit && "log-capture--submit")} data-kind={screenshot.kind}>
+    {!submit && <div className="log-capture-header"><span><Monitor aria-hidden className="size-3.5" />{screenshot.system ?? "Capture"}</span><span>{captureKindLabel(screenshot.kind)}</span></div>}
     <DialogTrigger asChild><button type="button" onClick={event => onChoose(event.currentTarget)} className="log-capture-open" aria-label={`Enlarge screenshot captured at ${screenshot.time}`}>
       <div className="log-capture-viewport"><CaptureImage key={`${screenshot.src}-${screenshot.width}-${screenshot.height}-${attempt}`} screenshot={screenshot} onFailure={() => setFailed(true)} /></div>
       {!failed && <span className="log-capture-expand"><Expand aria-hidden className="size-3.5" /></span>}
       {screenshot.kind === "form" && !failed && <span className="log-form-hint">Full form · open to scroll</span>}
     </button></DialogTrigger>
-    <figcaption><span className={screenshot.label === "Failed action" ? "text-ui-danger" : undefined}>{screenshot.label ?? captureKindLabel(screenshot.kind)}</span>{failed && <Button size="sm" variant="ghost" onClick={() => { setFailed(false); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</figcaption>
+    <figcaption><span className={screenshot.label === "Failed action" ? "text-ui-danger" : undefined}>{screenshot.label ?? captureKindLabel(screenshot.kind)}</span>{submit && !failed && <time className="font-data text-ui-muted">{screenshot.time}</time>}{failed && <Button size="sm" variant="ghost" onClick={() => { setFailed(false); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</figcaption>
   </figure>;
 }
 function ImagePane({ capture, mode, zoom, rotation, onScale }: { capture: LogScreenshot; mode: CaptureMode; zoom?: number; rotation: number; onScale?: (scale: number) => void }) {
@@ -82,14 +82,19 @@ function CaptureWorkspace({ screenshots, selected, choose }: { screenshots: read
     <div className="log-viewer-caption"><span>{captureKindLabel(capture.kind)}</span>{compare && <label>Compare with<Select aria-label="Comparison capture" value={other} onChange={event => setOther(Number(event.target.value))}>{screenshots.map((item, index) => index !== selected && <option key={index} value={index}>{item.system ?? "Capture"} · {item.label ?? index + 1}</option>)}</Select></label>}</div></div>
   </div>;
 }
-export function LogScreenshots({ screenshots }: { screenshots: readonly LogScreenshot[] }) {
+export function LogScreenshots({ screenshots, presentation }: { screenshots: readonly LogScreenshot[]; presentation?: "submit" }) {
   const [selected, setSelected] = useState(0);
   const opener = useRef<HTMLButtonElement>(null);
   if (!screenshots.length) return null;
   const capture = screenshots[selected];
   if (!capture) throw new Error("log-screenshot-selection-missing");
   const browsers = screenshots.length > 1 && screenshots.every(item => item.kind === "browser");
-  return <Dialog><div className={cn("log-capture-group", browsers && "log-capture-group--browsers", screenshots.length === 1 && "log-capture-group--single")} aria-label="Screenshots">{screenshots.map((item, index) => <CapturePreview key={`${item.src}-${item.width}-${item.height}-${index}`} screenshot={item} onChoose={button => { opener.current = button; setSelected(index); }} />)}</div>
+  return <Dialog><div className={cn("log-capture-group", browsers && "log-capture-group--browsers", screenshots.length === 1 && "log-capture-group--single", presentation === "submit" && "log-capture-group--submit")} aria-label="Screenshots">{screenshots.map((item, index) => <CapturePreview key={`${item.src}-${item.width}-${item.height}-${index}`} screenshot={item} submit={presentation === "submit"} onChoose={button => { opener.current = button; setSelected(index); }} />)}</div>
     <DialogContent className="ui-theme-scope log-viewer-dialog font-ui text-ui-primary" title={`${capture.system ?? "Capture"} · ${capture.label ?? captureKindLabel(capture.kind)}`} description={<span className="sr-only">Captured screenshot viewer</span>} size="xl" onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }}><CaptureWorkspace screenshots={screenshots} selected={selected} choose={setSelected} /></DialogContent>
   </Dialog>;
+}
+
+export function RequiredCaptureStatus({ state, position }: { state: "required" | "pre-submit-failed" | "post-submit-unknown" | "post-submit-proved"; position?: "Before submit" | "After submit" }) {
+  if (state === "required") return <div className="required-capture-row"><div><span className="font-medium">Screenshots</span><p className="text-caption text-ui-muted">Required by this workflow.</p></div><span className="flex items-center gap-2 text-caption"><LockKeyhole aria-hidden className="size-3.5 text-ui-muted" />Always on</span></div>;
+  return <figure className="log-capture log-capture--submit log-capture--unavailable" role="status"><div className="log-capture-missing"><ImageOff aria-hidden className="size-5" /><span>Not captured</span></div><figcaption><span>{position ?? (state === "pre-submit-failed" ? "Before submit" : "After submit")}</span><span>{state === "pre-submit-failed" ? "Submit not clicked" : state === "post-submit-unknown" ? "Write outcome unknown" : "Browser closed first"}</span></figcaption><span className="sr-only">{state === "pre-submit-failed" ? "Stopped before submit. No submit was clicked." : state === "post-submit-unknown" ? "The write outcome is unknown; check UCPath without submitting again." : "The separately proved write outcome is preserved; do not submit again."}</span></figure>;
 }

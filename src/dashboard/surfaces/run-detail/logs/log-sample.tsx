@@ -1,3 +1,4 @@
+import type { DryRunPreviewStage } from "./dry-run-preview-model.js";
 import { useMemo, useState } from "react";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import type { WorkflowSource } from "../../../app/workflow-sources.js";
@@ -71,4 +72,13 @@ function PreviewLogSample({ selection, nowIso }: { selection?: LogSelection; now
     });
   };
   return <LogPanel key={basis} context={selection && (scenarioId === 'preview' || scenarioId === 'selected') ? queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt) : undefined} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} status={selection && (scenarioId === "preview" || scenarioId === "selected") ? <StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" /> : <Badge tone="neutral">{scenario.status}</Badge>} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} />;
+}
+
+export function FullDryRunPreview({ stages, facts }: { stages: readonly DryRunPreviewStage[]; facts: readonly { label: string; value: string; sample?: boolean }[] }) {
+  const applicable = stages.filter(stage => stage.state !== "skipped");
+  const exercised = applicable.filter(stage => stage.state === "exercised" || stage.state === "not-clicked").length;
+  return <section aria-label="Full dry-run preview" className="log-decision dry-run-result">
+    <header className="log-decision-header"><h4>Dry run result</h4><span className="text-caption text-ui-muted">{exercised} of {applicable.length} steps exercised</span></header>
+    <dl className="m-0 divide-y divide-ui-stroke">{facts.map(fact => <div key={fact.label} role="group" aria-label={fact.label} className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-body"><dt>{fact.label}</dt><dd className="m-0 flex min-w-0 items-center gap-2 text-ui-muted"><span className="font-data">{fact.value}</span>{fact.sample && <Badge tone="neutral" aria-label="Dry-run sample" className="border-dashed bg-transparent text-ui-info">Sample</Badge>}</dd></div>)}{stages.filter(stage => stage.state !== "exercised").map(stage => <div key={stage.id} role="group" aria-label={stage.label} className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-body"><dt>{stage.label}<span className="block text-caption text-ui-muted">{stage.detail}</span></dt><dd className="m-0"><Badge tone={stage.state === "unavailable" ? "warning" : "neutral"}>{stage.state === "not-clicked" ? "Not clicked" : stage.state === "unavailable" ? "Unavailable" : "Skipped"}</Badge></dd></div>)}</dl>
+  </section>;
 }

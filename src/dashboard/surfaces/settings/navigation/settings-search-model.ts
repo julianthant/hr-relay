@@ -30,8 +30,8 @@ export function settingsSearchIndex(groups: readonly SettingsNavGroup[], documen
   add("general", "Dark theme", "appearance.theme", "Appearance dashboard color light dark");
   add("general", "ChatGPT account", "chatgpt.account", "OpenAI sign in login subscription plan OCR manage usage");
   if (runtimePaths && document !== undefined) {
-    add("paths", "Runtime state folder", "paths.stateRoot", "Persistent settings and run data");
-    add("paths", "Artifact folder", "paths.artifactRoot", "Run evidence and generated artifacts");
+    add("paths", "Data", "paths.stateRoot", "Persistent settings and run data; runtime state folder");
+    add("paths", "Evidence", "paths.artifactRoot", "Run evidence and generated artifacts; artifact folder");
   }
   if (document === undefined) return results;
   for (const section of document.sections) for (const leaf of section.leaves) {
