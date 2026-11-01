@@ -103,9 +103,17 @@ The repository holds only the current version. No compatibility readers, old mig
   open pull requests and fixes red checks, real Bugbot findings and `merge-conflict` labels on the
   pull request branch; it is the only agent that pushes to an open pull request. The operator handles
   only pull requests labeled `needs-human`.
+- Pull requests into `staging` run static, privacy, unit and architecture checks; integration and
+  parity run on the release pull request into `main`, and a red release is fixed by a pull request
+  into `staging`. Run the integration tests related to your change locally before pushing.
 - A pull request bundles a good amount of related work, so CI runs once per batch rather than after
   every small fix. Keep commits logical inside it; never mix unrelated features. Title and describe
   what changed and why. Pull a branch before continuing work on it.
+- Push fixes to an open pull request as one batch. While its CI runs, push only once that run has
+  already failed: each push cancels the running check.
+- A pull request that intentionally changes a dashboard screen updates that screen's parity, visual
+  and accessibility references in the same pull request; the operator reviews them in the `staging`
+  preview.
 - After the merge, GitHub deletes the remote branch; delete the local branch and remove its worktree
   (save anything in `.work/` first), then report done.
   The operator previews `staging` in the main checkout, which owns the store, credentials and

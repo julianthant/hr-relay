@@ -120,7 +120,8 @@ PR filtering uses these rules. Static and privacy always run.
 | Parity helpers, fixtures or entrypoints | All four; unit and integration also import these. |
 | Local or perf test files only | Architecture; local remains machine-only and perf remains release-only. |
 
-Mixed changes select the union. Machine-readable inputs under `docs/`, including the guard
+Mixed changes select the union. Pull requests into `staging` then drop integration and parity;
+pull requests into `main` keep them and add the release job. Machine-readable inputs under `docs/`, including the guard
 inventory, count as configuration. A manual run (workflow_dispatch) bypasses filtering and selects all four suites; pushes to protected branches do not run CI, since their pull request already passed up to date.
 Required summaries always run on Ubuntu, including when no macOS group was selected. They require
 successful change detection and either an explicit omission or successful scheduled groups.

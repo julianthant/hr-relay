@@ -35,7 +35,7 @@ watches its open PRs and, on the PR branch, fixes failed CI, real Bugbot finding
 `merge-conflict` (merging `staging` in, never rebasing). A failure unrelated to the PR's diff is a
 `staging` failure, fixed once in its own PR rather than in every PR. Fixes never raise deadlines,
 skip or loosen tests, edit workflows, touch HR write paths, or update parity references or snapshots
-without operator approval; anything that needs those gets `needs-human`. While no orchestrator
+for screens the PR did not intentionally change; anything that needs those gets `needs-human`. While no orchestrator
 session runs, red PRs wait; nothing red merges. The operator watches only `needs-human`.
 
 CI takes Node from `package.json` engines and caches npm. Routine test suites are macOS:
@@ -46,7 +46,8 @@ serial architecture and two parity shards. Each group runs its assigned suites i
 The release runner starts after these groups finish. This fits the five-job macOS limit without
 an extra runner wave; other workflows and GitHub runner availability can still cause queueing.
 
-PR path filters select affected suites. Pushes to `staging` and `main` do not run CI: they only
+PRs into `staging` run static, privacy, unit and architecture; PRs into `main` add integration,
+parity and release. PR path filters select affected suites. Pushes to `staging` and `main` do not run CI: they only
 change through pull requests whose up-to-date result already passed. A manual run selects all routine
 suites. Markdown-only PRs run static and privacy without test runners. The required suite names
 stay unchanged: each summary succeeds for a deliberately omitted suite, or requires every

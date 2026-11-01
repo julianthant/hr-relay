@@ -2,6 +2,8 @@ name: CI
 
 # Protected branches only change through pull requests whose up-to-date result already passed,
 # so pushes to them are not re-tested; run the workflow manually for a full check of a branch.
+# Pull requests into staging run static, privacy, unit and architecture; pull requests into main
+# also run integration, parity and the release job.
 on:
   pull_request:
     branches: [staging, main]
@@ -71,8 +73,11 @@ jobs:
                 ['shared', ...suites].some(name => !['true', 'false'].includes(filters[name]))) {
               throw new Error('Path-filter outputs are incomplete or invalid.');
             }
+            const releaseOnly = new Set(['integration', 'parity']);
+            const fullRun = context.eventName === 'workflow_dispatch' || context.payload.pull_request?.base.ref === 'main';
             const selected = Object.fromEntries(suites.map(suite => [suite,
-              context.eventName === 'workflow_dispatch' || filters.shared === 'true' || filters[suite] === 'true'
+              (fullRun || !releaseOnly.has(suite)) &&
+              (context.eventName === 'workflow_dispatch' || filters.shared === 'true' || filters[suite] === 'true')
             ]));
             const groups = [
               { group: 1, suite: 'unit', parity: 0, shards: '1 9 15 17' },
@@ -220,7 +225,7 @@ jobs:
         run: |
           test "$FILTER_RESULT" = success
           if [ "$SELECTED" = false ]; then
-            echo "Suite omitted by path filters."
+            echo "Suite not selected for this pull request."
           else
             test "$SELECTED" = true
             test "$GROUP_RESULT" = success
@@ -240,7 +245,7 @@ jobs:
         run: |
           test "$FILTER_RESULT" = success
           if [ "$SELECTED" = false ]; then
-            echo "Suite omitted by path filters."
+            echo "Suite not selected for this pull request."
           else
             test "$SELECTED" = true
             test "$GROUP_RESULT" = success
@@ -260,7 +265,7 @@ jobs:
         run: |
           test "$FILTER_RESULT" = success
           if [ "$SELECTED" = false ]; then
-            echo "Suite omitted by path filters."
+            echo "Suite not selected for this pull request."
           else
             test "$SELECTED" = true
             test "$GROUP_RESULT" = success
@@ -280,7 +285,7 @@ jobs:
         run: |
           test "$FILTER_RESULT" = success
           if [ "$SELECTED" = false ]; then
-            echo "Suite omitted by path filters."
+            echo "Suite not selected for this pull request."
           else
             test "$SELECTED" = true
             test "$GROUP_RESULT" = success
