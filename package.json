@@ -47,7 +47,7 @@
     "@typescript-eslint/eslint-plugin": "^8.59.2",
     "@typescript-eslint/parser": "^8.59.2",
     "@vitejs/plugin-react": "6.1.0",
-    "@vitest/coverage-v8": "~4.1.11",
+    "@vitest/coverage-v8": "~4.1.12",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-unused-imports": "^4.4.1",
@@ -58,7 +58,7 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.59.2",
     "vite": "8.2.4",
-    "vitest": "~4.1.11"
+    "vitest": "~4.1.12"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -106,6 +106,7 @@
     },
     "exceljs": {
       "uuid": "11.1.1"
-    }
+    },
+    "minimatch@^10.0.0": "11.0.1"
   }
 }
