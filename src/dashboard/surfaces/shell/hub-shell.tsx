@@ -11,7 +11,7 @@ import { ChatFiles } from "./chat-files.js";
 import { useHubAssistant } from "./hub-assistant-model.js";
 import "./hub-shell.css";
 
-export function HubShell({ settingsOpen, onLogout, chatsPort, onRunWorkflow, source = "mock", authority , commands}: { source?: "mock" | "served"; authority?: unknown; settingsOpen: boolean; onLogout: () => void; chatsPort?: HubChatsPort; onRunWorkflow: NonNullable<AssistantPorts["onRunWorkflow"]> ; commands?: DashboardCommandBinding; }) {
+export function HubShell({ settingsOpen, onLogout, chatsPort, onRunWorkflow, source = "mock", authority , commands, subjectRef}: { source?: "mock" | "served"; authority?: unknown; subjectRef?: string; settingsOpen: boolean; onLogout: () => void; chatsPort?: HubChatsPort; onRunWorkflow: NonNullable<AssistantPorts["onRunWorkflow"]> ; commands?: DashboardCommandBinding; }) {
   const panelPosition = useHubPanelPosition(4);
   const launcherPosition = useHubPanelPosition(8, true);
   const [logout, setLogout] = useState(false);
@@ -29,7 +29,7 @@ export function HubShell({ settingsOpen, onLogout, chatsPort, onRunWorkflow, sou
   const localChats = useMemo(() => createMockHubChatsPort(source === "mock"), [source]);
   const model = useHubChats(chatsPort ?? localChats);
   const assistant = useHubAssistant(onRunWorkflow, (id, title) => { if (model.chats.some(chat => chat.id === id)) model.rename(id, title); });
-  const served = useAssistantController(assistant.client, authority, undefined, false, model.currentId, commands);
+  const served = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands);
   const filesView = assistant.view?.id === model.currentId ? assistant.view : undefined;
   const backToChat = () => { assistant.closeFiles(); panelPosition.element.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus(); };
   const current = model.chats.find(chat => chat.id === model.currentId);

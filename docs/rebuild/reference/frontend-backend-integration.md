@@ -53,6 +53,12 @@ the current served account binding once, without a polling or activation loop.
 owns durable preference and private account authority. Neither a mounted control nor source wiring
 establishes live model or operator acceptance.
 
+The assistant's selected subject reference is the visible served run and its exact version. It is
+resolved locally through the canonical run reader; the Responses request receives only a fresh opaque
+reference and workflow/mode metadata. Workflow confirmation uses the existing assistant action endpoint,
+then the same command service as dashboard Run. It preserves the ordinary start planner, preflight,
+worker capacity and once-only command/audit authority.
+
 ## Static workflow source policy
 
 `app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json` into `WORKFLOW_SOURCES`.
@@ -145,7 +151,7 @@ field membership and discriminated states. The client checks identity as well as
 | Storage doctor | `queries/storage-queries.ts` | `storage.ts`: `GET /api/v1/storage/doctor/latest`, `/api/v1/storage/doctor` |
 | Notifications | `queries/notification-queries.ts` | `notifications.ts`: `GET /api/v1/notifications`, `/status`, `/:notificationId/target` |
 | Analytics | `queries/activity-queries.ts` | `activity.ts`: `GET /api/v1/reports/activity`, `/api/v1/reports/activity.csv`, `/api/v1/reports/activity/population`, `/api/v1/reports/activity/population/selected`, `/api/v1/reports/activity/population.csv` |
-| Explorer | `queries/explorer-queries.ts` | `explorer.ts`: `GET /api/v1/explorer`, `POST /api/v1/explorer/validate` |
+| Explorer | `queries/explorer-queries.ts` | `explorer.ts`: read-only `GET /api/v1/explorer` |
 | Intake | `queries/intake-queries.ts` | `intake.ts`: `POST /api/v1/intake/files`, `GET /api/v1/intake/:sessionId` |
 | Commands | `commands/shared-commands.ts` | `commands.ts`: `POST /api/v1/commands`, `/api/v1/commands/bulk` |
 | Day events | `subscriptions/subscription.ts` | `shell.ts`: `GET /events/v1?topics=dashboard-day:<day>` |

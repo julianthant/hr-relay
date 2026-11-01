@@ -80,9 +80,6 @@ export function createKernelStubCommandFixtures(input: {
       clock,
       ids: sequentialIdFactory("d"),
       descriptors: { resolve: (workflowId) => input.resolve(workflowId) },
-      explorerEdits: {
-        apply: (): never => { throw new Error("this harness composes no explorer edit executor"); },
-      },
       writeResolution,
       workerRuntime,
       settings: {

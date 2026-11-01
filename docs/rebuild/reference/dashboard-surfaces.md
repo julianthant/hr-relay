@@ -335,6 +335,15 @@ component. The explicit parity composition supplies approved mock conversations 
 scenes; product failures never select those producers. Chat titles and drafts are local to the mounted
 shell.
 
+For a currently selected served Queue run, send `start selected workflow` to propose the same
+workflow for that run's canonical subject input. The model receives a request-scoped opaque reference,
+workflow ID and execution mode; subject values remain local. Read-only graphs use Live read, and
+transaction graphs require supported dry-run traversal. Protected inputs and stale definitions refuse.
+The existing proposal card shows the selected subject and mode. Confirm checks the selected run/version,
+person/session, current Settings, canonical plan, grant, revision and expiry, then submits through the
+same command service as Run, including worker capacity. Cancel starts nothing. Lost dispatch remains
+unknown and cannot be automatically retried. Changing the selection invalidates the pending card.
+
 ## Settings
 
 Settings is a full-height takeover with its own navigation rail, search, guarded Back to dashboard,
@@ -359,7 +368,7 @@ renderer. Archive and UI catalog requests show removal notices, with a guarded r
 
 ### General and ChatGPT account
 
-Assistant permission uses the canonical Settings/grant authority; a grant alone does not verify
+Every assistant mutation requires an explicit Confirm. Settings grants enable proposals and never authorize automatic changes. Retired permission modes cannot be selected or granted; their terminal history stays inert. A grant alone does not verify
 account capability. Browser dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
 draft validation, autosave, uncertainty and readback. Explicit parity previews keep their local controls.
 
@@ -520,8 +529,7 @@ withheld values are named rather than guessed. Long source IDs/paths remain read
 on clipped chips.
 
 Current fixtures are not compiler authority or executable registration. Served wiring generates the
-timeline from each registered backend definition and preserves existing components. The retained
-Explorer query/validate command seam does not make local source edits or new-workflow authoring served.
+timeline from each registered backend definition and preserves existing components. Explorer exposes only its generated read-only query; no edit, override, validation or source-authoring command exists. Explorer editor records and their command/audit history are removed by the forward storage migration.
 
 ## Removed routes and specimen
 
@@ -565,7 +573,7 @@ operator messages, notification text, subject identifiers and source-file bodies
 or ambiguous input refuses before inference. The trusted local projection also binds whether a
 request permits a help answer or requires canonical action completion. A notification action with
 only model text and no canonical call refuses; it cannot report an execution from model prose. Notification commands resolve the reference back to the
-same actor and complete sorted current inbox membership and versions, then use the existing permission and once-consumable command door.
+same actor and complete sorted current inbox membership and versions, then wait for operator confirmation before using the once-consumable command door.
 Plural actions use one opaque collection reference and exact matching count. Inbox Read all uses the
 same canonical collection command. The kernel checks the whole membership in its transaction before
 any row update; pinned history warnings remain unchanged. Counts describe current native notices,

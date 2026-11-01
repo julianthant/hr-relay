@@ -237,3 +237,21 @@ it('does not refresh or publish a superseded explicit verification settlement', 
   await held.promise; await Promise.resolve(); await Promise.resolve();
   assert.equal(refreshes, 0); assert.equal(c.snapshot().messages.some(message => message.text === 'Stale verification'), false);
 });
+
+it('binds selected-run workflow proposals to the current selection and confirms only through the typed action client', async () => {
+  let confirms = 0;
+  const proposal = { ...actionProposal.proposal, effect: 'workflow-start' as const, subject: 'selected-run' as const,
+    workflowId: 'person-lookup', dryRun: false, label: 'Live read: Person Lookup', targetLabel: 'Synthetic selected subject' };
+  const c = createAssistantController({ assistantRespond: async request => {
+    assert.equal(request.subjectRef, 'run_selected_1'); return { state: 'action-proposal', proposal };
+  }, assistantDecide: async input => { confirms++; return { state: 'applied', actionId: input.actionId }; } },
+  { authority: 'current', subjectRef: 'run_selected_1' });
+  c.action({ type: 'edit', value: 'start selected workflow' }); c.action({ type: 'send' });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(confirms, 0);
+  const turn = c.snapshot().turn; assert.equal(turn.state, 'proposal');
+  if (turn.state === 'proposal') { assert.equal(turn.proposal.mode, 'read-only'); assert.equal(turn.proposal.values[0].value, proposal.targetLabel); }
+  c.action({ type: 'confirm' }); await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(confirms, 1);
+  c.action({ type: 'confirm' }); assert.equal(confirms, 1);
+});

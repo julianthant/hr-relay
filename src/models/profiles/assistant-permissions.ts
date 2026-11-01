@@ -18,22 +18,22 @@ import { deepFreeze } from "../../rules/validation/immutability.js";
 import { SubjectEvidenceSchema } from "../../rules/write-safety/write-safety-primitives.js";
 
 /** Settings may initialize this mode only together with an explicit operator grant. */
-export const ASSISTANT_PERMISSION_INITIAL_MODE = "before-submits" as const;
+export const ASSISTANT_PERMISSION_INITIAL_MODE = "every-action" as const;
 
 export { AssistantPermissionModeSchema, type AssistantPermissionMode } from "./assistant-permission-mode.js";
-import { AssistantPermissionModeSchema } from "./assistant-permission-mode.js";
+import { AssistantPermissionModeSchema, StoredAssistantPermissionModeSchema } from "./assistant-permission-mode.js";
 
 export const AssistantOperatorGrantSchema = z.strictObject({
   grantId: z.uuid(),
   profileId: ProfileIdSchema,
   policyRevision: PositiveIntSchema,
-  mode: AssistantPermissionModeSchema,
+  mode: StoredAssistantPermissionModeSchema,
   grantedAt: IsoInstantSchema,
 });
 
 export const AssistantPermissionPolicySchema = z.strictObject({
   revision: PositiveIntSchema,
-  mode: AssistantPermissionModeSchema,
+  mode: StoredAssistantPermissionModeSchema,
   grant: AssistantOperatorGrantSchema,
 }).superRefine((policy, context) => {
   if (policy.grant.policyRevision !== policy.revision || policy.grant.mode !== policy.mode) {
@@ -109,7 +109,7 @@ export const AssistantApprovalBindingSchema = z.strictObject({
   profileId: ProfileIdSchema,
   accountSessionEpoch: PositiveIntSchema,
   policyRevision: PositiveIntSchema,
-  mode: AssistantPermissionModeSchema,
+  mode: StoredAssistantPermissionModeSchema,
   grantId: z.uuid(),
   manifestRevision: PositiveIntSchema,
   family: CommandFamilySchema,

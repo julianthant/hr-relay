@@ -54,7 +54,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/dashboard-stream-seams.ts` | dashboard stream seams |
 | `fixtures/descriptor-fixtures.ts` | descriptor fixtures |
 | `fixtures/diagnostic-image-fixtures.ts` | diagnostic image fixtures |
-| `fixtures/explorer-authority.ts` | explorer authority |
 | `fixtures/explorer-seams.ts` | explorer seams |
 | `fixtures/image-geometry.ts` | image geometry |
 | `fixtures/intake-kernel-seams.ts` | intake kernel seams |

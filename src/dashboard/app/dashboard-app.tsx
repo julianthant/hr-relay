@@ -1052,7 +1052,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       </main>
       </div>
 
-      <HubShell commands={commandBinding} source={workflowComposition.assistant ?? "served"} authority={authorityEpoch} onRunWorkflow={runAssistantWorkflow} settingsOpen={settingsOpen} onLogout={() => leaveSettings(() => {
+      <HubShell subjectRef={selectedRow === undefined || workflowSource(selectedRow.workflowId, workflowComposition.sources) !== "served" ? undefined : `run_${selectedRow.runId}_${selectedRow.rowRevision}`} commands={commandBinding} source={workflowComposition.assistant ?? "served"} authority={authorityEpoch} onRunWorkflow={runAssistantWorkflow} settingsOpen={settingsOpen} onLogout={() => leaveSettings(() => {
         if (onProfileLogout === undefined) setRoute({ start: false, onboarding: "login" });
         else void onProfileLogout();
       })} />

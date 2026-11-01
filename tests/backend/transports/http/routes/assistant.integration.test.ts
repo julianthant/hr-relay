@@ -35,7 +35,7 @@ it("never exposes a thrown service error through framework logs or response", as
 it("keeps operator confirmation behind the same bounded loopback/media door and accepts only issued identity fields", async () => {
   const app: DashboardApp = new Hono(); let calls = 0;
   registerAssistantRoutes(app, { async respond() { return { state: "refused", code: "ASSISTANT_UNAVAILABLE", message: "Unavailable" }; },
-    decide(input) { calls++; return { state: "cancelled", actionId: AssistantActionDecisionSchema.parse(input).actionId }; } });
+    async decide(input) { calls++; return { state: "cancelled", actionId: AssistantActionDecisionSchema.parse(input).actionId }; } });
   const url = "http://127.0.0.1:3938/api/v1/assistant/action";
   const headers = { host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "application/json" };
   const identity = { chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1, decision: "cancel" };

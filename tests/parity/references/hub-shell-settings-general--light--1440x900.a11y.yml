@@ -55,7 +55,7 @@
       - text: Animations Subtle motion. Your reduced-motion preference takes priority.
     - group "Assistant permission":
       - text: Assistant permission Choose when Relay asks before taking an action.
-      - button "Ask only before submits"
+      - button "Ask before every action"
     - heading "Account" [level=2]
     - group "Account":
       - text: Delete account Account deletion is unavailable. Try again when connected.

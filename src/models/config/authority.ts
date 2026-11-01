@@ -45,7 +45,6 @@ export const AuthorityTableNameSchema = z.enum([
   "auth_leases",
   "notifications",
   "notification_states",
-  "explorer_overrides",
   "artifacts",
   "timeline_events",
   "diagnostic_snapshots",
@@ -147,7 +146,7 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   upgradeId: z.literal("fresh"),
   phase: z.literal("baseline"),
   fromSchemaVersion: z.literal(0),
-  toSchemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9)]),
+  toSchemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11)]),
 });
 
 const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
