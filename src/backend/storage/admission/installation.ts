@@ -28,6 +28,7 @@ import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { readProcessCustodyFile } from "../sqlite/runtime-process-locks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { encodePrivate } from "../../../rules/validation/private-equal.js";
 import { storageRelocationDesiredDigest } from "../../../rules/commands/commands.js";
 import { NonNegativeIntSchema } from "../../../rules/identity/ids.js";
 import { systemClock } from "../../../rules/time/clock.js";
@@ -1152,7 +1153,7 @@ function assertProfileCredentialKeyMembership(locator: RuntimeLocator, heads: re
     if (raw.schemaVersion === 2 && raw.legacyWitness === true) {
       const metadata = z.strictObject({ schemaVersion: z.literal(2), installationId: z.uuid(), profileId: z.uuid(), keyId: z.uuid(), keyDigest: DigestSchema, legacyWitness: z.literal(true) }).parse(raw);
       const { legacyWitness: _legacyWitness, ...native } = metadata;
-      bytes = Buffer.from(`${canonicalJsonStringify(credentialKeyCustody.read(native))}\n`);
+      bytes = Buffer.from(encodePrivate(credentialKeyCustody.read(native)));
     }
     if (file.identity.device !== anchor.file.device || file.identity.inode !== anchor.file.inode
       || createHash("sha256").update(bytes).digest("hex") !== anchor.file.digest) fail("profile-credential-key-unowned");

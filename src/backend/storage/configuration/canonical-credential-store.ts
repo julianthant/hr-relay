@@ -5,6 +5,7 @@ import { z } from "zod";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { DuoCredentialRecordSchema } from "../../../models/config/duo-credential-store.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { encodePrivate } from "../../../rules/validation/private-equal.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import type { SignUpOperation } from "../../../models/profiles/profile.js";
 import type { ProfilePublicationRead, StoppedControlProfileInventory } from "../admission/installation.js";
@@ -641,7 +642,7 @@ export function prepareStoppedCanonicalCredentials(admission: RuntimeAdmission, 
       || oldKey.keyId !== source.key.keyId) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
     const secret = Buffer.from(oldKey.key, "base64");
     if (secret.length !== 32 || secret.toString("base64") !== oldKey.key) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-    const priorDigest = metadata.success && metadata.data.legacyWitness === true ? digest(Buffer.from(`${canonicalJsonStringify(oldKey)}\n`)) : digest(old.bytes);
+    const priorDigest = metadata.success && metadata.data.legacyWitness === true ? digest(encodePrivate(oldKey)) : digest(old.bytes);
     if (priorDigest !== source.key.file.digest) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
     const duo = records.duo.value === null ? { credentials: [] } : DuoCredentialRecordSchema.parse(records.duo.value);
     if (duo.credentials.length !== 0) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_COUNTER_UNPROVED");
