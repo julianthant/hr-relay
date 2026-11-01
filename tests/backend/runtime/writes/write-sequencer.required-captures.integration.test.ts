@@ -8,12 +8,18 @@ import { WriteParkedError } from "../../../../src/backend/runtime/writes/write-s
 const { harness, claimRunning, contextFor, intentByKey, cleanup } = createWriteSequencerTestWorld();
 afterEach(cleanup);
 
+// The probe refusal wraps the capture failure as its cause; the prepare refusal raises it directly.
+const screenshotCaptureFailure = (error: unknown): boolean => {
+  const code = (value: unknown) => value instanceof Error && "code" in value ? value.code : undefined;
+  return code(error) === "BROWSER_SCREENSHOT_CAPTURE_FAILED" || (error instanceof Error && code(error.cause) === "BROWSER_SCREENSHOT_CAPTURE_FAILED");
+};
+
 describe("required transaction captures", () => {
   for (const role of ["probe", "prepare"] as const) it(`refuses before fence when the ${role} step capture fails`, async () => {
     const h = await harness({ captureFailure: role });
     const claimed = claimRunning(h.database, h.clock);
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
-    await assert.rejects(h.execute(contextFor(claimed.run, claimed.claim)), /screenshot/i);
+    await assert.rejects(h.execute(contextFor(claimed.run, claimed.claim)), screenshotCaptureFailure);
     assert.equal(intentByKey(h.database), undefined);
     assert.equal(h.world.events.filter(event => event.startsWith("commit-click:")).length, 0);
     assert.ok(h.world.events.includes("capture:step"));
