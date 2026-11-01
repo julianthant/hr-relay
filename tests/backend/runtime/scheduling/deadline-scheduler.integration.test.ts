@@ -23,7 +23,6 @@ describe("worker browser sessions", () => {
   it("preserves a task failure with its selected screenshot failure and still poison-closes", async () => {
     const harness = sessionFactory({ screenshotFailure: true });
     const sessions = await manager(harness, [], {
-      captureBrowserScreenshots: true,
       browserScreenshotCapture: { async capture() {} },
     });
     await assert.rejects(

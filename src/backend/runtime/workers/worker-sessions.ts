@@ -246,7 +246,6 @@ export interface RunConfigFingerprintBinding {
     screenshotContext?: Readonly<{
       runId: string;
       descriptorFingerprint: string;
-      captureBrowserScreenshots?: boolean;
     }>,
   ): void;
   releaseRunConfigFingerprint(): void;
@@ -341,7 +340,6 @@ export async function withBoundRunConfigFingerprint<Result>(
   screenshotContext?: Readonly<{
     runId: string;
     descriptorFingerprint: string;
-    captureBrowserScreenshots?: boolean;
   }>,
 ): Promise<Result> {
   sessions.bindRunConfigFingerprint(fingerprint, browserMode, screenshotContext);
@@ -516,7 +514,6 @@ export class WorkerSessionManager {
     screenshotContext?: Readonly<{
       runId: string;
       descriptorFingerprint: string;
-      captureBrowserScreenshots?: boolean;
     }>,
   ): void {
     const parsed = FingerprintSchema.parse(fingerprint);

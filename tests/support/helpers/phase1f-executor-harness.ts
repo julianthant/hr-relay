@@ -386,6 +386,6 @@ export async function sessionManagerFor(
     ...(onEvent === undefined ? {} : { onEvent }),
   });
 
-  manager.bindRunConfigFingerprint(FingerprintSchema.parse(QUEUED_RUN.envelope.configFingerprint), "headless", { runId: QUEUED_RUN.envelope.runId, descriptorFingerprint: QUEUED_RUN.envelope.contractFingerprint, captureBrowserScreenshots: false });
+  manager.bindRunConfigFingerprint(FingerprintSchema.parse(QUEUED_RUN.envelope.configFingerprint), "headless", { runId: QUEUED_RUN.envelope.runId, descriptorFingerprint: QUEUED_RUN.envelope.contractFingerprint });
   return manager;
 }

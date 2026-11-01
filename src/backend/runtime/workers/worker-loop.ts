@@ -474,9 +474,6 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           {
             runId: run.envelope.runId,
             descriptorFingerprint: run.envelope.contractFingerprint,
-            ...(run.envelope.captureBrowserScreenshots === undefined
-              ? {}
-              : { captureBrowserScreenshots: run.envelope.captureBrowserScreenshots }),
           },
         );
         outcomes.push(outcome);

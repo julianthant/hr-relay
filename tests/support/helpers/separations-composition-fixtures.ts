@@ -394,7 +394,7 @@ export async function compositionHarness(options: Readonly<{
   return {
     ucpath, kuali, database, clock, emitter, ids, sequencer,
     bound: <Result>(work: () => Promise<Result>): Promise<Result> =>
-      withBoundRunConfigFingerprint(manager, COMPOSITION_CONFIG_FINGERPRINT, work, "headless", { runId: COMPOSITION_RUN_ID, descriptorFingerprint: separationsDescriptor.contractFingerprint, captureBrowserScreenshots: false }),
+      withBoundRunConfigFingerprint(manager, COMPOSITION_CONFIG_FINGERPRINT, work, "headless", { runId: COMPOSITION_RUN_ID, descriptorFingerprint: separationsDescriptor.contractFingerprint }),
     dispose: async (): Promise<void> => {
       await manager.closeAll("worker-stop");
       releaseSeededWriteOwners(database, clock.now().toISOString());

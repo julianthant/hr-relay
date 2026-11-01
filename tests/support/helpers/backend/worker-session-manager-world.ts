@@ -123,7 +123,6 @@ export function createWorkerSessionManagerTestWorld(profileFixture: () => Promis
       clock?: TestClock;
       scheduler?: MonotonicDeadlineScheduler;
       browserScreenshotCapture?: RunBrowserScreenshotCapture;
-      captureBrowserScreenshots?: boolean;
     } = {},
   ): Promise<WorkerSessionManager> {
     const clock = options.clock ?? manualClock(new Date("2026-08-02T18:00:00.000Z"));
@@ -145,9 +144,6 @@ export function createWorkerSessionManagerTestWorld(profileFixture: () => Promis
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT, undefined, {
       runId: "00000000-0000-4000-8000-000000000099",
       descriptorFingerprint: RUN_FINGERPRINT,
-      ...(options.captureBrowserScreenshots === undefined
-        ? {}
-        : { captureBrowserScreenshots: options.captureBrowserScreenshots }),
     });
     return sessions;
   }

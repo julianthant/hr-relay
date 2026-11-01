@@ -511,7 +511,7 @@ describe("task screenshot persistence before checkpoint", () => {
         duoCeremony: duoCeremonyGatesOver(database, clock), browserScreenshotCapture: failure === "persist" ? { capture: async context => { if (context.system === "ucpath") throw new TypeError("private persistence content"); await capture.capture(context); } } : capture,
       });
       sessions.bindRunConfigFingerprint(FingerprintSchema.parse(claimed.run.envelope.configFingerprint), "headless", { runId: claimed.run.envelope.runId,
-        descriptorFingerprint: claimed.run.envelope.contractFingerprint, captureBrowserScreenshots: false });
+        descriptorFingerprint: claimed.run.envelope.contractFingerprint });
       const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
       const result = await executeClaimedRun({ ...harness.deps, sessions, taskNotes: { ...notes, emitRunAction: (input, authority) => {
         if (failure === "note" && input.action.kind === "screenshot") throw new Error("note append failure");
@@ -627,7 +627,7 @@ describe("Person Lookup final capture points", () => {
           browserScreenshotCapture: { capture: async context => { await capture.capture(context); persisted.push(pages.get(context.system) ?? "unexpected-page"); } },
         });
         sessions.bindRunConfigFingerprint(FingerprintSchema.parse(claimed.run.envelope.configFingerprint), "headless", { runId: claimed.run.envelope.runId,
-          descriptorFingerprint: claimed.run.envelope.contractFingerprint, captureBrowserScreenshots: enabled });
+          descriptorFingerprint: claimed.run.envelope.contractFingerprint });
         const notes = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
         const result = await executeClaimedRun({ ...harness.deps, sessions, taskNotes: notes }, { ...claimed, signal: new AbortController().signal });
         assert.equal(result.state, "done", JSON.stringify(database.authority.failures.listByRun(claimed.run.envelope.runId)));
