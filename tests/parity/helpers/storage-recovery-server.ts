@@ -208,7 +208,9 @@ export async function storageRecoveryTarget() {
           }).catch(() => { res.writeHead(500).end("Storage proof request failed"); });
           return;
         }
-        const upstream = httpRequest(new URL(path, fixtureUrl), {method}, response => {
+        const target = new URL(path, fixtureUrl);
+        if (!path.startsWith("/") || path.startsWith("//") || target.origin !== new URL(fixtureUrl).origin) { res.writeHead(400).end("Same-origin paths only"); return; }
+        const upstream = httpRequest(target, {method}, response => {
           res.writeHead(response.statusCode ?? 502, response.headers); response.pipe(res);
         });
         upstream.on("error", () => { if (!res.headersSent) res.writeHead(502); res.end(); });
