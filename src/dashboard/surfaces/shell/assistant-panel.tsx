@@ -62,7 +62,7 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
         {served && turn?.state === 'failed' && <p className="hub-footer-status" role="alert">Reply unavailable. Your request is kept.<button className="hub-btn" type="button" disabled={!accountReady || served.state.draft !== turn.prompt} onClick={() => served.onAction({ type: 'retry' })}>Retry reply</button></p>}
         {served && turn?.state === 'unknown' && <p className="hub-footer-status" role="alert">Action outcome is unknown. Check the current inbox before starting a new request. Do not retry this request.</p>}
         {served && turn?.state === 'cancelled' && <p className="hub-caption" role="status">Reply cancelled. Your request is kept; send it again when ready.</p>}
-        {served && <p className="hub-caption">Review and confirm issued local actions. Model, effort, permission-mode and voice controls are unavailable. Workflows use dashboard Run.</p>}
+        {served && <p className="hub-caption">Review and confirm each proposed change. Select a served run and send “start selected workflow” to propose its subject. Model, effort and voice controls are unavailable.</p>}
         {served && !accountReady && <p role="status" className="hub-caption">{served.accountHeading}. {served.accountNotice}</p>}
         {model.error ? <p role="alert" className="hub-footer-status">{model.error}</p> : null}
         {!served && !model.account ? <p role="status" className="hub-caption">{model.error ? 'ChatGPT account unavailable.' : 'Loading ChatGPT account…'}</p> : !served && !accountReady ? <p role="status" className="hub-caption">ChatGPT is unavailable. Open Settings to review your account.</p> : null}

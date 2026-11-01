@@ -268,7 +268,6 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "notification-snooze-all": "complete actor inbox target, not a run row",
   "notification-unsnooze-all": "complete actor inbox target, not a run row",
 
-  "apply-explorer-edit": "The reviewed Explorer draft targets a workflow override revision, not a run row",
   "set-assistant-model-preference": "the assistant surface owns the model choice; no run row can express it",
 };
 

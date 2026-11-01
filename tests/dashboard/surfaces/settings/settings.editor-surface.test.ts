@@ -291,6 +291,18 @@ for (const section of ["general", "paths", "routes", "performance"]) for (const 
     } as unknown as DashboardClient;
     const dom = await mountSettingsPage(client, section);
     if (mode === "hung") await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    if (section === "paths") {
+      const folders = dom.querySelector('[role="group"][aria-label="Folders"]');
+      assert.ok(folders);
+      assert.match(folders.textContent ?? "", /Couldn’t load your folders/u);
+      assert.match(folders.textContent ?? "", /Your saved folders are unchanged\./u);
+      const retry = folders.querySelector("button");
+      assert.ok(retry instanceof HTMLButtonElement);
+      assert.equal(retry.textContent, "Try again");
+      assert.equal(retry.disabled, false);
+      assert.doesNotMatch(dom.textContent ?? "", /private fixture error/u);
+      return;
+    }
     const title = section === "routes" ? "Routes could not be read" : "Editable settings could not be read";
     const failure = [...dom.querySelectorAll('[role="alert"]')].find(alert => alert.textContent?.includes(title));
     assert.ok(failure);

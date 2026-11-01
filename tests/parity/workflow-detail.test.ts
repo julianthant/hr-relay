@@ -1,3 +1,4 @@
+import { setSwitchChecked } from "./helpers/switch-choice.js";
 import { installFrozenMonotonic, moveAssistantLauncherAboveFooter } from "./helpers/app-driver.js";
 
 import { expect } from "@playwright/test";
@@ -48,8 +49,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await launcher.getByRole("textbox", { name: "Emails", exact: true }).fill("jordan.lee@example.com");
       await launcher.getByRole("button", { name: "Continue", exact: true }).click();
       await launcher.getByRole("radio", { name: "Rehire", exact: true }).press("Space");
-      await launcher.getByRole("checkbox", { name: "Dry run", exact: true }).check();
-      await expect(launcher.getByRole("checkbox", { name: "Dry run", exact: true })).toBeChecked();
+      await setSwitchChecked(launcher.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true }), true);
+      await expect(launcher.getByRole("switch", { name: "Dry run Fill and check every step without submitting.", exact: true })).toBeChecked();
       const preview = launcher.getByRole("button", { name: "Preview plan", exact: true });
       await (await preview.count() ? preview : launcher.getByRole("button", { name: "Continue", exact: true })).click();
       await launcher.getByRole("button", { name: "Start preview", exact: true }).click();

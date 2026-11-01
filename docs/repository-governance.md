@@ -12,7 +12,7 @@ release pull request.
 
 | Branch | Required CI check names |
 | --- | --- |
-| `staging` | `static`, `privacy`, `unit (macos-15)`, `integration (macos-15)`, `architecture (macos-15)`, `parity` |
+| `staging` | `static`, `privacy`, `unit`, `integration`, `architecture`, `parity` |
 | `main` | the `staging` checks, plus `release` |
 
 `release` runs only on PRs targeting `main`, after the other checks. Its isolated runner builds the
@@ -30,21 +30,24 @@ combination. A PR it cannot update gets `merge-conflict`. The workflow uses the 
 secret (fine-grained, this repository, Contents and Pull requests read/write), because pushes made
 with the default token do not start CI.
 
-Cursor fixes PRs on GitHub: Bugbot reviews every push and commits its fixes to the PR branch, a
-Cursor Automation on finished CI runs fixes failed CI, and another on the `merge-conflict` label
-resolves conflicts. Their instructions forbid raising deadlines, skipping or loosening tests,
-updating parity references and editing workflows; anything that needs those gets `needs-human`.
-The operator watches only `needs-human`.
+Cursor Bugbot reviews every push and only comments. The orchestrator session is the only fixer: it
+watches its open PRs and, on the PR branch, fixes failed CI, real Bugbot findings and PRs labeled
+`merge-conflict` (merging `staging` in, never rebasing). A failure unrelated to the PR's diff is a
+`staging` failure, fixed once in its own PR rather than in every PR. Fixes never raise deadlines,
+skip or loosen tests, edit workflows, touch HR write paths, or update parity references or snapshots
+for screens the PR did not intentionally change; anything that needs those gets `needs-human`. While no orchestrator
+session runs, red PRs wait; nothing red merges. The operator watches only `needs-human`.
 
 CI takes Node from `package.json` engines and caches npm. Routine test suites are macOS:
 required unit, integration, architecture and parity on `macos-15` Apple Silicon runners.
 Static, privacy and the four required suite summaries stay on Ubuntu. CI runs no Windows jobs.
-A full run uses five concurrent macOS groups: twenty integration shards distributed around unit,
-serial architecture and two parity shards. Each group runs its assigned suites in sequence.
-The release runner starts after these groups finish. This fits the five-job macOS limit without
-an extra runner wave; other workflows and GitHub runner availability can still cause queueing.
+Test suites run on Ubuntu runners, except files that need macOS: the native browser process proofs,
+the storage closure, backup and restore proofs, and Desktop parity. A pull request into `staging`
+uses all twenty Ubuntu jobs and all five macOS jobs; a release pull request gives three of the
+macOS jobs to parity. The release runner starts after these jobs finish.
 
-PR path filters select affected suites. Pushes to `staging` and `main` do not run CI: they only
+PRs into `staging` run static, privacy, unit, integration and architecture; PRs into `main` add
+parity and release. PR path filters select affected suites. Pushes to `staging` and `main` do not run CI: they only
 change through pull requests whose up-to-date result already passed. A manual run selects all routine
 suites. Markdown-only PRs run static and privacy without test runners. The required suite names
 stay unchanged: each summary succeeds for a deliberately omitted suite, or requires every
@@ -64,14 +67,13 @@ staged new files; unstaged edits and untracked files are outside its input. CI c
 commit through its index. Findings contain only paths and rule names.
 
 Private documents belong in ignored `.local-private/`. The scanner rejects roster formats, PDFs,
-environment files, credential paths and recognizable credential/employee ID/SSN patterns. The root
-`.env.example` may contain placeholders; credential-value checks still apply to it. Text checks cover
+environment files, credential paths and recognizable credential/employee ID/SSN patterns. Text checks cover
 UTF-8 (including NUL bytes) and UTF-16 in either byte order; unsupported text fails closed. PNG and
 WebP assets are recognized by extension and format signature; their bytes are still checked for
 recognizable embedded text. The check does not inspect image pixels. Document exceptions remain
 digest-pinned.
 
-`scripts/verify/privacy-synthetic.json` pins the paths and content digests of the three existing
+`scripts/verify/privacy-synthetic.json` pins the paths and content digests of the two existing
 synthetic document fixtures, and names source paths containing schema examples, mock scenes or
 placeholder guidance. Its token digests identify existing synthetic IDs and redaction canaries from
 those examples and tests. Both a known

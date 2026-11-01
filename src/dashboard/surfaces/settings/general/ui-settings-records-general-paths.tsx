@@ -2,15 +2,16 @@ import { HubPermissionSettings, HubBrowserWindowSettings } from "./hub-preferenc
 import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { LoadingRegion, SettingsRowsSkeleton } from "../../shared/loading/loading.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import type { DeleteAccountPresentation } from "./delete-account-model.js";
 import { Form } from "@heroui/react";
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
-import { Banner, BodySection, Button, DateInput, Field, FormGroup, Input, PageHeading, Switch, dsText } from "../../../ds/ui.js";
+import { Banner, BodySection, Button, Dialog, DialogContent, DialogFooter, DateInput, Field, FormGroup, Input, PageHeading, Switch, dsText } from "../../../ds/ui.js";
 import { formatSetting, settingInput, type SettingsDraftOperation } from "../editor/settings-draft-model.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { SettingsSaveFeedback } from "../editor/settings-feedback.js";
 import { settingNote, settingTitle, settingPlaceholderCopy } from "../settings-presentation.js";
-import { StorageRelocationRows } from "./settings-relocation.js";
+import { BackupRestoreControls, FixedStorageRows } from "./settings-relocation.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
 import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
 import { ChatGptAccountSettings } from "./chatgpt-account.js";
@@ -93,25 +94,21 @@ function PathsContent({ editor }: { editor: Editor }) {
     ? fields.map(field => <PathRow key={field} editor={editor} field={field} />)
     : show ? <LoadingRegion label="Loading workflow paths" className="[&>*+*]:border-t [&>*+*]:border-ui-stroke"><SettingsRowsSkeleton rows={fields.length} wide copy={fields.map(settingPlaceholderCopy)} /></LoadingRegion> : null;
   return <>
-    <StorageRelocationRows editor={editor.relocationEditor}>
-      {paths(["paths.browserProfileRoot", "paths.duoCredential", "paths.duoExtensionDir"])}
-    </StorageRelocationRows>
-    <BodySection title="Generated files"><FormGroup label="Generated files">
-      {paths(["paths.reportsDir", "paths.downloadsDir"])}
-    </FormGroup></BodySection>
-    <BodySection title="Workflow documents"><FormGroup label="Workflow documents">
-      {paths(["paths.onboardingDocsDir", "paths.i9CheckTrackerPath"])}
-    </FormGroup></BodySection>
+    <BodySection title="Folders"><FormGroup label="Folders">{editor.editor.state === "failed" ? <div className="hub-settings-row"><div><div className="hub-row-label">Couldn’t load your folders</div><span className="hub-row-note">Your saved folders are unchanged.</span></div><Button variant="secondary" onClick={editor.reload}>Try again</Button></div> : paths(["paths.onboardingDocsDir", "paths.downloadsDir", "paths.reportsDir"])}</FormGroup></BodySection>
+    <FixedStorageRows editor={editor.relocationEditor} />
+    <BodySection title="Backup and restore"><BackupRestoreControls state="unavailable" /></BodySection>
+    {(loaded || editor.editor.state === "loading") && <BodySection title="Workflow locations"><FormGroup label="Workflow locations">{paths(["paths.browserProfileRoot", "paths.duoCredential", "paths.duoExtensionDir", "paths.i9CheckTrackerPath"])}</FormGroup></BodySection>}
   </>;
 }
 
 export function CompactSettingsSection({ editor, sectionId, appearance }: { editor: Editor; sectionId: "general" | "paths"; appearance?: ReactNode }) {
   return <section className="settings-compact-page">
-    <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "ChatGPT account, appearance, and browser preferences." : "Workflow files and runtime locations."} />
+    <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "ChatGPT account, appearance, and account controls." : "Where Relay saves files on this Mac."} />
     {sectionId === "general" && <ChatGptAccountSettings />}
     {sectionId === "general" && appearance}
     {sectionId === "general" && <HubPermissionSettings />}
-    {editor.editor.state === "failed" && <Banner tone="danger" title="Editable settings could not be read">{editor.editor.message} <Button size="sm" onClick={editor.reload}>Try again</Button></Banner>}
+    {sectionId === "general" && <DeleteAccountControl presentation={{ state: "unavailable" }} />}
+    {editor.editor.state === "failed" && sectionId !== "paths" && <Banner tone="danger" title="Editable settings could not be read">{editor.editor.message} <Button size="sm" onClick={editor.reload}>Try again</Button></Banner>}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} sectionId={sectionId} />
       : sectionId === "paths" ? <div className="settings-compact-form"><div className="ds-body-stack"><PathsContent editor={editor} /></div></div>
       : editor.editor.state === "loading" && <SettingsSectionSkeleton section={sectionId} contentOnly />}
@@ -128,4 +125,21 @@ function CompactSettingsForm({ editor, sectionId }: { editor: Editor; sectionId:
       <SettingsSaveFeedback save={editor.save} restartRequired={editor.editor.state === "loaded" && editor.editor.document.runtimeStatus.state === "restart-required"} retry={editor.retry} retryConflict={editor.submit} />
       <div className="ds-body-stack">{sectionId === "general" ? <GeneralContent editor={editor} year={document.currentFiscalYear} /> : <PathsContent editor={editor} />}</div>
     </Form>;
+}
+
+export function DeleteAccountControl({ presentation }: { presentation: DeleteAccountPresentation }) {
+  const [confirming, setConfirming] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const deleting = presentation.state === "deleting";
+  return <BodySection title="Account"><FormGroup label="Account">
+    <div className="hub-settings-row">
+      <div><div className="hub-row-label">Delete account</div><span className="hub-row-note" role={deleting ? "status" : undefined}>{deleting ? "Deleting your account; erasure is not complete." : presentation.state === "unavailable" ? "Account deletion is unavailable. Try again when connected." : "Remove your data and credentials from this Mac."}</span></div>
+      <div className="hub-setting-control"><Button ref={trigger} variant="dangerGhost" disabled={presentation.state !== "ready"} onClick={() => setConfirming(true)}>{deleting ? "Deleting…" : "Delete account"}</Button></div>
+    </div>
+    <Dialog open={confirming && presentation.state === "ready"} onOpenChange={setConfirming}>
+      <DialogContent onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }} title={presentation.state === "unavailable" ? "Delete account?" : `Delete ${presentation.personName}’s account?`} description="Your runs, history, settings, and credentials will be erased from this Mac. This can’t be undone." size="sm">
+        <DialogFooter><Button variant="secondary" autoFocus onClick={() => setConfirming(false)}>Cancel</Button><Button variant="danger" onClick={() => { if (presentation.state === "ready") { setConfirming(false); presentation.onConfirm(); } }}>Delete account</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </FormGroup></BodySection>;
 }

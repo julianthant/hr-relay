@@ -8,7 +8,7 @@ import { attachShellA11y } from './helpers/shell-proof.js';
 import { harness, disposeHttpRouteHarness } from '../support/helpers/backend/http-route-harness.js';
 
 const evidence = resolve('.work/HUB-WIRE-1-R2');
-const menuLabels = ['Add files', 'Ask only before submits', 'Model: GPT-6.1 Sol', 'Thinking effort: Medium', 'Voice input'];
+const menuLabels = ['Add files', 'Ask before every action', 'Model: GPT-6.1 Sol', 'Thinking effort: Medium', 'Voice input'];
 async function rectangles(page: Page) {
   return Promise.all(['.hub-composer', '#hub-panel-assistant textarea', '#hub-panel-assistant .hub-transcript'].map(selector => page.locator(selector).boundingBox()));
 }
@@ -52,6 +52,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
         await expect(menu).toHaveCSS('transform', 'none');
         const after = await rectangles(page); expect(after).toEqual(before);
         const items = menu.locator('[role^=menuitem]');
+        if (label === 'Ask before every action') await expect(items).toHaveCount(1);
         await items.first().hover();
         const hover = await items.first().evaluate(node => ({ fill: getComputedStyle(node).backgroundColor, ink: getComputedStyle(node).color }));
         expect(hover.fill).toBe(theme === 'light' ? 'rgb(235, 235, 235)' : 'rgb(50, 50, 50)');
@@ -60,7 +61,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
         expect(focus.fill).toBe(theme === 'light' ? 'rgb(148, 148, 148)' : 'rgb(176, 176, 176)');
         await page.keyboard.press('End'); await expect(items.last()).toBeFocused();
         await page.keyboard.press('Home'); await expect(items.first()).toBeFocused();
-        await page.keyboard.press('ArrowDown'); await expect(items.nth(label === 'Voice input' ? 0 : 1)).toBeFocused();
+        await page.keyboard.press('ArrowDown'); await expect(items.nth(label === 'Voice input' || label === 'Ask before every action' ? 0 : 1)).toBeFocused();
         const menuBox = (await menu.boundingBox())!, triggerBox = (await trigger.boundingBox())!;
         expect(Math.abs(triggerBox.y - menuBox.y - menuBox.height - 8)).toBeLessThanOrEqual(0.5);
         expect(menuBox.x).toBeGreaterThanOrEqual(8); expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(width - 8);

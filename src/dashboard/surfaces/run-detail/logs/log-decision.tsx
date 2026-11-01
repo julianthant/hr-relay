@@ -1,7 +1,8 @@
+import type { UcpathFoundPresentation, UcpathFoundDecision } from "./ucpath-found-model.js";
 import { SkeletonText } from "../../shared/loading/loading.js";
 import { useRef, useState } from "react";
 import { Check, Clock, ImageOff, PauseCircle, ScanSearch, TriangleAlert, UserRoundSearch } from "lucide-react";
-import { Button, DateInput, Dialog, DialogBody, DialogContent, Field, Input } from "../../../ds/ui.js";
+import { Badge, Table, THead, TBody, TR, TH, TD, Button, DateInput, Dialog, DialogBody, DialogContent, Field, Input } from "../../../ds/ui.js";
 import { cn } from "../../../lib/utils.js";
 import { decisionAnswerValid, LOG_DECISION_STATUS, type LogDecision, type LogDecisionAction, type LogDecisionAnswer } from "./log-decision-model.js";
 import { LogScreenshots } from "./log-screenshots.js";
@@ -41,4 +42,38 @@ export function LogDecisionBlock({ decision, onAction }: { decision: LogDecision
     </div>
     {(decision.footer || decision.actions?.length) && <footer className="log-decision-footer"><span>{decision.footer}</span><div className="log-decision-actions">{decision.actions?.map(action => <Button key={action.id} size="sm" variant={action.primary ? "primary" : "secondary"} disabled={onAction === undefined} onClick={event => { opener.current = event.currentTarget; if (action.input) setActive(action); else onAction?.(action, {}); }}>{action.label}</Button>)}</div></footer>}
   </article><DialogContent title={active?.label ?? decision.title} description={<span className="sr-only">Run continuation</span>} className="ui-theme-scope font-ui text-ui-primary" onEscapeKeyDown={event => { if (calendarOpen) event.preventDefault(); }} onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }}><DialogBody>{active && <DecisionForm key={active.id} action={active} onCalendarOpenChange={setCalendarOpen} onSubmit={answer => { onAction?.(active, answer); setActive(undefined); }} />}</DialogBody></DialogContent></Dialog>;
+}
+
+export function UcpathFoundTransactions({ attemptLabel, presentation, onDecision }: {
+  attemptLabel: string;
+  presentation: UcpathFoundPresentation;
+  onDecision?: (decision: UcpathFoundDecision) => void;
+}) {
+  const [selected, setSelected] = useState("");
+  const [transaction, setTransaction] = useState("");
+  const found = presentation.state === "found" ? presentation : undefined;
+  const row = found?.rows.find(candidate => candidate.transactionNumber === selected);
+  const submitted = found?.authoritative === true && row?.match === "exact" && row.detailVerified;
+  const absent = found?.complete === true && found.authoritative && found.rows.every(candidate => candidate.match === "different" && candidate.detailVerified);
+  const busy = presentation.state === "checking" || presentation.state === "loading";
+  const uncertain = found && (!found.complete || !found.authoritative || found.rows.some(candidate => candidate.match === "ambiguous" || !candidate.detailVerified));
+  return <section className="log-decision ucpath-found" aria-label="UCPath found transactions">
+    <div className="log-decision-body"><h3 className="text-[16px] font-semibold">Did this submit reach UCPath?</h3><p className="ucpath-found-subtitle">{attemptLabel}. Relay won’t submit it again.</p>
+      {busy && <p role="status">{presentation.state === "loading" ? "Reading transaction list…" : "Checking confirmation again…"}</p>}
+      {presentation.state === "unavailable" && <p>Confirmation couldn’t be read. Check again.</p>}
+      {found && <><div className="ucpath-found-table-title flex items-center justify-between gap-4"><h4 className="font-medium">Found in UCPath</h4><span className="text-caption text-ui-muted">{found.complete ? "Complete list" : "Partial list"}{!found.authoritative && " · authority unverified"}</span></div>
+        {uncertain && <p className="text-ui-warning">{!found.complete ? "The list is incomplete. Check again or look up a transaction." : !found.authoritative ? "The list is unverified. Check again." : "These transactions need verification. Check again or look up a transaction."}</p>}
+        <Table label="Transactions found in UCPath"><THead><TR><TH><span className="sr-only">Select</span></TH><TH>Transaction</TH><TH>Person</TH><TH>Action</TH><TH>Submitted</TH><TH>Match</TH></TR></THead><TBody>{found.rows.map(candidate => <TR key={candidate.transactionNumber}>
+          <TD><input type="radio" name="found-transaction" aria-label={`Select transaction ${candidate.transactionNumber}`} checked={selected === candidate.transactionNumber} disabled={!found.authoritative || candidate.match !== "exact" || !candidate.detailVerified || !onDecision} onChange={() => setSelected(candidate.transactionNumber)} /></TD>
+          <TD><span className="font-mono">{candidate.transactionNumber}</span></TD><TD>{candidate.person}<span className="block font-mono text-caption text-ui-muted">{candidate.employeeId}</span></TD><TD>{candidate.transactionType}<span className="block text-caption text-ui-muted">Eff. {candidate.effectiveDate}</span></TD><TD>{candidate.submittedAt}</TD><TD>{candidate.match === "exact" && candidate.detailVerified ? <Badge tone="success">Exact</Badge> : candidate.match === "different" ? "Different action" : candidate.detailVerified ? "Possible" : "Detail unverified"}</TD>
+        </TR>)}</TBody></Table>
+        {found.rows.length === 0 && <p>{found.complete && found.authoritative ? "No matching transactions in the complete, authoritative list." : "No transactions loaded; absence is not established."}</p>}
+      </>}
+      {(!found || uncertain || !found.rows.some(candidate => candidate.match === "exact" && candidate.detailVerified)) && <div className="flex items-end gap-2"><Field label="Know the transaction number?"><Input aria-label="Exact transaction number" value={transaction} disabled={busy || !onDecision} onChange={event => setTransaction(event.target.value)} /></Field><Button variant="secondary" disabled={busy || !onDecision || !transaction.trim()} onClick={() => onDecision?.({ kind: "check-again", transactionNumber: transaction.trim() })}>Look up</Button></div>}
+    </div>
+    <footer className="log-decision-footer"><Button size="sm" variant="secondary" disabled={busy || !onDecision} onClick={() => onDecision?.({ kind: "check-again", ...(transaction.trim() ? { transactionNumber: transaction.trim() } : {}) })}>Check again</Button><div className="log-decision-actions">
+      <Button size="sm" variant="secondary" disabled={!absent || busy || !onDecision} onClick={() => { if (absent) onDecision?.({ kind: "not-submitted" }); }}>Not submitted</Button>
+      <Button size="sm" disabled={!submitted || busy || !onDecision} onClick={() => { if (row && submitted) onDecision?.({ kind: "submitted", transactionNumber: row.transactionNumber }); }}>{submitted && row ? `Submitted as ${row.transactionNumber}` : "Submitted"}</Button>
+    </div></footer>
+  </section>;
 }

@@ -41,7 +41,7 @@
       - link "Keyboard":
         - /url: "?settings=keyboard"
     - heading "General" [level=1]
-    - paragraph: ChatGPT account, appearance, and browser preferences.
+    - paragraph: ChatGPT account, appearance, and account controls.
     - heading "ChatGPT account" [level=2]
     - group "ChatGPT account":
       - text: Use your ChatGPT plan
@@ -55,7 +55,11 @@
       - text: Animations Subtle motion. Your reduced-motion preference takes priority.
     - group "Assistant permission":
       - text: Assistant permission Choose when Relay asks before taking an action.
-      - button "Ask only before submits" [expanded]
+      - button "Ask before every action" [expanded]
+    - heading "Account" [level=2]
+    - group "Account":
+      - text: Delete account Account deletion is unavailable. Try again when connected.
+      - button "Delete account" [disabled]
     - heading "Employment" [level=2]
     - group "Employment":
       - text: Job end date (required)
@@ -85,6 +89,4 @@
 - dialog "Assistant permission":
   - menu "How should Relay actions be approved?":
     - paragraph: Assistant permission
-    - menuitemradio "Ask before every action Review every read and change."
-    - menuitemradio "Ask only before submits Review changes sent to other systems." [checked]
-    - menuitemradio "Act without asking Let Relay act within your permissions."
+    - menuitemradio "Ask before every action Confirm each proposed change." [checked]

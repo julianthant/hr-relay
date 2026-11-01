@@ -9,7 +9,6 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
-import { ExplorerPresentationLabelSchema } from "../../../src/models/dashboard/explorer.js";
 import { AtomicOutboxRecordSchema } from "../../../src/models/notifications/outbox.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../../src/models/dashboard/storage.js";
 import { redactDiagnosticFields, redactValue } from "../../../src/rules/redaction/redaction.js";
@@ -58,15 +57,6 @@ function pathCoveredBy(candidate: string, owned: readonly string[]): boolean {
 /* ── (a) the declaration audit ───────────────────────────────────────────── */
 
 describe("redaction surface scan — the declaration audit", () => {
-  it("refuses every universal credential/regulated-value canary as an operator-authored Explorer label", () => {
-    for (const name of UNIVERSAL_CANARY_NAMES) {
-      assert.equal(
-        ExplorerPresentationLabelSchema.safeParse(REDACTION_CANARIES[name]).success,
-        false,
-        name,
-      );
-    }
-  });
 
   it("dispositions every free-text and open-JSON leaf of every registered surface", () => {
     const violations = auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS);
@@ -145,9 +135,10 @@ describe("redaction surface scan — the declaration audit", () => {
       "wire/assistant|proposal.stopBefore.commitTaskId|repository-authored",
       "wire/assistant|proposal.subject.displayName|captured-hr-value",
       "wire/assistant|proposal.label|repository-authored",
-      "wire/assistant|proposal.targetLabel|repository-authored",
+      "wire/assistant|proposal.targetLabel|captured-hr-value",
+      "wire/assistant|action.workflowId|repository-authored",
       "wire/assistant|action.label|repository-authored",
-      "wire/assistant|action.targetLabel|repository-authored",
+      "wire/assistant|action.targetLabel|captured-hr-value",
       "wire/assistant|candidates[].displayName|captured-hr-value",
       "wire/chatgpt-ocr-test|model|external-text",
       "wire/chatgpt-ocr-test|message|repository-authored",

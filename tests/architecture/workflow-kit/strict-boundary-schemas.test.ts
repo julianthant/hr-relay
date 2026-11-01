@@ -1,6 +1,5 @@
 import { NativeProfileProbeRequestSchema, NativeProfileProbeResultSchema } from "../../../src/backend/runtime/browser/native-profile-probe.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
-import { ExplorerOverrideImportReceiptSchema, ExplorerOverrideImportSourceSchema } from "../../../src/models/dashboard/explorer-override.js";
 import { deriveWriteAuthorityReason } from "../../../src/rules/write-safety/write-authority-reason.js";
 import { createRunTerminalEvidenceResult, deriveTerminalFailureDigest, RunTerminalEvidenceResultSchema, NotRunTerminalDependencySchema, ResolvedTerminalDependencySchema, RunResultRecordSchema, TerminalDependencyRecordSchema, TerminalNotRunReasonSchema, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, deriveRunResultDigest, deriveTerminalDependencyDigest } from "../../../src/models/run/result.js";
 import { RunCompletionSchema, completionFromAuthorization } from "../../../src/models/run/completion.js";
@@ -562,16 +561,6 @@ interface BoundaryCatalogEntry {
 }
 
 const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
-  { name: "ExplorerOverrideImportSource", schema: ExplorerOverrideImportSourceSchema, fixtures: [
-    { state: "absent" }, { state: "present", sha256: HASH_A, byteLength: 123, document: { documentVersion: 1, workflows: [{
-      overrideVersion: 1, workflowId: "person-lookup", descriptorVersion: 1, contractFingerprint: HASH_B,
-      revision: 1, appliedCommandId: UUID_1, commandFingerprint: HASH_A, presentation: { label: "People search" },
-    }] } },
-  ] },
-  { name: "ExplorerOverrideImportReceipt", schema: ExplorerOverrideImportReceiptSchema, fixtures: [
-    { format: 1, sourceDatabaseIdentity: HASH_A, backupSha256: "fresh", source: { state: "absent" } },
-    { format: 1, sourceDatabaseIdentity: HASH_A, backupSha256: HASH_B, source: { state: "present", sha256: HASH_A, byteLength: 2, document: { documentVersion: 1, workflows: [] } } },
-  ] },
   { name: "AuthorityTableSpec", schema: TableSpecSchema, fixtures: AUTHORITY_TABLE_REGISTRY },
   { name: "AuthorityTableRegistry", schema: AuthorityTableRegistrySchema, fixtures: [AUTHORITY_TABLE_REGISTRY] },
   { name: "AuthorityDatabaseOptions", schema: AuthorityDatabaseOptionsSchema, fixtures: [{ path: "/tmp/authority.sqlite", busyTimeoutMs: 250, migrationOwner: "unit-test" }] },
@@ -1103,8 +1092,6 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/validation/schema-path.ts:ResolvedSchemaPath",
   "src/models/validation/schema-path.ts:SchemaPathFailure",
   // In-process transaction/reader methods, not wire data. Their values and receipts are strict schemas.
-  "src/models/dashboard/explorer-override.ts:ExplorerOverrideReader",
-  "src/models/dashboard/explorer-override.ts:ExplorerOverrideRepository",
   // In-process credential authority port: methods consume and return schema-derived data.
   "src/models/config/credential-store.ts:CredentialStore",
   "src/backend/app/composition/runtime-composition.ts:RebuildRuntimeStart",

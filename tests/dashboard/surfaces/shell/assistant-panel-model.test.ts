@@ -6,7 +6,7 @@ const file: AssistantFile = { id: 'people', name: 'People.csv', status: 'Attache
   { id: 'two', cells: [{ value: 'Casey Lin' }, { value: '' }] },
   { id: 'empty', cells: [{ value: '' }, { value: '' }] },
 ] }] } };
-const value = { text: 'run separations', files: [file], model: 'GPT-6.1 Sol', effort: 'Medium', approval: 'Ask only before submits' };
+const value = { text: 'run separations', files: [file], model: 'GPT-6.1 Sol', effort: 'Medium', approval: 'Ask before every action' };
 describe('assistant mock workflow review', () => {
   it('keeps row provenance and holds missing dates rather than inventing them', () => {
     expect(assistantWorkflowRows(file, 'separations')).toEqual([

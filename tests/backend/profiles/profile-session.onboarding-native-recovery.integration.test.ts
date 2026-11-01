@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
 import { once } from "node:events";
@@ -35,7 +36,7 @@ it("refuses a canonical Chromium orphan after owner SIGKILL before erasure, then
   assert.ok(operation.onboarding);
   const owner={operationId:operation.operationId,profileId:operation.profileId,accountId:operation.onboarding.accountId,generation:operation.onboarding.generation};
   const root=join(machine.stateRoot,"browsers","onboarding");mkdirSync(root,{recursive:true,mode:0o700});
-  const worker=fork(join(process.cwd(),"tests/support/processes/onboarding-native-orphan-owner.ts"),[root,JSON.stringify(owner)],{execArgv:["--import","tsx"],stdio:["ignore","pipe","pipe","ipc"]});
+  const worker=fork(join(process.cwd(),"tests/support/processes/onboarding-native-orphan-owner.ts"),[root,JSON.stringify(owner)],{execArgv:["--import",testProcessImport()],stdio:["ignore","pipe","pipe","ipc"]});
   worker.stdout?.resume();worker.stderr?.resume();
   let browser:Browser|undefined,browserPid:number|undefined;
   let primary:{error:unknown}|undefined;

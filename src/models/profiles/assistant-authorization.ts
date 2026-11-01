@@ -18,7 +18,7 @@ export const AssistantPlanBindingSchema = z.strictObject({
   canonicalInputSchemaHash: FingerprintSchema, inputFingerprint: FingerprintSchema, expiresAt: IsoInstantSchema,
 });
 export const AssistantStoredCommandSchema = CommandRequestSchema.superRefine((command, context) => {
-  let admitted = command.family === "notification" || command.family === "workflow-batch"
+  let admitted = command.family === "start" || command.family === "notification" || command.family === "workflow-batch"
     || (command.family === "worker-browser" && command.type === "spawn-worker");
   if (command.type === "apply-settings") admitted = command.payload.assistantPermission === undefined && Object.entries(command.payload.patch).every(([, operation]) =>
     ("clear" in operation || typeof operation.set === "boolean" || typeof operation.set === "number"));
@@ -30,7 +30,13 @@ export const AssistantActionRecordSchema = z.strictObject({
   revision: PositiveIntSchema, state: z.enum(["prepared", "approved", "claimed", "settled", "unknown", "cancelled"]),
   result: CommandResultSchema.nullable(), createdAt: IsoInstantSchema, expiresAt: IsoInstantSchema,
 }).superRefine((record, context) => {
-  if (record.command.family === "start" && record.plan === null) context.addIssue({ code: "custom", message: "assistant-start-plan-required" });
+  if (record.command.family === "start") {
+    const plan = record.plan, command = record.command;
+    if (plan === null || plan.startPlanId !== command.target.startPlanId || plan.version !== command.target.expectedVersion
+      || !Object.entries(command.payload).every(([key, value]) => Reflect.get(plan, key) === value)) {
+      context.addIssue({ code: "custom", message: "assistant-start-plan-required" });
+    }
+  } else if (record.plan !== null) context.addIssue({ code: "custom", message: "assistant-start-plan-unexpected" });
   if (canonicalJsonStringify(record.command.target) !== canonicalJsonStringify(record.binding.target)) context.addIssue({ code: "custom", message: "assistant-command-target-mismatch" });
   if (record.command.commandId !== record.binding.commandId || record.command.type !== record.binding.action
     || record.command.family !== record.binding.family) context.addIssue({ code: "custom", message: "assistant-command-binding-mismatch" });

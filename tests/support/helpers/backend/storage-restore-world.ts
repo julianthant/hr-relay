@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../compiled-process.js";
 import { randomUUID } from "node:crypto";
 import { RunRecordSchema, runClaim } from "../../../../src/models/run/record.js";
 import { WorkerPoolMemberSchema, type WorkerPoolMember } from "../../../../src/models/run/worker-slot.js";
@@ -96,7 +97,7 @@ export function createStorageRestoreTestWorld() {
     const portOwner = await RuntimeLifetimeLock.acquire(0), port = portOwner.port;
     await portOwner.close();
     let lifetimeLock: RuntimeLifetimeLock | undefined;
-    const child = spawn(process.execPath, ['--import', 'tsx', fileURLToPath(new URL('../../../support/processes/storage-restore-attempt-worker.ts', import.meta.url)), String(port), options.crashedHolder === true ? 'crashed-holder' : heldRoot?.kind ?? 'root', ...(accounting === undefined ? [] : [accounting.backupAfterCommit ? 'after' : 'before'])], {
+    const child = spawn(process.execPath, ['--import', testProcessImport(), fileURLToPath(new URL('../../../support/processes/storage-restore-attempt-worker.ts', import.meta.url)), String(port), options.crashedHolder === true ? 'crashed-holder' : heldRoot?.kind ?? 'root', ...(accounting === undefined ? [] : [accounting.backupAfterCommit ? 'after' : 'before'])], {
       cwd: sourceRoot, env: credentialKeychainTestEnvironment({ ...process.env, TMPDIR: scratch }), detached: true,
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
@@ -261,7 +262,7 @@ export function createStorageRestoreTestWorld() {
   }>) {
     const owner = attemptDatabases.get(paths.repoRoot); assert.ok(owner);
     const nonce = randomUUID(), scratch = dirname(paths.repoRoot);
-    const successor = spawn(process.execPath, ["--import", "tsx", fileURLToPath(new URL("../../../support/processes/storage-restore-attempt-worker.ts", import.meta.url)),
+    const successor = spawn(process.execPath, ["--import", testProcessImport(), fileURLToPath(new URL("../../../support/processes/storage-restore-attempt-worker.ts", import.meta.url)),
       "successor-renew-confirmed", String(paths.lifetime.port), paths.repoRoot, paths.admission.profileBinding.profileId], {
       cwd: resolve(dirname(fileURLToPath(import.meta.url)), "../../../.."), detached: true,
       env: credentialKeychainTestEnvironment({ ...process.env, TMPDIR: scratch }), stdio: ["ignore", "pipe", "pipe", "ipc"],

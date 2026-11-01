@@ -34,7 +34,7 @@
         - group "Add to this chat":
           - menuitem "Attach file Images, spreadsheets and documents"
           - menuitem "From Chat files Use a file already in this chat"
-      - button "Ask only before submits"
+      - button "Ask before every action"
       - 'button "Model: GPT-6.1 Sol"': GPT-6.1 Sol
       - 'button "Thinking effort: Medium"': Medium
       - button "Voice input"

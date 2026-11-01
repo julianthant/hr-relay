@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../support/compiled-process.js";
 import { cpSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -65,7 +66,7 @@ it("runs the actual generator without existing output and replaces conflicted ou
     const target = join(root, BUILD_MANIFEST_PATH);
     mkdirSync(dirname(target), { recursive: true });
     const run = (...args: string[]) => spawnSync(process.execPath,
-      ["--import", resolve("node_modules/tsx/dist/loader.mjs"), join(root, "scripts/build/generate-workflow-manifest.ts"), ...args],
+      ["--import", testProcessImport(), join(root, "scripts/build/generate-workflow-manifest.ts"), ...args],
       { cwd: root, encoding: "utf8" });
     const check = (status: number, ...args: string[]) => {
       const result = run(...args);

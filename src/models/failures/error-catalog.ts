@@ -13,6 +13,8 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  DRY_RUN_SAMPLE_UNDECLARED: catalogEntry("Dry-run sample values require declared preview provenance.", EmptyParametersSchema),
+  DRY_RUN_SAMPLE_REFUSED: catalogEntry("Dry-run samples cannot authorize a real submission.", EmptyParametersSchema),
   RUNTIME_LIFETIME_LOCK_RELEASED: catalogEntry("Relay runtime authority has closed. Restart Relay before continuing.", EmptyParametersSchema),
   RUNTIME_ALREADY_RUNNING: catalogEntry("Relay is already running. Close it before starting another runtime or storage command.", EmptyParametersSchema),
   PRIVATE_FILE_LOCK_UNAVAILABLE: catalogEntry("Local storage is busy with another operation. Wait for that operation to finish before trying again.", EmptyParametersSchema),

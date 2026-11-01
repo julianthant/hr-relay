@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -11,7 +12,6 @@ import { acquireRuntimeLifetimeLock } from "../../../src/backend/storage/admissi
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
-const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const syntheticAdmission = () => RuntimeAdmission.syntheticFixture(":memory:");
 const runSecureEnvironmentBootstrap: typeof runBootstrap = (args, dependencies) => runBootstrap(args, {
   acquireLifetimeLock: () => acquireRuntimeLifetimeLock(0), ...dependencies,
@@ -118,7 +118,7 @@ describe("secure environment bootstrap", () => {
         assertEnvironment: () => {}, admitEnvironmentFile: () => {}, runCli: async () => {},
       });
       process.stdout.write('RELEASED\\n');`;
-    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", source],
+    const child = spawnSync(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", source],
       { cwd: REPO_ROOT, encoding: "utf8", timeout: 5000 });
     assert.equal(child.status, 0, `child ended with ${String(child.signal)}: ${child.stderr}`);
     assert.match(child.stdout, /RELEASED/u);
@@ -229,7 +229,7 @@ describe("secure environment bootstrap", () => {
   });
 
   it("does not start the CLI when its module is executed directly", () => {
-    const result = spawnSync(TSX, [join(REPO_ROOT, "src", "cli.ts")], {
+    const result = spawnSync(process.execPath, ["--import", testProcessImport(), join(REPO_ROOT, "src", "cli.ts")], {
       cwd: tmpdir(),
       encoding: "utf8",
     });
@@ -242,8 +242,8 @@ describe("secure environment bootstrap", () => {
 
   it("does not start the document-number smoke when its module is executed directly", () => {
     const result = spawnSync(
-      TSX,
-      [join(REPO_ROOT, "scripts", "verify", "test-target-document-number.ts")],
+      process.execPath,
+      ["--import", testProcessImport(), join(REPO_ROOT, "scripts", "verify", "test-target-document-number.ts")],
       { cwd: tmpdir(), encoding: "utf8" },
     );
 
@@ -258,7 +258,7 @@ describe("secure environment bootstrap", () => {
       pathToFileURL(join(REPO_ROOT, "src", "cli.ts")).href,
       pathToFileURL(join(REPO_ROOT, "scripts", "verify", "test-target-document-number.ts")).href,
     ].map((url) => `import(${JSON.stringify(url)})`).join(",");
-    const result = spawnSync(TSX, ["--eval", `Promise.all([${imports}])`], {
+    const result = spawnSync(process.execPath, ["--import", testProcessImport(), "--input-type=module", "--eval", `Promise.all([${imports}])`], {
       cwd: tmpdir(),
       encoding: "utf8",
     });

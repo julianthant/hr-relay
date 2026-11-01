@@ -1,0 +1,48 @@
+# delete-account-unavailable--graphite-warm--1280x720
+# adapter: fixture
+# fixture: delete-account
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Settings":
+  - navigation "Settings":
+    - heading "Settings" [level=2]
+    - group:
+      - searchbox "Search settings"
+    - text: Personal
+    - link "General":
+      - /url: "?fixture=delete-account"
+    - link "Credentials":
+      - /url: "?fixture=fixed-backup"
+    - text: Advanced
+    - link "Paths":
+      - /url: "?fixture=fixed-backup"
+    - link "Routes":
+      - /url: "?fixture=fixed-backup"
+    - text: Data
+    - link "Spreadsheets":
+      - /url: "?fixture=fixed-backup"
+    - link "Explorer":
+      - /url: "?fixture=fixed-backup"
+    - link "Analytics":
+      - /url: "?fixture=fixed-backup"
+    - text: Status
+    - link "Storage":
+      - /url: "?fixture=fixed-backup"
+    - link "Preflight":
+      - /url: "?fixture=fixed-backup"
+  - main:
+    - heading "General" [level=1]
+    - paragraph: ChatGPT account, appearance, and account controls for Alex Morgan.
+    - heading "Appearance" [level=2]
+    - group "Appearance":
+      - switch "Dark theme Dashboard appearance on this browser." [checked]
+      - text: Dark theme Dashboard appearance on this browser.
+      - switch "Animations Subtle motion. Your reduced-motion preference takes priority." [checked]
+      - text: Animations Subtle motion. Your reduced-motion preference takes priority.
+    - heading "Account" [level=2]
+    - group "Account":
+      - text: Delete account Account deletion is unavailable. Try again when connected.
+      - button "Delete account" [disabled]

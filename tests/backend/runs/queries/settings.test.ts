@@ -134,7 +134,7 @@ describe("settings facts — workflow capabilities", () => {
     });
     assert.deepEqual(postures.get("separations"), {
       state: "supported",
-      stopsAt: "clear-pending",
+      firstTransactionNodeId: "clear-pending",
     });
   });
 

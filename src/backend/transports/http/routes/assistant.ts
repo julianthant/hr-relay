@@ -42,7 +42,7 @@ export function registerAssistantRoutes(app: DashboardApp, service: AssistantSer
     try {
       const input = AssistantActionDecisionSchema.parse(await readInput(c.req.raw));
       return c.json(AssistantActionResultSchema.parse(service?.decide === undefined
-        ? { state: "refused", code: "ASSISTANT_UNAVAILABLE" } : service.decide(input, c.req.raw.signal)));
+        ? { state: "refused", code: "ASSISTANT_UNAVAILABLE" } : await service.decide(input, c.req.raw.signal)));
     } catch { return c.json({ state: "refused", code: "ASSISTANT_INVALID" }, 400); }
   });
 }

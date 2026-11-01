@@ -23,7 +23,7 @@ import { prepareStoppedBackupClosure, assertStoppedBackupClosure, StorageBackupC
 
 export const StorageUpgradeReportSchema = z.strictObject({
   state: z.enum(["planned", "initialized", "upgraded", "already-upgraded"]),
-  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   toSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   credentials: z.literal("unchanged"),
   diagnostics: z.strictObject({ reclaimedStages: z.number().int().nonnegative(), retainedStages: z.number().int().nonnegative(), capacityWarning: z.boolean() }).optional(),
@@ -144,7 +144,7 @@ export async function upgradeStorage(browserClosure: ProfileBrowserClosure, admi
 type ReadyUpgradeInventory = ReturnType<typeof readStoppedProfileUpgradeInventory>;
 
 function assertReadyUpgradeInventory(before: ReadyUpgradeInventory, after: ReadyUpgradeInventory, path: string,
-  publication: Readonly<{ kind: "unchanged" }> | Readonly<{ kind: "upgraded"; sourceFingerprint: string }>, backup?: VerifiedBackup): void {
+  publication: Readonly<{ kind: "unchanged" }> | Readonly<{ kind: "upgraded"; sourceFingerprint: string; sourceSchemaVersion: number }>, backup?: VerifiedBackup): void {
   if (before.operationId !== after.operationId) throw new Error("profile-stopped-upgrade-operation-changed");
   const { upgrades: priorUpgrades, ...priorFacts } = before.facts;
   const { upgrades: nextUpgrades, ...nextFacts } = after.facts;
@@ -155,8 +155,8 @@ function assertReadyUpgradeInventory(before: ReadyUpgradeInventory, after: Ready
     const added = nextUpgrades.at(-1);
     if (backup === undefined || nextUpgrades.length !== priorUpgrades.length + 1
       || canonicalJsonStringify(nextUpgrades.slice(0, -1)) !== canonicalJsonStringify(priorUpgrades)
-      || added?.phase !== "settled" || added.fromSchemaVersion !== 8 || added.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
-      || added.upgradeId !== publication.sourceFingerprint || added.planDigest !== deriveAuthorityUpgradePlanDigest(8, publication.sourceFingerprint)
+      || added?.phase !== "settled" || added.fromSchemaVersion !== publication.sourceSchemaVersion || added.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+      || added.upgradeId !== publication.sourceFingerprint || added.planDigest !== deriveAuthorityUpgradePlanDigest(publication.sourceSchemaVersion, publication.sourceFingerprint)
       || added.backup.manifestPath !== backup.manifestPath || added.backup.sha256 !== backup.manifest.sha256
       || added.backup.authorityGeneration !== backup.manifest.authorityGeneration) throw new Error("profile-stopped-upgrade-publication-unproved");
   }
@@ -206,7 +206,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
   const inspect = () => AuthorityDatabase.inspectStoppedUpgrade(owner, path, processLockRoot, clock);
   const inspectInventory = () => readStoppedProfileUpgradeInventory({ machine, admission: owner, hostFacts: input.hostFacts, clock, browserClosure });
   const initial = inspect();
-  const closure = !input.plan && initial.schemaVersion === 8
+  const closure = !input.plan && [8, 9, 10].includes(initial.schemaVersion)
     ? await prepareStoppedBackupClosure(browserClosure, owner, restore, clock, processLockRoot) : undefined;
   let inventory = inspectInventory();
   const revalidate = (backup?: VerifiedBackup) => {
@@ -223,7 +223,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
     fromSchemaVersion: initial.schemaVersion, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
   if (input.plan) return report("planned");
   if (initial.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return report("already-upgraded");
-  if (initial.schemaVersion !== 8) throw new Error("profile-stopped-upgrade-version-refused");
+  if (![8, 9, 10].includes(initial.schemaVersion)) throw new Error("profile-stopped-upgrade-version-refused");
   if (closure === undefined) throw new StorageBackupClosureUnprovedError();
   const backed = await backupStoppedAuthority(closure, owner, owner.stateRoot, clock, processLockRoot, restore);
   if (backed.manifests.length !== 1) throw new Error("profile-stopped-upgrade-single-backup-required");
@@ -239,7 +239,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
   if (current.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || current.authorityGeneration !== initial.authorityGeneration
     || current.installationId !== owner.profileBinding.installationId || current.profileId !== owner.profileBinding.profileId) throw new Error("profile-stopped-upgrade-readback-unproved");
   assertReadyUpgradeInventory(inventory, inspectInventory(), path,
-    { kind: "upgraded", sourceFingerprint: initial.authorityContentFingerprint }, verified);
+    { kind: "upgraded", sourceFingerprint: initial.authorityContentFingerprint, sourceSchemaVersion: initial.schemaVersion }, verified);
   return report("upgraded");
 }
 

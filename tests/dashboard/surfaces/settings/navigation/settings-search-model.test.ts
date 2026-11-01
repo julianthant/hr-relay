@@ -23,6 +23,8 @@ describe("Settings field search", () => {
       ["UCPath username", "credentials", "protected.ucpathUserId"],
       ["runtime state folder", "paths", "paths.stateRoot"],
     ]) assert.ok(searchSettings(index, term).some(result => result.entry.id === section && result.target === target), term);
+    assert.equal(searchSettings(index, "Data")[0]?.label, "Data");
+    assert.equal(searchSettings(index, "Evidence")[0]?.label, "Evidence");
     assert.equal(new Set(index.map(result => result.id)).size, index.length);
   });
 

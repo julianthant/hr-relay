@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { default as assert } from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID as randomUUID_m0 } from "node:crypto";
@@ -227,7 +228,7 @@ for (const [label, tz, instant, localDay, cutoff, retained] of [
 ] as const) {
   it(`retains and prunes resolution history with ordinary events: ${label}`, () => {
     const child = spawnSync(process.execPath,
-      ["--import", "tsx", "--input-type=module", "-e", probe, instant, localDay, cutoff, retained],
+      ["--import", testProcessImport(), "--input-type=module", "-e", probe, instant, localDay, cutoff, retained],
       { cwd: process.cwd(), env: { ...process.env, TZ: tz }, encoding: "utf8", timeout: 20_000 });
     assert.equal(child.status, 0, `${child.error?.message ?? ""}${child.stdout}${child.stderr}`);
   });

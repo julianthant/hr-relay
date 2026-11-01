@@ -26,7 +26,10 @@ export async function startSettingsActivationServer() {
   try {
     for (const name of ["package.json", "package-lock.json", "vite.dashboard.config.ts", "vite.parity.config.ts", "tsconfig.json"])
       copyFileSync(join(PARITY_REPO_ROOT, name), join(root, name));
-    cpSync(join(PARITY_REPO_ROOT, "src"), join(root, "src"), { recursive: true });
+    for (const name of ["src", "tests/support/helpers/dashboard/controls"]) {
+      mkdirSync(join(root, name, ".."), { recursive: true });
+      cpSync(join(PARITY_REPO_ROOT, name), join(root, name), { recursive: true });
+    }
     for (const name of ["config/dashboard-workflow-sources.json", "tests/parity/app-entry.tsx", "tests/parity/helpers/workflow-composition.ts"]) {
       mkdirSync(join(root, name, ".."), { recursive: true });
       copyFileSync(join(PARITY_REPO_ROOT, name), join(root, name));

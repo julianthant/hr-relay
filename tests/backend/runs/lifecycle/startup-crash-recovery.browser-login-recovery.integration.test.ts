@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -104,7 +105,7 @@ it("recovers an actual hard-crashed standalone reservation with no worker lease 
   const port = f.lifetime.port, binding = f.admission.profileBinding;
   const installation = f.machine.readInstallationContext(); assert.ok(installation);
   await f.closeController();
-  const child = spawn(process.execPath, ["--import", import.meta.resolve("tsx"),
+  const child = spawn(process.execPath, ["--import", testProcessImport(),
     fileURLToPath(new URL("../../../support/processes/verification-reservation-owner.ts", import.meta.url)),
     installation.workspace, String(port), f.clock.now().toISOString()],
   { env: credentialKeychainTestEnvironment({}), stdio: ["ignore", "ignore", "pipe", "ipc"] });

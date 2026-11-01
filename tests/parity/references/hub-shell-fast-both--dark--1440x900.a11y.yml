@@ -28,9 +28,9 @@
             - listitem: Confirmed by Relay
           - text: This sign-in method is verified. No further enrollment is needed.
       - listitem:
-        - button "Touch ID Built-in sensor on this Mac Completed Touch ID progress This sign-in method is verified. No further enrollment is needed." [disabled] [pressed]:
+        - button "Touch ID Platform authenticator · hardware or Chromium virtual authenticator Completed Touch ID progress This sign-in method is verified. No further enrollment is needed." [disabled] [pressed]:
           - strong: Touch ID
-          - text: Built-in sensor on this Mac Completed
+          - text: Platform authenticator · hardware or Chromium virtual authenticator Completed
           - list "Touch ID progress":
             - listitem: Started
             - listitem: Added in Duo

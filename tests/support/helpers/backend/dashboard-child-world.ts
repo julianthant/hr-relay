@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../compiled-process.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { AuthorityDatabase } from "../admission-fixture.js";
 import assert from "node:assert/strict";
@@ -74,7 +75,7 @@ export function createDashboardChildTestWorld(releaseAdmissionFixtures: () => vo
 
   function realStubSpawner(records: RealChildRecord[], lifetime: RuntimeLifetimeLock): WorkerProcessSpawner {
     return (request) => {
-      const child = spawnChildProcess(request.command, [...request.args], {
+      const child = spawnChildProcess(request.command, ["--import", testProcessImport(), ...request.args.slice(2)], {
         cwd: request.cwd,
         stdio: ["ignore", "pipe", "pipe", "ipc"],
       });

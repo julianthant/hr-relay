@@ -126,7 +126,6 @@ describe("authority classification and command families", () => {
       "notification-snooze-all": "local-write",
       "notification-unsnooze-all": "local-write",
 
-      "apply-explorer-edit": "local-write",
     };
     assert.deepEqual(COMMAND_EFFECT_BY_ACTION, expected);
     assert.deepEqual([...CommandActionSchema.options].sort(), Object.keys(expected).sort());

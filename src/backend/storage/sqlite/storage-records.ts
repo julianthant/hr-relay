@@ -7,7 +7,6 @@ import { WorkerSlotRecordSchema } from "../../../models/run/worker-slot.js";
 import { RunSearchIndexRecordSchema } from "../../../models/dashboard/search-index.js";
 import { WorkerControlRecordSchema, WorkerBrowserObservationSchema } from "../../../models/run/worker-control.js";
 import { NotificationHealthSchema } from "./notification-publications.js";
-import { ExplorerWorkflowOverrideSchema } from "../../../models/dashboard/explorer.js";
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
 import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../../models/artifacts/generated-artifact.js";
 import { ImportedArtifactSchema } from "../../../models/intake/imported-artifact.js";
@@ -73,7 +72,6 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   auth_leases: DuoCeremonyLeaseRecordSchema,
   notifications: NotificationRecordSchema,
   notification_states: NotificationHealthSchema,
-  explorer_overrides: ExplorerWorkflowOverrideSchema,
   artifacts: z.union([ImportedArtifactSchema, AdmittedExtractionSchema, GeneratedArtifactSchema]),
   timeline_events: TimelineEventRecordSchema,
   diagnostic_snapshots: DiagnosticBundleSchema,

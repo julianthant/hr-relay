@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../../support/compiled-process.js";
 import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import type { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
@@ -545,7 +546,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
     } finally { database.close(); }
     const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
     for (const poolIndex of [1, 2, 3]) {
-      const seed = spawn(process.execPath, ['--import', 'tsx', join(process.cwd(), 'tests/support/processes/worker-stub-cli.ts'),
+      const seed = spawn(process.execPath, ['--import', testProcessImport(), join(process.cwd(), 'tests/support/processes/worker-stub-cli.ts'),
         String(profile.lifetime.port), profile.path, processLockRoot, 'installed', "worker", WORKFLOW, '--pool-index', String(poolIndex)],
         { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe', 'ipc'], detached: true });
       const seedClosed = new Promise<void>(resolve => { seed.once('close', () => resolve()); });

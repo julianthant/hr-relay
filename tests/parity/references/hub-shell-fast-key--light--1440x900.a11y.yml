@@ -28,9 +28,9 @@
             - listitem: Confirmed by Relay
           - text: This sign-in method is verified. No further enrollment is needed.
       - listitem:
-        - button "Touch ID Built-in sensor on this Mac Not started Touch ID progress Uses the native Mac prompt, with software interception disabled." [pressed]:
+        - button "Touch ID Platform authenticator · hardware or Chromium virtual authenticator Not started Touch ID progress Uses the native Mac prompt, with software interception disabled." [pressed]:
           - strong: Touch ID
-          - text: Built-in sensor on this Mac Not started
+          - text: Platform authenticator · hardware or Chromium virtual authenticator Not started
           - list "Touch ID progress":
             - listitem: Started
             - listitem: Added in Duo
@@ -43,8 +43,8 @@
   - text: Device type
   - combobox "Device type":
     - option "Security key" [disabled]
-    - option "Touch ID on this Mac" [selected]
-  - button "Open duo.ucsd.edu"
+    - option "Touch ID" [selected]
+  - button "Open duo.ucpath.edu"
   - button "Start capture"
   - status: Capture alone does not mean the device is added.
   - paragraph: UI mock. No credentials are created or sent.

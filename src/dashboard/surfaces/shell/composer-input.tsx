@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react';
-import { ArrowUp, ChevronDown, Folder, Hand, Mic, Plus, Send, Sparkles, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, Folder, Hand, Mic, Plus, X } from 'lucide-react';
 import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, DropdownMenu, DropdownMenuTrigger,
   DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuItem, DropdownMenuRadioGroup,
   DropdownMenuRadioItem, DropdownMenuSeparator } from '../../ds/ui.js';
@@ -21,7 +21,7 @@ export function ComposerInput({ onSend, onAttachFile, onOpenChatFile, disabled =
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not attach the file. Try again.'); }
     finally { setAttaching(false); composer.textarea.current?.focus(); }
   }
-  const approvalIcon = composer.approval === ASSISTANT_APPROVALS[0].label ? <Hand /> : composer.approval === ASSISTANT_APPROVALS[1].label ? <Send /> : <Sparkles />;
+  const approvalIcon = <Hand />;
   function menu(kind: ComposerMenu, label: string, trigger: React.ReactNode, children: React.ReactNode, size: 'sm' | 'icon-sm' = 'icon-sm') {
     return <DropdownMenu open={composer.menu === kind} onOpenChange={open => { if (open) focusMessageOnClose.current = false; composer.setMenu(open ? kind : null); }}>
       <DropdownMenuTrigger asChild><InputGroupButton id={`hub-${kind}-trigger`} size={size} aria-label={label} title={label} disabled={disabled || attaching || !preview && kind !== 'attach'}>{trigger}</InputGroupButton></DropdownMenuTrigger>

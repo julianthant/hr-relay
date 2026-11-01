@@ -336,10 +336,11 @@ describe_m3("legacy workflow previews", () => {
     expect_m3(facts.some(row => row.key === "Roster" || row.key === "Workers")).toBe(false);
   });
   it_m3("confirms edited execution settings and omitted steps in operator language", () => {
-    const options = draft("onboarding", { priority: "background", browser: "headless", captures: false, hireType: "rehire", selectedSteps: ["transaction"] });
+    const options = draft("onboarding", { priority: "background", browser: "headless", hireType: "rehire", selectedSteps: ["transaction"] });
     const facts = Object.fromEntries(mockConfirmationFacts_m3("onboarding", options).map(row => [row.key, row.value]));
     expect_m3(facts.Queue).toBe("Bulk");
-    expect_m3(facts.Browser).toBe("Headless · screenshots off");
+    expect_m3(facts.Browser).toBe("Headless · screenshots required");
+    expect_m3(Object.hasOwn(options, "captures")).toBe(false);
     expect_m3(Object.hasOwn(options, "workers")).toBe(false);
     expect_m3(Object.hasOwn(facts, "Workers")).toBe(false);
     expect_m3(facts["Hire type"]).toBe("Rehire · UC_CONC_HIRE");

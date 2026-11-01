@@ -198,7 +198,7 @@ it("unknown enrollment copy never directs adding the uncertain method again", as
   try {
     await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port })));
     assert.equal(host.querySelector("h1")?.textContent, "Security key");
-    assert.match(host.textContent ?? "", /Security keyFailed/);
+    assert.match(host.textContent ?? "", /Security keyUnknown/);
     assert.doesNotMatch(host.textContent ?? "", /outcome unknown|Needs review|may already have been added/);
     assert.match(host.textContent ?? "", /without repeating this attempt/);
     assert.doesNotMatch(host.textContent ?? "", /Security key is next|Start with a security key|then add a security key|Security key and Touch ID not added/);
@@ -206,7 +206,7 @@ it("unknown enrollment copy never directs adding the uncertain method again", as
       const currentPort = { ...port, unavailable: false, onboarding: { ...onboarding, methods: { ...onboarding.methods, key: { ...onboarding.methods.key, state } } } };
       await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: currentPort })));
       assert.equal(host.querySelector("h1")?.textContent, "Security key");
-      assert.match(host.textContent ?? "", state === "pending" ? /Security keyPending/ : /Security keyFailed/);
+      assert.match(host.textContent ?? "", state === "pending" ? /Security keyPending/ : /Security keyUnavailable/);
       assert.doesNotMatch(host.textContent ?? "", /Start with a security key|Next, add a security key/);
     }
   } finally { await act(async () => root.unmount()); host.remove(); }
@@ -218,7 +218,7 @@ it("both served setup pages keep method outcomes visible without offering anothe
   const calls: string[] = [];
   const unavailable = async () => ({ state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const });
   try {
-    for (const page of ["fast", "duo"] as const) for (const [state, label] of [["idle", "Not started"], ["pending", "Pending"], ["complete", "Completed"], ["unknown", "Failed"], ["unavailable", "Failed"]] as const) {
+    for (const page of ["fast", "duo"] as const) for (const [state, label] of [["idle", "Not started"], ["pending", "Pending"], ["complete", "Completed"], ["unknown", "Unknown"], ["unavailable", "Unavailable"]] as const) {
       const port: ServedOnboardingPort = { source: "served", validate: mockOnboardingPort.validate,
         onboarding: { state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo",
           methods: { key: { ...method, state, attemptId: "00000000-0000-4000-8000-000000000003" }, touch: method } },
@@ -258,7 +258,7 @@ it("selects Fast Duo cards through the device selector and blocks selection whil
     assert.equal(select.value, "touch");
     await act(async () => { select.value = "key"; select.dispatchEvent(new Event("change", { bubbles: true })); });
     assert.equal(cards()[0].getAttribute("aria-pressed"), "true");
-    await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "Open duo.ucsd.edu")!.click());
+    await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "Open duo.ucpath.edu")!.click());
     assert.ok(cards().every(card => card.disabled)); assert.equal(select.disabled, true);
     await act(async () => settle(draft));
     assert.ok(cards().every(card => !card.disabled));

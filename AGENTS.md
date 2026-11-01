@@ -99,11 +99,25 @@ The repository holds only the current version. No compatibility readers, old mig
 - Finish a feature on its branch. Run `npm run test:local`, `npm run typecheck` and `npm run lint`,
   then push and open a ready (non-draft) pull request into `staging` with auto-merge on. It merges
   with a merge commit once its required checks pass on a branch up to date with `staging`; the merge
-  train keeps it current, Cursor Bugbot reviews every push, and Cursor automations fix red checks and
-  merge conflicts. The operator handles only pull requests labeled `needs-human`.
+  train keeps it current and Cursor Bugbot reviews every push. The orchestrator session watches its
+  open pull requests and fixes red checks, real Bugbot findings and `merge-conflict` labels on the
+  pull request branch; it is the only agent that pushes to an open pull request. The operator handles
+  only pull requests labeled `needs-human`.
+- Pull requests into `staging` run static, privacy, unit, integration and architecture checks;
+  parity runs on the release pull request into `main`, and a red release is fixed by a pull request
+  into `staging`. Run the tests related to your change locally before pushing, and parity when the
+  change touches a dashboard screen.
+- A test file that needs macOS goes in `MACOS_FILES` in `scripts/test/ci-files.ts`. When CI jobs'
+  end times spread more than a minute, refresh `scripts/test/ci-durations.json` (see
+  `docs/rebuild/reference/guards-and-tests.md`).
 - A pull request bundles a good amount of related work, so CI runs once per batch rather than after
   every small fix. Keep commits logical inside it; never mix unrelated features. Title and describe
   what changed and why. Pull a branch before continuing work on it.
+- Push fixes to an open pull request as one batch. While its CI runs, push only once that run has
+  already failed: each push cancels the running check.
+- A pull request that intentionally changes a dashboard screen updates that screen's parity, visual
+  and accessibility references in the same pull request; the operator reviews them in the `staging`
+  preview.
 - After the merge, GitHub deletes the remote branch; delete the local branch and remove its worktree
   (save anything in `.work/` first), then report done.
   The operator previews `staging` in the main checkout, which owns the store, credentials and

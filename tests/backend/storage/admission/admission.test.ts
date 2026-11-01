@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { randomUUID } from "node:crypto";
@@ -15,7 +16,7 @@ import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admi
 
 const sourceUrl = (relative: string) => new URL(relative, import.meta.url).href;
 function child(source: string, lifetime: RuntimeLifetimeLock) {
-  const process = spawn(globalThis.process.execPath, ["--import", "tsx", "--input-type=module", "-e", source, String(lifetime.port)], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), stdio: ["ignore", "pipe", "pipe", "ipc"] });
+  const process = spawn(globalThis.process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", source, String(lifetime.port)], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), stdio: ["ignore", "pipe", "pipe", "ipc"] });
   assert.ok(process.stdout && process.stderr);
   let stdout = "", stderr = "";
   process.stdout.on("data", bytes => { stdout += String(bytes); });

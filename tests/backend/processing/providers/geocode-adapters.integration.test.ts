@@ -1,3 +1,4 @@
+import { testProcessImport } from "../../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { fork,type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -22,7 +23,7 @@ afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) awai
 const request = ProviderRequestEnvelopeSchema.parse({ capability: "geocode.nominatim", payload: { schemaHash: "a".repeat(64), value: { street: "1 Test Road", country: "US" } } });
 function options(milliseconds = 10_000, controller = new AbortController()) { return { requestId: randomUUID(), signal: controller.signal, deadlineMonotonicMs: systemClock.monotonicMs() + milliseconds }; }
 function child(owner: ReturnType<typeof createNominatimGeocodeAdapter>) {
-  const process = fork(join(import.meta.dirname, "../../../support/helpers/geocode/nominatim-client.ts"), [], { execArgv: ["--import", "tsx"], stdio: ["ignore", "pipe", "pipe", "ipc"] });
+  const process = fork(join(import.meta.dirname, "../../../support/helpers/geocode/nominatim-client.ts"), [], { execArgv: ["--import", testProcessImport()], stdio: ["ignore", "pipe", "pipe", "ipc"] });
   owner.attach(process);
   cleanups.push(async () => { if (process.exitCode === null && process.signalCode === null) { process.kill("SIGKILL"); await once(process, "exit"); } });
   return process;
@@ -102,7 +103,7 @@ it("cancels a worker queued behind the parent without starting its fetch", async
 });
 
 it("fails in-flight and queued worker requests when their parent dies without replay", async () => {
-  const parent=fork(join(import.meta.dirname,"../../../support/helpers/geocode/nominatim-parent.ts"),[],{execArgv:["--import","tsx"],stdio:["ignore","pipe","pipe","ipc"]});
+  const parent=fork(join(import.meta.dirname,"../../../support/helpers/geocode/nominatim-parent.ts"),[],{execArgv:["--import",testProcessImport()],stdio:["ignore","pipe","pipe","ipc"]});
   cleanups.push(async()=>{if(parent.exitCode===null&&parent.signalCode===null){parent.kill("SIGKILL");await once(parent,"exit");}});
   let output="";parent.stdout?.on("data",(chunk:unknown)=>{assert.ok(chunk instanceof Uint8Array);output+=Buffer.from(chunk).toString("utf8");});
   await message(parent,"ready");

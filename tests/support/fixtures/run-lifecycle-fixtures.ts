@@ -84,7 +84,7 @@ export function testWorkerPorts(database: AuthorityDatabase, clock: Clock, input
   const { member: slot } = testAdmittedWorker(database, clock, { path: input.path, workflow: input.descriptor.id,
     poolIndex: input.poolIndex, browserSystems: workflowProjections(input.descriptor).systems });
   const lifecycle = testRunLifecycle(database, clock);
-  return { lifecycle, claimNext: (request: { commandId: string; workflow: string; workerId: string }) => {
+  return { lifecycle, browserScreenshotCapture: { capture: async () => undefined }, claimNext: (request: { commandId: string; workflow: string; workerId: string }) => {
     assert.equal(request.workflow, slot.workflow);
     assert.equal(request.workerId, slot.workerId);
     const currentMember = database.authority.workerSlots.get(slot.workerId), lease = database.authority.workerLeases.get(slot.workerId);

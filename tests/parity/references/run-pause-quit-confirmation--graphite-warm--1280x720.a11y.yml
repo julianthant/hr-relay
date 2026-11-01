@@ -1,0 +1,22 @@
+# run-pause-quit-confirmation--graphite-warm--1280x720
+# adapter: fixture
+# fixture: run-pause
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Pause all and quit?":
+  - banner:
+    - heading "Pause all and quit?" [level=2]
+    - paragraph: Each run finishes its current step, then pauses. Resume them next time.
+    - button "Close"
+  - strong: Alex Morgan
+  - paragraph: Person Lookup · Verify employee
+  - text: PL04236388
+  - strong: EID 10777012
+  - paragraph: Separations · Submit termination
+  - text: SP99300911
+  - contentinfo:
+    - button "Keep working"
+    - button "Pause all and quit"

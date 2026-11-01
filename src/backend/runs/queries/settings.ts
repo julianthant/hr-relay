@@ -18,7 +18,7 @@ export type SettingsQueryDeps = SettingsQueryContext & ({ readonly config: Confi
 
 function dryRunPostureOf(descriptor: AnyWorkflowDescriptor): unknown {
   const support = workflowProjections(descriptor).dryRun;
-  if (support.state === "supported") return { state: "supported", stopsAt: support.stopsAt };
+  if (support.state === "supported") return { state: "supported", firstTransactionNodeId: support.firstTransactionNodeId };
   if (support.reason === "no-transaction-node") {
     return { state: "unsupported", reason: "no-transaction-node" };
   }
