@@ -91,7 +91,7 @@ const ProfilePublicationSchema = z.lazy(() => z.discriminatedUnion("kind", [
     priorDocument: ProfileRegistryDocumentSchema, document: ProfileRegistryDocumentSchema,
     priorVerifiers: ProfileVerifierDocumentSchema, verifiers: ProfileVerifierDocumentSchema }),
   z.strictObject({ kind: z.literal("draft-abort"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
-    capture: z.strictObject({ operation: SignUpOperationSchema, head: CanonicalCredentialPublicationSourceSchema.shape.head, membership: DraftMembershipSchema, databases: ProfileAuthorityFilesSchema }) }),
+    capture: z.strictObject({ operation: SignUpOperationSchema, head: CanonicalCredentialPublicationSourceSchema.shape.head.optional(), membership: DraftMembershipSchema, databases: ProfileAuthorityFilesSchema }) }),
   z.strictObject({ kind: z.literal("profile"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
     document: ProfileRegistryDocumentSchema, operation: ProfileOperationMutationSchema.optional() }),
 ]));
@@ -260,7 +260,7 @@ export type InstallationLease = Readonly<{ retainSourceClosure(error: unknown): 
   reclassifyIncompleteProfile(profile: RuntimeAdmission): void;
   resumeIncompleteProfileDraft(profileId: string, restore: OfflineMaintenanceOperation): boolean;
   assertColdPendingLogout(operation: z.infer<typeof LogoutOperationSchema>): void;
-  capturePendingProfileLogout(operation: z.infer<typeof LogoutOperationSchema>): Readonly<{ assertHeld(): void }>;
+  capturePendingProfileLogout(operation: z.infer<typeof LogoutOperationSchema>): Readonly<{ assertHeld(publication?: ProfilePublicationRead): void }>;
   captureStoppedProfileUpgrade(profileId: string): Readonly<{ assertHeld(): void }>;
   captureProfileUpgradeHandoff(profileId: string): Readonly<{ consume(next: InstallationLease): void }>;
   publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, profile: RuntimeAdmission): void;
@@ -1316,6 +1316,9 @@ function assertOnboardingFinishPublicationDocument(locator: RuntimeLocator,
     || canonicalJsonStringify(added[0].registration.onboardingCompletion) !== canonicalJsonStringify(profileOnboardingCompletion(operation))) fail("profile-onboarding-finish-invalid");
   const current = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), SignUpOperationSchema);
   if (canonicalJsonStringify(current) !== canonicalJsonStringify(operation)) fail("profile-onboarding-finish-operation-changed");
+  const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
+  if (pepper === undefined || pepper.bytes.length !== 32 || pepper.identity.device !== intent.pepper.device || pepper.identity.inode !== intent.pepper.inode
+    || createHash("sha256").update(pepper.bytes).digest("hex") !== intent.pepper.digest) fail("profile-onboarding-finish-pepper-changed");
 }
 
 function prepareProfileOnboardingFinish(control: string, locator: RuntimeLocator,
@@ -1324,9 +1327,6 @@ function prepareProfileOnboardingFinish(control: string, locator: RuntimeLocator
   const { operation, prior, priorDocument, document, priorVerifiers, verifiers } = intent;
   const root = join(locator.stateRoot, "profiles", operation.profileId), registryPath = join(locator.stateRoot, "machine", "profiles.json"),
     verifierPath = join(locator.stateRoot, "machine", "profile-verifiers.json");
-  const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
-  if (pepper === undefined || pepper.bytes.length !== 32 || pepper.identity.device !== intent.pepper.device || pepper.identity.inode !== intent.pepper.inode
-    || createHash("sha256").update(pepper.bytes).digest("hex") !== intent.pepper.digest) fail("profile-onboarding-finish-pepper-changed");
   revalidate(); assertCanonicalProfileBinding(join(root, "state.db"), { installationId: locator.installationId, profileId: operation.profileId });
   if (canonicalJsonStringify(profileAuthorityFileWitnesses(root)) !== canonicalJsonStringify(intent.databases)) fail("profile-onboarding-finish-source-changed");
   const currentVerifiers = readStrict(verifierPath, ProfileVerifierDocumentSchema), currentDocument = readStrict(registryPath, ProfileRegistryDocumentSchema);
@@ -1395,12 +1395,18 @@ function prepareUnpublishedDraftAbort(control: string, locator: RuntimeLocator, 
     || document.activeProfileId !== null || document.profiles.some(row => row.profileId === operation.profileId)) fail("profile-draft-abort-invalid");
   const root = join(locator.stateRoot, "profiles", operation.profileId), operationPath = join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`),
     headPath = join(locator.stateRoot, "machine", "credential-keys", `${operation.profileId}.json`);
-  const headFile = readPrivateFile(headPath, { label: "lock", maxBytes: 25 * 1024 * 1024 });
-  if (headFile === undefined || canonicalJsonStringify({ ...headFile.identity, digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
-  const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(headFile.bytes)));
-  if (head.state !== "erased" || head.installationId !== locator.installationId || head.profileId !== operation.profileId
-    || head.key.installationId !== head.installationId || head.key.profileId !== head.profileId || head.key.keyId !== operation.credentials.keyId
-    || head.operationId !== abort.operationId || head.generation !== abort.generation) fail("profile-draft-abort-head-changed");
+  if (capture.head === undefined) {
+    if (operation.credentials.phase !== "planned" || operation.onboarding?.attempts.length !== 0 || capture.membership.length !== 0 || capture.databases.length !== 0
+      || lstatMaybe(root) || lstatMaybe(headPath)) fail("profile-draft-abort-uninitialized-source-changed");
+    credentialKeyCustody.assertAbsent({ installationId: locator.installationId, profileId: operation.profileId, keyId: operation.credentials.keyId });
+  } else {
+    const headFile = readPrivateFile(headPath, { label: "lock", maxBytes: 25 * 1024 * 1024 });
+    if (headFile === undefined || canonicalJsonStringify({ ...headFile.identity, digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
+    const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(headFile.bytes)));
+    if (head.state !== "erased" || head.installationId !== locator.installationId || head.profileId !== operation.profileId
+      || head.key.installationId !== head.installationId || head.key.profileId !== head.profileId || head.key.keyId !== operation.credentials.keyId
+      || head.operationId !== abort.operationId || head.generation !== abort.generation) fail("profile-draft-abort-head-changed");
+  }
   if (lstatMaybe(join(locator.stateRoot, "machine", "credential-operations", `${operation.profileId}.json`))
     || lstatMaybe(join(locator.stateRoot, "machine", "duo-credentials", `${operation.profileId}.json`))) fail("profile-draft-abort-credential-operation-pending");
   const current = profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document, prior.completedRestores);
@@ -1946,7 +1952,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (registration !== undefined) {
         const { operation } = registration, scope = new ActiveProfilePublicationRead(control, workspace, locator, operation.operationId, held, current);
         try {
-          const inspect = () => { current(); return requireRuntimeAdmission(registration.profile).readProfileRegistration(registration.lease, operation, scope); };
+          const inspect = () => { current(); return requireRuntimeAdmission(registration.profile, scope).readProfileRegistration(registration.lease, operation, scope); };
           const captured = inspect();
           if (lstatMaybe(intentPath)) {
             const pending = readStrict(intentPath, ProfilePublicationSchema);
@@ -2165,6 +2171,17 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     },
     readProfileRegistry() {
       assertHeld();
+      if (options?.stoppedControlForward === true
+        && readProfileEvidence(join(locator.stateRoot, "machine", "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() })).schemaVersion === 5) {
+        if (lstatMaybe(join(control, "profile-publication.json")) || lstatMaybe(join(control, "profile-control-upgrade.json"))) fail("profile-registry-publication-pending");
+        const before = profileObservation(control, locator);
+        const prior = readProfileEvidence(join(control, "profile-registry.json"), StoppedLogicalProfileContinuitySchema);
+        const document = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), ProfileRegistryDocumentSchema);
+        priorControlUpgradeEvidence(locator, prior, document);
+        assertHeld();
+        if (before !== profileObservation(control, locator)) fail("profile-registry-observation-changed");
+        return document;
+      }
       if (lstatMaybe(join(control, "profile-publication.json"))) {
         if (options?.readonlyControl === true) return readMachineRegistry(control, locator, false);
         return mutate(() => {
@@ -2212,12 +2229,12 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           if (head === undefined) {
             const original = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), SignUpOperationSchema);
             if (canonicalJsonStringify(original) !== canonicalJsonStringify(operation) || operation.onboarding?.abort === undefined) fail("profile-draft-abort-operation-changed");
-            return false;
+            if (operation.credentials.phase !== "planned" || lstatMaybe(join(locator.stateRoot, "profiles", operation.profileId))) return false;
           }
           const root = join(locator.stateRoot, "profiles", operation.profileId);
-          assertCanonicalProfileBinding(join(root, "state.db"), { installationId: locator.installationId, profileId: operation.profileId });
+          if (head !== undefined) assertCanonicalProfileBinding(join(root, "state.db"), { installationId: locator.installationId, profileId: operation.profileId });
           intent = ProfilePublicationSchema.parse({ kind: "draft-abort", schemaVersion: 1, installationId: locator.installationId, prior,
-            capture: { operation, head, membership: unpublishedDraftAbortMembership(root), databases: profileAuthorityFileWitnesses(root) } });
+            capture: { operation, head, membership: head === undefined ? [] : unpublishedDraftAbortMembership(root), databases: head === undefined ? [] : profileAuthorityFileWitnesses(root) } });
           if (intent.kind !== "draft-abort") fail("profile-draft-abort-kind-invalid");
           prepareUnpublishedDraftAbort(control, locator, document, prior, intent);
           atomicJson(intentPath, intent);
@@ -2313,44 +2330,46 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         || source.dev !== operation.source.database.device || source.ino !== operation.source.database.inode) fail("profile-logout-native-source-changed");
     },
     publishStoppedLogoutSettlement(admission: RuntimeAdmission, expected: z.infer<typeof LogoutOperationSchema>, input: z.infer<typeof LogoutOperationSchema>, restore: OfflineMaintenanceOperation, source: AuthorityDatabase): void {
-      mutate(() => {
-        assertStoppedLogoutMaintenance(this, restore);
-        requireRuntimeAdmission(admission).assertPendingLogoutPublicationOwner(this, restore);
-        if (!(source instanceof AuthorityDatabase)) fail("profile-logout-native-publication-owner-required");
-        const next = LogoutOperationSchema.parse(input);
-        if (Buffer.byteLength(JSON.stringify(next)) > 1_048_576) fail("profile-logout-settlement-evidence-too-large");
-        source.assertPendingLogoutPublication(admission, next);
-        const path = join(locator.stateRoot, "machine", "operations", `${expected.operationId}.json`);
-        const { settlement: beforeSettlement, ...beforeIdentity } = expected, { settlement: afterSettlement, ...afterIdentity } = next;
-        if (canonicalJsonStringify(readProfileEvidence(path, LogoutOperationSchema)) !== canonicalJsonStringify(expected)
-          || canonicalJsonStringify(afterIdentity) !== canonicalJsonStringify(beforeIdentity)) fail("profile-logout-settlement-operation-changed");
-        const beforePhase = expected.settlement?.phase, afterPhase = next.settlement?.phase;
-        if (!(beforePhase === undefined && afterPhase === "prepared" || beforePhase === "prepared" && afterPhase === "commit-intent"
-          || beforePhase === "commit-intent" && afterPhase === "done")) fail("profile-logout-settlement-transition-refused");
-        if (beforeSettlement !== undefined && afterSettlement !== undefined) {
-          const { phase: _beforePhase, after: beforeAfter, ...beforeInputs } = beforeSettlement;
-          const { phase: _afterPhase, after: afterAfter, ...afterInputs } = afterSettlement;
-          if (canonicalJsonStringify(beforeInputs) !== canonicalJsonStringify(afterInputs) || beforeAfter !== undefined && beforeAfter !== afterAfter) fail("profile-logout-settlement-input-changed");
-        }
-        const document = readMachineRegistry(control, locator, false), row = document.profiles.find(profile => profile.profileId === expected.profileId);
-        if (document.activeProfileId !== null || document.sessionGeneration !== expected.sessionGeneration + 1 || row?.lifecycle !== "cancelling") fail("profile-logout-settlement-epoch-changed");
-        const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
-        const intent = ProfilePublicationSchema.parse({ kind: "profile", schemaVersion: 1, installationId: locator.installationId, prior, document,
-          operation: { kind: "write", operation: next } });
-        if (intent.kind !== "profile") fail("profile-logout-settlement-transition-refused");
-        if (Buffer.byteLength(JSON.stringify(intent)) > 1_048_576) fail("profile-logout-settlement-evidence-too-large");
-        if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-publication-pending");
-        atomicJson(join(control, "profile-publication.json"), intent);
-        atomicJson(path, next);
-        prepareProfileRegistryPublication(control, locator, join(locator.stateRoot, "machine", "profiles.json"), document, prior, intent)();
+      mutate(held => {
+        const scope = new ActiveProfilePublicationRead(control, workspace, locator, expected.operationId, held, assertHeld);
+        try {
+          assertStoppedLogoutMaintenance(this, restore);
+          requireRuntimeAdmission(admission, scope).assertPendingLogoutPublicationOwner(this, restore, scope);
+          if (!(source instanceof AuthorityDatabase)) fail("profile-logout-native-publication-owner-required");
+          const next = LogoutOperationSchema.parse(input);
+          if (Buffer.byteLength(JSON.stringify(next)) > 1_048_576) fail("profile-logout-settlement-evidence-too-large");
+          source.assertPendingLogoutPublication(admission, next);
+          const path = join(locator.stateRoot, "machine", "operations", `${expected.operationId}.json`);
+          const { settlement: beforeSettlement, ...beforeIdentity } = expected, { settlement: afterSettlement, ...afterIdentity } = next;
+          if (canonicalJsonStringify(readProfileEvidence(path, LogoutOperationSchema)) !== canonicalJsonStringify(expected)
+            || canonicalJsonStringify(afterIdentity) !== canonicalJsonStringify(beforeIdentity)) fail("profile-logout-settlement-operation-changed");
+          const beforePhase = expected.settlement?.phase, afterPhase = next.settlement?.phase;
+          if (!(beforePhase === undefined && afterPhase === "prepared" || beforePhase === "prepared" && afterPhase === "commit-intent"
+            || beforePhase === "commit-intent" && afterPhase === "done")) fail("profile-logout-settlement-transition-refused");
+          if (beforeSettlement !== undefined && afterSettlement !== undefined) {
+            const { phase: _beforePhase, after: beforeAfter, ...beforeInputs } = beforeSettlement;
+            const { phase: _afterPhase, after: afterAfter, ...afterInputs } = afterSettlement;
+            if (canonicalJsonStringify(beforeInputs) !== canonicalJsonStringify(afterInputs) || beforeAfter !== undefined && beforeAfter !== afterAfter) fail("profile-logout-settlement-input-changed");
+          }
+          const document = readMachineRegistry(control, locator, false), row = document.profiles.find(profile => profile.profileId === expected.profileId);
+          if (document.activeProfileId !== null || document.sessionGeneration !== expected.sessionGeneration + 1 || row?.lifecycle !== "cancelling") fail("profile-logout-settlement-epoch-changed");
+          const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
+          const intent = ProfilePublicationSchema.parse({ kind: "profile", schemaVersion: 1, installationId: locator.installationId, prior, document,
+            operation: { kind: "write", operation: next } });
+          if (intent.kind !== "profile") fail("profile-logout-settlement-transition-refused");
+          if (Buffer.byteLength(JSON.stringify(intent)) > 1_048_576) fail("profile-logout-settlement-evidence-too-large");
+          if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-publication-pending");
+          atomicJson(join(control, "profile-publication.json"), intent);
+          atomicJson(path, next);
+          prepareProfileRegistryPublication(control, locator, join(locator.stateRoot, "machine", "profiles.json"), document, prior, intent)();
+        } finally { scope.expire(); }
       });
     },
     capturePendingProfileLogout(input: z.infer<typeof LogoutOperationSchema>) {
       const operation = LogoutOperationSchema.parse(input);
-      const read = () => mutate(() => {
+      const observe = (document: ProfileRegistryDocument) => {
         assertHeld();
         if (!equalLocator(readLocator(control, workspace), locator)) fail("profile-pending-logout-locator-changed");
-        const document = readMachineRegistry(control, locator, false);
         const row = document.profiles.find(entry => entry.profileId === operation.profileId);
         if (document.activeProfileId !== null || document.sessionGeneration !== operation.sessionGeneration + 1 || (row?.lifecycle !== "cancelling" && !(row?.lifecycle === "ready" && operation.settlement?.phase === "done")) || operation.phase === "complete") {
           fail("profile-pending-logout-unavailable");
@@ -2365,10 +2384,16 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           digest: createHash("sha256").update(publication.bytes).digest("hex") };
         assertHeld();
         return canonicalJsonStringify({ document, observation, pending, operationIdentity: file.identity });
-      });
+      };
+      const read = (publication?: ProfilePublicationRead) => {
+        if (publication === undefined) return mutate(() => observe(readMachineRegistry(control, locator, false)));
+        const document = readProfilePublicationRegistry(publication);
+        publication.assertOperation(locator.stateRoot, operation.operationId);
+        return observe(document);
+      };
       const original = read();
-      return Object.freeze({ assertHeld() {
-        if (read() !== original) fail("profile-pending-logout-authority-changed");
+      return Object.freeze({ assertHeld(publication?: ProfilePublicationRead) {
+        if (read(publication) !== original) fail("profile-pending-logout-authority-changed");
       } });
     },
     publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument) { publishRegistry(expected, document); },

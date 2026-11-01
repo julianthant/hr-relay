@@ -17,6 +17,7 @@ const ARCHITECTURE_HELPERS_ROOT = /^tests\/architecture\/(?:support|[^/]+)\/help
 const SHARED_RESOURCE_HARNESSES = new Set([
   'tests/support/helpers/backend/dashboard-port-world.ts',
   "tests/support/helpers/credential-persistence-fixtures.ts",
+  "tests/support/helpers/credential-source-retention.ts",
   "tests/support/helpers/synthetic-database-admission.ts",
   "tests/support/fixtures/integration/activity-person-pseudonym-fixtures.ts",
   "tests/support/fixtures/integration/settings-runtime-corruption-fixtures.ts",
@@ -62,6 +63,8 @@ function importsOf(path: string) {
 }
 
 const DEFERRED_CAPABILITIES = [
+  { importer: "tests/support/helpers/credential-source-retention.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
+  { importer: "tests/support/helpers/credential-source-retention.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: 'tests/support/helpers/backend/dashboard-port-world.ts', module: 'src/backend/storage/configuration/credential-store.js', symbol: 'createCredentialStore' },
   { importer: "tests/support/helpers/credential-persistence-fixtures.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/synthetic-database-admission.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },

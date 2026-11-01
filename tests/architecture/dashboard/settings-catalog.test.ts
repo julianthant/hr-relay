@@ -179,15 +179,15 @@ describe("settings catalog", () => {
     assert.equal(SettingsOverrideSchema.safeParse({ urls: { kuali: { test: { entry: "https://example.invalid" } } } }).success, true);
     assert.throws(() => ordinarySettingsObject("actor", z.strictObject({ id: z.string() })), /actor.label is missing/u);
   });
-  it("pins the 65-row closed registry and refuses a missing or duplicated row", () => {
-    assert.equal(SETTINGS_CATALOG.length, 65);
+  it("pins the 64-row closed registry and refuses a missing or duplicated row", () => {
+    assert.equal(SETTINGS_CATALOG.length, 64);
     assert.deepEqual(Object.fromEntries([
       "ordinary-settings", "protected-store", "derived-host", "runtime-isolation",
     ].map((sourceClass) => [sourceClass, SETTINGS_CATALOG.filter((row) => row.sourceClass === sourceClass).length])), {
       "ordinary-settings": 55,
       "protected-store": 5,
       "derived-host": 1,
-      "runtime-isolation": 4,
+      "runtime-isolation": 3,
     });
     assert.equal(SettingsCatalogSchema.safeParse(SETTINGS_CATALOG.slice(1)).success, false);
     assert.equal(SettingsCatalogSchema.safeParse([...SETTINGS_CATALOG.slice(1), SETTINGS_CATALOG[1]]).success, false);
@@ -208,7 +208,7 @@ describe("settings catalog", () => {
       ...settingsCatalogRow("ucpathPassword"), editability: "deployment",
     }).success, false);
     assert.deepEqual(SETTINGS_CATALOG.filter((row) => row.sensitivity === "protected-secret"
-      && row.sourceClass === "runtime-isolation").map((row) => row.key), ["duoWebauthnCredential"]);
+      && row.sourceClass === "runtime-isolation").map((row) => row.key), []);
   });
 
   it("matches the production settings-source reader inventory in both directions", () => {

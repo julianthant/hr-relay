@@ -273,14 +273,13 @@ export function createProfileOnboarding(input: {
       if (draft.finish !== undefined || draft.attempts.some(entry => entry.providerClosedAt === undefined)) return unavailable();
       if (retainedFailures.length > 0) throw new AggregateError(retainedFailures, "profile-onboarding-custody-unproved");
     },
-    verifyFinish(operationId: string): SignUpOperation {
+    verifyFinish(operation: SignUpOperation): void {
       if (retainedFailures.length > 0) throw new AggregateError(retainedFailures, "profile-onboarding-custody-unproved");
-      const operation = input.read(operationId); assertFinishedProfileOnboarding(operation);
+      assertFinishedProfileOnboarding(operation);
       const key = requiredDraft(operation).attempts.findLast(entry => entry.method === "key" && entry.generation === operation.onboarding?.generation);
       if (key?.scope === undefined) return unavailable();
       const credential = input.store(operation).readForScope(key.scope).find(entry => entry.credentialId === key.ceremony?.credentialId);
       if (credential?.state !== "ready") return unavailable();
-      return operation;
     },
   };
   return { ...owner,

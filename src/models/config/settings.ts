@@ -38,7 +38,7 @@ function isOrdinarySettingsPath(path: string): boolean {
   return SETTINGS_CATALOG.some((row) => row.key === key && row.sourceClass === "ordinary-settings");
 }
 
-function isRetiredSettingsPath(path: string): boolean {
+export function isRetiredSettingsPath(path: string): boolean {
   const parts = path.split(".");
   return path === "paths.duoCredential" || parts.length === 3 && parts[0] === "urls" && parts[2] === "test"
     && Object.hasOwn(CONFIG_ROUTE_SCHEMAS, parts[1] ?? "");

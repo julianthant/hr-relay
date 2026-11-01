@@ -28,7 +28,7 @@ import { ProfileOnboardingDuoProviderError } from "../../../src/backend/runtime/
 import { CanonicalCredentialHeadSchema } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { BrowserProfileStillClosingError, onboardingProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
-import { createHistoricalIncompleteProfileFixture } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
+import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { scaledMs } from "../../support/time-scale.js";
 
 function ownedBrowserExited(pid:number):boolean {
@@ -42,6 +42,7 @@ async function requireOwnedBrowserExit(pid:number){
 it("refuses a canonical Chromium orphan after owner SIGKILL before erasure, then recovers only after native closure",async()=>{
   await runtimeLifetimeLock();
   const f=await createHistoricalIncompleteProfileFixture();
+  await convertHistoricalIncompleteProfileFixture(f);
   const maintenance=RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   await maintenance.reclassifyIncompleteProfileAsDraft(f.profileId);maintenance.release();
   const machine=acquireEntrypointAdmission(f.workspace,"exclusive", f.lifetime);
@@ -157,39 +158,41 @@ for (const boundary of ["abort-intent", "erase-plan", "erase-stage", "head", "pr
     const rename = nativeFs.renameSync, unlink = nativeFs.unlinkSync, write = nativeFs.writeFileSync, remove = nativeFs.rmSync;
     const failure = new Error("fixture canonical cancel boundary"); let fired = false;
     const fail = () => { fired = true; throw failure; };
-    const renameSpy = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
-      rename(source, destination);
-      if (fired) return;
-      if (boundary === "head" && String(destination) === keyPath) fail();
-      if (boundary === "abort-intent" && String(destination) === operationPath
-        && SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).onboarding?.abort !== undefined) fail();
-    });
-    const writeSpy = vi.spyOn(nativeFs, "writeFileSync").mockImplementation((path, data, options) => {
-      write(path, data, options);
-      if (!fired && (boundary === "erase-plan" && String(path) === eraseOperation
-        || boundary === "erase-stage" && String(path).endsWith(".erase.tmp"))) fail();
-    });
-    const unlinkSpy = vi.spyOn(nativeFs, "unlinkSync").mockImplementation(path => {
-      unlink(path);
-      if (!fired && (boundary === "protected" && String(path) === protectedPath || boundary === "duo" && String(path) === duoPath
-        || boundary === "chatgpt" && String(path) === chatgptPath || boundary === "erase-operation-unlink" && String(path) === eraseOperation
-        || boundary === "operation-unlink" && String(path) === operationPath)) fail();
-    });
-    const removeSpy = vi.spyOn(nativeFs, "rmSync").mockImplementation((path, options) => {
-      remove(path, options);
-      if (!fired && boundary === "root-removal" && String(path) === join(f.machine.stateRoot, "profiles", f.draft.profileId)) fail();
-    });
-    const keychainSpy = vi.spyOn(FakeKeyringEntry.prototype, "deletePassword");
-    const deletePassword = keychainSpy.getMockImplementation(); assert.ok(deletePassword);
-    keychainSpy.mockImplementation(function (this: FakeKeyringEntry) {
-      if (!fired && boundary === "keychain-before-delete") fail();
-      const deleted = deletePassword.call(this);
-      if (!fired && boundary === "keychain-after-delete") fail();
-      return deleted;
-    });
-    syncBuiltinESMExports();
-    try { await assert.rejects(f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId)); }
-    finally { renameSpy.mockRestore(); writeSpy.mockRestore(); unlinkSpy.mockRestore(); removeSpy.mockRestore(); keychainSpy.mockRestore(); syncBuiltinESMExports(); }
+    const descriptor: TypedPropertyDescriptor<FakeKeyringEntry["deletePassword"]> | undefined = Object.getOwnPropertyDescriptor(FakeKeyringEntry.prototype, "deletePassword");
+    const deletePassword = descriptor?.value; assert.ok(deletePassword);
+    try {
+      vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
+        rename(source, destination);
+        if (fired) return;
+        if (boundary === "head" && String(destination) === keyPath) fail();
+        if (boundary === "abort-intent" && String(destination) === operationPath
+          && SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).onboarding?.abort !== undefined) fail();
+      });
+      vi.spyOn(nativeFs, "writeFileSync").mockImplementation((path, data, options) => {
+        write(path, data, options);
+        if (!fired && (boundary === "erase-plan" && String(path) === eraseOperation
+          || boundary === "erase-stage" && String(path).endsWith(".erase.tmp"))) fail();
+      });
+      vi.spyOn(nativeFs, "unlinkSync").mockImplementation(path => {
+        unlink(path);
+        if (!fired && (boundary === "protected" && String(path) === protectedPath || boundary === "duo" && String(path) === duoPath
+          || boundary === "chatgpt" && String(path) === chatgptPath || boundary === "erase-operation-unlink" && String(path) === eraseOperation
+          || boundary === "operation-unlink" && String(path) === operationPath)) fail();
+      });
+      vi.spyOn(nativeFs, "rmSync").mockImplementation((path, options) => {
+        remove(path, options);
+        if (!fired && boundary === "root-removal" && String(path) === join(f.machine.stateRoot, "profiles", f.draft.profileId)) fail();
+      });
+      const keychainSpy = vi.spyOn(FakeKeyringEntry.prototype, "deletePassword");
+      keychainSpy.mockImplementation(function (this: FakeKeyringEntry) {
+        if (!fired && boundary === "keychain-before-delete") fail();
+        const deleted = deletePassword.call(this);
+        if (!fired && boundary === "keychain-after-delete") fail();
+        return deleted;
+      });
+      syncBuiltinESMExports();
+      await assert.rejects(f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId));
+    } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
     assert.equal(fired, true);
     const interruptedHead = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(keyPath, "utf8")));
     assert.ok(interruptedHead.generation >= originalHead.generation);
@@ -226,6 +229,7 @@ for (const changed of ["registry", "continuity"] as const) {
     try { await assert.rejects(f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId)); }
     finally { spy.mockRestore(); syncBuiltinESMExports(); }
     assert.equal(interrupted, true);
+    assert.equal(existsSync(root), false); assert.equal(existsSync(operationPath), false);
     await f.profile.close(); f.machine.release();
     const path = changed === "registry" ? registryPath : controlPath;
     const document = JSON.parse(readFileSync(path, "utf8")) as { sessionGeneration: number; generation: number };
@@ -234,8 +238,10 @@ for (const changed of ["registry", "continuity"] as const) {
     writeFileSync(path, JSON.stringify(document), { mode: 0o600 });
     const control = readFileSync(controlPath), intent = readFileSync(intentPath);
     try {
-      assert.throws(() => acquireEntrypointAdmission(f.root, "exclusive", f.lifetime), /profile-draft-abort-control-changed/);
-      assert.equal(existsSync(root), true);
+      assert.throws(() => acquireEntrypointAdmission(f.root, "exclusive", f.lifetime), {
+        message: `runtime-control: ${changed === "registry" ? "profile-draft-abort-invalid" : "profile-publication-control-changed"}`,
+      });
+      assert.equal(existsSync(root), false);
       assert.deepEqual(readFileSync(controlPath), control);
       assert.deepEqual(readFileSync(intentPath), intent);
     } finally { rmSync(f.root, { recursive: true }); }
@@ -310,7 +316,7 @@ for (const boundary of ["phase", "intent", "verifier", "registry", "continuity",
        hostFacts: { primaryDisplay: null }, clock: systemClock });
     const published = machine.readProfileRegistry().profiles.find(row => row.profileId === f.draft.profileId);
     if (published === undefined) {
-      assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, 0);
+      assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, boundary === "verifier" ? 1 : 0);
     }
     await profile.session.recoverOnboarding();
     const signedIn = profile.session.signIn({ email: "draft-recovery@ucsd.edu", password: "disposable-draft-recovery", at: new Date().toISOString() });
@@ -350,8 +356,25 @@ it("holds tampered canonical abort source and preserves exact head and operation
   await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true });
 });
 
+it("keeps Finish unpublished when the ready canonical Duo credential cannot be verified", async () => {
+  const f = await readyFixture(), operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
+  const duoPath = join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`);
+  await f.profile.session.closeOnboarding();
+  const operation = readFileSync(operationPath), credential = readFileSync(duoPath);
+  writeFileSync(duoPath, "invalid encrypted credential", { mode: 0o600 });
+  try {
+    await assert.rejects(f.profile.session.completeOnboarding(f.draft.token, f.draft.operationId));
+    assert.deepEqual(readFileSync(operationPath), operation);
+    assert.equal(SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).onboarding?.finish, undefined);
+    assert.deepEqual(f.machine.readProfileRegistry().profiles, []);
+  } finally { writeFileSync(duoPath, credential, { mode: 0o600 }); }
+  assert.equal((await f.profile.session.completeOnboarding(f.draft.token, f.draft.operationId)).state, "active");
+  await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true });
+});
+
 it("limits finished publishing to value-free metadata and refuses key provisioning or mutation before exact Finish recovery", async () => {
   const f = await readyFixture(), operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`), rename = nativeFs.renameSync;
+  const admission = f.machine.admitProfile(f.draft.profileId), store = createDuoCredentialStore(admission, systemClock);
   let fired = false;
   const fault = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
     rename(source, destination);
@@ -376,7 +399,6 @@ it("limits finished publishing to value-free metadata and refuses key provisioni
     join(f.machine.stateRoot, "machine", "duo-credentials", `${f.draft.profileId}.json`),
     ...["protected.json", "chatgpt-account.json"].map(name => join(f.machine.stateRoot, "profiles", f.draft.profileId, "credentials", name))];
   const before = paths.map(path => readFileSync(path)), keychain = FakeKeyringEntry.snapshot();
-  const admission = f.machine.admitProfile(f.draft.profileId), store = createDuoCredentialStore(admission, systemClock);
   const refused = (error: unknown) => {
     const pending: unknown[] = [error], seen = new Set<unknown>();
     while (pending.length > 0) {
@@ -483,7 +505,7 @@ it("removes an unfinished sign-up at startup through the existing cancellation p
   } finally { await profile.close(); machine.release(); rmSync(f.root, { recursive: true }); }
 });
 
-it("removes a sign-up interrupted before its profile or credentials were initialized", async () => {
+it.each([false, true])("removes an uninitialized sign-up only after native key absence is proved (unexpected key: %s)", async unexpectedKey => {
   const f = await privateDraftFixture();
   const original = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`), "utf8")));
   await f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId);
@@ -495,6 +517,15 @@ it("removes a sign-up interrupted before its profile or credentials were initial
   const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime);
   const profile = composeProfileRuntime({ admission: machine,  hostFacts: { primaryDisplay: null }, clock: systemClock });
   try {
+    if (unexpectedKey) {
+      const entry = new FakeKeyringEntry("Relay", `${machine.locator.installationId}:${draft.profileId}`), key = randomBytes(32).toString("base64");
+      entry.setPassword(key);
+      await assert.rejects(profile.session.recoverOnboarding(), { code: "CREDENTIAL_KEYCHAIN_MISMATCH" });
+      assert.equal(existsSync(join(machine.stateRoot, "profiles", draft.profileId)), false);
+      assert.equal(existsSync(join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`)), true);
+      assert.equal(entry.getPassword(), key);
+      entry.deletePassword();
+    }
     await profile.session.recoverOnboarding();
     assert.equal(existsSync(join(machine.stateRoot, "profiles", draft.profileId)), false);
     assert.equal(existsSync(join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`)), false);

@@ -101,7 +101,7 @@ it("holds a real unbound SQL6 archive without inferring profile identity from it
     const archive = f.archive; assert.ok(archive); assert.equal(archive.manifest.installationId, undefined); assert.equal(archive.manifest.profileId, undefined);
     const paths = [f.databasePath, f.protectedPath, f.keyPath, archive.path, archive.manifestPath], before = paths.map(path => readFileSync(path));
     assert.throws(() => f.inspect(), error => error instanceof CredentialMaintenanceHold && error.code === "CREDENTIAL_CONVERSION_UNSUPPORTED"
-      && error.cause instanceof Error && error.cause.name === "ZodError");
+      && causeHas(error, "backup-profile-binding-required"));
     assert.deepEqual(paths.map(path => readFileSync(path)), before);
   } finally { await f.cleanup(); }
 });
@@ -138,7 +138,8 @@ for (const change of ["bytes", "size", "schema", "source", "manifest-binding", "
         return change === "schema" ? error instanceof AuthoritySchemaVersionError && error.schemaVersion === 7 : causeHas(error, expected);
       };
       assert.throws(() => f.verifyArchive(archive.manifestPath), refuses);
-      assert.throws(() => f.revalidate(clean), refuses);
+      assert.throws(() => f.revalidate(clean), change === "symlink" || change === "hardlink"
+        ? (error: unknown) => causeHas(error, "profile-inventory-path-unsafe") : refuses);
       assert.deepEqual(primaryPaths.map(path => readFileSync(path)), primary);
       assert.deepEqual([readFileSync(archive.path), readFileSync(archive.manifestPath)], mutated);
       assert.equal(lstatSync(archive.path).ino, stat.ino); assert.equal(lstatSync(archive.path).mode, stat.mode);
