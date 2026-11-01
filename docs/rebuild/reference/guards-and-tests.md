@@ -93,19 +93,37 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-CI runs five macOS groups. The matrix in `.github/workflows/ci.yml` assigns twenty ordinary
-integration shards around one unit run, one architecture run with two file workers and two parity shards.
-The three native browser process-proof files (browser control, onboarding Duo provider, worker supervisor) run first and serially in group 5, without competing
-test files. Ordinary shards discover integration files through Vitest, remove those three paths,
-then pass the remaining paths explicitly. Vitest 4.1.11's CLI exclusions do not reach these named
-projects. Selection refuses if any native file is missing or no ordinary files remain.
-Remaining integration files, unit and parity use two workers. Groups have 40-minute budgets (hang guards; groups need 22-29 minutes), and Spotlight indexing is off on every group and its RAM disk;
-architecture runs `npm run test:architecture -- --maxWorkers=2` within its 15-minute budget.
-CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
+CI runs test files on Ubuntu unless they need macOS. `scripts/test/ci-files.ts` names the macOS
+files: `MACOS_FILES` (storage closure, backup and restore proofs that refuse off macOS, unit and
+integration) and `SERIAL_FILES` (the three native browser process proofs: browser control,
+onboarding Duo provider, worker supervisor). `scripts/test/ci-run.sh` lists a project through
+Vitest, selects the job's files with that script and passes the paths explicitly; Vitest 4.1.11's
+CLI exclusions do not reach these named projects. Selection refuses when a named file is no longer
+listed. Files are packed longest first onto the least-loaded job using
+`scripts/test/ci-durations.json`; unmeasured files count as the median. Serial proofs count their
+full time because they run alone; other macOS files count half because two workers share them.
+
+| Job | Runner | Jobs | Contents |
+| --- | --- | --- | --- |
+| unit | Ubuntu | 3 | unit files except `MACOS_FILES` |
+| architecture | Ubuntu | 2 | architecture files |
+| integration | Ubuntu | 13 | integration files except `MACOS_FILES` and `SERIAL_FILES` |
+| native | macOS | 5 (2 when parity runs) | its `SERIAL_FILES` alone, then its macOS unit and integration files |
+| parity | macOS | 3 shards | Desktop parity, release pull requests only |
+
+With `static` and `privacy`, a pull request into `staging` starts exactly the twenty Ubuntu jobs that
+run at once. Every job uploads Vitest JSON reports as `durations-*` artifacts. When job end times
+spread more than a minute, refresh the durations from a recent run and commit them in the next
+bundled pull request:
+`gh run download <run-id> -p 'durations-*' -D <dir>` then `npx tsx scripts/test/ci-files.ts durations <dir>`.
+A new test file that needs macOS fails on Ubuntu with the darwin refusal; add it to `MACOS_FILES`.
+
+Unit, integration and parity use two workers. Ubuntu jobs put test temp on tmpfs and have 20-minute
+budgets; macOS jobs use a RAM disk with Spotlight indexing off and have 30-minute budgets. Budgets are
+hang guards. CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
 Vitest test and hook limits, test wait helpers and the browser deadlines tests pass to product code by it.
-Local runs use 1. Product defaults are unchanged. Remaining-file steps run after a failed proof
-unless the workflow is cancelled, preserving failure visibility. An integration shard failure
-does not stop its group's remaining shards, and any shard failure fails the group.
+Local runs use 1. Product defaults are unchanged. Remaining steps run after a failed serial proof
+unless the workflow is cancelled, preserving failure visibility, and any shard failure fails its suite.
 
 PR filtering uses these rules. Static and privacy always run.
 
@@ -120,21 +138,20 @@ PR filtering uses these rules. Static and privacy always run.
 | Parity helpers, fixtures or entrypoints | All four; unit and integration also import these. |
 | Local or perf test files only | Architecture; local remains machine-only and perf remains release-only. |
 
-Mixed changes select the union. Machine-readable inputs under `docs/`, including the guard
+Mixed changes select the union. Pull requests into `staging` then drop parity; pull requests into
+`main` keep it and add the release job. Machine-readable inputs under `docs/`, including the guard
 inventory, count as configuration. A manual run (workflow_dispatch) bypasses filtering and selects all four suites; pushes to protected branches do not run CI, since their pull request already passed up to date.
-Required summaries always run on Ubuntu, including when no macOS group was selected. They require
-successful change detection and either an explicit omission or successful scheduled groups.
-Failure or cancellation of any scheduled group fails each selected suite's summary.
+Required summaries (`unit`, `integration`, `architecture`, `parity`) always run on Ubuntu, including
+when no runner job was selected. They require successful change detection and either an explicit
+omission or successful runner jobs: unit and integration need both the Ubuntu and macOS jobs,
+architecture the Ubuntu jobs and parity the macOS jobs. Failure or cancellation of a needed runner
+job fails the summary.
 
 Membership verification compares an unsharded `vitest list --filesOnly --json` for unit,
-integration and architecture with the union of the exact CI selections. Unit and architecture
-are unsharded; each native file is selected once. For every ordinary integration shard, use
-`vitest list --project integration <ordinary paths> --shard=N/20 --json=/absolute/shard-N.json`
-with the same discovered path array as CI. Deduplicate test rows into files within each shard, then require
-no duplicate files across shards, no missing files and no extra files against the baseline.
-Vitest 4.1.11's `list --filesOnly` does not apply sharding, so it cannot prove shard membership.
-Parity retains its two Playwright shards; their `--list --reporter=json` test identities must
-also form the unsharded listing exactly once. Coverage, perf and local selection are unchanged.
+integration and architecture with the union of the exact CI selections. `tests/scripts/test/ci-files.test.ts`
+proves the selections give each file to exactly one job, so selected paths need no Vitest sharding.
+Parity's three Playwright shards' `--list --reporter=json` test identities must also form the
+unsharded listing exactly once. Coverage, perf and local selection are unchanged.
 
 ## 3. Private test temporary directory
 
