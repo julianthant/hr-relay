@@ -39,7 +39,7 @@ for (const boundary of ["before-admission", "before-commit"] as const)
     try {
       const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active");
       owner = f.machine.admitProfile(active.profileId);
-      database = AuthorityDatabase.open(owner, { path: join(owner.stateRoot, "state.db"), busyTimeoutMs: 250 });
+      database = AuthorityDatabase.open(owner, { path: join(owner.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" });
       const db = database, at = "2026-09-06T12:01:00.000Z";
       const member = db.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
         commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: process.pid, now: at }, randomUUID()));

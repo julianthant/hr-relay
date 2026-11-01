@@ -16,7 +16,7 @@ async function pending() {
   const f = await createBoundProfileFixture();
   const session = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine,
     prepareLogout(_profileId, owner) {
-      const database = AuthorityDatabase.open(owner, { path: join(owner.stateRoot, "state.db"), busyTimeoutMs: 250 });
+      const database = AuthorityDatabase.open(owner, { path: join(owner.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "actual-logout-source" });
       let source: ReturnType<typeof database.capturePendingLogoutSource>;
       try { source = database.capturePendingLogoutSource(); } finally { database.close(); }
       return { source, intentFailed(error): never { throw error; } };
@@ -48,7 +48,7 @@ it("issues only actual stopped Logout2 source access while ordinary credential a
       () => w.stopped.assertPendingLogoutSettlementDatabase(":memory:"),
       () => w.stopped.assertPendingLogoutSettlementDatabase(join(w.f.stateRoot, "foreign.sqlite")),
       () => w.stopped.assertArtifactRoot(w.stopped.artifactRoot),
-      () => AuthorityDatabase.open(w.stopped, { path: w.f.path, busyTimeoutMs: 250 }),
+      () => AuthorityDatabase.open(w.stopped, { path: w.f.path, busyTimeoutMs: 250, migrationOwner: "test" }),
       () => createCredentialStore({ admission: w.stopped, stateRoot: w.f.stateRoot }).read(),
       () => createChatGptCredentialRepository({ admission: w.stopped, stateRoot: w.f.stateRoot }).read()]) assert.throws(refuse);
     assert.deepEqual(readFileSync(w.f.path), before);
