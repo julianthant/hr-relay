@@ -13,12 +13,6 @@ export const REBUILD_UNIT_TEST_EXCLUDE = [
   "tests/perf/**",
 ] as const;
 export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/**/*.integration.test.ts"] as const;
-/** CI runs these real multi-process browser proofs alone, then shards the rest with RELAY_TEST_SKIP_ISOLATED=1. */
-const ISOLATED_INTEGRATION_FILES = [
-  "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts",
-  "tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts",
-  "tests/backend/runtime/workers/worker-supervisor.integration.test.ts",
-];
 export const REBUILD_INTEGRATION_TEST_EXCLUDE = [
   "tests/**/*.local.integration.test.ts",
   "tests/perf/**",
@@ -169,8 +163,7 @@ export default defineConfig({
         ...sharedConfig.test,
         name,
         include: [...include],
-        exclude: name === "integration" && process.env["RELAY_TEST_SKIP_ISOLATED"] === "1"
-          ? [...exclude, ...ISOLATED_INTEGRATION_FILES] : [...exclude],
+        exclude: [...exclude],
         fileParallelism: true,
       },
     })),

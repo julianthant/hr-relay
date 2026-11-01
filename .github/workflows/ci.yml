@@ -19,6 +19,70 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      unit: ${{ steps.select.outputs.unit }}
+      integration: ${{ steps.select.outputs.integration }}
+      architecture: ${{ steps.select.outputs.architecture }}
+      parity: ${{ steps.select.outputs.parity }}
+      groups: ${{ steps.select.outputs.groups }}
+    steps:
+      - uses: dorny/paths-filter@15192bc058cc28a13dbf6cde61f19e18988b7af6 # v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          predicate-quantifier: every
+          filters: |
+            shared:
+              - '**'
+              - '!**/*.md'
+              - '!tests/**/*.test.ts'
+              - '!tests/parity/references/**'
+            unit:
+              - 'tests/**/*.test.ts'
+              - '!tests/**/*.integration.test.ts'
+              - '!tests/**/*.local.test.ts'
+              - '!tests/architecture/**'
+              - '!tests/parity/**'
+              - '!tests/perf/**'
+            integration:
+              - 'tests/**/*.integration.test.ts'
+              - '!tests/**/*.local.integration.test.ts'
+              - '!tests/perf/**'
+            architecture:
+              - '**'
+              - '!**/*.md'
+            parity:
+              - 'tests/parity/**'
+              - '!**/*.md'
+      - uses: actions/github-script@v7
+        id: select
+        env:
+          FILTERS: ${{ toJSON(steps.filter.outputs) }}
+        with:
+          script: |
+            const filters = JSON.parse(process.env.FILTERS);
+            const suites = ['unit', 'integration', 'architecture', 'parity'];
+            if (context.eventName === 'pull_request' &&
+                ['shared', ...suites].some(name => !['true', 'false'].includes(filters[name]))) {
+              throw new Error('Path-filter outputs are incomplete or invalid.');
+            }
+            const selected = Object.fromEntries(suites.map(suite => [suite,
+              context.eventName === 'push' || filters.shared === 'true' || filters[suite] === 'true'
+            ]));
+            const groups = [
+              { group: 1, suite: 'unit', parity: 0, shards: '1 9 15 17' },
+              { group: 2, suite: 'architecture', parity: 0, shards: '3 4 6 20' },
+              { group: 3, suite: 'parity', parity: 1, shards: '2 5 7 18' },
+              { group: 4, suite: 'parity', parity: 2, shards: '8 11 13' },
+              { group: 5, suite: 'integration', parity: 0, shards: '10 12 14 16 19' },
+            ].filter(group => selected.integration || selected[group.suite]);
+            for (const suite of suites) core.setOutput(suite, String(selected[suite]));
+            core.setOutput('groups', JSON.stringify({ include: groups }));
+
   static:
     name: static
     runs-on: ubuntu-latest
@@ -35,35 +99,17 @@ jobs:
       - run: npm run stores:catalog:check
       - run: npm run roadmap:check
 
-  unit:
-    name: unit (macos-15)
-    runs-on: macos-15
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - name: Mount test temp on a RAM disk
-        run: |
-          dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
-          vol=$(dirname "$dir")
-          case "$(mount | grep -F " on ${vol} " || true)" in
-            *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
-          esac
-          printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - run: npm run test:unit -- --maxWorkers=2
-
-  integration-shard:
-    name: integration shard ${{ matrix.shard }}/4
+  macos:
+    name: macOS group ${{ matrix.group }}
+    needs: changes
+    if: >-
+      needs.changes.outputs.unit == 'true' || needs.changes.outputs.integration == 'true' ||
+      needs.changes.outputs.architecture == 'true' || needs.changes.outputs.parity == 'true'
     runs-on: macos-15
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
+      matrix: ${{ fromJSON(needs.changes.outputs.groups) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -71,9 +117,17 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - uses: actions/cache@v4
+        id: browsers
+        if: needs.changes.outputs.integration == 'true' || (matrix.parity > 0 && needs.changes.outputs.parity == 'true')
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-macos-15-playwright-${{ matrix.parity > 0 && 'chromium-webkit' || 'chromium' }}-${{ hashFiles('package-lock.json') }}
+      - name: Install browsers on cache miss
+        if: steps.browsers.outcome == 'success' && steps.browsers.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium ${{ matrix.parity > 0 && 'webkit' || '' }}
       - run: npm run web:build
+        if: needs.changes.outputs.integration == 'true'
       - name: Mount test temp on a RAM disk
         run: |
           dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
@@ -82,90 +136,139 @@ jobs:
             *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
           esac
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
+      - name: Unit
+        if: ${{ !cancelled() && matrix.suite == 'unit' && needs.changes.outputs.unit == 'true' }}
+        run: npm run test:unit -- --maxWorkers=2
+      - name: Architecture
+        if: ${{ !cancelled() && matrix.suite == 'architecture' && needs.changes.outputs.architecture == 'true' }}
+        timeout-minutes: 15
+        run: npm run test:architecture -- --no-file-parallelism
       - name: Check native browser process proofs without competing files
-        if: matrix.shard == 1
+        if: ${{ !cancelled() && matrix.group == 5 && needs.changes.outputs.integration == 'true' }}
         run: >-
           npm run test:integration --
           tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts
           tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts
           tests/backend/runtime/workers/worker-supervisor.integration.test.ts
           --maxWorkers=1 --no-file-parallelism
-      - name: Check the remaining integration shard
-        if: ${{ !cancelled() }}
+      - name: Integration shards
+        if: ${{ !cancelled() && needs.changes.outputs.integration == 'true' }}
         env:
-          RELAY_TEST_SKIP_ISOLATED: "1"
-        run: npm run test:integration -- --shard=${{ matrix.shard }}/4 --maxWorkers=2
-
-  integration:
-    name: integration (macos-15)
-    needs: [integration-shard]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require every integration shard
-        run: test "${{ needs.integration-shard.result }}" = "success"
-
-  architecture:
-    name: architecture (macos-15)
-    runs-on: macos-15
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - name: Mount test temp on a RAM disk
+          SHARDS: ${{ matrix.shards }}
         run: |
-          dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
-          vol=$(dirname "$dir")
-          case "$(mount | grep -F " on ${vol} " || true)" in
-            *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
-          esac
-          printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - run: npm run test:architecture -- --no-file-parallelism
-
-  parity-shard:
-    name: parity shard ${{ matrix.shard }}/2
-    runs-on: macos-15
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit
-      - name: Mount test temp on a RAM disk
-        run: |
-          dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
-          vol=$(dirname "$dir")
-          case "$(mount | grep -F " on ${vol} " || true)" in
-            *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
-          esac
-          printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - run: npm run test:parity -- --shard=${{ matrix.shard }}/2 --workers=2
+          npx vitest list --project integration --filesOnly --json="$RUNNER_TEMP/integration-files.json"
+          node --input-type=module - "$RUNNER_TEMP/integration-files.json" <<'NODE' > "$RUNNER_TEMP/integration-paths"
+          import { readFileSync } from 'node:fs';
+          import { relative } from 'node:path';
+          const serial = new Set([
+            'tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts',
+            'tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts',
+            'tests/backend/runtime/workers/worker-supervisor.integration.test.ts',
+          ]);
+          const listed = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+          const files = listed.map(({ file }) => relative(process.cwd(), file));
+          const ordinary = files.filter(file => !serial.has(file));
+          if ([...serial].some(file => !files.includes(file)) || ordinary.length === 0) {
+            throw new Error('Integration file selection is incomplete.');
+          }
+          process.stdout.write(ordinary.join('\0') + '\0');
+          NODE
+          files=()
+          while IFS= read -r -d '' file; do files+=("$file"); done < "$RUNNER_TEMP/integration-paths"
+          failed=0
+          for shard in $SHARDS; do
+            npm run test:integration -- "${files[@]}" --shard="$shard/20" --maxWorkers=2 || failed=1
+          done
+          exit "$failed"
+      - name: Desktop parity
+        if: ${{ !cancelled() && matrix.parity > 0 && needs.changes.outputs.parity == 'true' }}
+        run: npm run test:parity -- --shard=${{ matrix.parity }}/2 --workers=2
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && matrix.parity > 0 && needs.changes.outputs.parity == 'true' }}
         with:
-          name: parity-results-${{ matrix.shard }}
+          name: parity-results-${{ matrix.parity }}
           path: tests/parity/.output/
           include-hidden-files: true
 
-  parity:
-    name: parity
-    needs: [parity-shard]
+  unit:
+    name: unit (macos-15)
+    needs: [changes, macos]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Require every parity shard
-        run: test "${{ needs.parity-shard.result }}" = "success"
+      - name: Require the selected suite's runner groups
+        env:
+          FILTER_RESULT: ${{ needs.changes.result }}
+          SELECTED: ${{ needs.changes.outputs.unit }}
+          GROUP_RESULT: ${{ needs.macos.result }}
+        run: |
+          test "$FILTER_RESULT" = success
+          if [ "$SELECTED" = false ]; then
+            echo "Suite omitted by path filters."
+          else
+            test "$SELECTED" = true
+            test "$GROUP_RESULT" = success
+          fi
+
+  integration:
+    name: integration (macos-15)
+    needs: [changes, macos]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the selected suite's runner groups
+        env:
+          FILTER_RESULT: ${{ needs.changes.result }}
+          SELECTED: ${{ needs.changes.outputs.integration }}
+          GROUP_RESULT: ${{ needs.macos.result }}
+        run: |
+          test "$FILTER_RESULT" = success
+          if [ "$SELECTED" = false ]; then
+            echo "Suite omitted by path filters."
+          else
+            test "$SELECTED" = true
+            test "$GROUP_RESULT" = success
+          fi
+
+  architecture:
+    name: architecture (macos-15)
+    needs: [changes, macos]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the selected suite's runner groups
+        env:
+          FILTER_RESULT: ${{ needs.changes.result }}
+          SELECTED: ${{ needs.changes.outputs.architecture }}
+          GROUP_RESULT: ${{ needs.macos.result }}
+        run: |
+          test "$FILTER_RESULT" = success
+          if [ "$SELECTED" = false ]; then
+            echo "Suite omitted by path filters."
+          else
+            test "$SELECTED" = true
+            test "$GROUP_RESULT" = success
+          fi
+
+  parity:
+    name: parity
+    needs: [changes, macos]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the selected suite's runner groups
+        env:
+          FILTER_RESULT: ${{ needs.changes.result }}
+          SELECTED: ${{ needs.changes.outputs.parity }}
+          GROUP_RESULT: ${{ needs.macos.result }}
+        run: |
+          test "$FILTER_RESULT" = success
+          if [ "$SELECTED" = false ]; then
+            echo "Suite omitted by path filters."
+          else
+            test "$SELECTED" = true
+            test "$GROUP_RESULT" = success
+          fi
 
   privacy:
     name: privacy
@@ -181,8 +284,8 @@ jobs:
 
   release:
     name: release
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
-    needs: [static, unit, integration, architecture, parity, privacy]
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && needs.changes.outputs.architecture == 'true'
+    needs: [changes, static, unit, integration, architecture, parity, privacy]
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -191,7 +294,13 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
+      - uses: actions/cache@v4
+        id: browsers
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-macos-15-playwright-chromium-${{ hashFiles('package-lock.json') }}
       - run: npx playwright install --with-deps chromium
+        if: steps.browsers.outputs.cache-hit != 'true'
       - run: npm run web:build
       - name: Mount test temp on a RAM disk
         run: |

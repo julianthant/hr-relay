@@ -93,14 +93,47 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-CI runs architecture files serially.
-The three native browser process-proof files (`ISOLATED_INTEGRATION_FILES` in `vitest.config.ts`) run first and serially on integration shard 1, without
-competing test files. All four ordinary shards exclude those files (`RELAY_TEST_SKIP_ISOLATED=1`), so each file runs once.
-Remaining integration files, unit and parity use two workers. Unit, integration and parity job
-budgets are 30 minutes. CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
+CI runs five macOS groups. The matrix in `.github/workflows/ci.yml` assigns twenty ordinary
+integration shards around one unit run, one serial architecture run and two parity shards.
+The three native browser process-proof files (browser control, onboarding Duo provider, worker supervisor) run first and serially in group 5, without competing
+test files. Ordinary shards discover integration files through Vitest, remove those three paths,
+then pass the remaining paths explicitly. Vitest 4.1.11's CLI exclusions do not reach these named
+projects. Selection refuses if any native file is missing or no ordinary files remain.
+Remaining integration files, unit and parity use two workers. Groups have 30-minute budgets;
+the architecture step retains its 15-minute budget. CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
 Vitest test and hook limits, test wait helpers and the browser deadlines tests pass to product code by it.
 Local runs use 1. Product defaults are unchanged. Remaining-file steps run after a failed proof
-unless the workflow is cancelled, preserving failure visibility.
+unless the workflow is cancelled, preserving failure visibility. An integration shard failure
+does not stop its group's remaining shards, and any shard failure fails the group.
+
+PR filtering uses these rules. Static and privacy always run.
+
+| Changed paths | Routine suites selected |
+| --- | --- |
+| Markdown only | None. |
+| Source, scripts, configuration, dependencies, shared test helpers or fixtures, unknown non-Markdown paths | All four. |
+| Unit test files only | Unit and architecture. |
+| Integration test files only | Integration and architecture. |
+| Architecture test files only | Architecture. |
+| Parity test files or references only | Parity and architecture. |
+| Parity helpers, fixtures or entrypoints | All four; unit and integration also import these. |
+| Local or perf test files only | Architecture; local remains machine-only and perf remains release-only. |
+
+Mixed changes select the union. Machine-readable inputs under `docs/`, including the guard
+inventory, count as configuration. Push events bypass filtering and always select all four suites.
+Required summaries always run on Ubuntu, including when no macOS group was selected. They require
+successful change detection and either an explicit omission or successful scheduled groups.
+Failure or cancellation of any scheduled group fails each selected suite's summary.
+
+Membership verification compares an unsharded `vitest list --filesOnly --json` for unit,
+integration and architecture with the union of the exact CI selections. Unit and architecture
+are unsharded; each native file is selected once. For every ordinary integration shard, use
+`vitest list --project integration <ordinary paths> --shard=N/20 --json=/absolute/shard-N.json`
+with the same discovered path array as CI. Deduplicate test rows into files within each shard, then require
+no duplicate files across shards, no missing files and no extra files against the baseline.
+Vitest 4.1.11's `list --filesOnly` does not apply sharding, so it cannot prove shard membership.
+Parity retains its two Playwright shards; their `--list --reporter=json` test identities must
+also form the unsharded listing exactly once. Coverage, perf and local selection are unchanged.
 
 ## 3. Private test temporary directory
 
