@@ -1,7 +1,6 @@
 # Environment variables / secrets
 .env
 .env.*
-!.env.example
 
 # Private test inputs (D341): live subject values and private document paths.
 # The tracked example carries placeholders only.
@@ -17,7 +16,7 @@ node_modules/
 .idea/
 
 # Claude Code
-.claude/settings.local.json
+.claude/
 .design/
 
 # Playwright CLI

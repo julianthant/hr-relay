@@ -7,7 +7,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | Path | Contents |
 | --- | --- |
 | `AGENTS.md` | Repository instructions. Nearer instructions own backend, registry, system, and dashboard constraints. |
-| `.agents/` and `.claude/` | Repository skills and operating references. |
+| `.agents/` | Project agent data: skill entrypoints in `skills/`, with canonical operating references in `skill-library/`. |
 | `config/` | Runtime isolation and test-data configuration. |
 | `docs/rebuild/reference/` | Current contracts and this map. |
 | `docs/rebuild/guides/` | Workflow authoring guide. |

@@ -105,7 +105,7 @@ function createScratchRepoRoot(backendPort: number = rebuildRuntimeIsolation.bac
   symlinkSync(join(REPO_ROOT, "node_modules"), join(root, "node_modules"), "dir");
   mkdirSync(join(root, "scripts", "dev"), { recursive: true });
   cpSync(BOOTSTRAP, join(root, "scripts", "dev", "secure-env-bootstrap.ts"));
-  cpSync(join(REPO_ROOT, ".env.example"), join(root, ".env.providers"));
+  writeFileSync(join(root, ".env.providers"), "# Synthetic provider fixture; no environment loading.\n");
   chmodSync(join(root, ".env.providers"), 0o600);
   writeFileSync(join(root, ".env"), REFERENCE_ENVIRONMENT, { mode: 0o600 });
   return root;

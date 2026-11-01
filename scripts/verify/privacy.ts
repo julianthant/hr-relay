@@ -47,7 +47,7 @@ export function inspectTrackedFile(path: string, content: Buffer): PrivacyFindin
   const rules = new Set<string>();
   const digest = createHash("sha256").update(content).digest("hex");
   if (/(?:^|\/)\.local-private(?:\/|$)/u.test(path)) rules.add("private-directory");
-  if (/(?:^|\/)\.env(?:\.[^/]*)?$/iu.test(path) && path !== ".env.example") rules.add("environment-file");
+  if (/(?:^|\/)\.env(?:\.[^/]*)?$/iu.test(path)) rules.add("environment-file");
   if (/\.(?:xlsx?|csv|tsv|pdf)$/iu.test(path) && fixtureFiles.get(path) !== digest) rules.add("private-document");
   if ((/(?:^|\/)\.?(?:credentials?|secrets?|auth|tokens?)(?:\.(?:json|ya?ml|toml|txt|ini|conf|cfg|properties|env|csv|xml|db|sqlite3?))?$|(?:^|\/)(?:id_rsa|id_dsa|id_ecdsa|id_ed25519|\.npmrc|\.pypirc|\.netrc|\.git-credentials|test-data\.local\.json)$|\.(?:pem|key|p12|pfx|jks)$/iu.test(path)
     || /(?:^|\/)(?:credentials|\.ssh|\.aws|\.kube)\//iu.test(path)) && publicConfigFiles.get(path) !== digest) rules.add("credential-file");

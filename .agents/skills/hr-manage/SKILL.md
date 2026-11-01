@@ -17,11 +17,9 @@ Browser operations read `~/.agents/skill-library/playwright-cli/REFERENCE.md`. P
 ## 1 · Bring the stack up (and know it is the right stack)
 
 ```bash
-playwright-cli list; playwright-cli close-all                # orphan Chromiums first
+playwright-cli list                                           # identify sessions; close only sessions owned by this task
 ls .tracker/locks/                                    # D181 role locks: server / worker — a stale pid here explains "already running"
 npm run dashboard                                              # ONE terminal: BFF :3938 + vite :5174 (Ctrl+C stops both); BFF alone: npm run cli -- dashboard
-curl -s localhost:3938/api/v1/bootstrap | head -c 200          # ECONNREFUSED = not up yet; wait, don't retry the run
-curl -s localhost:3938/api/v1/explorer | jq '.[].contractFingerprint' | head   # SERVED fingerprints
 npm run build:manifest && git diff --quiet src/workflow-kit/validation/generated-build-manifest.ts || echo "TREE MOVED — restart the BFF"
 npm run cli -- worker <workflow-id> --pool-index 1 [--drain]   # one worker; batch pool indices must be admitted and distinct (1–3), see §3
 npm run cli -- storage doctor                                  # authority + span reconciliation (+ backup report) before a batch
@@ -32,7 +30,7 @@ The BFF is a singleton (pinned port + lock). A BFF started before a descriptor e
 ## 2 · Start a run (one subject)
 
 - **Dashboard**: `playwright-cli -s=mgr open http://localhost:5174` → run modal → the descriptor's declared entry shape (`surfaces.inputRun`; examples are shown in the modal) → confirm with `dryRun` checked. Screenshot the confirmation.
-- **API**: `POST /api/v1/start-plans` (entries per `inputRun`) → `POST /api/v1/commands` (confirm; carries `dryRun`, `expectedVersion`). Use the active brief's assigned evidence folder under the main checkout's `.work/` for task-specific run records; verify current state against authority and the source system. Response arms: `accepted` · `rejected` · `conflict` (CAS — re-read `currentVersion`, never just "try again").
+- Start and confirm through the signed-in dashboard. Do not call backend HTTP endpoints directly.
 - Subjects by LABEL (`config/test-data.json` → `subjects`), private values from ignored `config/test-data.local.json` via `src/backend/app/registries/test-data.ts` (D341); check with `npm run cli -- test-data check --json --subject <label>`; missing → `blocked: needs <label>`.
 - A REAL write (`dryRun=false`): only under `ref write-safety` with the operator's explicit authorization for that run/subject/document, stated in the conversation; say it back before you send it.
 
@@ -56,7 +54,7 @@ The BFF is a singleton (pinned port + lock). A BFF started before a descriptor e
 | Alerts | the notification bell / inbox (storage-degraded, needs-you); the storage banner for authority-unavailable |
 | Health | `npm run cli -- storage doctor [--json]`; worker log lines; locks dir |
 
-A gated run parks: approve through the dashboard ceremony (proves the UI) or `POST /api/v1/commands` (proves the kernel) — say which. The approval shape is computed server-side; the packet leads with disconfirming evidence — read it, don't rubber-stamp.
+A gated run parks: approve only through the dashboard ceremony. The approval shape is computed server-side; the packet leads with disconfirming evidence — read it, don't rubber-stamp.
 
 ## 5 · The status table (always, at the end — and on request mid-batch)
 
@@ -67,7 +65,7 @@ States from authority (`queued · claimed · running · parked · done · failed
 
 ## 6 · Housekeeping
 
-- Stop: Ctrl+C the dashboard terminal; `--drain` a worker; `playwright-cli close-all`; confirm `.tracker/locks/` is empty of live pids (`kill -0`).
+- Stop: Ctrl+C the dashboard terminal; `--drain` a worker; close only task-owned browser sessions; confirm `.tracker/locks/` is empty of live pids (`kill -0`).
 - Archive / activity: the archive model is append-only (v13 tables abort UPDATE/DELETE) — apply re-derives blockers in its own transaction; a refused apply is normal when a run went queued in between.
 - Backups are written only on command (`storage backup`, D322) — take one before a real write; `storage doctor` reports the latest but no longer gates on it; `storage restore --from <manifest>` only stopped-system and only when the operator says so.
 - Anything that smells like a platform defect → `.agents/skill-library/hr-debug/REFERENCE.md`; a

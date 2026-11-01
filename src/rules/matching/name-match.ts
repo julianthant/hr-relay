@@ -9,7 +9,7 @@ export const NameMatchResultSchema = z.strictObject({
 });
 export type NameMatchResult = z.infer<typeof NameMatchResultSchema>;
 
-export function tokenizeName(value: string): string[] {
+function tokenizeName(value: string): string[] {
   return value
     .toLowerCase()
     .replace(/[^a-z\s]/gu, " ")
@@ -41,7 +41,7 @@ export function scoreNameMatch(a: string, b: string): NameMatchResult {
 }
 
 /** Max per-token Levenshtein distance still counted as a spelling variant. */
-export const TOKEN_VARIANT_MAX = 2;
+const TOKEN_VARIANT_MAX = 2;
 
 /** Three-way name comparison aligned token-by-token, so name-order differences never masquerade as a mismatch. */
 export const NameSimilarityTierSchema = z.enum(["same", "similar", "different"]);
