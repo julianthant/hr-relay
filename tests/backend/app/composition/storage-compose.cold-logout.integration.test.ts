@@ -14,7 +14,6 @@ import { composeProfileRuntime } from "../../../../src/backend/app/composition/s
 import { composeProfileCredentialRepairInventory, composeProfilePendingLogoutInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createCredentialStore, preparePendingLogoutInventory, readForErasure } from "../../../../src/backend/storage/configuration/credential-store.js";
@@ -39,7 +38,7 @@ async function fixture() {
   const operationPath = join(f.machine.stateRoot, "machine", "operations", `${held.operationId}.json`);
   const readOperation = () => LogoutOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
   session.close();
-  const owner = f.machine.admitProfile(createProfileRegistry(f.machine).settlementClaim(held.operationId));
+  const owner = f.machine.admitProfileSettlement(held.operationId);
   const actualInventory = composeProfilePendingLogoutInventory({ machine: f.machine, admission: owner, clock, hostFacts: { primaryDisplay: null } });
   const store = createCredentialStore({ admission: owner, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
     erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${active.profileId}.json`), pendingLogoutInventory: actualInventory,

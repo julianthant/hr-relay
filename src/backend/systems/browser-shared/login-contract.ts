@@ -110,6 +110,7 @@ export type AuthenticationProbe =
 
 
 export interface AuthenticationVerificationContext {
+  readonly assertCurrent: () => void;
   readonly page: Page;
   readonly config: Config;
   // Authentication evidence must reach a readable channel; a hidden proof cannot explain a session.

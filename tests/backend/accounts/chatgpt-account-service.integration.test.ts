@@ -4,7 +4,6 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, it, vi } from "vitest";
 import { createBoundProfileFixture, createClonedProfileFixtures } from "../../support/helpers/admission-fixture.js";
-import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { chatGptFixture, completedOcrStream } from "../../support/helpers/chatgpt-account-fixtures.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { createChatGptCredentialRepository } from "../../../src/backend/storage/configuration/credential-store.js";
@@ -573,7 +572,7 @@ for (const status of [401, 403] as const) it(`refuses issued authority after C1 
 it("requires both account authority admissions to remain live and bound to the same root", async () => {
   const profile = await createBoundProfileFixture(), foreign = await createBoundProfileFixture();
   const f = await chatGptFixture(profile.admission);
-  const claim = createProfileRegistry(profile.machine).storageClaim(profile.admission.profileBinding.profileId);
+  const claim = profile.admission.profileBinding.profileId;
   const delegated = profile.machine.admitProfile(claim), retained = profile.machine.admitProfile(claim);
   try {
     await seedAuthorityAccount(f);

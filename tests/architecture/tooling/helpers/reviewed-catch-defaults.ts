@@ -18,7 +18,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "e61641f9f61f92a5ffcc563f806a41246221c5a5dd6c5252cebe97d7cbf5b16f",
+    "sha256": "1ff529ef7a39258ccad2242bf22a99aaa76464b25274fd937aa1a186d0de5288",
     "reason": "The bound native open validates authority in one SQLite snapshot before protected values are read. Failed opening cleanup retains the actual native database, issued admission and both original/close errors as custody uncertainty. Other open failures close the actual database before admission release and aggregate cleanup errors. Runtime cleanup releases admission only after proven database and browser closure. Maintenance failure stops rescheduling and signals the worker stop controller; composition surfaces the failure. Actual root or inherited lifetime custody remains held through shutdown."
   },
   {
@@ -28,7 +28,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
       "path": "src/backend/storage/artifacts/content-addressed-artifact-writer.ts",
-      "sha256": "8f7b049c2d8625ca8d072fa1d5bdb27eba6acf0187b3530f8a4e79dc9937e54f",
+      "sha256": "dcdf682261c2bda36edcd48a41e2a510a01c00f64420f3053293e1cfb1889ce6",
       "reason": "Only ENOENT denotes no diagnostic stage directory (empty inventory, zero reclaimed stages or bytes) or an already absent captured file; all other errors rethrow. EEXIST verifies exact winner bytes; custody and cleanup failures throw or aggregate."
   },
   {
@@ -113,7 +113,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "22b9680548da67c2e6dd45449637a182aecbb36d6fa2f55353eb9e4689d217fd",
+    "sha256": "507ca7066a5256607bcf0ab2ac0c0de27021759c3d01204c19d75a26f9ca7521",
     "reason": "Failed constructor cleanup retains the actual native database and admission with both opening and close failures. Failed rollback retains database custody with the original failure; successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or named search refusal, never validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody releases; required native browser closure precedes cancellation."
   },
   {
@@ -128,7 +128,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/systems/browser-shared/ucsd-sso.ts",
-    "sha256": "5a62f900a16060d06abe7166c0a3fa9b3469d8c5aec775e8eb5d159bc6b57bc6",
+    "sha256": "78275fe9331c6d9f2528abbf24d1e47b903fad2bec0cc6f36f8b1e5b1bc0062f",
     "reason": "The navigation rejection observer preserves the original promise raced by the training-reminder wait; the landing wait owns timeout and diagnosis. An empty diagnostic title accompanies LANDING_PROBE_UNAVAILABLE and a thrown BrowserLandingStallError with the original landing cause, never authenticated success. Probe uncertainty stays explicit; initiated clicks drain before settlement, and compound click, disposal and landing failures retain their causes."
   },
   {

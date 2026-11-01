@@ -704,7 +704,7 @@ it("captures and freshly revalidates each independent authority constituent on t
     }),
     () => {
       const machine = machineAdmissions.get(root); assert.ok(machine);
-      const child = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
+      const child = machine.admitProfile(active.profileId);
       const store = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalPath: join(root, "machine", "erasures", `${active.profileId}.json`), erasureJournalAdmission: machine });
       assert.equal(store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: "23232323-2323-4323-8323-232323232323", writeId: "24242424-2424-4424-8424-242424242424", commandFingerprint: "d".repeat(64), expectedRevision: store.read().revision,
         protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-09-06T12:02:00.000Z", entries: { timekeeperName: { set: "ZZ" } } })).state, "applied");
@@ -940,7 +940,7 @@ it("joins the real token-free account source with the exact admitted profile roo
   assert.equal(active.state, "active"); if (active.state !== "active") return;
   const stateRoot = join(root, "profiles", active.profileId);
   const machine = machineAdmissions.get(root); assert.ok(machine);
-  const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
+  const admission = machine.admitProfile(active.profileId);
   let calls = 0;
   const clock = manualClock(new Date("2026-09-06T12:00:00.000Z"));
   const account = createChatGptAccountService({ admission, stateRoot, clock, fetch: async () => { calls++; throw new Error("unexpected transport"); } });

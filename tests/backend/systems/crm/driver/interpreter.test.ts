@@ -254,7 +254,7 @@ describe("CRM onboarding selector-backed driver", () => {
         exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/15/2026" },
       },
     });
-    const result = await createCrmOnboardingDriver(page).readOnboardingRecord({
+    const result = await createCrmOnboardingDriver(() => undefined, page).readOnboardingRecord({
       eid: EID,
       name: "Fixture, Person",
     });
@@ -284,7 +284,7 @@ describe("CRM onboarding selector-backed driver", () => {
       },
     });
     await assert.rejects(
-      createCrmOnboardingDriver(page).readOnboardingRecord({ eid: EID, name: "Fixture, Person" }),
+      createCrmOnboardingDriver(() => undefined, page).readOnboardingRecord({ eid: EID, name: "Fixture, Person" }),
       /resolved 2 exact displayed-EID records/,
     );
   });
@@ -299,7 +299,7 @@ describe("CRM onboarding selector-backed driver", () => {
       last: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/2/2026" },
     };
     const page = fixturePage({ searches: { [EID]: rows }, records });
-    const found = await createCrmOnboardingDriver(page).searchOnboardingRecords({ eid: EID });
+    const found = await createCrmOnboardingDriver(() => undefined, page).searchOnboardingRecords({ eid: EID });
     assert.deepEqual(found.map(record => record.recordId), ["first", "last"]);
     assert.equal(new URL(page.url()).pathname, "/hr/ONB_SearchOnboardings");
     assert.equal(new URL(page.url()).searchParams.get("q"), EID);
@@ -310,7 +310,7 @@ describe("CRM onboarding selector-backed driver", () => {
       if (new URL(args[0]).pathname === "/hr/ONB_SearchOnboardings" && ++searches === 2) rows.pop();
       return goto(...args);
     };
-    await assert.rejects(createCrmOnboardingDriver(changing).searchOnboardingRecords({ eid: EID }),
+    await assert.rejects(createCrmOnboardingDriver(() => undefined, changing).searchOnboardingRecords({ eid: EID }),
       /discovery results changed before capture/u);
   });
 
@@ -319,7 +319,7 @@ describe("CRM onboarding selector-backed driver", () => {
       searches: { [EID]: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "exact" }] },
       records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/1/2026", departmentHrRepName: "Representative, Example" } },
     });
-    const records = await createCrmOnboardingDriver(page).searchOnboardingRecords({ eid: EID });
+    const records = await createCrmOnboardingDriver(() => undefined, page).searchOnboardingRecords({ eid: EID });
     assert.equal(records.length, 1);
     assert.equal(records[0].department, "Housing");
     assert.equal(records[0].firstDayOfService, "7/1/2026");
@@ -330,22 +330,22 @@ describe("CRM onboarding selector-backed driver", () => {
       const page = fixturePage({ searches: { [EID]: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "exact" }] },
         records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "", ...invalid } },
       });
-      await assert.rejects(createCrmOnboardingDriver(page).searchOnboardingRecords({ eid: EID }), /not a real calendar date/u);
+      await assert.rejects(createCrmOnboardingDriver(() => undefined, page).searchOnboardingRecords({ eid: EID }), /not a real calendar date/u);
     }
     const blank = fixturePage({ searches: { [EID]: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "exact" }] },
       records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "", dateSigned: "" } },
     });
-    const found = await createCrmOnboardingDriver(blank).searchOnboardingRecords({ eid: EID });
+    const found = await createCrmOnboardingDriver(() => undefined, blank).searchOnboardingRecords({ eid: EID });
     assert.equal(found[0].firstDayOfService, "");
     assert.equal(found[0].dateSigned, "");
   });
 
   it("reopens the selected record, refreshes its dates and refuses changed identity", async () => {
     const selected = { recordId: "exact", recordUrl: "https://act-crm.my.site.com/hr/ONB_ViewOnboarding?id=exact", emplId: EID, name: "Fixture, Person", department: "Housing", firstDayOfService: "7/1/2026", dateSigned: "" };
-    const driver = createCrmOnboardingDriver(fixturePage({ searches: {}, records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/2/2026" } } }));
+    const driver = createCrmOnboardingDriver(() => undefined, fixturePage({ searches: {}, records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/2/2026" } } }));
     assert.equal((await driver.verifyOnboardingRecord(selected)).firstDayOfService, "7/2/2026");
     for (const eid of [OTHER_EID]) {
-      await assert.rejects(createCrmOnboardingDriver(fixturePage({ searches: {}, records: { exact: { eid, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/2/2026" } } })).verifyOnboardingRecord(selected), /identity changed/);
+      await assert.rejects(createCrmOnboardingDriver(() => undefined, fixturePage({ searches: {}, records: { exact: { eid, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/2/2026" } } })).verifyOnboardingRecord(selected), /identity changed/);
     }
   });
 
@@ -363,7 +363,7 @@ describe("CRM onboarding selector-backed driver", () => {
         ],
       },
     });
-    const result = await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
+    const result = await createCrmOnboardingDriver(() => undefined, page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
     assert.equal(result.binding.state, "displayed-record");
     assert.deepEqual(result.output, {
       emplId: EID,
@@ -378,7 +378,7 @@ describe("CRM onboarding selector-backed driver", () => {
         wrong: { eid: OTHER_EID, firstName: "Person", lastName: "Wrong", firstDayOfService: "7/15/2026" },
       },
     });
-    const result = await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
+    const result = await createCrmOnboardingDriver(() => undefined, page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
     assert.equal(result.binding.state, "absent-query");
     assert.equal(result.output.state, "no-confident-record");
     assert.equal(result.output.employmentDate, null);
@@ -401,7 +401,7 @@ describe("CRM onboarding selector-backed driver", () => {
       if (new URL(args[0]).searchParams.get("id") === "exact" && ++selectedOpens === 2) selected.firstDayOfService = "7/16/2026";
       return goto(...args);
     };
-    const result = await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
+    const result = await createCrmOnboardingDriver(() => undefined, page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
     assert.equal(result.binding.state, "displayed-record");
     assert.equal(result.output.state, "read");
     assert.equal(result.output.employmentDate, "2026-07-16", "dates come from the final fresh read");
@@ -415,7 +415,7 @@ describe("CRM onboarding selector-backed driver", () => {
     const records = Object.fromEntries(rows.map(row => [row.recordId,
       { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "7/15/2026" }]));
     const page = fixturePage({ searches: { Fixture: rows }, records });
-    const result = await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
+    const result = await createCrmOnboardingDriver(() => undefined, page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
     assert.equal(result.output.state, "no-confident-record");
     assert.equal(result.output.employmentDate, null);
     assert.equal(new URL(page.url()).pathname, "/hr/ONB_SearchOnboardings");
@@ -427,7 +427,7 @@ describe("CRM onboarding selector-backed driver", () => {
       if (new URL(args[0]).pathname === "/hr/ONB_SearchOnboardings" && ++searches === 2) rows.pop();
       return goto(...args);
     };
-    const refused = await createCrmOnboardingDriver(changing).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
+    const refused = await createCrmOnboardingDriver(() => undefined, changing).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
     assert.equal(refused.output.state, "check-failed", "restoration drift remains a best-effort failure");
   });
 
@@ -436,7 +436,7 @@ describe("CRM onboarding selector-backed driver", () => {
       searches: { Fixture: [{ fullName: "Fixture, Person", rawStage: "Completed", recordId: "bad", cellCount: 4 }] },
       records: {},
     });
-    const output = (await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID, name: "Fixture, Person" })).output;
+    const output = (await createCrmOnboardingDriver(() => undefined, page).readOnboardingDates({ eid: EID, name: "Fixture, Person" })).output;
     assert.equal(output.state, "check-failed");
     assert.ok(output.state === "check-failed");
     assert.equal(output.code, "PERSON_LOOKUP_CRM_DATES_CHECK_FAILED");
@@ -454,14 +454,14 @@ describe("CRM onboarding selector-backed driver", () => {
       ...base,
       records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "" } },
     });
-    const blankResult = await createCrmOnboardingDriver(blank).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
+    const blankResult = await createCrmOnboardingDriver(() => undefined, blank).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
     assert.equal(blankResult.output.employmentDate, null);
 
     const malformed = fixturePage({
       ...base,
       records: { exact: { eid: EID, firstName: "Person", lastName: "Fixture", firstDayOfService: "tomorrow" } },
     });
-    assert.equal((await createCrmOnboardingDriver(malformed).readOnboardingDates({ eid: EID, name: "Fixture, Person" })).output.state, "check-failed");
+    assert.equal((await createCrmOnboardingDriver(() => undefined, malformed).readOnboardingDates({ eid: EID, name: "Fixture, Person" })).output.state, "check-failed");
   });
 
   it("keeps actual record dates independent of empty history", async () => {
@@ -472,7 +472,7 @@ describe("CRM onboarding selector-backed driver", () => {
       },
       histories: { exact: [] },
     });
-    const result = await createCrmOnboardingDriver(page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
+    const result = await createCrmOnboardingDriver(() => undefined, page).readOnboardingDates({ eid: EID, name: "Fixture, Person" });
     assert.equal(result.binding.state, "displayed-record");
     assert.equal(result.output.state, "read");
     assert.equal(result.output.employmentDate, "2026-07-15");

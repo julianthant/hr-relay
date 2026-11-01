@@ -257,7 +257,7 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
       {stateRoot:admission.stateRoot,artifactRoot:admission.artifactRoot}).config;
     assertRetainedBrowsersClosed(admission,probeFacts,probeConfig,profileBrowserClosure);
     const before = enumerate();
-    const root = admission.stateRoot, profileId = admission.profileBinding.profileId;
+    const root = admission.stateRoot, binding = admission.profileBinding, profileId = binding.profileId;
     const duoRoot = owner.kind === "ordinary" ? input.machine.stateRoot : requireStoppedControlProfileInventory(owner.claim).machineRoot;
     const physicalMembership = (scope?: ProfilePublicationRead): string => {
       const entries: (ReturnType<typeof inventoryFileIdentity> | { path: string; absent: true })[] = [];
@@ -276,7 +276,7 @@ function composeProfileCredentialMaintenanceInventory(input: Readonly<{ machine:
         let envelope: ReturnType<typeof DuoDocumentEnvelopeSchema.parse>;
         try { envelope = DuoDocumentEnvelopeSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes))); }
         catch { throw new Error("duo-purpose-plaintext-refused"); }
-        if (envelope.installationId !== admission.profileBinding.installationId || envelope.profileId !== profileId) throw new Error("duo-envelope-binding-mismatch");
+        if (envelope.installationId !== binding.installationId || envelope.profileId !== profileId) throw new Error("duo-envelope-binding-mismatch");
         if (initializationKeyId !== undefined && envelope.keyId !== initializationKeyId) throw Object.assign(
           new Error("credential-initialization-retained-duo-key-mismatch"), { code: "CREDENTIAL_INITIALIZATION_RETAINED_DUO_KEY_MISMATCH" });
         if (authorityWitness(scope) !== registry) throw new Error("credential-maintenance-inventory-changed");

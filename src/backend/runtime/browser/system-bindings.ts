@@ -19,7 +19,7 @@ import type { Page } from "playwright";
 export interface BrowserSystemBinding {
   readonly system: BrowserSystemId;
 
-  readonly createDriver: (page: Page, clock: Clock) => BrowserDriver;
+  readonly createDriver: (page: Page, clock: Clock, assertCurrent: () => void) => BrowserDriver;
   readonly login: SystemLoginRecipe;
 
   readonly verifyAuthenticated: AuthenticatedApplicationVerifier;
@@ -31,28 +31,28 @@ export type BrowserSystemBindings = Readonly<Partial<Record<BrowserSystemId, Bro
 export const BROWSER_SYSTEM_BINDINGS: BrowserSystemBindings = Object.freeze({
   ucpath: Object.freeze({
     system: "ucpath",
-    createDriver: (page: Page, clock: Clock): BrowserDriver =>
-      createUcpathPersonOrgDriver(page, clock),
+    createDriver: (page: Page, clock: Clock, assertCurrent: () => void): BrowserDriver =>
+      createUcpathPersonOrgDriver(assertCurrent, page, clock),
     login: ucpathLoginRecipe,
     verifyAuthenticated: verifyUcpathAuthenticatedApplication,
   }),
   crm: Object.freeze({
     system: "crm",
-    createDriver: (page: Page): BrowserDriver => createCrmOnboardingDriver(page),
+    createDriver: (page: Page, _clock: Clock, assertCurrent: () => void): BrowserDriver => createCrmOnboardingDriver(assertCurrent, page),
     login: crmLoginRecipe,
     verifyAuthenticated: verifyCrmAuthenticatedApplication,
   }),
   kuali: Object.freeze({
     system: "kuali",
-    createDriver: (page: Page, clock: Clock): BrowserDriver =>
-      createKualiRrssDocumentDriver(page, clock),
+    createDriver: (page: Page, clock: Clock, assertCurrent: () => void): BrowserDriver =>
+      createKualiRrssDocumentDriver(assertCurrent, page, clock),
     login: kualiLoginRecipe,
     verifyAuthenticated: verifyKualiAuthenticatedApplication,
   }),
   "new-kronos": Object.freeze({
     system: "new-kronos",
-    createDriver: (page: Page, clock: Clock): BrowserDriver =>
-      createNewKronosTimecardDriver(page, clock),
+    createDriver: (page: Page, clock: Clock, assertCurrent: () => void): BrowserDriver =>
+      createNewKronosTimecardDriver(assertCurrent, page, clock),
     login: newKronosLoginRecipe,
     verifyAuthenticated: verifyNewKronosAuthenticatedApplication,
   }),

@@ -84,7 +84,7 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
 
     const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(fields)); assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("synthetic signup refused");
-    const seed = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
+    const seed = machine.admitProfile(active.profileId);
     const credentialPath = join(seed.stateRoot, "credentials", "chatgpt-account.json");
     try {
       await createChatGptCredentialRepository({ admission: seed, stateRoot: seed.stateRoot }).withLock(async transaction => transaction.replace(ChatGptCredentialRecordSchema.parse({
@@ -242,7 +242,9 @@ it("requires the same actual profile credential owner for canonical offline rest
     const outcome = JSON.parse(restored.output) as { credentials: { state: string } };
     assert.equal(outcome.credentials.state, "unavailable");
     assert.throws(() => credentials.read());
-    const fresh = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(profileId));
+    const signedOut = f.machine.admitProfile(profileId);
+    assert.throws(() => signedOut.assertCredentialRead(), /profile-session-not-current/u); signedOut.release();
+    const fresh = f.renewAfterRestore().admission;
     try {
       const store = createCredentialStore({ admission: fresh, stateRoot: fresh.stateRoot, erasureJournalAdmission: f.machine,
         erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${fresh.profileBinding.profileId}.json`) });

@@ -3,12 +3,12 @@ import type { Clock } from "../../../rules/time/clock.js";
 import type { BrowserScreenshotEvidence } from "../../../workflow-kit/session.js";
 
 /** Unclassified page text is omitted; method/status/error class remain useful and secret-free. */
-export function attachBrowserDiagnostics(page: Page, clock: Clock) {
+export function attachBrowserDiagnostics(page: Page, clock: Clock, observeEvent: () => Readonly<{ state: "current" | "revoked" }>) {
   let active = false;
   let omitted = 0;
   const consoleRows: { kind: string; at: string }[] = [];
   const networkRows: { kind: string; method: string; status?: number; at: string }[] = [];
-  const keep = <T>(rows: T[], row: T) => { if (!active) return; if (rows.length === 128) { omitted++; return; } rows.push(row); };
+  const keep = <T>(rows: T[], row: T) => { if (observeEvent().state === "revoked" || !active) return; if (rows.length === 128) { omitted++; return; } rows.push(row); };
   const consoleMessage = (message: ConsoleMessage) => keep(consoleRows, { kind: message.type(), at: clock.now().toISOString() });
   const pageError = () => keep(consoleRows, { kind: "pageerror", at: clock.now().toISOString() });
   const requestFailed = (request: Request) => keep(networkRows, { kind: "requestfailed", method: request.method(), at: clock.now().toISOString() });

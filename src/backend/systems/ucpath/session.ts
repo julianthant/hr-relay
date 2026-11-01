@@ -68,15 +68,18 @@ export function isAuthenticatedUcpathAppUrl(rawUrl: string): boolean {
 export const verifyUcpathAuthenticatedApplication: AuthenticatedApplicationVerifier = async (
   context,
 ): Promise<AuthenticationProbe> => verifyUcsdAuthenticatedApplication(SYSTEM, context.page, {
+  assertCurrent: context.assertCurrent,
   urlIsApplication: isAuthenticatedUcpathAppUrl,
   urlRefusal: "the observed URL is not a UCPath PeopleSoft application route; the public UCPath portal, campus discovery, SSO, Duo and the classic-PIA expiry landings are all refused here",
   positive: async () => probeSessionCookie(context.page, {
+    assertCurrent: context.assertCurrent,
     name: PEOPLESOFT_SESSION_COOKIE,
     domainSuffix: PEOPLESOFT_COOKIE_DOMAIN,
     issuer: "UCPath PeopleSoft",
   }),
   additionalAbsences: [
     async () => probeAbsentControl(context.page, {
+      assertCurrent: context.assertCurrent,
       selector: PEOPLESOFT_SIGNON_SELECTOR,
       description: "the PeopleSoft signon form",
     }),
@@ -88,17 +91,20 @@ function campusLink(page: SystemLoginContext["page"]): ReturnType<SystemLoginCon
 }
 
 async function selectUcSanDiego(context: SystemLoginContext): Promise<void> {
+  context.assertCurrent();
   try {
     await raceCancellation(
-      campusLink(context.page)
+      () => campusLink(context.page)
         .first()
         .click({ timeout: context.config.timeouts.navigationMs }),
       SYSTEM,
       "campus-discovery",
       context,
     );
+    context.assertCurrent();
     recordBrowserAction("clicked", "ucpath.campus-discovery");
   } catch (error) {
+    context.assertCurrent();
     if (error instanceof BrowserLoginError) throw error;
     throw new BrowserLoginError(
       SYSTEM,
@@ -111,10 +117,12 @@ async function selectUcSanDiego(context: SystemLoginContext): Promise<void> {
 }
 
 async function clickPortalLoginControl(context: SystemLoginContext): Promise<void> {
+  context.assertCurrent();
   const { page, config } = context;
   try {
+    context.assertCurrent();
     await raceCancellation(
-      page.getByRole("button", { name: LOGIN_CONTROL_NAME })
+      () => page.getByRole("button", { name: LOGIN_CONTROL_NAME })
         .or(page.getByRole("link", { name: LOGIN_CONTROL_NAME }))
         .first()
         .click({ timeout: config.timeouts.navigationMs }),
@@ -122,8 +130,10 @@ async function clickPortalLoginControl(context: SystemLoginContext): Promise<voi
       "navigate-login-entry",
       context,
     );
+    context.assertCurrent();
     recordBrowserAction("clicked", "ucpath.portal.login");
   } catch (error) {
+    context.assertCurrent();
     if (error instanceof BrowserLoginError) throw error;
     throw new BrowserLoginError(
       SYSTEM,
@@ -139,21 +149,26 @@ async function clickPortalLoginControl(context: SystemLoginContext): Promise<voi
 async function awaitLoginGate(
   context: SystemLoginContext,
 ): Promise<"campus-discovery" | "sso-form" | "application"> {
+  context.assertCurrent();
   const { page, config } = context;
   const campus = campusLink(page);
   try {
+    context.assertCurrent();
     await raceCancellation(
-      campus.or(ssoSubmitButton(page))
+      () => campus.or(ssoSubmitButton(page))
         .first()
         .waitFor({ state: "visible", timeout: config.timeouts.navigationMs }),
       SYSTEM,
       "navigate-login-entry",
       context,
     );
+    context.assertCurrent();
   } catch (error) {
+    context.assertCurrent();
     if (error instanceof BrowserLoginError) throw error;
 
-    if (isAuthenticatedUcpathAppUrl(page.url()) || await isSsoFormPresent(page)) {
+    context.assertCurrent();
+    if (isAuthenticatedUcpathAppUrl(page.url()) || await isSsoFormPresent(page, context.assertCurrent)) {
       return isAuthenticatedUcpathAppUrl(page.url()) ? "application" : "sso-form";
     }
     throw new BrowserLoginError(
@@ -164,7 +179,10 @@ async function awaitLoginGate(
       { cause: error },
     );
   }
-  return await campus.count() > 0 ? "campus-discovery" : "sso-form";
+  context.assertCurrent();
+  const count = await campus.count();
+  context.assertCurrent();
+  return count > 0 ? "campus-discovery" : "sso-form";
 }
 
 // UCPath BuildPage may interrupt entry goto and redirect back to that entry; settle only the same-realm interruption.
@@ -180,26 +198,33 @@ function isEntryRedirectInterruption(error: unknown, observed: string, entry: st
 
 // SSO returns to the public portal; enter the application and verify content before accepting login.
 async function enterAuthenticatedApplication(context: SystemLoginContext): Promise<void> {
+  context.assertCurrent();
   const { page, config } = context;
   if (isAuthenticatedUcpathAppUrl(page.url())) return;
   const entry = resolveSystemEntryUrl(config, SYSTEM, context.instance, context.label);
   try {
+    context.assertCurrent();
     await raceCancellation(
-      page.goto(entry, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs })
+      () => page.goto(entry, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs })
         .catch(async (error: unknown): Promise<void> => {
+          context.assertCurrent();
           if (!isEntryRedirectInterruption(error, page.url(), entry)) throw error;
           // Observe the existing navigation; never issue a second goto or
           // replay SSO. The wrapper still requires PS_TOKEN and absent forms.
+          context.assertCurrent();
           await page.waitForURL((url) => url.href === entry, {
             waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs,
           });
+          context.assertCurrent();
         }),
       SYSTEM,
       "verify-landing",
       context,
     );
+    context.assertCurrent();
     recordBrowserAction("opened", "ucpath.application");
   } catch (error) {
+    context.assertCurrent();
     if (error instanceof BrowserLoginError) throw error;
     throw new BrowserLoginError(
       SYSTEM,
@@ -212,18 +237,22 @@ async function enterAuthenticatedApplication(context: SystemLoginContext): Promi
 }
 
 async function navigateUcpathLoginEntry(context: SystemLoginContext): Promise<void> {
+  context.assertCurrent();
   const { page, config } = context;
   const loginUrl = resolveSystemLoginUrl(config, SYSTEM, context.instance, context.label);
   abortIfCancelled(SYSTEM, "navigate-login-entry", context);
   try {
+    context.assertCurrent();
     await raceCancellation(
-      page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs }),
+      () => page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs }),
       SYSTEM,
       "navigate-login-entry",
       context,
     );
+    context.assertCurrent();
     recordBrowserAction("opened", "ucpath.portal");
   } catch (error) {
+    context.assertCurrent();
     if (error instanceof BrowserLoginError) throw error;
     throw new BrowserLoginError(
       SYSTEM,
@@ -236,20 +265,33 @@ async function navigateUcpathLoginEntry(context: SystemLoginContext): Promise<vo
 }
 
 async function completeUcpathCeremony(context: SystemLoginContext, token: DuoCeremonyLeaseToken): Promise<void> {
+  context.assertCurrent();
   const { page, config } = context;
   // The portal's login control is the first navigation that can reach the
   // Duo ceremony, so it runs under the lease (ref execution-and-sessions ).
+  context.assertCurrent();
   await clickPortalLoginControl(context);
+  context.assertCurrent();
 
   // Campus discovery only appears when the IdP has no live session; when it
   // does, selecting UC San Diego is what produces the SSO form.
+  context.assertCurrent();
   const gate = await awaitLoginGate(context);
-  if (gate === "campus-discovery") await selectUcSanDiego(context);
+  context.assertCurrent();
+  if (gate === "campus-discovery") {
+    context.assertCurrent();
+    await selectUcSanDiego(context);
+    context.assertCurrent();
+  }
 
   if (gate !== "application") {
+    context.assertCurrent();
     await waitForSsoForm(SYSTEM, context, token);
+    context.assertCurrent();
     await fillSsoCredentials(SYSTEM, context, token);
+    context.assertCurrent();
     await submitSsoForm(SYSTEM, context, token);
+    context.assertCurrent();
     await waitForAuthenticatedLanding(
       SYSTEM,
       context,
@@ -257,12 +299,16 @@ async function completeUcpathCeremony(context: SystemLoginContext, token: DuoCer
       (url) => isUcpathPostSsoLanding(url) || url.toLowerCase().includes(CAMPUS_DISCOVERY_MARKER),
       config.timeouts.duoApprovalSeconds * 1_000,
     );
+    context.assertCurrent();
   }
 
   // Duo can return to campus discovery; detect its link and reselect under the bounded retry.
   for (let attempt = 0; attempt < CAMPUS_RESELECT_ATTEMPTS; attempt += 1) {
+    context.assertCurrent();
     if (await campusLink(page).count() === 0) break;
+    context.assertCurrent();
     await selectUcSanDiego(context);
+    context.assertCurrent();
     await waitForAuthenticatedLanding(
       SYSTEM,
       context,
@@ -270,9 +316,12 @@ async function completeUcpathCeremony(context: SystemLoginContext, token: DuoCer
       isUcpathPostSsoLanding,
       config.timeouts.navigationMs,
     );
+    context.assertCurrent();
   }
 
+  context.assertCurrent();
   await enterAuthenticatedApplication(context);
+  context.assertCurrent();
 }
 
 export const ucpathLoginRecipe = defineVerifiedLoginRecipe({
@@ -280,16 +329,22 @@ export const ucpathLoginRecipe = defineVerifiedLoginRecipe({
   verify: verifyUcpathAuthenticatedApplication,
   navigate: navigateUcpathLoginEntry,
   ceremony: async (context, token): Promise<void> => {
+    context.assertCurrent();
     try {
       await completeUcpathCeremony(context, token);
+      context.assertCurrent();
     } catch (error) {
+      context.assertCurrent();
       if (!(error instanceof BrowserLandingStallError)
         || error.code !== "SHIBBOLETH_STALE_REQUEST" || error.host !== "a5.ucsd.edu"
         || context.signal.aborted
         || (context.acquisitionRemainingMs !== undefined && context.acquisitionRemainingMs() <= 1_000)
         || context.claimStaleRequestRecovery?.() === false) throw error;
+      context.assertCurrent();
       await navigateUcpathLoginEntry(context);
+      context.assertCurrent();
       await completeUcpathCeremony(context, token);
+      context.assertCurrent();
     }
   },
 });

@@ -72,7 +72,7 @@ it("durably stages pending enrollment before acknowledgement and holds signing u
   const session = createProfileSession({ onboardingDuo: { ...provider,
       async start(attempt, bind, reportFailure) {
         if (attempt.method === 'key') {
-          const child = machine.admitProfile(machine.issueRegisteredProfileClaim(attempt.profileId));
+          const child = machine.admitProfile(attempt.profileId);
           try {
             const store = createDraftDuoCredentialStore(child, machine, attempt.operationId, attempt.generation, clock);
             assert.deepEqual(store.read(), { state: 'never-initialized', revision: 0, credentials: [] });
@@ -747,7 +747,7 @@ it("finishes one interrupted Duo publication after the producing process exits a
     maintenance.release();
     const machine = RuntimeAdmission.acquireMachine(f.workspace, "shared", f.lifetime);
     retained.machine = machine;
-    const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(profileId));
+    const admission = machine.admitProfile(profileId);
     retained.admission = admission;
     {
       const reopened = createDuoCredentialStore(admission, machine, f.clock);

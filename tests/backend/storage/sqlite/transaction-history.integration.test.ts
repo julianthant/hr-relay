@@ -292,7 +292,7 @@ afterEach(_afterEachFixture0);
       const clock = manualClock(new Date(process.argv[3]));
       const path = process.argv[2];
       const machine = acquireSharedRuntimeAdmission(resolve(dirname(path), '../../../..'), lifetime);
-      const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(basename(dirname(path))));
+      const admission = machine.admitProfile(basename(dirname(path)));
       const db = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 500, migrationOwner: 'timeline-child' }, clock);
       try {
         const writer = createTimelineEmitter({ repository: db.authority.timelineEvents, clock });

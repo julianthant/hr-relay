@@ -1,4 +1,5 @@
 import { testProcessImport } from "../../../support/compiled-process.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { withOfflineMaintenance, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
@@ -11,7 +12,6 @@ import { syncBuiltinESMExports } from "node:module";
 import { retainAuthoritySourceClosure as retainFirstBootSourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { default as assert } from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync as readdirSync_m1, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -62,7 +62,7 @@ it("serves only the genuine token-owned profile and refuses its later missing ca
     rmSync(authorityPath);
     const fresh = acquireEntrypointAdmission(workspace, "exclusive", profile.lifetime); restarted = fresh;
     assert.throws(() => {
-      const claim = createProfileRegistry(fresh).storageClaim(active.profileId);
+      const claim = active.profileId;
       fresh.admitProfile(claim);
     }, /profile-database-binding-required/u);
     assert.equal(existsSync(authorityPath), false);
@@ -107,12 +107,12 @@ try {
     const { OfflineAuthorityRestoreService } = await import(${JSON.stringify(url("src/backend/storage/sqlite/offline-restore.ts"))});
     const { profileBrowserClosure } = await import(${JSON.stringify(url("src/backend/runtime/browser/native-profile-probe.ts"))});
     const { observeRuntimeLockSnapshot } = await import(${JSON.stringify(url("src/backend/storage/sqlite/runtime-process-locks.ts"))});
-        const { createProfileRegistry } = await import(${JSON.stringify(url("src/backend/profiles/registry.ts"))});
+
     const { createCredentialStore } = await import(${JSON.stringify(url("src/backend/storage/configuration/credential-store.ts"))});
     const { RuntimeLifetimeLock } = await import(${JSON.stringify(url("src/backend/storage/admission/lifetime-lock.ts"))});
     const lifetime = await RuntimeLifetimeLock.acquire(Number(process.argv[2]));
     const root = process.argv[1], machine = acquireEntrypointAdmission(root, "exclusive", lifetime);
-    const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(${JSON.stringify(profileId)})), state = admission.stateRoot;
+    const admission = machine.admitProfile(${JSON.stringify(profileId)}), state = admission.stateRoot;
     const credentials = createCredentialStore({ admission, stateRoot: state, erasureJournalAdmission: machine,
       erasureJournalPath: join(machine.stateRoot, "machine", "erasures", admission.profileBinding.profileId + ".json") });
     const path = join(state, "state.db"), directory = join(state, "backups", "authority"), processLockRoot = join(root, ${JSON.stringify(rebuildRuntimeIsolation.processLockRoot)});
@@ -161,7 +161,10 @@ try {
   assert.deepEqual(settled.report, { state: "settled", operationId: message.operationId, outcome: "replaced" });
   assert.equal(existsSync(journalPath), false);
   const admission = acquireEntrypointAdmission(workspace, "shared", lifetime);
-  const childAdmission = admission.admitProfile(createProfileRegistry(admission).storageClaim(message.profileId));
+  const signedOut = admission.admitProfile(message.profileId);
+  assert.throws(() => signedOut.assertReadable(), /profile-session-not-current/u); signedOut.release();
+  createProfileRegistry(admission).advanceSession(message.profileId);
+  const childAdmission = admission.admitProfile(message.profileId);
   try { const db = AuthorityDatabase.open(childAdmission, { path: join(childAdmission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "native-crash-reopen" });
     try { assert.equal(db.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { db.close(); }
   } finally { childAdmission.release(); admission.release(); }

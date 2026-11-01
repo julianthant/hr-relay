@@ -244,7 +244,8 @@ describe("registered browser-login smoke lifecycle", () => {
             newSessionId: () => "00000000-0000-4000-8000-000000000001",
             bindings: helpers.recordingBindings(),
             launcher: { launch: input => { mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 }); return Promise.reject(failure); } },
-            admitProfile: createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root,
+            assertCurrent: () => undefined,
+      admitProfile: createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root,
               workerId: slot.workerId, ordinal: slot.ordinal, system: "ucpath", profileRoot }),
           });
           const manager = new WorkerSessionManager({ workerId: slot.workerId, workflowId: slot.workflow,
@@ -306,7 +307,8 @@ describe("registered browser-login smoke lifecycle", () => {
               launches += 1;
               return current.launcher.launch(input);
             } },
-            admitProfile: createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root,
+            assertCurrent: () => undefined,
+      admitProfile: createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root,
               workerId: slot.workerId, ordinal: slot.ordinal, system: "ucpath", profileRoot: config.paths.browserProfileRoot }),
             bindings: { ucpath: { ...binding, login: context => context.duoCeremony.withCeremony(async token => {
               logins += 1;
@@ -367,7 +369,8 @@ describe("registered browser-login smoke lifecycle", () => {
               const close = context.close.bind(context);
               context.close = async options => { closeStarted(); await heldClose; await close(options); };
               return context;
-            } }, admitProfile: createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root, workerId: slot.workerId, ordinal: slot.ordinal,
+            } }, assertCurrent: () => undefined,
+      admitProfile: createSmokeProfileAdmission({ database, lock, stateRoot: fixtureOwner(database).root, workerId: slot.workerId, ordinal: slot.ordinal,
               system: "ucpath", profileRoot: config.paths.browserProfileRoot }),
             bindings: { ucpath: { ...binding, login: context => context.duoCeremony.withCeremony(async () => {
               expect(database.authority.duoCeremonyLeases.get(credentialKey)?.state).toBe("held");

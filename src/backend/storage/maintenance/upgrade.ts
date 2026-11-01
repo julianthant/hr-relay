@@ -10,9 +10,8 @@ import { AuthorityBackupService, verifyBackupManifestAtPath, verifyStoppedBackup
 import { openAuthorityBackupSourceReadOnly, inspectAuthorityBackupReadOnly } from "../sqlite/backup-inspection.js";
 import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
 import { pendingDiagnosticArtifacts } from "../artifacts/content-addressed-artifact-writer.js";
-import { readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, deriveAuthorityUpgradePlanDigest } from "../sqlite/migrations.js";
-import { type RuntimeAdmission, type RegisteredProfileStorageClaim } from "../admission/admission.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
@@ -42,22 +41,21 @@ function requireStopped(admission:RuntimeAdmission,input:StorageUpgradeInput,_cl
   assertOfflineMaintenanceForProcessRoot(operation, input.processLockRoot);
 }
 export async function backupStoppedAuthority(closure: StoppedBackupClosure, admission:RuntimeAdmission,stateRoot:string,clock:Clock,processLockRoot:string,restore:OfflineMaintenanceOperation) {
-  requireRuntimeAdmission(admission).assertStoppedAuthorityBackup(join(stateRoot,"state.db"),processLockRoot);admission.assertStateRoot(stateRoot);
+  const stopped = requireRuntimeAdmission(admission).forStoppedMaintenance(restore);
   const input={stateRoot,processLockRoot,plan:false};
-  requireStopped(admission,input,clock,true);
-  assertStoppedBackupClosure(closure, admission, restore);
   const verifyHeld=()=>{ admission.assertOfflineMaintenance(restore); assertOfflineMaintenanceForProcessRoot(restore,processLockRoot); assertStoppedBackupClosure(closure,admission,restore); };
   let operationFailure: { error: unknown } | undefined;
   let result: Awaited<ReturnType<AuthorityBackupService["request"]>> | undefined;
   try {
+    stopped.assertStoppedAuthorityBackup(join(stateRoot,"state.db"),processLockRoot);stopped.assertStateRoot(stateRoot);
     verifyHeld();
-    requireStopped(admission,input,clock,true);
-    const schemaVersion=AuthorityDatabase.inspectStoppedUpgrade(admission,join(stateRoot,"state.db"),processLockRoot,clock).schemaVersion;
-    const source=openAuthorityBackupSourceReadOnly(admission,join(stateRoot,"state.db"),250,schemaVersion);
+    requireStopped(stopped,input,clock,true);
+    const schemaVersion=AuthorityDatabase.inspectStoppedUpgrade(stopped,join(stateRoot,"state.db"),processLockRoot,clock).schemaVersion;
+    const source=openAuthorityBackupSourceReadOnly(stopped,join(stateRoot,"state.db"),250,schemaVersion);
     let report: Awaited<ReturnType<AuthorityBackupService["request"]>> | undefined;
     let primary: { error: unknown } | undefined;
-    try {report=await new AuthorityBackupService(admission,source,{directory:join(stateRoot,"backups","authority")},clock)
-      .request({trigger:"operator",requiredGeneration:source.getMeta().authorityGeneration});verifyHeld();requireStopped(admission,input,clock,true);
+    try {report=await new AuthorityBackupService(stopped,source,{directory:join(stateRoot,"backups","authority")},clock)
+      .request({trigger:"operator",requiredGeneration:source.getMeta().authorityGeneration});verifyHeld();requireStopped(stopped,input,clock,true);
     }catch(error){primary={error};}
     const failures: unknown[] = [];
     try{source.close();}catch(error){failures.push(error);}
@@ -72,7 +70,8 @@ export async function backupStoppedAuthority(closure: StoppedBackupClosure, admi
     if(report===undefined)throw new Error("upgrade-backup-result-unavailable");
     result=report;
   }catch(error){operationFailure={error};}
-  if(operationFailure !== undefined && hasUnprovedSourceClosure(operationFailure.error))throw retainAuthoritySourceClosure([operationFailure.error],{restore,admission});
+  if(operationFailure !== undefined && hasUnprovedSourceClosure(operationFailure.error))throw retainAuthoritySourceClosure([operationFailure.error],{restore,admission:stopped});
+  if (stopped !== admission) stopped.release();
   if(operationFailure!==undefined)throw operationFailure.error;
   if(result===undefined)throw new Error("authority-backup-result-missing");
   return result;
@@ -87,11 +86,11 @@ export async function upgradeStorage(browserClosure: ProfileBrowserClosure, admi
   let result: StorageUpgradeReport | undefined;
   let primary: { error: unknown } | undefined;
   try {
+  admission = admission.forStoppedMaintenance(restore);
   requireRuntimeAdmission(admission).assertStateRoot(input.stateRoot);
-  admission.assertAuthorityDatabase(path);requireDatabaseSourcePath(path);
+  admission.assertReadOnlyAuthorityDatabase(path);requireDatabaseSourcePath(path);
   requireStopped(admission,input,clock);
   inspection=existsSync(path)?AuthorityDatabase.inspectStoppedUpgrade(admission,path,input.processLockRoot,clock):undefined;
-  if (inspection !== undefined && admission.isProfileInitialization() && readProfileDatabaseBinding(path).state === "unbound") admission = sourceAdmission.forStoppedProfileUpgrade();
   result = await (async () => {
   const report=(state:StorageUpgradeReport["state"])=>StorageUpgradeReportSchema.parse({state,
     fromSchemaVersion:inspection?.schemaVersion??0,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
@@ -113,9 +112,7 @@ export async function upgradeStorage(browserClosure: ProfileBrowserClosure, admi
       }
       const pending = pendingDiagnosticArtifacts(admission);
       if (pending.length === 0) return report("already-upgraded");
-      const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "diagnostic-maintenance" }, clock);
-      let reclaimedStages: number;
-      try { reclaimedStages = database.reclaimPendingDiagnostics(); } finally { database.close(); }
+      const reclaimedStages = AuthorityDatabase.reclaimStoppedDiagnostics(admission, path, input.processLockRoot, clock, restore);
       requireStopped(admission,input,clock);
       const final = inspectAuthorityBackupReadOnly(admission,path);
       if (final.authorityGeneration !== inspection.authorityGeneration || final.authorityContentFingerprint !== inspection.authorityContentFingerprint) throw new Error("source-changed: diagnostic maintenance authority changed");
@@ -174,7 +171,7 @@ function assertReadyUpgradeInventory(before: ReadyUpgradeInventory, after: Ready
     && !allowed.has(entry.path) && !(publication.kind === "upgraded" && sourcePaths.has(entry.path)))) throw new Error("profile-stopped-upgrade-copy-membership-changed");
 }
 
-export async function upgradeReadyProfileStorage(browserClosure: ProfileBrowserClosure, machine: RuntimeAdmission, claim: RegisteredProfileStorageClaim,
+export async function upgradeReadyProfileStorage(browserClosure: ProfileBrowserClosure, machine: RuntimeAdmission, claim: string,
   input: Readonly<{ plan: boolean; hostFacts: HostConfigFacts }>, clock: Clock): Promise<StorageUpgradeReport> {
   requireRuntimeAdmission(machine).assertExclusive();
   const context = machine.readInstallationContext();

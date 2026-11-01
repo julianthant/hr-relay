@@ -1,4 +1,5 @@
 import { testProcessImport } from "../../../support/compiled-process.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
 import { RuntimeLifetimeLock, RuntimeAlreadyRunningError, type OfflineMaintenanceOperation, isOfflineMaintenanceOperationActive } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
@@ -35,7 +36,6 @@ import { join } from 'node:path';
 import { describe, it, vi } from "vitest";
 import { createBoundProfileFixture, readAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
 import { createCredentialStore, captureCredentialErasureHead, verifyCredentialErasureHead } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
@@ -51,7 +51,10 @@ async function world(clock: Clock = systemClock) {
   const journalPath = join(fixture.machine.stateRoot, "machine", "erasures", profileId + ".json");
   const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot);
   let admission = fixture.admission;
-  const renew = () => { admission = fixture.machine.admitProfile(createProfileRegistry(fixture.machine).storageClaim(profileId)); return admission; };
+  const renew = (select = false) => {
+    if (select) createProfileRegistry(fixture.machine).advanceSession(profileId);
+    admission = fixture.machine.admitProfile(profileId); return admission;
+  };
   const credentialInventories = {
     repairInventory: (child: RuntimeAdmission, ...args: Parameters<ReturnType<typeof composeProfileCredentialRepairInventory>>) =>
       composeProfileCredentialRepairInventory({ machine: fixture.machine, admission: child, clock, hostFacts: { primaryDisplay: null } })(...args),
@@ -235,7 +238,7 @@ describe("profile restore continuity", () => {
       assert.equal(f.machine.readProfileRegistry().sessionGeneration, before + 1);
       assert.throws(() => store.read());
       assert.throws(() => AuthorityDatabase.open(old, { path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-old-context" }), /profile-restore-context-expired/);
-      const fresh = f.renew();
+      const fresh = f.renew(true);
       const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-fresh-context" });
       assert.equal(database.getMeta().profileId, f.profileId); database.close();
       assert.ok(f.store().read().entries.ucpathPassword);
@@ -373,7 +376,7 @@ describe("profile restore continuity", () => {
       } finally { database.close(); }
       const manifestPath = await f.backup();
       await f.restore().restore({ manifestPath }, f.operation());
-      database = AuthorityDatabase.open(f.renew(), options, undefined, undefined, undefined, undefined, f.store());
+      database = AuthorityDatabase.open(f.renew(true), options, undefined, undefined, undefined, undefined, f.store());
       try {
         assert.deepEqual({ settings: database.authority.settingsCurrent.get(), command: database.authority.commands.get(settingsCommandId),
           audit: database.authority.commandAudits.findByCommand(settingsCommandId), intent: database.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId),
@@ -501,7 +504,7 @@ describe("profile restore continuity", () => {
       assert.deepEqual(readFileSync(f.journalPath), journal);
       assert.deepEqual(readFileSync(f.journalPath + ".authority"), anchor);
       assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), current);
-      f.renew();
+      f.renew(true);
       writeFileSync(join(f.stateRoot, "credentials", "protected.json"), old, { mode: 0o600 });
       const repaired = f.store().read();
       assert.equal(repaired.entries.ucpathPassword, undefined);
@@ -648,7 +651,7 @@ describe("profile restore continuity", () => {
       restoreHandle.release(); restoreHandle = undefined; recovery.admission.release(); recovery = undefined;
       freshMachine = RuntimeAdmission.acquireMachine(f.workspace, "exclusive", f.lifetime);
       assert.equal(freshMachine.readProfileRegistry().sessionGeneration, beforeGeneration + 1);
-      const fresh = freshMachine.admitProfile(createProfileRegistry(freshMachine).storageClaim(f.profileId));
+      const fresh = freshMachine.admitProfile(f.profileId);
       const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-recovered-fresh" }); database.close(); fresh.release();
     } finally {
       vi.restoreAllMocks(); syncBuiltinESMExports();
@@ -706,7 +709,7 @@ describe("profile restore continuity", () => {
       assert.equal(replacements, 1); assert.equal(existsSync(journalPath), false);
       restoreHandle.release(); restoreHandle = undefined; recovery.admission.release(); recovery = undefined;
       freshMachine = RuntimeAdmission.acquireMachine(f.workspace, "exclusive", f.lifetime);
-      const fresh = freshMachine.admitProfile(createProfileRegistry(freshMachine).storageClaim(f.profileId));
+      const fresh = freshMachine.admitProfile(f.profileId);
       try { assert.deepEqual(fresh.readCompletedRestores(), control.completedRestores); } finally { fresh.release(); }
     } catch (error) { primary = { error }; }
     finally {
@@ -775,7 +778,7 @@ describe("profile restore continuity", () => {
         const result=session.logOut(active.token,{at:'2026-10-21T12:01:00.000Z'});if(result.state!=='wiped')throw new Error('erase-not-wiped');
       }finally{machine.release();await lifetime.close();}process.stdout.write('OWNER_DONE');`;
       const restore = `const lifetime=await RuntimeLifetimeLock.acquire(port);const machine=acquireEntrypointAdmission(workspace,'exclusive',lifetime);try {
-        const child=machine.admitProfile(createProfileRegistry(machine).storageClaim(profileId));const root=child.stateRoot,path=join(root,'state.db');
+        const child=machine.admitProfile(profileId);const root=child.stateRoot,path=join(root,'state.db');
         const store=createCredentialStore({admission:child,stateRoot:root,erasureJournalAdmission:machine,erasureJournalPath:join(machine.stateRoot,'machine','erasures',profileId+'.json')});
 
         const proof=child.acquireOfflineMaintenance();
@@ -799,4 +802,18 @@ describe("profile restore continuity", () => {
     }
   });
 
+});
+
+
+it("releases consumed restore ownership if stopped-facade derivation fails before payload effects", async () => {
+  const f = await world();
+  const operation = f.operation();
+  const before = readFileSync(f.path);
+  const failure = new Error("synthetic-stopped-admission-derivation-failure");
+  const derive = vi.spyOn(RuntimeAdmission.prototype, "forStoppedMaintenance").mockImplementationOnce(() => { throw failure; });
+  try {
+    await assert.rejects(f.restore().restore({ manifestPath: "unused" }, operation), failure);
+    assert.equal(isOfflineMaintenanceOperationActive(operation), false);
+    assert.deepEqual(readFileSync(f.path), before);
+  } finally { derive.mockRestore(); operation.release(); await f.close(); }
 });

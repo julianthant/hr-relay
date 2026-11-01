@@ -904,9 +904,8 @@ export async function prepareStorageBackupCommand(
     selected = !admission.isFlatBackup() && context !== undefined && context.locator.stateRoot === admission.stateRoot
       ? captureSelectedProfileStorage(admission) : undefined;
     if (selected !== undefined) admission.assertExclusive();
-    const claim = selected === undefined ? undefined : admission.issueRegisteredProfileClaim(selected.profileId);
-    if (claim !== undefined && claim.phase !== "runtime") throw new Error("profile-onboarding-incomplete");
-    profile = claim === undefined ? undefined : admission.admitProfile(claim);
+    const claim = selected === undefined ? undefined : selected.profileId;
+    profile = claim === undefined ? undefined : admission.admitStoppedProfile(claim, operation);
     storage = profile ?? admission;
     selected?.assertCurrent();
     if (existsSync(join(storage.stateRoot, "state.db"))) {

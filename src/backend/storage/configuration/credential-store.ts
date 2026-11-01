@@ -1,3 +1,4 @@
+import type { OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { fsyncPath, writePrivateStage, replacePrivateFile } from "../private-path.js";
 import type { ProfilePublicationRead } from "../admission/installation.js";
 import { credentialKeyCustody } from "./credential-key-custody.js";
@@ -42,7 +43,7 @@ import {
   observeProcessIdentity,
   type ProcessIdentityObserver,
 } from "../sqlite/runtime-process-locks.js";
-import type { RuntimeAdmission, RegisteredProfileStorageClaim } from "../admission/admission.js";
+import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { StoppedControlProfileInventory } from "../admission/installation.js";
 import { DuoCredentialDocumentSchema, DuoDocumentEnvelopeSchema, type DuoCredentialDocument } from "../../../models/config/duo-credential-store.js";
@@ -641,14 +642,14 @@ function initialDocument(): CredentialDocument {
   }));
 }
 
-export function captureReadyUpgradeCredentialSource(machine: RuntimeAdmission, claim: RegisteredProfileStorageClaim) {
-  const profileId = claim.profileId;
-  const observe = (owner: RuntimeAdmission, current: RegisteredProfileStorageClaim): string => {
+export function captureReadyUpgradeCredentialSource(machine: RuntimeAdmission, claim: string) {
+  const profileId = claim;
+  const observe = (owner: RuntimeAdmission, current: string): string => {
     requireRuntimeAdmission(owner).assertProfileUpgradeCredentialSource(current);
-    if (current.profileId !== profileId) throw new Error("profile-upgrade-handoff-credential-profile-changed");
-    const binding = { installationId: owner.locator.installationId, profileId: current.profileId };
-    const keyPath = join(owner.stateRoot, "machine", "credential-keys", `${current.profileId}.json`);
-    const path = join(owner.stateRoot, "profiles", current.profileId, "credentials", CREDENTIAL_FILE_NAME);
+    if (current !== profileId) throw new Error("profile-upgrade-handoff-credential-profile-changed");
+    const binding = { installationId: owner.locator.installationId, profileId: current };
+    const keyPath = join(owner.stateRoot, "machine", "credential-keys", `${current}.json`);
+    const path = join(owner.stateRoot, "profiles", current, "credentials", CREDENTIAL_FILE_NAME);
     const keyFile = readPrivateFile(keyPath, { label: "lock", maxBytes: 4096 });
     const file = readPrivateFile(path, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
     if (keyFile === undefined || file === undefined) throw new Error("profile-upgrade-handoff-credential-required");
@@ -660,7 +661,7 @@ export function captureReadyUpgradeCredentialSource(machine: RuntimeAdmission, c
     return canonicalJsonStringify([keyFile, file].map(value => ({ identity: value.identity, digest: createHash("sha256").update(value.bytes).digest("hex") })));
   };
   const original = observe(machine, claim);
-  return Object.freeze({ revalidate(owner: RuntimeAdmission, current: RegisteredProfileStorageClaim): void {
+  return Object.freeze({ revalidate(owner: RuntimeAdmission, current: string): void {
     if (observe(owner, current) !== original) throw new Error("profile-upgrade-handoff-credential-changed");
   } });
 }
@@ -894,10 +895,10 @@ export function verifyCredentialErasureIntent(witness: VerifiedCredentialErasure
   assertCredentialErasureHeadFiles(journalPath, capture.prior);
   return capture;
 }
-export function captureCredentialErasureHead(store: CredentialStore): VerifiedCredentialErasureHead {
+export function captureCredentialErasureHead(store: CredentialStore, operation?: OfflineMaintenanceOperation): VerifiedCredentialErasureHead {
   const owner = committedStores.get(store);
   if (owner === undefined) throw new Error("credential-erasure-store-unissued");
-  return owner.captureErasureHead();
+  return owner.captureErasureHead(operation);
 }
 
 interface CredentialInitializationInventoryProof { readonly operationId: string; }
@@ -1036,7 +1037,7 @@ export function verifyUnpublishedDraftAbort(witness: UnpublishedDraftAbortWitnes
   return capture;
 }
 const committedStores = new WeakMap<CredentialStore, { readonly pendingLogoutInventory: (operation: LogoutOperation) => Readonly<{ assessment: CredentialInventory; revalidate(): void; dispose(): void }>; readonly admission: RuntimeAdmission; readonly stateRoot: string;
-  readonly presence: () => readonly { readonly name: z.infer<typeof ProtectedSettingsNameSchema>; readonly present: boolean }[]; readonly journalAdmission: RuntimeAdmission; readonly journalPath: string; readonly keyPath: string; readonly containsKey: (value: unknown) => boolean; readonly inspectCopy: (path: string, capturedSecrets: readonly string[]) => Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> ; readonly migrationSource: () => CredentialMigrationSource; readonly readForErasure: (operationId: string) => ProtectedStoreRecord; readonly captureErasureHead: () => VerifiedCredentialErasureHead;
+  readonly presence: () => readonly { readonly name: z.infer<typeof ProtectedSettingsNameSchema>; readonly present: boolean }[]; readonly journalAdmission: RuntimeAdmission; readonly journalPath: string; readonly keyPath: string; readonly containsKey: (value: unknown) => boolean; readonly inspectCopy: (path: string, capturedSecrets: readonly string[]) => Readonly<{ containsUcsd: boolean; containsCaptured: boolean }> ; readonly migrationSource: () => CredentialMigrationSource; readonly readForErasure: (operationId: string) => ProtectedStoreRecord; readonly ownsErasureCommand: (operationId: string, commandId: string) => boolean; readonly captureErasureHead: (operation?: OfflineMaintenanceOperation) => VerifiedCredentialErasureHead;
   readonly prepareDraftAbort: (operation: SignUpOperation) => UnpublishedDraftAbortWitness }>();
 
 export function observeCredentialPresence(store: CredentialStore, admission: RuntimeAdmission): readonly { readonly name: z.infer<typeof ProtectedSettingsNameSchema>; readonly present: boolean }[] {
@@ -1071,7 +1072,7 @@ export function inspectCredentialKeyCopy(store: CredentialStore, value: unknown)
 export function credentialMigrationSource(store: CredentialStore): CredentialMigrationSource {
   const owner = committedStores.get(store);
   if (owner === undefined) throw new Error("credential-migration-owner-required");
-  owner.admission.assertLive();
+  owner.admission.assertCredentialRead();
   owner.journalAdmission.assertProfileCredentialKey(owner.admission, join(owner.journalAdmission.stateRoot, "machine", "credential-keys", `${owner.admission.profileBinding.profileId}.json`));
   return owner.migrationSource();
 }
@@ -1114,6 +1115,12 @@ export function readForErasure(store: CredentialStore, operationId: string): Pro
   const owner = committedStores.get(store);
   if (owner === undefined) throw new Error("profile-erasure-credential-store-unissued");
   return owner.readForErasure(operationId);
+}
+
+export function ownsErasureCommand(store: CredentialStore, operationId: string, commandId: string): boolean {
+  const owner = committedStores.get(store);
+  if (owner === undefined) throw new Error("profile-erasure-credential-store-unissued");
+  return owner.ownsErasureCommand(operationId, z.uuid().parse(commandId));
 }
 
 export function captureCommittedCredentialReplay(store: CredentialStore, input: ProtectedSettingsApplyInput): CommittedCredentialWitness {
@@ -2080,12 +2087,12 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       });
     },
     ownsCommandId(commandId: string): boolean {
-      admission.assertLive();
+      admission.assertCredentialRead();
       const id = z.uuid().parse(commandId);
       return observeCurrent().document.history.some(({ receipt }) => receipt.commandId === id);
     },
     acceptedAt(commandId: string): string | undefined {
-      admission.assertLive();
+      admission.assertCredentialRead();
       const id = z.uuid().parse(commandId);
       return withLock(() => {
         const latest = readCurrentUnderLock().document.history.at(-1)?.receipt;
@@ -2361,7 +2368,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
             const capture = CredentialKeyStagePublicationSchema.parse({ registry: registryBeforeStage, priorOperation, operation, key: capturedKey });
             const witness = Object.freeze({ operationId: operation.operationId });
             committedKeyStages.set(witness, { capture, afterIntent: hooks.afterKeyStageJournal, revalidate: scope => {
-              journalAdmission.assertProfileCredentialKeyStageOwner(admission, operation);
+              journalAdmission.assertProfileCredentialKeyStageOwner(admission, operation, scope);
               inventory.revalidateBeforeKeyIntent(scope);
               assertCredentialErasureHeadFiles(journalPath, head);
               const currentSource = readPrivateFile(protectedPath, { label: "protected.json", maxBytes: MAX_CREDENTIAL_ENVELOPE_BYTES });
@@ -2405,7 +2412,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
           if (inventory === undefined) throw new Error("credential-initialization-inventory-required");
           const revalidateMembership = inventory.revalidate(currentOperation);
           initializedCredentials.set(witness, { capture, revalidate: scope => {
-            journalAdmission.assertProfileCredentialKeyStageOwner(admission, currentOperation);
+            journalAdmission.assertProfileCredentialKeyStageOwner(admission, currentOperation, scope);
             revalidateMembership(scope);
           } });
           journalAdmission.publishProfileCredentialInitialization(admission, witness);
@@ -2417,7 +2424,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       } finally { initializationRecovery = undefined; }
     },
     verifyReplay(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome {
-      admission.assertLive();
+      admission.assertCredentialRead();
       const request = admit(input);
       if (!("commandId" in request)) return request;
       const replay = evaluateReplay(observeCurrent(), request);
@@ -2493,6 +2500,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     if (needsTombstoneRepair(current.document, journal)) throw new Error("credential-presence-repair-required");
     const entries = Object.freeze(ProtectedSettingsNameSchema.options.map(name => Object.freeze({ name, present: current.document.record.entries[name] !== undefined })));
     hooks.betweenPresenceObservations?.();
+    admission.assertCredentialRead();
     const after = observeCurrent(), afterJournal = loadJournal(after.document);
     if (needsTombstoneRepair(after.document, afterJournal)) throw new Error("credential-presence-repair-required");
     assertCredentialErasureHeadFiles(journalPath, head);
@@ -2599,8 +2607,9 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     const witness = Object.freeze({ operationId: operation.operationId });
     unpublishedDraftAborts.set(witness, { machine: journalAdmission, admission, capture });
     return witness;
-  }, captureErasureHead: () => {
-    admission.assertCredentialRead();
+  }, captureErasureHead: operation => {
+    if (operation === undefined) admission.assertCredentialRead();
+    else admission.assertStoppedProfile(operation);
     const before = observeCurrent();
     const journal = loadJournal(before.document);
     const head = issueErasureHead(journal.epoch);
@@ -2610,6 +2619,11 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     if (captured === undefined) throw new Error("credential-erasure-head-unissued");
     assertCredentialErasureHeadFiles(journalPath, captured.head);
     return head;
+  }, ownsErasureCommand: (operationId, commandId) => {
+    admission.assertCredentialErasureObservation(operationId);
+    const current = observeCurrent();
+    loadJournal(current.document, "settlement");
+    return current.document.history.some(({ receipt }) => receipt.commandId === commandId);
   }, readForErasure: operationId => {
     admission.assertCredentialErasureObservation(operationId);
     const current = observeCurrent();

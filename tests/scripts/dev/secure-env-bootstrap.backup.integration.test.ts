@@ -99,7 +99,7 @@ it("backs up a current installation through real bootstrap admission and persist
   assert.deepEqual(readFileSync(join(fixture.stateRoot, "state.db")), source);
   assert.ok(result.stdout.includes(manifest.backupFileName));
   const machine = acquireEntrypointAdmission(fixture.workspace, "exclusive", fixture.lifetime);
-  const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(fixture.profileId));
+  const admission = machine.admitProfile(fixture.profileId);
   try {
     const verified = await verifyBackupManifestAtPath(admission, manifestPath,
       AuthorityDatabase.sourceDatabaseIdentity(join(fixture.stateRoot, "state.db")));

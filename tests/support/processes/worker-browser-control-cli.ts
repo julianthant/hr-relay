@@ -19,7 +19,6 @@ import { resolveSystemEntryUrl } from "../../../src/models/config/instance.js";
 import type { BrowserSystemBinding } from "../../../src/backend/runtime/browser/system-bindings.js";
 import { healthyCrmDriver, healthyUcpathDriver } from "../helpers/phase1f-executor-harness.js";
 import { captureSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
-import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { receiveRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
@@ -41,7 +40,7 @@ let runtimeEntered = false, runtimeClosureProved = false;
 const failures: unknown[] = [];
 try {
   const selected = captureSelectedProfileStorage(machine);
-  const child = machine.admitProfile(createProfileRegistry(machine).storageClaim(selected.profileId));
+  const child = machine.admitProfile(selected.profileId);
   admission = child;
   const credentials = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalAdmission: machine,
     erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });

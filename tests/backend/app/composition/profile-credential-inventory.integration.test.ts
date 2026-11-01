@@ -30,7 +30,6 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { AuthorityBackupService, parseBackupManifestFile } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { scaledMs } from "../../../support/time-scale.js";
@@ -61,7 +60,7 @@ async function fixture(f?: Awaited<ReturnType<typeof createBoundProfileFixture>>
       assert.equal(blocked.code, "PROFILE_LOGOUT_INVENTORY_BLOCKED");
       const operation = session.logoutOperations()[0];
       assert.ok(operation);
-      const admission = f.machine.admitProfile(createProfileRegistry(f.machine).settlementClaim(operation.operationId));
+      const admission = f.machine.admitProfileSettlement(operation.operationId);
       const store = createCredentialStore({ admission, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
         erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
       return { admission, credentials: store, operationId: operation.operationId };
@@ -497,7 +496,7 @@ for(const purpose of ["logout","backup"] as const)it(`accepts completed verifica
       const profileId=f.admission.profileBinding.profileId;f.context.database.close();f.admission.release();
       const processLockRoot=join(f.workspace,rebuildRuntimeIsolation.processLockRoot);
       restore=f.machine.acquireOfflineMaintenance();
-      const stoppedAdmission=await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, createProfileRegistry(f.machine).storageClaim(profileId),restore,f.clock,{primaryDisplay:null});stopped=stoppedAdmission;
+      const stoppedAdmission=await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, profileId,restore,f.clock,{primaryDisplay:null});stopped=stoppedAdmission;
       const heldRestore = restore;
       const report=await prepareStoppedBackupClosure(profileBrowserClosure, stoppedAdmission, heldRestore, f.clock, processLockRoot).then(closure => backupStoppedAuthority(closure, stoppedAdmission, f.stateRoot, f.clock, processLockRoot, heldRestore));
       assert.equal(report.state,"verified");assert.equal(report.manifests.length,1);

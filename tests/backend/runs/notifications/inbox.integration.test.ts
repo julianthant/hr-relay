@@ -259,7 +259,7 @@ afterEach(_afterEachFixture0);
       const clock = manualClock(new Date("2026-09-14T12:00:00Z"));
       const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
       const machine = acquireSharedRuntimeAdmission(process.argv[2], lifetime);
-      const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(process.argv[3]));
+      const admission = machine.admitProfile(process.argv[3]);
       registerBoundProfile(admission, machine);
       const db = AuthorityDatabase.open(admission,{path:join(admission.stateRoot,"state.db"),busyTimeoutMs:250,migrationOwner:"crash-proof"},clock,
         undefined,undefined,undefined,boundProfileCredentials(admission));

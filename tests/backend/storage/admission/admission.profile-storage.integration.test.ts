@@ -1,4 +1,5 @@
 import { testProcessImport } from "../../../support/compiled-process.js";
+import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { deriveProfileNames, SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { finishProfileOnboarding, readyProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
@@ -8,10 +9,10 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { syncBuiltinESMExports } from "node:module";
-import { createCredentialStore, captureCommittedCredentialReplay, readForErasure } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createCredentialStore, credentialMigrationSource, captureCommittedCredentialReplay, readForErasure } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, existsSync, symlinkSync, linkSync, renameSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, existsSync, symlinkSync, linkSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -53,8 +54,8 @@ it("boots a genuine machine without a dummy database, then creates a bound canon
     assert.throws(() => AuthorityDatabase.open(f.machine, { path: join(f.machine.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" }), /profile-bound-authority-required/u);
     const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields));
     assert.ok(active.state === "active");
-    const claim = f.registry.storageClaim(active.profileId);
-    assert.throws(() => f.machine.admitProfile({ ...claim }), /profile-storage-claim-unissued/u);
+    const claim = active.profileId;
+    assert.throws(() => Reflect.apply(f.machine.admitProfile.bind(f.machine), f.machine, [{ profileId: claim, phase: "runtime" }]), /Invalid input: expected string/u);
     const child = f.machine.admitProfile(claim);
     try {
       assert.throws(() => AuthorityDatabase.open(child, { path: ":memory:", busyTimeoutMs: 250, migrationOwner: "test" }), /outside admission/u);
@@ -72,16 +73,19 @@ it("boots a genuine machine without a dummy database, then creates a bound canon
   } finally { await f.cleanup(); }
 });
 
-it("does not mint a new child from a ready claim after logout starts while retaining existing drain custody", async () => {
+it("refuses profile effects after logout starts while retaining existing drain custody", async () => {
   const f = await fixture();
   try {
     const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active");
-    const claim = f.registry.storageClaim(active.profileId), child = f.machine.admitProfile(claim);
+    const claim = active.profileId, child = f.machine.admitProfile(claim);
+    const store = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalAdmission: f.machine,
+      erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${active.profileId}.json`) });
     f.busy();
     assert.equal(f.session.logOut(active.token, { at: "2026-09-06T12:01:00.000Z" }).state, "cancelling");
-    assert.throws(() => f.machine.admitProfile(claim), /profile-storage-claim-generation-changed/u);
+    assert.throws(() => f.machine.admitProfile(claim), /profile-storage-claim-unavailable/u);
     child.assertLive();
     assert.throws(() => child.assertCredentialRead(), /profile-storage-claim-generation-changed/u);
+    assert.throws(() => credentialMigrationSource(store), /profile-storage-claim-generation-changed/u);
     assert.throws(() => child.assertWritable(), /profile-storage-claim-generation-changed/u);
     assert.throws(() => AuthorityDatabase.open(child, { path: join(child.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" }), /profile-storage-claim-generation-changed/u);
     const refused = f.session.readFile(active.token, "absent");
@@ -108,8 +112,7 @@ it("rejects fabricated pending operations and modified persisted setup fields be
   try {
     const operation = f.machine.beginProfileSignUp({ emailKey: "a".repeat(64), firstName: "Alex", lastName: "Rivera",
       createdAt: IsoInstantSchema.parse(f.fields.createdAt), commandFingerprint: "a".repeat(64) });
-    const registry = f.registry;
-    const claim = registry.storageClaim(operation.profileId);
+    const claim = operation.profileId;
     const setup = f.machine.admitProfile(claim);
     assert.throws(() => AuthorityDatabase.open(setup, { path: join(setup.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" }), /profile-bound-authority-required/u);
     assert.throws(() => setup.assertAuthorityDatabase(":memory:"), /outside admission/u);
@@ -125,7 +128,7 @@ it("rejects fabricated pending operations and modified persisted setup fields be
     const fake = { ...operation, operationId: randomUUID(), profileId: randomUUID() };
     const fakePath = join(f.machine.stateRoot, "machine", "operations", `${fake.operationId}.json`);
     writeFileSync(fakePath, JSON.stringify(fake), { mode: 0o600 });
-    assert.throws(() => registry.storageClaim(fake.profileId), /profile-registry-continuity-mismatch/u);
+    assert.throws(() => f.machine.admitProfile(fake.profileId), /profile-registry-continuity-mismatch/u);
     assert.equal(existsSync(join(f.machine.stateRoot, "profiles", fake.profileId)), false);
   } finally { await f.cleanup(); }
 });
@@ -134,7 +137,7 @@ it("rejects foreign canonical binding and hardlink or symlink database substitut
   const f = await fixture();
   try {
     const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active");
-    const claim = f.registry.storageClaim(active.profileId), child = f.machine.admitProfile(claim);
+    const claim = active.profileId, child = f.machine.admitProfile(claim);
     const path = join(child.stateRoot, "state.db"), held = `${path}.held`;
     const raw = new DatabaseSync(path);
     try {
@@ -160,9 +163,8 @@ it("reissues only exact pending logout settlement after restart and rejects forg
     const result = f.session.logOut(active.token, { at: "2026-09-06T12:01:00.000Z" });
     assert.ok(result.state === "cancelling" && result.operationId !== undefined);
     const operationId = result.operationId;
-    const claim = f.registry.settlementClaim(operationId);
-    assert.throws(() => f.machine.admitProfile({ ...claim }), /profile-storage-claim-unissued/u);
-    const child = f.machine.admitProfile(claim);
+    assert.throws(() => Reflect.apply(f.machine.admitProfileSettlement.bind(f.machine), f.machine, [{ operationId }]), /Invalid input: expected string/u);
+    const child = f.machine.admitProfileSettlement(operationId);
     try {
       child.assertLive();
       const store = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalAdmission: f.machine,
@@ -185,7 +187,7 @@ it("reissues only exact pending logout settlement after restart and rejects forg
       const restarted = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot,
         activity: { hasUnquiescedWork: () => false }, backupPaths: () => [], loginDataPaths: () => [] });
       assert.equal(restarted.resumeLogout(result.operationId).state, "wiped");
-      assert.throws(() => f.registry.settlementClaim(operationId), /profile-settlement-operation-unavailable/u);
+      assert.throws(() => f.machine.admitProfileSettlement(operationId), /profile-settlement-operation-unavailable/u);
       assert.throws(() => child.assertLive(), /profile-settlement-operation-unavailable/u);
     } finally { child.release(); }
   } finally { await f.cleanup(); }
@@ -202,7 +204,7 @@ it("publishes ready only from an exact actual credential witness and rechecks po
     assert.ok(ready.state === "onboarding" && ready.step === "ready");
     assert.equal(f.registry.read().profiles.length, 0);
     assert.equal(createProfileVerifiers(f.machine.stateRoot).identify(f.fields.email), "unknown");
-    setup = f.machine.admitProfile(f.registry.storageClaim(draft.profileId));
+    setup = f.machine.admitProfile(draft.profileId);
     const path = join(setup.stateRoot, "state.db");
     const raw = new DatabaseSync(path);
     try {
@@ -549,4 +551,99 @@ it('retains genuine bound-profile setup custody after a native source close fail
     const error = testFailure.error;
     throw error instanceof Error ? error : new AggregateError([error], 'Fixture regression failed', { cause: error });
   }
+});
+
+
+it("revokes setup effects when its captured session generation changes but keeps cleanup custody", async () => {
+  const f = await fixture();
+  try {
+    const draft = f.session.signUp(f.fields);
+    assert.ok(draft.state === "onboarding");
+    const setup = f.machine.admitProfile(draft.profileId);
+    const path = join(setup.stateRoot, "state.db"), before = readFileSync(path);
+    f.registry.advanceSession(null);
+    setup.assertLive();
+    for (const effect of [() => setup.assertReadable(), () => setup.assertWritable(), () => setup.assertCredentialRead(),
+      () => setup.assertAuthorityDatabase(path)]) assert.throws(effect, /profile-storage-claim-generation-changed/u);
+    assert.deepEqual(readFileSync(path), before);
+    setup.release();
+  } finally { await f.cleanup(); }
+});
+
+it("keeps runtime reads out of stopped maintenance and permits only its explicit inspection", async () => {
+  const f = await createBoundProfileFixture();
+  try {
+    const admission = f.admission, path = f.path;
+    const store = fixtureAdmissions.boundProfileCredentials(admission);
+    const commandId = randomUUID(), registry = f.machine.readProfileRegistry();
+    const operation = admission.acquireOfflineMaintenance();
+    try {
+      for (const read of [() => f.machine.admitProfile(admission.profileBinding.profileId),
+        () => f.machine.publishProfileRegistry(registry, { ...registry, activeProfileId: null, sessionGeneration: registry.sessionGeneration + 1 }),
+        () => f.machine.beginProfileSignUp({ emailKey: "a".repeat(64), firstName: "Second", lastName: "Fixture",
+          createdAt: IsoInstantSchema.parse("2026-10-01T12:00:00.000Z"), commandFingerprint: "a".repeat(64) }),
+        () => admission.assertReadable(), () => store.read(), () => credentialMigrationSource(store), () => store.ownsCommandId(commandId),
+        () => store.acceptedAt(commandId), () => store.verifyReplay(ProtectedSettingsApplyInputSchema.parse({ commandId,
+          writeId: randomUUID(), commandFingerprint: "d".repeat(64), expectedRevision: 1,
+          protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-10-01T12:00:00.000Z", entries: { ucpathPassword: { set: "disposable-fixture-password" } } }))]) {
+        assert.throws(read, /offline-maintenance-busy/u);
+      }
+      assert.deepEqual(f.machine.readProfileRegistry(), registry);
+      const stopped = admission.forStoppedMaintenance(operation);
+      try {
+        stopped.assertReadOnlyAuthorityDatabase(path);
+        assert.throws(() => stopped.assertWritable(), /profile-settlement-runtime-refused/u);
+        assert.throws(() => stopped.assertCredentialRead(), /profile-settlement-credential-read-refused/u);
+      } finally { stopped.release(); }
+    } finally { operation.release(); }
+    store.read();
+  } finally { await f.close(); }
+});
+
+
+it("binds stopped profile inspection to its selected epoch and exact native operation before profile effects", async () => {
+  const f=await createBoundProfileFixture(),id=f.admission.profileBinding.profileId;
+  const first=f.machine.acquireOfflineMaintenance();
+  const stopped=f.machine.admitStoppedProfile(id,first);
+  const before=readFileSync(f.path);
+  try {
+    stopped.assertReadOnlyAuthorityDatabase(f.path);
+    assert.throws(()=>stopped.assertWritable(), /profile-settlement-runtime-refused/u);
+    first.release();
+    const second=f.machine.acquireOfflineMaintenance();
+    try { assert.throws(()=>stopped.assertReadOnlyAuthorityDatabase(f.path), /offline-maintenance-unissued/u); }
+    finally { second.release(); }
+    createProfileRegistry(f.machine).advanceSession(null);
+    const signedOut=f.machine.acquireOfflineMaintenance();
+    try { assert.throws(()=>f.machine.admitStoppedProfile(id,signedOut), /profile-session-not-current/u); }
+    finally { signedOut.release(); }
+    assert.deepEqual(readFileSync(f.path),before);
+  } finally { stopped.release(); first.release(); await f.close(); }
+});
+
+it("refuses stopped setup selection before creating or opening an authority database", async () => {
+  const f=await createBoundProfileFixture({pending:"storage"});
+  const operation=f.machine.acquireOfflineMaintenance();
+  try {
+    assert.equal(existsSync(f.path),false);
+    assert.throws(()=>f.machine.admitStoppedProfile(f.admission.profileBinding.profileId,operation), /profile-onboarding-incomplete/u);
+    assert.equal(existsSync(f.path),false);
+  } finally { operation.release(); await f.close(); }
+});
+
+
+it("refuses foreign stopped diagnostic references before deleting any retained stage", async () => {
+  const f=await createBoundProfileFixture(),foreign=await createBoundProfileFixture();
+  const stage=await createContentAddressedArtifactWriter({admission:f.admission})
+    .stageDiagnostic(Buffer.from("fixture retained diagnostic"),{mediaType:"application/json"},"ordinary");
+  const root=f.admission.artifactRoot,before=fs.readdirSync(root).sort();
+  const operation=f.machine.acquireOfflineMaintenance(),stopped=f.admission.forStoppedMaintenance(operation);
+  try {
+    copyFileSync(foreign.path,f.path);
+    const bytes=readFileSync(f.path);
+    assert.throws(()=>AuthorityDatabase.reclaimStoppedDiagnostics(stopped,f.path,
+      join(f.workspace,rebuildRuntimeIsolation.processLockRoot),systemClock,operation), /profile-maintenance-binding-mismatch/u);
+    assert.deepEqual(fs.readdirSync(root).sort(),before);
+    assert.deepEqual(readFileSync(f.path),bytes);
+  } finally { stopped.release();operation.release();stage.dispose();await foreign.close();await f.close(); }
 });

@@ -97,20 +97,26 @@ function recordUrlFromHref(href: string): Readonly<{ recordId: string; recordUrl
 
 
 
-async function waitForExactHeading(page: Page, name: string): Promise<Locator> {
+async function waitForExactHeading(assertCurrent: () => void, page: Page, name: string): Promise<Locator> {
   const heading = page.getByRole("heading", { name, exact: true });
+  assertCurrent();
   await heading.first().waitFor({ state: "visible", timeout: STATE_TIMEOUT_MS });
+  assertCurrent();
   const count = await heading.count();
   if (count !== 1) throw new Error(`CRM expected exactly one heading "${name}" but found ${String(count)}`);
+  assertCurrent();
   return heading;
 }
 
-async function waitForSearchReady(page: Page, query: string): Promise<void> {
+async function waitForSearchReady(assertCurrent: () => void, page: Page, query: string): Promise<void> {
+  assertCurrent();
   const url = assertExactCrmLocation(page.url(), CRM_SEARCH_PATH);
   if (url.searchParams.get("q") !== query) {
     throw new Error(`CRM search expected query ${query} but the rendered page used a different query`);
   }
-  await waitForExactHeading(page, "Search Results");
+  assertCurrent();
+  await waitForExactHeading(assertCurrent, page, "Search Results");
+  assertCurrent();
 }
 
 function searchRowsLocator(page: Page): Locator {
@@ -131,34 +137,42 @@ function rowNameLink(row: Locator): Locator {
   return row.locator(recipe.selector);
 }
 
-async function readRequiredText(locator: Locator, field: string): Promise<string> {
+async function readRequiredText(assertCurrent: () => void, locator: Locator, field: string): Promise<string> {
+  assertCurrent();
   const text = await locator.textContent();
   if (text === null) throw new Error(`CRM ${field} rendered without text`);
   const value = text.trim();
   if (value.length === 0) throw new Error(`CRM ${field} was blank`);
+  assertCurrent();
   return value;
 }
 
 // CRM search data rows have five cells; the verified two-cell auxiliary row is not data.
 async function searchCrmOnboardingRows(
+  assertCurrent: () => void,
   page: Page,
   query: string,
 ): Promise<readonly CrmOnboardingSearchRow[]> {
   if (query.trim().length === 0) throw new Error("CRM onboarding search query cannot be blank");
+  assertCurrent();
   await page.goto(searchUrl(query), {
     waitUntil: "domcontentloaded",
     timeout: NAVIGATION_TIMEOUT_MS,
   });
+  assertCurrent();
   recordBrowserAction("opened", "crm.onboarding.search");
-  await waitForSearchReady(page, query);
+  assertCurrent();
+  await waitForSearchReady(assertCurrent, page, query);
 
   const rows = searchRowsLocator(page);
+  assertCurrent();
   const rowCount = await rows.count();
   const results: CrmOnboardingSearchRow[] = [];
   let auxiliaryRows = 0;
   for (let index = 0; index < rowCount; index += 1) {
     const row = rows.nth(index);
     const cells = directRowCells(row);
+    assertCurrent();
     const cellCount = await cells.count();
     if (cellCount === 2) {
       auxiliaryRows += 1;
@@ -171,18 +185,21 @@ async function searchCrmOnboardingRows(
       );
     }
     const link = rowNameLink(row);
+    assertCurrent();
     const linkCount = await link.count();
     if (linkCount !== 1) {
       throw new Error(`CRM search row ${String(index)} had ${String(linkCount)} record links; expected exactly one`);
     }
+    assertCurrent();
     const href = await link.getAttribute("href");
     if (href === null || href.trim().length === 0) {
       throw new Error(`CRM search row ${String(index)} record link had no href`);
     }
     const { recordId, recordUrl } = recordUrlFromHref(href);
+    assertCurrent();
     results.push(SearchRowSchema.parse({
-      fullName: await readRequiredText(cells.nth(0), `search row ${String(index)} name`),
-      rawStage: await readRequiredText(cells.nth(4), `search row ${String(index)} process stage`),
+      fullName: await readRequiredText(assertCurrent, cells.nth(0), `search row ${String(index)} name`),
+      rawStage: await readRequiredText(assertCurrent, cells.nth(4), `search row ${String(index)} process stage`),
       recordId,
       recordUrl,
     }));
@@ -193,14 +210,20 @@ async function searchCrmOnboardingRows(
     exact: true,
   });
   if (results.length === 0) {
+    assertCurrent();
     await emptyHeading.first().waitFor({ state: "visible", timeout: STATE_TIMEOUT_MS });
+    assertCurrent();
     const emptyCount = await emptyHeading.count();
     if (emptyCount !== 1) {
       throw new Error(`CRM zero-result search expected one verified empty-state heading but found ${String(emptyCount)}`);
     }
-  } else if (await emptyHeading.count() !== 0) {
+  } else {
+    assertCurrent();
+    if (await emptyHeading.count() !== 0) {
     throw new Error("CRM search rendered data rows and the no-results state simultaneously");
   }
+  }
+  assertCurrent();
   return Object.freeze(results);
 }
 
@@ -224,46 +247,61 @@ function recordFieldLocator(page: Page, label: RecordFieldLabel): Locator {
 }
 
 async function readRecordField(
+  assertCurrent: () => void,
   page: Page,
   label: RecordFieldLabel,
   blank: "allow" | "reject",
 ): Promise<string> {
   const locator = recordFieldLocator(page, label);
+  assertCurrent();
   await locator.first().waitFor({ state: "visible", timeout: STATE_TIMEOUT_MS });
+  assertCurrent();
   const count = await locator.count();
   if (count !== 1) throw new Error(`CRM record field "${label}" resolved ${String(count)} values; expected exactly one`);
+  assertCurrent();
   const text = await locator.textContent();
   if (text === null) throw new Error(`CRM record field "${label}" rendered without text`);
   const value = text.trim();
   if (blank === "reject" && value.length === 0) throw new Error(`CRM record field "${label}" was blank`);
+  assertCurrent();
   return value;
 }
 
 
 async function openAndReadCrmRecord(
+  assertCurrent: () => void,
   page: Page,
   row: CrmOnboardingSearchRow,
 ): Promise<ExactCrmOnboardingRecord> {
+  assertCurrent();
   await page.goto(row.recordUrl, {
     waitUntil: "domcontentloaded",
     timeout: NAVIGATION_TIMEOUT_MS,
   });
+  assertCurrent();
   recordBrowserAction("opened", "crm.onboarding.record");
+  assertCurrent();
   assertExactCrmLocation(page.url(), CRM_RECORD_PATH, row.recordId);
-  const observedEid = EidSchema.parse(await readRecordField(page, "UCPath Employee ID", "reject"));
-  const firstDayOfService = await readRecordField(page, "First Day of Service (Effective Date)", "allow");
-  const dateSigned = await readRecordField(page, "Date Signed", "allow");
+  assertCurrent();
+  const observedEid = EidSchema.parse(await readRecordField(assertCurrent, page, "UCPath Employee ID", "reject"));
+  assertCurrent();
+  const firstDayOfService = await readRecordField(assertCurrent, page, "First Day of Service (Effective Date)", "allow");
+  assertCurrent();
+  const dateSigned = await readRecordField(assertCurrent, page, "Date Signed", "allow");
   if (firstDayOfService !== "") parseCrmDateOnly(firstDayOfService, "First Day of Service");
   if (dateSigned !== "") parseCrmDateOnly(dateSigned, "Date Signed");
-  return ExactRecordSchema.parse({
+  assertCurrent();
+  const result = ExactRecordSchema.parse({
     ...row,
     observedEid,
-    firstName: await readRecordField(page, "Employee First Name", "reject"),
-    lastName: await readRecordField(page, "Employee Last Name", "reject"),
+    firstName: await readRecordField(assertCurrent, page, "Employee First Name", "reject"),
+    lastName: await readRecordField(assertCurrent, page, "Employee Last Name", "reject"),
     firstDayOfService,
-    department: await readRecordField(page, "Department", "allow"),
+    department: await readRecordField(assertCurrent, page, "Department", "allow"),
     dateSigned,
   });
+  assertCurrent();
+  return result;
 }
 
 export function chooseExactCrmRecord(
@@ -282,15 +320,18 @@ export function chooseExactCrmRecord(
 }
 
 async function exactRecordsFromRows(
+  assertCurrent: () => void,
   page: Page,
   rows: readonly CrmOnboardingSearchRow[],
   expectedEid: string,
 ): Promise<readonly ExactCrmOnboardingRecord[]> {
   const exact: ExactCrmOnboardingRecord[] = [];
   for (const row of rows) {
-    const record = await openAndReadCrmRecord(page, row);
+    assertCurrent();
+    const record = await openAndReadCrmRecord(assertCurrent, page, row);
     if (record.observedEid === expectedEid) exact.push(record);
   }
+  assertCurrent();
   return Object.freeze(exact);
 }
 
@@ -331,20 +372,27 @@ function plausibleNameRows(
 
 // CRM search is fuzzy; open every plausible record and prove its displayed EID exactly.
 async function resolveExactCrmOnboardingRecord(
+  assertCurrent: () => void,
   page: Page,
   input: Readonly<{ eid: string; name?: string }>,
 ): Promise<ExactCrmRecordResolution> {
   const expectedEid = EidSchema.parse(input.eid);
-  const eidRows = await searchCrmOnboardingRows(page, expectedEid);
+  assertCurrent();
+  const eidRows = await searchCrmOnboardingRows(assertCurrent, page, expectedEid);
+  assertCurrent();
   const byEid = chooseExactCrmRecord(
-    await exactRecordsFromRows(page, eidRows, expectedEid),
+    await exactRecordsFromRows(assertCurrent, page, eidRows, expectedEid),
     expectedEid,
   );
-  if (byEid.state === "found" || input.name === undefined) return byEid;
+  if (byEid.state === "found" || input.name === undefined) {
+    assertCurrent();
+    return byEid;
+  }
 
   const fallbackRows = new Map<string, CrmOnboardingSearchRow>();
   for (const query of nameSearchQueries(input.name)) {
-    const rows = plausibleNameRows(await searchCrmOnboardingRows(page, query), input.name);
+    assertCurrent();
+    const rows = plausibleNameRows(await searchCrmOnboardingRows(assertCurrent, page, query), input.name);
     for (const row of rows) {
       const prior = fallbackRows.get(row.recordId);
       if (prior !== undefined &&
@@ -354,10 +402,13 @@ async function resolveExactCrmOnboardingRecord(
       fallbackRows.set(row.recordId, row);
     }
   }
-  return chooseExactCrmRecord(
-    await exactRecordsFromRows(page, [...fallbackRows.values()], expectedEid),
+  assertCurrent();
+  const result = chooseExactCrmRecord(
+    await exactRecordsFromRows(assertCurrent, page, [...fallbackRows.values()], expectedEid),
     expectedEid,
   );
+  assertCurrent();
+  return result;
 }
 
 export function parseCrmDateOnly(raw: string, field: string): z.infer<typeof DateOnlySchema> {
@@ -393,11 +444,14 @@ function bindingForAbsent(expectedEid: string) {
 }
 
 async function readOnboardingRecord(
+  assertCurrent: () => void,
   page: Page,
   input: z.output<typeof CrmReadOnboardingRecord.input>,
 ): Promise<CrmOnboardingRecordRead> {
-  const resolution = await resolveExactCrmOnboardingRecord(page, input);
+  assertCurrent();
+  const resolution = await resolveExactCrmOnboardingRecord(assertCurrent, page, input);
   if (resolution.state === "absent") {
+    assertCurrent();
     return CrmOnboardingRecordReadSchema.parse({
       binding: bindingForAbsent(input.eid),
       output: ReadOnboardingRecordOutputSchema.parse({
@@ -408,7 +462,9 @@ async function readOnboardingRecord(
     });
   }
   const record = resolution.record;
+  assertCurrent();
   recordBrowserAction("read", "crm.onboarding.record", JSON.stringify(record));
+  assertCurrent();
   return CrmOnboardingRecordReadSchema.parse({
     binding: bindingForFound(input.eid, record),
     output: ReadOnboardingRecordOutputSchema.parse({
@@ -424,44 +480,62 @@ async function readOnboardingRecord(
 }
 
 async function readOnboardingDates(
+  assertCurrent: () => void,
   page: Page,
   input: z.output<typeof CrmReadOnboardingDates.input>,
 ): Promise<CrmOnboardingDatesRead> {
-  if (input.name === undefined) return CrmOnboardingDatesReadSchema.parse({ binding: { state: "not-read", expectedEid: input.eid }, output: { emplId: input.eid, state: "no-confident-record", employmentDate: null, oathDate: null, reason: "No confident CRM record" } });
+  if (input.name === undefined) {
+    assertCurrent();
+    return CrmOnboardingDatesReadSchema.parse({ binding: { state: "not-read", expectedEid: input.eid }, output: { emplId: input.eid, state: "no-confident-record", employmentDate: null, oathDate: null, reason: "No confident CRM record" } });
+  }
   try {
     const records = new Map<string, ExactCrmOnboardingRecord>();
     for (const query of nameSearchQueries(input.name)) {
+      assertCurrent();
       recordBrowserAction("typed", "crm.onboarding.date-search", query);
+      assertCurrent();
       recordBrowserAction("clicked", "crm.onboarding.date-search");
-      const queryRows = await searchCrmOnboardingRows(page, query);
+      assertCurrent();
+      const queryRows = await searchCrmOnboardingRows(assertCurrent, page, query);
       const rows = plausibleNameRows(queryRows, input.name);
       for (const row of rows) {
-        const record = await openAndReadCrmRecord(page, row);
+        assertCurrent();
+        const record = await openAndReadCrmRecord(assertCurrent, page, row);
         if (record.observedEid === input.eid) records.set(record.recordId, record);
       }
-      const restoredRows = await searchCrmOnboardingRows(page, query);
+      assertCurrent();
+      const restoredRows = await searchCrmOnboardingRows(assertCurrent, page, query);
       if (JSON.stringify(restoredRows) !== JSON.stringify(queryRows)) throw new Error("CRM date results changed before capture");
+      assertCurrent();
       recordBrowserAction("read", "crm.onboarding.restored-results", JSON.stringify(restoredRows));
       if (records.size > 0) break;
     }
-    if (records.size !== 1) return CrmOnboardingDatesReadSchema.parse({
+    if (records.size !== 1) {
+      assertCurrent();
+      return CrmOnboardingDatesReadSchema.parse({
       binding: bindingForAbsent(input.eid), output: { emplId: input.eid, state: "no-confident-record", employmentDate: null, oathDate: null, reason: "No confident CRM record" },
     });
+    }
     const selected = [...records.values()][0];
     if (selected === undefined) throw new Error("CRM date record disappeared");
-    const record = await openAndReadCrmRecord(page, selected);
+    assertCurrent();
+    const record = await openAndReadCrmRecord(assertCurrent, page, selected);
     if (record.observedEid !== input.eid || record.firstName !== selected.firstName || record.lastName !== selected.lastName) {
       throw new CrmRecordIdentityDriftError();
     }
+    assertCurrent();
     recordBrowserAction("read", "crm.onboarding.dates", JSON.stringify({ employmentDate: record.firstDayOfService, oathDate: record.dateSigned }));
+    assertCurrent();
     return CrmOnboardingDatesReadSchema.parse({ binding: bindingForFound(input.eid, record), output: {
       emplId: input.eid, state: "read",
       employmentDate: record.firstDayOfService === "" ? null : parseCrmDateOnly(record.firstDayOfService, "First Day of Service"),
       oathDate: record.dateSigned === "" ? null : parseCrmDateOnly(record.dateSigned, "Date Signed"), reason: "",
     } });
   } catch (error) {
+    assertCurrent();
     if (error instanceof Error && error.name === "AbortError") throw error;
     const failure = new PersonLookupCrmDatesCheckError(error);
+    assertCurrent();
     return CrmOnboardingDatesReadSchema.parse({ binding: bindingForAbsent(input.eid), output: {
       emplId: input.eid, state: "check-failed", code: failure.code, employmentDate: null, oathDate: null, reason: failure.message,
     } });
@@ -469,7 +543,7 @@ async function readOnboardingDates(
 }
 
 
-export function createCrmOnboardingDriver(page: Page): CrmOnboardingDriver {
+export function createCrmOnboardingDriver(assertCurrent: () => void, page: Page): CrmOnboardingDriver {
   return Object.freeze(CrmOnboardingDriverSchema.parse({
     system: "crm",
     async searchOnboardingRecords(input: Readonly<{ name?: string; eid?: string }>) {
@@ -477,20 +551,28 @@ export function createCrmOnboardingDriver(page: Page): CrmOnboardingDriver {
       const names = input.name === undefined ? [] : nameSearchQueries(input.name);
       const queries = input.eid === undefined ? names : [input.eid, ...names];
       for (const query of queries) {
+        assertCurrent();
         recordBrowserAction("typed", "crm.onboarding.search-criteria", query);
+        assertCurrent();
         recordBrowserAction("clicked", "crm.onboarding.search");
-        const rows = await searchCrmOnboardingRows(page, query);
+        assertCurrent();
+        const rows = await searchCrmOnboardingRows(assertCurrent, page, query);
+        assertCurrent();
         recordBrowserAction("read", "crm.onboarding.record-count", String(rows.length));
         const plausible = query === input.eid ? rows : plausibleNameRows(rows, input.name === undefined ? "" : input.name);
         for (const row of plausible) {
-          const record = await openAndReadCrmRecord(page, row);
+          assertCurrent();
+          const record = await openAndReadCrmRecord(assertCurrent, page, row);
           if (input.eid === undefined || record.observedEid === input.eid) discovered.set(record.recordId, record);
         }
-        const restoredRows = await searchCrmOnboardingRows(page, query);
+        assertCurrent();
+        const restoredRows = await searchCrmOnboardingRows(assertCurrent, page, query);
         if (JSON.stringify(restoredRows) !== JSON.stringify(rows)) throw new Error("CRM discovery results changed before capture");
+        assertCurrent();
         recordBrowserAction("read", "crm.onboarding.restored-results", JSON.stringify(restoredRows));
         if (discovered.size > 0) break;
       }
+      assertCurrent();
       return [...discovered.values()].map((record) => CrmDiscoveredRecordSchema.parse({
         recordId: record.recordId, recordUrl: record.recordUrl, emplId: record.observedEid,
         name: `${record.lastName}, ${record.firstName}`, department: record.department,
@@ -498,17 +580,24 @@ export function createCrmOnboardingDriver(page: Page): CrmOnboardingDriver {
       }));
     },
     async verifyOnboardingRecord(input: CrmDiscoveredRecord) {
-      const record = await openAndReadCrmRecord(page, { fullName: input.name, rawStage: "Verification", recordId: input.recordId, recordUrl: input.recordUrl });
+      assertCurrent();
+      const record = await openAndReadCrmRecord(assertCurrent, page, { fullName: input.name, rawStage: "Verification", recordId: input.recordId, recordUrl: input.recordUrl });
       if (record.observedEid !== input.emplId || `${record.lastName}, ${record.firstName}` !== input.name) throw new CrmRecordIdentityDriftError();
       const current = CrmDiscoveredRecordSchema.parse({ ...input, department: record.department, firstDayOfService: record.firstDayOfService, dateSigned: record.dateSigned });
+      assertCurrent();
       recordBrowserAction("read", "crm.onboarding.record", JSON.stringify(current));
+      assertCurrent();
       return current;
     },
     async readOnboardingRecord(input: z.output<typeof CrmReadOnboardingRecord.input>) {
-      return readOnboardingRecord(page, input);
+      const result = await readOnboardingRecord(assertCurrent, page, input);
+      assertCurrent();
+      return result;
     },
     async readOnboardingDates(input: z.output<typeof CrmReadOnboardingDates.input>) {
-      return readOnboardingDates(page, input);
+      const result = await readOnboardingDates(assertCurrent, page, input);
+      assertCurrent();
+      return result;
     },
   }));
 }

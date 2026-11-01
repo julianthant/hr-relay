@@ -4917,7 +4917,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "d8f1e9f2030e1a1fc1106ff0c7bf2a2d12f269dd4feb022e33f94429cd9a7b94",
+      "fingerprint": "5a1a834050a79acadec575ee89aacd678385933a103f9e6bac2cb69eb4d7b668",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -4929,7 +4929,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/crm/driver/interpreter.ts",
-          "sha256": "486a28a0c5c4ac91f9020cbb33560d636a6dd03f107e125c8ee73f6e5b85add4"
+          "sha256": "729a62f8c5997346747a17e503df402b19c90193e9e1bff9532e25a23fa40edd"
         },
         {
           "path": "src/backend/systems/crm/driver/ui-registry.ts",
@@ -5195,7 +5195,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "965ce94ad2e07c4955c09f32bc2aa2a490a43a8d1a6ba211bad031114d780c16",
+      "fingerprint": "7b8feb553c9702ad2300d0bc9a153c3fd616673ca750f6c7433401ddffd94825",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -5207,7 +5207,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/crm/driver/interpreter.ts",
-          "sha256": "486a28a0c5c4ac91f9020cbb33560d636a6dd03f107e125c8ee73f6e5b85add4"
+          "sha256": "729a62f8c5997346747a17e503df402b19c90193e9e1bff9532e25a23fa40edd"
         },
         {
           "path": "src/backend/systems/crm/driver/ui-registry.ts",
@@ -5473,7 +5473,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "dc45f7098fc84036f1577adc6cbb54c030ec352ba4fe7e5b4aafbaf2dda54713",
+      "fingerprint": "57407307ecc61aa72638ce9f9a5bb309fc53a457577cf4bbc61dbf712594d6a0",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -5485,7 +5485,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/crm/driver/interpreter.ts",
-          "sha256": "486a28a0c5c4ac91f9020cbb33560d636a6dd03f107e125c8ee73f6e5b85add4"
+          "sha256": "729a62f8c5997346747a17e503df402b19c90193e9e1bff9532e25a23fa40edd"
         },
         {
           "path": "src/backend/systems/crm/driver/ui-registry.ts",
@@ -5755,7 +5755,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-results"
     },
     {
-      "fingerprint": "2913b534cdc3d12bb5fd40ce22773d208d559528a938aa4d6886cda780518fdb",
+      "fingerprint": "20de6b3d3e0fdc0fb01bc86367a2278d255a4e716e81da3b3550cf81d7cd5a80",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -5767,7 +5767,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/crm/driver/interpreter.ts",
-          "sha256": "486a28a0c5c4ac91f9020cbb33560d636a6dd03f107e125c8ee73f6e5b85add4"
+          "sha256": "729a62f8c5997346747a17e503df402b19c90193e9e1bff9532e25a23fa40edd"
         },
         {
           "path": "src/backend/systems/crm/driver/ui-registry.ts",
@@ -6033,7 +6033,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/search-onboarding-records"
     },
     {
-      "fingerprint": "9312706c6fa63c8e8699c04e4446bcc7fbf609ecdd8d95f45b2cf8e0e05f5535",
+      "fingerprint": "416dde159f69142f172b45bc783d829cb6070f962002c30404e225581a8703b5",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -6045,7 +6045,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/crm/driver/interpreter.ts",
-          "sha256": "486a28a0c5c4ac91f9020cbb33560d636a6dd03f107e125c8ee73f6e5b85add4"
+          "sha256": "729a62f8c5997346747a17e503df402b19c90193e9e1bff9532e25a23fa40edd"
         },
         {
           "path": "src/backend/systems/crm/driver/ui-registry.ts",
@@ -6771,7 +6771,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-spreadsheet"
     },
     {
-      "fingerprint": "4766ff4eaefceec490ecd49277cf740e21180b2ad72f0a132f60842c80634a51",
+      "fingerprint": "259265a05e528537704f6a04c9ad15827eec8ef7e22a1d8d00e56acb24ee89a4",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -6783,7 +6783,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/kuali/driver/interpreter.ts",
-          "sha256": "d66a38f214e5be9ae7cb080849bc1d2de5e904073df4db341f0da31d650deb99"
+          "sha256": "33ef79b82df70cd52f8cf5fc1251254c653cfdacee896146ac43f7a40bd795c7"
         },
         {
           "path": "src/backend/systems/kuali/driver/ui-registry.ts",
@@ -7065,7 +7065,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/match-separation-finalization"
     },
     {
-      "fingerprint": "97b06932e3052aae56316754fc9752c369ce8263751d5832ca8cebc4289ff902",
+      "fingerprint": "37badfb58fe433e47d65e870aa694904c3e68272f11030e4e7d5fe1a9e9d02b5",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7077,7 +7077,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/kuali/driver/interpreter.ts",
-          "sha256": "d66a38f214e5be9ae7cb080849bc1d2de5e904073df4db341f0da31d650deb99"
+          "sha256": "33ef79b82df70cd52f8cf5fc1251254c653cfdacee896146ac43f7a40bd795c7"
         },
         {
           "path": "src/backend/systems/kuali/driver/ui-registry.ts",
@@ -7347,7 +7347,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/read-separation-document"
     },
     {
-      "fingerprint": "58e799df1d5ca45752d79af1ff68d89167e6d906626baf934042291fbdb3bea4",
+      "fingerprint": "ba7651ac3c26fb32f5edc8571e5d2f961443663320e851a26eb7ada2546c67bf",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7359,7 +7359,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/kuali/driver/interpreter.ts",
-          "sha256": "d66a38f214e5be9ae7cb080849bc1d2de5e904073df4db341f0da31d650deb99"
+          "sha256": "33ef79b82df70cd52f8cf5fc1251254c653cfdacee896146ac43f7a40bd795c7"
         },
         {
           "path": "src/backend/systems/kuali/driver/ui-registry.ts",
@@ -7633,7 +7633,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/save-separation-finalization"
     },
     {
-      "fingerprint": "fbcafe79388e499ad5212888c29bfd183b061abca419cdfd1d25b6bc681980c3",
+      "fingerprint": "30b6fab2ca1c899848671d1c11068f84299b42de5991b5dd138308edef978809",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7645,7 +7645,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/kuali/driver/interpreter.ts",
-          "sha256": "d66a38f214e5be9ae7cb080849bc1d2de5e904073df4db341f0da31d650deb99"
+          "sha256": "33ef79b82df70cd52f8cf5fc1251254c653cfdacee896146ac43f7a40bd795c7"
         },
         {
           "path": "src/backend/systems/kuali/driver/ui-registry.ts",
@@ -7915,7 +7915,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/search-separation-action"
     },
     {
-      "fingerprint": "fce2d31e4525b644f2b4a35f475723480f4bb116907ce2d785fee4779af52bba",
+      "fingerprint": "d3844a344374ea0cbc3eb0c5f2d3645eea0c99e3916b2d3f138116df5a0467af",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7927,7 +7927,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/kuali/driver/interpreter.ts",
-          "sha256": "d66a38f214e5be9ae7cb080849bc1d2de5e904073df4db341f0da31d650deb99"
+          "sha256": "33ef79b82df70cd52f8cf5fc1251254c653cfdacee896146ac43f7a40bd795c7"
         },
         {
           "path": "src/backend/systems/kuali/driver/ui-registry.ts",
@@ -8201,7 +8201,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/stage-separation-finalization"
     },
     {
-      "fingerprint": "4d5ee8d11bc058018ae4f8e0904211b6d795d317371e85d724efcfb0dec14ac5",
+      "fingerprint": "f217075fd24818f34e5f535b63b1a51fb1403be923ba91607f63918c8464b412",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -8213,7 +8213,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/kuali/driver/interpreter.ts",
-          "sha256": "d66a38f214e5be9ae7cb080849bc1d2de5e904073df4db341f0da31d650deb99"
+          "sha256": "33ef79b82df70cd52f8cf5fc1251254c653cfdacee896146ac43f7a40bd795c7"
         },
         {
           "path": "src/backend/systems/kuali/driver/ui-registry.ts",
@@ -8499,7 +8499,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-separation-finalization"
     },
     {
-      "fingerprint": "2a9b0d509d14336a90424cf96bbd3d50c6eeef175c60b9ce5a2b378169d1c775",
+      "fingerprint": "2cd8ffca7dc200f081ad7e2d88985bd44464666ccbc56e236e028a7ec0b15372",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -8515,7 +8515,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/new-kronos/driver/interpreter.ts",
-          "sha256": "fbb56192e8893e447b66fdbbf52da3e49ee093339092dbb62a79e24b80df5234"
+          "sha256": "6eab397fcfa589fe0bf3a4ee92439dc92a7a574ea62536c052e0d1a1b6c85907"
         },
         {
           "path": "src/backend/systems/new-kronos/driver/search-render.ts",
@@ -8785,7 +8785,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "e7c52b690a75523a3bcfa2ef7e804fcea93ab9d4216ab5ba9d5fad17ad8824a4",
+      "fingerprint": "51fa4c827c4aad21f20f6acedc80aa485df899fa484331e93d0f869fec7ea675",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -8801,7 +8801,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/new-kronos/driver/interpreter.ts",
-          "sha256": "fbb56192e8893e447b66fdbbf52da3e49ee093339092dbb62a79e24b80df5234"
+          "sha256": "6eab397fcfa589fe0bf3a4ee92439dc92a7a574ea62536c052e0d1a1b6c85907"
         },
         {
           "path": "src/backend/systems/new-kronos/driver/search-render.ts",
@@ -9805,7 +9805,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "b8c01974f5860b93a132076d27d8ffc40c1c730da78465676d6d475cab9daa85",
+      "fingerprint": "35b14bd20b7faaa62a851cac2cac172ccf0020bc40e8f1e235ed27eb63ea385c",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -9817,23 +9817,23 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "31cde1eb08c66938dc8e022bea54e13dde413426efa957b21f97026d3409bc92"
+          "sha256": "5ebbb3fdc5ba58708b6d6cae9f412291bccd175cc46607aeffadc70df64d2083"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
-          "sha256": "e5cfc4ea5edbe7373f52af658b13b733eb8a8e860b10cec6e85703a78c71c961"
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
-          "sha256": "1592a991ff2dcba0810b75b68e38fd427912694843c4a83432e5c2f0a2246479"
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "9a8d2de66758994054427f75b1889e0545af01ebaf1a9990f355f2697acfee26"
+          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "9a6a962c307955c1e9d2e43617c8928d718214832e28801419257e05682bcde6"
+          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
@@ -10167,7 +10167,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/create-termination"
     },
     {
-      "fingerprint": "38ddabc7c35913c4f29bc0802a57addc5303cb42cd442610815af0e5cd095cb2",
+      "fingerprint": "a3049b904f55fdd060320fd6951b6ce604d984391f98a7404d93b2a99052ad9d",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -10179,23 +10179,23 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "31cde1eb08c66938dc8e022bea54e13dde413426efa957b21f97026d3409bc92"
+          "sha256": "5ebbb3fdc5ba58708b6d6cae9f412291bccd175cc46607aeffadc70df64d2083"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
-          "sha256": "e5cfc4ea5edbe7373f52af658b13b733eb8a8e860b10cec6e85703a78c71c961"
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
-          "sha256": "1592a991ff2dcba0810b75b68e38fd427912694843c4a83432e5c2f0a2246479"
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "9a8d2de66758994054427f75b1889e0545af01ebaf1a9990f355f2697acfee26"
+          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "9a6a962c307955c1e9d2e43617c8928d718214832e28801419257e05682bcde6"
+          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
@@ -10529,7 +10529,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/delete-pending-terminations"
     },
     {
-      "fingerprint": "41e6dfd3afb31e1261724097e9a8f142b8a18dfaf51350349146c333941d79fb",
+      "fingerprint": "755ddc44f7311cf4d307ff2d673df887d18e9e5635cad6f68272b1a50488893c",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -10541,23 +10541,23 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "31cde1eb08c66938dc8e022bea54e13dde413426efa957b21f97026d3409bc92"
+          "sha256": "5ebbb3fdc5ba58708b6d6cae9f412291bccd175cc46607aeffadc70df64d2083"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
-          "sha256": "e5cfc4ea5edbe7373f52af658b13b733eb8a8e860b10cec6e85703a78c71c961"
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
-          "sha256": "1592a991ff2dcba0810b75b68e38fd427912694843c4a83432e5c2f0a2246479"
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "9a8d2de66758994054427f75b1889e0545af01ebaf1a9990f355f2697acfee26"
+          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "9a6a962c307955c1e9d2e43617c8928d718214832e28801419257e05682bcde6"
+          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
@@ -10891,7 +10891,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-existing-termination"
     },
     {
-      "fingerprint": "6f724d76eec7925728bab28b0973a5a884eb6fa88d6a486752ab620693203ecc",
+      "fingerprint": "add82e77ab7f3fc3aa0b88b37d5403426bea1e86b10ea894868d30bcce12db05",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -10903,23 +10903,23 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "31cde1eb08c66938dc8e022bea54e13dde413426efa957b21f97026d3409bc92"
+          "sha256": "5ebbb3fdc5ba58708b6d6cae9f412291bccd175cc46607aeffadc70df64d2083"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
-          "sha256": "e5cfc4ea5edbe7373f52af658b13b733eb8a8e860b10cec6e85703a78c71c961"
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
-          "sha256": "1592a991ff2dcba0810b75b68e38fd427912694843c4a83432e5c2f0a2246479"
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "9a8d2de66758994054427f75b1889e0545af01ebaf1a9990f355f2697acfee26"
+          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "9a6a962c307955c1e9d2e43617c8928d718214832e28801419257e05682bcde6"
+          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
@@ -11253,7 +11253,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-pending-terminations"
     },
     {
-      "fingerprint": "c8d01ffc6c9267be40c69d2b0573368b48aa89c0dd13e4fe6199e002b09194c7",
+      "fingerprint": "0ef72da833e0e47ce3e16db58cb032bd3e05f8fa5eda008711fe55bd28aeeeee",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -11265,23 +11265,23 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "31cde1eb08c66938dc8e022bea54e13dde413426efa957b21f97026d3409bc92"
+          "sha256": "5ebbb3fdc5ba58708b6d6cae9f412291bccd175cc46607aeffadc70df64d2083"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
-          "sha256": "e5cfc4ea5edbe7373f52af658b13b733eb8a8e860b10cec6e85703a78c71c961"
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
-          "sha256": "1592a991ff2dcba0810b75b68e38fd427912694843c4a83432e5c2f0a2246479"
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "9a8d2de66758994054427f75b1889e0545af01ebaf1a9990f355f2697acfee26"
+          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "9a6a962c307955c1e9d2e43617c8928d718214832e28801419257e05682bcde6"
+          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
@@ -11619,7 +11619,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "9769206e5f751e5b8739285f2b768d9df7f961894fcab10cdbf37838e5a71eab",
+      "fingerprint": "235b72347dd6b3aa07ad566247c0f2459965f43d29d09040d2b2e89550fd849c",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -11631,23 +11631,23 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "31cde1eb08c66938dc8e022bea54e13dde413426efa957b21f97026d3409bc92"
+          "sha256": "5ebbb3fdc5ba58708b6d6cae9f412291bccd175cc46607aeffadc70df64d2083"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
-          "sha256": "e5cfc4ea5edbe7373f52af658b13b733eb8a8e860b10cec6e85703a78c71c961"
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
-          "sha256": "1592a991ff2dcba0810b75b68e38fd427912694843c4a83432e5c2f0a2246479"
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "9a8d2de66758994054427f75b1889e0545af01ebaf1a9990f355f2697acfee26"
+          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "9a6a962c307955c1e9d2e43617c8928d718214832e28801419257e05682bcde6"
+          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
@@ -11985,7 +11985,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-pending-termination-set"
     },
     {
-      "fingerprint": "5802ce1f3590a0b702227d27e7dee497e6f1e388f7ed244504c83631afc0afe0",
+      "fingerprint": "85bb2e65d8d5ea0a013cbf306e30c8ffe6ecced7025d4bd85a4feee4900dffcb",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -11997,23 +11997,23 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "31cde1eb08c66938dc8e022bea54e13dde413426efa957b21f97026d3409bc92"
+          "sha256": "5ebbb3fdc5ba58708b6d6cae9f412291bccd175cc46607aeffadc70df64d2083"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
-          "sha256": "e5cfc4ea5edbe7373f52af658b13b733eb8a8e860b10cec6e85703a78c71c961"
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
-          "sha256": "1592a991ff2dcba0810b75b68e38fd427912694843c4a83432e5c2f0a2246479"
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "9a8d2de66758994054427f75b1889e0545af01ebaf1a9990f355f2697acfee26"
+          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "9a6a962c307955c1e9d2e43617c8928d718214832e28801419257e05682bcde6"
+          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
@@ -12347,7 +12347,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-match"
     },
     {
-      "fingerprint": "0dc6deafcf6c3067fb1b037335949c273cdfcb1c427ac1adc8a3dee2f5e83769",
+      "fingerprint": "451f3119af5f670283b8d3e3c35d19a1927f005101bcb2017be652b4947bb461",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -12359,23 +12359,23 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "31cde1eb08c66938dc8e022bea54e13dde413426efa957b21f97026d3409bc92"
+          "sha256": "5ebbb3fdc5ba58708b6d6cae9f412291bccd175cc46607aeffadc70df64d2083"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
-          "sha256": "e5cfc4ea5edbe7373f52af658b13b733eb8a8e860b10cec6e85703a78c71c961"
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
-          "sha256": "1592a991ff2dcba0810b75b68e38fd427912694843c4a83432e5c2f0a2246479"
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "9a8d2de66758994054427f75b1889e0545af01ebaf1a9990f355f2697acfee26"
+          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "9a6a962c307955c1e9d2e43617c8928d718214832e28801419257e05682bcde6"
+          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
@@ -12709,7 +12709,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "16fec0c28a8eea7ff98c67f604e53d3f11a2c0ef18e1af1a1b495d21d7b0d7b5",
+      "fingerprint": "8150cd74db3f7adef41dc4742c7d408f1115704c9bb7fc9400323dfd3d175571",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -12721,23 +12721,23 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "31cde1eb08c66938dc8e022bea54e13dde413426efa957b21f97026d3409bc92"
+          "sha256": "5ebbb3fdc5ba58708b6d6cae9f412291bccd175cc46607aeffadc70df64d2083"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
-          "sha256": "e5cfc4ea5edbe7373f52af658b13b733eb8a8e860b10cec6e85703a78c71c961"
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
-          "sha256": "1592a991ff2dcba0810b75b68e38fd427912694843c4a83432e5c2f0a2246479"
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "9a8d2de66758994054427f75b1889e0545af01ebaf1a9990f355f2697acfee26"
+          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "9a6a962c307955c1e9d2e43617c8928d718214832e28801419257e05682bcde6"
+          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
@@ -13075,7 +13075,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-pending-termination-sweep"
     },
     {
-      "fingerprint": "303a09f4dfe6f8e9a8614aa31b825490d15d4c5c6bcb92ab52e59477ff07e2a4",
+      "fingerprint": "f476246c183aaa03d7a44653c3bb46c1a6a4a6d13deb80255e475059a0a90ad9",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -13087,23 +13087,23 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "31cde1eb08c66938dc8e022bea54e13dde413426efa957b21f97026d3409bc92"
+          "sha256": "5ebbb3fdc5ba58708b6d6cae9f412291bccd175cc46607aeffadc70df64d2083"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
-          "sha256": "e5cfc4ea5edbe7373f52af658b13b733eb8a8e860b10cec6e85703a78c71c961"
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
-          "sha256": "1592a991ff2dcba0810b75b68e38fd427912694843c4a83432e5c2f0a2246479"
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "9a8d2de66758994054427f75b1889e0545af01ebaf1a9990f355f2697acfee26"
+          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "9a6a962c307955c1e9d2e43617c8928d718214832e28801419257e05682bcde6"
+          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
@@ -13441,7 +13441,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-termination"
     },
     {
-      "fingerprint": "4e9ddd399c265913573330753934e51993e68168e861f5333e9160c8fed70f43",
+      "fingerprint": "ce5f388039846c62332bade70e64ed5dc8dcee890ba88d493131d338fc3f03e4",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -13453,23 +13453,23 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "31cde1eb08c66938dc8e022bea54e13dde413426efa957b21f97026d3409bc92"
+          "sha256": "5ebbb3fdc5ba58708b6d6cae9f412291bccd175cc46607aeffadc70df64d2083"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
-          "sha256": "e5cfc4ea5edbe7373f52af658b13b733eb8a8e860b10cec6e85703a78c71c961"
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
-          "sha256": "1592a991ff2dcba0810b75b68e38fd427912694843c4a83432e5c2f0a2246479"
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "9a8d2de66758994054427f75b1889e0545af01ebaf1a9990f355f2697acfee26"
+          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "9a6a962c307955c1e9d2e43617c8928d718214832e28801419257e05682bcde6"
+          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
@@ -13807,7 +13807,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-pending-terminations-cleared"
     },
     {
-      "fingerprint": "53d263a67c36165b0c2957957408425681893f57b9f58e8488fc4137b52b8f38",
+      "fingerprint": "6f7444deb0be71761ef567e7886a16e2c4751488a9280a704b3755680506d625",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -13819,23 +13819,23 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "31cde1eb08c66938dc8e022bea54e13dde413426efa957b21f97026d3409bc92"
+          "sha256": "5ebbb3fdc5ba58708b6d6cae9f412291bccd175cc46607aeffadc70df64d2083"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
-          "sha256": "e5cfc4ea5edbe7373f52af658b13b733eb8a8e860b10cec6e85703a78c71c961"
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
-          "sha256": "1592a991ff2dcba0810b75b68e38fd427912694843c4a83432e5c2f0a2246479"
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "9a8d2de66758994054427f75b1889e0545af01ebaf1a9990f355f2697acfee26"
+          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "9a6a962c307955c1e9d2e43617c8928d718214832e28801419257e05682bcde6"
+          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
@@ -14173,7 +14173,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination"
     },
     {
-      "fingerprint": "ca1a075ec65b1f948baea3e829aee17fe7f9b63531a6b38e1b7096dfdbbd45da",
+      "fingerprint": "f9104d50a6b41ee954458e0f2e0fefcc4f9d919f45195ed15da7459d38e79508",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -14185,23 +14185,23 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "31cde1eb08c66938dc8e022bea54e13dde413426efa957b21f97026d3409bc92"
+          "sha256": "5ebbb3fdc5ba58708b6d6cae9f412291bccd175cc46607aeffadc70df64d2083"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
-          "sha256": "e5cfc4ea5edbe7373f52af658b13b733eb8a8e860b10cec6e85703a78c71c961"
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
-          "sha256": "1592a991ff2dcba0810b75b68e38fd427912694843c4a83432e5c2f0a2246479"
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "9a8d2de66758994054427f75b1889e0545af01ebaf1a9990f355f2697acfee26"
+          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "9a6a962c307955c1e9d2e43617c8928d718214832e28801419257e05682bcde6"
+          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",

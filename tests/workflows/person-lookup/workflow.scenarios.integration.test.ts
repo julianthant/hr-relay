@@ -93,7 +93,7 @@ async function makeCase(testCase: Case) {
   const sessions = sessionFactoryHarness({
     ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(searchResult(testCase.candidates ?? [candidate])),
       async searchPersonOrg(request: z.output<typeof import("../../../src/models/systems/ucpath/search-person-org.js").SearchPersonOrgInputSchema>) {
-        return searchPersonOrgWithPagePort({
+        return searchPersonOrgWithPagePort(() => undefined, {
           async search(query) {
             recordBrowserAction("opened", "ucpath.person-org.summary");
             recordBrowserAction("typed", "ucpath.person-org.criteria", query.kind === "by-eid" ? query.eid : `${query.lastName}, ${query.givenName}`);
@@ -115,7 +115,7 @@ async function makeCase(testCase: Case) {
       },
       async searchPersonMatch(criteria: z.output<typeof import("../../../src/models/systems/ucpath/search-person-match.js").SearchPersonMatch.input>) {
         const matches = SearchPersonMatchOutputSchema.parse(testCase.matches);
-        return searchPersonMatchWithPort({
+        return searchPersonMatchWithPort(() => undefined, {
           async search() {
             recordBrowserAction("opened", "ucpath.match.search");
             recordBrowserAction("typed", "ucpath.match.criteria", "Example, Person; DOB 01/15/2000; SSN masked");

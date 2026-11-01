@@ -41,7 +41,7 @@ export async function createHistoricalIncompleteProfileFixture() {
   const stateRoot = machine.stateRoot, profileRoot = join(stateRoot, "profiles", draft.profileId), machineRoot = join(stateRoot, "machine");
   const operationPath = join(machineRoot, "operations", `${draft.operationId}.json`), registryPath = join(machineRoot, "profiles.json"), verifierPath = join(machineRoot, "profile-verifiers.json");
   const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
-  const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(draft.profileId));
+  const admission = machine.admitProfile(draft.profileId);
   const store = createCredentialStore({ admission, stateRoot: profileRoot, erasureJournalAdmission: machine,
     erasureJournalPath: join(machineRoot, "erasures", `${draft.profileId}.json`) });
   const original = store.read(); assert.equal(original.entries.ucpathUserId?.value, fields.email); assert.equal(original.entries.ucpathPassword?.value, fields.password);

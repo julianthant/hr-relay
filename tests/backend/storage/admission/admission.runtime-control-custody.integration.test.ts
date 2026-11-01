@@ -1,5 +1,4 @@
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { DatabaseSync } from "node:sqlite";
 import { existsSync,linkSync,mkdirSync,mkdtempSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
@@ -114,8 +113,8 @@ it("initializes one canonical pending profile with exact identity and refuses a 
     expect(() => profile.admission.assertArtifactRoot(join(machineRoot, "artifacts", "foreign"))).toThrow(/outside admission/u);
     const claim = profile.machine.readProfileRegistry();
     expect(claim.profiles).toHaveLength(0);
-    const pendingClaim = createProfileRegistry(profile.machine).storageClaim(profile.admission.profileBinding.profileId);
-    expect(() => profile.machine.admitProfile({ ...pendingClaim })).toThrow(/profile-storage-claim-unissued/u);
+    const pendingClaim = profile.admission.profileBinding.profileId;
+    expect(() => { Reflect.apply(profile.machine.admitProfile.bind(profile.machine), profile.machine, [{ profileId: pendingClaim, phase: "runtime" }]); }).toThrow(/Invalid input: expected string/u);
     AuthorityDatabase.initializeProfile(profile.admission);
     expect(() => AuthorityDatabase.initializeProfile(profile.admission)).toThrow(/profile-database-initialization-already-exists/u);
     const raw = new DatabaseSync(path, { readOnly: true });

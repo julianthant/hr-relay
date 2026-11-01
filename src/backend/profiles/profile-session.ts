@@ -19,13 +19,14 @@ import {
   inspectCredentialCopy,
   assertCredentialStoreOwner,
   readForErasure,
+  ownsErasureCommand,
   CredentialErasureAuthorityError,
   CredentialStoreCommitUncertainError,
   prepareUnpublishedDraftAbort,
   RESTORE_ADMISSION_REQUEST,
   type CredentialInitializationCopyInspection, type CredentialStoreOptions, type CredentialStoreHooks,
 } from "../storage/configuration/credential-store.js";
-import { type RuntimeAdmission, type RegisteredProfileStorageClaim } from "../storage/admission/admission.js";
+import { type RuntimeAdmission } from "../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../storage/admission/admission-identity.js";
 import {
   PROTECTED_SETTINGS_SCHEMA_HASH,
@@ -64,8 +65,8 @@ export class ProfileUpgradeUnavailableError extends Error {
 }
 
 export interface AuthenticatedProfileUpgrade { readonly profileId: string; }
-const authenticatedUpgrades = new WeakMap<AuthenticatedProfileUpgrade, (machine: RuntimeAdmission) => RegisteredProfileStorageClaim>();
-export function consumeAuthenticatedProfileUpgrade(authorization: AuthenticatedProfileUpgrade, machine: RuntimeAdmission): RegisteredProfileStorageClaim {
+const authenticatedUpgrades = new WeakMap<AuthenticatedProfileUpgrade, (machine: RuntimeAdmission) => string>();
+export function consumeAuthenticatedProfileUpgrade(authorization: AuthenticatedProfileUpgrade, machine: RuntimeAdmission): string {
   const consume = authenticatedUpgrades.get(authorization);
   if (consume === undefined) throw new ProfileSessionRefusedError("PROFILE_UPGRADE_UNAVAILABLE");
   authenticatedUpgrades.delete(authorization);
@@ -272,9 +273,8 @@ export function createProfileSession(input: {
     admission.assertStateRoot(machineRoot);
     let capability = storageAdmissions.get(profileId)?.ordinary;
     if (capability === undefined) {
-      const claim = registry.storageClaim(profileId);
-      capability = admission.admitProfile(claim);
-      if (claim.phase === "setup" && !existsSync(join(capability.stateRoot, "state.db"))) AuthorityDatabase.initializeProfile(capability);
+      capability = admission.admitProfile(profileId);
+      if (capability.isProfileInitialization() && !existsSync(join(capability.stateRoot, "state.db"))) AuthorityDatabase.initializeProfile(capability);
       storageAdmissions.set(profileId, { ...storageAdmissions.get(profileId), ordinary: capability });
     }
     if (capability.stateRoot !== registry.profileRoot(profileId)) throw new Error("profile root differs from admission");
@@ -306,8 +306,9 @@ export function createProfileSession(input: {
 
   function activate(profileId: string): ActiveProfileSession {
     admission.assertWritable();
-    const profileAdmission = admittedProfile(profileId);
-    profileAdmission.assertWritable();
+    admission.lifetime.assertRuntimeAvailable();
+    const selected = registry.read().activeProfileId;
+    if (selected !== null && selected !== profileId) throw new Error("profile-session-not-current");
     const epoch = registry.advanceSession(profileId);
     sessions.clear();
     releaseOrdinary(profileId);
@@ -515,7 +516,7 @@ export function createProfileSession(input: {
   function logoutStorage(operation: LogoutOperation) {
     const entry = storageAdmissions.get(operation.profileId) ?? {};
     releaseSettlement(operation.profileId);
-    const settlement = admission.admitProfile(registry.settlementClaim(operation.operationId));
+    const settlement = admission.admitProfileSettlement(operation.operationId);
     entry.settlement = settlement;
     storageAdmissions.set(operation.profileId, entry);
     return { settlement, store: storeFor(operation.profileId, settlement, "settlement") };
@@ -581,7 +582,7 @@ export function createProfileSession(input: {
           writeId,
           updatedAt: command.at,
         }));
-        if (erased.state !== "applied" && !store.ownsCommandId(commandId)) {
+        if (erased.state !== "applied" && !ownsErasureCommand(store, operation.operationId, commandId)) {
           writeOperation({ ...command, phase: "incomplete" });
           return refusal("PROFILE_LOGOUT_BLOCKED", command.operationId);
         }
@@ -591,7 +592,7 @@ export function createProfileSession(input: {
           return restoreAdmission(command.operationId);
         }
         if (error instanceof CredentialStoreCommitUncertainError) {
-          if (!store.ownsCommandId(commandId)) {
+          if (!ownsErasureCommand(store, operation.operationId, commandId)) {
             writeOperation({ ...command, phase: "incomplete" });
             return cancelling(command.operationId);
           }
@@ -715,6 +716,7 @@ export function createProfileSession(input: {
       }
       if (fields.password.length === 0) return refusal("PROFILE_SIGN_IN_REFUSED");
       admission.assertWritable();
+      admission.lifetime.assertRuntimeAvailable();
       return withProfileLock(machineRoot, () => signUpLocked(fields, names));
     },
     assertOnboardingAbort(token: string, operationId: string): void {
@@ -838,6 +840,7 @@ export function createProfileSession(input: {
       readonly credentialMigration?: { readonly kind: "prove-v2" } | { readonly kind: "replace-v3"; readonly entries: CompleteProtectedSettingsPatch } }): ActiveProfileSession | ProfileRefusal | ProfileCancelling | ProfileUpgradeRequired {
       const at = IsoInstantSchema.parse(fields.at);
       admission.assertWritable();
+      admission.lifetime.assertRuntimeAvailable();
       return withProfileLock(machineRoot, () => {
         const identified = verifiers.identify(fields.email);
         if (identified === "unknown") return refusal("PROFILE_SIGN_IN_REFUSED");
@@ -871,7 +874,7 @@ export function createProfileSession(input: {
         }
         if (upgradeRequested) return refusal("PROFILE_TRANSITION_BLOCKED");
         if (row.lifecycle === "ready" && row.credentialState === "saved") {
-          const claim = registry.storageClaim(row.profileId);
+          const claim = row.profileId;
           const capture = admission.captureProfileUpgradeHandoff(claim);
           if (capture !== undefined) {
             let credentials: ReturnType<typeof captureReadyUpgradeCredentialSource>;
@@ -1001,6 +1004,7 @@ export function createProfileSession(input: {
     logOut(token: string, inputFields: { readonly at: string }): { readonly state: "wiped"; readonly inventory: CredentialInventory } | ProfileLogoutResult | ProfileCancelling {
       const at = IsoInstantSchema.parse(inputFields.at);
       admission.assertLive();
+      admission.lifetime.assertRuntimeAvailable();
       const issued = sessions.get(token);
       if (issued !== undefined && !journalOutsideProfile(join(machineRoot, "profiles", issued.profileId), journalPath(issued.profileId))) {
         return restoreAdmission();
@@ -1033,6 +1037,7 @@ export function createProfileSession(input: {
     authorizeLogoutContinuation(fields: { readonly email: string; readonly password: string; readonly at: string }) {
       const at = IsoInstantSchema.parse(fields.at);
       admission.assertWritable();
+      admission.lifetime.assertRuntimeAvailable();
       return withProfileLock(machineRoot, () => {
         const identified = verifiers.identify(fields.email);
         if (identified === "unknown") return refusal("PROFILE_SIGN_IN_REFUSED");

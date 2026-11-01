@@ -52,7 +52,7 @@ it("converts only stopped machine-control format while keeping an incomplete his
   maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
   assert.deepEqual(current, { state: "current", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
-  assert.throws(() => maintenance.admitProfile(maintenance.issueRegisteredProfileClaim(f.profileId)), /profile-storage-claim-unavailable/u);
+  assert.throws(() => maintenance.admitProfile(f.profileId), /profile-storage-claim-unavailable/u);
   for (const source of original) assert.equal(readFileSync(source.path).equals(source.bytes), true);
   maintenance.release();
   const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
@@ -125,7 +125,7 @@ it("retains the runtime hold through a cold machine-control format publication r
   cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const current = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
   assert.deepEqual(current, { state: "current", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
-  assert.throws(() => cold.admitProfile(cold.issueRegisteredProfileClaim(f.profileId)), /profile-storage-claim-unavailable/u);
+  assert.throws(() => cold.admitProfile(f.profileId), /profile-storage-claim-unavailable/u);
   for (const source of original) assert.equal(readFileSync(source.path).equals(source.bytes), true);
   cold.release(); await f.close();
 });

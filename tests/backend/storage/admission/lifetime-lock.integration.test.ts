@@ -215,6 +215,53 @@ it("revokes controller authority as soon as close starts and keeps repeated clos
   assert.throws(() => lock.assertHeld(), RuntimeLifetimeLockReleasedError);
 });
 
+it("retains the controller listener until the inherited worker actually closes", async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "relay-lifetime-drain-")));
+  const lock = await RuntimeLifetimeLock.acquire(0);
+  let child: ChildProcess | undefined;
+  let closed: Promise<unknown[]> | undefined;
+  let primary: { error: unknown } | undefined;
+  try {
+    lock.initializeWorkspace(directory, () => {});
+    const source = new URL("../../../../src/backend/storage/admission/lifetime-lock.ts", import.meta.url).href;
+    child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
+      import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(source)};
+      const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
+      process.on("message", async input => {
+        if (input !== "close") throw new Error("unexpected fixture command");
+        await lifetime.close(); process.disconnect();
+      });
+      process.send("held");
+    `, String(lock.port)], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
+    child.stderr?.resume();
+    closed = once(child, "close");
+    const ready = once(child, "message");
+    await lock.share(child);
+    assert.equal((await ready)[0], "held");
+    let drained = false;
+    const closing = lock.close().then(() => { drained = true; });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(drained, false);
+    await assert.rejects(RuntimeLifetimeLock.acquire(lock.port), RuntimeAlreadyRunningError);
+    child.send("close");
+    await closed;
+    await closing;
+    assert.equal(drained, true);
+    const successor = await RuntimeLifetimeLock.acquire(lock.port);
+    await successor.close();
+  } catch (error) { primary = { error }; }
+  const failures: unknown[] = [];
+  if (child !== undefined && child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  if (closed !== undefined) { try { await closed; } catch (error) { failures.push(error); } }
+  if (failures.length === 0) {
+    try { await lock.close(); await rm(directory, { recursive: true }); }
+    catch (error) { failures.push(error); }
+  }
+  if (failures.length !== 0) throw new AggregateError(primary === undefined ? failures : [primary.error, ...failures],
+    "worker drain fixture closure unproved", { cause: primary?.error ?? failures[0] });
+  if (primary !== undefined) throw primary.error;
+});
+
 it("refuses handle sharing during exclusive admission and exclusive admission until owned child close", async () => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "relay-exclusive-transfer-")));
   const lock = await RuntimeLifetimeLock.acquire(0);

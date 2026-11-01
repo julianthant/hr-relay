@@ -68,11 +68,17 @@ async function observeSecrets(frame: Frame, selector: string): Promise<void> {
   }, selector);
 }
 
-async function setCaptureWidth(page: Page): Promise<void> {
+async function setCaptureWidth(page: Page, assertCurrent: () => void): Promise<void> {
+  assertCurrent();
   const metrics = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight,
     docWidth: Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0) }));
+  assertCurrent();
   let widest = metrics.docWidth;
-  for (const frame of page.frames()) widest = Math.max(widest, await frame.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0)));
+  for (const frame of page.frames()) {
+    assertCurrent();
+    widest = Math.max(widest, await frame.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth ?? 0)));
+  }
+  assertCurrent();
   await page.setViewportSize({ width: Math.min(Math.max(CAPTURE.width, widest + 24), CAPTURE.maxWidth), height: Math.min(metrics.height, CAPTURE.sliceHeight) });
 }
 
@@ -201,46 +207,61 @@ async function planScrollCapture(page: Page): Promise<CapturePlan> {
 }
 
 export async function captureFullPage(page: Page, options: Readonly<{
+  assertCurrent: () => void;
   assertSafe: () => Promise<void>;
   sampleLabels?: readonly string[];
   mask: () => Locator[];
   secretControls: string;
   afterCapture: () => Promise<void>;
 }>): Promise<Readonly<{ bytes: Uint8Array; width: number; height: number }>> {
+  const { assertCurrent } = options;
+  assertCurrent();
   const viewport = page.viewportSize();
   const originalViewport = viewport ?? await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
   const frames: Frame[] = [];
   let failure: { cause: unknown } | undefined;
   let sampleBannerOwned = false;
   const assertSafe = async (): Promise<void> => {
+    assertCurrent();
     await options.assertSafe();
-    for (const frame of frames) if (await frame.evaluate(() => {
-      const state = (window as CaptureWindow).__relayCaptureSecrets;
-      if (state === undefined || typeof state.seen !== "boolean" || !(state.observer instanceof MutationObserver)) throw new Error("Full-page capture safety observer is unavailable");
-      return state.seen;
-    })) throw new FullPageCaptureRefusedError("secret-controls-present");
+    for (const frame of frames) {
+      assertCurrent();
+      if (await frame.evaluate(() => {
+        const state = (window as CaptureWindow).__relayCaptureSecrets;
+        if (state === undefined || typeof state.seen !== "boolean" || !(state.observer instanceof MutationObserver)) throw new Error("Full-page capture safety observer is unavailable");
+        return state.seen;
+      })) throw new FullPageCaptureRefusedError("secret-controls-present");
+    }
+    assertCurrent();
   };
   try {
-    for (const frame of page.frames()) { frames.push(frame); await observeSecrets(frame, options.secretControls); }
+    assertCurrent();
+    for (const frame of page.frames()) { assertCurrent(); frames.push(frame); await observeSecrets(frame, options.secretControls); }
     await assertSafe();
-    await setCaptureWidth(page);
+    await setCaptureWidth(page, assertCurrent);
+    assertCurrent();
     const plan = await planScrollCapture(page);
+    assertCurrent();
     const bandHeight = Math.max(1, Math.min(plan.clientHeight, CAPTURE.sliceHeight));
     const bands: CaptureBand[] = [];
     let coveredTo = 0;
     for (const offset of computeSliceOffsets(plan.scrollHeight, bandHeight)) {
+      assertCurrent();
       const clip = await page.evaluate(offset => (window as CaptureWindow).__relayCapture!.scroll(offset), offset);
+      assertCurrent();
       await page.waitForTimeout(250);
       await assertSafe();
       const { offset: actualOffset, ...rect } = clip;
       rect.height = Math.min(rect.height, bandHeight);
       if (actualOffset > coveredTo) throw new Error("Full-page capture has an unpainted gap");
       coveredTo = Math.max(coveredTo, actualOffset + rect.height);
+      assertCurrent();
       const buffer = await page.screenshot({ type: "png", clip: rect, mask: options.mask() });
       await assertSafe();
       bands.push({ buffer, offsetCss: actualOffset, clipHeightCss: rect.height });
     }
     if (coveredTo < plan.scrollHeight) throw new Error("Full-page capture did not reach the content bottom");
+    assertCurrent();
     const image = stitchCaptureBands(bands);
     if ((options.sampleLabels?.length ?? 0) === 0) return image;
     await page.evaluate(({ labels, width }) => {

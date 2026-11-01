@@ -121,7 +121,7 @@ it("admits the same genuine profile across a real peer's committed WAL change", 
       baseline = generation;
     } finally { baselineDatabase.close(); }
     const before = lstatSync(`${f.path}-wal`, { bigint: true });
-    const child = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(f.admission.profileBinding.profileId));
+    const child = f.machine.admitProfile(f.admission.profileBinding.profileId);
     try { child.assertProfileRuntime(); assert.deepEqual(child.profileBinding, f.admission.profileBinding); }
     finally { child.release(); }
     assert.equal(crossed, true);
@@ -197,10 +197,10 @@ it.each(["symlink", "hardlink", "public", "journal"] as const)("refuses unsafe l
   } finally { rmSync(companion, { force: true }); await f.close(); }
 });
 
-it("does not issue runtime children from released machines or unissued claims", async () => {
-  const f = await createBoundProfileFixture(), claim = f.machine.issueRegisteredProfileClaim(f.admission.profileBinding.profileId);
+it("does not issue runtime children from released machines or malformed selectors", async () => {
+  const f = await createBoundProfileFixture(), claim = f.admission.profileBinding.profileId;
   try {
-    assert.throws(() => f.machine.admitProfile({ ...claim }), /profile-storage-claim-unissued/u);
+    assert.throws(() => Reflect.apply(f.machine.admitProfile.bind(f.machine), f.machine, [{ profileId: claim, phase: "runtime" }]), /Invalid input: expected string/u);
     f.admission.release(); f.machine.release();
     assert.throws(() => f.machine.admitProfile(claim), /runtime-admission: missing or released admission/u);
   } finally { await f.close(); }

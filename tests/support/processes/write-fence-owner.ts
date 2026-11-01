@@ -21,14 +21,14 @@ async function fence(line: string): Promise<void> {
     parentStop.signal.throwIfAborted();
     const input = JSON.parse(line) as { intent?: { fencedAt?: string } };
     const { acquireSharedRuntimeAdmission } = await import("../../../src/backend/storage/admission/admission.js");
-    const { createProfileRegistry } = await import("../../../src/backend/profiles/registry.js");
+
     const { AuthorityDatabase } = await import("../../../src/backend/storage/sqlite/authority-database.js");
     const { registerBoundProfile, boundProfileCredentials } = await import("../helpers/synthetic-database-admission.js");
     const { manualClock } = await import("../../../src/rules/time/clock.js");
     parentStop.signal.throwIfAborted();
     const profileRoot = dirname(databasePath);
     const machine = acquireSharedRuntimeAdmission(resolve(profileRoot, "../../../.."), lifetime);
-    const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(basename(profileRoot)));
+    const admission = machine.admitProfile(basename(profileRoot));
     registerBoundProfile(admission, machine);
     const clock = manualClock(new Date(input.intent?.fencedAt ?? "2026-10-01T12:00:00.000Z"));
     const database = AuthorityDatabase.open(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "unit-test" },

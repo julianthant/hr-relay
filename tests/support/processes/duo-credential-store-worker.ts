@@ -39,7 +39,7 @@ const parentStop = new AbortController();
 const lifetime = await WorkerRuntimeLifetimeLock.receive(port, () => parentStop.abort(new Error("fixture-parent-disconnected")));
 parentStop.signal.throwIfAborted();
 const machine = acquireSharedRuntimeAdmission(workspace, lifetime);
-const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(profileId));
+const admission = machine.admitProfile(profileId);
 const store = createDuoCredentialStore(admission, machine, manualClock(new Date(at)));
 process.on("message", (input: unknown) => { void command(input).catch(error => { process.stderr.write(`${String(error)}\n`); process.exitCode = 1; }); });
 async function command(input: unknown): Promise<void> {

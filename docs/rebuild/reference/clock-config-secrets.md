@@ -546,13 +546,24 @@ and the artifact root cannot contain the state root.
 `locator.json`, journals, and relocation receipts. Root ownership uses
 `.runtime-owner.json`; `.runtime-source-fence.json` is a negative witness. An established missing or
 malformed locator refuses. Source markers and retained data never select a fallback installation.
-`RuntimeAdmission` rechecks held custody and exact permitted storage paths throughout use.
-Shared and exclusive admission handles retain in-process mode exclusion and revocation. The kernel-held
-lifetime listener owns process exclusion: bootstrap binds the dedicated configured loopback `lockPort`
-before installation admission and holds it through shutdown. A busy port refuses with
-`RUNTIME_ALREADY_RUNNING`. Workers receive the listening handle over IPC before storage admission;
-each worker retains its copy through parent disconnect and its write-safe drain. The port stays held
-while any parent or worker copy remains open. Standalone and offline commands acquire the same port.
+`RuntimeAdmission` is the single storage-capability facade. Its private profile access capture binds a
+registered profile's setup or ready state and current session generation. `admitProfile(profileId)`
+issues setup or runtime access, `admitProfileSettlement(operationId)` binds the matching durable logout
+operation, and `admitStoppedProfile(profileId, operation)` requires the current ready profile and binds
+it to the exact live native maintenance operation. Each validates its registration before opening
+profile paths or a database. `assertLive()` proves held custody; it does not authorize ordinary data access. SQLite
+repository reads and writes, credential metadata reads, and artifact callbacks check current readable,
+writable, or credential access. Root ordinary runtime access refuses while stopped maintenance is
+active or shutdown is closing. Worker ordinary access also requires connected IPC. Explicit close,
+drain, and restore paths retain their held custody after ordinary access is revoked.
+
+The kernel-held lifetime listener owns process exclusion. Bootstrap binds the dedicated configured
+loopback `lockPort` before installation admission and holds it through shutdown. A busy port refuses
+with `RUNTIME_ALREADY_RUNNING`. Workers receive the listening handle over IPC before storage
+admission. Each worker retains its copy through parent disconnect and its write-safe drain. Controller
+close waits for each owned child process's actual `close` event before closing the listener. Standalone
+and offline commands acquire the same port. Existing source-byte, closure, credential, profile-creation,
+erasure, and restore witness checks remain in force.
 
 `acquireEntrypointAdmission` adopts or initializes the genuinely empty default installation before
 serving it. It verifies an existing native database read-only; initial authority creation uses a
@@ -562,7 +573,9 @@ with a missing database does not become fresh merely because owner markers survi
 The controller publishes machine registry and profile-operation changes synchronously through their
 atomic files and journals. Worker machine-control admission is read-only: it checks current locator,
 registry continuity, operations and erasure evidence, and refuses pending publication that needs
-controller repair. Releasing a parent admission revokes its derived profile children.
+controller repair. Browser factory, login, and driver operations recheck their required `assertCurrent`
+callback around actions, awaits, and results. Session close and capture restoration can still use their
+owned resources after revocation. Releasing a parent admission revokes its derived profile children.
 
 `secure-env-bootstrap.ts` accepts only `cli` and `test-target-document-number` runners and awaits
 the selected runner. Production dashboard bundle validation precedes installation admission.

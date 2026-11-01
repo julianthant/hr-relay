@@ -67,9 +67,10 @@ export function createRunResourcesFactory(input:Readonly<{
  });
 }
 
-export type BrowserProfileAuthority = Pick<BrowserSessionFactoryOptions, "slotOrdinal" | "admitProfile">;
+export type BrowserProfileAuthority = Pick<BrowserSessionFactoryOptions, "slotOrdinal" | "admitProfile" | "assertCurrent">;
 export function createBrowserProfileAuthority(input: Readonly<{authority:AuthorityRepositories;assertProfileOwner:(workerId:WorkerId)=>void}>): BrowserProfileAuthority {
  return {
+    assertCurrent: workerId => input.assertProfileOwner(workerId),
     slotOrdinal:(workerId,system)=>{
      input.assertProfileOwner(workerId);
      const slot=input.authority.workerSlots.get(workerId);

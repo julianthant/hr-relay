@@ -53,10 +53,6 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
   read();
   const write = (document: ProfileRegistryDocument) => admission.publishProfileRegistry(read(), document);
   return Object.freeze({
-    settlementClaim(operationId: string) { return admission.issueProfileSettlementClaim(operationId); },
-    storageClaim(profileId: string) {
-      return admission.issueRegisteredProfileClaim(profileId);
-    },
     read(): ProfileRegistryDocument {
       return read();
     },
@@ -74,7 +70,7 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
         const email = parsed.entries.ucpathUserId, password = parsed.entries.ucpathPassword;
         if (email === undefined || !("set" in email) || password === undefined || !("set" in password)) throw new Error("profile-verifier-protected-input-required");
         assertPreparedProfileVerifierInput(verifier, email.set, password.set);
-        const capability = admission.admitProfile(this.storageClaim(pending.profileId));
+        const capability = admission.admitProfile(pending.profileId);
         try {
           const store = createCredentialStore({ admission: capability, stateRoot: capability.stateRoot, erasureJournalAdmission: admission,
             erasureJournalPath: join(root, "machine", "erasures", `${pending.profileId}.json`) });

@@ -60,6 +60,7 @@ export interface AuthorityHarness<Profile extends BoundProfileStorageFixture = A
 
   readonly path: string;
   readonly stateRoot: string;
+  readonly replaceClosedDatabase: (database: AuthorityDatabase) => void;
   readonly closeDatabase: () => void;
   readonly dispose: () => void | Promise<void>;
 }
@@ -75,7 +76,7 @@ export async function openAuthorityHarness(profileFixture: () => Promise<BoundPr
   const clock = manualClock(new Date(EXECUTOR_NOW));
   const fixture = await profileFixture(); held.fixture = fixture;
   const root = fixture.stateRoot, path = fixture.path;
-  const database = AuthorityDatabase.open(
+  let database = AuthorityDatabase.open(
     { path, busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
   ); held.database = database;
@@ -95,7 +96,8 @@ export async function openAuthorityHarness(profileFixture: () => Promise<BoundPr
   };
   let disposed = false;
   return {
-    database,
+    get database() { return database; },
+    replaceClosedDatabase(successor) { database = successor; held.database = successor; },
     clock,
     profile: fixture,
     path,

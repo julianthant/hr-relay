@@ -1,6 +1,5 @@
 import type { CredentialStore } from "../../../../src/models/config/credential-store.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { createCredentialStore as createOwnedCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import assert from "node:assert/strict";
@@ -282,7 +281,7 @@ const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?
  const active = profile.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
  assert.equal(active.state, 'active');
  if (active.state !== 'active') throw new Error('config fixture sign-in refused');
- const currentAdmission = owner.machine.admitProfile(createProfileRegistry(owner.machine).storageClaim(active.profileId));
+ const currentAdmission = owner.machine.admitProfile(active.profileId);
  acquired.admission = currentAdmission;
  const credentials = createOwnedCredentialStore({ admission: currentAdmission, stateRoot,
    erasureJournalAdmission: owner.machine,

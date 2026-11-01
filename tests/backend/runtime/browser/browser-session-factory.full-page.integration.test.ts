@@ -303,6 +303,7 @@ describe("whole-page factory screenshots", () => {
       let finalProofs = 0;
       page.screenshot = async () => { runInNewContext("throw undefined"); return Buffer.alloc(0); };
       const capture = () => captureFullPage(page, {
+        assertCurrent: () => undefined,
         assertSafe: async () => undefined,
         afterCapture: async () => { finalProofs += 1; },
         mask: () => [],

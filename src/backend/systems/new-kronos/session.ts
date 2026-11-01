@@ -49,17 +49,23 @@ function isAuthenticatedNewKronosUrl(rawUrl: string): boolean {
 }
 
 
-async function probeIssuedSessionCookie(page: Page): Promise<ObservedFact> {
+async function probeIssuedSessionCookie(page: Page, assertCurrent: () => void): Promise<ObservedFact> {
+  assertCurrent();
   // Bound verification by poll count; the verifier has no Clock and cannot invent a wall-clock source.
   let observed: ObservedFact = { holds: false, detail: "the session-cookie probe never ran" };
   for (let poll = 0; poll < NEW_KRONOS_SESSION_COOKIE_POLLS; poll++) {
+    assertCurrent();
     observed = await probeSessionCookie(page, {
+      assertCurrent,
       name: NEW_KRONOS_SESSION_COOKIE,
       domainSuffix: NEW_KRONOS_COOKIE_DOMAIN,
       issuer: "UKG Dimensions (WFD)",
     });
+    assertCurrent();
     if (observed.holds) return observed;
+    assertCurrent();
     await new Promise<void>((resolve) => { setTimeout(resolve, NEW_KRONOS_SESSION_COOKIE_POLL_MS); });
+    assertCurrent();
   }
   return {
     holds: false,
@@ -72,12 +78,14 @@ async function probeIssuedSessionCookie(page: Page): Promise<ObservedFact> {
 export const verifyNewKronosAuthenticatedApplication: AuthenticatedApplicationVerifier = async (
   context,
 ): Promise<AuthenticationProbe> => verifyUcsdAuthenticatedApplication(SYSTEM, context.page, {
+  assertCurrent: context.assertCurrent,
   urlIsApplication: isAuthenticatedNewKronosUrl,
   urlRefusal:
     "the observed URL is not the UKG Dimensions (WFD) application; the ForgeRock sign-on host shares the mykronos.com domain and is refused here",
-  positive: async () => probeIssuedSessionCookie(context.page),
+  positive: async () => probeIssuedSessionCookie(context.page, context.assertCurrent),
   additionalAbsences: [
     async () => probeAbsentControl(context.page, {
+      assertCurrent: context.assertCurrent,
       selector: SSO_FORM_SELECTOR,
       description: "the UCSD single sign-on form and the ForgeRock XUI login shell",
     }),
@@ -88,18 +96,22 @@ export const newKronosLoginRecipe = defineVerifiedLoginRecipe({
   system: SYSTEM,
   verify: verifyNewKronosAuthenticatedApplication,
   navigate: async (context): Promise<void> => {
+    context.assertCurrent();
     const { page, config } = context;
     const loginUrl = resolveSystemLoginUrl(config, SYSTEM, context.instance, context.label);
     abortIfCancelled(SYSTEM, "navigate-login-entry", context);
     try {
+      context.assertCurrent();
       await raceCancellation(
-        page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs }),
+        () => page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: config.timeouts.navigationMs }),
         SYSTEM,
         "navigate-login-entry",
         context,
       );
+      context.assertCurrent();
       recordBrowserAction("opened", "new-kronos.login-entry");
     } catch (error) {
+      context.assertCurrent();
       if (error instanceof BrowserLoginError) throw error;
       throw new BrowserLoginError(
         SYSTEM,
@@ -113,10 +125,15 @@ export const newKronosLoginRecipe = defineVerifiedLoginRecipe({
 
   },
   ceremony: async (context, token): Promise<void> => {
+    context.assertCurrent();
     const { config } = context;
+    context.assertCurrent();
     await waitForSsoForm(SYSTEM, context, token);
+    context.assertCurrent();
     await fillSsoCredentials(SYSTEM, context, token);
+    context.assertCurrent();
     await submitSsoForm(SYSTEM, context, token);
+    context.assertCurrent();
     await waitForAuthenticatedLanding(
       SYSTEM,
       context,
@@ -124,5 +141,6 @@ export const newKronosLoginRecipe = defineVerifiedLoginRecipe({
       isAuthenticatedNewKronosUrl,
       config.timeouts.duoApprovalSeconds * 1_000,
     );
+    context.assertCurrent();
   },
 });

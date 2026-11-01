@@ -2,7 +2,6 @@ import { testProcessImport } from "../../../../support/compiled-process.js";
 import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import type { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
-import { createProfileRegistry } from "../../../../../src/backend/profiles/registry.js";
 import { createCredentialStore } from "../../../../../src/backend/storage/configuration/credential-store.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../../support/helpers/admission-fixture.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
@@ -700,7 +699,7 @@ const retainedCapacityCustody: {
     const cookie = await signInPoolApplication(runtime);
     const stateRoot = profile.stateRoot;
     const selectedProfileId = profile.machine.readProfileRegistry().activeProfileId; assert.ok(selectedProfileId);
-    selectedAdmission.current = profile.machine.admitProfile(createProfileRegistry(profile.machine).storageClaim(selectedProfileId));
+    selectedAdmission.current = profile.machine.admitProfile(selectedProfileId);
     const currentAdmission = selectedAdmission.current;
     retained.selectedAdmission = currentAdmission;
     const credentials = createCredentialStore({ admission: currentAdmission, stateRoot, erasureJournalAdmission: profile.machine,

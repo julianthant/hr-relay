@@ -36,7 +36,7 @@ async function fixture(hooks?: CredentialStoreHooks) {
   mkdirSync(join(stateRoot, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   const operation = machine.beginProfileSignUp({ firstName: "Synthetic", lastName: "Persistence", emailKey: "a".repeat(64),
     createdAt: IsoInstantSchema.parse(NOW_1), commandFingerprint: "a".repeat(64) });
-  const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(operation.profileId));
+  const admission = machine.admitProfile(operation.profileId);
   AuthorityDatabase.initializeProfile(admission);
   registerBoundProfile(admission, machine);
   cleanups.push(async () => { unregisterBoundProfile(admission); admission.release(); machine.release(); await lifetime.close(); });
@@ -71,7 +71,7 @@ async function registeredFixture(hooks?: CredentialStoreHooks) {
           at: request.updatedAt, phase: "erasing", commandId: request.commandId, writeId: request.writeId, expectedRevision: request.expectedRevision });
         f.machine.publishProfileOperation(operation);
         registry.advanceSession(null); registry.update(operation.profileId, { lifecycle: "cancelling" });
-        settlement = f.machine.admitProfile(registry.settlementClaim(operation.operationId));
+        settlement = f.machine.admitProfileSettlement(operation.operationId);
         retained = createCredentialStore({ admission: settlement, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine, erasureJournalPath: journalPath, hooks,
           repairInventory: composeProfileCredentialRepairInventory({ machine: f.machine, admission: settlement, clock: systemClock, hostFacts: { primaryDisplay: null } }) });
       }
@@ -130,7 +130,7 @@ async function crashAtCredentialRename(stateRoot: string, input: ProtectedSettin
     const input = JSON.parse(readFileSync(0, "utf8"));
     const machine = acquireSharedRuntimeAdmission(input.workspace, lifetime);
     const profileId = input.stateRoot.split("/").at(-1);
-    const child = machine.admitProfile(createProfileRegistry(machine).storageClaim(profileId));
+    const child = machine.admitProfile(profileId);
     try {
       createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalAdmission: machine,
         erasureJournalPath: join(machine.stateRoot, "machine", "erasures", profileId + ".json"),

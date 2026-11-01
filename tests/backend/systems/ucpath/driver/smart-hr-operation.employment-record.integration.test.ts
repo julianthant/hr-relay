@@ -56,7 +56,7 @@ describe("actual termination staging employment record", () => {
   for (const record of ["0", "", "   "]) {
     it(`refuses observed record ${JSON.stringify(record)} before continuing the wizard`, async () => {
       const w = wizard(record);
-      await assert.rejects(ucpathSmartHrOperations.stageTermination(w.page, input, observedAt), /employment record/iu);
+      await assert.rejects(ucpathSmartHrOperations.stageTermination(() => undefined, w.page, input, observedAt), /employment record/iu);
       assert.equal(w.events.includes(`click:${selector(UCPATH_SMART_HR_CONTINUE_BUTTON)}`), false);
       assert.equal(w.events.includes(`fill:${selector(UCPATH_SMART_HR_LAST_DATE_WORKED_INPUT)}`), false);
       assert.equal(w.events.includes("fill:#HR_TBH_WRK_EMPL_RCD_CHAR"), false);
@@ -64,7 +64,7 @@ describe("actual termination staging employment record", () => {
   }
   it("retains the matching observed record without selecting a record", async () => {
     const w = wizard("4");
-    const staging = await ucpathSmartHrOperations.stageTermination(w.page, input, observedAt);
+    const staging = await ucpathSmartHrOperations.stageTermination(() => undefined, w.page, input, observedAt);
     assert.equal(staging.observedEmplRecord, "4");
     assert.equal(w.events.includes(`click:${selector(UCPATH_SMART_HR_CONTINUE_BUTTON)}`), true);
     assert.equal(w.events.includes("fill:#HR_TBH_WRK_EMPL_RCD_CHAR"), false);

@@ -135,7 +135,7 @@ describe("stopped native upgrade admission",()=>{
  }
  it.each([3,4] as const)("upgrades retained schema %s plans without workers while preserving fields and workbook history",async version=>{
   const f=await retainedPlan(version);
-  const source=withOfflineMaintenanceSync(f.admission, () => AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock));
+  const source=withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } });
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/profile-bound-authority-required/u);
   const before=readFileSync(f.path);
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:version,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
@@ -206,7 +206,7 @@ describe("stopped native upgrade admission",()=>{
  }
  it("upgrades schema 3 only after verifying its exact backup and retains every unrelated source table",async()=>{
   const f=await baselineFixture(3),before=readFileSync(f.path);
-  const source=withOfflineMaintenanceSync(f.admission, () => AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock));
+  const source=withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } });
   const raw=new DatabaseSync(f.path,{readOnly:true});
   let retained:Record<string,unknown[]>;
   try {retained=Object.fromEntries(source.tables.filter(table=>table.name!=="database_states"&&table.name!=="database_upgrades"&&table.name!=="explorer_overrides")
@@ -344,7 +344,7 @@ describe("stopped native upgrade admission",()=>{
  });
  it("settles the forward record with the exact verified backup manifest",async()=>{
   const f=await baselineFixture();
-  const source=withOfflineMaintenanceSync(f.admission, () => AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock));
+  const source=withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } });
   assert.equal((await f.run()).state,"upgraded");
   const raw=new DatabaseSync(f.path,{readOnly:true});
   let record:ReturnType<typeof AuthorityUpgradeRecordSchema.parse>;
@@ -420,8 +420,8 @@ describe("stopped native upgrade admission",()=>{
  it("reacquires stopped profile admission for a retained baseline",async()=>{
   const f=await baselineFixture();
   f.admission.release();
-  const { createProfileRegistry } = await import("../../../../src/backend/profiles/registry.js");
-  const admission=f.machine.admitProfile(createProfileRegistry(f.machine).storageClaim(f.profileId));
+
+  const admission=f.machine.admitProfile(f.profileId);
   closers.push(()=>admission.release());
   assert.throws(()=>AuthorityDatabase.open(admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-open"},clock),/profile-bound-authority-required/u);
   assert.equal((await withOfflineMaintenance(admission, operation => upgradeStorage(profileBrowserClosure, admission, f.input, clock, operation))).state,"upgraded");
@@ -484,12 +484,13 @@ describe("stopped native upgrade admission",()=>{
  });
  it("atomically rolls back the real migration when current validation rejects",async()=>{
   const f=await baselineFixture();
-  const stopped=f.admission.forStoppedProfileUpgrade();
-  closers.push(()=>stopped.release());
-  const source=withOfflineMaintenanceSync(stopped, () => AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock));
-  const report=await withOfflineMaintenance(stopped, operation => prepareStoppedBackupClosure(profileBrowserClosure, stopped, operation, clock, f.input.processLockRoot).then(closure => backupStoppedAuthority(closure, stopped, f.root, clock, f.input.processLockRoot, operation)));
+  const operation=f.admission.acquireOfflineMaintenance(),stopped=f.admission.forStoppedProfileUpgrade();
+  closers.push(()=>{stopped.release();operation.release();});
+  const source=AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock);
+  const report=await prepareStoppedBackupClosure(profileBrowserClosure,stopped,operation,clock,f.input.processLockRoot)
+    .then(closure=>backupStoppedAuthority(closure,stopped,f.root,clock,f.input.processLockRoot,operation));
   const manifest=report.manifests[0];assert.ok(manifest);
-  const backup=await verifyBackupManifestAtPath(f.admission,join(f.root,"backups","authority",`${manifest.backupFileName}.manifest.json`));
+  const backup=await verifyBackupManifestAtPath(stopped,join(f.root,"backups","authority",`${manifest.backupFileName}.manifest.json`));
   const exec:unknown=Reflect.get(DatabaseSync.prototype,"exec");
   assert.ok(typeof exec==="function");
   let reachedCurrentSchema=false;
@@ -501,7 +502,7 @@ describe("stopped native upgrade admission",()=>{
     Reflect.apply(exec,this,["DELETE FROM settings"]);
    }
   });
-  assert.throws(()=>withOfflineMaintenanceSync(stopped, () => AuthorityDatabase.upgradeStopped(stopped,f.path,f.input.processLockRoot,clock,source.authorityContentFingerprint,backup,verifyStoppedBackupManifestAtPath)),/settings/u);
+  assert.throws(()=>AuthorityDatabase.upgradeStopped(stopped,f.path,f.input.processLockRoot,clock,source.authorityContentFingerprint,backup,verifyStoppedBackupManifestAtPath),/settings/u);
   assert.equal(reachedCurrentSchema,true);
   const raw=new DatabaseSync(f.path,{readOnly:true});
   try {
@@ -514,9 +515,12 @@ describe("stopped native upgrade admission",()=>{
  });
  it("refuses restoration of a verified schema 1 backup without changing current authority",async()=>{
   const f=await baselineFixture();
-  const stopped=f.admission.forStoppedProfileUpgrade();
-  const report=await withOfflineMaintenance(stopped, operation => prepareStoppedBackupClosure(profileBrowserClosure, stopped, operation, clock, f.input.processLockRoot).then(closure => backupStoppedAuthority(closure, stopped, f.root, clock, f.input.processLockRoot, operation)));
-  stopped.release();
+  const report=await withOfflineMaintenance(f.admission,async operation=>{
+   const stopped=f.admission.forStoppedProfileUpgrade();
+   try{return await prepareStoppedBackupClosure(profileBrowserClosure,stopped,operation,clock,f.input.processLockRoot)
+    .then(closure=>backupStoppedAuthority(closure,stopped,f.root,clock,f.input.processLockRoot,operation));}
+   finally{stopped.release();}
+  });
   const manifest=report.manifests[0];assert.ok(manifest);
   const manifestPath=join(f.root,"backups","authority",`${manifest.backupFileName}.manifest.json`);
   assert.equal((await verifyBackupManifestAtPath(f.admission,manifestPath)).manifest.schemaVersion,1);
@@ -578,8 +582,8 @@ describe("stopped native upgrade admission",()=>{
  it("refuses an active runtime lock before backup or upgrade effects",async()=>{
   const f=await liveFixture();initialize(f);const server=acquireRuntimeProcessLock({processLockRoot:f.input.processLockRoot,name:"server",pid:process.pid},clock);
   try{const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
-   assert.throws(()=>withOfflineMaintenanceSync(f.admission, () => AuthorityDatabase.inspectStoppedUpgrade(f.admission,f.path,f.input.processLockRoot,clock)),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
-   assert.throws(()=>withOfflineMaintenanceSync(f.admission, () => AuthorityDatabase.upgradeStopped(f.admission,f.path,f.input.processLockRoot,clock)),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
+   assert.throws(()=>withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } }),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
+   assert.throws(()=>withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.upgradeStopped(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } }),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
    await assert.rejects(withOfflineMaintenance(f.admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, clock, f.input.processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, clock, f.input.processLockRoot, operation))),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });assert.deepEqual(storageTree(f.root),before);
   }finally{server.release();}
  });
@@ -600,15 +604,31 @@ describe("stopped native upgrade admission",()=>{
 });
 
 for(const failure of ["busy","unproved"] as const)it(`keeps stopped backup files unchanged when native browser closure is ${failure}`,async()=>{
-  const f=await baselineFixture(),stopped=f.admission.forStoppedProfileUpgrade();
-  closers.push(()=>stopped.release());
+  const f=await baselineFixture(),operation=f.admission.acquireOfflineMaintenance(),stopped=f.admission.forStoppedProfileUpgrade();
+  closers.push(()=>{stopped.release();operation.release();});
   const error=failure==="busy"?new BrowserProfileStillClosingError(new Error("synthetic native busy")):new NativeBrowserClosureUnprovedError([new Error("synthetic unproved close")]);
   const probe=vi.spyOn(profileBrowserClosure,"probeClosed").mockRejectedValue(error);
   const before=storageTree(f.root);
-  const operation = stopped.acquireOfflineMaintenance();
   await assert.rejects(prepareStoppedBackupClosure(profileBrowserClosure, stopped, operation, clock, f.input.processLockRoot).then(closure => backupStoppedAuthority(closure, stopped, f.root, clock, f.input.processLockRoot, operation)), value => value === error);
   assert.deepEqual(storageTree(f.root), before); assert.equal(probe.mock.calls.length, 1);
   probe.mockRestore();
   await probeStoppedProfileBrowsersClosed(stopped, clock, profileBrowserClosure, f.input.processLockRoot);
   operation.release();
+});
+
+
+it("binds legacy conversion issuance and expiry to the same actual maintenance operation", async () => {
+  const f=await baselineFixture();
+  assert.throws(()=>f.admission.forStoppedProfileUpgrade(), /offline-maintenance/u);
+  const first=f.admission.acquireOfflineMaintenance(),stopped=f.admission.forStoppedProfileUpgrade();
+  try {
+    stopped.assertReadOnlyAuthorityDatabase(f.path);
+    first.release();
+    const second=f.admission.acquireOfflineMaintenance();
+    try {
+      assert.throws(()=>stopped.assertReadOnlyAuthorityDatabase(f.path), /offline-maintenance-unissued/u);
+      const current=f.admission.forStoppedProfileUpgrade();
+      try { current.assertReadOnlyAuthorityDatabase(f.path); } finally { current.release(); }
+    } finally { second.release(); }
+  } finally { stopped.release(); first.release(); }
 });

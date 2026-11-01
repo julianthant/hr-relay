@@ -27,7 +27,7 @@ it.each([6, 7])("keeps pending setup database-only until canonical binding, then
   try {
     const operation = machine.beginProfileSignUp({ emailKey: "a".repeat(64), firstName: "Alex", lastName: "Rivera",
       createdAt: IsoInstantSchema.parse("2026-09-06T12:00:00.000Z"), commandFingerprint: "b".repeat(64) });
-    const setup = machine.admitProfile(machine.issueRegisteredProfileClaim(operation.profileId));
+    const setup = machine.admitProfile(operation.profileId);
     const path = join(setup.stateRoot, "state.db");
     const journalPath = join(machine.stateRoot, "machine", "erasures", `${operation.profileId}.json`);
     const store = createCredentialStore({ admission: setup, stateRoot: setup.stateRoot,

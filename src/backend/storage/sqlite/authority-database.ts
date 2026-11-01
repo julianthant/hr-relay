@@ -1911,7 +1911,7 @@ export class AuthorityDatabase implements Disposable {
   static readProfileRestoreBrowserInventory(admission: RuntimeAdmission, processLockRoot: string, restore: OfflineMaintenanceOperation) {
     const owner = requireRuntimeAdmission(admission), path = join(owner.stateRoot, "state.db");
     const assertHeld = () => {
-      owner.assertExclusive(); owner.assertProfileRuntime();
+      owner.assertStoppedProfile(restore);
       const context = owner.readInstallationContext();
       if (context === undefined) throw new Error("profile-restore-context-required");
       owner.assertFixedProcessLockRoot(context.workspace, processLockRoot);
@@ -2292,9 +2292,15 @@ export class AuthorityDatabase implements Disposable {
     return this.#withReadSnapshot(() => readManagedArtifactReferencesFromDatabase(this.#database, candidate));
   }
 
-  reclaimPendingDiagnostics(): number {
-    return this.withAuthorityTransaction(() => reclaimDiagnosticStages(this.#admission,
-      ref => this.readManagedArtifactReferences(ref).length > 0));
+  static reclaimStoppedDiagnostics(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock,
+    operation: OfflineMaintenanceOperation): number {
+    requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
+    admission.assertOfflineMaintenance(operation);
+    return withAuthorityDatabaseReadOnly(admission, path, database => {
+      const inspection = inspectNormalAuthority(database), binding = admission.profileBinding;
+      if (inspection.installationId !== binding.installationId || inspection.profileId !== binding.profileId) throw new Error("profile-maintenance-binding-mismatch");
+      return reclaimDiagnosticStages(admission, ref => readManagedArtifactReferencesFromDatabase(database, ref).length > 0, operation);
+    });
   }
 
   sweepOrdinaryDiagnostics(now: string): Readonly<{ purged: readonly string[]; retainedBytes: number }> {
@@ -3362,6 +3368,7 @@ export class AuthorityDatabase implements Disposable {
 
   #assertOpen(): void {
     if (this.#closed || !this.#database.isOpen) throw new Error("authority database is closed");
+    this.#admission.assertReadable();
     const expected = this.#admission.profileBinding;
     const actual = ProfileDatabaseBindingSchema.parse(this.#database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get());
     if (actual.installationId !== expected.installationId || actual.profileId !== expected.profileId) throw new Error("profile-database-binding-mismatch");

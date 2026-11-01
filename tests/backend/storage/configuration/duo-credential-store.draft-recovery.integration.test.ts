@@ -56,7 +56,7 @@ function retainDraftBrowserDirectory(f: Awaited<ReturnType<typeof privateDraftFi
 
 async function draftFixture() {
   const base = await privateDraftFixture(), { root, machine, profile, draft } = base;
-  const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(draft.profileId));
+  const admission = machine.admitProfile(draft.profileId);
   const store = createDraftDuoCredentialStore(admission, machine, draft.operationId, 1, systemClock), pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const armedAt = systemClock.nowMs();
   const input = { credentialId: randomUUID(), scope: { armId: randomUUID(), contextId: randomBytes(16).toString("hex"), tabId: 1, accountId: randomUUID(),
@@ -246,7 +246,7 @@ it("recovers a draft's durable counter intent through stopped authenticated main
   const recovered = maintenance.recoverInterruptedDuoPublication();
   assert.equal(recovered.revision, 3);
   assert.equal(maintenance.readProfileRegistry().profiles.length, 0);
-  const admission = maintenance.admitProfile(maintenance.issueRegisteredProfileClaim(profileId));
+  const admission = maintenance.admitProfile(profileId);
   const fresh = createDraftDuoCredentialStore(admission, maintenance, f.draft.operationId, 1, systemClock);
   assert.equal(fresh.read().credentials[0]?.credentialId, f.input.credentialId);
   assert.ok((fresh.read().credentials[0]?.highWater ?? 0) > 0);
@@ -464,7 +464,7 @@ it("limits finished publishing to value-free metadata and refuses key provisioni
   assert.ok(draft?.finish);
   const key = draft.attempts.find(entry => entry.method === "key"); assert.ok(key?.scope); assert.ok(key.ceremony);
   const scope = key.scope, credentialId = key.ceremony.credentialId;
-  const admission = f.machine.admitProfile(f.machine.issueRegisteredProfileClaim(f.draft.profileId));
+  const admission = f.machine.admitProfile(f.draft.profileId);
   const store = createDraftDuoCredentialStore(admission, f.machine, operation.operationId, draft.generation, systemClock);
   assert.deepEqual(store.readForScope(scope).map(entry => entry.credentialId), [credentialId]);
   assert.throws(() => store.provision(credentialId, scope), /duo-finished-draft-purpose-refused/u);

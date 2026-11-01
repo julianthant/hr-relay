@@ -55,7 +55,7 @@ export async function storageRecoveryTarget() {
         const { RuntimeLifetimeLock } = await import(${JSON.stringify(sourceUrl('src/backend/storage/admission/lifetime-lock.ts'))});
     const lifetime = await RuntimeLifetimeLock.acquire(Number(process.argv[3]));
     const workspace = process.argv[1], machine = RuntimeAdmission.acquireMachine(workspace, 'exclusive', lifetime);
-    const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(process.argv[2])), root = admission.stateRoot;
+    const admission = machine.admitProfile(process.argv[2]), root = admission.stateRoot;
     const path = join(root, "state.db"), directory = join(root, "backups", "authority"), processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
     const credentials = createCredentialStore({ admission, stateRoot: root, erasureJournalAdmission: machine, erasureJournalPath: join(machine.stateRoot, "machine", "erasures", \`\${admission.profileBinding.profileId}.json\`) });
     const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 500, migrationOwner: "parity-native-restore" }, systemClock, undefined, undefined, undefined, credentials);
@@ -133,7 +133,7 @@ export async function storageRecoveryTarget() {
       catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
     } else {
       diagnosticMachine = CanonicalRuntimeAdmission.acquireMachine(repoRoot, 'shared', lifetime); held.machine = diagnosticMachine;
-      diagnosticAdmission = diagnosticMachine.admitProfile(diagnosticMachine.issueRegisteredProfileClaim(profileId)); held.admission = diagnosticAdmission;
+      diagnosticAdmission = diagnosticMachine.admitProfile(profileId); held.admission = diagnosticAdmission;
     }
     return diagnosticAdmission;
 
@@ -239,7 +239,7 @@ export async function storageRecoveryTarget() {
     assert.equal(existsSync(stagedPath), false);
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
     const machine = CanonicalRuntimeAdmission.acquireMachine(repoRoot, 'shared', lifetime); held.machine = machine;
-    const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(profileId)); held.admission = admission;
+    const admission = machine.admitProfile(profileId); held.admission = admission;
     admission.release(); machine.release();
     recoveryCompleted = true;
     const result = {exitCode: 0, output: JSON.stringify(settled.report)};

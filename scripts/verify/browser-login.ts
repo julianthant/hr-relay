@@ -241,7 +241,7 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
   let admission: RuntimeAdmission | undefined, database: AuthorityDatabase | undefined, operationFailure: { error: unknown } | undefined;
   try {
     const selected = captureSelectedProfileStorage(machine);
-    admission = machine.admitProfile(machine.issueRegisteredProfileClaim(selected.profileId));
+    admission = machine.admitProfile(selected.profileId);
     const profileAdmission = admission;
     const stateRoot = profileAdmission.stateRoot;
     const credentials = createCredentialStore({ admission: profileAdmission, stateRoot, erasureJournalAdmission: machine,
@@ -285,6 +285,11 @@ async function runAdmittedSmoke(lock: RuntimeLifetimeLock): Promise<void> {
     scheduler: realScheduler,
     newSessionId: () => randomUUID(),
     slotOrdinal: requestedWorker => { if (requestedWorker !== workerId) throw new Error("live-smoke-profile-owner-mismatch"); return ordinal; },
+    assertCurrent: requestedWorker => {
+      lock.assertHeld();
+      const hold = openedDatabase.authority.workerSlots.verification(workerId);
+      if (requestedWorker !== workerId || hold === undefined || hold.slot.ordinal !== ordinal || hold.request.system !== system) throw new Error("live-smoke-profile-custody-unavailable");
+    },
     admitProfile: createSmokeProfileAdmission({ database: openedDatabase, lock, stateRoot,
       workerId, ordinal, system, profileRoot: smokeProfileRoot }),
     onAuthenticationEvidence: (observed) => {

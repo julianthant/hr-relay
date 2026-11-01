@@ -17,7 +17,6 @@ import { realpathSync } from "node:fs";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { admitDirectWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
 import { WorkerPoolMemberSchema, workerPoolMember, type WorkerPoolMember } from "../../../src/models/run/worker-slot.js";
 import { createBoundProfileFixture, registerBoundProfile, unregisterBoundProfile } from "../helpers/admission-fixture.js";
@@ -36,7 +35,7 @@ assert.ok(process.send !== undefined);
 if (process.argv[2] === "successor-renew-confirmed") {
   const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[3]), () => { process.exitCode = 1; });
   const machine = RuntimeAdmission.acquireWorker(z.string().min(1).parse(process.argv[4]), lifetime);
-  const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(z.uuid().parse(process.argv[5])));
+  const admission = machine.admitProfile(z.uuid().parse(process.argv[5]));
   registerBoundProfile(admission, machine);
   const incoming = once(process, "message");
   process.send({ state: "successor-ready" });
@@ -122,7 +121,7 @@ if (process.argv[2] === "successor-renew-confirmed") {
 } else if (process.argv[2] === "worker") {
   const lifetime = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[3]), () => { process.exitCode = 1; });
   const machine = RuntimeAdmission.acquireWorker(z.string().min(1).parse(process.argv[4]), lifetime);
-  const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(z.uuid().parse(process.argv[5])));
+  const admission = machine.admitProfile(z.uuid().parse(process.argv[5]));
   admission.assertProfileRuntime();
   const release = once(process, "message");
   process.send({ state: "inherited-held" });

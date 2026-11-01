@@ -17,18 +17,21 @@ function frameRoot(page: Page): FrameLocator {
 }
 
 // PeopleSoft loads nav-collection iframe content after its shell; wait for a nonempty frame body.
-export async function waitForUcpathContentFrameDocument(page: Page, timeoutMs: number): Promise<void> {
+export async function waitForUcpathContentFrameDocument(assertCurrent: () => void, page: Page, timeoutMs: number): Promise<void> {
   const selector = UCPATH_UI_REGISTRY.root.selector;
   try {
     // An about:blank frame has an empty body; body children prove content navigation began.
+    assertCurrent();
     await frameRoot(page).locator("body > *").first().waitFor({ state: "attached", timeout: timeoutMs });
   } catch (error) {
+    assertCurrent();
     throw new Error(
       `UCPath content frame ${selector} never rendered a document within ${String(timeoutMs)}ms; `
       + "a nav-collection step cannot be clicked against an empty frame",
       { cause: error },
     );
   }
+  assertCurrent();
 }
 
 function roleLocator(
@@ -87,20 +90,27 @@ function stateById(id: PageStateId) {
   return state;
 }
 
-export async function waitForUcpathState(page: Page, stateId: PageStateId): Promise<PageStateProof> {
+export async function waitForUcpathState(assertCurrent: () => void, page: Page, stateId: PageStateId): Promise<PageStateProof> {
   const state = stateById(stateId);
   for (const evidence of state.evidence) {
+    assertCurrent();
     await resolveUcpathElement(page, evidence.element).waitFor({
       state: "visible",
       timeout: state.timeoutMs,
     });
   }
+  assertCurrent();
   return PageStateProofSchema.parse({ system: "ucpath", stateId, matched: true });
 }
 
 export async function waitForUcpathElementStates(
+  assertCurrent: () => void,
   page: Page,
   element: UcpathElementDefinition,
 ): Promise<void> {
-  for (const stateId of element.requiredStates) await waitForUcpathState(page, stateId);
+  for (const stateId of element.requiredStates) {
+    assertCurrent();
+    await waitForUcpathState(assertCurrent, page, stateId);
+  }
+  assertCurrent();
 }

@@ -1,3 +1,4 @@
+import { readProfilePublicationRegistry, type ProfilePublicationRead } from "../../../../src/backend/storage/admission/installation.js";
 import { z } from "zod";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import assert from "node:assert/strict";
@@ -135,7 +136,7 @@ it("migrates a stopped installation at startup, retains readable ciphertext and 
     writeFileSync(controlPath, JSON.stringify(control)); writeFileSync(keyPath, legacy);
     credentialKeyCustody.delete(binding);
     const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
-    const admission = machine.admitProfile(machine.issueRegisteredProfileClaim(binding.profileId));
+    const admission = machine.admitProfile(binding.profileId);
     try {
       const store = createCredentialStore({ admission, stateRoot: f.stateRoot, erasureJournalAdmission: machine,
         erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${binding.profileId}.json`) });
@@ -323,4 +324,29 @@ it("refuses a changed legacy key witness during stopped prior-control admission 
     assert.deepEqual(paths.map(path => readFileSync(path)), before);
     assert.deepEqual(FakeKeyringEntry.snapshot(), entries);
   } finally { await f.close(); }
+});
+
+
+it("keeps setup current inside its genuine key publication and refuses foreign or expired publication scopes", async () => {
+  const f = await createBoundProfileFixture({ pending: "storage" });
+  const checkOwner = f.machine.assertProfileCredentialKeyStageOwner.bind(f.machine);
+  const scopes: ProfilePublicationRead[] = [];
+  let checkedPendingIntent = false;
+  const registry = f.machine.readProfileRegistry();
+  const check = vi.spyOn(RuntimeAdmission.prototype, "assertProfileCredentialKeyStageOwner").mockImplementation((profile, operation, scope) => {
+    if (scope !== undefined) {
+      assert.deepEqual(readProfilePublicationRegistry(scope), registry);
+      assert.throws(() => scope.assertOperation(f.machine.stateRoot, randomUUID()), /publication-scope-mismatch/u);
+      checkedPendingIntent ||= existsSync(join(f.workspace, ".tracker", "control", "profile-publication.json"));
+      scopes.push(scope);
+    }
+    checkOwner(profile, operation, scope);
+  });
+  try {
+    initializePendingCredentials(f);
+    assert.equal(checkedPendingIntent, true);
+    assert.equal(existsSync(join(f.workspace, ".tracker", "control", "profile-publication.json")), false);
+    for (const scope of scopes) assert.throws(() => readProfilePublicationRegistry(scope), /profile-publication-read-expired/u);
+    f.admission.assertCredentialRead();
+  } finally { check.mockRestore(); await f.close(); }
 });

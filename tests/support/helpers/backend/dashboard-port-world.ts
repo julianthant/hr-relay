@@ -1,5 +1,4 @@
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase as CanonicalAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import type { Clock } from "../../../../src/rules/time/clock.js";
@@ -52,7 +51,7 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
       const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
       assert.equal(active.state, "active");
       if (active.state !== "active") throw new Error("fixture-profile-sign-in-required");
-      const admission = machine.admitProfile(createProfileRegistry(machine).storageClaim(active.profileId));
+      const admission = machine.admitProfile(active.profileId);
       storage.admission = admission;
       const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
         erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${active.profileId}.json`) });

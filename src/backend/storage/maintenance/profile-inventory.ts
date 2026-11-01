@@ -135,8 +135,12 @@ function proveStoppedBackupSourceUnused(admission: RuntimeAdmission): void {
   }
 }
 
-function stoppedBackupBrowserCensus(admission: RuntimeAdmission, clock: Clock, processLockRoot: string,
+function stoppedBackupBrowserCensus(admission: RuntimeAdmission, operation: OfflineMaintenanceOperation, clock: Clock, processLockRoot: string,
   layout: Pick<ProfileBrowserClosure, "workerDirectory">) {
+  const owner = admission;
+  admission = owner.forStoppedMaintenance(operation);
+  let retain = false;
+  try {
   const { custody, config } = stoppedBrowserFacts(admission, clock, processLockRoot);
   const retained = retainedBrowserProfiles(admission.stateRoot, custody, config.paths.browserProfileRoot, layout);
   const configuredRoots = new Set(configuredBrowserRoots(admission.stateRoot, custody, config.paths.browserProfileRoot));
@@ -190,6 +194,11 @@ function stoppedBackupBrowserCensus(admission: RuntimeAdmission, clock: Clock, p
     membership: { slots: custody.slots, verificationProfiles: custody.verificationProfiles, browsers: custody.browsers,
       configSnapshots: custody.configSnapshots, controls: custody.controls } }), timing: {
         launchTimeoutMs: config.timeouts.sessionAcquireMs, closeProofMs: config.browser.closeProofMs } };
+  } catch (error) {
+    retain = hasUnprovedSourceClosure(error);
+    if (retain) retainUnprovedSourceOwners(error, { admission, restore: operation });
+    throw error;
+  } finally { if (!retain && admission !== owner) admission.release(); }
 }
 
 export async function prepareStoppedBackupClosure(browserClosure: ProfileBrowserClosure, admission: RuntimeAdmission,
@@ -201,10 +210,10 @@ export async function prepareStoppedBackupClosure(browserClosure: ProfileBrowser
   const layout = { workerDirectory: (input: Parameters<ProfileBrowserClosure["workerDirectory"]>[0]) => browserClosure.workerDirectory(input) };
   try {
     held();
-    const before = stoppedBackupBrowserCensus(admission, clock, processLockRoot, layout);
+    const before = stoppedBackupBrowserCensus(admission, operation, clock, processLockRoot, layout);
     await browserClosure.probeClosed(before.profiles, before.timing, clock, new AbortController().signal);
     held();
-    const after = stoppedBackupBrowserCensus(admission, clock, processLockRoot, layout);
+    const after = stoppedBackupBrowserCensus(admission, operation, clock, processLockRoot, layout);
     if (before.identity !== after.identity) throw new StorageBackupClosureUnprovedError();
     proveStoppedBackupSourceUnused(admission);
     held();
@@ -223,7 +232,7 @@ export function assertStoppedBackupClosure(closure: StoppedBackupClosure, admiss
   const issued = stoppedBackupClosures.get(closure);
   if (issued === undefined || issued.admission !== admission || issued.operation !== operation) throw new StorageBackupClosureUnprovedError();
   assertOfflineMaintenanceForProcessRoot(operation, issued.processLockRoot);
-  const census = stoppedBackupBrowserCensus(admission, issued.clock, issued.processLockRoot, issued.layout);
+  const census = stoppedBackupBrowserCensus(admission, operation, issued.clock, issued.processLockRoot, issued.layout);
   if (census.identity !== issued.census) throw new StorageBackupClosureUnprovedError();
   proveStoppedBackupSourceUnused(admission);
   admission.assertOfflineMaintenance(operation);
@@ -312,7 +321,7 @@ async function probeUnreadableRestoreBrowsersClosed(admission: RuntimeAdmission,
   const operation = restore;
   let primary: { error: unknown } | undefined;
   const assertHeld = () => {
-    admission.assertExclusive(); admission.assertProfileRuntime(); admission.assertOfflineMaintenance(operation);
+    admission.assertStoppedProfile(operation);
     const context = admission.readInstallationContext();
     if (context === undefined) throw new ProfileRestoreBrowserCustodyUnprovedError();
     admission.assertFixedProcessLockRoot(context.workspace, processLockRoot);

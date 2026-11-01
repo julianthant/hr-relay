@@ -1,7 +1,6 @@
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync,existsSync,readdirSync,readFileSync,renameSync,rmSync,statSync,writeFileSync } from "node:fs";
@@ -51,7 +50,7 @@ async function fixture() {
   return { workspace, lifetime: bound.lifetime, root, path, get admission() { return admission; }, get credentials() { return credentials; }, machine: bound.machine,
     renewAfterRestore() {
       admission.release();
-      admission = bound.machine.admitProfile(createProfileRegistry(bound.machine).storageClaim(profileId));
+      admission = bound.renewAfterRestore().admission;
       credentials = createCredentialStore({ admission, stateRoot: root, erasureJournalAdmission: bound.machine,
         erasureJournalPath: join(bound.machine.stateRoot, "machine", "erasures", `${profileId}.json`) });
     }, database, directory, clock, service, configSnapshot };
