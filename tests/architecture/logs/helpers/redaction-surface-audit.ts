@@ -808,6 +808,15 @@ const WORKBOOK_VALUE_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrig
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
   {"surface": "wire/run-logs-stream", "path": "envelope.payload.attemptHistory[].endedAt.reason", "origin": "repository-authored"},
+  {"surface": "wire/run-logs-stream", "path": "envelope.payload.dryRunPreview.stages[].detail", "origin": "repository-authored"},
+  {"surface": "wire/run-logs-stream", "path": "envelope.payload.dryRunPreview.stages[].label", "origin": "repository-authored"},
+  {"surface": "wire/run-logs-stream", "path": "envelope.payload.dryRunPreview.stages[].sample.value", "origin": "repository-authored"},
+  {"surface": "wire/run-detail-section", "path": "payload.dryRunPreview.stages[].detail", "origin": "repository-authored"},
+  {"surface": "wire/run-detail-section", "path": "payload.dryRunPreview.stages[].label", "origin": "repository-authored"},
+  {"surface": "wire/run-detail-section", "path": "payload.dryRunPreview.stages[].sample.value", "origin": "repository-authored"},
+  {"surface": "wire/stream-envelope", "path": "payload.dryRunPreview.stages[].detail", "origin": "repository-authored"},
+  {"surface": "wire/stream-envelope", "path": "payload.dryRunPreview.stages[].label", "origin": "repository-authored"},
+  {"surface": "wire/stream-envelope", "path": "payload.dryRunPreview.stages[].sample.value", "origin": "repository-authored"},
   {"surface": "wire/run-logs-stream", "path": "envelope.payload.note.operatorAction.label", "origin": "repository-authored"},
   {"surface": "wire/run-logs-stream", "path": "envelope.payload.note.operatorAction.value", "origin": "captured-hr-value"},
   {"surface": "wire/run-logs-stream", "path": "envelope.payload.notes[].operatorAction.label", "origin": "repository-authored"},
