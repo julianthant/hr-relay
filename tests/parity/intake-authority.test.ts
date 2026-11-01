@@ -1,7 +1,8 @@
 import { IntakeCommandRequestSchema } from "../../src/rules/commands/commands.js";
 import { IntakeCommandResultWireSchema } from "../../src/models/dashboard/workbooks.js";
-import { test, expect, type Page } from "@playwright/test";
-import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { PARITY_THEMES, installTheme } from "./helpers/capture.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { routeUrl, type AppRoute } from "./helpers/app-driver.js";
@@ -32,7 +33,7 @@ async function prepared(server: Awaited<ReturnType<typeof startIntakeAuthoritySe
 for (const theme of PARITY_THEMES)
 
 test(`explicit comparison and exact recovery @ ${theme.name}`, async ({ page }) => {
-  ensureParityBundle(); const server = await startIntakeAuthorityServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+  const server = await startIntakeAuthorityServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
     const first = await prepared(server);
     expect((await server.authority.post(server.authority.request(first, "enqueue-intake-manifest", { dryRun: false, reviewBinding: first.reviewBinding }))).status).toBe(200);

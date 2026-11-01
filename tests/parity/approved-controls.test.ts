@@ -1,25 +1,19 @@
-import { expect, test } from '@playwright/test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
-import { build, preview, type PreviewServer } from 'vite';
-import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
+import { expect } from '@playwright/test';
+import { test } from "./helpers/fixtures.js";
+import { resolve } from 'node:path';
+import type { PreviewServer } from 'vite';
+import { previewComponentFixture } from './helpers/component-fixtures.js';
 import { attachShellA11y } from './helpers/shell-proof.js';
 import { captureParityPair } from './helpers/capture.js';
 import { FIXTURE_APP_VERSION, FIXTURE_DESCRIPTOR_HASH, FIXTURE_DAY } from './helpers/fixture-identity.js';
-let server: PreviewServer; let output: string; let baseUrl: string;
+let server: PreviewServer; let baseUrl: string;
 test.beforeAll(async () => {
-  output = await mkdtemp(join(tmpdir(), 'relay-approved-controls-'));
-  const root = resolve('tests/parity/fixtures/approved-controls');
-  await build({ configFile: false, root, plugins: [react(), tailwindcss()], logLevel: 'warn', build: { outDir: output, emptyOutDir: true } });
-  server = await preview({ configFile: false, root, logLevel: 'warn', build: { outDir: output }, preview: { host: '127.0.0.1', port: 0, strictPort: true } });
+  server = await previewComponentFixture("approved-controls");
   const address = server.httpServer.address(); if (!address || typeof address === 'string') throw new Error('controls-server-address-invalid');
   baseUrl = `http://127.0.0.1:${address.port}`;
 });
 test.afterAll(async () => {
   if (server) await new Promise<void>((done, reject) => server.httpServer.close(error => error ? reject(error) : done()));
-  if (output) await rm(output, { recursive: true, force: true });
 });
 for (const state of ['queue', 'export-pending', 'export-refused', 'save-pending', 'save-refused', 'save-conflict', 'save-uncertain', 'save-mismatch', 'save-confirmed']) {
   const evidence = `approved-controls-${state}.a11y.yml`;

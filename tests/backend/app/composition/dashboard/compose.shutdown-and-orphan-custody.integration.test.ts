@@ -1,3 +1,5 @@
+import { assertRuntimeLifetimeHeld } from "../../../../support/helpers/backend/runtime-lifetime.js";
+import { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import { createDashboardChildTestWorld, type RealChildRecord } from "../../../../support/helpers/backend/dashboard-child-world.js";
 import { workerPoolMember } from "../../../../../src/models/run/worker-slot.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
@@ -9,7 +11,6 @@ import { afterEach, describe, it } from "vitest";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { type WorkerPoolMember } from "../../../../../src/backend/runtime/workers/worker-loop.js";
-import { readRuntimeProcessLock } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { WorkflowIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
@@ -22,7 +23,7 @@ const _PL_1 = plMember(1);
 
 afterEach(cleanup, 30_000);
 
-describe("real runtime: dashboard shutdown releases the locks, reports close evidence, and leaves no orphans", () => {
+describe("real runtime: dashboard shutdown drains children before parent kernel custody releases", () => {
   it(
     "two real children over the real ingress; internal child shutdown, dashboard shutdown with one live child, then PID-proved teardown",
     async () => {
@@ -33,7 +34,6 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
       const stateRoot = profile.stateRoot;
       const dbPath = join(stateRoot, "state.db");
       const lockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
-      const serverLockRecord = () => required(readRuntimeProcessLock(lockRoot, "server"), "server process custody");
       const records: RealChildRecord[] = [];
       const faultLines: string[] = [];
       const childOutput = (): string => records.map((record) =>
@@ -124,18 +124,11 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
       );
       reportW5Phase("runtime-shutdown", "graceful-stop", "complete");
 
-      // Shutdown while SEP-1 is STILL LIVE: the supervisor's close() evidence
-      // completes child shutdown before releasing the server process record.
+      // Composition drains children while its caller retains the kernel listener.
       reportW5Phase("runtime-shutdown", "shutdown", "begin");
-      assert.equal(
-        serverLockRecord().releasedAt,
-        null,
-      );
+      await assertRuntimeLifetimeHeld(profile.lifetime);
       for (const stop of stops.splice(0)) await stop();
-      assert.notEqual(
-        serverLockRecord().releasedAt,
-        null,
-      );
+      await assertRuntimeLifetimeHeld(profile.lifetime);
       assert.deepEqual(faultLines, [], "owned children drain without shutdown faults");
       assert.equal(pidAlive(sepPid), false, "dashboard shutdown must drain its owned child");
       reportW5Phase("runtime-shutdown", "shutdown", "complete");
@@ -151,6 +144,11 @@ describe("real runtime: dashboard shutdown releases the locks, reports close evi
           { workerId: SEP_1.workerId, alive: false },
         ],
       );
+      await profileRuntime.close();
+      await profile.closeController();
+      assert.throws(() => profile.lifetime.assertHeld());
+      const replacement = await RuntimeLifetimeLock.acquire(profile.lifetime.port);
+      await replacement.close();
       reportW5Phase("runtime-shutdown", "teardown", "complete");
     },
     120_000,

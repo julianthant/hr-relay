@@ -1,12 +1,13 @@
+import { afterAll, it, describe } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { default as assert } from 'node:assert/strict';
-import { it } from "vitest";
 import { createOperatorProjection, createOperatorRunDetail } from '../../../../src/backend/app/composition/dashboard/operator.js';
 import { RunRecordService } from '../../../../src/backend/runs/lifecycle/run-record-service.js';
 import { buildRunDetail } from '../../../../src/backend/runs/queries/run-detail.js';
-import { queryActivitySummaries, queryQueueSummaries } from '../../../../src/backend/runs/queries/run-summaries.js';
+import { queryActivitySummaries, queryQueueSummaries, queryRunSummarySource } from '../../../../src/backend/runs/queries/run-summaries.js';
 import { createTimelineEmitter } from '../../../../src/backend/storage/events/timeline-emitter.js';
 import { createTransactionHistory } from '../../../../src/backend/storage/sqlite/transaction-history.js';
 import { RunRecordSchema } from '../../../../src/models/run/record.js';
@@ -15,7 +16,7 @@ import { deriveSchemaHash } from '../../../../src/models/validation/schema-bound
 import { RunCheckpointRecordSchema } from '../../../../src/models/workflow/checkpoint.js';
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
-import { foundationFixture, HASH, id, NOW } from '../../../support/helpers/database-foundation/fixtures.js';
+import { foundationFixture, HASH, id, NOW, failure as failure_m3, terminalizeFixtureFailure } from '../../../support/helpers/database-foundation/fixtures.js';
 import { personLookupDescriptor } from '../../../support/helpers/registered-workflows.js';
 
 import { activityReportCsv } from "../../../../src/backend/runs/queries/activity-export.js";
@@ -29,7 +30,6 @@ import readXlsxFile from "read-excel-file/node";
 import { composeOperatorXlsxWorkbook } from "../../../../src/backend/runs/exports/operator-xlsx-workbook.js";
 
 import { ledgerCommitFixture } from "../../../support/fixtures/ledger-projection-fixtures.js";
-import { failure as failure_m3, terminalizeFixtureFailure } from "../../../support/helpers/database-foundation/fixtures.js";
 
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { atomicWriteCheckpoint } from "../../../support/helpers/timeline-write-fixture.js";
@@ -37,17 +37,18 @@ import { atomicWriteCheckpoint } from "../../../support/helpers/timeline-write-f
 import { RUN_SESSION } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
 import { DatabaseSync } from "node:sqlite";
-import { describe } from "vitest";
-import { queryRunSummarySource } from "../../../../src/backend/runs/queries/run-summaries.js";
 import { activityDatePartAtInstant } from "../../../../src/models/dashboard/activity-volume.js";
 
 import { runtimeTimeZone } from "../../../../src/rules/time/clock.js";
 import { makeWorld, receiptWithWarningsOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
+
 {
 
 it("keeps the resolved subject and operator label distinct in the derived summary day", async () => {
-const f = await foundationFixture();
+const f = await foundationFixture({ profileFixture: profileFixtures.create });
 const { descriptor: subjectDescriptor } = createSubjectTitleTestWorld();
 try {
   const runId = id(720);
@@ -143,7 +144,7 @@ hdh: true };
 {
 
 it("serializes only safe Queue facts and aggregate Activity values",async ()=>{
-  const f=await foundationFixture();try{
+  const f=await foundationFixture({ profileFixture: profileFixtures.create });try{
 
     const queue=queryQueueSummaries(f.db,{limit:10});
     const report=queryActivitySummaries(f.db,{from:"2026-09-09",to:"2026-09-09",generatedAt:f.run.createdAt},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})}});
@@ -157,7 +158,7 @@ it("serializes only safe Queue facts and aggregate Activity values",async ()=>{
 {
 
 it("keeps JSON, CSV and XLSX write evidence through restart and terminal run deletion", async () => {
-  const f = await foundationFixture();
+  const f = await foundationFixture({ profileFixture: profileFixtures.create });
   let database = f.db;
   try {
     const run = f.run;
@@ -235,7 +236,7 @@ it("keeps JSON, CSV and XLSX write evidence through restart and terminal run del
 });
 
 it("keeps deterministic cursor ties, day/status/workflow/system membership and canonical stale-action refusal", async () => {
-  const f = await summaryFixture();
+  const f = await summaryFixture(profileFixtures.create);
   try {
     const ids = [id(8860), id(8861), id(8862), id(8863)];
     f.db.withAuthorityTransaction(() => ids.forEach((runId, n) => f.db.authority.runs.enqueue(RunRecordSchema.parse({ ...f.run,
@@ -274,7 +275,7 @@ it("keeps deterministic cursor ties, day/status/workflow/system membership and c
 {
 
 it("reads current heartbeats and publishes creation and presentation atomically",async ()=>{
-  const f=await foundationFixture();try {
+  const f=await foundationFixture({ profileFixture: profileFixtures.create });try {
     testAdmittedWorker(f.db, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 2, browserSystems: workflowProjections(personLookupDescriptor).systems });
     const before=f.db.readRunSummaries();
     if(f.run.lifecycle.state!=="running")throw new Error("fixture-state");
@@ -297,7 +298,7 @@ it("reads current heartbeats and publishes creation and presentation atomically"
   }finally{await f.dispose();}
 });
 it("maintains parent rollups and dependencies while batch grouping stays a bounded current relation",async ()=>{
-  const f=await foundationFixture();try{
+  const f=await foundationFixture({ profileFixture: profileFixtures.create });try{
     const batch={...RUN_SESSION,sessionId:id(5000),workflow:"person-lookup"};
     f.db.authority.runSessions.insert(batch);
     const parent=RunRecordSchema.parse({...f.run,envelope:{...f.run.envelope,runId:id(5001),itemId:id(5001),shape:"operation",enqueuedAt:NOW},sessionId:batch.sessionId,lifecycle:{state:"queued"},version:1,claimGeneration:0,createdAt:NOW,updatedAt:NOW});
@@ -324,7 +325,7 @@ it("maintains parent rollups and dependencies while batch grouping stays a bound
 });
 
 it("consumes relevant timeline cursors transactionally and exact replay does not rewrite",async ()=>{
-  const f=await foundationFixture();try{
+  const f=await foundationFixture({ profileFixture: profileFixtures.create });try{
     const run=f.run,envelope=run.envelope;
     const event={schemaVersion:1,eventId:id(5100),workflow:envelope.workflow,scope:{kind:"run",runId:envelope.runId},occurredAt:envelope.enqueuedAt,recordedAt:NOW,retentionDate:"2026-09-09",source:{kind:"native"},payload:{kind:"span",event:{t:"run.queued",kind:"run",pid:1,ts:envelope.enqueuedAt,workflow:envelope.workflow,runId:envelope.runId,attempt:envelope.attempt,traceId:envelope.traceId,spanPath:envelope.traceId,itemId:envelope.itemId,shape:envelope.shape,priority:envelope.priority,dryRun:envelope.dryRun,actorId:"local-operator",title:"Timeline title",descriptorVersion:envelope.descriptorVersion,contractFingerprint:envelope.contractFingerprint,resolvedInstance:envelope.resolvedInstance,configFingerprint:envelope.configFingerprint,configSnapshotId:envelope.configSnapshotId}}};
     f.db.authority.timelineEvents.append(event);
@@ -336,7 +337,7 @@ it("consumes relevant timeline cursors transactionally and exact replay does not
   }finally{await f.dispose();}
 });
 it("updates receipt facts exactly once and cancellation filtering uses the same current snapshot",async ()=>{
-  const f=await foundationFixture();try{
+  const f=await foundationFixture({ profileFixture: profileFixtures.create });try{
     const run=f.run;
     const failed = failure_m3();
     assert.equal(terminalizeFixtureFailure(f,run,failed).state,"applied");
@@ -355,7 +356,7 @@ it("updates receipt facts exactly once and cancellation filtering uses the same 
 {
 
 it("pages stable ties over real summary partitions, without whole-source reads",async ()=>{
-  const f=await foundationFixture();try {
+  const f=await foundationFixture({ profileFixture: profileFixtures.create });try {
     f.db.withAuthorityTransaction(()=>{for(let n=0;n<12;n++)f.db.authority.runs.enqueue(RunRecordSchema.parse({...f.run,
       envelope:{...f.run.envelope,runId:id(3000+n),itemId:id(3000+n)},lifecycle:{state:"queued"},version:1,claimGeneration:0}));});
     f.db.readRunSummaries=()=>{throw new Error("whole-reader-forbidden");};
@@ -376,7 +377,7 @@ it("pages stable ties over real summary partitions, without whole-source reads",
 });
 
 it("agrees with independent expected totals and the retained Activity projector on identical live authority",async ()=>{
-  const f=await foundationFixture(),world=await makeWorld();try{
+  const f=await foundationFixture({ profileFixture: profileFixtures.create }),world=await makeWorld({ profileFixture: profileFixtures.create });try{
     for(let n=0;n<4;n++)f.db.authority.runs.enqueue(RunRecordSchema.parse({...f.run,
       envelope:{...f.run.envelope,runId:id(3100+n),itemId:id(3100+n),enqueuedAt:n===3?"2025-01-01T12:00:00.000Z":NOW},
       lifecycle:{state:"queued"},version:1,claimGeneration:0,createdAt:n===3?"2025-01-01T12:00:00.000Z":NOW}));
@@ -396,7 +397,7 @@ it("agrees with independent expected totals and the retained Activity projector 
 });
 
 it("bins the enqueue instant and refuses a timezone mismatch before an indexed day bound can hide a run",async ()=>{
-  const f=await foundationFixture();try{
+  const f=await foundationFixture({ profileFixture: profileFixtures.create });try{
     const enqueuedAt="2026-09-09T07:20:00.000Z";
     const queued=RunRecordSchema.parse({...f.run,
       envelope:{...f.run.envelope,runId:id(3200),itemId:id(3200),enqueuedAt},
@@ -424,7 +425,7 @@ it("bins the enqueue instant and refuses a timezone mismatch before an indexed d
 });
 
 it("folds real summary rows into inclusive DST-day boundaries, distinct repeated hours, and known-zero days",async ()=>{
-  const f=await foundationFixture();try{
+  const f=await foundationFixture({ profileFixture: profileFixtures.create });try{
     const zone="America/Los_Angeles";
     const enqueuedAt=[
       "2026-03-08T07:59:59.000Z",
@@ -482,7 +483,7 @@ it("folds real summary rows into inclusive DST-day boundaries, distinct repeated
 });
 
 it("keeps the minimum supported date inside its indexed candidate range",async ()=>{
-  const f=await foundationFixture();try{
+  const f=await foundationFixture({ profileFixture: profileFixtures.create });try{
     const report=queryActivitySummaries(f.db,{from:"0000-02-29",to:"0000-02-29",generatedAt:NOW},
       {descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})},timeZone:"UTC"});
     assert.equal(report.totalRuns,0);
@@ -498,7 +499,7 @@ const semanticRows=(rows:ReturnType<AuthorityDatabase["readRunSummaries"]>)=>row
 
 describe("native summary snapshots and transaction hooks", () => {
   it("derives new runs atomically and rolls failed mutations back", async () => {
-    const fixture = await foundationFixture();
+    const fixture = await foundationFixture({ profileFixture: profileFixtures.create });
     try {
       testAdmittedWorker(fixture.db, fixture.clock, { path: fixture.path, workflow: "person-lookup", poolIndex: 2, browserSystems: workflowProjections(personLookupDescriptor).systems });
       assert.equal(fixture.db.readRunSummaries().length,1);
@@ -521,7 +522,7 @@ describe("native summary snapshots and transaction hooks", () => {
   });
 
   it("notices resolution annotations without replacing immutable UNKNOWN failure evidence", async () => {
-    const f = await foundationFixture();
+    const f = await foundationFixture({ profileFixture: profileFixtures.create });
     try {
       const record = failure_m3();terminalizeFixtureFailure(f,f.run,record);
       const before=f.db.authority.failures.get(record.failureId);
@@ -539,7 +540,7 @@ describe("native summary snapshots and transaction hooks", () => {
 });
 
 it("reads a consistent admitted snapshot across an independent writer and refuses corrupt run mirrors after restart",async ()=>{
-  const f=await foundationFixture();let peer:AuthorityDatabase|undefined;
+  const f=await foundationFixture({ profileFixture: profileFixtures.create });let peer:AuthorityDatabase|undefined;
   try{
     peer=AuthorityDatabase.open({path:f.path,busyTimeoutMs:500,migrationOwner:"summary-peer"},f.clock);
     const before=f.db.readRunSummaries();
@@ -562,7 +563,7 @@ it("reads a consistent admitted snapshot across an independent writer and refuse
 });
 
 it("keeps unrelated source facts unchanged, rolls nested mutations back and pages through the real query port",async ()=>{
-  const f=await foundationFixture();
+  const f=await foundationFixture({ profileFixture: profileFixtures.create });
   try {
     testAdmittedWorker(f.db, f.clock, { path: f.path, workflow: "person-lookup", poolIndex: 2, browserSystems: workflowProjections(personLookupDescriptor).systems });
     const before=f.db.readRunSummaries(),pool=f.db.authority.workerPools.get("person-lookup");assert.ok(pool);

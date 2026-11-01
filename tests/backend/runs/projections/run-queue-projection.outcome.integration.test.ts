@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../../src/models/trust/evidence-identity.js";
 import { FingerprintSchema, PositiveIntSchema, RunIdSchema, TraceIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -8,7 +9,9 @@ import { DAY, instantOffsetOf, receiptWithOutputOf, traceOf, uuidOf } from "../.
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const { world, runRecordOf, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld();
+const profiles = createClonedProfileFixtures();
 afterEach(cleanup);
+afterAll(() => profiles.close());
 
 async function setup(options: { workflow?: string; fieldPath?: string } = {}) {
   const seed = 80;
@@ -17,7 +20,7 @@ async function setup(options: { workflow?: string; fieldPath?: string } = {}) {
   assert.ok(personLookupDescriptor.outcomeProjection);
   const descriptor = { ...personLookupDescriptor, titleProjection: undefined, subtitleProjection: undefined, details: [], id: WorkflowIdSchema.parse(workflow),
     outcomeProjection: { ...personLookupDescriptor.outcomeProjection, fieldPath } };
-  const w = await world({ descriptors: { resolve: () => descriptor } });
+  const w = await world({ profileFixture: profiles.create, descriptors: { resolve: () => descriptor } });
   queuedEventOf(w, { seed, workflow });
   const run = runRecordOf({ seed, workflow, lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 60_000) }, version: 3 });
   w.authority.put(run);

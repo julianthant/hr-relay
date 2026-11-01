@@ -20,11 +20,6 @@
       "binding": "route:GET /artifacts/v1/:artifactId",
       "direction": "served-unconsumed",
       "note": "The route is served, but no mounted dashboard consumer invokes it."
-    },
-    {
-      "binding": "route:POST /api/v1/settings/chatgpt-account/test-ocr",
-      "direction": "served-unconsumed",
-      "note": "The served route currently has no client caller. Future approved Settings/account integration must add the typed client/caller in src/dashboard/client/queries/chatgpt-account-queries.ts and src/dashboard/surfaces/settings/general/chatgpt-account.tsx, obtain runtime acceptance, then remove this pending row."
     }
   ]
 }

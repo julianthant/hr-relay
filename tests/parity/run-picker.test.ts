@@ -1,13 +1,13 @@
 
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { FIXTURE_START_PICKER_BOOTSTRAP, FIXTURE_START_PICKER_DAY_WIRE, FIXTURE_START_PICKER_DESCRIPTOR_HASH } from "./helpers/fixture-start.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`grouped run picker stays mounted @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: { bootstrap: FIXTURE_START_PICKER_BOOTSTRAP, day: FIXTURE_START_PICKER_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH } });
   try {
     await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 }); await installTheme(page, theme);

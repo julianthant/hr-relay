@@ -1,8 +1,8 @@
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
+import { afterAll } from "vitest";
 import assert from "node:assert/strict";
-import { mkdtempSync,realpathSync,rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach,it,vi } from "vitest";
 import { RunRecordService,requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { listCanonicalRuns } from "../../../../src/backend/runs/queries/canonical-runs.js";
@@ -16,18 +16,22 @@ import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.j
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
+const profiles = createClonedProfileFixtures();
+afterAll(() => profiles.close());
+
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
 async function fixture() {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), "canonical-operator-"));
-  cleanups.push(() => rmSync(root, { recursive: true }));
+  const profile = await profiles.create();
+  const root = profile.stateRoot;
+  cleanups.push(() => profile.close());
   const clock = manualClock(AT);
-  const database = AuthorityDatabase.open({ path: join(root, "authority.sqlite"), migrationOwner: "unit-test", busyTimeoutMs: 250 }, clock);
+  const database = AuthorityDatabase.open({ path: profile.path, migrationOwner: "unit-test", busyTimeoutMs: 250 }, clock);
   seedSyntheticRuntimeConfig(database);
   database.authority.configSnapshots.insert(CONFIG_SNAPSHOT);
-  testWorkerPorts(database, clock, {path:join(root,"authority.sqlite"),descriptor:personLookupDescriptor,poolIndex:1});
-  cleanups.push(() => database.close());
+  testWorkerPorts(database, clock, {path:profile.path,descriptor:personLookupDescriptor,poolIndex:1});
+  cleanups.push(() => { releaseSeededWriteOwners(database, clock.now().toISOString()); database.close(); });
   const realReader = sqliteRunReader(database, clock);
   let listCalls = 0, treeCalls = 0;
   const reader: typeof realReader = {
@@ -35,7 +39,7 @@ async function fixture() {
     withRunTreeSnapshot: (ids, work) => { treeCalls += 1; return realReader.withRunTreeSnapshot(ids, work); },
     list: (input) => { listCalls += 1; return realReader.list(input); },
   };
-  const world = await makeWorld({ reader });
+  const world = await makeWorld({ reader, profileFixture: profiles.create });
   cleanups.push(async () => await world.dispose());
   const service = new RunRecordService({ database, clock,
     ids: { uuid: () => { throw new Error("read fixture cannot create identities"); } },

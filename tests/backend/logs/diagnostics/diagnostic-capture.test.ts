@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync,lstatSync,readFileSync,readdirSync,renameSync,truncateSync,writeFileSync } from "node:fs";
+import { existsSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,renameSync,rmSync,truncateSync,writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { fileURLToPath } from "node:url";
 import { it } from "vitest";
 import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
@@ -12,8 +14,8 @@ import { DiagnosticAttachmentSchema,DiagnosticBundleSchema,type DiagnosticBundle
 import { failure,foundationFixture,terminalizeFixtureFailure } from "../../../support/helpers/database-foundation/fixtures.js";
 import { syntheticStateRoot } from "../../../support/helpers/synthetic-storage-admission.js";
 
-async function fixture() {
-  const f = await foundationFixture();
+async function fixture(options: { sharedMachine?: true } = {}) {
+  const f = await foundationFixture(options);
   const admission = syntheticStateRoot(f.root);
   const writer = createContentAddressedArtifactWriter({ admission });
   const service = createDiagnosticCaptureService({ authority: f.db.authority, artifacts: writer, clock: f.clock, ids: { uuid: randomUUID } });
@@ -21,7 +23,7 @@ async function fixture() {
     configFingerprint: f.snapshot.fingerprint, descriptorFingerprint: f.run.envelope.contractFingerprint, fields: [],
     attachments: [{ kind: "console-summary" as const, mediaType: "application/json", sensitivity: "redacted" as const, bytes: Buffer.from(text) }] });
   const inventory = () => existsSync(admission.artifactRoot) ? readdirSync(admission.artifactRoot).sort() : [];
-  return { ...f, admission, writer, service, request, inventory, dispose: async () => { admission.release(); await f.dispose(); } };
+  return { ...f, admission, writer, service, request, inventory, dispose: () => f.dispose() };
 }
 
 function withAttachments(base: DiagnosticBundle, attachments: DiagnosticBundle["attachments"]) {
@@ -58,7 +60,7 @@ it("keeps rollback publication budget-accounted, preserves generic reuse, and re
     const shared = await f.writer.put(f.request().attachments[0].bytes, { mediaType: "application/json" });
     f.service.discard(prepared);
     assert.equal(f.inventory().length, 2); assert.equal(shared.sha256, pending[0]?.sha256);
-    assert.throws(() => f.db.reclaimPendingDiagnostics(), /installation-required/u);
+    assert.equal(existsSync(join(f.admission.artifactRoot, `${shared.sha256}.artifact`)), true);
     const stored = f.service.persist(prepared);
     assert.deepEqual(f.service.persist(prepared), stored);
     assert.equal(f.db.authority.diagnosticBundles.listByRun(f.run.envelope.runId).length, 1);
@@ -93,7 +95,9 @@ it("uses the real fixed-1GiB repository boundary once per unique digest and publ
 
 const sourceUrl = (relative: string) => new URL(relative, import.meta.url).href;
 function child(source: string) {
-  const process = spawn(globalThis.process.execPath, ["--import", "tsx", "--input-type=module", "-e", source], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), stdio: ["ignore", "pipe", "pipe"] });
+  const process = spawn(globalThis.process.execPath, ["--import", "tsx", "--input-type=module", "-e", source], { cwd: fileURLToPath(new URL("../../../../", import.meta.url)), stdio: ["ignore", "pipe", "pipe", "ipc"] });
+  assert.ok(process.stdout);
+  assert.ok(process.stderr);
   let stdout = "", stderr = "";
   process.stdout.on("data", bytes => { stdout += String(bytes); });
   process.stderr.on("data", bytes => { stderr += String(bytes); });
@@ -105,20 +109,30 @@ function child(source: string) {
 }
 
 it("admits simultaneous native captures in separate processes without duplicate shared bytes", async () => {
-  const f = await fixture();
+  const f = await fixture({ sharedMachine: true });
   try {
-    const source = `import { AuthorityDatabase } from ${JSON.stringify(sourceUrl("../../../support/helpers/synthetic-storage-admission.ts"))};
-      import { syntheticStateRoot } from ${JSON.stringify(sourceUrl("../../../support/helpers/synthetic-storage-admission.ts"))};
+    const clock = JSON.stringify(f.clock.now().toISOString());
+    const source = `import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/admission/lifetime-lock.ts"))};
+      import { acquireSharedRuntimeAdmission } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/admission/admission.ts"))};
+      import { createProfileRegistry } from ${JSON.stringify(sourceUrl("../../../../src/backend/profiles/registry.ts"))};
+      import { createCredentialStore } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/configuration/credential-store.ts"))};
+      import { AuthorityDatabase } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/sqlite/authority-database.ts"))};
       import { createContentAddressedArtifactWriter } from ${JSON.stringify(sourceUrl("../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.ts"))};
       import { createDiagnosticCaptureService } from ${JSON.stringify(sourceUrl("../../../../src/backend/logs/diagnostics/diagnostic-capture.ts"))};
       import { manualClock } from ${JSON.stringify(sourceUrl("../../../../src/rules/time/clock.ts"))};
+      import { join } from 'node:path';
       import { randomUUID } from 'node:crypto';
-      const db=AuthorityDatabase.open({path:${JSON.stringify(f.path)},busyTimeoutMs:5000,migrationOwner:'concurrent-diagnostic'},manualClock(new Date(${JSON.stringify(f.clock.now().toISOString())})));
-      const admission=syntheticStateRoot(${JSON.stringify(f.root)});
-      const service=createDiagnosticCaptureService({authority:db.authority,artifacts:createContentAddressedArtifactWriter({admission}),clock:manualClock(new Date(${JSON.stringify(f.clock.now().toISOString())})),ids:{uuid:randomUUID}});
+      const lifetime=await WorkerRuntimeLifetimeLock.receive(${f.profile.lifetime.port},()=>process.exit(1));
+      const machine=acquireSharedRuntimeAdmission(${JSON.stringify(f.profile.workspace)},lifetime);
+      const admission=machine.admitProfile(createProfileRegistry(machine).storageClaim(${JSON.stringify(f.profile.admission.profileBinding.profileId)}));
+      const credentials=createCredentialStore({admission,stateRoot:admission.stateRoot,erasureJournalAdmission:machine,erasureJournalPath:join(machine.stateRoot,'machine','erasures',admission.profileBinding.profileId+'.json')});
+      const clock=manualClock(new Date(${clock}));
+      const db=AuthorityDatabase.open(admission,{path:${JSON.stringify(f.path)},busyTimeoutMs:5000,migrationOwner:'concurrent-diagnostic'},clock,undefined,undefined,undefined,credentials);
+      const service=createDiagnosticCaptureService({authority:db.authority,artifacts:createContentAddressedArtifactWriter({admission}),clock,ids:{uuid:randomUUID}});
       try {await service.capture({...${JSON.stringify(f.request())},attachments:[{kind:'console-summary',mediaType:'application/json',sensitivity:'redacted',bytes:Buffer.from('shared concurrent bytes')}]});}
-      finally {db.close();admission.release();}`;
+      finally {db.close();admission.release();machine.release();await lifetime.close();process.disconnect();}`;
     const a = child(source), b = child(source);
+    await Promise.all([f.profile.lifetime.share(a.process), f.profile.lifetime.share(b.process)]);
     await Promise.all([a.exited, b.exited]);
     const rows = f.db.authority.diagnosticBundles.listByRun(f.run.envelope.runId);
     assert.equal(rows.length, 2); assert.deepEqual(rows[0]?.attachments, rows[1]?.attachments);
@@ -175,11 +189,26 @@ it("bounds sparse diagnostic envelopes before parsing or publication while prese
   } finally { await f.dispose(); }
 });
 
-it("admits the maximum diagnostic attachment envelope and leaves an absent artifact root absent during empty cleanup", async () => {
+it("refuses diagnostic stage cleanup without an installation", () => {
+  const root = mkdtempSync(join(tmpdir(), "diagnostic-cleanup-"));
+  try {
+    const artifacts = join(root, "artifacts");
+    mkdirSync(artifacts, { mode: 0o700 });
+    const admission = RuntimeAdmission.syntheticRoots(root, artifacts);
+    assert.throws(() => reclaimDiagnosticStages(admission, () => false), /diagnostic-stage-cleanup-installation-required/u);
+    rmSync(artifacts, { recursive: true });
+    assert.equal(reclaimDiagnosticStages(admission, () => false), 0);
+    assert.equal(existsSync(artifacts), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("admits the maximum diagnostic attachment envelope", async () => {
   const f = await fixture();
   try {
+    if (existsSync(f.admission.artifactRoot) && readdirSync(f.admission.artifactRoot).length === 0) rmSync(f.admission.artifactRoot, { recursive: true });
     assert.equal(reclaimDiagnosticStages(f.admission, () => false), 0);
     assert.equal(existsSync(f.admission.artifactRoot), false);
+    mkdirSync(f.admission.artifactRoot, { recursive: true, mode: 0o700 });
     const stage = await f.writer.stageDiagnostic(Buffer.alloc(10 * 1024 * 1024, 1), { mediaType: "image/png" }, "ordinary");
     assert.deepEqual(pendingDiagnosticArtifacts(f.admission), [stage.ref]);
     assert.equal(stage.publish().bytes, 10 * 1024 * 1024);

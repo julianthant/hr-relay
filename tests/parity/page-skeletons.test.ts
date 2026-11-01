@@ -1,6 +1,7 @@
 
-import { expect, test, type Locator } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect, type Locator } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { fixtureProviderSettings } from "./helpers/fixture-provider-settings.js";
@@ -17,7 +18,6 @@ async function bounds(locator: Locator) {
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`Settings skeletons keep each page's groups and controls @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const credentials = fixtureProviderSettings();
     const errors: string[] = [];
@@ -66,7 +66,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 
   test(`Activity skeleton preserves metrics, tables and chart @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
@@ -93,7 +92,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 
   test(`Notification and session skeletons use their rail and worker cards @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
@@ -132,7 +130,6 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 }
 
 test("Catalog and diagnostics preserve their page structure during initial reads", async ({ page }, _info) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, preflightScenario: "ready" });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -178,7 +175,6 @@ test("Catalog and diagnostics preserve their page structure during initial reads
 });
 
 test("Initial bootstrap and queue loads remain distinct from errors and empty data", async ({ page }) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   let releaseBoot!: () => void, releaseDay!: () => void;
   const boot = new Promise<void>(resolve => { releaseBoot = resolve; });
@@ -206,7 +202,6 @@ test("Initial bootstrap and queue loads remain distinct from errors and empty da
 });
 
 test("OCR page skeleton fills the fixed PDF frame until its image arrives", async ({ page }, _info) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   let release!: () => void;
   const pending = new Promise<void>(resolve => { release = resolve; });
@@ -250,7 +245,6 @@ test("OCR page skeleton fills the fixed PDF frame until its image arrives", asyn
 });
 
 test("Intake loading preserves its source, mapping columns and bottom actions", async ({ page }, _info) => {
-  ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   let release!: () => void;
   const pending = new Promise<void>(resolve => { release = resolve; });

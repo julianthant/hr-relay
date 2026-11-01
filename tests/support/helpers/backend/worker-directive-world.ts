@@ -3,7 +3,7 @@ import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-r
 import { type WorkerLoopDependencies } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { sequentialIdFactory, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";
-import { fixtureDuoCeremonyGates } from "../duo-ceremony-fixtures.js";
+import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { EXECUTOR_WORKER_ID, happySessionHarness, ManualScheduler, openAuthorityHarness, recordingLogger, recordingTimelineEmitter, type SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../registered-workflows.js";
 
@@ -39,7 +39,7 @@ export function createWorkerDirectiveTestWorld() {
       scheduler,
       taskDeadlineMs: 60_000,
       sessionAcquireMs: 20_000,
-      duoCeremony: await fixtureDuoCeremonyGates(authority.clock),
+      duoCeremony: duoCeremonyGatesOver(authority.database, authority.clock),
       heartbeatIntervalMs: options.heartbeatIntervalMs ?? 500,
       idleRepollMs: 1_000,
       log: recordingLogger().log,

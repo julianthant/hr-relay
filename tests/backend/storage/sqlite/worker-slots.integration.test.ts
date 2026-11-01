@@ -1,3 +1,5 @@
+import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { afterAll } from "vitest";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { admitWorkerPoolRoster } from "../../../../src/backend/storage/sqlite/worker-slots.js";
@@ -7,9 +9,6 @@ import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixture
 import { foundationFixture, id, NOW } from "../../../support/helpers/database-foundation/fixtures.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe } from "vitest";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -55,11 +54,12 @@ it("keeps canonical claims fenced until the native pool reservation is audited",
 
 {
 
-const roots: string[] = [];
-function databasePath(): string {
-  const root = mkdtempSync(join(tmpdir(), "hrauto-parallel-runs-authority-"));
-  roots.push(root);
-  return join(root, "authority.sqlite");
+const profiles = createClonedProfileFixtures();
+const heldProfiles: BoundProfileStorageFixture[] = [];
+afterAll(() => profiles.close());
+async function databasePath(): Promise<string> {
+  const profile = await profiles.create(); heldProfiles.push(profile);
+  return profile.path;
 }
 function open(path: string): AuthorityDatabase {
   const database = AuthorityDatabase.open(
@@ -69,8 +69,8 @@ function open(path: string): AuthorityDatabase {
   if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   return database;
 }
-const _afterEachFixture0 = () => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+const _afterEachFixture0 = async () => {
+  for (const profile of heldProfiles.splice(0)) await profile.close();
 };
 const OTHER_SESSION_ID = "aaaaaaaa-0009-4000-8000-000900000000";
 
@@ -89,8 +89,8 @@ function queuedRun(
 describe("worker_pools — the CAS basis the spawn control needs (§11.5)", () => {
 afterEach(_afterEachFixture0);
 
-  it("refuses a stale expectedVersion by NAME, with the current version — 0 when there is no row", () => {
-    const database = open(databasePath());
+  it("refuses a stale expectedVersion by NAME, with the current version — 0 when there is no row", async () => {
+    const database = open(await databasePath());
     const noRow = database.authority.workerPools.plan({
       workflow: WORKFLOW_ID, expectedVersion: 1, desiredWorkers: 1, requestedBy: "local-operator", now: NOW_m1,
     });
@@ -122,8 +122,8 @@ afterEach(_afterEachFixture0);
     assert.equal(next.pool.desiredWorkers, 3);
   });
 
-  it("keeps each workflow's pool separate and never deletes a row", () => {
-    const path = databasePath();
+  it("keeps each workflow's pool separate and never deletes a row", async () => {
+    const path = await databasePath();
     const database = open(path);
     database.authority.workerPools.plan({
       workflow: WORKFLOW_ID, expectedVersion: 0, desiredWorkers: 2, requestedBy: "local-operator", now: NOW_m1,
@@ -145,8 +145,8 @@ afterEach(_afterEachFixture0);
 describe("run_batches — a durable group whose membership is the run table (§11.1)", () => {
 afterEach(_afterEachFixture0);
 
-  it("refuses a member that names a session authority never wrote, or another workflow's session", () => {
-    const database = open(databasePath());
+  it("refuses a member that names a session authority never wrote, or another workflow's session", async () => {
+    const database = open(await databasePath());
     assert.throws(
       () => database.authority.runs.enqueue(queuedRun(RUN_ID, { sessionId: OTHER_SESSION_ID })),
       /names session aaaaaaaa-0009-4000-8000-000900000000, which authority never wrote/,
@@ -160,8 +160,8 @@ afterEach(_afterEachFixture0);
     );
   });
 
-  it("reads an admitted current ungrouped run as no session", () => {
-    const path = databasePath();
+  it("reads an admitted current ungrouped run as no session", async () => {
+    const path = await databasePath();
     const database = open(path);
     database.authority.runs.enqueue(queuedRun(RUN_ID, {}));
     database.close();

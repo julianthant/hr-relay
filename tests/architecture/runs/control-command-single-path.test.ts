@@ -393,6 +393,19 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
       expectedVersion: 0, controlBasis: { leaseGeneration: 1, controlRevision: 1 } },
   })),
   {
+    commandId: "35353535-3535-4353-8353-353535353535",
+    requestedAt: NOW, requestedBy: "local-operator", source: "run-detail", family: "worker-browser", type: "check-parked-write",
+    target: {
+      workerId: "fixture-graph-worker-9", expectedVersion: 1, membershipRevision: 1, processId: 1, startedAt: NOW,
+      controlBasis: { leaseGeneration: 1, controlRevision: 1 },
+      installationId: "33333333-3333-4333-8333-333333333333", profileId: ASSISTANT_PREFERENCE_PROFILE,
+      workflowId: "fixture-graph", itemId: "46464646-4646-4464-8464-464646464646",
+      runId: "45454545-4545-4454-8454-454545454545", runVersion: 1, runAttempt: 1, traceId: "ab-120000-0001", nodeId: "parked-check",
+      writeIntentId: "47474747-4747-4474-8474-474747474747", intentVersion: 1, intentGeneration: 1,
+      writeAttemptId: "48484848-4848-4484-8484-484848484848", bindingProofDigest: HASH_B, occurrenceKeyDigest: HASH_B,
+    },
+  },
+  {
     commandId: "12121212-1212-4121-8121-121212121212", requestedAt: NOW,
     requestedBy: "local-operator", source: "dashboard", family: "assistant-model-preference", type: "set-assistant-model-preference",
     target: { profileId: ASSISTANT_PREFERENCE_PROFILE, epoch: 0, expectedRevision: 1 }, payload: { slug: "gpt-6.1-sol", effort: "low" },
@@ -450,6 +463,7 @@ const EXPECTED_ACTIVE = {
   start: ["start-run"],
   "workflow-batch": ["set-batch-grouping"],
   "worker-browser": [
+    "check-parked-write",
     "plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker",
     "resume-worker", "refresh-browser", "reopen-browser",
   ],
@@ -540,6 +554,8 @@ async function createHarness(wrap?: RepositoryWrap): Promise<GuardHarness> {
     clock,
     ids: sequentialIdFactory("a"),
     authorityProfileId: ASSISTANT_PREFERENCE_PROFILE,
+    authorityInstallationId: "33333333-3333-4333-8333-333333333333",
+    workflowSources: { "fixture-graph": "served" },
     prepareAssistantModelPreference: async () => () => true,
     descriptors: {
       resolve: (workflowId) => workflowId === "fixture-graph" ? fixtureDescriptor : undefined,
@@ -553,6 +569,8 @@ async function createHarness(wrap?: RepositoryWrap): Promise<GuardHarness> {
       spawnPoolWorker: async () => seamFailure("spawn-worker")(),
       refreshPoolBrowser: async () => seamFailure("refresh-browser")(),
       reopenPoolBrowser: async () => seamFailure("reopen-browser")(),
+      checkParkedWrite: async () => seamFailure("check-parked-write")(),
+      assertResetOwner: () => seamFailure("check-parked-write")(),
       stopPoolWorker: async () => seamFailure("stop-worker")(),
       pausePoolWorker: async () => seamFailure("pause-worker")(),
       resumePoolWorker: async () => seamFailure("resume-worker")(),

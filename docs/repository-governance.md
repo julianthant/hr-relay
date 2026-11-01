@@ -4,15 +4,16 @@ The [root Git instructions](../AGENTS.md#git) own branch and release policy.
 
 ## Branch protection
 
-`staging` requires passing checks on a branch that is up to date with `staging`, with no review
-requirement, so green PRs auto-merge with a merge commit. `main` additionally requires one
-independent approving review. Both block force pushes and branch deletion. Merge commits only;
-squash and rebase merging are disabled.
+`staging` requires a pull request and passing checks on a branch that is up to date with `staging`,
+with no human approving review, so green pull requests auto-merge with a merge commit. Both
+branches block force pushes and branch deletion. Merge commits only; squash and rebase merging are
+disabled; linear history is not required. `main` does not auto-merge: the operator merges the
+release pull request.
 
 | Branch | Required CI check names |
 | --- | --- |
 | `staging` | `static`, `privacy`, `unit (macos-15)`, `integration (macos-15)`, `architecture (macos-15)`, `parity` |
-| `main` | the `staging` checks plus `release` |
+| `main` | the `staging` checks, plus `release` |
 
 `release` runs only on PRs targeting `main`, after the other checks. Its isolated runner builds the
 web bundle, runs coverage alone, then performance. The operator authorizes release PRs from
@@ -20,8 +21,8 @@ web bundle, runs coverage alone, then performance. The operator authorizes relea
 
 ## Merge train and automatic fixes
 
-`.github/workflows/merge-train.yml` runs on every push to `staging` and every finished CI run. It
-labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then picks the
+`.github/workflows/merge-train.yml` runs on every push to `staging`, and CI calls it as its final job.
+It labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then picks the
 oldest open, non-draft, same-repository PR into `staging` with auto-merge enabled and no
 `train-failed`, `needs-human` or `merge-conflict` label. While one such PR is up to date, the train
 waits; otherwise it merges `staging` into the oldest PR that is behind, which re-runs CI on the
@@ -35,9 +36,25 @@ resolves conflicts. Their instructions forbid raising deadlines, skipping or loo
 updating parity references and editing workflows; anything that needs those gets `needs-human`.
 The operator watches only `needs-human`.
 
-CI takes Node from `package.json` engines and caches npm. Test jobs use macOS because the test
-runner requires `/usr/bin/lockf`. Desktop parity uses headless Chromium and existing references;
-CI never updates references or uploads HR evidence.
+CI takes Node from `package.json` engines and caches npm. Routine test suites are macOS:
+required unit, integration, architecture and parity on `macos-15` Apple Silicon runners.
+Static, privacy and the four required suite summaries stay on Ubuntu. CI runs no Windows jobs.
+A full run uses five concurrent macOS groups: twenty integration shards distributed around unit,
+serial architecture and two parity shards. Each group runs its assigned suites in sequence.
+The release runner starts after these groups finish. This fits the five-job macOS limit without
+an extra runner wave; other workflows and GitHub runner availability can still cause queueing.
+
+PR path filters select affected suites; pushes to `staging` or `main` always select all routine
+suites. Markdown-only PRs run static and privacy without test runners. The required suite names
+stay unchanged: each summary succeeds for a deliberately omitted suite, or requires every
+scheduled group to succeed. Failed change detection, failed groups and cancelled selected groups
+fail the summaries. The [test reference](rebuild/reference/guards-and-tests.md#2-vitest-selection-and-commands)
+owns the selection rules and membership proof. Markdown-only release PRs also omit coverage and perf.
+
+Playwright browser caches use `~/Library/Caches/ms-playwright`, keyed by runner OS, architecture,
+macOS image, browser set and `package-lock.json` digest. An exact hit skips installation; a miss
+installs the required browsers. There are no partial-key restores. Desktop parity uses headless
+Chromium and existing references; CI never updates references or uploads HR evidence.
 
 ## Privacy check
 

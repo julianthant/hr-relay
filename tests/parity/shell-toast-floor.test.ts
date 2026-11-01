@@ -1,7 +1,8 @@
 
-import { expect,test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startFixtureServer,type FixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
@@ -13,7 +14,6 @@ const VIEWPORTS = [
 let server: FixtureServer;
 
 test.beforeAll(async () => {
-  ensureParityBundle();
   server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
 });
 

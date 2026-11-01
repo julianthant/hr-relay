@@ -86,9 +86,7 @@ for (const owner of retained) {
             stoppedAt: now, reason: "shutdown" } });
         if (stopped.state !== "applied") throw new Error("fixture-worker-stop-conflict");
       }
-    } catch (error) {
-      failures.push(error);
-    }
+    } catch (error) { failures.push(error); }
   }
 if (failures.length !== 0) throw new AggregateError(failures, "fixture-worker-closure-unproved");
   } });

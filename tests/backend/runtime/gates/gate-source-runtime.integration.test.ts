@@ -1,13 +1,13 @@
-import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
+import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { afterAll } from "vitest";
 import { GateIdSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { testRunService, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
+import { releaseAdmissionFixture, releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
@@ -29,12 +29,16 @@ import { AuthorityDatabase } from "../../../support/helpers/admission-fixture.js
 import { fixtureDuoCeremonyGates } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { ManualScheduler, recordingLogger, recordingTimelineEmitter, happySessionHarness as sourceSessionHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
+const profiles = createClonedProfileFixtures();
+const heldProfiles: BoundProfileStorageFixture[] = [];
+afterAll(() => profiles.close());
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
 
-afterEach(() => {
+afterEach(async () => {
   for (const database of openDatabases.splice(0)) database.close();
   releaseAdmissionFixtures();
+  for (const profile of heldProfiles.splice(0)) await profile.close();
   for (const root of roots.splice(0)) {
     releaseAdmissionFixture(root);
     rmSync(root, { recursive: true, force: true });
@@ -44,9 +48,8 @@ afterEach(() => {
 const NOW = "2026-08-03T09:00:00.000Z";
 
 async function repoRootWithState() {
-  const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-worker-compose-"));
-  roots.push(repoRoot);
-  const stateRoot = installationAdmission(repoRoot, await runtimeLifetimeLock()).stateRoot;
+  const profile = await profiles.create(); heldProfiles.push(profile);
+  const repoRoot = profile.workspace, stateRoot = profile.stateRoot;
   writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "worker-composition-fixture", version: "0.1.0", type: "module" }));
   return { repoRoot, stateRoot };
 }

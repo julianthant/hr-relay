@@ -30,6 +30,7 @@ import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { runtimeFixture } from "../../../support/fixtures/preflight/runtime-fixture.js";
 import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
+import { scaledMs } from "../../../support/time-scale.js";
 
 {
 
@@ -72,7 +73,7 @@ it("serves only the genuine token-owned profile and refuses its later missing ca
     if (!dashboardStopped) await runtime.close();
     restarted?.release(); await profile.close();
   }
-}, 20_000);
+}, scaledMs(20_000));
 }
 
 {
@@ -167,7 +168,7 @@ try {
 } finally {
 await _afterEachFixture0();
 }
-}, 30_000);
+}, scaledMs(30_000));
 }
 
 {

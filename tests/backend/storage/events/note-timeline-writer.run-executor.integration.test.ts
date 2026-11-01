@@ -13,7 +13,11 @@ import { ConfigSchema } from "../../../../src/models/config/schema.js";
 import { duoCeremonyGatesOver } from "../../../support/helpers/duo-ceremony-fixtures.js";
 import { ObservedOperationStructureWireSchema } from "../../../../src/models/dashboard/operation-structure.js";
 import { NoteWireSchema } from "../../../../src/models/events/types.js";
-import { RunParentSchema } from "../../../../src/models/run/envelope.js";
+import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
+import { flow } from "../../../../src/workflow-kit/flow.js";
+import { defineWorkflowDescriptor, workflowTerminalResultExecution, workflowPlanning } from "../../../../src/workflow-kit/workflow.js";
+import { DelegationEdgeIdSchema } from "../../../../src/rules/identity/ids.js";
+import { randomUUID } from "node:crypto";
 import { SearchPersonOrg } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
 import { CONFIG_SNAPSHOT, UUID_4, UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -259,24 +263,30 @@ describe("complete operation display action binding", () => {
     const harness = await executorHarness({ sessions: actionBindingSessions(), descriptor: actionBindingCompiled.descriptor });
     const { database, clock, stateRoot: _stateRoot } = harness.authority;
     const writer = createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock, pid: 4242 });
-    database.authority.runs.enqueue(personLookupQueuedRun());
-    const claimed = enqueueAndClaim(
-      database,
-      actionBindingQueuedRun(clock.now().toISOString(), {
-        parent: RunParentSchema.parse({
-          runId: "22222222-2222-4222-8222-222222222222",
-          tracePrefix: "pl-170000-2222",
-          edgeId: "child-search",
-        }),
-      }),
-      clock.now().toISOString(),
-      ACTION_BINDING_WORKFLOW_ID,
-    );
-
-    assert.deepEqual(
-      await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL }),
-      { state: "done", runId: UUID_5 },
-    );
+    const child = actionBindingCompiled.descriptor;
+    const parent = defineWorkflowDescriptor({ id: "fixture-note-child-parent", code: "fnp", version: child.version,
+      contractFingerprint: child.contractFingerprint, label: "Child action parent", icon: child.icon, category: child.category,
+      canonicalInput: child.canonicalInput, inputSubject: "eid", surface: { shape: "single" }, enqueue: "reject-active",
+      actions: child.actions, surfaces: {}, details: [], identity: { matchKey: workflowPlanning(child).matchKey },
+      presentation: { title: workflowPlanning(child).title }, scenarios: ["fixture-note-child-parent/happy"], timeline: [{ key: "child-search", label: "Child search", nodes: ["child-search"] }], flow: flow(child.input)
+        .childRun("child-search", { id: child.id, input: child.input, result: workflowTerminalResultExecution(child).schema }, {
+          dependsOn: [], edgeId: DelegationEdgeIdSchema.parse("child-search"), cardinality: "one",
+          bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId,
+          await: "terminal", join: "one", policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade",
+            afterChildRetry: "resume-parent", visibility: "inline" },
+        }).build({ schema: workflowTerminalResultExecution(child).schema, dependsOn: ["child-search"], derive: () => ({}) }),
+    });
+    let issued = false;
+    const canonical = canonicalChildExecution({ ...harness.deps, taskNotes: writer, ids: { uuid: () => {
+      if (!issued) { issued = true; return "22222222-2222-4222-8222-222222222222"; }
+      return randomUUID();
+    } } }, database, harness.authority.path, id => [parent, child].find(value => value.id === id));
+    const root = canonical.start(parent, { emplId: "10873698" }, { dryRun: false });
+    const delegated = await canonical.step(root, SIGNAL);
+    assert.equal(delegated.outcome.state, "yielded-delegation");
+    const completed = await canonical.step(root, SIGNAL);
+    assert.equal(completed.run.envelope.parent?.runId, root.envelope.runId);
+    assert.deepEqual(completed.outcome, { state: "done", runId: completed.run.envelope.runId });
     const firstAction = readPersistedNotes(database)
       .map((note) => NoteWireSchema.parse(note))
       .find((note) => note.action !== undefined);

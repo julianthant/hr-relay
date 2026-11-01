@@ -40,6 +40,7 @@ import { DashboardClientProvider as DashboardClientProvider_m2 } from '../../../
 import { DashboardDayWireSchema as DashboardDayWireSchema_m2,type DashboardDayWire as DashboardDayWire_m2 } from '../../../src/models/dashboard/projection.js';
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m2 } from '../../parity/helpers/fixture-queue.js';
 import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m2 } from "../../parity/helpers/workflow-composition.js";
+import { WORKFLOW_SOURCES } from "../../../src/dashboard/app/workflow-sources.js";
 import { createFixtureBff as createFixtureBff_m2 } from '../../support/helpers/dashboard/fixture-bff.js';
 
 
@@ -206,7 +207,11 @@ async function mountDashboardAtCurrentHistoryEntry(): Promise<void> {
 
 async function moveHistory(direction: "back" | "forward"): Promise<void> {
   await act_m1(async () => {
+    const moved = new Promise<void>((resolve) => {
+      window.addEventListener("popstate", () => resolve(), { once: true });
+    });
     window.history[direction]();
+    await moved;
     await new Promise<void>((resolve) => { window.setTimeout(resolve, 20); });
   });
 }
@@ -258,7 +263,7 @@ function takeFirstTab(frame: HTMLElement): HTMLElement {
   );
   assert_m1.ok(first instanceof HTMLElement, "the takeover has no first Tab target");
   first.focus();
-  assert_m1.equal(document.activeElement, first);
+  assert_m1.equal(document.activeElement === first, true);
   return first;
 }
 
@@ -269,7 +274,7 @@ afterEach_m1(_afterEachFixture0);
     await mountTakeover("Activity report", [
       createElement_m1("button", { key: "b", type: "button" }, "Export"),
     ]);
-    assert_m1.equal(document.activeElement, frameOf("Activity report"));
+    assert_m1.equal(document.activeElement === frameOf("Activity report"), true);
   });
 
   it_m1("leaves the door it was opened from — focus does not stay on the trigger", async () => {
@@ -279,11 +284,11 @@ afterEach_m1(_afterEachFixture0);
     door.id = "the-door";
     document.body.append(door);
     door.focus();
-    assert_m1.equal(document.activeElement, door, "the fixture must start with the door focused");
+    assert_m1.equal(document.activeElement === door, true, "the fixture must start with the door focused");
 
     await mountTakeover("Archive", [createElement_m1("button", { key: "b", type: "button" }, "Back")]);
-    assert_m1.notEqual(document.activeElement, door);
-    assert_m1.equal(document.activeElement, frameOf("Archive"));
+    assert_m1.equal(document.activeElement !== door, true);
+    assert_m1.equal(document.activeElement === frameOf("Archive"), true);
   });
 
   it_m1("is a focus target, not a tab stop", async () => {
@@ -308,7 +313,7 @@ afterEach_m1(_afterEachFixture0);
     const focused = document.activeElement;
     assert_m1.ok(focused instanceof HTMLInputElement, `expected the search input to keep focus, got ${String(focused?.tagName)}`);
     assert_m1.equal(focused.getAttribute("aria-label"), "Search settings");
-    assert_m1.notEqual(focused, frameOf("Settings"));
+    assert_m1.equal(focused !== frameOf("Settings"), true);
   });
 });
 
@@ -320,7 +325,7 @@ afterEach_m1(_afterEachFixture0);
     await mountDashboard("?settings=ui-catalog");
 
     const frame = frameOf("Settings");
-    assert_m1.equal(document.activeElement, frame);
+    assert_m1.equal(document.activeElement === frame, true);
     assert_m1.equal(
       document.querySelector('section[aria-label="UI catalog"]'),
       null,
@@ -347,7 +352,7 @@ afterEach_m1(_afterEachFixture0);
 
     const door = buttonNamed("Start a run");
     assert_m1.equal(door.id, RUN_START_DOOR_ID_m1);
-    assert_m1.equal(document.activeElement, door);
+    assert_m1.equal(document.activeElement === door, true);
     assert_m1.equal(
       [...document.querySelectorAll("button")].find(
         (button) => button.textContent?.trim() === "Import spreadsheet",
@@ -393,22 +398,22 @@ afterEach_m1(_afterEachFixture0);
     const dashboard = buttonNamed("Back to dashboard");
     await press(dashboard);
     await press(buttonNamed("Keep editing"));
-    assert_m1.equal(document.activeElement, dashboard, "cancelling the shell exit restores focus to its persistent navigation control");
+    assert_m1.equal(document.activeElement === dashboard, true, "cancelling the shell exit restores focus to its persistent navigation control");
     assert_m1.match(window.location.search, /settings=keyboard/u);
     await press(dashboard);
     await act_m1(async () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
       await Promise.resolve();
     });
-    assert_m1.equal(document.querySelector('[role="dialog"]'), null, "Escape closes the pending dirty-exit dialog");
-    assert_m1.equal(document.activeElement, dashboard, "Escape restores focus to the persistent navigation control");
+    assert_m1.equal(document.querySelector('[role="dialog"]') === null, true, "Escape closes the pending dirty-exit dialog");
+    assert_m1.equal(document.activeElement === dashboard, true, "Escape restores focus to the persistent navigation control");
     await act_m1(async () => sectionLink("General").click());
     const restored = document.querySelector('[data-settings-path="browser.headless"] [role="switch"]');
     assert_m1.ok(restored instanceof HTMLInputElement);
     assert_m1.equal(restored.checked, value);
     await press(buttonNamed("Back to dashboard"));
     await press(buttonNamed("Discard changes"));
-    assert_m1.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
     assert_m1.equal(window.location.search.includes("catalog"), false);
     assert_m1.equal(document.activeElement?.id, "settings-gear");
   });
@@ -422,14 +427,14 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
     const discard = buttonNamed("Discard changes");
     await press(discard);
-    assert_m1.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
     assert_m1.ok(document.getElementById("dashboard-main-region"));
   });
 
   it_m1("allows persistent rail navigation immediately when the Settings draft is clean", async () => {
     await mountDashboard("?settings=display");
     await press(buttonNamed("Back to dashboard"));
-    assert_m1.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
     assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
     assert_m1.ok(document.getElementById("dashboard-main-region"));
   });
@@ -456,7 +461,7 @@ afterEach_m1(_afterEachFixture0);
   it_m1("accepts a clean native popstate immediately", async () => {
     await mountSettingsAtThirdHistoryEntry();
     await moveHistory("back");
-    assert_m1.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
     assert_m1.equal(window.location.search, "?day=2026-08-26");
   });
 
@@ -479,7 +484,7 @@ afterEach_m1(_afterEachFixture0);
   it_m1("accepts clean browser history navigation and preserves its forward destination", async () => {
     await mountSettingsAtThirdHistoryEntry();
     await moveHistory("back");
-    assert_m1.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert_m1.equal(document.querySelector('section[aria-label="Settings"]') === null, true);
     await moveHistory("forward");
     assert_m1.equal(window.location.search, "?settings=display");
     assert_m1.ok(frameOf("Settings"));
@@ -493,15 +498,21 @@ afterEach_m1(_afterEachFixture0);
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 Reflect.set(globalThis, 'ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 let root: Root_m2 | undefined;
-const disposers: (() => void)[] = [];
+const disposers: (() => void | Promise<void>)[] = [];
 const _afterEachFixture0 = async () => {
   await act_m2(async () => root?.unmount()); root = undefined;
-  for (const dispose of disposers.splice(0)) dispose();
+  for (const dispose of disposers.splice(0)) await dispose();
   document.body.replaceChildren(); localStorage.clear(); window.history.replaceState(null, '', '/');
 };
 async function settle() { await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); }
 
-async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; product?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response> } = {}) {
+function servedSessionMocks(workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION_m2>[0]) {
+  const composition = PARITY_WORKFLOW_COMPOSITION_m2(workflows);
+  const registered = new Set(workflows.map(flow => flow.workflowId));
+  for (const id of Object.keys(WORKFLOW_SOURCES)) assert_m2.equal(composition.sources[id], registered.has(id) ? "served" : "mock", id);
+  return Object.freeze({ ...composition, sessions: "served" as const });
+}
+async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean; delayDay?: boolean; search?: string; settingsRead?: () => unknown; command?: (body: unknown) => Promise<Response>; workflowComposition?: typeof PARITY_WORKFLOW_COMPOSITION_m2 } = {}) {
   const { app } = createFixtureBff_m2();
   const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
   const requests: { url: string; resume?: string | null }[] = [];
@@ -539,7 +550,8 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE_m2.day}${options.search ? `&${options.search}` : ""}`);
   localStorage.setItem('hr-dashboard.workflow-panel', 'sidebar');
   const host = document.createElement('div'); document.body.append(host); root = createRoot_m2(host);
-  await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, options.product ? {} : { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m2 }) })));
+  const workflowComposition = options.workflowComposition ?? PARITY_WORKFLOW_COMPOSITION_m2;
+  await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, { workflowComposition }) })));
   await settle(); disposers.push(() => { open = false; });
   return { host, requests, streams,
     deliver: async (day: DashboardDayWire_m2, index = streams.length - 1) => { await act_m2(async () => snapshot(streams[index], day)); await settle(); },
@@ -629,7 +641,7 @@ afterEach_m2(_afterEachFixture0);
     { section: "credentials", field: "UCPath username", value: "private-credential-sentinel", title: "Credentials save unconfirmed", inline: "Credentials write unconfirmed" },
   ]) for (const replacement of ["confirmed", "conflict", "refused"] as const) it_m2(`replaces one ${save.title} warning on ${replacement} exact replay`, async () => {
     const commands: unknown[] = [];
-    const authority = syntheticSettingsAuthority(); disposers.push(authority.close);
+    const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
     const h = await mount({ search: `settings=${save.section}`, settingsRead: authority.read, command: body => {
       commands.push(body);
       if (commands.length <= 2) return Promise.reject(new Error("private-transport-sentinel"));
@@ -680,7 +692,7 @@ afterEach_m2(_afterEachFixture0);
   });
   it_m2("dismisses only the recovered command warning while another Settings command remains unknown", async () => {
     const commands: ReturnType<typeof CommandRequestSchema.parse>[] = [];
-    const authority = syntheticSettingsAuthority(); disposers.push(authority.close);
+    const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
     const h = await mount({ search: "settings=performance", settingsRead: authority.read, command: body => {
       const command = CommandRequestSchema.parse(body); commands.push(command);
       const attempts = commands.filter(candidate => candidate.commandId === command.commandId).length;
@@ -735,7 +747,7 @@ afterEach_m2(_afterEachFixture0);
     await act_m2(async () => confirm.click()); await settle();
     assert_m2.equal(commands.length, 1);
     await h.deliver(DashboardDayWireSchema_m2.parse({ ...FIXTURE_DAY_WIRE_m2, snapshotCursor: "pc:200", queueSurfaces: FIXTURE_DAY_WIRE_m2.queueSurfaces.filter(entry => entry.runId !== candidate.runId) }));
-    assert_m2.equal(h.host.querySelector(`[data-demo-row-id="${candidate.runId}"]`), null);
+    assert_m2.equal(h.host.querySelector(`[data-demo-row-id="${candidate.runId}"]`) === null, true);
     const recovery = h.host.querySelector('[aria-label="Commands awaiting recovery"]');
     assert_m2.ok(recovery);
     const review = [...recovery.querySelectorAll("button")].find(entry => entry.textContent?.trim() === "Review Delete run (1 run)");
@@ -744,8 +756,8 @@ afterEach_m2(_afterEachFixture0);
     assert_m2.ok([...document.querySelectorAll('[role="dialog"]')].some(dialog => dialog.textContent?.includes("Recover previous Delete run")));
     assert_m2.equal(commands.length, 1, "reviewing recovery must not dispatch a second command");
   });
-  it_m2('keeps product workflows mocked while Sessions subscribes to served authority', async () => {
-    const h = await mount({ product: true });
+  it_m2('serves registered workflows, mocks the other previews, and serves Sessions', async () => {
+    const h = await mount({ workflowComposition: servedSessionMocks });
     assert_m2.equal(h.streams.length, 1);
     assert_m2.equal(h.requests.some(request => request.url.includes(`/events/v1?topics=dashboard-day:${FIXTURE_DAY_WIRE_m2.day}`)), true);
     assert_m2.match(h.host.textContent ?? '', /Person Lookup/u);
@@ -753,7 +765,7 @@ afterEach_m2(_afterEachFixture0);
   });
   it_m2('keeps an unknown launch workflow in the explicit unavailable destination', async () => {
     const view = encodeURIComponent(JSON.stringify({ launchWorkflow: 'unregistered-workflow' }));
-    const h = await mount({ product: true, search: `start=1&view=${view}` });
+    const h = await mount({ workflowComposition: servedSessionMocks, search: `start=1&view=${view}` });
     assert_m2.match(h.host.textContent ?? '', /Destination unavailable/u);
     assert_m2.match(h.host.textContent ?? '', /This launch workflow is not registered/u);
     assert_m2.equal(h.streams.length, 1);
@@ -775,7 +787,7 @@ afterEach_m2(_afterEachFixture0);
   it_m2('shows an unavailable bootstrap without fixture success or a misleading empty queue', async () => {
     const h = await mount({ bootFailure: true });
     assert_m2(h.host.querySelector('[data-parity-ready="failed"]'));
-    assert_m2.equal(h.host.querySelector('[aria-label="Queue"]'), null);
+    assert_m2.equal(h.host.querySelector('[aria-label="Queue"]') === null, true);
     assert_m2.equal(h.streams.length, 0);
   });
   it_m2('keeps an initially slow stream distinct from a loaded empty day', async () => {

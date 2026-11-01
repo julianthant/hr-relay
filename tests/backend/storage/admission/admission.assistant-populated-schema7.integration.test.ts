@@ -1,3 +1,6 @@
+import { retainedBrowserProfiles } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -73,6 +76,10 @@ it("upgrades actual populated prior Settings rows without rewriting their exact 
   assert.ok(prior.tables.settings_snapshots.length >= 1);
   const f = await storageRecoveryFixture(7);
   try {
+    const emptyCustody = { slots: [], verificationProfiles: [], browsers: [], configSnapshots: [], controls: [] };
+    const beforeRootRefusal = storageTree(f.root);
+    assert.throws(() => retainedBrowserProfiles(f.root, emptyCustody, join(f.root, "..", "foreign-browsers"), profileBrowserClosure));
+    assert.deepEqual(storageTree(f.root), beforeRootRefusal);
     const raw = new DatabaseSync(f.path);
     try {
       raw.exec("PRAGMA foreign_keys=OFF; BEGIN");

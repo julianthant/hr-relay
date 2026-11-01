@@ -1,3 +1,4 @@
+import type { BoundProfileStorageFixture } from "../admission-fixture.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
@@ -13,7 +14,7 @@ import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
-export function createNotificationInboxTestWorld() {
+export function createNotificationInboxTestWorld(profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
   const disposers: (() => void | Promise<void>)[] = [];
   const _afterEachFixture0 = async () => {
     const failures: unknown[] = [];
@@ -46,7 +47,7 @@ export function createNotificationInboxTestWorld() {
 
   async function harness(mapRepositories: (repositories: AuthorityRepositories) => AuthorityRepositories = repositories => repositories): Promise<{ database: AuthorityDatabase; kernel: CommandKernel }> {
     const clock = manualClock(new Date(LATER));
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixture();
     const opened: { database?: AuthorityDatabase } = {};
     disposers.push(async () => { opened.database?.close(); await profile.close(); });
     const database = AuthorityDatabase.open(profile.admission,

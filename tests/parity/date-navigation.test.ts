@@ -1,6 +1,7 @@
 import { attachShellA11y } from "./helpers/shell-proof.js";
-import { expect, test, type Page } from "@playwright/test";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { expect, type Page } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { startSeededServer, type SeededServer, SEEDED_COVERAGE_GAPS } from "./helpers/seeded-bff.js";
 import { DATE_HISTORY, dateRunId, readDateSnapshot } from "./helpers/date-navigation-server.js";
 import { gotoAppState, installFrozenMonotonic } from "./helpers/app-driver.js";
@@ -12,7 +13,7 @@ const calendarDay = (scope: Page | import("@playwright/test").Locator, day: stri
   return scope.getByRole("button", { name: new RegExp(label) });
 };
 let server: SeededServer;
-test.beforeAll(async () => { ensureParityBundle(); server = await startSeededServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, dateNavigation: true }); });
+test.beforeAll(async () => { server = await startSeededServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, dateNavigation: true }); });
 test.afterAll(async () => { await server?.close(); });
 const picker = (page: Page) => page.getByRole("button", { name: /^Choose date/ });
 async function selectMonth(page: Page, month: string) {

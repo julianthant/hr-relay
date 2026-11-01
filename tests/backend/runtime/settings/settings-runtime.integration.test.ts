@@ -379,7 +379,7 @@ try {
   assert.deepEqual(readSettings(f.database.authority).settings, {});
   const current = selectActiveRunSettings(f.database.authority); assert.equal(current.config.display.screenWidth, 2560);
   assert.equal(current.fingerprint, f.snapshot.fingerprint);
-  f.database.close(); const reopened = AuthorityDatabase_m0.open({ path: f.path, busyTimeoutMs: 10, migrationOwner: "reopen" }, f.clock);
+  f.closeDatabase(); const reopened = AuthorityDatabase_m0.open({ path: f.path, busyTimeoutMs: 10, migrationOwner: "reopen" }, f.clock);
   try {
     assert.deepEqual(selectActiveRunSettings(reopened.authority), current);
     assert.deepEqual(reopened.authority.configSnapshots.get(retained.configSnapshotId), retained);

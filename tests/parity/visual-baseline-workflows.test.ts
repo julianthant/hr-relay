@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Page, type TestInfo } from "@playwright/test";
+import { test } from "./helpers/fixtures.js";
 import { previewScenarios } from "../../src/dashboard/surfaces/run-detail/logs/log-fixture.js";
-import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
@@ -21,7 +22,6 @@ async function witness(page: Page, info: TestInfo, name: string) {
 
 for (const theme of PARITY_THEMES) {
   test(`mounted Logs and all Explorer workflows @ ${theme.attribute}`, { annotation: [{ type: "required-a11y-evidence", description: "baseline-workflows.a11y.yml" }] }, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -70,6 +70,7 @@ for (const theme of PARITY_THEMES) {
         await chooseSelect(picker, option.value);
         await expect(picker).toHaveAttribute("data-value", option.value);
         await expect(explorer.getByRole("list", { name: "Workflow steps" })).toBeVisible();
+        await expect(page.getByRole("listbox")).toHaveCount(0);
         await attachPresentationReference(page, info, `explorer-${option.value}-${theme.attribute}.png`);
       }
       await witness(page, info, "baseline-workflows.a11y.yml");
@@ -78,7 +79,6 @@ for (const theme of PARITY_THEMES) {
   });
 
   test(`existing Intake session loading and failure @ ${theme.attribute}`, { annotation: [{ type: "required-a11y-evidence", description: "baseline-intake.a11y.yml" }] }, async ({ page }, info) => {
-    ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     let release!: () => void;
     const pending = new Promise<void>(resolve => { release = resolve; });

@@ -33,6 +33,7 @@ import { createProfileSession } from "../../../../src/backend/profiles/profile-s
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { scaledMs } from "../../../support/time-scale.js";
 
 
 async function fixture(f?: Awaited<ReturnType<typeof createBoundProfileFixture>>) {
@@ -500,4 +501,4 @@ for(const purpose of ["logout","backup"] as const)it(`accepts completed verifica
   try{stopped?.release();restore?.release();settlement?.admission.release();await f.cleanup();}
   catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"verification-cleanup-fixture-close-failed",{cause:error});}
   if(primary!==undefined)throw primary.error;
-},30000);
+}, scaledMs(30000));

@@ -1,9 +1,9 @@
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { measuredSearchService } from "../../../support/helpers/backend/cross-date-search-harness.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { describe, it, vi } from "vitest";
+import { afterAll, describe, it, vi } from "vitest";
 import { z } from "zod";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -14,6 +14,9 @@ import { insertMeasuredSearchRun } from "../../../support/helpers/backend/cross-
 import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+
+const profileFixtures = createClonedProfileFixtures();
+afterAll(() => profileFixtures.close());
 
 function corruptRunSource(raw: DatabaseSync, sql: string, ...values: (string | number | null)[]) {
   const trigger = z.object({ sql: z.string() }).parse(raw.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='runs_identity'").get());
@@ -114,7 +117,7 @@ describe("cross-date search query", () => {
 
 describe("cross-date search authority read", () => {
   it("ranks the corpus once per authority search", async () => {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixtures.create();
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-ranked-pass-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
@@ -145,7 +148,7 @@ describe("cross-date search authority read", () => {
   });
 
   it("admits current workflows beyond the measured corpus", async () => {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixtures.create();
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-outside-corpus-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
@@ -195,7 +198,7 @@ describe("cross-date search authority read", () => {
     ];
 
     for (const { label, run } of cases) {
-      const profile = await createBoundProfileFixture();
+      const profile = await profileFixtures.create();
       const database = AuthorityDatabase.open(
         { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-corpus-dimension-test" },
         manualClock(new Date("2026-08-28T16:00:00.000Z")),
@@ -216,7 +219,7 @@ describe("cross-date search authority read", () => {
   });
 
   it("serves current queued lifecycle metadata", async () => {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixtures.create();
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-corpus-state-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
@@ -237,7 +240,7 @@ describe("cross-date search authority read", () => {
   });
 
   it("admits genuine peer commits and refuses raw corruption masked by generation changes or another mutation", async () => {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixtures.create();
     const path = profile.path, clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open({ path, busyTimeoutMs: 1000, migrationOwner: "search-peer-test" }, clock);
     const raw = new DatabaseSync(path);
@@ -273,7 +276,7 @@ describe("cross-date search authority read", () => {
   });
 
   it("keeps a pinned search snapshot coherent across peer commits and preserves rollback admission", async () => {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixtures.create();
     const path = profile.path, clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open({ path, busyTimeoutMs: 1000, migrationOwner: "search-pinned-test" }, clock);
     let peer: AuthorityDatabase | undefined;
@@ -302,7 +305,7 @@ describe("cross-date search authority read", () => {
   });
 
   it("refuses invalidated publication before facets or matching", async () => {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixtures.create();
     const databasePath = profile.path;
     const database = AuthorityDatabase.open(
       { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-corpus-test" },
@@ -385,7 +388,7 @@ describe("cross-date search authority read", () => {
   });
 
   it("refuses searchable columns that disagree with the strict run authority", async () => {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixtures.create();
     const databasePath = profile.path;
     const database = AuthorityDatabase.open(
       { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-columns-test" },
@@ -444,7 +447,7 @@ describe("cross-date search authority read", () => {
   });
 
   it("returns a bounded page in stable match, time, and run-id order", async () => {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixtures.create();
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
@@ -541,7 +544,7 @@ describe("cross-date search authority read", () => {
 
 describe("cross-date search service", () => {
   it("accepts cursors only from the same BFF process signer", async () => {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixtures.create();
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-signer-test" },
@@ -601,7 +604,7 @@ describe("cross-date search service", () => {
   });
 
   it("normalizes offset instants across a Pacific DST day and keyset pages", async () => {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixtures.create();
     const clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-offset-test" },
@@ -673,7 +676,7 @@ describe("cross-date search service", () => {
   });
 
   it("projects authoritative descriptor registration from one exact authority snapshot", async () => {
-    const profile = await createBoundProfileFixture();
+    const profile = await profileFixtures.create();
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open(
       { path: profile.path, busyTimeoutMs: 1_000, migrationOwner: "search-service-test" },

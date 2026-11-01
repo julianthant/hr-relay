@@ -1,3 +1,4 @@
+import { releaseSeededWriteOwners } from "../support/helpers/timeline-write-fixture.js";
 import { registryWithCrmSearch } from "../support/helpers/backend/run-executor-world.js";
 import { crmDriver } from "../../src/backend/systems/crm/driver-declaration.js";
 import { defineTask } from "../../src/workflow-kit/task.js";
@@ -122,7 +123,7 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
     const opened = await openBoundDatabaseFixture("write-sequencer-test", clock);
     const database = opened.database;
-    disposers.push(async () => await opened.close());
+    disposers.push(async () => { releaseSeededWriteOwners(database, clock.now().toISOString()); await opened.close(); });
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     testWorkerPorts(database, clock, { path: opened.path, descriptor: writeFixtureDescriptor, poolIndex: 1 });
     const world = createWriteFixtureWorld();
@@ -157,7 +158,7 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
       workerId: WRITE_FIXTURE_WORKER_ID,
       claimGeneration: claimed.run.claimGeneration,
     };
-    const base = { workerId: WRITE_FIXTURE_WORKER_ID, claimedAt: now, heartbeatAt: now };
+    const base = { workerId: WRITE_FIXTURE_WORKER_ID, workerLifetime: testWorkerLifetime(database, WRITE_FIXTURE_WORKFLOW_ID, claimMember2.poolIndex).workerLifetime, claimedAt: now, heartbeatAt: now };
     const validating = database.authority.runs.transition({
       runId: claimed.run.envelope.runId,
       expectedVersion: claimed.run.version,

@@ -12,7 +12,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { COMMAND_FIXTURES, NOW, UUID_1 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
 const fixtures = new Map<string, Awaited<ReturnType<typeof createBoundProfileFixture>>>();
 const openDatabases: AuthorityDatabase[] = [];
@@ -28,7 +28,7 @@ async function openDatabase(path: string | undefined = undefined, busyTimeoutMs 
   path ??= await databasePath();
   const fixture = fixtures.get(path);
   assert.ok(fixture);
-  const database = AuthorityDatabase.open(fixture.admission, { path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
+  const database = AuthorityDatabase.open(fixture.admission, { path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK, undefined, undefined, undefined, boundProfileCredentials(fixture.admission));
   openDatabases.push(database);
   return database;
 }

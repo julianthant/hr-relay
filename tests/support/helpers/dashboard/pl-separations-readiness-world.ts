@@ -16,15 +16,15 @@ import { launchHarness } from "../../fixtures/run-launch-fixtures.js";
 
 export type ReadinessWorkflow = "person-lookup" | "separations";
 
-export function createPlSeparationsReadinessWorld() {
-  const controls = createMountedRerunWorld();
+export function createPlSeparationsReadinessWorld(profileFixture?: Parameters<typeof launchHarness>[3]) {
+  const controls = createMountedRerunWorld(profileFixture);
   const fixtures: Awaited<ReturnType<typeof launchHarness>>[] = [];
   let root: Root | undefined;
 
   async function setup(workflowId: ReadinessWorkflow) {
     const module = workflowModuleOf(workflowId);
     const h = await launchHarness("reject-active", undefined, { descriptor: module.descriptor,
-      protectedSecrets: protectedSecretSource({ timekeeperName: "Fixture Operator" }) });
+      protectedSecrets: protectedSecretSource({ timekeeperName: "Fixture Operator" }) }, profileFixture);
     fixtures.push(h);
     const workflow: RunStartWorkflow = { ...h.workflow, role: module.role };
     return { ...h, workflow,

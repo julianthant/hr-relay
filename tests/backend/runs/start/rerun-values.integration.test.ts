@@ -1,6 +1,6 @@
 import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
 import { GateResultRecordSchema } from "../../../../src/models/workflow/gates.js";
-import { launchDescriptor, launchHarness } from "../../../support/fixtures/run-launch-fixtures.js";
+import { launchDescriptor, launchHarness as createLaunchHarness } from "../../../support/fixtures/run-launch-fixtures.js";
 import { z } from "zod";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
@@ -8,7 +8,8 @@ import { StartPlanRecordSchema } from "../../../../src/models/run/start-plan.js"
 import { RunSessionRecordSchema } from "../../../../src/models/run/session.js";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { afterEach,describe,it } from "vitest";
+import { afterAll,afterEach,describe,it } from "vitest";
+import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values.js";
 import { buildRerunPlan, previewRerunWarnings, RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
@@ -27,8 +28,13 @@ import { protectedSecretSource } from "../../../support/helpers/protected-secret
 import { RerunValuesResponseSchema } from "../../../../src/models/dashboard/rerun-values.js";
 
 const disposers: (() => void | Promise<void>)[] = [];
+const profiles = createClonedProfileFixtures();
 afterEach(async () => { for (const dispose of disposers.splice(0)) await dispose(); });
-async function harness(writes = false) { const h = writes ? await sourceBoundHarness() : await rerunValuesHarness(); disposers.push(h.dispose); return h; }
+afterAll(() => profiles.close());
+function launchHarness(...args: Parameters<typeof createLaunchHarness>) {
+  return createLaunchHarness(args[0], args[1], args[2], profiles.create);
+}
+async function harness(writes = false) { const h = writes ? await sourceBoundHarness() : await rerunValuesHarness(profiles.create); disposers.push(h.dispose); return h; }
 type Harness = Awaited<ReturnType<typeof harness>>;
 async function completed(h: Harness) { const queued = h.start(h.proposal()); assert.equal((await h.execute(queued)).state, "done"); return h.fresh(queued); }
 function request(run: RunRecord) { return { runId: run.envelope.runId, expectedVersion: run.version }; }
@@ -413,7 +419,7 @@ describe("source-bound Rerun value read", () => {
     assert.equal(snapshot(h, run), before);
   });
   it("withholds captured protected values, embedded copies, absent leaves and invalid targets", async () => {
-    const h = await valueShapeHarness(); disposers.push(h.dispose);
+    const h = await valueShapeHarness(profiles.create); disposers.push(h.dispose);
     const queued = h.start(h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345", documentNumber: "PRIVATE987" }],
       dryRun: false, selectedStepKeys: h.descriptor.timeline.map(({ key }) => key) }));
     const active = h.database.authority.runtimeConfig.get(); assert.ok(active);

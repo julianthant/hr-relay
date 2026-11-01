@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import * as filesystem from "node:fs/promises";
+import filesystem from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { fstatSync } from "node:fs";
 import { join } from "node:path";
 import { it, vi } from "vitest";
@@ -10,7 +11,6 @@ import { buildExtractionInstruction } from "../../../../src/models/ocr/instructi
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { chatGptFixture } from "../../../support/helpers/chatgpt-account-fixtures.js";
 
-vi.mock("node:fs/promises", async importOriginal => ({ ...await importOriginal<typeof import("node:fs/promises")>() }));
 
 it("retains actual artifact close uncertainty through the account owner and proves the exact native handle before test-only release", async () => {
   const profile = await createBoundProfileFixture(), f = await chatGptFixture(profile.admission);
@@ -33,10 +33,11 @@ it("retains actual artifact close uncertainty through the account owner and prov
       }
       return actual;
     });
+    syncBuiltinESMExports();
     const reader = createChatGptOcrPageReader({ account: f.service, artifacts: writer, clock: f.clock, model: "gpt-6.1-sol",
       assertCurrent: () => profile.admission.assertProfileRuntime() });
     await assert.rejects(reader.readPage({ formType: "oath", page, sourcePage: 1, instruction: buildExtractionInstruction("oath") }, new AbortController().signal), ChatGptResourceClosureUnprovedError);
-    openSpy.mockRestore();
+    openSpy.mockRestore(); syncBuiltinESMExports();
     assert.ok(handle); assert.ok(originalClose); assert.ok(fd !== undefined);
     const ownedFd = fd;
     assert.equal(fstatSync(ownedFd).isFile(), true);
@@ -48,7 +49,7 @@ it("retains actual artifact close uncertainty through the account owner and prov
     assert.throws(() => fstatSync(ownedFd), { code: "EBADF" });
     proved = true;
   } finally {
-    vi.restoreAllMocks();
+    vi.restoreAllMocks(); syncBuiltinESMExports();
     assert.equal(proved, true, "artifact-closure-fixture-custody-unproved");
     await assert.rejects(f.cleanup(), ChatGptResourceClosureUnprovedError);
     await profile.close();
