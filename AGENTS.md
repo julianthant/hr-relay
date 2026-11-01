@@ -99,8 +99,10 @@ The repository holds only the current version. No compatibility readers, old mig
 - Finish a feature on its branch. Run `npm run test:local`, `npm run typecheck` and `npm run lint`,
   then push and open a ready (non-draft) pull request into `staging` with auto-merge on. It merges
   with a merge commit once its required checks pass on a branch up to date with `staging`; the merge
-  train keeps it current, Cursor Bugbot reviews every push, and Cursor automations fix red checks and
-  merge conflicts. The operator handles only pull requests labeled `needs-human`.
+  train keeps it current and Cursor Bugbot reviews every push. The orchestrator session watches its
+  open pull requests and fixes red checks, real Bugbot findings and `merge-conflict` labels on the
+  pull request branch; it is the only agent that pushes to an open pull request. The operator handles
+  only pull requests labeled `needs-human`.
 - A pull request bundles a good amount of related work, so CI runs once per batch rather than after
   every small fix. Keep commits logical inside it; never mix unrelated features. Title and describe
   what changed and why. Pull a branch before continuing work on it.

@@ -30,11 +30,13 @@ combination. A PR it cannot update gets `merge-conflict`. The workflow uses the 
 secret (fine-grained, this repository, Contents and Pull requests read/write), because pushes made
 with the default token do not start CI.
 
-Cursor fixes PRs on GitHub: Bugbot reviews every push and commits its fixes to the PR branch, a
-Cursor Automation on finished CI runs fixes failed CI, and another on the `merge-conflict` label
-resolves conflicts. Their instructions forbid raising deadlines, skipping or loosening tests,
-updating parity references and editing workflows; anything that needs those gets `needs-human`.
-The operator watches only `needs-human`.
+Cursor Bugbot reviews every push and only comments. The orchestrator session is the only fixer: it
+watches its open PRs and, on the PR branch, fixes failed CI, real Bugbot findings and PRs labeled
+`merge-conflict` (merging `staging` in, never rebasing). A failure unrelated to the PR's diff is a
+`staging` failure, fixed once in its own PR rather than in every PR. Fixes never raise deadlines,
+skip or loosen tests, edit workflows, touch HR write paths, or update parity references or snapshots
+without operator approval; anything that needs those gets `needs-human`. While no orchestrator
+session runs, red PRs wait; nothing red merges. The operator watches only `needs-human`.
 
 CI takes Node from `package.json` engines and caches npm. Routine test suites are macOS:
 required unit, integration, architecture and parity on `macos-15` Apple Silicon runners.
