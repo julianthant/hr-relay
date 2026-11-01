@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './helpers/matrix-fixtures.js';
 import { createServer, type ViteDevServer } from 'vite';
 import { captureA11yReference } from './helpers/capture.js';
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from './helpers/fixture-identity.js';
@@ -62,8 +63,8 @@ test.afterAll(async () => { await server?.close(); if (fixtureRoot) rmSync(fixtu
 for (const browserName of ['chromium', 'webkit'] as const) test.describe(browserName, () => {
   for (const width of [1440, 1920, 2560]) for (const theme of ['light', 'dark']) {
     const evidenceName = `hub-sheets-${browserName}-${width}-${theme}.a11y.yml`;
-    test(`HUB sheets owned states ${browserName} ${width} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: evidenceName }] }, async ({ playwright }, info) => {
-      const browser = await playwright[browserName].launch();
+    test(`HUB sheets owned states ${browserName} ${width} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: evidenceName }] }, async ({ browserFor }, info) => {
+      const browser = await browserFor(browserName);
       const page = await browser.newPage();
       const errors: string[] = [];
       try {
@@ -125,7 +126,7 @@ for (const browserName of ['chromium', 'webkit'] as const) test.describe(browser
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       const tree = await page.locator('body').ariaSnapshot(); info.annotations.push({ type: `a11y-attachment-sha256:${evidenceName}`, description: createHash('sha256').update(tree).digest('hex') }); await info.attach(evidenceName, { body: tree, contentType: 'text/yaml' });
       expect(errors).toEqual([]);
-      } finally { await info.attach(evidenceName.replace('.a11y.yml', '.console.json'), { body: JSON.stringify(errors), contentType: 'application/json' }); await browser.close(); }
+      } finally { await info.attach(evidenceName.replace('.a11y.yml', '.console.json'), { body: JSON.stringify(errors), contentType: 'application/json' }); await page.context().close(); }
     });
   }
 });
