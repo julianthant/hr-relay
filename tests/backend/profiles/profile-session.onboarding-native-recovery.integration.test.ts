@@ -158,39 +158,41 @@ for (const boundary of ["abort-intent", "erase-plan", "erase-stage", "head", "pr
     const rename = nativeFs.renameSync, unlink = nativeFs.unlinkSync, write = nativeFs.writeFileSync, remove = nativeFs.rmSync;
     const failure = new Error("fixture canonical cancel boundary"); let fired = false;
     const fail = () => { fired = true; throw failure; };
-    const renameSpy = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
-      rename(source, destination);
-      if (fired) return;
-      if (boundary === "head" && String(destination) === keyPath) fail();
-      if (boundary === "abort-intent" && String(destination) === operationPath
-        && SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).onboarding?.abort !== undefined) fail();
-    });
-    const writeSpy = vi.spyOn(nativeFs, "writeFileSync").mockImplementation((path, data, options) => {
-      write(path, data, options);
-      if (!fired && (boundary === "erase-plan" && String(path) === eraseOperation
-        || boundary === "erase-stage" && String(path).endsWith(".erase.tmp"))) fail();
-    });
-    const unlinkSpy = vi.spyOn(nativeFs, "unlinkSync").mockImplementation(path => {
-      unlink(path);
-      if (!fired && (boundary === "protected" && String(path) === protectedPath || boundary === "duo" && String(path) === duoPath
-        || boundary === "chatgpt" && String(path) === chatgptPath || boundary === "erase-operation-unlink" && String(path) === eraseOperation
-        || boundary === "operation-unlink" && String(path) === operationPath)) fail();
-    });
-    const removeSpy = vi.spyOn(nativeFs, "rmSync").mockImplementation((path, options) => {
-      remove(path, options);
-      if (!fired && boundary === "root-removal" && String(path) === join(f.machine.stateRoot, "profiles", f.draft.profileId)) fail();
-    });
-    const keychainSpy = vi.spyOn(FakeKeyringEntry.prototype, "deletePassword");
-    const deletePassword = keychainSpy.getMockImplementation(); assert.ok(deletePassword);
-    keychainSpy.mockImplementation(function (this: FakeKeyringEntry) {
-      if (!fired && boundary === "keychain-before-delete") fail();
-      const deleted = deletePassword.call(this);
-      if (!fired && boundary === "keychain-after-delete") fail();
-      return deleted;
-    });
-    syncBuiltinESMExports();
-    try { await assert.rejects(f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId)); }
-    finally { renameSpy.mockRestore(); writeSpy.mockRestore(); unlinkSpy.mockRestore(); removeSpy.mockRestore(); keychainSpy.mockRestore(); syncBuiltinESMExports(); }
+    const descriptor: TypedPropertyDescriptor<FakeKeyringEntry["deletePassword"]> | undefined = Object.getOwnPropertyDescriptor(FakeKeyringEntry.prototype, "deletePassword");
+    const deletePassword = descriptor?.value; assert.ok(deletePassword);
+    try {
+      vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
+        rename(source, destination);
+        if (fired) return;
+        if (boundary === "head" && String(destination) === keyPath) fail();
+        if (boundary === "abort-intent" && String(destination) === operationPath
+          && SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).onboarding?.abort !== undefined) fail();
+      });
+      vi.spyOn(nativeFs, "writeFileSync").mockImplementation((path, data, options) => {
+        write(path, data, options);
+        if (!fired && (boundary === "erase-plan" && String(path) === eraseOperation
+          || boundary === "erase-stage" && String(path).endsWith(".erase.tmp"))) fail();
+      });
+      vi.spyOn(nativeFs, "unlinkSync").mockImplementation(path => {
+        unlink(path);
+        if (!fired && (boundary === "protected" && String(path) === protectedPath || boundary === "duo" && String(path) === duoPath
+          || boundary === "chatgpt" && String(path) === chatgptPath || boundary === "erase-operation-unlink" && String(path) === eraseOperation
+          || boundary === "operation-unlink" && String(path) === operationPath)) fail();
+      });
+      vi.spyOn(nativeFs, "rmSync").mockImplementation((path, options) => {
+        remove(path, options);
+        if (!fired && boundary === "root-removal" && String(path) === join(f.machine.stateRoot, "profiles", f.draft.profileId)) fail();
+      });
+      const keychainSpy = vi.spyOn(FakeKeyringEntry.prototype, "deletePassword");
+      keychainSpy.mockImplementation(function (this: FakeKeyringEntry) {
+        if (!fired && boundary === "keychain-before-delete") fail();
+        const deleted = deletePassword.call(this);
+        if (!fired && boundary === "keychain-after-delete") fail();
+        return deleted;
+      });
+      syncBuiltinESMExports();
+      await assert.rejects(f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId));
+    } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
     assert.equal(fired, true);
     const interruptedHead = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(keyPath, "utf8")));
     assert.ok(interruptedHead.generation >= originalHead.generation);
