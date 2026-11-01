@@ -136,7 +136,9 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     assert.ok(profile); assert.ok(token);
     let db = profile.selectedContext(token).database; database = db;
     const baseline = readSettings(db.authority).revision;
-    const patch = { "daemon.idleRepollMs": { set: 100 }, "browser.headless": { set: true }, "features.duoWebAuthn": { set: false } };
+    // Real workers inherit product deadlines from settings; stretch them like every other test deadline.
+    const patch = { "daemon.idleRepollMs": { set: 100 }, "browser.headless": { set: true }, "features.duoWebAuthn": { set: false },
+      "timeouts.sessionAcquireMs": { set: scaledMs(60_000) }, "browser.closeProofMs": { set: scaledMs(15_000) } };
     phase = 'settings-request';
     const response = await fetch(`${origin}/api/v1/commands`, { method:"POST", headers:{"content-type":"application/json",origin},
       body:JSON.stringify({commandId:randomUUID(),family:"settings",type:"apply-settings",target:{expectedRevision:baseline},source:"dashboard",requestedBy:"local-operator",requestedAt:systemClock.now().toISOString(),
