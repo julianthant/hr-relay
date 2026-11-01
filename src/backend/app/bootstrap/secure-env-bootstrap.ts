@@ -1,5 +1,5 @@
 import { profileBrowserClosure } from "../../runtime/browser/native-profile-probe.js";
-import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
+import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { acquireRuntimeLifetimeLock, receiveRuntimeLifetimeLock, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { fileURLToPath } from "node:url";
 
@@ -60,7 +60,7 @@ export async function runSecureEnvironmentBootstrap(
   let retain = false;
   try { await runAdmittedEnvironmentBootstrap(args, dependencies, { lock, parentSignal: controller.signal }); }
   catch (error) {
-    retain = error instanceof RuntimeCustodyUncertainError || error instanceof AuthoritySourceClosureUnprovedError;
+    retain = error instanceof RuntimeCustodyUncertainError || hasUnprovedSourceClosure(error);
     throw error;
   } finally {
     if (!retain) await lock.close();
@@ -152,7 +152,7 @@ async function runAdmittedEnvironmentBootstrap(
       process.stdout.write(outcome.output.endsWith("\n") ? outcome.output : `${outcome.output}\n`);
       if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
     } catch (error) {
-      if (error instanceof AuthoritySourceClosureUnprovedError) {
+      if (hasUnprovedSourceClosure(error)) {
         retainCustody = true;
         throw retainAuthoritySourceClosure([error], { admission });
       }
@@ -204,12 +204,12 @@ async function runAdmittedEnvironmentBootstrap(
     ?? (await import("../../../../scripts/verify/test-target-document-number.js")).runTestTargetDocumentNumberSmoke;
   process.exitCode = await runTestTargetDocumentNumberSmoke();
   } catch (error) {
-    if (error instanceof AuthoritySourceClosureUnprovedError) {
+    if (error instanceof RuntimeCustodyUncertainError) shutdown = "retain";
+    else if (hasUnprovedSourceClosure(error)) {
       shutdown = "retain";
       const failure = retainAuthoritySourceClosure([error], { admission });
       throw failure;
     }
-    if (error instanceof RuntimeCustodyUncertainError) shutdown = "retain";
     throw error;
   } finally {
     if (shutdown === "release" && !dashboardOwnsAdmission) {

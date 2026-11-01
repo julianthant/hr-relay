@@ -148,7 +148,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/bootstrap/secure-env-bootstrap.ts",
-    "sha256": "5c842a5699e7d1cc055d523ac3b8486c8701f93cc418d0dc0ac7e8991c8b069c",
+    "sha256": "c4ce0816b7a4d9ce005da9d8ab03966886daa202f8234e0710768dd0637f1727",
     "reason": "The root listener or inherited lifetime is acquired before admission. Unproved source closure retains admission and rethrows; typed runtime or source-closure uncertainty retains the outer lifetime, while settled paths await its close. Stopped maintenance releases admission only when custody was not retained. No failed bootstrap becomes successful runtime admission. The real browser closure port is supplied to dashboard admission and offline cancellation without changing the failure-retention path."
   },
   {
