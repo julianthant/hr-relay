@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { lstatSync, readdirSync, realpathSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 export const profileProcessQuery = { spawnSync };
 const refuse = (): never => { throw new Error("profile-process-closure-unproved"); };
@@ -31,17 +31,17 @@ export function proveProfileRootsUnused(roots: readonly string[]): void {
   for (const root of roots) requireRoot(root, true);
   const fields = query("/usr/sbin/lsof", ["-nP", "-F", "pftn"]).split("\n");
   if (fields.pop() !== "" || fields.length === 0) refuse();
-  let state: "process" | "file" | "type" | "name" | "complete" = "process";
-  let fileType = "";
+  let state: "process" | "file" | "type" | "name" | "observed" = "process";
   for (const field of fields) {
-    if (/^p[1-9]\d*$/u.test(field) && (state === "process" || state === "complete")) state = "file";
-    else if (field.startsWith("f") && field.length > 1 && (state === "file" || state === "complete")) { fileType = ""; state = "type"; }
-    else if (field.startsWith("t") && field.length > 1 && state === "type") { fileType = field.slice(1); state = "name"; }
-    else if (field.startsWith("n") && (state === "name" || state === "type") && (field.length > 1 || ["NPOLICY", "NEXUS", "PIPE"].includes(fileType))) {
+    if (/^p[1-9]\d*$/u.test(field) && (state === "process" || state === "observed")) state = "file";
+    else if (field.startsWith("f") && field.length > 1 && (state === "file" || state === "observed")) state = "type";
+    else if (field.startsWith("t") && field.length > 1 && state === "type") state = "name";
+    else if (field.startsWith("n") && (state === "name" || state === "type")) {
       const name = field.slice(1);
+      if (!isAbsolute(name) || resolve(name) !== name || name.includes("\0")) refuse();
       if (roots.some(root => name === root || name.startsWith(`${root}${sep}`))) refuse();
-      state = "complete";
+      state = "observed";
     } else refuse();
   }
-  if (state !== "complete") refuse();
+  if (state !== "observed") refuse();
 }
