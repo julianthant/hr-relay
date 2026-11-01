@@ -1,8 +1,3 @@
-import { PERSON_LOOKUP_ACTIVE } from "../support/helpers/run-integration-world.js";
-import { childRunOutcomeSchema } from "../../src/models/workflow/graph.js";
-import { RunCheckpointRecordSchema } from "../../src/models/workflow/checkpoint.js";
-import { deriveSchemaHash } from "../../src/models/validation/schema-bound-value.js";
-import { HASH_A, NOW, UUID_4, UUID_5, UUID_6, UUID_7 } from "../support/fixtures/phase1c-contract-fixtures.js";
 import { createSearchWorkflowDefinitionFixtures } from "../support/helpers/search-workflow-definition-fixtures.js";
 import { createOperationDisplayFixtures } from "../support/helpers/operation-display-fixtures.js";
 import { describe, expect, it } from "vitest";
@@ -509,88 +504,21 @@ describe("grouping/options-only change", () => {
 });
 
 describe("canonical awaited child terminal evidence", () => {
-  it("binds every many-child outcome without inventing one child identity and refuses wrong checkpoint shapes", () => {
-    const childResultSchema = workflowTerminalResultExecution(personLookupDescriptor).schema;
-    const childOutcomeSchema = childRunOutcomeSchema(childResultSchema);
-    const childrenSchema = z.array(childOutcomeSchema);
-    const resultSchema = z.strictObject({ children: childrenSchema });
-    const descriptor = compileWorkflow(defineWorkflow({
+  it("refuses a many-child result dependency instead of inventing one child identity", () => {
+    assert.throws(() => compileWorkflow(defineWorkflow({
       id: "fixture-child-result-parent", version: 1, code: "fcr", label: "Child result parent", icon: "Search", category: "operations",
       input: personLookupDescriptor.input, canonicalInput: PersonLookupCanonicalInput, inputSubject: "eid",
       surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
       surfaces: {}, details: [], identity: { matchKey: () => "child-fixture" }, presentation: { title: () => "Child parent" },
       scenarios: ["fixture-child-result/parent"], role: defineWorkflowRole({ kind: "standalone" }),
       steps: ({ delegate, result }) => {
-        const common = { id: "child", target: { id: personLookupDescriptor.id, input: personLookupDescriptor.input, result: childResultSchema }, edgeId: "fixture-child-result-edge", await: "terminal" as const,
+        const common = { id: "child", target: { id: personLookupDescriptor.id, input: personLookupDescriptor.input, result: workflowTerminalResultExecution(personLookupDescriptor).schema }, edgeId: "fixture-child-result-edge", await: "terminal" as const,
           policy: { onChildFailed: "fail-parent" as const, cascadeCancel: "cascade" as const, afterChildRetry: "resume-parent" as const, visibility: "inline" as const } };
-        const child = delegate({ ...common, cardinality: "many", join: "all" }, [], {
-          bind: ({ input }) => [input, input],
-          deriveChildItemId: (_input, context) => context.canonicalItemId,
-        });
+        const child = delegate({ ...common, cardinality: "many", join: "all" }, [], { bind: ({ input }) => [input], deriveChildItemId: () => ItemIdSchema.parse(QUEUED_RUN.envelope.itemId) });
         return { steps: [[{ key: "child", label: "Child" }, [child]]],
-          result: result(resultSchema, [child], ({ outputs }) => ({ children: childrenSchema.parse(outputs.child) })) };
+          result: result(z.strictObject({ state: z.literal("done") }), [child], ({ outputs }) => z.object({ state: z.literal("done") }).parse(outputs.child)) };
       },
-    }), { manifest: fixtureBuildManifest(["fixture-child-result-parent"]) }).descriptor;
-    const execution = workflowTerminalResultExecution(descriptor);
-    const run = {
-      ...QUEUED_RUN,
-      envelope: { ...QUEUED_RUN.envelope, workflow: descriptor.id,
-        descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint },
-      input: { ...QUEUED_RUN.input, parsed: { ...QUEUED_RUN.input.parsed,
-        schemaHash: deriveSchemaHash(PersonLookupCanonicalInput, "output") } },
-      lifecycle: { state: "running" },
-      claimGeneration: 1,
-      version: 4,
-    };
-    const childOutput = childResultSchema.parse({ activeStatus: PERSON_LOOKUP_ACTIVE, crmDates: { state: "not-requested" } });
-    const children = childrenSchema.parse([
-      { state: "done", runId: UUID_4, itemId: UUID_5, output: childOutput },
-      { state: "cancelled", runId: UUID_6, itemId: UUID_7, reason: "synthetic parent cancellation", cancelledBy: "parent" },
-    ]);
-    const checkpoint = RunCheckpointRecordSchema.parse({
-      workflowId: descriptor.id, itemId: run.envelope.itemId, nodeId: "child",
-      runId: run.envelope.runId, attempt: run.envelope.attempt, claimGeneration: run.claimGeneration,
-      output: { schemaHash: deriveSchemaHash(childrenSchema, "output"), value: children },
-      descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
-      implFingerprint: HASH_A, provenance: [], writtenAt: NOW,
-    });
-    const clock = manualClock(new Date(NOW));
-    const build = (candidate: unknown) => execution.build(run, [{ state: "resolved", nodeId: "child", checkpoint: candidate }], clock);
-
-    const { record } = build(checkpoint);
-    assert.deepEqual(record.result.value, { children });
-    const boundChildren = resultSchema.parse(record.result.value).children;
-    assert.deepEqual(boundChildren.map(({ runId, itemId }) => ({ runId, itemId })), [
-      { runId: UUID_4, itemId: UUID_5 }, { runId: UUID_6, itemId: UUID_7 },
-    ]);
-    assert.deepEqual(execution.dependsOn, ["child"]);
-    assert.equal(record.dependencies.length, 1);
-    const dependency = record.dependencies[0];
-    assert.ok(dependency?.state === "resolved");
-    assert.equal(dependency.nodeId, "child");
-    assert.deepEqual(dependency.checkpoint, {
-      workflowId: descriptor.id, itemId: run.envelope.itemId, attempt: run.envelope.attempt,
-      claimGeneration: run.claimGeneration, runId: run.envelope.runId,
-    });
-    assert.equal(dependency.outputSchemaHash, checkpoint.output.schemaHash);
-    assert.notEqual(dependency.outputSchemaHash, deriveSchemaHash(childOutcomeSchema, "output"));
-
-    assert.throws(() => build({ ...checkpoint, output: { ...checkpoint.output, value: children[0] } }), /expected array/);
-    for (const value of [
-      [{ state: "done", itemId: UUID_5, output: childOutput }, children[1]],
-      [children[0], { state: "cancelled", runId: UUID_6, reason: "missing item", cancelledBy: "parent" }],
-      [{ ...children[0], state: "done", output: { malformed: true } }, children[1]],
-    ]) {
-      assert.throws(() => build({ ...checkpoint, output: { ...checkpoint.output, value } }), z.ZodError);
-    }
-    assert.throws(() => build({ ...checkpoint, output: { ...checkpoint.output,
-      schemaHash: deriveSchemaHash(childOutcomeSchema, "output") } }), /checkpoint output schema/);
-    assert.throws(() => build({ ...checkpoint, nodeId: "other-child" }), /carries checkpoint other-child/);
-    assert.throws(() => build({ ...checkpoint, itemId: UUID_5 }), /checkpoint belongs to/);
-    assert.throws(() => execution.build(run, [], clock), /missing=child/);
-    assert.throws(() => execution.build(run, [
-      { state: "resolved", nodeId: "child", checkpoint }, { state: "resolved", nodeId: "child", checkpoint },
-    ], clock), /duplicate node identity/);
+    }), { manifest: fixtureBuildManifest(["fixture-child-result-parent"]) }), /owns no output schema/);
   });
 });
 
