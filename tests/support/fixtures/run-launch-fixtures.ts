@@ -76,13 +76,14 @@ export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", curre
     ? defineWorkflowDescriptor({ ...descriptor, flow: graphWithGate })
     : defineWorkflowDescriptor({ ...descriptor, flow: graphWithoutGate });
 }
-export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2], selection?: Readonly<{ descriptor: AnyWorkflowDescriptor; protectedSecrets: ProtectedSecretSource }>) {
+export async function launchHarness(enqueue: EnqueuePolicy = "reject-active", initializeRuntime?: Parameters<typeof sourceBoundHarness>[2], selection?: Readonly<{ descriptor: AnyWorkflowDescriptor; protectedSecrets: ProtectedSecretSource }>,
+  profileFixture?: Parameters<typeof sourceBoundHarness>[4]) {
   const h = await sourceBoundHarness(selection?.descriptor ?? launchDescriptor(enqueue), (world) => {
     const reads = sourceBoundReadStores(world); const writes = buildWriteFixtureRegistry(world);
     return defineTaskStoreRegistry([...reads.stores, ...writes.stores], {
       scenarioIds: [...reads.corpus.scenarioIds, ...writes.corpus.scenarioIds], tasks: [...reads.corpus.tasks, ...writes.corpus.tasks],
     });
-  }, initializeRuntime, selection?.protectedSecrets);
+  }, initializeRuntime, selection?.protectedSecrets, profileFixture);
   const descriptor = h.descriptor;
   if (descriptor.surfaces.inputRun === undefined) throw new Error("launch fixture requires typed input");
   function currentWorkflow(): RunStartWorkflow {
