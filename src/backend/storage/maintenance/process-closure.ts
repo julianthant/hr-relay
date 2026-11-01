@@ -39,7 +39,6 @@ export function proveProfileRootsUnused(roots: readonly string[]): void {
 const DESCRIPTOR_CENSUS_ATTEMPTS = 5;
 const FILESYSTEM_TYPES = ["", "VREG", "VDIR", "VLNK", "VCHR", "VBLK", "DIR", "REG", "CHR", "BLK", "LINK", "FIFO", "GDIR", "GREG"];
 
-/** Refuses a malformed census or a root match; returns false when a filesystem name is unresolved. */
 function descriptorsResolvedOutsideRoots(stdout: string, roots: readonly string[]): boolean {
   const fields = stdout.split("\n");
   if (fields.pop() !== "" || fields.length === 0) refuse();
