@@ -651,7 +651,7 @@ export class WorkerSessionManager {
         const failures: unknown[] = [leaseError];
         if (!operationCompleted) {
           try {
-            await withBrowserActionSession(resource.sessionId, () => this.#captureLeaseScreenshot(resource, { kind: "lease-end", outcome: "failed" }, configFingerprint));
+            await withBrowserActionSession(resource.sessionId, () => this.#captureLeaseScreenshot(resource, { kind: "lease-end", outcome: "failed" }, configFingerprint, undefined, screenshotOwner?.sampleLabels));
           } catch (captureError) {
             screenshotFailures.push(captureError);
           }

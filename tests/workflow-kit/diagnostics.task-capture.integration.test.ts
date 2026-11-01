@@ -17,13 +17,15 @@ async function world(enabled: boolean, failure?: "unavailable" | "missing" | "pe
   const calls: string[] = [];
   const warnings: unknown[] = [];
   const captures: Parameters<RunBrowserScreenshotCapture["capture"]>[0][] = [];
+  const screenshotLabels: (readonly string[] | undefined)[] = [];
   const sessionId = BrowserSessionIdSchema.parse("00000000-0000-4000-8000-000000000001");
   const factory: WorkerBrowserSessionFactory = { probeProfile: async () => undefined, async open(input) {
     return { sessionId, system: input.system, instance: input.instance, configFingerprint: input.configFingerprint,
       signInFingerprint: input.configFingerprint, browserMode: input.browserMode, profileRevision: 1,
       acceptDownloads: false, exclusive: false, driver: { system: input.system },
       authentication: { authenticate: async () => "logged-in" as const },
-      ...(failure === "missing" ? {} : { screenshot: async (): Promise<BrowserScreenshotEvidence> => {
+      ...(failure === "missing" ? {} : { screenshot: async (labels?: readonly string[]): Promise<BrowserScreenshotEvidence> => {
+        screenshotLabels.push(labels);
         calls.push("capture");
         await pause?.();
         if (failure === "capture" || failure === "capture-and-close") throw new Error("fixture capture failed");
@@ -43,7 +45,7 @@ async function world(enabled: boolean, failure?: "unavailable" | "missing" | "pe
     } },
   });
   sessions.bindRunConfigFingerprint(fingerprint, "headless", { runId: "00000000-0000-4000-8000-000000000099", descriptorFingerprint: fingerprint, captureBrowserScreenshots: enabled });
-  return { sessions, calls, captures, warnings, owner: { ...owner, log: { warn: (message: string, fields?: unknown) => { warnings.push({ message, fields }); } } } };
+  return { sessions, calls, captures, screenshotLabels, warnings, owner: { ...owner, log: { warn: (message: string, fields?: unknown) => { warnings.push({ message, fields }); } } } };
 }
 
 describe("task-owned screenshots", () => {
@@ -60,6 +62,22 @@ describe("task-owned screenshots", () => {
     assert.ok(retained);
     await assert.rejects(retained(), error => error instanceof TaskError && error.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED");
     await sessions.closeAll("worker-stop");
+  });
+  it("keeps dry-run sample labels on required and failure-diagnostic captures", async () => {
+    const { sessions, captures, screenshotLabels, owner } = await world(false);
+    const sampleLabels = ["dry-run sample: UCPath transaction number = T000000000000"];
+    const primary = new Error("preview preparation failed");
+    try {
+      await assert.rejects(sessions.withDriver(need, "prod", new AbortController().signal, async (_driver, captureScreenshot) => {
+        await captureScreenshot();
+        throw primary;
+      }, { ...owner, sampleLabels }), error => error === primary);
+      assert.deepEqual(screenshotLabels, [sampleLabels, sampleLabels]);
+      assert.deepEqual(captures.map(capture => ({ trigger: capture.trigger, sampleLabels: capture.sampleLabels })), [
+        { trigger: { kind: "task-point", nodeId: "searching", attempt: 1, boundary: "step" }, sampleLabels },
+        { trigger: { kind: "lease-end", outcome: "failed" }, sampleLabels },
+      ]);
+    } finally { await sessions.closeAll("worker-stop"); }
   });
   it("allows a task-owned lease to defer capture while retaining automatic capture for other leases", async () => {
     const { sessions, captures, owner } = await world(true);
