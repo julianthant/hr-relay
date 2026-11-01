@@ -2356,7 +2356,7 @@ export class AuthorityDatabase implements Disposable {
       admission = machine.forStoppedLogoutSettlement(owner, operation, restore);
       const path = join(admission.stateRoot, "state.db");
       inspection = admission.capturePendingLogoutSnapshot(); snapshot = inspection.snapshot; copy = inspection.admission;
-      database = new AuthorityDatabase(copy, { path: snapshot.path, openMode: "storage-doctor-read-only-no-migrate" }, clock,
+      database = new AuthorityDatabase(copy, { path: snapshot.path, busyTimeoutMs: 250, migrationOwner: "profile-logout-inspection", openMode: "storage-doctor-read-only-no-migrate" }, clock,
         undefined, undefined, undefined, undefined, "stopped-logout-inspection");
       database.#coldLogout = { machine, operationId: operation.operationId, admission, restore, sourcePath: path, owner, inspection };
       const stopped = await database.settlePendingLogout(machine, operation, []);
@@ -2412,7 +2412,7 @@ export class AuthorityDatabase implements Disposable {
         || copied.authorityGeneration !== observed.authorityGeneration || copied.authorityContentFingerprint !== observed.authorityContentFingerprint
         || canonicalJsonStringify(profileAuthorityFileWitnesses(admission.stateRoot)) !== canonicalJsonStringify(afterClose)) throw new Error("profile-logout-native-source-changed");
       inspection = admission.capturePendingLogoutSnapshot(); snapshot = inspection.snapshot; copyAdmission = inspection.admission;
-      database = new AuthorityDatabase(copyAdmission, { path: snapshot.path, openMode: "storage-doctor-read-only-no-migrate" }, this.#clock,
+      database = new AuthorityDatabase(copyAdmission, { path: snapshot.path, busyTimeoutMs: 250, migrationOwner: "profile-logout-inspection", openMode: "storage-doctor-read-only-no-migrate" }, this.#clock,
         undefined, undefined, undefined, undefined, "stopped-logout-inspection");
       const { probeStoppedProfileBrowsersClosed } = await import("../maintenance/profile-inventory.js");
       const { profileBrowserClosure } = await import("../../runtime/browser/native-profile-probe.js");
@@ -2480,7 +2480,7 @@ export class AuthorityDatabase implements Disposable {
         return this.#logoutContext(admission, restore);
       }
       const clock = capturedInstantClock(settlement.stoppedAt);
-      database = new AuthorityDatabase(admission, { path: path, openMode: "read-write" }, clock,
+      database = new AuthorityDatabase(admission, { path, busyTimeoutMs: 250, migrationOwner: "profile-logout-settlement", openMode: "read-write" }, clock,
         undefined, undefined, undefined, undefined, "stopped-logout-settlement");
       database.#logoutBatch = { admission };
       let sequence = 0;
