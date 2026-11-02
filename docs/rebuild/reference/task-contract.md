@@ -227,6 +227,17 @@ This module does not implement durable provider budgets or accounting.
 `ContentAddressedArtifactWriter` in `src/workflow-kit/artifacts.ts` exposes only
 `put(bytes | Readable, { mediaType })` and `open(ref)`.
 `ArtifactRef` carries `id`, `sha256`, `bytes`, and `mediaType`, never a path.
+Sessionless workflow tasks may declare `artifacts: "content-addressed"`; provider capabilities remain
+unavailable to workflow mini-stores. A task preparing a named document returns
+`namedArtifactOutput(ref, fileName)` under its output schema. Declare one blocking `documents-file`
+artifact projection over that field, with the filename as its key. The executor binds its sink to the
+original run, commits the output checkpoint and outbox together, and waits for publication. The task
+never chooses an output directory or writes a mutable file. Worker composition selects
+`paths.onboardingDocsDir` from that run's exact retained configuration snapshot.
+The named sink publishes the retained bytes once and refuses every existing destination, including
+identical bytes. Path components, control characters, reserved filenames and unsafe stages refuse.
+An interrupted prepared publication retains its pending evidence and fails closed under the existing
+publication-conflict protocol; a completed acknowledgment replays without touching the destination.
 `src/backend/storage/artifacts/content-addressed-artifact-writer.ts` validates the admitted root,
 rejects symlinks, publishes atomically, deduplicates content, and verifies references on open.
 Direct mutable task filesystem writes are excluded by `artifact-effect-boundary`.

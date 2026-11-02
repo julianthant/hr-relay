@@ -6,7 +6,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordRequestSchema, GeneratedArtifactSchema,
   GENERATED_ARTIFACT_METADATA_LIMIT, type GeneratedArtifact } from "../../../models/artifacts/generated-artifact.js";
 import { OperatorXlsxExportEvidenceSchema, OperatorXlsxExportRequestSchema, OperatorXlsxExportIdSchema, OPERATOR_XLSX_MEDIA_TYPE } from "../../../models/dashboard/xlsx-export.js";
-import { ArtifactRefSchema } from "../../../models/artifacts/artifacts.js";
+import { ArtifactRefSchema, NamedArtifactOutputSchema } from "../../../models/artifacts/artifacts.js";
 
 export interface GeneratedArtifactPorts {
   database: DatabaseSync;
@@ -110,12 +110,13 @@ export function createGeneratedArtifactRepository(ports: GeneratedArtifactPorts)
           if (old === undefined) {
             const initial = GeneratedArtifactSchema.parse({ format: 1, fileId: `sink:${record.sinkId}`,
             sinkId: record.sinkId, exportId: null, exportRequest: null, registration: null, exportEvidenceJson: null, exportEvidenceFingerprint: null,
-            mediaType: OPERATOR_XLSX_MEDIA_TYPE, state: "pending", historyCoverage: "complete", version: 1, head: null,
+            mediaType: record.sinkId.startsWith("documents-file-") ? NamedArtifactOutputSchema.parse(record.payload.value).artifact.mediaType : OPERATOR_XLSX_MEDIA_TYPE, state: "pending", historyCoverage: "complete", version: 1, head: null,
             updates: [{ sequence: 1, record }], versions: [], prepared: null, createdAt: record.createdAt });
             if (Buffer.byteLength(encode(initial), "utf8") + 2048 > GENERATED_ARTIFACT_METADATA_LIMIT) throw new Error("generated-artifact-metadata-limit");
             insertGeneratedArtifact(database, initial);
           }
           else {
+            if (record.sinkId.startsWith("documents-file-")) throw new Error("named-artifact-output-already-registered");
             const next = { ...old, state: old.prepared === null ? "pending" as const : old.state, version: PositiveIntSchema.parse(old.version + 1),
               updates: [...old.updates, { sequence: PositiveIntSchema.parse(old.updates.length + 1), record }] };
             const pending = next.updates.filter(u => u.record.state === "pending").length;

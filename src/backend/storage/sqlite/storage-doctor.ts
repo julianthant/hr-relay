@@ -23,8 +23,7 @@ import { observeCredentialPresence } from "../configuration/credential-store.js"
 import { hasUnprovedSourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { AuthorityDatabase } from "./authority-database.js";
-import { verifyBackupLocationEvidence } from "./backup-location-evidence.js";
-import { parseBackupManifestFile } from "./backup-service.js";
+import { parseBackupManifestFile, verifyBackupManifestAtPath } from "./backup-service.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import {
 BackupHealthSchema,ProtectedSettingsInspectionSchema,RestoreCandidateSchema,
@@ -759,7 +758,8 @@ async function inspectCandidates(
     const modifiedMs = lstatSync(manifestPath).mtimeMs;
     try {
       requireDatabaseSourcePath(manifestPath);
-      const { verified, selection } = await verifyBackupLocationEvidence(admission, join(stateRoot, "state.db"), manifestPath);
+      if (join(stateRoot, "state.db") !== join(admission.stateRoot, "state.db")) throw new Error("backup-location-active-path-mismatch");
+      const verified = await verifyBackupManifestAtPath(admission, manifestPath);
       const ageMs = clock.nowMs() - Date.parse(verified.manifest.createdAt);
       if (ageMs < 0) throw new Error(`backup manifest ${manifestFileName} was created in the future`);
       const generationGap = authorityInspection === undefined
@@ -783,7 +783,7 @@ async function inspectCandidates(
         modifiedMs,
         candidate: RestoreCandidateSchema.parse({
           state: "verified-compatible",
-          selection,
+          selection: "single-database",
           schemaVersion: verified.manifest.schemaVersion,
           restoreEligibility,
           manifestFileName,

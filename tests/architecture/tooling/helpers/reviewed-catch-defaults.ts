@@ -18,7 +18,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "76ea0688b886caac89132eb9ca9a210e845c681a90625e1127bd2bef5cbe3559",
+    "sha256": "7f7d5590371746ee61b229c68339a8237ce0671c71a9691ee68d222b0d16f6c0",
     "reason": "The bound native open validates authority in one SQLite snapshot before protected values are read. Failed opening cleanup retains the actual native database, issued admission and both original/close errors as custody uncertainty. Other open failures close the actual database before admission release and aggregate cleanup errors. Runtime cleanup releases admission only after proven database and browser closure. An uncertain launch reports launch-uncertain with custody held and leaves the lease unchanged. Maintenance failure stops rescheduling and signals the worker stop controller; composition surfaces the failure. Actual root or inherited lifetime custody remains held through shutdown."
   },
   {
@@ -33,7 +33,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/storage-doctor.ts",
-    "sha256": "93fa18a195ee12df71f1818635325a6d4d87a86b579a25042efbf4f3d34e8da9",
+    "sha256": "e4bc9e5587b66baa868418061467cff27910111aa55d25e082fc8ad85896ef43",
     "reason": "ENOENT alone denotes no backup directory; failed authority, credential, recovery or backup inspection publishes explicit unavailable, degraded or invalid health, and failed logical backup identity verification makes restore unavailable."
   },
   {
