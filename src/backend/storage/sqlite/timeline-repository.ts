@@ -73,6 +73,7 @@ export function timelineEventFromRow(raw: unknown): TimelineEventRecord {
 }
 
 function timelineRetentionClass(record: z.infer<typeof TimelineAppendSchema>) {
+  if (record.payload.kind === "recovery-activity-started" || record.payload.kind === "recovery-activity-ended") return "protected";
   if (record.payload.kind === "operation-confirmed") return "confirmed-operation";
   if (record.payload.kind === "debug" && record.payload.event.pinned) return "protected";
   if (record.payload.kind === "span" && record.payload.event.t === "span.ended" && ["failed", "interrupted"].includes(record.payload.event.outcome)) return "protected";

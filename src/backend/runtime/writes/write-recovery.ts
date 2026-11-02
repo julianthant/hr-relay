@@ -1,3 +1,4 @@
+import { executeRecoveryProbe, RecoveryActivityError } from "./recovery-activity.js";
 import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
 import { WorkerSessionClosureUnprovedError } from "../workers/worker-sessions.js";
 import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
@@ -17,7 +18,6 @@ import type { AnyCommitTaskContract } from "../../../models/task/task-contract.j
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import {
   ActorIdSchema,
-  FingerprintSchema,
   IsoInstantSchema,
   WriteIntentIdSchema,
 } from "../../../rules/identity/ids.js";
@@ -54,7 +54,6 @@ import type {
 } from "../../runs/commands/command-kernel.js";
 import {
   buildCommittedSettlement,
-  executeIdempotencyProbe,
   executeSequencedWriteCommit,
   type ProbeReadDeps,
   type RuntimeProbeVerdict,
@@ -111,31 +110,22 @@ export async function checkParkedWrite(input: Readonly<{
   if (supported && intent.bindingProof.kind === "subject-match" && instance !== undefined
     && task?.contract.effect === "read" && task.impl.sessions.length === 1 && task.impl.sessions[0]?.access === "read"
     && task.impl.sessions[0].system === intent.system && task.contract.input.safeParse(commitInput).success) {
-    await input.sessions.closeAll("parked");
-    const resources = input.configureRun(run);
-    input.sessions.bindRunConfigFingerprint(FingerprintSchema.parse(run.envelope.configFingerprint), run.envelope.browserMode);
-    let callbackSettlement: Promise<unknown> | undefined;
     try {
-      try {
-        const verdict = await executeIdempotencyProbe({ ...input.probe, taskDeadlineMs: resources.taskDeadlineMs, sessions: input.sessions,
-          retainCallback: settlement => { callbackSettlement = settlement; } }, { commitContract: node.commit.uses,
-          commitInput, instance, signal: input.signal });
-        input.signal.throwIfAborted();
-        evidence = { schemaHash: deriveSchemaHash(task.contract.output, "output"), value: JsonValueSchema.parse(verdict) };
-        state = verdict.state === "present" ? "ambiguous" : verdict.state;
-        code = verdict.state === "present" ? "PARKED_CHECK_OCCURRENCE_UNPROVED"
-          : verdict.state === "absent" ? "PARKED_CHECK_ABSENT" : verdict.state === "ambiguous" ? "PARKED_CHECK_AMBIGUOUS" : "PARKED_CHECK_UNKNOWN";
-      } catch (error) {
-        if (error instanceof WorkerSessionClosureUnprovedError || error instanceof BrowserSessionClosureUnprovedError || error instanceof DuoCeremonyReleaseFailedError) throw error;
-        input.signal.throwIfAborted();
-        state = "unknown"; code = "PARKED_CHECK_UNKNOWN";
-      }
-    } finally {
-      try { await input.sessions.closeAll("parked"); }
-      finally {
-        await callbackSettlement;
-        input.sessions.releaseRunConfigFingerprint();
-      }
+      if (input.descriptor === undefined) throw new WorkerControlRefusal("PARKED_CHECK_UNAVAILABLE");
+      const verdict = await executeRecoveryProbe({ operation: "parked-write-check", repositories: input.repositories,
+        run, intent, node, descriptor: input.descriptor, commitInput, signal: input.signal,
+        probe: { ...input.probe, sessions: input.sessions }, sessions: input.sessions,
+        configureRun: () => input.configureRun(run) });
+      input.signal.throwIfAborted();
+      evidence = { schemaHash: deriveSchemaHash(task.contract.output, "output"), value: JsonValueSchema.parse(verdict) };
+      state = verdict.state === "present" ? "ambiguous" : verdict.state;
+      code = verdict.state === "present" ? "PARKED_CHECK_OCCURRENCE_UNPROVED"
+        : verdict.state === "absent" ? "PARKED_CHECK_ABSENT" : verdict.state === "ambiguous" ? "PARKED_CHECK_AMBIGUOUS" : "PARKED_CHECK_UNKNOWN";
+    } catch (error) {
+      if (error instanceof RecoveryActivityError || error instanceof WorkerSessionClosureUnprovedError
+        || error instanceof BrowserSessionClosureUnprovedError || error instanceof DuoCeremonyReleaseFailedError) throw error;
+      input.signal.throwIfAborted();
+      state = "unknown"; code = "PARKED_CHECK_UNKNOWN";
     }
   }
   input.signal.throwIfAborted();
@@ -189,7 +179,7 @@ export interface WriteRecoveryDependencies {
   readonly stores: TaskStoreRegistry;
   readonly authority: WriteRecoveryAuthority;
   // Recovery outside a worker claim window binds the target run's retained config fingerprint itself.
-  readonly sessions: Pick<TransactionSessionHost, "withDriver"> & RunConfigFingerprintBinding;
+  readonly sessions: Pick<TransactionSessionHost, "withDriver" | "closeAll"> & RunConfigFingerprintBinding;
   readonly clock: Clock;
   readonly ids: IdFactory;
   readonly scheduler: MonotonicDeadlineScheduler;
@@ -298,22 +288,15 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
     }
 
 
-    // Bind outside the catch so fingerprint precondition failures cannot become probe verdicts.
-    const runConfigFingerprint = FingerprintSchema.parse(run.envelope.configFingerprint);
-    deps.sessions.bindRunConfigFingerprint(runConfigFingerprint);
-
-    /* the probe runs FIRST — before any startAt/resume logic (ref write-safety ) */
     let verdict: RuntimeProbeVerdict;
     try {
-      verdict = await executeIdempotencyProbe(probeDeps, {
-        commitContract,
-        commitInput,
-        instance: instanceSelection,
-        signal: input.signal,
-      });
+      verdict = await executeRecoveryProbe({ operation: "diagnostic-recovery", repositories: deps.authority.authority,
+        run, intent, node, descriptor: input.descriptor, commitInput, signal: input.signal,
+        probe: probeDeps, sessions: deps.sessions });
     } catch (error) {
-      // A throwing probe is `unknown`, never `absent`.
-      void error;
+      if (error instanceof RecoveryActivityError || error instanceof WorkerSessionClosureUnprovedError
+        || error instanceof BrowserSessionClosureUnprovedError || error instanceof DuoCeremonyReleaseFailedError) throw error;
+      input.signal.throwIfAborted();
       return park(
         intent,
         "unknown",
@@ -325,8 +308,6 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
           error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`,
         ),
       );
-    } finally {
-      deps.sessions.releaseRunConfigFingerprint();
     }
 
     if (intent.occurrence !== undefined && verdict.state !== "present") {
