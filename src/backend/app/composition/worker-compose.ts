@@ -393,8 +393,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     resolve: (id: string) => SERVER_REGISTRY[id], resolveChild: childWorkflowModuleOf, stores,
   };
   const modules = new Map<string, WorkflowModule>();
-  const parents = new Map<string, string>();
-  const resolveModule = (id: string, parentId = parents.get(id)): WorkflowModule | undefined => {
+  const parents = new Map<string, Set<string>>();
+  const resolveModule = (id: string, parentId?: string): WorkflowModule | undefined => {
     const module = parentId === undefined || selectedRegistry.resolveChild === undefined
       ? selectedRegistry.resolve(id) : selectedRegistry.resolveChild(parentId, id);
     const previous = modules.get(id);
@@ -436,12 +436,20 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       if (target === undefined || deriveSchemaHash(target.descriptor.input, "input") !== deriveSchemaHash(node.target.input, "input")
         || workflowTerminalResultExecution(target.descriptor).schemaHash !== deriveSchemaHash(node.target.result, "output")) throw new Error("delegation-target-descriptor-unavailable");
       for (const system of workflowProjections(target.descriptor).systems) systems.add(system);
-      parents.set(node.target.id, producer.descriptor.id);
+      const admitted = parents.get(node.target.id) ?? new Set<string>();
+      admitted.add(producer.descriptor.id);
+      parents.set(node.target.id, admitted);
       qualify(target, [...ancestry, producer.descriptor.id]);
     }
   };
   qualify(module, []);
-  const resolveDescriptor = (id: string) => resolveModule(id)?.descriptor;
+  const resolveDescriptor = (id: string) => {
+    if (id === workflowId) return resolveModule(id)?.descriptor;
+    const admitted = parents.get(id);
+    if (admitted === undefined) return undefined;
+    for (const parentId of admitted) resolveModule(id, parentId);
+    return modules.get(id)?.descriptor;
+  };
   const machine = requireRuntimeAdmission(input.admission);
   if (machine.lifetime !== input.lifetimeLock) throw new Error("runtime-lifetime-admission-mismatch");
   const selected = captureSelectedProfileStorage(machine);

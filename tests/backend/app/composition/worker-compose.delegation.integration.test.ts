@@ -28,6 +28,12 @@ import { singleAppliedRunId } from "../../../support/fixtures/operator-command-f
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
 import type { BuildManifest } from "../../../../src/models/workflow/build-manifest.js";
+import { createWorkflowRegistry } from "../../../../src/backend/app/registries/workflow-registry.js";
+
+const rootModule = childExecutionModules.find(module => module.descriptor === childExecutionRoot.descriptor);
+assert.ok(rootModule);
+const registry = createWorkflowRegistry([rootModule], childExecutionModules.filter(module => module !== rootModule));
+const executionResolution = { resolve: (id: string) => registry.publicRegistry[id], resolveChild: registry.childModuleOf };
 
 vi.mock("../../../../src/backend/storage/sqlite/storage-doctor.js", { spy: true });
 
@@ -57,7 +63,7 @@ for (const kind of ["missing-task", "foreign-task-provenance", "foreign-workflow
     await assert.rejects(composeWorkerRuntime({ lifetimeLock: await runtimeLifetimeLock(), isolation: rebuildRuntimeIsolation, env: {},
       args: [childExecutionRoot.descriptor.id, "--pool-index", "1", "--drain"],
       get admission(): never { authorityReads++; throw new Error("unrequested-fixture-authority"); },
-      executionRegistry: { resolve: id => childExecutionModules.find(module => module.descriptor.id === id), stores: childExecutionStores, manifest },
+      executionRegistry: { ...executionResolution, stores: childExecutionStores, manifest },
       write: () => undefined }), /different build manifest/u);
     assert.equal(authorityReads, 0);
   });
@@ -155,7 +161,7 @@ it("executes two real children and a nested child with one actual home process a
   runtimeAttempted = true;
   const report = await composeWorkerRuntime({ lifetimeLock: profile.lifetime, admission: profile.machine, isolation: rebuildRuntimeIsolation,
     repoRoot: profile.workspace, args: [childExecutionRoot.descriptor.id, "--pool-index", "1", "--drain"], env: {},
-    executionRegistry: { resolve: id => childExecutionModules.find(module => module.descriptor.id === id), stores: childExecutionStores,
+    executionRegistry: { ...executionResolution, stores: childExecutionStores,
       manifest: childExecutionBuildManifest },
     write: () => undefined }).catch((error: unknown) => {
       const observations = health.map(report => ({
