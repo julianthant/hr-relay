@@ -522,7 +522,7 @@
       "file": "tests/architecture/workflow-kit/workflow-structure.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/workflow-model.md",
-      "invariant": "Every src/workflows/* directory containing workflow.ts has a tasks/ directory and a steps/ directory containing at least one <step>/step.ts file. Negative controls reject missing directories, empty steps and a directory named step.ts.",
+      "invariant": "Every src/workflows/* directory containing workflow.ts has a tasks/ directory and a steps/ directory containing at least one <step>/step.ts file. Step modules own wiring through one defineStep declaration; workflow.ts composes them. Proofs are derived, never hand-written defineWorkflow or runtime step lookup. Negative controls reject missing directories, empty steps, a directory named step.ts, duplicated wiring and copied proofs.",
       "replacementRequired": true
     },
     {

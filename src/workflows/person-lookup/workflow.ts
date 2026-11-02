@@ -1,163 +1,18 @@
-import type { z } from "zod";
-import { PersonLookupResultSchema } from "../../models/workflows/person-lookup/result.js";
-import { defineWorkflow, defineStepEntries } from "../../workflow-kit/workflow-definition.js";
-import { requireFact, defineWorkflowStep } from "../../workflow-kit/workflow.js";
 import { CANONICAL_FIELDS } from "../../models/fields/registry.js";
 import { defineIntakeProjection } from "../../models/intake/projection.js";
-import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
-import { PersonLookupInput, PersonLookupCanonicalInput, personLookupTitle } from "../../models/workflows/person-lookup/input.js";
-import { SearchPersonOrg } from "../../models/systems/ucpath/search-person-org.js";
-import { SearchPersonMatch } from "../../models/systems/ucpath/search-person-match.js";
-import { CrmReadOnboardingResults } from "../../models/systems/crm/read-onboarding-results.js";
-import { CrmVerifyOnboardingRecord } from "../../models/systems/crm/verify-onboarding-record.js";
-import { CrmSearchOnboardingRecords } from "../../models/systems/crm/search-onboarding-records.js";
-import { CrmReadOnboardingDates } from "../../models/systems/crm/read-onboarding-dates.js";
-import { ReadResolvedIdentity } from "../../models/workflows/person-lookup/read-resolved-identity.js";
-import { ReadActiveStatus } from "../../models/workflows/person-lookup/read-active-status.js";
-import { derivePersonLookupOutcome } from "../../rules/matching/person-lookup.js";
+import { PersonLookupCanonicalInput, PersonLookupInput, personLookupTitle } from "../../models/workflows/person-lookup/input.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
+import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
+import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
+import { personLookupActiveStatusDefinition } from "./steps/active-status/step.js";
+import { personLookupCrmDatesDefinition } from "./steps/crm-dates/step.js";
+import { personLookupCrossVerifyDefinition } from "./steps/cross-verify/step.js";
+import { personLookupSearchingDefinition } from "./steps/searching/step.js";
 
-const lookupMethodDisplay = { cases: [
-  { value: "ucpath", text: "UCPath search" }, { value: "eid-match", text: "Employee ID agrees with CRM" },
-  { value: "date-match", text: "Start dates within one week" }, { value: "crm-only", text: "CRM only" },
-  { value: "multiple-matches", text: "Multiple matches" }, { value: "no-match", text: "No match" }, { value: "match", text: "UCPath Match" },
-] } as const;
+export { PersonLookupCanonicalInput, PersonLookupInput };
 
-export { PersonLookupInput, PersonLookupCanonicalInput };
 export const personLookupIntake = defineIntakeProjection(PersonLookupInput, { emplId: CANONICAL_FIELDS.eid, name: CANONICAL_FIELDS.fullName });
-export function crmQuery(input: z.output<typeof PersonLookupInput>, person?: z.output<typeof SearchPersonOrg.output>, match?: z.output<typeof SearchPersonMatch.output>) {
-  const name = input.mode === "match" ? personLookupTitle(input) : "name" in input ? input.name : person?.selection.selected?.name;
-  return { ...(name === undefined ? {} : { name }), ...("emplId" in input ? { eid: input.emplId } : input.mode === "match" ? { eid: match?.confirmed[0]?.emplId } : {}) };
-}
-export const SEARCHING_STEP = Object.freeze({
-  ...defineWorkflowStep({ key: "searching", label: "Search for person" }),
-  description: "Search UCPath by employee ID or name and read the matching person records.",
-  system: "ucpath",
-  operatorFields: [
-    ...[["emplId", "Employee ID", "10000001"], ["name", "Name", "Quillan, Petra A."], ["department", "Department", "CAMPUS DINING OPERATIONS"], ["jobTitle", "Job title", "Fictional analyst"], ["hrStatus", "HR status", "Active"]].map(([path, label, example]) => ({ label, example, sources: [
-      ...(["emplId", "name"].includes(path) ? [{ nodeId: "searching", kind: "input" as const, fieldPath: path }] : []),
-      ...["results", "selection.selected"].map(prefix => ({ nodeId: "searching", kind: "output" as const, fieldPath: `${prefix}.${path}` })),
-      { nodeId: "search-identity", kind: "output" as const, fieldPath: `selected.${path}` },
-      ...(["emplId", "name"].includes(path) ? ["hits", "confirmed", "dropped"].map(prefix => ({ nodeId: "matching", kind: "output" as const, fieldPath: `${prefix}.${path}` })) : []),
-    ] })),
-    { label: "Drop reason", visibility: "logs", sources: [{ nodeId: "matching", kind: "output", fieldPath: "dropped.reason" }] },
-    { label: "How found", visibility: "logs", display: lookupMethodDisplay, sources: [{ nodeId: "search-identity", kind: "output", fieldPath: "method" }] },
-  ],
-} as const);
-const searchingEntries = defineStepEntries(SEARCHING_STEP);
-
-export const CROSS_VERIFY_STEP = Object.freeze({
-  ...defineWorkflowStep({ key: "cross-verify", label: "Cross-check identity" }),
-  description: "Compare the person’s name, department and employee ID with CRM records.",
-  system: "crm",
-  selection: { inputField: "crmCheck", selectedWhen: true },
-  operatorFields: [
-    ...[["name", "Name", "Quillan, Petra A."], ["department", "Department", "CAMPUS DINING OPERATIONS"], ["emplId", "Employee ID", "10000001"], ["firstDayOfService", "Start date", "3/14/2031"]].map(([path, label, example]) => ({ label, example, sources: [
-      ...["cross-verify", "crm-selected-record", "crm-results"].map(nodeId => ({ nodeId, kind: "output" as const, fieldPath: `records.${path}` })),
-      ...["crmIdentity", "crmRecord", "unselectedCrmRecords"].map(prefix => ({ nodeId: "crm-identity", kind: "output" as const, fieldPath: `${prefix}.${path}` })),
-    ] })),
-    { label: "CRM", visibility: "logs", example: "Found", sources: [{ nodeId: "crm-identity", kind: "output", fieldPath: "crmState" }] },
-    { label: "How found", visibility: "logs", display: lookupMethodDisplay, sources: [{ nodeId: "crm-identity", kind: "output", fieldPath: "method" }] },
-  ],
-} as const);
-const crossVerifyEntries = defineStepEntries(CROSS_VERIFY_STEP);
-
-export const ACTIVE_STATUS_STEP = Object.freeze({
-  ...defineWorkflowStep({ key: "active-status", label: "Read employment status" }),
-  description: "Determine employment status and read department and termination details when applicable.",
-  system: "local",
-  operatorFields: [
-    { label: "Employment status", example: "Active", display: { cases: [
-      { value: "active", text: "Active" }, { value: "inactive", text: "Inactive" }, { value: "crm-only", text: "CRM only" },
-      { value: "multiple-matches", text: "Multiple matches" }, { value: "not-found", text: "Not found" },
-      { value: "undetermined", text: "Undetermined" }, { value: "found", text: "Found" }, { value: "not-found-in-ucpath", text: "Not found in UCPath" },
-    ] }, sources: [{ nodeId: "active-status", kind: "output", fieldPath: "state" }] },
-    { label: "HDH department", example: "Yes", display: { cases: [{ value: true, text: "Yes" }, { value: false, text: "No" }] }, sources: [{ nodeId: "active-status", kind: "output", fieldPath: "hdh" }] },
-    ...[["details.department", "Department", "CAMPUS DINING OPERATIONS"], ["details.endDate", "End date", "4/25/2031"], ["details.terminationReason", "Termination reason", "Appointment ended"]].map(([fieldPath, label, example]) => ({ label, example,
-      sources: [{ nodeId: "active-status", kind: "output" as const, fieldPath }] })),
-    ...[["details.ucpath", "UCPath", "Found"], ["details.crm", "CRM", "Not checked"]].map(([fieldPath, label, example]) => ({ label, example, visibility: "logs" as const,
-      sources: [{ nodeId: "active-status", kind: "output" as const, fieldPath }] })),
-    { label: "Status note", visibility: "logs", sources: [{ nodeId: "active-status", kind: "output", fieldPath: "reason" }] },
-  ],
-} as const);
-const activeStatusEntries = defineStepEntries(ACTIVE_STATUS_STEP);
-
-export const CRM_DATES_STEP = Object.freeze({
-  ...defineWorkflowStep({ key: "crm-dates", label: "Read CRM dates" }),
-  description: "Read employment and oath dates from the selected CRM record.",
-  system: "crm",
-  selection: { inputField: "includeCrmDates", selectedWhen: true },
-  operatorFields: [
-    ...[["employmentDate", "Employment date", "3/14/2031"], ["oathDate", "Oath date", "3/10/2031"]].map(([fieldPath, label, example]) => ({ label, example,
-      sources: [{ nodeId: "crm-dates", kind: "output" as const, fieldPath }] })),
-  ],
-} as const);
-const crmDatesEntries = defineStepEntries(CRM_DATES_STEP);
-
-export const SEARCHING_NODE = "searching";
-export const searchingNode = searchingEntries.task(SEARCHING_NODE, SearchPersonOrg, {
-  label: "Search for person",
-  replay: "checkpoint",
-  when: { kind: "equals", of: { from: "input", path: "mode" }, value: "search" }
-});
-
-export const MATCHING_NODE = "matching";
-export const matchingNode = searchingEntries.task(MATCHING_NODE, SearchPersonMatch, {
-  label: "Match person",
-  replay: "checkpoint",
-  when: { kind: "equals", of: { from: "input", path: "mode" }, value: "match" }
-});
-
-export const SEARCH_IDENTITY_NODE = "search-identity";
-export const searchIdentityNode = searchingEntries.task(SEARCH_IDENTITY_NODE, ReadResolvedIdentity, {
-  label: "Resolve UCPath identity",
-  replay: "always-rerun"
-});
-
-export const CROSS_VERIFY_NODE = "cross-verify";
-export const crossVerifyNode = crossVerifyEntries.task(CROSS_VERIFY_NODE, CrmSearchOnboardingRecords, {
-  label: "Cross-check identity",
-  replay: "checkpoint",
-  when: { kind: "is-true", of: { from: "node", nodeId: "search-identity", path: "shouldCheckCrm" } }
-});
-
-export const CRM_IDENTITY_NODE = "crm-identity";
-export const crmIdentityNode = crossVerifyEntries.task(CRM_IDENTITY_NODE, ReadResolvedIdentity, {
-  label: "Resolve cross-checked identity",
-  replay: "always-rerun",
-  when: { kind: "is-true", of: { from: "node", nodeId: "search-identity", path: "shouldCheckCrm" } }
-});
-
-export const SELECTED_RECORD_NODE = "crm-selected-record";
-export const selectedRecordNode = crossVerifyEntries.task(SELECTED_RECORD_NODE, CrmVerifyOnboardingRecord, {
-  replay: "checkpoint",
-  when: { kind: "is-present", of: { from: "node", nodeId: "crm-identity", path: "crmRecord" } }
-});
-
-export const CRM_RESULTS_NODE = "crm-results";
-export const crmResultsNode = crossVerifyEntries.task(CRM_RESULTS_NODE, CrmReadOnboardingResults, {
-  replay: "checkpoint",
-  when: { kind: "is-present", of: { from: "node", nodeId: "crm-identity", path: "unselectedCrmRecords" } }
-});
-
-export const RECOVERY_NODE = "crm-only-recovery";
-export const recoveryNode = activeStatusEntries.task(RECOVERY_NODE, SearchPersonOrg, {
-  replay: "checkpoint",
-  when: { kind: "is-present", of: { from: "node", nodeId: "crm-identity", path: "recoveryEid" } }
-});
-
-export const ACTIVE_STATUS_NODE = "active-status";
-export const activeStatusNode = activeStatusEntries.task(ACTIVE_STATUS_NODE, ReadActiveStatus, {
-  replay: "always-rerun",
-  when: { kind: "equals", of: { from: "input", path: "mode" }, value: "search" }
-});
-
-export const CRM_DATES_NODE = "crm-dates";
-export const crmDatesNode = crmDatesEntries.task(CRM_DATES_NODE, CrmReadOnboardingDates, {
-  replay: "checkpoint",
-  when: { kind: "is-present", of: { from: "node", nodeId: "active-status", path: "datesEid" } }
-});
 
 export const PERSON_LOOKUP_NODE_PURPOSES = [
   { nodeId: "searching", purpose: "Read UCPath Person Org candidates for the submitted employee ID or name." },
@@ -173,8 +28,14 @@ export const PERSON_LOOKUP_NODE_PURPOSES = [
 ] as const;
 
 export const personLookupWorkflow = defineWorkflow({
-  id: "person-lookup", version: 3, code: "pl", label: "Person Lookup", summary: "Searches or matches one person in UCPath, cross-checks CRM, and reads employment status and selected CRM dates.",
-  icon: "Search", category: "search", canonicalInput: PersonLookupCanonicalInput,
+  id: "person-lookup",
+  version: 3,
+  code: "pl",
+  label: "Person Lookup",
+  summary: "Searches or matches one person in UCPath, cross-checks CRM, and reads employment status and selected CRM dates.",
+  icon: "Search",
+  category: "search",
+  canonicalInput: PersonLookupCanonicalInput,
   inputSubject: (input) => input.mode === "match" ? "name" : "emplId" in input ? "eid" : "name",
   outcomeProjection: {
     fieldPath: "activeStatus.state",
@@ -191,73 +52,63 @@ export const personLookupWorkflow = defineWorkflow({
   },
   titleProjection: { fieldPath: "activeStatus.details.name", display: "person-name", protectedInput: "eid" },
   subtitleProjection: { fieldPath: "activeStatus.details.eid", display: "eid" },
-  surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
-  capabilities: { review: false, editData: { fields: [
-    { nodeId: "crm-dates", fieldPath: "employmentDate", label: "Employment date" },
-    { nodeId: "crm-dates", fieldPath: "oathDate", label: "Oath date" },
-  ] } },
+  surface: { shape: "single" },
+  enqueue: "reject-active",
+  actions: STANDARD_WORKFLOW_ACTIONS,
+  capabilities: {
+    review: false, editData: {
+      fields: [
+        { nodeId: "crm-dates", fieldPath: "employmentDate", label: "Employment date" },
+        { nodeId: "crm-dates", fieldPath: "oathDate", label: "Oath date" },
+      ]
+    }
+  },
   verdicts: [{ key: "not-found", label: "Not found", tone: "warning" }, { key: "inactive", label: "Inactive", tone: "warning", tag: true }, { key: "multiple-matches", label: "Multiple matches", tone: "warning" }],
-  surfaces: { inputRun: { typedInput: {
-    modeField: "mode", modeLabel: "Lookup mode", initialMode: "search", description: "Each entry starts one run.",
-    modes: [
-      { value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or a new line.", placeholder: "10000001; Lee, Jordan",
-        defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
-        parser: { kind: "entries", spec: { split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }] } },
-        display: { kind: "first-present", fields: ["emplId", "name"] }, identityFields: ["emplId", "name"],
-      },
-      { value: "match", label: "Match", inputLabel: "Name, DOB and SSN", hint: "Last, First, DOB, SSN. Use x for an unavailable DOB or SSN, but not both. Separate people with semicolons.", placeholder: "Lee, Jordan, 01/01/2000, x",
-        defaults: [{ field: "crmCheck", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
-        parser: { kind: "name-tuple", delimiter: ";", familyName: "lastName", givenName: "firstName", identifiers: [{ field: "dob", canonicalField: "text" }, { field: "ssn", canonicalField: "ssn" }], missing: "x", missingIdentifiersCode: "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS" },
-        display: { kind: "tuple", fields: ["lastName", "firstName", "dob", "ssn"], separator: ", ", missing: "x", masked: ["ssn"] }, identityFields: ["lastName", "firstName", "dob", "ssn"],
-      },
-    ],
-    controls: [
-      { field: "crmCheck", label: "CRM check", placement: "input", modes: ["search", "match"], requires: [] },
-      { field: "keepNonHdh", label: "Keep non-HDH candidates", placement: "hidden", modes: ["search"], requires: [] },
-      { field: "includeCrmDates", label: "Read CRM dates", placement: "step", modes: ["search"], requires: ["crmCheck"] },
-    ],
-  }, placeholder: "Enter employee IDs or names separated by semicolons or new lines", parser: {
-    split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }],
-    constants: [{ field: "mode", value: { kind: "text", text: "search" } }, { field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
-  }, examples: [{ key: "one-eid", label: "One employee ID", text: "10000001", note: "Search one employee ID" }] } },
+  surfaces: {
+    inputRun: {
+      typedInput: {
+        modeField: "mode", modeLabel: "Lookup mode", initialMode: "search", description: "Each entry starts one run.",
+        modes: [
+          {
+            value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or a new line.", placeholder: "10000001; Lee, Jordan",
+            defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+            parser: { kind: "entries", spec: { split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }] } },
+            display: { kind: "first-present", fields: ["emplId", "name"] }, identityFields: ["emplId", "name"],
+          },
+          {
+            value: "match", label: "Match", inputLabel: "Name, DOB and SSN", hint: "Last, First, DOB, SSN. Use x for an unavailable DOB or SSN, but not both. Separate people with semicolons.", placeholder: "Lee, Jordan, 01/01/2000, x",
+            defaults: [{ field: "crmCheck", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+            parser: { kind: "name-tuple", delimiter: ";", familyName: "lastName", givenName: "firstName", identifiers: [{ field: "dob", canonicalField: "text" }, { field: "ssn", canonicalField: "ssn" }], missing: "x", missingIdentifiersCode: "PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS" },
+            display: { kind: "tuple", fields: ["lastName", "firstName", "dob", "ssn"], separator: ", ", missing: "x", masked: ["ssn"] }, identityFields: ["lastName", "firstName", "dob", "ssn"],
+          },
+        ],
+        controls: [
+          { field: "crmCheck", label: "CRM check", placement: "input", modes: ["search", "match"], requires: [] },
+          { field: "keepNonHdh", label: "Keep non-HDH candidates", placement: "hidden", modes: ["search"], requires: [] },
+          { field: "includeCrmDates", label: "Read CRM dates", placement: "step", modes: ["search"], requires: ["crmCheck"] },
+        ],
+      }, placeholder: "Enter employee IDs or names separated by semicolons or new lines", parser: {
+        split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }],
+        constants: [{ field: "mode", value: { kind: "text", text: "search" } }, { field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
+      }, examples: [{ key: "one-eid", label: "One employee ID", text: "10000001", note: "Search one employee ID" }]
+    }
+  },
   details: [
     { key: "active-state", label: "Outcome", source: { kind: "result", fieldPath: "activeStatus.state" }, display: "badge" },
     { key: "detail-eid", label: "EID", source: { kind: "result", fieldPath: "activeStatus.details.eid" }, display: "text" },
   ],
   identity: { matchKey: (input) => input.mode === "match" ? ["match", sha256Hex(JSON.stringify([input.lastName.toLowerCase(), input.firstName.toLowerCase(), input.dob, input.ssn]))].join(":") : "emplId" in input ? `eid:${input.emplId}` : `name:${input.name.toLowerCase()}` },
   presentation: { title: personLookupTitle, subtitle: () => "Person Lookup" },
-  input: PersonLookupInput, intake: personLookupIntake, role: defineWorkflowRole({ kind: "composition" }),
+  input: PersonLookupInput,
+  intake: personLookupIntake,
+  role: defineWorkflowRole({ kind: "composition" }),
   scenarios: ["person-lookup/s1", ...Array.from({ length: 15 }, (_, index) => `person-lookup/s${index + 2}`), "person-lookup/m1b", ...Array.from({ length: 5 }, (_, index) => `person-lookup/m${index + 1}`), ...Array.from({ length: 5 }, (_, index) => `person-lookup/f${index + 1}`)],
   nodePurposes: PERSON_LOOKUP_NODE_PURPOSES,
-  steps: ({ task, result }) => {
-    const searching = task(searchingNode, [], ({ input }) => {
-      if (input.mode !== "search") throw new Error("Search node requires Search mode");
-      return "emplId" in input ? { kind: "by-eid" as const, emplId: input.emplId } : { kind: "by-name" as const, name: input.name, keepNonHdh: input.keepNonHdh };
-    });
-    const matching = task(matchingNode, [searching], ({ input }) => {
-      if (input.mode !== "match") throw new Error("Match node requires Match mode");
-      return { lastName: input.lastName, firstName: input.firstName, ...(input.dob === undefined ? {} : { dob: input.dob }), ...(input.ssn === undefined ? {} : { ssn: input.ssn }) };
-    });
-    const initial = task(searchIdentityNode, [searching, matching], ({ input, outputs }) => ({ input, person: outputs.searching, match: outputs.matching }));
-    const crossVerify = task(crossVerifyNode, [initial, searching, matching], ({ input, outputs }) => crmQuery(input, outputs.searching, outputs.matching));
-    const identity = task(crmIdentityNode, [initial, crossVerify, searching, matching], ({ input, outputs }) => ({ input, person: outputs.searching, match: outputs.matching, crm: outputs["cross-verify"] }));
-    const selectedRecord = task(selectedRecordNode, [identity], ({ outputs }) => {
-      const record = requireFact(outputs["crm-identity"]?.crmRecord, "crm-identity", "crmRecord"); return record;
-    });
-    const crmResults = task(crmResultsNode, [initial, crossVerify, identity, searching, matching], ({ input, outputs }) => ({
-      query: crmQuery(input, outputs.searching, outputs.matching), records: requireFact(outputs["crm-identity"]?.unselectedCrmRecords, "crm-identity", "unselectedCrmRecords"),
-    }));
-    const recovery = task(recoveryNode, [identity, selectedRecord, crmResults], ({ outputs }) => ({ kind: "by-eid" as const, emplId: requireFact(outputs["crm-identity"]?.recoveryEid, "crm-identity", "recoveryEid") }));
-    const activeStatus = task(activeStatusNode, [initial, identity, recovery, selectedRecord, crmResults], ({ input, outputs }) => ({ input, identity: outputs["crm-identity"] ?? outputs["search-identity"], verifiedCrm: outputs["crm-selected-record"], recovered: outputs["crm-only-recovery"] }));
-    const crmDates = task(crmDatesNode, [activeStatus], ({ outputs }) => ({ eid: requireFact(outputs["active-status"]?.details.eid, "active-status", "details.eid"), ...(outputs["active-status"]?.details.name == null ? {} : { name: outputs["active-status"].details.name }) }));
-    return { steps: [
-      [SEARCHING_STEP, [searching, matching, initial]],
-      [CROSS_VERIFY_STEP, [crossVerify, identity, selectedRecord, crmResults]],
-      [ACTIVE_STATUS_STEP, [recovery, activeStatus]],
-      [CRM_DATES_STEP, [crmDates]],
-    ], result: result(PersonLookupResultSchema, [initial, identity, matching, selectedRecord, crmResults, activeStatus, crmDates], ({ input, outputs }) => ({
-      activeStatus: outputs["active-status"] ?? derivePersonLookupOutcome({ input, identity: outputs["crm-identity"] ?? outputs["search-identity"], match: outputs.matching, verifiedCrm: outputs["crm-selected-record"] }),
-      crmDates: outputs["crm-dates"] === undefined ? { state: "not-requested" as const } : { state: "included" as const, dates: outputs["crm-dates"] },
-    })) };
+  steps: author => {
+    const searching = personLookupSearchingDefinition.build(author);
+    const crossverify = personLookupCrossVerifyDefinition.build(author, searching);
+    const activestatus = personLookupActiveStatusDefinition.build(author, searching, crossverify);
+    const crmdates = personLookupCrmDatesDefinition.build(author, searching, crossverify, activestatus);
+    return { steps: [...searching.steps, ...crossverify.steps, ...activestatus.steps, ...crmdates.steps], result: crmdates.result };
   },
 });

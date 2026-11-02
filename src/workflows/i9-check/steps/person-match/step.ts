@@ -1,16 +1,34 @@
-import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
-import { defineWorkflowRole } from "../../../../workflow-kit/validation/module-role.js";
 import { ReadMatchOutcome } from "../../../../models/workflows/i9-check/check.js";
-import { i9CheckWorkflow, I9_CHECK_NODE_PURPOSES, personMatch, personMatchEntries } from "../../workflow.js";
-
-export const i9CheckPersonMatchWorkflow = defineWorkflow({
-  ...i9CheckWorkflow,
-  id: "i9-check-person-match", code: "icm", label: "Match person",
-  surface: { shape: "single" }, details: [],
-  role: defineWorkflowRole({ kind: "chunk-harness", of: "i9-check", step: "person-match" }),
-  nodePurposes: I9_CHECK_NODE_PURPOSES.filter(purpose => ["identifier-match", "initial-name-search", "match-outcome"].includes(purpose.nodeId)),
-  steps: author => {
-    const matched = personMatchEntries(author);
-    return { steps: [[personMatch, [matched.matching, matched.initialSearch, matched.initial]]], result: author.result(ReadMatchOutcome.output, [matched.initial], ({ outputs }) => outputs["match-outcome"]) };
+import { I9CheckInput } from "../../../../models/workflows/i9-check/input.js";
+import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
+import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
+import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
+import { personMatchInput, searchPersonMatchTask } from "../../tasks/search-person-match.js";
+import { personOrgInput, searchPersonOrgTask } from "../../tasks/search-person-org.js";
+export const personMatch = defineWorkflowStep({ key: "person-match", label: "Match person" });
+type I9Author = WorkflowAuthor<typeof I9CheckInput>;
+const match = defineStepEntries(personMatch);
+export function personMatchEntries({ task }: I9Author) {
+  const matching = task(searchPersonMatchTask(personMatch), [], ({ input }) => personMatchInput(input));
+  const initialSearch = task(searchPersonOrgTask(personMatch, "initial-name-search", { kind: "is-false", of: { from: "input", path: "person.useMatch" } }), [], ({ input }) => personOrgInput(input));
+  const initial = task(match.task("match-outcome", ReadMatchOutcome, { replay: "always-rerun" }), [matching, initialSearch], ({ outputs }) => ({ match: outputs["identifier-match"] }));
+  return { matching, initialSearch, initial };
+}
+export function buildStep(author: I9Author) {
+  const matched = personMatchEntries(author);
+  return {
+    ...matched, steps: [[personMatch, [matched.matching, matched.initialSearch, matched.initial]]] as const,
+    result: author.result(ReadMatchOutcome.output, [matched.initial], ({ outputs }) => outputs["match-outcome"])
+  };
+}
+export const i9CheckPersonMatchDefinition = defineStep({
+  group: personMatch, build: buildStep,
+  proof: {
+    id: "i9-check-person-match", order: 10,
+    build: (parent: WorkflowDefinition<typeof I9CheckInput>) => ({
+      ...inheritStepProof(parent),
+      code: "icm", label: "Match person", summary: parent.summary,
+      steps: buildStep,
+    }),
   },
 });

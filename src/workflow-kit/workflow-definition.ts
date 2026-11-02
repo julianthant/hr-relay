@@ -1,38 +1,20 @@
 import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
-import type { JsonValue } from "../rules/validation/canonical-json.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
+import type { JsonValue } from "../rules/validation/canonical-json.js";
 /** The ONE workflow-authoring seam. A `WorkflowDefinition` is ordered `[group, entries[]]` tuples whose order is presentation only; execution edges come from typed references the compiler resolves. */
 import { z } from "zod";
-import { assertFactorySealedTaskContract } from "../models/task/task-contract.js";
+import type { IntakeProjection } from "../models/intake/projection.js";
+import type { RetryPolicy } from "../models/sessions/session.js";
 import type {
   AnyCommitTaskContract,
   AnyPrepareTaskContract,
   AnyReadTaskContract,
 } from "../models/task/task-contract.js";
-import type { IntakeProjection } from "../models/intake/projection.js";
-import { BrowserSystemIdSchema, DelegationEdgeIdSchema, WorkflowIdSchema } from "../rules/identity/ids.js";
-import type { ItemId } from "../rules/identity/ids.js";
-import type { NodeConditionSpec } from "../models/workflow/node-condition.js";
-import type { CompletionProgram } from "../models/workflow/completion.js";
-import {
-  compileWorkflowOperationDisplay,
-  type WorkflowOperationDisplay,
-  type WorkflowOperationDisplayDeclaration,
-  type WorkflowOperationEntryProjection,
-  type WorkflowResultSourceBinding,
-} from "../models/workflow/operation-display.js";
-import { BUILD_MANIFEST, resolveWorkflowFingerprint } from "./validation/build-manifest.js";
+import { assertFactorySealedTaskContract } from "../models/task/task-contract.js";
 import type { BuildManifest } from "../models/workflow/build-manifest.js";
-import { DelegationPolicySchema } from "../models/workflow/delegation-policy.js";
+import type { CompletionProgram } from "../models/workflow/completion.js";
 import type { DelegationPolicy } from "../models/workflow/delegation-policy.js";
-import type { WorkflowModuleRole } from "./validation/module-role.js";
-import { WorkflowModuleRoleSchema } from "./validation/module-role.js";
-import {
-  TimelineCategoryKeySchema,
-  type WorkflowOperatorField,
-  WorkflowStepSchema,
-} from "../models/workflow/presentation.js";
-import type { StepOmissionDeclaration } from "../models/workflow/step-omission.js";
+import { DelegationPolicySchema } from "../models/workflow/delegation-policy.js";
 import type {
   AnyWorkflowRef,
   ChildRunIdentityContext,
@@ -41,16 +23,34 @@ import type {
   RuntimeFlowNode,
   TypedTransactionOutcome,
 } from "../models/workflow/graph.js";
-import type { RetryPolicy } from "../models/sessions/session.js";
-import type { RegisteredTaskStore } from "./task-registry.js";
-import { flow } from "./flow.js";
+import type { NodeConditionSpec } from "../models/workflow/node-condition.js";
+import {
+  compileWorkflowOperationDisplay,
+  type WorkflowOperationDisplay,
+  type WorkflowOperationDisplayDeclaration,
+  type WorkflowOperationEntryProjection,
+  type WorkflowResultSourceBinding,
+} from "../models/workflow/operation-display.js";
+import {
+  TimelineCategoryKeySchema,
+  type WorkflowOperatorField,
+  WorkflowStepSchema,
+} from "../models/workflow/presentation.js";
+import type { StepOmissionDeclaration } from "../models/workflow/step-omission.js";
+import type { ItemId } from "../rules/identity/ids.js";
+import { BrowserSystemIdSchema, DelegationEdgeIdSchema, WorkflowIdSchema } from "../rules/identity/ids.js";
 import type { AnyNodeEntry, BuiltFlow } from "./flow.js";
-import { defineWorkflowDescriptor } from "./workflow.js";
+import { flow } from "./flow.js";
+import type { RegisteredTaskStore } from "./task-registry.js";
+import { BUILD_MANIFEST, resolveWorkflowFingerprint } from "./validation/build-manifest.js";
+import type { WorkflowModuleRole } from "./validation/module-role.js";
+import { WorkflowModuleRoleSchema } from "./validation/module-role.js";
 import type {
   AnyWorkflowDescriptor,
   WorkflowDescriptor,
   WorkflowDescriptorSpec,
 } from "./workflow.js";
+import { defineWorkflowDescriptor } from "./workflow.js";
 
 /** The closed entry algebra. */
 export type WorkflowEntryKind = "task" | "parallel" | "delegate" | "gate" | "transaction";
@@ -781,6 +781,60 @@ export interface WorkflowDefinition<
 }
 
 export type AnyWorkflowDefinition = WorkflowDefinition<z.ZodType, z.ZodType, CompletionProgram | undefined>;
+
+export type StepProofSpec<Input extends z.ZodType, Result extends z.ZodType> = Omit<WorkflowDefinitionSpec<Input, Result>, "id" | "role">;
+
+export function defineStep<const Spec extends {
+  readonly group: WorkflowTimelineGroup;
+  readonly proof: { readonly id: string; readonly order: number };
+}>(spec: Spec): Readonly<Spec> {
+  return Object.freeze(spec);
+}
+
+export function inheritStepProof<Input extends z.ZodType>(parent: WorkflowDefinition<Input>) {
+  return {
+    version: 1,
+    icon: parent.icon,
+    category: parent.category,
+    input: parent.input,
+    canonicalInput: parent.canonicalInput,
+    inputSubject: parent.inputSubject,
+    surface: { shape: "single" as const },
+    enqueue: parent.enqueue,
+    actions: parent.actions,
+    surfaces: parent.surfaces,
+    verdicts: [],
+    details: [],
+    identity: parent.identity,
+    presentation: parent.presentation,
+    scenarios: parent.scenarios,
+  };
+}
+
+export function defineStepProof<
+  Parent extends AnyWorkflowDefinition,
+  Input extends z.ZodType,
+  Result extends z.ZodType,
+>(parent: Parent, step: Readonly<{
+  group: WorkflowTimelineGroup;
+  proof: Readonly<{
+    id: string;
+    order: number;
+    build: (parent: Parent) => StepProofSpec<Input, Result>;
+  }>;
+}>) {
+  const spec = step.proof.build(parent);
+  const authored = spec.steps(workflowAuthor<Input>());
+  const nodeIds = new Set(flattenEntries(authored.steps).flatMap(entryNodeIds));
+  const definition = defineWorkflow({
+    ...spec,
+    id: step.proof.id,
+    role: { kind: "chunk-harness", of: WorkflowIdSchema.parse(parent.id), step: step.group.key },
+    nodePurposes: spec.nodePurposes ?? parent.nodePurposes?.filter(({ nodeId }) => nodeIds.has(nodeId)),
+    steps: () => authored,
+  });
+  return Object.freeze({ definition, order: step.proof.order });
+}
 
 /** Define one immutable workflow. The `steps` callback only binds each entry's input/output types to this workflow's input schema; the returned tuples stay the grouping/order authority. */
 export function defineWorkflow<

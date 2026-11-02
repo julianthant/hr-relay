@@ -1,43 +1,122 @@
-/** `separations-identity-check` — the UCPath identity passage, provable ALONE and read-only, carrying write-safety's identity-authority policy: one gate condition, and a result no write binds without authority. */
 import { z } from "zod";
-import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
-import { EidSchema } from "../../../../rules/identity/ids.js";
-import { ResolvedIdentitySubjectSchema } from "../../../../rules/separations/identity-approval.js";
-import { IdentityEidSourceSchema } from "../../../../rules/separations/identity-evidence.js";
-import { noSeparationWritePlan } from "../../../../rules/separations/write-plan.js";
-import { JobSummaryClassificationSchema } from "../../../../rules/separations/job-summary-classification.js";
-import { KualiDocumentNumberSchema } from "../../../../models/ui/kuali-document-identity.js";
+import { UcpathReadJobSummary } from "../../../../models/systems/ucpath/read-job-summary.js";
+import { SearchPersonOrg } from "../../../../models/systems/ucpath/search-person-org.js";
+import {
+  KualiDocumentNumberSchema
+} from "../../../../models/ui/kuali-document-identity.js";
 import { KualiEidFieldSchema } from "../../../../models/ui/kuali-separation-document.js";
 import { defineCanonicalInput } from "../../../../models/workflow/canonical-input.js";
-import { defineWorkflowRole } from "../../../../workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
 import {
-  APPROVAL_NODE,
-  COMPARISON_NODE,
-  GATE_NODE,
-  IDENTITY_CHECK_STEP,
-  JOB_SUMMARY_NODE,
-  JOB_SUMMARY_STEP,
-  NAME_SEARCH_NODE,
-  approvalNode,
-  comparisonNode,
-  identityApprovalGate,
-  jobSummaryNode,
-  nameSearchNode,
-} from "../../workflow.js";
+  SeparationsMatchActiveEmployment,
+} from "../../../../models/workflows/separations/match-active-employment.js";
+import {
+  SeparationsMatchDepartmentOption,
+} from "../../../../models/workflows/separations/match-department-option.js";
+import { SeparationsMatchIdentity } from "../../../../models/workflows/separations/match-identity.js";
+import {
+  SeparationsMatchSeparationSubject,
+} from "../../../../models/workflows/separations/match-separation-subject.js";
+import {
+  SeparationsVerifyIdentityApproval
+} from "../../../../models/workflows/separations/verify-identity-approval.js";
+import { EidSchema } from "../../../../rules/identity/ids.js";
+import {
+  IdentityApprovalResultSchema,
+  ResolvedIdentitySubjectSchema,
+} from "../../../../rules/separations/identity-approval.js";
+import { IdentityEidSourceSchema } from "../../../../rules/separations/identity-evidence.js";
+import { JobSummaryClassificationSchema } from "../../../../rules/separations/job-summary-classification.js";
+import { noSeparationWritePlan } from "../../../../rules/separations/write-plan.js";
+import type { StepProofSpec, WorkflowAuthor } from "../../../../workflow-kit/workflow-definition.js";
+import { defineStep, defineStepEntries } from "../../../../workflow-kit/workflow-definition.js";
+import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
+import type { SeparationsInput } from "../../workflow.js";
+import type { buildTimecard } from "../kronos-timecard/step.js";
+import type { buildExtraction } from "../kuali-extraction/step.js";
+type Author = WorkflowAuthor<typeof SeparationsInput>;
+type Extraction = ReturnType<typeof buildExtraction>;
+type Subject = ReturnType<typeof resolveSubject>;
+type Jobs = ReturnType<typeof readJobs>;
+type Timecard = ReturnType<typeof buildTimecard>;
+type Identity = ReturnType<typeof buildIdentity>;
 
-/** The ingress. `emplIdSource` is not decoration: it records *where the EID came from*, and `superRefine` makes that claim checkable rather than decorative. */
+export const IDENTITY_CHECK_STEP = defineWorkflowStep({
+  key: "identity-check",
+  label: "Identity check",
+});
+
+export const NAME_SEARCH_NODE = "name-search";
+export const SUBJECT_NODE = "subject";
+export const COMPARISON_NODE = "comparison";
+export const GATE_NODE = "identity-approval";
+export const APPROVAL_NODE = "approval";
+
+const identityCheckEntries = defineStepEntries(IDENTITY_CHECK_STEP);
+
+export const nameSearchNode = identityCheckEntries.task(NAME_SEARCH_NODE, SearchPersonOrg, {
+  label: "Name Search",
+  replay: "checkpoint",
+});
+
+const subjectNode = identityCheckEntries.task(SUBJECT_NODE, SeparationsMatchSeparationSubject, {
+  label: "Separation Subject",
+  replay: "checkpoint",
+});
+
+export const comparisonNode = identityCheckEntries.task(COMPARISON_NODE, SeparationsMatchIdentity, {
+  label: "Identity Comparison",
+  replay: "checkpoint",
+});
+
+export const identityApprovalGate = identityCheckEntries.operatorGate(GATE_NODE, {
+  label: "Identity Approval",
+  statusKey: "awaitingIdentityApproval",
+  result: IdentityApprovalResultSchema,
+  when: { kind: "is-true", of: { from: "node", nodeId: COMPARISON_NODE, path: "approvalRequired" } },
+});
+
+export const approvalNode = identityCheckEntries.task(APPROVAL_NODE, SeparationsVerifyIdentityApproval, {
+  label: "Approval Check",
+  replay: "always-rerun",
+});
+
+
+export const JOB_SUMMARY_STEP = defineWorkflowStep({
+  key: "job-summary",
+  label: "Job summary",
+});
+
+export const JOB_SUMMARY_NODE = "job-summary";
+export const EMPLOYMENT_NODE = "employment";
+export const DEPARTMENT_NODE = "department-option";
+
+const jobSummaryEntries = defineStepEntries(JOB_SUMMARY_STEP);
+
+export const jobSummaryNode = jobSummaryEntries.task(JOB_SUMMARY_NODE, UcpathReadJobSummary, {
+  label: "Job Summary",
+  replay: "checkpoint",
+});
+
+const employmentNode = jobSummaryEntries.task(EMPLOYMENT_NODE, SeparationsMatchActiveEmployment, {
+  label: "Employment",
+  replay: "checkpoint",
+});
+
+const departmentOptionNode = jobSummaryEntries.task(DEPARTMENT_NODE, SeparationsMatchDepartmentOption, {
+  label: "Department Option",
+  replay: "checkpoint",
+});
+
+
+
 const IdentityCheckInputShape = {
   documentNumber: KualiDocumentNumberSchema,
-  /** The employee name the separation document carries, verbatim. */
   employeeName: z.string().min(1),
-  /** The EID this run checks. */
   emplId: EidSchema,
   emplIdSource: IdentityEidSourceSchema,
-  /** The document's own EID field — present with a value, or absent with a reason. */
   documentEid: KualiEidFieldSchema,
 } as const;
-
 function refineIdentityInput(
   input: Readonly<{
     emplId: string;
@@ -64,11 +143,9 @@ function refineIdentityInput(
     });
   }
 }
-
 const SeparationsIdentityCheckInput = z
   .strictObject(IdentityCheckInputShape)
   .superRefine(refineIdentityInput);
-
 export const SeparationsIdentityCheckCanonicalInput = defineCanonicalInput(
   SeparationsIdentityCheckInput,
   z.strictObject(IdentityCheckInputShape).superRefine(refineIdentityInput),
@@ -102,192 +179,284 @@ export const SeparationsIdentityCheckCanonicalInput = defineCanonicalInput(
     },
   ],
 );
-
 const SeparationsIdentityCheckResultSchema = z.strictObject({
   documentNumber: z.string().min(1),
-  /** The subject established by machine verification or operator approval. */
   approved: ResolvedIdentitySubjectSchema,
-  // The employment picture approval was granted over.
   jobs: JobSummaryClassificationSchema,
 });
 
-export const separationsIdentityCheckWorkflow = defineWorkflow({
-  id: "separations-identity-check",
-  version: 1,
-  code: "si",
-  label: "Identity Check",
-  summary:
-    "Chunk 3 of the separations migration: the UCPath identity passage, read-only, carrying ref write-safety " +
-    "§14's typed authority. A supplied EID verified by UCPath read-back proceeds with machine authority; " +
-    "a name-resolved EID parks for the operator gate.",
-  icon: "ShieldCheck",
-  category: "separation",
-  canonicalInput: SeparationsIdentityCheckCanonicalInput,
-  inputSubject: "eid",
-  surface: { shape: "single" },
-  enqueue: "reject-active",
-  actions: STANDARD_WORKFLOW_ACTIONS,
-  /** No `inputRun` surface: the input is five correlated values a paste-a-line parser can't
-   *  reconstruct; runs start through the generic start-plan/command path. */
-  surfaces: {},
-  // Identity evidence cannot be corrected without a live read.
-  verdicts: [
-    {
-      key: "no-active-job",
-      label: "No active job in UCPath",
-      tone: "warning",
-      tag: true,
-    },
-    {
-      key: "concurrent-jobs",
-      label: "Concurrent active jobs",
-      tone: "warning",
-      tag: true,
-    },
-    {
-      key: "name-differs",
-      label: "Name differs from UCPath",
-      tone: "warning",
-      tag: true,
-    },
-  ],
-  details: [
-    {
-      key: "ucpath-name",
-      label: "UCPath shows",
-      source: { nodeId: "job-summary", fieldPath: "displayedName" },
-      display: "text",
-    },
-    {
-      key: "employment",
-      label: "Employment",
-      source: { nodeId: "comparison", fieldPath: "packet.jobs.disposition" },
-      display: "text",
-    },
-    {
-      key: "name-tier",
-      label: "Name match",
-      source: { nodeId: "comparison", fieldPath: "packet.nameTier" },
-      display: "text",
-    },
-    {
-      key: "approval-shape",
-      label: "Approval required",
-      source: { nodeId: "comparison", fieldPath: "packet.approvalShape" },
-      display: "text",
-    },
-  ],
-  /** Ref dashboard-surfaces: the start input's `employeeName` is the KUALI FORM'S CLAIM, so before
-   *  Job Summary answers the row keeps the claim; after, it states UCPath's record instead. */
-  subjectProjection: { nodeId: "job-summary", fieldPath: "displayedName" },
-  identity: {
-    matchKey: (input) =>
-      `separations-identity:${input.documentNumber}:${input.emplId}`,
-  },
-  presentation: {
-    title: (input) => `${input.employeeName} (${input.emplId})`,
-    subtitle: (input) => `Separation document ${input.documentNumber}`,
-  },
-  /** The descriptor's own words about each node, projected by the explorer. */
-  nodePurposes: [
-    {
-      nodeId: "job-summary",
-      purpose:
-        "Reads the subject's whole UCPath job summary grid verbatim — every row, every status — and " +
-        "classifies nothing; the disposition is a separate, pure fold.",
-    },
-    {
-      nodeId: "name-search",
-      purpose:
-        "Searches UCPath Person Org by the document's employee name, unconditionally, so the operator " +
-        "sees every person that name matches rather than only the ones a similarity threshold selected.",
-    },
-    {
-      nodeId: "comparison",
-      purpose:
-        "Builds the identity evidence packet — DISCONFIRMING evidence first — and the digest that " +
-        "machine verification or an operator decision binds to. Pure: it reaches no browser.",
-    },
-    {
-      nodeId: "identity-approval",
-      purpose:
-        "Requires the typed operator resolve-gate command when the packet's EID came from a name search; " +
-        "a supplied-EID packet makes this declared condition false and records no human decision.",
-    },
-    {
-      nodeId: "approval",
-      purpose:
-        "Re-derives the evidence and produces explicit machine-verification or operator-approval " +
-        "authority. It re-runs on every attempt, so moved evidence or identity origin cannot reuse an old answer.",
-    },
-  ],
-  scenarios: [
-    "separations-identity-check/single-active-job",
-    "separations-identity-check/similar-name-never-auto-proceeds",
-    "separations-identity-check/different-name-two-candidates",
-    "separations-identity-check/already-terminated-single-row",
-    "separations-identity-check/already-terminated-multi-row",
-    "separations-identity-check/concurrent-active-jobs",
-    "separations-identity-check/unreadable-department",
-    "separations-identity-check/job-summary-not-found",
-    "separations-identity-check/gate-approved",
-    "separations-identity-check/gate-rejected",
-    "separations-identity-check/gate-evidence-moved",
-  ],
-  input: SeparationsIdentityCheckInput,
-  role: defineWorkflowRole({
-    kind: "chunk-harness",
-    of: "separations",
-    step: IDENTITY_CHECK_STEP.key,
-  }),
-  steps: ({ task, gate, result }) => {
-    const jobSummary = task(jobSummaryNode, [], ({ input }) => ({
-      emplId: input.emplId,
-    }));
-    const nameSearch = task(nameSearchNode, [], ({ input }) => ({
-      kind: "by-name" as const,
-      name: input.employeeName,
-      keepNonHdh: true,
-    }));
-    const comparison = task(
-      comparisonNode,
-      [jobSummary, nameSearch],
-      ({ input, outputs }) => ({
+export function resolveSubject({ task }: Author, extraction: Extraction) {
+  const { document, plan } = extraction;
+  const nameSearch = task(nameSearchNode, [plan], ({ outputs }) => ({
+    kind: "by-name" as const,
+    name: outputs["plan"].employeeName,
+    keepNonHdh: true,
+  }));
+  const subject = task(subjectNode, [document, plan, nameSearch], ({ input, outputs }) => ({
+    documentNumber: input.documentNumber,
+    employeeName: outputs["plan"].employeeName,
+    ...(input.operatorEmployeeId === undefined ? {} : { operatorEmployeeId: input.operatorEmployeeId }),
+    documentEid: outputs["document"].employee.eid,
+    nameSelection: outputs[NAME_SEARCH_NODE].selection,
+  }));
+  return { nameSearch, subject };
+}
+export function readJobs({ task }: Author, extraction: Extraction, resolved: Subject) {
+  const { document } = extraction, { subject } = resolved;
+  const jobSummary = task(jobSummaryNode, [subject], ({ outputs }) => ({
+    emplId: outputs[SUBJECT_NODE].emplId,
+  }));
+  const employment = task(employmentNode, [document, jobSummary], ({ input, outputs }) => ({
+    documentNumber: input.documentNumber,
+    jobSummary: outputs[JOB_SUMMARY_NODE],
+  }));
+  const departmentOption = task(
+    departmentOptionNode,
+    [document, employment],
+    ({ input, outputs }) => ({
+      deptId: outputs[EMPLOYMENT_NODE].deptId,
+      department: outputs[EMPLOYMENT_NODE].department,
+      observedOptions: outputs["document"].options.department,
+      documentNumber: input.documentNumber,
+    }),
+  );
+  return { jobSummary, employment, departmentOption };
+}
+export function buildIdentity({ task, gate }: Author, extraction: Extraction, resolved: Subject, jobs: Jobs, timecard: Timecard) {
+  const { document, plan, terminationType } = extraction, { nameSearch, subject } = resolved;
+  const { jobSummary, employment, departmentOption } = jobs, { dates } = timecard;
+  const comparison = task(
+    comparisonNode,
+    [document, plan, subject, jobSummary, nameSearch, terminationType, departmentOption, employment, dates],
+    ({ input, outputs, protectedInputBindings }) => {
+      const timekeeperBinding = protectedInputBindings?.find(({ name }) => name === "timekeeperName");
+      if (timekeeperBinding === undefined) throw new Error("protected input timekeeperName binding is absent");
+      return {
+        ...(protectedInputBindings === undefined ? {} : { protectedBindings: [...protectedInputBindings] }),
         documentNumber: input.documentNumber,
-        documentName: input.employeeName,
-        documentEid: input.documentEid,
-        emplId: input.emplId,
-        emplIdSource: input.emplIdSource,
+        documentName: outputs["plan"].employeeName,
+        documentEid: outputs["document"].employee.eid,
+        emplId: outputs[SUBJECT_NODE].emplId,
+        emplIdSource: outputs[SUBJECT_NODE].emplIdSource,
         jobSummary: outputs[JOB_SUMMARY_NODE],
         nameSelection: outputs[NAME_SEARCH_NODE].selection,
-        plan: noSeparationWritePlan(
-          "this chunk resolves an identity and files nothing; the composed `separations` graph is where a write plan exists to show",
-        ),
-      }),
-    );
-    const identityGate = gate(identityApprovalGate, [comparison]);
-    const approval = task(
-      approvalNode,
-      [comparison, identityGate],
-      ({ outputs }) => ({
-        packet: outputs[COMPARISON_NODE].packet,
-        evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
-        approval: outputs[GATE_NODE],
-      }),
-    );
-    return {
-      // Keep Job Summary before identity checks to preserve graph order.
-      steps: [
-        [JOB_SUMMARY_STEP, [jobSummary]],
-        [IDENTITY_CHECK_STEP, [nameSearch, comparison, identityGate, approval]],
+        plan: {
+          state: "planned" as const,
+          termination: {
+            terminationType: outputs["termination-type"].terminationType,
+            classification: outputs["termination-type"].classification,
+            template: outputs["termination-type"].template,
+            reasonCode: outputs["termination-type"].reasonCode,
+            emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
+            effectiveDate: outputs["dates"].terminationEffectiveDate,
+            lastDateWorked: outputs["dates"].lastDayWorked,
+            initiatorComments: outputs["dates"].terminationComments,
+          },
+          document: {
+            documentNumber: input.documentNumber,
+            department: outputs[DEPARTMENT_NODE].option,
+            departmentCode: outputs[DEPARTMENT_NODE].departmentCode,
+            ucpathDepartment: outputs[DEPARTMENT_NODE].ucpathDepartment,
+            payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
+            payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
+            terminationEffectiveDate: outputs["dates"].terminationEffectiveDate,
+            timekeeperName: timekeeperBinding,
+          },
+          dates: {
+            kualiLastDayWorked: outputs["dates"].kualiLastDayWorked,
+            lastDayWorked: outputs["dates"].lastDayWorked,
+            lastDayWorkedChanged: outputs["dates"].lastDayWorkedChanged,
+            kualiSeparationDate: outputs["dates"].kualiSeparationDate,
+            separationDate: outputs["dates"].separationDate,
+            separationDateChanged: outputs["dates"].separationDateChanged,
+            separationDeterminingLeave: outputs["dates"].separationDeterminingLeave,
+            unclassifiedPayCodes: outputs["dates"].unclassifiedPayCodes,
+            source: outputs["dates"].source,
+          },
+        },
+      };
+    },
+  );
+  const identityGate = gate(identityApprovalGate, [comparison]);
+  const approval = task(approvalNode, [comparison, identityGate], ({ outputs }) => ({
+    packet: outputs[COMPARISON_NODE].packet,
+    evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
+    approval: outputs[GATE_NODE],
+  }));
+  return {
+    approval, steps: [[IDENTITY_CHECK_STEP, [nameSearch, subject, comparison, identityGate, approval]],
+    [JOB_SUMMARY_STEP, [jobSummary, employment, departmentOption]]] as const
+  };
+}
+
+export const separationsIdentityCheckDefinition = defineStep({
+  group: IDENTITY_CHECK_STEP, build: buildIdentity,
+  resolveSubject, readJobs,
+  proof: {
+    id: "separations-identity-check", order: 2, build: (): StepProofSpec<typeof SeparationsIdentityCheckInput, typeof SeparationsIdentityCheckResultSchema> => ({
+      version: 1,
+      code: "si",
+      label: "Identity Check",
+      summary: "Chunk 3 of the separations migration: the UCPath identity passage, read-only, carrying ref write-safety " +
+        "§14's typed authority. A supplied EID verified by UCPath read-back proceeds with machine authority; " +
+        "a name-resolved EID parks for the operator gate.",
+      icon: "ShieldCheck",
+      category: "separation",
+      canonicalInput: SeparationsIdentityCheckCanonicalInput,
+      inputSubject: "eid",
+      surface: { shape: "single" },
+      enqueue: "reject-active",
+      actions: STANDARD_WORKFLOW_ACTIONS,
+      surfaces: {},
+      verdicts: [
+        {
+          key: "no-active-job",
+          label: "No active job in UCPath",
+          tone: "warning",
+          tag: true,
+        },
+        {
+          key: "concurrent-jobs",
+          label: "Concurrent active jobs",
+          tone: "warning",
+          tag: true,
+        },
+        {
+          key: "name-differs",
+          label: "Name differs from UCPath",
+          tone: "warning",
+          tag: true,
+        },
       ],
-      /** Depends on `approval` and NOTHING else: the authority node carries the facts forward, so
-       *  both the machine and human arms dominate the run's whole product. */
-      result: result(
-        SeparationsIdentityCheckResultSchema,
-        [approval],
-        ({ outputs }) => outputs[APPROVAL_NODE],
-      ),
-    };
+      details: [
+        {
+          key: "ucpath-name",
+          label: "UCPath shows",
+          source: { nodeId: "job-summary", fieldPath: "displayedName" },
+          display: "text",
+        },
+        {
+          key: "employment",
+          label: "Employment",
+          source: { nodeId: "comparison", fieldPath: "packet.jobs.disposition" },
+          display: "text",
+        },
+        {
+          key: "name-tier",
+          label: "Name match",
+          source: { nodeId: "comparison", fieldPath: "packet.nameTier" },
+          display: "text",
+        },
+        {
+          key: "approval-shape",
+          label: "Approval required",
+          source: { nodeId: "comparison", fieldPath: "packet.approvalShape" },
+          display: "text",
+        },
+      ],
+      subjectProjection: { nodeId: "job-summary", fieldPath: "displayedName" },
+      identity: {
+        matchKey: (input) =>
+          `separations-identity:${input.documentNumber}:${input.emplId}`,
+      },
+      presentation: {
+        title: (input) => `${input.employeeName} (${input.emplId})`,
+        subtitle: (input) => `Separation document ${input.documentNumber}`,
+      },
+      nodePurposes: [
+        {
+          nodeId: "job-summary",
+          purpose:
+            "Reads the subject's whole UCPath job summary grid verbatim — every row, every status — and " +
+            "classifies nothing; the disposition is a separate, pure fold.",
+        },
+        {
+          nodeId: "name-search",
+          purpose:
+            "Searches UCPath Person Org by the document's employee name, unconditionally, so the operator " +
+            "sees every person that name matches rather than only the ones a similarity threshold selected.",
+        },
+        {
+          nodeId: "comparison",
+          purpose:
+            "Builds the identity evidence packet — DISCONFIRMING evidence first — and the digest that " +
+            "machine verification or an operator decision binds to. Pure: it reaches no browser.",
+        },
+        {
+          nodeId: "identity-approval",
+          purpose:
+            "Requires the typed operator resolve-gate command when the packet's EID came from a name search; " +
+            "a supplied-EID packet makes this declared condition false and records no human decision.",
+        },
+        {
+          nodeId: "approval",
+          purpose:
+            "Re-derives the evidence and produces explicit machine-verification or operator-approval " +
+            "authority. It re-runs on every attempt, so moved evidence or identity origin cannot reuse an old answer.",
+        },
+      ],
+      scenarios: [
+        "separations-identity-check/single-active-job",
+        "separations-identity-check/similar-name-never-auto-proceeds",
+        "separations-identity-check/different-name-two-candidates",
+        "separations-identity-check/already-terminated-single-row",
+        "separations-identity-check/already-terminated-multi-row",
+        "separations-identity-check/concurrent-active-jobs",
+        "separations-identity-check/unreadable-department",
+        "separations-identity-check/job-summary-not-found",
+        "separations-identity-check/gate-approved",
+        "separations-identity-check/gate-rejected",
+        "separations-identity-check/gate-evidence-moved",
+      ],
+      input: SeparationsIdentityCheckInput,
+      steps: (author: WorkflowAuthor<typeof SeparationsIdentityCheckInput>) => {
+        const { task, gate, result } = author;
+        const jobSummary = task(jobSummaryNode, [], ({ input }) => ({
+          emplId: input.emplId,
+        }));
+        const nameSearch = task(nameSearchNode, [], ({ input }) => ({
+          kind: "by-name" as const,
+          name: input.employeeName,
+          keepNonHdh: true,
+        }));
+        const comparison = task(
+          comparisonNode,
+          [jobSummary, nameSearch],
+          ({ input, outputs }) => ({
+            documentNumber: input.documentNumber,
+            documentName: input.employeeName,
+            documentEid: input.documentEid,
+            emplId: input.emplId,
+            emplIdSource: input.emplIdSource,
+            jobSummary: outputs[JOB_SUMMARY_NODE],
+            nameSelection: outputs[NAME_SEARCH_NODE].selection,
+            plan: noSeparationWritePlan(
+              "this chunk resolves an identity and files nothing; the composed `separations` graph is where a write plan exists to show",
+            ),
+          }),
+        );
+        const identityGate = gate(identityApprovalGate, [comparison]);
+        const approval = task(
+          approvalNode,
+          [comparison, identityGate],
+          ({ outputs }) => ({
+            packet: outputs[COMPARISON_NODE].packet,
+            evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
+            approval: outputs[GATE_NODE],
+          }),
+        );
+        return {
+          steps: [
+            [JOB_SUMMARY_STEP, [jobSummary]],
+            [IDENTITY_CHECK_STEP, [nameSearch, comparison, identityGate, approval]],
+          ],
+          result: result(
+            SeparationsIdentityCheckResultSchema,
+            [approval],
+            ({ outputs }) => outputs[APPROVAL_NODE],
+          ),
+        };
+      },
+    }),
   },
 });
