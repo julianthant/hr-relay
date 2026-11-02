@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { DashboardDayWireSchema } from "../../../../src/models/dashboard/projection.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import assert from "node:assert/strict";
@@ -8,7 +8,7 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../../src/models/trust/evidence-identity.js";
 import { RunIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const {world, runRecordOf, queuedEventOf, appendOther, cleanup } = createRunQueueProjectionTestWorld(profileFixtures.create);

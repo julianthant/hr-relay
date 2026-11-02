@@ -1,3 +1,4 @@
+import { CanonicalCrashRecoveryRequestSchema } from "../../../models/run/worker.js";
 import { deriveWriteAuthorityReason } from "../../../rules/write-safety/write-safety.js";
 import { assertWorkerResetParkedWrite } from "../../storage/sqlite/worker-control.js";
 import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
@@ -37,7 +38,6 @@ import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } fro
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { DeletedRunRecord } from "../../../models/run/deleted-run.js";
 import {
-  CanonicalCrashRecoveryRequestSchema,
   CanonicalCancellationTerminalizeRequestSchema,
   CanonicalWriteResolutionTransitionRequestSchema,
   CanonicalClaimNextRequestSchema,
@@ -142,6 +142,7 @@ export type RunRecordServiceDependencies = Readonly<{
   database: AuthorityDatabase;
   clock: Clock;
   ids: IdFactory;
+  lifecycleEventProcessId?: number;
   /** Composition supplies the shared runQueuedSpanEvent builder and emitter. */
   publishQueued: (run: RunRecord, publication?: RunQueuedPublication) => void;
   /** Synchronous readiness assertion; runs after replay, before enqueue. */
@@ -1202,7 +1203,7 @@ export class RunRecordService {
           workflow: run.envelope.workflow, scope: { kind: "run", runId: run.envelope.runId },
           occurredAt, recordedAt: now.toISOString(), retentionDate: localDatePart(now),
           source: { kind: "native" }, payload: { kind: "span", event: {
-            ...event, pid: process.pid, ts: occurredAt, workflow: run.envelope.workflow,
+            ...event, pid: this.dependencies.lifecycleEventProcessId ?? process.pid, ts: occurredAt, workflow: run.envelope.workflow,
             runId: run.envelope.runId, attempt: run.envelope.attempt,
             traceId: run.envelope.traceId, spanPath: run.envelope.traceId,
           } },

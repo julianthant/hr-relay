@@ -1,5 +1,5 @@
 import { afterAll } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
 import { childWriteRecoveryRoot as root, childPrerequisiteRoot, childPrerequisiteModules } from "../../../support/fixtures/child-execution-write-workflow.js";
 import assert from "node:assert/strict";
@@ -27,7 +27,7 @@ import { canonicalChildExecution } from "../../../support/helpers/backend/canoni
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
 const world = createRunExecutorTestWorld(profiles.create);
 afterEach(world.cleanup);

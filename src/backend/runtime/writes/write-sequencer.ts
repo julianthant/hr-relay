@@ -82,7 +82,7 @@ import {
   type WriteIntentRecord,
 } from "../../../rules/write-safety/write-safety.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import type { RunClaimToken } from "../../storage/sqlite/run-store-contracts.js";
+import type { RunClaimToken } from "../../../models/run/worker.js";
 import {
   SequencedWriteCommitInputSchema,
   AtomicWriteCommitReportSchema,

@@ -13,7 +13,9 @@ import type { RuntimeRelocationOperation } from "../admission/admission.js";
 import type { RuntimePair } from "../admission/installation.js";
 import { verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { AuthorityDatabase, CredentialContextRequiredError } from "../sqlite/authority-database.js";
-import { assertCredentialStoreOwner, verifyChatGptCredentialBytes, verifyChatGptCredentialStore } from "../configuration/credential-store.js";
+import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
+import { verifyChatGptCredentialStore } from "../configuration/chatgpt-credential-repository.js";
+import { MAX_CANONICAL_CREDENTIAL_BYTES, verifyCanonicalCredentialBytes } from "../configuration/canonical-credential-store.js";
 
 const ARTIFACT = /^([0-9a-f]{64})\.artifact$/u;
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
@@ -138,7 +140,7 @@ export function verifyRelocationLiveReferences(input: Readonly<{ admission: Runt
 
 }
 
-function validateName(role: "state" | "artifact", relativePath: string, kind: "file" | "directory", path: string): void {
+function validateName(role: "state" | "artifact", relativePath: string, kind: "file" | "directory", path: string, admission: RuntimeAdmission): void {
   const parts = relativePath.split(sep);
   const [top, name] = parts;
   if (role === "artifact") {
@@ -170,8 +172,8 @@ function validateName(role: "state" | "artifact", relativePath: string, kind: "f
     if (name === "duo-webauthn.json" && (privatePathRejects(path, lstatSync(path), "file-0600") || lstatSync(path).size > 64_000)) throw new Error("relocation-inventory: unsafe Duo credential");
     if (name === "chatgpt-account.json") {
       if (privatePathRejects(path, lstatSync(path), "file-0600")) throw new Error("relocation-inventory: unknown or unsafe ChatGPT credentials entry");
-      if (lstatSync(path).size > 64_000) throw new Error("relocation-inventory: malformed ChatGPT credentials");
-      verifyChatGptCredentialBytes(safeBytes(path));
+      if (lstatSync(path).size > MAX_CANONICAL_CREDENTIAL_BYTES) throw new Error("relocation-inventory: malformed ChatGPT credentials");
+      verifyCanonicalCredentialBytes(admission, "chatgpt", safeBytes(path));
     }
     return;
   }
@@ -230,7 +232,7 @@ export async function verifyRelocationBackupTree(input: Readonly<{ admission: Ru
 }
 
 function walk(root: string, role: "state" | "artifact", skip: ReadonlySet<string>,
-  directories: RelocationInventoryDirectory[], files: RelocationInventoryFile[]): void {
+  directories: RelocationInventoryDirectory[], files: RelocationInventoryFile[], admission: RuntimeAdmission): void {
   assertOwned(root, "directory");
   const visit = (directory: string): void => {
     for (const name of readdirSync(directory).sort()) {
@@ -240,7 +242,7 @@ function walk(root: string, role: "state" | "artifact", skip: ReadonlySet<string
       const info = lstatSync(path);
       const kind = info.isDirectory() ? "directory" : "file";
       assertOwned(path, kind);
-      validateName(role, rel, kind, path);
+      validateName(role, rel, kind, path, admission);
       if (kind === "directory") {
         directories.push(Object.freeze({ role, relativePath: rel }));
         visit(path);
@@ -296,10 +298,10 @@ export function inspectRelocationFiles(input: Readonly<{ admission: RuntimeAdmis
     }
     const skipped = new Set([...excluded].map((name) => join(input.source.stateRoot, name)));
     if (artifactMoved && inside(input.source.stateRoot, input.source.artifactRoot)) skipped.add(input.source.artifactRoot);
-    walk(input.source.stateRoot, "state", skipped, directories, files);
+    walk(input.source.stateRoot, "state", skipped, directories, files, input.admission);
   }
   if (artifactMoved) walk(input.source.artifactRoot, "artifact",
-    new Set((witness?.artifact ?? []).map((name) => join(input.source.artifactRoot, name))), directories, files);
+    new Set((witness?.artifact ?? []).map((name) => join(input.source.artifactRoot, name))), directories, files, input.admission);
   const inventory = Object.freeze({ source: Object.freeze({ ...input.source }), destination: Object.freeze({ ...input.destination }),
     stateEntries: Object.freeze(stateEntries), directories: Object.freeze(directories), files: Object.freeze(files) });
   issuedInventories.add(inventory);
@@ -383,7 +385,7 @@ export function verifyRetainedRelocationCopies(input: Readonly<{ operation: Runt
       && inside(pending.source.stateRoot, pending.source.artifactRoot)) {
       skipped.add(witness.source.artifactRoot);
     }
-    walk(root, role, skipped, directories, files);
+    walk(root, role, skipped, directories, files, input.sourceAdmission);
     for (const directory of directories) assertOwned(join(target, directory.relativePath), "directory");
     for (const file of files) {
       if (role === "state" && NATIVE_DATABASE_ENTRIES.has(file.relativePath)) continue;

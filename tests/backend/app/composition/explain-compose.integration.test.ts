@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures, profileFixtureStorageAdmission, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, profileFixtureStorageAdmission, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import { TargetNotFoundError } from "../../../../src/backend/runs/commands/refusals.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -25,7 +25,7 @@ seedPersonLookupExitRun,
 } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 const heldProfiles: BoundProfileStorageFixture[] = [];
 afterAll(() => profiles.close());
 const roots: string[] = [];

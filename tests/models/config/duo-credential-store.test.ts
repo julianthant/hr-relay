@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { BrowserDocumentIdSchema, DuoEnrollmentScopeSchema } from "../../../src/models/config/duo-credential-store.js";
+import { BrowserDocumentIdSchema, DuoEnrollmentScopeSchema, DuoCredentialRecordSchema } from "../../../src/models/config/duo-credential-store.js";
 
 it("retains the browser document token verbatim while keeping issued identities as UUIDs", () => {
   const token = "A0000000000040008000000000000007";
@@ -16,5 +16,12 @@ it("retains the browser document token verbatim while keeping issued identities 
   }
   for (const field of ["accountId", "armId"] as const) {
     assert.equal(DuoEnrollmentScopeSchema.safeParse({ ...scope, [field]: token }).success, false);
+  }
+});
+
+it("keeps only credential material and refuses embedded counter authority", () => {
+  assert.deepEqual(DuoCredentialRecordSchema.parse({ credentials: [] }), { credentials: [] });
+  for (const extra of [{ highWater: 1 }, { reservations: [] }, { retired: [] }, { revision: 1 }]) {
+    assert.equal(DuoCredentialRecordSchema.safeParse({ credentials: [], ...extra }).success, false);
   }
 });

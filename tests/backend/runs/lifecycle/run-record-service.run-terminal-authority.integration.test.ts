@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunIntegrationTestWorld } from "../../../support/helpers/run-integration-world.js";
 import assert from "node:assert/strict";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
@@ -26,7 +26,7 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const CLOCK = manualClock(new Date(LATER));

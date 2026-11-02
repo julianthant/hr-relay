@@ -1,5 +1,6 @@
+import { runCredentialSourceRetentionCase } from "../../../support/helpers/credential-source-retention.js";
 import { fsyncPath } from "../../../../src/backend/storage/private-path.js";
-import { createHistoricalIncompleteProfileFixture } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
+import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { withOperationProof, readPrivateFile } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
@@ -108,9 +109,10 @@ it("snapshot creation preserves the source failure and failed cleanup with its e
 });
 
 for (const reader of ["read-only", "binding", "login-copy"] as const) it(`retains the actual ${reader} database on failed close without removing its snapshot`, async () => {
+  if (reader === "read-only") { await runCredentialSourceRetentionCase("readonly-native-close"); return; }
   const f = await createBoundProfileFixture(), before = digest(f.path);
   const actualCreate = fs.mkdtempSync;
-  const primary = new Error("read-callback-refused"), cleanup = new Error("native-copy-close-refused");
+  const cleanup = new Error("native-copy-close-refused");
   const retainedOwner: { database?: DatabaseSync } = {};
   let directory: string | undefined, closes = 0, proved = false;
   const create = vi.spyOn(fs, "mkdtempSync").mockImplementation((prefix, options) => {
@@ -124,16 +126,14 @@ for (const reader of ["read-only", "binding", "login-copy"] as const) it(`retain
   try {
     let failure: unknown;
     try {
-      if (reader === "read-only") withAuthorityDatabaseReadOnly(f.admission, f.path, () => { throw primary; });
-      else if (reader === "binding") readProfileDatabaseBinding(f.path);
+      if (reader === "binding") readProfileDatabaseBinding(f.path);
       else countUcsdLoginRows(f.path);
     } catch (error) { failure = error; }
     assert.ok(failure instanceof AuthoritySourceClosureUnprovedError);
     const inner = reader === "binding" ? failure.cause : failure;
     assert.ok(inner instanceof AuthoritySourceClosureUnprovedError);
     assert.equal(inner.errors.at(-1), cleanup); assert.equal(inner.cause, inner.errors[0]);
-    if (reader === "read-only") { assert.equal(inner.errors.length, 2); assert.equal(inner.errors[0], primary); }
-    else if (reader === "binding") assert.deepEqual(inner.errors, [cleanup]);
+    if (reader === "binding") assert.deepEqual(inner.errors, [cleanup]);
     else { assert.equal(inner.errors.length, 2); assert.ok(inner.errors[0] instanceof Error); }
     const retained = retainedOwner.database;
     assert.equal(closes, 1); assert.ok(retained);
@@ -163,7 +163,7 @@ it("ordinary read refusal and unreadable login copy stay ordinary after proved c
 
 for (const invalid of [false, true]) it(`retains a private source descriptor and its primary failure on close refusal ${invalid}`, async () => {
   const f = await createBoundProfileFixture(), path = join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`);
-  f.machine.assertProfileCredentialKey(f.admission, path);
+  f.admission.assertProfileRuntime(); f.machine.assertStateRoot(path);
   const before = digest(path), identity = fs.lstatSync(path), actualClose = fs.closeSync;
   const injected = new Error("private-source-descriptor-close-refused");
   let descriptor: number | undefined, attempts = 0, proved = false;
@@ -193,7 +193,7 @@ for (const invalid of [false, true]) it(`retains a private source descriptor and
 
 for (const failSync of [false, true]) it(`retains the real sync descriptor and primary error after close refusal ${failSync}`, async () => {
   const f = await createBoundProfileFixture(), path = join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`);
-  f.machine.assertProfileCredentialKey(f.admission, path);
+  f.admission.assertProfileRuntime(); f.machine.assertStateRoot(path);
   const before = digest(path);
   const actualClose = fs.closeSync, actualSync = fs.fsyncSync;
   const primary = new Error("source-sync-refused"), cleanup = new Error("source-sync-close-refused");
@@ -228,6 +228,7 @@ for (const failSync of [false, true]) it(`retains the real sync descriptor and p
 it("reads a closed incomplete profile inventory without changing source database identity", async () => {
   const f = await createHistoricalIncompleteProfileFixture();
   await using _fixture = { async [Symbol.asyncDispose]() { await f.close(); } };
+  await convertHistoricalIncompleteProfileFixture(f);
   const machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   using _machine = { [Symbol.dispose]() { machine.release(); } };
   const admission = machine.forStoppedIncompleteProfileInventory(f.profileId);
@@ -249,6 +250,7 @@ it("reads a closed incomplete profile inventory without changing source database
 it("withdraws a genuine incomplete profile while preserving safe SQLite 0644 custody", async () => {
   const f = await createHistoricalIncompleteProfileFixture();
   await using _fixture = { async [Symbol.asyncDispose]() { await f.close(); } };
+  await convertHistoricalIncompleteProfileFixture(f);
   fs.chmodSync(f.databasePath, 0o644);
   const capture = () => ["", "-wal", "-shm", "-journal"].map(suffix => {
     const path = f.databasePath + suffix, value = fs.lstatSync(path, { bigint: true, throwIfNoEntry: false });

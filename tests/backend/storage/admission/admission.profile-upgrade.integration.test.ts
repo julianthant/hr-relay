@@ -1,7 +1,7 @@
+import { CanonicalCredentialError, initializeCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { withOfflineMaintenance } from "../../../support/helpers/admission-fixture.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
-import { composeProfileCredentialInitializationInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { storageRecoveryFixture, credentialTrap, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import assert from "node:assert/strict";
@@ -12,12 +12,14 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION, AUTHORITY_APPLICATION_ID } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createCredentialStore, initialDocument } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
+import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
+import { createHash } from "node:crypto";
 
 it.each([6, 7])("keeps pending setup database-only until canonical binding, then upgrades disposable schema%s and scans its retained backup before explicit v4 initialization", async version => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "profile-stopped-upgrade-")));
@@ -29,33 +31,32 @@ it.each([6, 7])("keeps pending setup database-only until canonical binding, then
       createdAt: IsoInstantSchema.parse("2026-09-06T12:00:00.000Z"), commandFingerprint: "b".repeat(64) });
     const setup = machine.admitProfile(operation.profileId);
     const path = join(setup.stateRoot, "state.db");
-    const journalPath = join(machine.stateRoot, "machine", "erasures", `${operation.profileId}.json`);
-    const store = createCredentialStore({ admission: setup, stateRoot: setup.stateRoot,
-      erasureJournalAdmission: machine, erasureJournalPath: journalPath,
-      initializationInventory: composeProfileCredentialInitializationInventory({ machine, admission: setup, clock: systemClock, hostFacts: { primaryDisplay: null } }) });
+    const store = createCredentialStore({ admission: setup, stateRoot: setup.stateRoot });
     const request = ProtectedSettingsApplyInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
       commandFingerprint: operation.commandFingerprint, expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
       updatedAt: operation.createdAt, entries: { ucpathPassword: { set: "disposable-profile-password" } } });
-    assert.throws(() => store.apply(request), /profile-database-binding-required/u);
-    AuthorityDatabase.initializeProfile(setup);
-    assert.throws(() => AuthorityDatabase.open(setup, { path, busyTimeoutMs: 250, migrationOwner: "test" }), /profile-bound-authority-required/u);
+    const assertUninitialized = (binding: "missing" | "historical") => {
+      const source = storageTree(workspace);
+      const keys = createHash("sha256").update(JSON.stringify(FakeKeyringEntry.snapshot())).digest("hex");
+      for (const kind of ["read", "apply"] as const) {
+        if (kind === "read" || binding === "historical" && version === 7) assert.throws(() => kind === "read" ? store.read() : store.apply(request),
+          error => error instanceof CanonicalCredentialError && error.code === "CREDENTIAL_UNAVAILABLE" && error.cause === undefined);
+        else assert.throws(() => store.apply(request), { message: "profile-database-binding-required" });
+        assert.deepEqual(storageTree(workspace), source);
+        assert.equal(createHash("sha256").update(JSON.stringify(FakeKeyringEntry.snapshot())).digest("hex"), keys);
+      }
+    };
+    assertUninitialized("missing");
     const raw = new DatabaseSync(path);
     try {
-      raw.exec("DROP TABLE assistant_model_preference; DROP TABLE assistant_actions; DROP TABLE assistant_chats; DROP TABLE assistant_grants");
-      const editorDdl = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE TABLE explorer_overrides \([\s\S]*?\n\) STRICT;/u)?.[0];
-      assert.ok(editorDdl);
-      raw.exec(editorDdl);
-      if (version === 6) {
-        raw.exec("DROP TRIGGER database_states_binding_immutable; ALTER TABLE database_states RENAME TO database_states_bound");
-        const original = SQLITE_MIGRATIONS[0]?.statements[0]?.split("CREATE TABLE database_upgrades")[0];
-        assert.ok(original !== undefined);
-        raw.exec(original);
-        raw.exec("INSERT INTO database_states SELECT id,6,authority_generation,updated_at,search_generation,search_state FROM database_states_bound; DROP TABLE database_states_bound; PRAGMA user_version=6");
-      } else raw.exec("UPDATE database_states SET schema_version=7 WHERE id=1; PRAGMA user_version=7");
+      for (const migration of SQLITE_MIGRATIONS.filter(row => row.version <= version)) for (const statement of migration.statements) raw.exec(statement);
+      if (version === 7) raw.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,7,7,?,NULL,'unbuilt',?,?)")
+        .run(operation.createdAt, setup.profileBinding.installationId, setup.profileBinding.profileId);
+      else raw.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state) VALUES(1,6,7,?,NULL,'unbuilt')").run(operation.createdAt);
+      raw.exec(`PRAGMA user_version=${version}; PRAGMA application_id=${AUTHORITY_APPLICATION_ID}`);
     } finally { raw.close(); }
     const before = readFileSync(path);
-    const expectedRefusal = version === 6 ? "profile-database-binding-required" : "credential-key-required";
-    assert.throws(() => store.apply(request), error => error instanceof Error && error.message === expectedRefusal);
+    assertUninitialized("historical");
     assert.deepEqual(readFileSync(path), before);
     assert.throws(() => AuthorityDatabase.open(setup, { path, busyTimeoutMs: 250, migrationOwner: "test" }), /profile-bound-authority-required/u);
     const input = { stateRoot: setup.stateRoot, processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot), plan: false };
@@ -63,16 +64,11 @@ it.each([6, 7])("keeps pending setup database-only until canonical binding, then
     assert.equal(upgraded.state, "upgraded");
     assert.equal(upgraded.fromSchemaVersion, version);
     assert.equal(upgraded.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    if (version === 6) {
-      const retained = storageTree(workspace);
-      assert.throws(() => store.migrateHistory({ operation }), /backup-profile-binding-required/u);
-      assert.deepEqual(storageTree(workspace), retained);
-      assert.throws(() => store.apply(request), /credential-key-required/u);
-    } else {
-      store.migrateHistory({ operation });
-      assert.equal(store.read().revision, request.expectedRevision);
-      assert.equal(store.apply(request).state, "applied");
-    }
+    const initial = initialDocument();
+    initializeCanonicalCredentials(machine, setup, operation, { revision: initial.record.revision, value: initial });
+    machine.publishProfileOperation({ ...operation, credentials: { ...operation.credentials, phase: "ready", protectedRevision: initial.record.revision } });
+    assert.equal(store.read().revision, request.expectedRevision);
+    assert.equal(store.apply(request).state, "applied");
     setup.release();
     assert.throws(() => setup.forStoppedProfileUpgrade(), /released admission/u);
   } finally { machine.release(); rmSync(workspace, { recursive: true, force: true }); }

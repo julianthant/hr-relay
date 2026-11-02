@@ -1,15 +1,16 @@
+import type { LogoutOperation } from "../../../models/profiles/profile.js";
 import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { AuthoritySourceClosureUnprovedError } from "../../storage/source-closure.js";
 import type { RuntimeAdmission } from "../../storage/admission/admission.js";
-import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityDatabase, AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { localDatePart, type Clock } from "../../../rules/time/clock.js";
-import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
+import { capturedInstantClock, localDatePart, type Clock } from "../../../rules/time/clock.js";
+import { deriveStableUuid, lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { runClaim } from "../../../models/run/record.js";
-import { requireLifecycleApplied, type RunRecordService } from "./run-record-service.js";
+import { requireLifecycleApplied, RunRecordService } from "./run-record-service.js";
 
 export class StartupCrashRecoveryRefusedError extends Error {
   readonly code = "STARTUP_CRASH_RECOVERY_REFUSED";
@@ -17,6 +18,41 @@ export class StartupCrashRecoveryRefusedError extends Error {
 }
 
 type CleanupCode = "RUN_CRASH_RESOURCES_RELEASED" | "RUN_STALE_QUEUE_CANCELLED" | "RUN_INTERRUPTED_BY_CRASH" | "RUN_CRASH_WRITE_UNRESOLVED";
+
+
+function appendRecoveryNotification(repositories: AuthorityRepositories, code: CleanupCode, identity: unknown, now: string, runId?: string): void {
+  const fingerprint = sha256Hex(canonicalJsonStringify({ code, identity }));
+  if (repositories.notifications.findByDedupe(LOCAL_OPERATOR_ACTOR_ID, fingerprint) !== undefined) return;
+  repositories.notifications.create({ notificationId: lifecycleCommandId("startup-notification", fingerprint),
+    actorId: LOCAL_OPERATOR_ACTOR_ID, dedupeFingerprint: fingerprint, trigger: "storage", channel: "ping", status: "unread",
+    snooze: { state: "not-snoozed" }, title: code, summary: ERROR_CATALOG[code].text,
+    links: runId === undefined ? [{ kind: "storage", diagnosticFingerprint: fingerprint }] : [{ kind: "run", runId }],
+    count: 1, lastSeenAt: now, version: 1, createdAt: now, updatedAt: now });
+}
+
+export function reconcileStoppedLogout(database: AuthorityDatabase, operation: LogoutOperation, lifetime: RuntimeLifetimeLock): void {
+  const settlement = operation.settlement;
+  if (settlement === undefined) throw new Error("profile-logout-settlement-unprepared");
+  const clock = capturedInstantClock(settlement.stoppedAt);
+  let sequence = 0;
+  const lifecycle = new RunRecordService({ database, clock, lifecycleEventProcessId: settlement.processId,
+    ids: { uuid: () => deriveStableUuid(`logout:${operation.operationId}`, String(sequence++)) },
+    publishQueued: () => { throw new Error("profile-logout-cannot-enqueue"); } });
+  for (const request of settlement.requests) {
+    const run = requireLifecycleApplied(lifecycle.recoverCrash(request, lifetime));
+    appendRecoveryNotification(database.authority, run.lifecycle.state === "parked-write" ? "RUN_CRASH_WRITE_UNRESOLVED" : "RUN_INTERRUPTED_BY_CRASH",
+      { runId: request.runId, version: request.expectedVersion }, settlement.stoppedAt, request.runId);
+  }
+  for (const worker of settlement.workers) {
+    const slot = database.authority.workerSlots.get(worker.member.workerId), lease = database.authority.workerLeases.get(worker.member.workerId);
+    if (slot === undefined || lease === undefined || lease.processId !== worker.processId || lease.leaseGeneration !== worker.leaseGeneration
+      || slot.workerId !== worker.member.workerId || slot.workflow !== worker.member.workflowId
+      || slot.ordinal !== worker.member.ordinal || slot.poolIndex !== worker.member.poolIndex || slot.membershipRevision !== worker.member.membershipRevision) throw new Error("profile-logout-exit-source-changed");
+    for (const released of database.settleInterruptedWorker(lifetime, worker.member.workerId, worker.leaseGeneration, settlement.stoppedAt)) {
+      appendRecoveryNotification(database.authority, "RUN_CRASH_RESOURCES_RELEASED", released, settlement.stoppedAt);
+    }
+  }
+}
 
 type RecoveryInput = Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; database: AuthorityDatabase;
   lifecycle: RunRecordService; clock: Clock; lock: RuntimeLifetimeLock }>;
@@ -34,15 +70,8 @@ export function reconcileExitedWorker(input: RecoveryInput & {
 function reconcileInterruptedRuns(input: RecoveryInput, lock: RuntimeLifetimeLock,
   worker?: Readonly<{ workerId: string; leaseGeneration: number }>): void {
   const { machine, admission, database, lifecycle, clock } = input;
-  const notify = (code: CleanupCode, identity: unknown, runId?: string) => {
-    const fingerprint = sha256Hex(canonicalJsonStringify({ code, identity })), now = clock.now().toISOString();
-    if (database.authority.notifications.findByDedupe(LOCAL_OPERATOR_ACTOR_ID, fingerprint) !== undefined) return;
-    database.authority.notifications.create({ notificationId: lifecycleCommandId("startup-notification", fingerprint),
-      actorId: LOCAL_OPERATOR_ACTOR_ID, dedupeFingerprint: fingerprint, trigger: "storage", channel: "ping", status: "unread",
-      snooze: { state: "not-snoozed" }, title: code, summary: ERROR_CATALOG[code].text,
-      links: runId === undefined ? [{ kind: "storage", diagnosticFingerprint: fingerprint }] : [{ kind: "run", runId }],
-      count: 1, lastSeenAt: now, version: 1, createdAt: now, updatedAt: now });
-  };
+  const notify = (code: CleanupCode, identity: unknown, runId?: string) => appendRecoveryNotification(database.authority, code, identity, clock.now().toISOString(), runId);
+
   try {
     admission.assertProfileRuntime(); machine.assertLive();
     if (!(lock instanceof RuntimeLifetimeLock)) throw new Error("crash-recovery-lock-required");

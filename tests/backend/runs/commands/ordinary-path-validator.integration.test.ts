@@ -49,7 +49,7 @@ describe("ordinary browser paths", () => {
     const defaultRoot = join(f.root, "default");
     mkdirSync(defaultRoot); writeFileSync(join(defaultRoot, "existing"), "synthetic");
     const reset = f.candidate({ browserProfileRoot: defaultRoot, duoCredential: join(defaultRoot, "duo-webauthn.json") });
-    // Profile-only reset may keep the default Duo credential below the known installation profile.
+    // Retained configuration history does not make its credential path editable.
     validateOrdinaryPathChanges({ ...f.previous, paths: { ...f.previous.paths, duoCredential: reset.paths.duoCredential } },
       reset, () => defaultRoot);
   });
@@ -71,22 +71,11 @@ describe("ordinary browser paths", () => {
       () => join(f.root, "default")), "paths.browserProfileRoot", "overlaps-runtime-location");
   });
 
-  it("requires a private regular Duo file and a valid unpacked extension only when each effective path changes", () => {
+  it("refuses changes to the retired Duo path without reading it and still validates extension assets", () => {
     const f = fixture();
-    const credential = join(f.root, "duo.json");
-    writeFileSync(credential, '{"rpId":"synthetic.example","credentialId":"synthetic-id","privateKey":"synthetic-key","signCount":0,"transport":"internal"}', { mode: 0o600 });
-    validateOrdinaryPathChanges(f.previous, f.candidate({ duoCredential: credential }));
-    chmodSync(credential, 0o644);
-    refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ duoCredential: credential })),
-      "paths.duoCredential", "private-file-required");
-    chmodSync(credential, 0o600);
-    writeFileSync(credential, "invalid-json");
-    refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ duoCredential: credential })),
-      "paths.duoCredential", "credential-identity-unavailable");
-    writeFileSync(credential, '{"rpId":"synthetic.example","credentialId":"synthetic-id","privateKey":"synthetic-key","signCount":0,"transport":"internal"}');
-    const symlink = join(f.root, "duo-link.json"); symlinkSync(credential, symlink);
-    refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ duoCredential: symlink })),
-      "paths.duoCredential", "private-file-unavailable");
+    for (const credential of [join(f.root, "absent.json"), join(f.root, "invalid.json")]) {
+      refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ duoCredential: credential })), "paths.duoCredential", "retired-setting");
+    }
     const extension = join(f.root, "extension"); mkdirSync(extension);
     writeFileSync(join(extension, "workflow-manifest.json"), "{}");
     refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ duoExtensionDir: extension })),

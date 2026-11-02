@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { mkdirSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -15,7 +15,7 @@ import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures
 import { DAY,makeWorld,queuedEventOf,uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { AuthorityDatabase,doctorAuthorityStorage,summarizeSpanAuthorityReconciliation } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 const heldProfiles: BoundProfileStorageFixture[] = [];
 afterAll(() => profiles.close());
 const clock = manualClock(new Date(NOW));

@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -121,7 +121,7 @@ function evidenceCount(path: string): number {
   }
 }
 
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
 
 async function exportHarness(label: string) {

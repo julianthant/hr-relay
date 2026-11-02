@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { afterAll, afterEach,describe,it,vi } from "vitest";
 import { createItemAttemptHistoryQuery } from "../../../../src/backend/runs/queries/item-attempt-history.js";
@@ -9,7 +9,7 @@ import { testRunService } from "../../../support/fixtures/run-lifecycle-fixtures
 import { makeWorld,runRecordOf,uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const cleanups: (() => void | Promise<void>)[] = [];

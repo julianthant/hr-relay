@@ -89,6 +89,9 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/caching-compiler-host.ts` | content-checked shared parsed compiler sources and fresh Programs |
 | `helpers/backend/cross-date-search-harness.ts` | cross date search harness |
 | `helpers/backend/dashboard-harness.ts` | dashboard harness |
+| `processes/credential-source-retention-worker.ts` | finite inherited-worker/current and controller/stopped source-close faults; fake keychain before backend imports; parent awaits actual child close |
+| `processes/duo-credential-worker.ts` | canonical Duo reservation concurrency and real process-loss recovery; verifies the fake keychain before backend imports |
+| `processes/chatgpt-credential-worker.ts` | inherited-lifetime ChatGPT transaction exclusion; requires the fake keychain |
 | `processes/failure-resolution-peer.ts` | failure resolution peer |
 | `helpers/backend/http-route-harness.ts` | http route harness |
 | `helpers/backend/served-database-surfaces-fixtures.ts` | served database surfaces fixtures |
@@ -224,6 +227,8 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/backend/preflight-port-fixtures.ts` | preflight port fixtures |
 | `helpers/backend/worker-supervision-world.ts` | worker supervision world |
 | `helpers/backend/command-kernel-harness.ts` | command kernel harness |
+
+| `processes/profile-onboarding-abort-worker.ts` | Owned-controller canonical abort crash-prefix cases in `backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts` |
 
 ## File fixtures
 

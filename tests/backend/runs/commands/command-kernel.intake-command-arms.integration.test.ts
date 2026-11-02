@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { insertImportedArtifact } from "../../../../src/backend/storage/sqlite/imported-artifacts.js";
 import { importedArtifact } from "../../../../src/models/intake/imported-artifact.js";
@@ -35,7 +35,7 @@ import { QUEUED_RUN,sequentialIdFactory } from "../../../support/fixtures/phase1
 
 /* ── the source file, as a grid the shared edge would have produced ──────── */
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const SHEET = "Cohort A";

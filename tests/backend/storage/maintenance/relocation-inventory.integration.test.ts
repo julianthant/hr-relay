@@ -20,7 +20,7 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } fro
 import { GeneratedArtifactSchema } from "../../../../src/models/artifacts/generated-artifact.js";
 import { importedArtifact } from "../../../../src/models/intake/imported-artifact.js";
 import { IntakeSessionSchema } from "../../../../src/models/intake/session.js";
-import { createChatGptCredentialRepository, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createChatGptCredentialRepository, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 
 function artifactBytes(bytes: Buffer): Readonly<{ name: string; stored: string }> {
   const sha256 = createHash("sha256").update(bytes).digest("hex");
@@ -59,61 +59,34 @@ it("relocates the Duo key with the other credentials and refuses an unsafe one",
   } finally { sourceAdmission.release(); destinationAdmission.release(); await profile.close(); rmSync(workspace, { recursive: true, force: true }); }
 });
 
-it("relocates only a validated private ChatGPT record and refuses unsafe token authority", async () => {
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-chatgpt-")));
-  const source = { stateRoot: join(workspace, "source"), artifactRoot: join(workspace, "source", "artifacts") };
-  const destination = { stateRoot: join(workspace, "destination"), artifactRoot: join(workspace, "destination", "artifacts") };
-  for (const path of [source.stateRoot, source.artifactRoot, destination.stateRoot, destination.artifactRoot]) mkdirSync(path, { recursive: true, mode: 0o700 });
-  const sourceAdmission = RuntimeAdmission.syntheticRoots(source.stateRoot, source.artifactRoot), destinationAdmission = RuntimeAdmission.syntheticRoots(destination.stateRoot, destination.artifactRoot);
+it("refuses registered-person relocation without changing current credential authority", async () => {
   const profile = await createBoundProfileFixture(), foreign = await createBoundProfileFixture();
   try {
+    const repository = createChatGptCredentialRepository({ admission: profile.admission, stateRoot: profile.stateRoot });
     const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: "oaiapp_fixture",
       registration: { subject: "synthetic-subject", name: "Synthetic", email: "synthetic@example.com" },
       session: { accessToken: "synthetic-relocation-access", refreshToken: "synthetic-relocation-refresh", idToken: "synthetic-relocation-id",
         expiresAt: IsoInstantSchema.parse("2026-10-12T12:00:00.000Z"), earliestRefreshAt: null, scopes: [], usePlan: false, usage: "available" } };
-    await createChatGptCredentialRepository({ admission: sourceAdmission, stateRoot: source.stateRoot }).withLock(async tx => { tx.replace(record, null); });
-    const protectedStore = boundProfileCredentials(profile.admission);
-    const revision = protectedStore.read().revision;
-    const protectedOutcome = protectedStore.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "1".repeat(64), writeId: randomUUID(), expectedRevision: revision,
-      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-10-12T12:00:00.000Z", entries: { ucpathPassword: { set: "synthetic-relocation-protected" } } }));
-    assert.equal(protectedOutcome.state, "applied");
-    const protectedBytes = readFileSync(join(profile.stateRoot, "credentials", "protected.json"));
+    await repository.withLock(async tx => { tx.replace(record, null); });
+    const protectedStore = boundProfileCredentials(profile.admission), revision = protectedStore.read().revision;
+    assert.equal(protectedStore.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "1".repeat(64), writeId: randomUUID(), expectedRevision: revision,
+      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-10-12T12:00:00.000Z", entries: { ucpathPassword: { set: "synthetic-relocation-protected" } } })).state, "applied");
     assert.ok(protectedStore.read().entries.ucpathPassword);
-    writeFileSync(join(source.stateRoot, "credentials", "protected.json"), protectedBytes, { mode: 0o600 });
+    const paths = [profile, foreign].flatMap(owner => [owner.path, join(owner.stateRoot, "credentials", "protected.json"),
+      join(owner.stateRoot, "credentials", "chatgpt-account.json"),
+      join(owner.machine.stateRoot, "machine", "credential-keys", `${owner.admission.profileBinding.profileId}.json`)]);
+    const before = paths.map(path => ({ path, bytes: readFileSync(path) }));
     assert.throws(() => profile.admission.assertStorageRelocationSupported(), { code: "PROFILE_STORAGE_RELOCATION_UNSUPPORTED" });
-    const input = { admission: sourceAdmission, source, destination, fixedLockRoot: join(source.stateRoot, "locks") };
-    const inventory = inspectRelocationFiles(input), file = inventory.files.find(file => file.relativePath === "credentials/chatgpt-account.json"); assert.ok(file);
-    assert.equal(JSON.stringify(inventory).includes("synthetic-relocation"), false);
-    prepareRelocationDirectories({ destinationAdmission, inventory });
-    copyRelocationFile({ sourceAdmission, destinationAdmission, inventory, file, operationId: randomUUID() });
-    const protectedFile = inventory.files.find(file => file.relativePath === "credentials/protected.json");
-    assert.ok(protectedFile);
-    copyRelocationFile({ sourceAdmission, destinationAdmission, inventory, file: protectedFile, operationId: randomUUID() });
-    assert.equal(readFileSync(join(destination.stateRoot, protectedFile.relativePath)).equals(protectedBytes), true);
-    assert.equal(lstatSync(join(destination.stateRoot, protectedFile.relativePath)).mode & 0o777, 0o600);
+    const protectedBytes = readFileSync(join(profile.stateRoot, "credentials", "protected.json"));
     const foreignPath = join(foreign.stateRoot, "credentials", "protected.json"), originalForeignBytes = readFileSync(foreignPath);
     try {
       writeFileSync(foreignPath, protectedBytes);
       assert.throws(() => boundProfileCredentials(foreign.admission).read());
     } finally { writeFileSync(foreignPath, originalForeignBytes); }
-    assert.equal(readFileSync(join(profile.stateRoot, "credentials", "protected.json")).equals(protectedBytes), true);
-    verifyRelocationFileCopies({ sourceAdmission, destinationAdmission, inventory });
-    assert.deepEqual(createChatGptCredentialRepository({ admission: destinationAdmission, stateRoot: destination.stateRoot }).read(), record);
-    assert.equal(lstatSync(join(destination.stateRoot, "credentials")).mode & 0o777, 0o700); assert.equal(lstatSync(join(destination.stateRoot, file.relativePath)).mode & 0o777, 0o600);
-    const path = join(source.stateRoot, file.relativePath);
-    writeFileSync(path, '{"refreshToken":"synthetic-sensitive"');
-    assert.throws(() => inspectRelocationFiles(input), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE", message: "ChatGPT credentials could not be read or saved safely." });
-    writeFileSync(path, JSON.stringify(record));
-    chmodSync(path, 0o644);
-    assert.throws(() => inspectRelocationFiles(input), /unknown or unsafe ChatGPT/u);
-    chmodSync(path, 0o600);
-    const stage = join(source.stateRoot, "credentials", `.chatgpt-account.${randomUUID()}.tmp`);
-    writeFileSync(stage, "synthetic-stage", { mode: 0o600 });
-    assert.throws(() => inspectRelocationFiles(input), /unsafe state descendant/u);
-    rmSync(stage);
-    writeFileSync(join(source.stateRoot, "credentials", ".chatgpt-account.lock"), "synthetic");
-    assert.throws(() => inspectRelocationFiles(input), /unsafe state descendant|unknown or unsafe ChatGPT/u);
-  } finally { sourceAdmission.release(); destinationAdmission.release(); await foreign.close(); await profile.close(); rmSync(workspace, { recursive: true, force: true }); }
+    for (const entry of before) assert.deepEqual(readFileSync(entry.path), entry.bytes);
+    assert.deepEqual(repository.read(), record); assert.ok(protectedStore.read().entries.ucpathPassword);
+    assert.throws(() => profile.admission.assertStorageRelocationSupported(), { code: "PROFILE_STORAGE_RELOCATION_UNSUPPORTED" });
+  } finally { await foreign.close(); await profile.close(); }
 });
 
 it("enumerates nested artifacts once and copies private bytes with exact retry", () => {

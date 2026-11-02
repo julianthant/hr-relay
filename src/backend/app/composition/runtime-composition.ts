@@ -144,7 +144,6 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces; exit 0 = authority healthy + reconciliation healthy + protected authority readable; backup reported, not gated)",
     "  storage backup [--json]  write verified SQLite backup + manifest; stopped flat native6 also retains private coupled companions",
     "  storage restore --from <manifest.json> [--json]  quarantine the suspect authority and swap in ONE named verified backup",
-    "  storage recover-chatgpt-lock  offline removal of a ChatGPT credential lock whose owner process is gone; a live owner is refused",
     ...TEST_DATA_USAGE.map((line) => `  ${line}`),
   ].join("\n");
 }

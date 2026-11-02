@@ -1,386 +1,115 @@
-import { fsyncPath, writePrivateStage } from "../private-path.js";
-import { createDuoAssertion, DuoAssertionRequestSchema, type DuoAssertionRequest, type DuoPublicCredential } from "./duo-signing.js";
-import { FingerprintSchema } from "../../../rules/identity/ids.js";
-import { createHash, createPrivateKey, createPublicKey, randomUUID } from "node:crypto";
-import { lstatSync, readdirSync, readFileSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { createHash } from "node:crypto";
 import { z } from "zod";
-import { DuoContinuityRowSchema, DuoCredentialDocumentSchema, DuoDocumentEnvelopeSchema, DuoEnrollmentScopeSchema, DuoStoredCredentialSchema,
-  type DuoContinuityRow, type DuoCredentialDocument, type DuoEnrollmentScope } from "../../../models/config/duo-credential-store.js";
-import { assertFinishedProfileOnboarding, type ProfileRegistryDocument, type SignUpOperation } from "../../../models/profiles/profile.js";
+import { DuoCredentialRecordSchema, DuoEnrollmentScopeSchema, DuoStoredCredentialSchema, type DuoEnrollmentScope } from "../../../models/config/duo-credential-store.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { Clock } from "../../../rules/time/clock.js";
-import { systemClock } from "../../../rules/time/clock.js";
+import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { duoCredentialPurposeBinding, duoDraftPublicationRecoveryBinding, issueDuoCredentialPurpose, issueDraftDuoCredentialPurpose, openDuoCredentialDocument, sealDuoCredentialDocument,
-  type DuoCredentialPurpose } from "./credential-store.js";
-import { ensureChildDirectory, noSymlinkAncestry, readPrivateFile, type DirectoryIdentity } from "./credential-safe-file.js";
+import { CanonicalCredentialError, createCanonicalCredentials } from "./canonical-credential-store.js";
+import { createDuoAssertion, validateDuoKeyPair, DuoAssertionRequestSchema, type DuoAssertionRequest, type DuoPublicCredential } from "./duo-signing.js";
 
-const MAX_DUO_ENVELOPE_BYTES = Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096;
-export const DuoPublicationCaptureSchema = z.strictObject({
-  publicationId: z.uuid(), profileId: z.uuid(), prior: DuoContinuityRowSchema, next: DuoContinuityRowSchema,
-});
-export type DuoPublicationCapture = z.infer<typeof DuoPublicationCaptureSchema>;
-export class DuoCredentialCommitUncertainError extends Error {
-  readonly code = "duo-commit-uncertain";
-  constructor(cause: unknown) { super("duo-commit-uncertain", { cause }); this.name = "DuoCredentialCommitUncertainError"; }
-}
-export interface IssuedDuoTransaction { readonly profileId: string }
-type PublicCredential = Readonly<{ credentialId: string; state: "pending" | "ready"; highWater: number }>;
-type Mutation = (document: DuoCredentialDocument | undefined) => Readonly<{ document?: DuoCredentialDocument; result: unknown }>;
-const transactions = new WeakMap<IssuedDuoTransaction, {
-  purpose: DuoCredentialPurpose; access: "metadata" | "mutation"; draftOperationId?: string; machineRoot: string; mutation: Mutation; used: boolean; publicationStarted: boolean; capture?: DuoPublicationCapture; ancestry: Map<string, DirectoryIdentity>;
-}>();
-
-function identity(path: string) {
-  const file = readPrivateFile(path, { label: "Duo credential", maxBytes: MAX_DUO_ENVELOPE_BYTES });
-  if (file === undefined) throw new Error("duo-document-required");
-  return { device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") };
-}
-export function assertDuoDocumentWitness(machineRoot: string, row: DuoContinuityRow): void {
-  const path = join(machineRoot, "machine", "duo-credentials", `${row.profileId}.json`);
-  if (row.state === "never-initialized") {
-    if (lstatSync(path, { throwIfNoEntry: false }) !== undefined) throw new Error("duo-uninitialized-document-present");
-  } else if (canonicalJsonStringify(identity(path)) !== canonicalJsonStringify(row.document)) throw new Error("duo-document-custody-changed");
-}
-export function duoStagePath(machineRoot: string, capture: DuoPublicationCapture): string {
-  return join(machineRoot, "machine", "duo-credentials", `.${capture.profileId}.${capture.publicationId}.stage`);
-}
-export function assertDuoPublishedFile(path: string, capture: DuoPublicationCapture): asserts capture is DuoPublicationCapture & { next: Extract<DuoContinuityRow, { document: unknown }> } {
-  if (capture.next.state === "never-initialized" || canonicalJsonStringify(identity(path)) !== canonicalJsonStringify(capture.next.document)) throw new Error("duo-publication-file-changed");
-}
-
-export function prepareIssuedDuoTransaction(transaction: IssuedDuoTransaction, machineRoot: string,
-  registry: ProfileRegistryDocument, prior: DuoContinuityRow, draft?: SignUpOperation): DuoPublicationCapture | undefined {
-  const issued = transactions.get(transaction);
-  if (issued === undefined || issued.used || issued.machineRoot !== machineRoot || prior.profileId !== transaction.profileId) throw new Error("duo-transaction-unissued");
-  const { binding, generation, draftOperationId } = duoCredentialPurposeBinding(issued.purpose);
-  const profile = registry.profiles.find(row => row.profileId === binding.profileId);
-  if (draftOperationId !== undefined) {
-    if (draft?.operationId !== draftOperationId || draft.profileId !== binding.profileId || draft.phase !== "applying" && draft.phase !== "publishing"
-      || draft.onboarding?.generation !== generation || profile !== undefined
-      || canonicalJsonStringify(draft.onboarding.duo) !== canonicalJsonStringify(prior)) throw new Error("duo-draft-authority-changed");
-  } else if (draft !== undefined || registry.sessionGeneration !== generation || profile?.lifecycle !== "ready" || profile.credentialState !== "saved") throw new Error("duo-profile-authority-changed");
-  if (draft?.phase === "publishing") {
-    assertFinishedProfileOnboarding(draft);
-    if (issued.access !== "metadata") throw new Error("duo-finished-draft-purpose-refused");
-  }
-  issued.used = true;
-  const directory = join(machineRoot, "machine", "duo-credentials");
-  if (!noSymlinkAncestry(directory, issued.ancestry) && prior.state !== "never-initialized") throw new Error("duo-document-required");
-  assertDuoDocumentWitness(machineRoot, prior);
-  const path = join(machineRoot, "machine", "duo-credentials", `${prior.profileId}.json`);
-  const current = prior.state === "never-initialized" ? undefined : openDuoCredentialDocument(issued.purpose,
-    readPrivateFile(path, { label: "Duo credential", maxBytes: MAX_DUO_ENVELOPE_BYTES })?.bytes ?? (() => { throw new Error("duo-document-required"); })(), prior.revision);
-  if (current !== undefined && (prior.state === "erased") !== (current.credentials.length === 0)) throw new Error("duo-continuity-state-mismatch");
-  const outcome = issued.mutation(current);
-  if (outcome.document === undefined) return undefined;
-  if (draft?.phase === "publishing") throw new Error("duo-finished-draft-mutation-refused");
-  const nextDocument = DuoCredentialDocumentSchema.parse(outcome.document);
-  if (nextDocument.revision !== prior.revision + 1 || nextDocument.profileId !== prior.profileId || !Number.isSafeInteger(nextDocument.revision)) throw new Error("duo-revision-invalid");
-  ensureChildDirectory(join(machineRoot, "machine"), directory, "Duo credentials", 0o700, 0o700);
-  if (!noSymlinkAncestry(directory, issued.ancestry)) throw new Error("duo-directory-required");
-  const publicationId = randomUUID(), stage = join(directory, `.${prior.profileId}.${publicationId}.stage`);
-  const bytes = sealDuoCredentialDocument(issued.purpose, nextDocument);
-  issued.publicationStarted = true;
-  writePrivateStage(stage, bytes); fsyncPath(directory);
-  const next = DuoContinuityRowSchema.parse({ profileId: prior.profileId, revision: nextDocument.revision,
-    state: nextDocument.credentials.length === 0 ? "erased" : "registered", document: identity(stage) });
-  const capture = DuoPublicationCaptureSchema.parse({ publicationId, profileId: prior.profileId, prior, next });
-  issued.capture = capture;
-  return capture;
-}
-export function issuedDuoDraftOperation(transaction: IssuedDuoTransaction): string | undefined {
-  const issued = transactions.get(transaction);
-  if (issued === undefined) throw new Error("duo-transaction-unissued");
-  return issued.draftOperationId;
-}
-export function verifyIssuedDuoTransaction(transaction: IssuedDuoTransaction, capture: DuoPublicationCapture | undefined): void {
-  const issued = transactions.get(transaction);
-  if (issued === undefined || !issued.used) throw new Error("duo-transaction-unissued");
-  if (capture !== undefined) {
-    const path = join(issued.machineRoot, "machine", "duo-credentials", `${capture.profileId}.json`);
-    assertDuoPublishedFile(path, capture);
-    const file = readPrivateFile(path, { label: "Duo credential", maxBytes: MAX_DUO_ENVELOPE_BYTES });
-    if (file === undefined) throw new Error("duo-document-required");
-    openDuoCredentialDocument(issued.purpose, file.bytes, capture.next.revision);
+export class DuoCredentialError extends Error {
+  readonly code: "DUO_CREDENTIAL_BUSY" | "DUO_CREDENTIAL_CONFLICT" | "DUO_CREDENTIAL_UNCERTAIN" | "DUO_CREDENTIAL_UNAVAILABLE";
+  constructor(error: CanonicalCredentialError) {
+    const code = ({
+      CREDENTIAL_BUSY: "DUO_CREDENTIAL_BUSY",
+      CREDENTIAL_CONFLICT: "DUO_CREDENTIAL_CONFLICT",
+      CREDENTIAL_UNCERTAIN: "DUO_CREDENTIAL_UNCERTAIN",
+      CREDENTIAL_UNAVAILABLE: "DUO_CREDENTIAL_UNAVAILABLE",
+    } as const)[error.code];
+    super(ERROR_CATALOG[code].text, { cause: error });
+    this.name = "DuoCredentialError";
+    this.code = code;
   }
 }
-export function readDuoPublicationEnvelope(bytes: Uint8Array): Readonly<{ profileId: string; installationId: string; revision: number; purpose: string }> {
-  const envelope = DuoDocumentEnvelopeSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(bytes)));
-  return { profileId: envelope.profileId, installationId: envelope.installationId, revision: envelope.revision, purpose: envelope.purpose };
-}
 
-export function resumeIssuedDuoTransaction(transaction: IssuedDuoTransaction, capture: DuoPublicationCapture): void {
-  const issued = transactions.get(transaction);
-  if (issued !== undefined && !issued.used && !issued.publicationStarted && issued.capture === undefined) throw new Error("duo-publication-pending");
-  if (issued === undefined || !issued.used || !issued.publicationStarted || issued.capture === undefined) throw new Error("duo-transaction-unissued");
-  if (canonicalJsonStringify(issued.capture) !== canonicalJsonStringify(capture)) throw new Error("duo-publication-prior-changed");
-  const { binding } = issued.draftOperationId === undefined ? duoCredentialPurposeBinding(issued.purpose) : duoDraftPublicationRecoveryBinding(issued.purpose);
-  if (binding.profileId !== capture.profileId || capture.prior.profileId !== capture.profileId || capture.next.profileId !== capture.profileId
-    || capture.next.revision !== capture.prior.revision + 1) throw new Error("duo-profile-authority-changed");
-}
-
-
-function duoPurposeBackupDirectory(machineRoot: string, profileId: string): string {
-  return join(machineRoot, "machine", "duo-purpose-backups", profileId);
-}
-
-export function censusDuoPurposeCopies(machineRoot: string, profileRoot: string, profileId: string, artifactRoot = join(profileRoot, "artifacts")): Readonly<{ canonicalDigest?: string; backups: readonly string[]; unauthorized: readonly string[] }> {
-  const canonical = join(machineRoot, "machine", "duo-credentials", `${profileId}.json`);
-  const backupDirectory = duoPurposeBackupDirectory(machineRoot, profileId);
-  const roots = [machineRoot];
-  for (const extra of [profileRoot, artifactRoot]) {
-    if (!roots.some((root) => extra === root || extra.startsWith(root + sep))) roots.push(extra);
-  }
-  let canonicalBytes: Buffer | undefined;
-  if (lstatSync(canonical, { throwIfNoEntry: false }) !== undefined) {
-    const canonicalStat = lstatSync(canonical);
-    if (canonicalStat.isSymbolicLink() || !canonicalStat.isFile() || canonicalStat.nlink !== 1) throw new Error("duo-document-membership-mismatch");
-    canonicalBytes = readFileSync(canonical);
-  }
-  const canonicalDigest = canonicalBytes === undefined ? undefined : createHash("sha256").update(canonicalBytes).digest("hex");
-  const backups: string[] = [];
-  const unauthorized: string[] = [];
-  const visit = (path: string): void => {
-    const stat = lstatSync(path, { throwIfNoEntry: false });
-    if (stat === undefined) return;
-    if (stat.isSymbolicLink()) throw new Error("duo-document-membership-mismatch");
-    if (stat.isDirectory()) {
-      if (!noSymlinkAncestry(path, new Map())) throw new Error("duo-directory-required");
-      for (const name of readdirSync(path).sort()) visit(join(path, name));
-      return;
-    }
-    if (!stat.isFile() || stat.nlink !== 1) throw new Error("duo-document-membership-mismatch");
-    if (path === canonical) return;
-    const bytes = readFileSync(path);
-    const digest = createHash("sha256").update(bytes).digest("hex");
-    const embedded = canonicalBytes !== undefined && bytes.length !== canonicalBytes.length && bytes.includes(canonicalBytes);
-    let envelope: ReturnType<typeof readDuoPublicationEnvelope> | undefined;
-    if (stat.size <= MAX_DUO_ENVELOPE_BYTES) {
-      try { envelope = readDuoPublicationEnvelope(bytes); } catch { envelope = undefined; }
-    }
-    const sameProfile = envelope?.profileId === profileId && envelope.purpose === "relay:duo-credential:v1";
-    if (!sameProfile && digest !== canonicalDigest && !embedded) return;
-    const managedBackup = path.startsWith(backupDirectory + sep) && /^[1-9][0-9]*\.json$/u.test(path.slice(backupDirectory.length + 1));
-    if (managedBackup && sameProfile) backups.push(path);
-    else unauthorized.push(path);
+export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clock = systemClock) {
+  const owner = createCanonicalCredentials(admission);
+  const access = <T>(operation: () => T): T => {
+    try { owner.assertCurrent(); return operation(); }
+    catch (error) { if (error instanceof CanonicalCredentialError) throw new DuoCredentialError(error); throw error; }
   };
-  for (const root of roots) visit(root);
-  return { ...(canonicalDigest === undefined ? {} : { canonicalDigest }), backups, unauthorized };
-}
-
-export function createDuoCredentialStore(profile: RuntimeAdmission, machine: RuntimeAdmission, clock: Clock = systemClock) {
-  return createDuoStore(profile, machine, issueDuoCredentialPurpose(profile, machine), clock);
-}
-export function createDraftDuoCredentialStore(profile: RuntimeAdmission, machine: RuntimeAdmission, operationId: string, generation: number, clock: Clock = systemClock) {
-  return createDuoStore(profile, machine, issueDraftDuoCredentialPurpose(profile, machine, operationId, generation), clock);
-}
-function createDuoStore(profile: RuntimeAdmission, machine: RuntimeAdmission, purpose: DuoCredentialPurpose, clock: Clock) {
-  const { binding, draftOperationId } = duoCredentialPurposeBinding(purpose);
-  const machineRoot = machine.stateRoot, ancestry = new Map<string, DirectoryIdentity>();
-  noSymlinkAncestry(join(machineRoot, "machine", "duo-credentials"), ancestry);
-  let uncertain: IssuedDuoTransaction | undefined;
-  function transact<Result>(mutation: (document: DuoCredentialDocument | undefined) => Readonly<{ document?: DuoCredentialDocument; result: Result }>, phase: "settle" | "durable-intent" = "settle", access: "metadata" | "mutation" = "mutation"): Result {
-    const transaction = Object.freeze({ profileId: binding.profileId });
-    let outcome: Readonly<{ result: Result }> | undefined;
-    const issued = { purpose, access, ...(draftOperationId === undefined ? {} : { draftOperationId }), machineRoot, mutation: (document: DuoCredentialDocument | undefined) => {
-      if (draftOperationId === undefined) profile.assertProfileRuntime();
-      else profile.assertProfileInitialization();
-      const result = mutation(document); outcome = result; return result;
-    }, used: false, publicationStarted: false, ancestry };
-    transactions.set(transaction, issued);
-    try { if (phase === "durable-intent") machine.commitProfileDuoIntent(transaction); else machine.commitProfileDuo(transaction); }
-    catch (error) {
-      if (issued.publicationStarted) { uncertain = transaction; throw new DuoCredentialCommitUncertainError(error); }
-      throw error;
-    }
-    if (!issued.used || outcome === undefined) throw new Error("duo-transaction-not-committed");
-    return outcome.result;
-  }
-  function next(document: DuoCredentialDocument | undefined): DuoCredentialDocument {
-    return document === undefined ? { schemaVersion: 1, ...binding, revision: 1, credentials: [], retired: [], reservations: [] }
-      : { ...document, revision: document.revision + 1 };
-  }
-  function assertScope(scope: DuoEnrollmentScope): void {
-    const now = clock.nowMs();
-    if (now < Date.parse(scope.armedAt) || now >= Date.parse(scope.expiresAt)) throw new Error("duo-arm-expired");
+  const read = () => access(() => {
+    const frame = owner.readRecord("duo");
+    return { revision: frame?.revision ?? 0, record: frame === undefined ? { credentials: [] } : DuoCredentialRecordSchema.parse(frame.value) };
+  });
+  const assertScope = (scope: DuoEnrollmentScope): void => {
+    DuoEnrollmentScopeSchema.parse(scope);
+    if (clock.nowMs() < Date.parse(scope.armedAt) || clock.nowMs() >= Date.parse(scope.expiresAt)) throw new Error("duo-arm-expired");
     const origin = new URL(scope.origin);
-    if (origin.hostname !== scope.rpId && !origin.hostname.endsWith(`.${scope.rpId}`)) throw new Error("duo-rp-origin-mismatch");
-  }
-  function publicCredentials(): readonly DuoPublicCredential[] {
-    return transact(document => ({ result: document?.credentials.flatMap(row => row.state !== "ready" || row.scope.rpId !== "duosecurity.com" || row.authenticator === undefined ? []
-      : [{ credentialId: row.credentialId, rpId: "duosecurity.com" as const, ...row.authenticator }]) ?? [] }), "settle", "metadata");
-  }
-  function signAssertion(request: DuoAssertionRequest, inputScope?: DuoEnrollmentScope) {
-    const parsed = DuoAssertionRequestSchema.parse(request);
-    const scope = inputScope === undefined ? undefined : DuoEnrollmentScopeSchema.parse(inputScope);
+    if (scope.rpId !== "duosecurity.com" || origin.hostname !== scope.rpId && !origin.hostname.endsWith(`.${scope.rpId}`)) throw new Error("duo-rp-origin-mismatch");
+  };
+  const required = (credentialId: string, scope?: DuoEnrollmentScope) => {
     if (scope !== undefined) assertScope(scope);
-    const reserved = transact(document => {
-      if (scope !== undefined) assertScope(scope);
-      const credential = document?.credentials.find(row => row.credentialId === parsed.credentialId);
-      if (document === undefined || credential?.state !== "ready" || credential.authenticator === undefined
-        || credential.scope.rpId !== parsed.rpId || scope !== undefined && (canonicalJsonStringify(credential.scope) !== canonicalJsonStringify(scope)
-          || parsed.origin !== scope.origin)) throw new Error("duo-ready-credential-required");
-      if (document.reservations.some(row => row.attemptId === parsed.requestId)) throw new Error("duo-attempt-reused");
-      const count = Math.max(credential.highWater + 1, Math.floor(clock.nowMs() / 1000));
-      if (!Number.isInteger(count) || count < 1 || count > 0xffff_ffff) throw new Error("duo-counter-exhausted");
-      const updated = next(document);
-      updated.credentials = updated.credentials.map(row => row.credentialId === credential.credentialId ? { ...row, highWater: count } : row);
-      updated.reservations.push({ attemptId: parsed.requestId, credentialId: credential.credentialId, count, reservedAt: clock.now().toISOString() });
-      return { document: updated, result: { material: { credentialId: credential.credentialId, privateKeyPkcs8: credential.privateKeyPkcs8, ...credential.authenticator }, count } };
-    });
-    // Publication is settled before crypto; failure never refunds this request or count.
-    const result = createDuoAssertion(reserved.material, parsed, reserved.count);
-    if (draftOperationId === undefined) profile.assertProfileRuntime(); else profile.assertProfileInitialization();
+    const credential = read().record.credentials.find(value => value.credentialId === credentialId);
+    if (credential === undefined || credential.authenticator === undefined
+      || scope !== undefined && canonicalJsonStringify(credential.scope) !== canonicalJsonStringify(scope)) throw new Error("duo-credential-scope-mismatch");
+    return { credential, material: { credentialId, privateKeyPkcs8: credential.privateKeyPkcs8, publicKeySpki: credential.publicKeySpki,
+      createdAt: credential.createdAt, ...credential.authenticator } };
+  };
+  const publicCredentials = (): readonly DuoPublicCredential[] => read().record.credentials.filter(value => value.state === "ready").map(value => {
+    if (value.authenticator === undefined) throw new Error("duo-authenticator-required");
+    return { credentialId: value.credentialId, rpId: "duosecurity.com", ...value.authenticator };
+  });
+  const signAssertion = (request: DuoAssertionRequest, scope?: DuoEnrollmentScope) => access(() => {
+    const parsed = DuoAssertionRequestSchema.parse(request);
+    const { credential, material } = required(parsed.credentialId, scope);
+    if (credential.state !== "ready" || credential.scope.rpId !== parsed.rpId
+      || scope !== undefined && parsed.origin !== scope.origin) throw new Error("duo-ready-credential-required");
+    const reservation = owner.reserveDuoCounter(parsed.credentialId, parsed.requestId);
+    owner.assertCurrent();
+    const result = createDuoAssertion(material, parsed, reservation.count);
+    owner.assertCurrent();
     return result;
-  }
+  });
   return Object.freeze({
-    assertCurrent(): void { duoCredentialPurposeBinding(purpose); if (draftOperationId === undefined) profile.assertProfileRuntime(); else profile.assertProfileInitialization(); },
-    credentials: publicCredentials,
-    identity() { return FingerprintSchema.parse(createHash("sha256").update(canonicalJsonStringify({ ...binding, credentials: publicCredentials() })).digest("hex")); },
-    async sign(request: DuoAssertionRequest) { if (draftOperationId !== undefined) throw new Error("duo-runtime-purpose-required"); return signAssertion(request); },
-    async signForScope(request: DuoAssertionRequest, scope: DuoEnrollmentScope) { return signAssertion(request, scope); },
-    read(): Readonly<{ state: "never-initialized" | "registered" | "erased"; revision: number; credentials: readonly PublicCredential[] }> {
-      return transact(document => ({ result: { state: document === undefined ? "never-initialized" : document.credentials.length === 0 ? "erased" : "registered",
-        revision: document?.revision ?? 0, credentials: document?.credentials.map(({ credentialId, state, highWater }) => ({ credentialId, state, highWater })) ?? [] } }), "settle", "metadata");
+    assertCurrent() { access(() => undefined); },
+    identity() {
+      const credentials = read().record.credentials.filter(value => value.state === "ready").map(({ credentialId, publicKeySpki }) => ({ credentialId, publicKeySpki }))
+        .sort((a, b) => a.credentialId.localeCompare(b.credentialId));
+      if (credentials.length === 0) throw new Error("duo-ready-credential-required");
+      return FingerprintSchema.parse(createHash("sha256").update(canonicalJsonStringify(credentials)).digest("hex"));
     },
-    readForScope(scope: DuoEnrollmentScope): readonly PublicCredential[] {
+    credentials: publicCredentials,
+    read() {
+      const { revision, record } = read();
+      return { state: revision === 0 ? "never-initialized" as const : "registered" as const, revision,
+        credentials: record.credentials.map(({ credentialId, state }) => ({ credentialId, state })) };
+    },
+    readForScope(scope: DuoEnrollmentScope) {
       const parsed = DuoEnrollmentScopeSchema.parse(scope);
-      return transact(document => ({ result: document?.credentials.filter(row => canonicalJsonStringify(row.scope) === canonicalJsonStringify(parsed))
-        .map(({ credentialId, state, highWater }) => ({ credentialId, state, highWater })) ?? [] }), "settle", "metadata");
+      return read().record.credentials.filter(row => canonicalJsonStringify(row.scope) === canonicalJsonStringify(parsed)).map(({ credentialId, state }) => ({ credentialId, state }));
     },
     enroll(input: { credentialId: string; scope: DuoEnrollmentScope; privateKeyPkcs8: string; publicKeySpki: string;
-      authenticator?: { readonly userHandle?: string; readonly transport: "internal" | "usb"; readonly isResidentCredential: boolean } }): Readonly<{ credentialId: string; revision: number }> {
-      const credential = DuoStoredCredentialSchema.parse({ ...input, state: "pending", createdAt: clock.now().toISOString(), highWater: 0 });
+      authenticator?: { userHandle?: string; transport: "internal" | "usb"; isResidentCredential: boolean } }) {
+      const credential = DuoStoredCredentialSchema.parse({ ...input, state: "pending", createdAt: clock.now().toISOString() });
       assertScope(credential.scope);
-      for (const value of [credential.privateKeyPkcs8, credential.publicKeySpki]) if (Buffer.from(value, "base64").toString("base64") !== value) throw new Error("duo-key-encoding-invalid");
-      const key = createPrivateKey({ key: Buffer.from(credential.privateKeyPkcs8, "base64"), type: "pkcs8", format: "der" });
-      if (key.asymmetricKeyType !== "ec" || key.asymmetricKeyDetails?.namedCurve !== "prime256v1"
-        || !createPublicKey(key).export({ type: "spki", format: "der" }).equals(Buffer.from(credential.publicKeySpki, "base64"))) throw new Error("duo-key-pair-invalid");
-      return transact(document => {
-        assertScope(credential.scope);
-        const updated = next(document);
-        if ([...updated.credentials, ...updated.retired].some(row => row.credentialId === credential.credentialId)) throw new Error("duo-credential-id-reused");
-        updated.credentials.push(credential);
-        return { document: updated, result: { credentialId: credential.credentialId, revision: updated.revision } };
+      validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
+      return access(() => {
+        const { revision, record } = read();
+        if (record.credentials.some(row => row.credentialId === credential.credentialId)) throw new Error("duo-credential-id-reused");
+        const next = owner.replaceRecord("duo", revision === 0 ? null : revision, DuoCredentialRecordSchema.parse({ credentials: [...record.credentials, credential] }));
+        return { credentialId: credential.credentialId, revision: next.revision };
       });
     },
-    confirm(credentialId: string, input: DuoEnrollmentScope): Readonly<{ revision: number }> {
-      const scope = DuoEnrollmentScopeSchema.parse(input); assertScope(scope);
-      return transact(document => {
-        assertScope(scope);
-        if (document === undefined) throw new Error("duo-pending-credential-required");
-        const pending = document.credentials.find(row => row.credentialId === credentialId);
+    confirm(credentialId: string, scope: DuoEnrollmentScope) {
+      assertScope(scope);
+      return access(() => {
+        const { revision, record } = read();
+        const pending = record.credentials.find(row => row.credentialId === credentialId);
         if (pending?.state !== "pending" || canonicalJsonStringify(pending.scope) !== canonicalJsonStringify(scope)) throw new Error("duo-pending-credential-mismatch");
-        const updated = next(document);
-        updated.credentials = updated.credentials.map(row => row.credentialId === credentialId ? { ...row, state: "ready", confirmedAt: clock.now().toISOString() } : row);
-        return { document: updated, result: { revision: updated.revision } };
+        const credentials = record.credentials.map(row => row === pending ? { ...row, state: "ready", confirmedAt: clock.now().toISOString() } : row);
+        return { revision: owner.replaceRecord("duo", revision, DuoCredentialRecordSchema.parse({ credentials })).revision };
       });
     },
-    reserve(credentialId: string): Readonly<{ attemptId: string; count: number; revision: number }> {
-      return transact(document => {
-        if (document === undefined) throw new Error("duo-ready-credential-required");
-        const credential = document.credentials.find(row => row.credentialId === credentialId);
-        if (credential?.state !== "ready") throw new Error("duo-ready-credential-required");
-        const count = Math.max(credential.highWater + 1, Math.floor(clock.nowMs() / 1000));
-        if (!Number.isInteger(count) || count < 1 || count > 0xffff_ffff) throw new Error("duo-counter-exhausted");
-        const updated = next(document), attemptId = randomUUID();
-        updated.credentials = updated.credentials.map(row => row.credentialId === credentialId ? { ...row, highWater: count } : row);
-        updated.reservations.push({ attemptId, credentialId, count, reservedAt: clock.now().toISOString() });
-        return { document: updated, result: { attemptId, count, revision: updated.revision } };
-      });
+    provision(credentialId: string, scope: DuoEnrollmentScope) { return required(credentialId, scope).material; },
+    reserveForAttempt(credentialId: string, requestId: string, scope: DuoEnrollmentScope) {
+      z.uuid().parse(requestId);
+      if (required(credentialId, scope).credential.state !== "ready") throw new Error("duo-ready-credential-required");
+      return access(() => owner.reserveDuoCounter(credentialId, requestId));
     },
-    interruptReserve(credentialId: string): never {
-      transact(document => {
-        if (document === undefined) throw new Error("duo-ready-credential-required");
-        const credential = document.credentials.find(row => row.credentialId === credentialId);
-        if (credential?.state !== "ready") throw new Error("duo-ready-credential-required");
-        const count = Math.max(credential.highWater + 1, Math.floor(clock.nowMs() / 1000));
-        if (!Number.isInteger(count) || count < 1 || count > 0xffff_ffff) throw new Error("duo-counter-exhausted");
-        const updated = next(document), attemptId = randomUUID();
-        updated.credentials = updated.credentials.map(row => row.credentialId === credentialId ? { ...row, highWater: count } : row);
-        updated.reservations.push({ attemptId, credentialId, count, reservedAt: clock.now().toISOString() });
-        return { document: updated, result: { attemptId, count, revision: updated.revision } };
-      }, "durable-intent");
-      throw new Error("duo-publication-pending");
-    },
-    recoverInterruptedPublication(): void {
-      if (uncertain === undefined) throw new Error("duo-transaction-unissued");
-      const transaction = uncertain;
-      machine.commitProfileDuo(transaction);
-      uncertain = undefined;
-    },
-    backup(): Readonly<{ revision: number; digest: string }> {
-      const current = this.read();
-      const canonical = join(machineRoot, "machine", "duo-credentials", `${binding.profileId}.json`);
-      const file = readPrivateFile(canonical, { label: "Duo credential", maxBytes: MAX_DUO_ENVELOPE_BYTES });
-      if (file === undefined) throw new Error("duo-document-required");
-      const digest = createHash("sha256").update(file.bytes).digest("hex");
-      const directory = duoPurposeBackupDirectory(machineRoot, binding.profileId);
-      ensureChildDirectory(join(machineRoot, "machine"), join(machineRoot, "machine", "duo-purpose-backups"), "Duo credentials", 0o700, 0o700);
-      ensureChildDirectory(join(machineRoot, "machine", "duo-purpose-backups"), directory, "Duo credentials", 0o700, 0o700);
-      const path = join(directory, `${current.revision}.json`);
-      if (lstatSync(path, { throwIfNoEntry: false }) !== undefined) throw new Error("duo-purpose-backup-exists");
-      writePrivateStage(path, Buffer.from(file.bytes));
-      const again = readPrivateFile(canonical, { label: "Duo credential", maxBytes: MAX_DUO_ENVELOPE_BYTES });
-      if (again === undefined || !again.bytes.equals(Buffer.from(file.bytes)) || createHash("sha256").update(readFileSync(path)).digest("hex") !== digest) throw new Error("duo-document-custody-changed");
-      return { revision: current.revision, digest };
-    },
-    restore(backupPath: string): Readonly<{ revision: number }> {
-      const directory = duoPurposeBackupDirectory(machineRoot, binding.profileId);
-      const resolved = resolve(backupPath);
-      if (resolved !== backupPath || !resolved.startsWith(directory + sep)) throw new Error("duo-purpose-restore-unmanaged");
-      if (!noSymlinkAncestry(directory, new Map())) throw new Error("duo-directory-required");
-      const file = readPrivateFile(resolved, { label: "Duo credential", maxBytes: MAX_DUO_ENVELOPE_BYTES });
-      if (file === undefined) throw new Error("duo-document-required");
-      const envelope = readDuoPublicationEnvelope(file.bytes);
-      if (envelope.profileId !== binding.profileId || envelope.installationId !== binding.installationId || envelope.purpose !== "relay:duo-credential:v1") throw new Error("duo-profile-authority-changed");
-      let restored: ReturnType<typeof openDuoCredentialDocument>;
-      try { restored = openDuoCredentialDocument(purpose, file.bytes, envelope.revision); }
-      catch (error) {
-        if (error instanceof Error && error.message === "duo-erased-key-material-refused") throw new Error("duo-purpose-restore-revives-erased-key", { cause: error });
-        throw error;
-      }
-      const before = censusDuoPurposeCopies(machineRoot, profile.stateRoot, binding.profileId, profile.artifactRoot);
-      if (before.unauthorized.length > 0) throw new Error("duo-purpose-copy-present");
-      const result = transact(current => {
-        const floors = new Map<string, number>();
-        if (current !== undefined) {
-          if (current.credentials.length === 0 && restored.credentials.length > 0) throw new Error("duo-purpose-restore-revives-erased-key");
-          for (const row of [...current.credentials, ...current.retired]) floors.set(row.credentialId, Math.max(floors.get(row.credentialId) ?? 0, row.highWater));
-          for (const [id, floor] of floors) {
-            const row = [...restored.credentials, ...restored.retired].find((candidate) => candidate.credentialId === id);
-            const highWater = row === undefined ? 0 : row.highWater;
-            if (highWater < floor) throw new Error("duo-purpose-restore-lowers-burned-count");
-          }
-        }
-        const updated = next(current);
-        const retired = new Map<string, number>();
-        for (const row of [...(current?.retired ?? []), ...restored.retired]) retired.set(row.credentialId, Math.max(retired.get(row.credentialId) ?? 0, row.highWater));
-        updated.retired = [...retired].map(([credentialId, highWater]) => ({ credentialId, highWater }));
-        updated.credentials = restored.credentials.map((row) => ({ ...row, highWater: Math.max(row.highWater, floors.get(row.credentialId) ?? 0) }));
-        updated.reservations = current?.reservations ?? [];
-        return { document: updated, result: { revision: updated.revision } };
-      });
-      const after = censusDuoPurposeCopies(machineRoot, profile.stateRoot, binding.profileId, profile.artifactRoot);
-      if (after.unauthorized.length > 0) throw new Error("duo-purpose-copy-present");
-      return result;
-    },
-    erase(): Readonly<{ revision: number }> {
-      const before = censusDuoPurposeCopies(machineRoot, profile.stateRoot, binding.profileId, profile.artifactRoot);
-      if (before.unauthorized.length > 0) throw new Error("duo-purpose-copy-present");
-      const result = transact(document => {
-        const again = censusDuoPurposeCopies(machineRoot, profile.stateRoot, binding.profileId, profile.artifactRoot);
-        if (again.unauthorized.length > 0 || canonicalJsonStringify(again.backups) !== canonicalJsonStringify(before.backups)) throw new Error("duo-purpose-copy-present");
-        const updated = next(document);
-        updated.retired.push(...updated.credentials.map(({ credentialId, highWater }) => ({ credentialId, highWater })));
-        updated.credentials = [];
-        return { document: updated, result: { revision: updated.revision } };
-      });
-      const after = censusDuoPurposeCopies(machineRoot, profile.stateRoot, binding.profileId, profile.artifactRoot);
-      if (after.unauthorized.length > 0) throw new Error("duo-purpose-copy-present");
-      return result;
-    },
+    async sign(request: DuoAssertionRequest) { return signAssertion(request); },
+    async signForScope(request: DuoAssertionRequest, scope: DuoEnrollmentScope) { return signAssertion(request, scope); },
   });
 }

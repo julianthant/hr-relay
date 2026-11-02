@@ -54,7 +54,7 @@ function schemaAtPath(root: z.core.$ZodType, path: string): z.core.$ZodType {
   return unwrap(schema);
 }
 export function editorLeafSchema(path: string): z.core.$ZodType { return schemaAtPath(EditableSettingsOverrideSchema, path); }
-export function deploymentLeafSchema(path: string): z.core.$ZodType { return schemaAtPath(ConfigSchema, path === "duoWebauthnCredential" ? "paths.duoCredential" : path); }
+export function deploymentLeafSchema(path: string): z.core.$ZodType { return schemaAtPath(ConfigSchema, path); }
 function scalarControl(schema: z.core.$ZodType, key: string): z.infer<typeof ScalarControlSchema> {
   const value = unwrap(schema);
   if (value instanceof z.ZodNumber) return { input: "number", minimum: value.safeParse(0).success ? 0 : 1 };

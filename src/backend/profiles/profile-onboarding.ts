@@ -5,7 +5,7 @@ import { DuoEnrollmentScopeSchema } from "../../models/config/duo-credential-sto
 import { assertFinishedProfileOnboarding, type SignUpDuoAttempt, type SignUpOperation } from "../../models/profiles/profile.js";
 import type { ProfileOnboardingMethod, ProfileOnboardingState } from "../../models/profiles/public-profile.js";
 import type { Clock } from "../../rules/time/clock.js";
-import type { createDraftDuoCredentialStore } from "../storage/configuration/duo-credential-store.js";
+import type { createDuoCredentialStore } from "../storage/configuration/duo-credential-store.js";
 import { ProfileSessionRefusedError } from "./profile-errors.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
 
@@ -25,7 +25,7 @@ export function createProfileOnboarding(input: {
   readonly email: (operation: SignUpOperation) => string;
   readonly credentials: (operation: SignUpOperation) => Readonly<{ userId: string; password: string }>;
   readonly publicState: (operation: SignUpOperation) => ProfileOnboardingState;
-  readonly store: (operation: SignUpOperation) => ReturnType<typeof createDraftDuoCredentialStore>;
+  readonly store: (operation: SignUpOperation) => ReturnType<typeof createDuoCredentialStore>;
 }) {
   const leases = new Map<string, { revoked: boolean; closed: boolean; attempt: DraftDuoAttempt; capability?: DraftDuoCapability }>();
   const retainedFailures: unknown[] = [];
@@ -38,7 +38,7 @@ export function createProfileOnboarding(input: {
   function current(attempt: DraftDuoAttempt): { operation: SignUpOperation; receipt: SignUpDuoAttempt } {
     const lease = leases.get(attempt.attemptId), operation = input.read(attempt.operationId), draft = requiredDraft(operation);
     const receipt = draft.attempts.find(entry => entry.attemptId === attempt.attemptId);
-    if (lease === undefined || lease.revoked || operation.profileId !== attempt.profileId || draft.accountId !== attempt.accountId
+    if (draft.abort !== undefined || lease === undefined || lease.revoked || operation.profileId !== attempt.profileId || draft.accountId !== attempt.accountId
       || draft.generation !== attempt.generation || receipt === undefined || receipt.generation !== draft.generation
       || receipt.method !== attempt.method || receipt.state !== "pending" && receipt.state !== "complete"
       || Date.parse(attempt.expiresAt) <= input.clock.nowMs()) return unavailable();
@@ -270,17 +270,16 @@ export function createProfileOnboarding(input: {
     },
     assertAbortable(operationId: string): void {
       const draft = requiredDraft(input.read(operationId));
-      if (draft.finish !== undefined || draft.duo.state === "registered" || draft.attempts.some(entry => entry.providerClosedAt === undefined)) return unavailable();
+      if (draft.finish !== undefined || draft.attempts.some(entry => entry.providerClosedAt === undefined)) return unavailable();
       if (retainedFailures.length > 0) throw new AggregateError(retainedFailures, "profile-onboarding-custody-unproved");
     },
-    verifyFinish(operationId: string): SignUpOperation {
+    verifyFinish(operation: SignUpOperation): void {
       if (retainedFailures.length > 0) throw new AggregateError(retainedFailures, "profile-onboarding-custody-unproved");
-      const operation = input.read(operationId); assertFinishedProfileOnboarding(operation);
+      assertFinishedProfileOnboarding(operation);
       const key = requiredDraft(operation).attempts.findLast(entry => entry.method === "key" && entry.generation === operation.onboarding?.generation);
       if (key?.scope === undefined) return unavailable();
       const credential = input.store(operation).readForScope(key.scope).find(entry => entry.credentialId === key.ceremony?.credentialId);
       if (credential?.state !== "ready") return unavailable();
-      return operation;
     },
   };
   return { ...owner,

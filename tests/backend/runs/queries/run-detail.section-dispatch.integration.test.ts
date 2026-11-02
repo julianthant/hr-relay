@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
 import { afterAll, afterEach, describe, it } from "vitest";
@@ -8,7 +8,7 @@ import { createNoteTimelineWriter } from "../../../../src/backend/storage/events
 import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { queuedEventOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const {world, cleanup } = createRunDetailTestWorld(profileFixtures.create);

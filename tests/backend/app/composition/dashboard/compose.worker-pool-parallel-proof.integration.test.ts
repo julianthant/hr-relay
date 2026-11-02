@@ -1,5 +1,5 @@
 import { testProcessImport } from "../../../../support/compiled-process.js";
-import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import { WorkerStopDirectiveContextSchema } from "../../../../../src/backend/runtime/workers/worker-loop.js";
 import { createDashboardChildTestWorld } from "../../../../support/helpers/backend/dashboard-child-world.js";
@@ -46,7 +46,7 @@ function required<T>(value: T | undefined, what: string): T {
 
 const { openDatabases, cleanups, cleanup } = createDashboardChildTestWorld(releaseAdmissionFixtures, releaseAdmissionFixture);
 
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 const heldProfiles: BoundProfileStorageFixture[] = [];
 afterAll(() => profiles.close());
 afterEach(async () => {

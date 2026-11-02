@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
-import { clearOperationProofSlots, revalidateOperationProof, outermostOperationProof, withOperationProof, readPrivateFile, removeExactPath, unpublishedDraftAbortMembership, withPrivateFileLock, type PrivateFileLock } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+import { clearOperationProofSlots, revalidateOperationProof, outermostOperationProof, withOperationProof, readPrivateFile, PrivateFileReadTransitionError, removeExactPath, unpublishedDraftAbortMembership, withPrivateFileLock, type PrivateFileLock } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 
 for (const label of ["authority database", "managed data"] as const) {
   it(`reads retained 0644 ${label} bytes without changing mode or identity`, () => {
@@ -62,6 +62,107 @@ for (const label of ["protected.json", "lock", "ChatGPT", "Duo credential", "era
   });
 }
 
+for (const label of ["protected.json", "lock"] as const) for (const change of ["mode", "uid", "nlink"] as const) {
+  it(`refuses ${label} ${change} changed after the descriptor read`, () => {
+    const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "safe-post-read-")), path = join(root, "private");
+    fs.writeFileSync(path, "private fixture", { mode: 0o600 });
+    const read = fs.readFileSync, lstat = fs.lstatSync;
+    let descriptorRead = false, changed = false;
+    vi.spyOn(fs, "readFileSync").mockImplementation((source, options) => {
+      const bytes = read(source, options);
+      if (typeof source === "number") descriptorRead = true;
+      return bytes;
+    });
+    vi.spyOn(fs, "lstatSync").mockImplementation((source, options) => {
+      const status = lstat(source, options);
+      if (source === path && status !== undefined && descriptorRead) {
+        status[change] = Number(status[change]) + (change === "mode" ? 0o040 : 1); changed = true;
+      }
+      return status;
+    });
+    syncBuiltinESMExports();
+    try {
+      assert.throws(() => readPrivateFile(path, { label, maxBytes: 64 }), /moved while it was read/u);
+      assert.equal(changed, true); assert.equal(read(path, "utf8"), "private fixture");
+    } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); fs.rmSync(root, { recursive: true }); }
+  });
+}
+
+for (const boundary of ["before-open", "before-final-path-stat"] as const) it(`types a safe ${boundary} file identity transition`, () => {
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "safe-read-transition-")), path = join(root, "private");
+  fs.writeFileSync(path, "private fixture", { mode: 0o600 });
+  const lstat = fs.lstatSync, open = fs.openSync;
+  let pathReads = 0, descriptor: number | undefined;
+  vi.spyOn(fs, "lstatSync").mockImplementation((source, options) => {
+    const status = lstat(source, options);
+    if (source === path && ++pathReads === (boundary === "before-open" ? 1 : 2)) { assert.ok(status); status.ino++; }
+    return status;
+  });
+  vi.spyOn(fs, "openSync").mockImplementation((...args: Parameters<typeof open>) => {
+    const opened = open(...args);
+    if (String(args[0]) === path) descriptor = opened;
+    return opened;
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => readPrivateFile(path, { label: "protected.json", maxBytes: 64 }), error =>
+      error instanceof PrivateFileReadTransitionError && /moved while it was read/u.test(error.message));
+    assert.ok(descriptor !== undefined);
+    const fd = descriptor;
+    assert.throws(() => fs.fstatSync(fd), (error: unknown) => error instanceof Error && "code" in error && error.code === "EBADF");
+    assert.equal(fs.readFileSync(path, "utf8"), "private fixture");
+  } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); fs.rmSync(root, { recursive: true }); }
+});
+
+it("keeps an unsafe live path out of the identity-transition refusal", () => {
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "safe-read-unsafe-transition-")), path = join(root, "private");
+  fs.writeFileSync(path, "private fixture", { mode: 0o600 });
+  const lstat = fs.lstatSync;
+  let pathReads = 0;
+  vi.spyOn(fs, "lstatSync").mockImplementation((source, options) => {
+    const status = lstat(source, options);
+    if (source === path && ++pathReads === 2) { assert.ok(status); status.ino++; status.mode = (Number(status.mode) & ~0o7777) | 0o644; }
+    return status;
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => readPrivateFile(path, { label: "protected.json", maxBytes: 64 }), error =>
+      error instanceof Error && !(error instanceof PrivateFileReadTransitionError) && /moved while it was read/u.test(error.message));
+    assert.equal(fs.readFileSync(path, "utf8"), "private fixture");
+  } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); fs.rmSync(root, { recursive: true }); }
+});
+
+for (const mode of ["nonce", "general-lock", "unsafe-mode", "hardlink"] as const)
+  it(`keeps a real in-place ${mode} publication read a refusal and closes its descriptor`, () => {
+    const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "safe-nonce-transition-")), path = join(root, "nonce"), alias = join(root, "alias");
+    fs.writeFileSync(path, "", { mode: 0o600 });
+    const read = fs.readFileSync, open = fs.openSync, nonce = JSON.stringify({ nonce: "11111111-1111-4111-8111-111111111111" });
+    let descriptor: number | undefined, published = false;
+    vi.spyOn(fs, "openSync").mockImplementation((...args: Parameters<typeof open>) => {
+      const result = open(...args); if (String(args[0]) === path) descriptor = result; return result;
+    });
+    vi.spyOn(fs, "readFileSync").mockImplementation((source, options) => {
+      const bytes = read(source, options);
+      if (typeof source === "number" && source === descriptor && !published) {
+        published = true; fs.writeFileSync(path, nonce);
+        if (mode === "unsafe-mode") fs.chmodSync(path, 0o644);
+        if (mode === "hardlink") fs.linkSync(path, alias);
+      }
+      return bytes;
+    });
+    syncBuiltinESMExports();
+    try {
+      assert.throws(() => readPrivateFile(path, { label: mode === "general-lock" ? "lock" : "nonce lock", maxBytes: 4096 }), error =>
+        error instanceof Error && (mode === "nonce" ? error instanceof PrivateFileReadTransitionError : !(error instanceof PrivateFileReadTransitionError)));
+      assert.equal(published, true); assert.ok(descriptor !== undefined);
+      const fd = descriptor;
+      assert.throws(() => fs.fstatSync(fd), error => error instanceof Error && "code" in error && error.code === "EBADF");
+      assert.equal(read(path, "utf8"), nonce);
+      if (mode === "unsafe-mode") assert.equal(fs.lstatSync(path).mode & 0o777, 0o644);
+      if (mode === "hardlink") assert.equal(fs.lstatSync(path).nlink, 2);
+    } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); fs.rmSync(root, { recursive: true }); }
+  });
+
 it("refuses a protected.json owned by someone else without modifying it", () => {
   const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "safe-owner-")), path = join(root, "protected.json");
   fs.writeFileSync(path, "private fixture", { mode: 0o600 });
@@ -74,7 +175,7 @@ it("refuses a protected.json owned by someone else without modifying it", () => 
       return status;
     });
     syncBuiltinESMExports();
-    assert.throws(() => readPrivateFile(path, { label: "protected.json", maxBytes: 64 }), /private regular file/u);
+    assert.throws(() => readPrivateFile(path, { label: "protected.json", maxBytes: 64 }), /permissions or identity|private regular file/u);
     assert.equal(fs.statSync(path).mode & 0o7777, 0o600);
     assert.equal(fs.readFileSync(path, "utf8"), "private fixture");
   } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); fs.rmSync(root, { recursive: true }); }

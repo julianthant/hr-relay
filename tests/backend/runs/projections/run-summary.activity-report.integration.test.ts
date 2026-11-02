@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { join } from "node:path";
 import { deriveCanonicalPerson } from "../../../../src/backend/runs/projections/run-summary.js";
@@ -52,7 +52,7 @@ function queuedEventOf(w: DashboardWorld, input: Parameters<typeof runRecordBase
   return event;
 }
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 const worlds: DashboardWorld[] = [];
 const canonicalResults = new WeakMap<DashboardWorld,Map<string,RunResultRecord>>();

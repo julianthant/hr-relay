@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import Excel from "exceljs";
 import { composeIntake } from "../../../../src/backend/app/composition/dashboard/intake.js";
 import { readArtifactBytes } from "../../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
@@ -51,7 +51,7 @@ const ROSTER_CSV = [
   "",
 ].join("\n");
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 const profiles: BoundProfileStorageFixture[] = [];
 const openDatabases: AuthorityDatabase[] = [];

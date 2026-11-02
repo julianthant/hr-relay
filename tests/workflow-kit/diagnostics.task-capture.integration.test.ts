@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { afterAll, describe, it } from "vitest";
 import { WorkerSessionManager } from "../../src/backend/runtime/workers/worker-sessions.js";
@@ -11,7 +11,7 @@ import { manualClock } from "../../src/rules/time/clock.js";
 import { fixtureDuoCeremonyGates } from "../support/helpers/duo-ceremony-fixtures.js";
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../support/helpers/phase1f-executor-harness.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const fingerprint = FingerprintSchema.parse("1".repeat(64));

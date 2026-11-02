@@ -1,5 +1,3 @@
-import type { SignUpOperation } from "../profiles/profile.js";
-import type { CompleteProtectedSettingsPatch } from "./protected-settings.js";
 import { z } from "zod";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import {
@@ -25,13 +23,11 @@ export type CredentialStoreApplyOutcome = z.infer<typeof CredentialStoreApplyOut
 /** The independent, non-database authority for protected settings. */
 export interface CredentialStore {
   read(): ProtectedStoreRecord;
-  /** Authorized command-path lookup; recovers a stale writer before returning value-free retry time. */
+  /** Return the latest accepted command time without changing credential authority. */
   acceptedAt(commandId: string): string | undefined;
   /** Value-free, read-only ownership retained across failed audits and SQLite restore. */
   ownsCommandId(this: void, commandId: string): boolean;
   apply(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome;
-  erase(input: CredentialEraseInput): CredentialStoreApplyOutcome;
-  migrateHistory(input: Readonly<{ operation: SignUpOperation; replacement?: CompleteProtectedSettingsPatch }>): void;
   /** Verify the exact most-recent application without performing a write. */
   verifyReplay(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome;
 }

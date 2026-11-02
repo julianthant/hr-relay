@@ -1,8 +1,17 @@
 import { createCredentialPersistenceFixtures } from "../../support/helpers/credential-persistence-fixtures.js";
-import { createSettingsAuthorityTestWorld } from "../../support/helpers/backend/settings-authority-world.js";
+import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
+import { randomUUID } from "node:crypto";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { executeSettingsCommand } from "../../../src/backend/runs/commands/command-kernel.js";
+import { createSettingsApplicationExecutor } from "../../../src/backend/runs/commands/settings-service.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/models/config/protected-settings.js";
+import { manualClock, capturedInstantClock } from "../../../src/rules/time/clock.js";
+import { seedInitialSettingsRuntimeConfig } from "../../support/fixtures/operator-command-fixtures.js";
+import { NOW } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { default as assert } from "node:assert/strict";
 
-import { copyFileSync } from "node:fs";
+import { copyFileSync, readFileSync } from "node:fs";
 import { rmSync } from "node:fs";
 
 import { join } from "node:path";
@@ -11,19 +20,11 @@ import { describe } from "vitest";
 import { it } from "vitest";
 import { vi } from "vitest";
 
-
-
-
-
 import { createCredentialSecretSource } from "../../../src/backend/runtime/settings/settings-runtime.js";
-
-
-
 
 import { requireSecret } from "../../../src/models/config/secrets.js";
 
-import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
-import { createCredentialStore } from "../../support/helpers/synthetic-storage-admission.js";
+import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 
 import { syncBuiltinESMExports } from "node:module";
 import { RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../../../src/models/config/catalog.js";
@@ -39,31 +40,35 @@ import { retiredTestTargetEnvironmentRefusal } from "../../../src/models/config/
 
 import { protectedSecretSource } from "../../support/helpers/protected-secret-source.js";
 
-{
-
-const { databases, fixture, protectedCommand, cleanup } = createSettingsAuthorityTestWorld();
-
-
-const _afterEachFixture0 = cleanup;
-
-
-
 describe("SQLite settings authority", () => {
-afterEach(_afterEachFixture0);
-
   it("database restore leaves credential revision, availability and next-use value intact", async () => {
-    const f = await fixture(); const snapshot = join(f.root, "prior.sqlite");
-    await f.database.onlineBackupTo(snapshot);
-    const revision = f.store.read().revision; const request = protectedCommand(revision); f.execute(request);
-    f.database.close(); copyFileSync(snapshot, f.path);
-    const restored = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-proof" }, f.clock); databases.push(restored);
-    assert.equal(restored.authority.commands.get(request.commandId), undefined);
-    assert.equal(f.store.read().revision, revision + 1);
-    assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(f.store)), "synthetic-private-value");
-    assert.equal(f.execute(request, restored).state, "applied");
+    const profile = await createBoundProfileFixture(), clock = manualClock(new Date("2026-09-06T12:00:00Z"));
+    const store = createCredentialStore({ admission: profile.admission, stateRoot: profile.stateRoot });
+    const options = { path: profile.path, busyTimeoutMs: 250, migrationOwner: "restore-proof" };
+    const pair = { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot };
+    const database = AuthorityDatabase.open(profile.admission, options, clock, undefined, undefined, undefined, store);
+    let restored: AuthorityDatabase | undefined;
+    try {
+      seedInitialSettingsRuntimeConfig(database, capturedInstantClock(NOW), pair);
+      const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock, pair), store);
+      const snapshot = join(profile.stateRoot, "prior.sqlite");
+      await database.onlineBackupTo(snapshot);
+      const revision = store.read().revision;
+      const request = { family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: "2026-09-06T12:00:00.000Z",
+        requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: revision },
+        payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { ucpathPassword: { set: "synthetic-private-value" } } } };
+      assert.equal(executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings }, request).state, "applied");
+      const credentialPath = join(profile.stateRoot, "credentials", "protected.json"), credentialBytes = readFileSync(credentialPath);
+      database.close(); copyFileSync(snapshot, profile.path);
+      restored = AuthorityDatabase.open(profile.admission, options, clock, undefined, undefined, undefined, store);
+      assert.equal(restored.authority.commands.get(request.commandId), undefined);
+      assert.equal(store.read().revision, revision + 1);
+      assert.equal(requireSecret("ucpathPassword", createCredentialSecretSource(store)), "synthetic-private-value");
+      assert.equal(executeSettingsCommand({ authority: restored, clock, ids: { uuid: randomUUID }, settings }, request).state, "applied");
+      assert.deepEqual(readFileSync(credentialPath), credentialBytes);
+    } finally { restored?.close(); database.close(); await profile.close(); }
   });
 });
-}
 
 {
 
@@ -158,8 +163,6 @@ const _afterEachFixture0 = async () => {
 
 const { fixture, releaseFixtures, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
 
-
-
 function applied(
   store: ReturnType<typeof createCredentialStore>,
   input: ProtectedSettingsApplyInput,
@@ -176,10 +179,11 @@ afterEach(_afterEachFixture0);
   it("clears a value and makes the sole reader observe missing and later next-use values", async () => {
     const f = await fixture();
     const secretSource = { read: () => f.store.read() };
+    const revision = f.store.read().revision;
     applied(f.store, request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
-      expectedRevision: 1,
+      expectedRevision: revision,
       entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } },
     }));
     assert.equal(requireSecret("ucpathPassword", secretSource), PRIVATE_VALUE_1);
@@ -187,7 +191,7 @@ afterEach(_afterEachFixture0);
     applied(f.store, request({
       commandId: COMMAND_2,
       writeId: WRITE_2,
-      expectedRevision: 2,
+      expectedRevision: revision + 1,
       entries: { ucpathPassword: { clear: true } },
       updatedAt: NOW_2,
     }));
@@ -200,7 +204,7 @@ afterEach(_afterEachFixture0);
     applied(f.store, request({
       commandId: COMMAND_3,
       writeId: WRITE_3,
-      expectedRevision: 3,
+      expectedRevision: revision + 2,
       entries: { ucpathPassword: { set: PRIVATE_VALUE_2 } },
     }));
     assert.equal(requireSecret("ucpathPassword", secretSource), PRIVATE_VALUE_2);

@@ -209,7 +209,7 @@ it("revokes controller authority as soon as close starts and keeps repeated clos
   assert.ok(!(lock instanceof WorkerRuntimeLifetimeLock));
   lock.assertHeld();
   const closing = lock.close();
-  assert.throws(() => lock.assertHeld(), RuntimeLifetimeLockReleasedError);
+  assert.throws(() => lock.assertRuntimeAvailable(), RuntimeLifetimeLockReleasedError);
   assert.equal(lock.close(), closing);
   await closing;
   assert.throws(() => lock.assertHeld(), RuntimeLifetimeLockReleasedError);

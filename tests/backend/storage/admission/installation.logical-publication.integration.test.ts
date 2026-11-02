@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { it, vi } from "vitest";
 import { z } from "zod";
 import { advanceProfileRegistryDocument, LogoutOperationSchema, ProfileRegistryDocumentSchema } from "../../../../src/models/profiles/profile.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { AuthorityDatabase, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 
 for (const mutation of ["old-revision", "skipped-revision", "operation-content"] as const) {
@@ -17,6 +17,9 @@ for (const mutation of ["old-revision", "skipped-revision", "operation-content"]
     let originalIntent: Buffer | undefined, originalRegistry: Buffer | undefined;
     try {
       const before = f.machine.readProfileRegistry(), rename = fs.renameSync;
+      const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 1000, migrationOwner: "profile-session-test" });
+      let source: ReturnType<typeof database.capturePendingLogoutSource>;
+      try { source = database.capturePendingLogoutSource(); } finally { database.close(); }
       let interrupted = false;
       vi.spyOn(fs, "renameSync").mockImplementation((source, target) => {
         if (!interrupted && String(target) === controlPath && existsSync(intentPath)) {
@@ -27,8 +30,8 @@ for (const mutation of ["old-revision", "skipped-revision", "operation-content"]
       syncBuiltinESMExports();
       try {
         assert.throws(() => mutation === "operation-content"
-          ? f.machine.publishProfileOperation(LogoutOperationSchema.parse({ schemaVersion: 1, kind: "logout", operationId: randomUUID(),
-            profileId: f.admission.profileBinding.profileId, at: "2026-11-01T00:00:00.000Z", phase: "complete" }))
+          ? f.machine.publishProfileOperation(LogoutOperationSchema.parse({ schemaVersion: 2, kind: "logout", operationId: randomUUID(),
+            profileId: f.admission.profileBinding.profileId, sessionGeneration: f.machine.readProfileRegistry().sessionGeneration, source, at: "2026-11-01T00:00:00.000Z", phase: "complete" }))
           : f.machine.publishProfileRegistry(before, advanceProfileRegistryDocument(before, {})), /fixture logical publication/u);
       } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
       assert.equal(interrupted, true);

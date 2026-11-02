@@ -4,7 +4,7 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import { hostConfigFacts } from "../../../models/config/host-display.js";
 import { resolveConfigWithProvenance, type ResolvedConfig } from "../../app/config/resolve.js";
-import { derivePersistedSettingsFingerprint, SettingsRuntimeStatusSchema } from "../../../models/config/settings.js";
+import { derivePersistedSettingsFingerprint, isRetiredSettingsPath, SettingsRuntimeStatusSchema } from "../../../models/config/settings.js";
 import type { StoredConfig } from "../../../models/config/snapshot.js";
 import type { SettingsOverride } from "../../../models/config/schema.js";
 import { ProtectedSettingsNameSchema } from "../../../models/config/protected-settings.js";
@@ -56,7 +56,7 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
   const activeConfig = snapshot.activeConfig ?? (runtimeStatus.state === "current" ? resolved.config : undefined);
   if (activeConfig === undefined) throw new Error("settings-editor-active-snapshot-missing");
   if (sha256Hex(canonicalJsonStringify(activeConfig)) !== active.configFingerprint || sha256Hex(canonicalJsonStringify(resolved.config)) !== resolved.fingerprint) throw new Error("settings-editor-config-mismatch");
-  const ordinary = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings");
+  const ordinary = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && !isRetiredSettingsPath(row.key));
   const currentFiscalYear = deps.clock.fiscalYear();
   const currentFiscalYearKey = `FY${String(currentFiscalYear)}`;
   const leaf = (key: string, path = key) => {
@@ -92,7 +92,7 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
     protectedSettings = { state: "unknown", rows: protectedRows, reason: "credential-store-unavailable" };
   }
   const deployment = Object.fromEntries(SETTINGS_CATALOG.filter(row => row.sourceClass === "runtime-isolation").map(row => {
-    const value = atPath(activeConfig, row.key === "duoWebauthnCredential" ? "paths.duoCredential" : row.key);
+    const value = atPath(activeConfig, row.key);
     if (value === undefined) throw new Error("settings-editor-deployment-fact-missing");
     return [row.key, value];
   }));

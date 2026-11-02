@@ -1,7 +1,5 @@
-import { profileBrowserClosure, BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
-import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
-import * as browserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { runLogoutSettlementCase } from "../../../support/helpers/credential-source-retention.js";
 import { syntheticOnboardingDuo, finishProfileOnboarding, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import * as accounts from "../../../../src/backend/accounts/chatgpt-account-service.js";
@@ -10,16 +8,17 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/co
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { randomUUID } from "node:crypto";
-import { copyFileSync, existsSync, readFileSync, readdirSync, statSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, readFileSync, readdirSync, statSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
-import { RuntimeCustodyUncertainError, composeProfileRuntime, composeSelectedProfileStorage, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime, composeSelectedProfileStorage, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { ChatGptCredentialRecordSchema, createChatGptCredentialRepository, createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { ChatGptCredentialRecordSchema, createChatGptCredentialRepository } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
@@ -109,14 +108,16 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
     context.admission.assertLive();
     assert.equal((await runtime.session.revalidateAuthority(active.token, captured.snapshot)).state, "available");
     assert.equal((await runtime.session.revalidateAuthority(active.token, { ...captured.snapshot })).state, "refused");
+    assert.equal(context.database.getMeta().profileId, active.profileId);
     const logout = runtime.session.logOut(active.token, { at: clock.now().toISOString() });
     assert.equal(logout.state, "cancelling");
     const operation = runtime.session.logoutOperations()[0]; assert.ok(operation);
     assert.equal((await runtime.session.readCurrentAuthority(active.token)).state, "refused");
     assert.throws(() => context.protectedSecrets.read());
     await runtime.awaitClosurePreparation(active.profileId);
-    assert.equal(context.database.getMeta().profileId, active.profileId);
-    assert.equal(runtime.session.resumeLogout(operation.operationId).state, "wiped");
+    assert.throws(() => context.database.getMeta(), /closed/u);
+    assert.deepEqual(credentialSnapshot(credentialPath), credentialBytes);
+    assert.equal(runtime.session.resumeLogout(operation.operationId).state, "signed-out");
     assert.throws(() => context.database.getMeta(), /closed/u);
     assert.throws(() => context.admission.assertLive());
     const next = runtime.session.signIn({ email: fields.email, password: fields.password, at: clock.now().toISOString() });
@@ -246,8 +247,8 @@ it("requires the same actual profile credential owner for canonical offline rest
     assert.throws(() => signedOut.assertCredentialRead(), /profile-session-not-current/u); signedOut.release();
     const fresh = f.renewAfterRestore().admission;
     try {
-      const store = createCredentialStore({ admission: fresh, stateRoot: fresh.stateRoot, erasureJournalAdmission: f.machine,
-        erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${fresh.profileBinding.profileId}.json`) });
+      const store = createCredentialStore({ admission: fresh, stateRoot: fresh.stateRoot,
+        });
       assert.equal(store.read().entries.ucpathPassword?.value, "disposable-fixture-password");
     } finally { fresh.release(); }
   } finally { await context.account.close(); context.database.close(); await f.close(); }
@@ -281,42 +282,6 @@ it("admits only the exact held stopped projection capability before opening stag
   } finally { capability?.release(); restore.release(); await f.close(); }
 });
 
-for(const failure of ["busy","unproved"] as const)it(`retains logout credentials and allocates no erasure identity after ${failure} native closure`,async()=>{
-  const f=await createBoundProfileFixture(),clock=manualClock(new Date("2026-10-21T12:00:00Z"));
-  const runtime=composeProfileRuntime({admission:f.machine,clock,hostFacts:{primaryDisplay:null}});
-  const error=failure==="busy"?new BrowserProfileStillClosingError(new Error("synthetic native busy")):new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
-  const inventoryProbe=vi.spyOn(browserInventory,"probeRetainedBrowsersClosed");
-  const probe=vi.spyOn(profileBrowserClosure,"probeClosed").mockRejectedValue(error);
-  let context:ReturnType<typeof runtime.selectedContext>|undefined;
-  let primary:{error:unknown}|undefined;
-  try{
-    const active=runtime.session.signIn({email:"fixture@ucsd.edu",password:"disposable-fixture-password",at:clock.now().toISOString()});
-    assert.equal(active.state,"active");if(active.state!=="active")throw new Error("fixture sign-in required");
-    context=runtime.selectedContext(active.token);
-    runtime.beginSupervisorConstruction(active.token);runtime.bindSupervisor(active.token,{memberEvidence:()=>undefined,drainOwnedChildren:async()=>undefined});
-    const protectedPath=join(context.admission.stateRoot,"credentials","protected.json");
-    const keyPath=join(f.machine.stateRoot,"machine","credential-keys",`${active.profileId}.json`);
-    const journalPath=join(f.machine.stateRoot,"machine","erasures",`${active.profileId}.json`);
-    const protectedBefore=readFileSync(protectedPath),keyBefore=readFileSync(keyPath);
-    assert.equal(runtime.session.logOut(active.token,{at:clock.now().toISOString()}).state,"cancelling");
-    await assert.rejects(runtime.awaitClosurePreparation(active.profileId),value=>value===error);
-    const operation=runtime.session.logoutOperations()[0];assert.ok(operation);
-    assert.equal(runtime.session.resumeLogout(operation.operationId).state,"cancelling");
-    const retained=LogoutOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot,"machine","operations",`${operation.operationId}.json`),"utf8")));
-    assert.equal(retained.commandId,undefined);assert.equal(retained.writeId,undefined);assert.equal(retained.expectedRevision,undefined);
-    assert.deepEqual(readFileSync(protectedPath),protectedBefore);assert.deepEqual(readFileSync(keyPath),keyBefore);assert.equal(existsSync(journalPath),false);
-    assert.equal(probe.mock.calls.length,1);
-    assert.equal(inventoryProbe.mock.calls[0]?.[0].admission,context.admission);
-    await assert.rejects(runtime.close());
-  }catch(error){primary={error};}
-  const cleanupErrors:unknown[]=[];
-  probe.mockRestore(); inventoryProbe.mockRestore();
-  try{
-    assert.throws(()=>runtime.session.close(),error=>error instanceof RuntimeCustodyUncertainError
-      && error.errors.some((cause:unknown)=>cause instanceof Error&&cause.message==="profile-account-closure-unproved"));
-  }catch(error){cleanupErrors.push(error);}
-  try{if(context!==undefined){await context.account.close();context.database.close();context.admission.release();}}catch(error){cleanupErrors.push(error);}
-  try{await f.close();}catch(error){cleanupErrors.push(error);}
-  if(cleanupErrors.length!==0)throw new AggregateError(primary===undefined?cleanupErrors:[primary.error,...cleanupErrors],"native-logout-fixture-cleanup-failed");
-  if(primary!==undefined)throw primary.error;
+for (const failure of ["busy", "unproved"] as const) it(`retains logout credentials and allocates no erasure identity after ${failure} native closure`, async () => {
+  await runLogoutSettlementCase(failure === "busy" ? "browser-busy" : "browser-unproved");
 });

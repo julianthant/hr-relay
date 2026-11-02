@@ -1,16 +1,14 @@
-import { StoppedAuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { withOfflineMaintenance, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { profileBrowserClosure, DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
-import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { withSmokeWorker } from "../../../../scripts/verify/browser-login.js";
 import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
-import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
+import { retainAuthoritySourceClosure, hasUnprovedSourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, linkSync, lstatSync, renameSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -20,18 +18,19 @@ import { bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqli
 import { deleteOwnedBrowserProfile, probeClosedBrowserProfile, workerProfileDirectory } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import { join } from "node:path";
 import { it, vi } from "vitest";
+import { z } from "zod";
 import { composeSelectedProfileStorage } from "../../../../src/backend/app/composition/storage-compose.js";
-import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory, composeProfileCredentialInventory, scanProfileCredentialCopy } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
+import { composeProfileClosureInventory, composeStoppedControlCredentialInventory, scanProfileCredentialCopy } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
-import { createCredentialStore, inspectCredentialKeyCopy } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { backupStoppedAuthority, upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, deriveAuthorityUpgradePlanDigest } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { AuthorityUpgradeRecordSchema, type AuthorityUpgradeRecord } from "../../../../src/models/config/authority.js";
+import { backupStoppedAuthority, releaseStoppedMachineControlUpgrade } from "../../../../src/backend/storage/maintenance/upgrade.js";
+import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
-import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { AuthorityBackupService, verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { CanonicalCredentialHeadSchema, CredentialMaintenanceHold } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
+import { createHistoricalIncompleteProfileFixture, historicalIncompleteProfileFields } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
+import { readStoppedCredentialConversion } from "../../../../src/backend/storage/configuration/credential-conversion.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { scaledMs } from "../../../support/time-scale.js";
 
@@ -44,198 +43,123 @@ async function fixture(f?: Awaited<ReturnType<typeof createBoundProfileFixture>>
   const before = credentials.read();
   const capturedSecrets = [before.entries.ucpathUserId?.value, before.entries.ucpathPassword?.value].filter((value): value is string => value !== undefined);
   assert.equal(capturedSecrets.length, 2);
-  const inventory = composeProfileCredentialInventory({ machine: f.machine, admission: f.admission, database: context.database, clock, hostFacts: { primaryDisplay: null } });
-  const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot,
-    repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine: f.machine, admission: child, clock, hostFacts: { primaryDisplay: null } })(request, writer, copies),
-    initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine: f.machine, admission: child,
-      clock, hostFacts: { primaryDisplay: null } })(operation, writer, copies),
-    activity: { hasUnquiescedWork: () => false } });
+  const inventory = composeProfileClosureInventory({ admission: f.admission, database: context.database, clock, hostFacts: { primaryDisplay: null } });
   return { ...f, clock, context, capturedSecrets, inventory,
-    erase() {
-      const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
-      assert.equal(active.state, "active");
-      if (active.state !== "active") throw new Error("synthetic profile sign-in refused");
-      const blocked = session.logOut(active.token, { at: clock.now().toISOString() });
-      assert.equal(blocked.state, "refused");
-      if (blocked.state !== "refused") throw new Error("synthetic logout did not retain exact inventory custody");
-      assert.equal(blocked.code, "PROFILE_LOGOUT_INVENTORY_BLOCKED");
-      const operation = session.logoutOperations()[0];
-      assert.ok(operation);
-      const admission = f.machine.admitProfileSettlement(operation.operationId);
-      const store = createCredentialStore({ admission, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
-        erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
-      return { admission, credentials: store, operationId: operation.operationId };
-    },
-    async cleanup() { await context.account.close(); context.database.close(); session.close(); await f.close(); },
+    async cleanup() { await context.account.close(); context.database.close(); await f.close(); },
   };
 }
 
-const failedUpgradeFixtures = new Set<Readonly<{ profile: Awaited<ReturnType<typeof createBoundProfileFixture>>; owners: readonly unknown[]; primary: unknown }>>();
-
-async function upgradedFixture(version: 6 | 7 | 8) {
-  const f = await createBoundProfileFixture({ pending: "onboarding" }), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
-  const databases: DatabaseSync[] = [];
-  try {
-    rmSync(f.path);
-    const raw = new DatabaseSync(f.path);
-    databases.push(raw);
-    let sourceFailure: { error: unknown } | undefined;
-    try {
-      for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= version)) for (const statement of migration.statements) raw.exec(statement);
-      if (version === 7 || version === 8) raw.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,?,7,?,NULL,'unbuilt',?,?)")
-        .run(version, clock.now().toISOString(), f.admission.profileBinding.installationId, f.admission.profileBinding.profileId);
-      else raw.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state) VALUES(1,6,7,?,NULL,'unbuilt')").run(clock.now().toISOString());
-      raw.exec(`PRAGMA user_version=${String(version)}; PRAGMA application_id=${String(AUTHORITY_APPLICATION_ID)}`);
-    } catch (error) { sourceFailure = { error }; }
-    try { raw.close(); }
-    catch (error) { throw retainAuthoritySourceClosure(sourceFailure === undefined ? [error] : [sourceFailure.error, error], { database: raw, admission: f.admission }); }
-    if (sourceFailure !== undefined) throw sourceFailure.error;
-    assert.equal((await withOfflineMaintenance(f.admission, operation => upgradeStorage(profileBrowserClosure, f.admission, { stateRoot: f.stateRoot,
-      processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false }, clock, operation))).state, "upgraded");
-    const inspected = new DatabaseSync(f.path, { readOnly: true });
-    databases.push(inspected);
-    let inspectionFailure: { error: unknown } | undefined;
-    try {
-      const row = inspected.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();
-      assert.equal(typeof row?.payload_json, "string");
-      if (typeof row?.payload_json !== "string") throw new Error("upgrade fixture receipt missing");
-      const record = AuthorityUpgradeRecordSchema.parse(JSON.parse(row.payload_json)); assert.equal(record.phase, "settled");
-      if (record.phase !== "settled") throw new Error("upgrade fixture receipt unsettled");
-      assert.equal(record.planDigest, createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion: version,
-        toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, sourceContentFingerprint: record.upgradeId,
-        statements: SQLITE_MIGRATIONS.filter(migration => migration.version > version).flatMap(migration => migration.statements) })).digest("hex"));
-    } catch (error) { inspectionFailure = { error }; }
-    try { inspected.close(); }
-    catch (error) { throw retainAuthoritySourceClosure(inspectionFailure === undefined ? [error] : [inspectionFailure.error, error], { database: inspected, admission: f.admission }); }
-    if (inspectionFailure !== undefined) throw inspectionFailure.error;
-    await f.finish();
-    return await fixture(f);
-  } catch (error) { failedUpgradeFixtures.add({ profile: f, owners: databases, primary: error }); throw error; }
+function nativeKey(f: Awaited<ReturnType<typeof fixture>>) {
+  const head = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")));
+  return credentialKeyCustody.read(head.key);
+}
+const heldStoppedInventories = new Set<object>();
+async function stoppedFixture(archivedAuthorityVersion?: 6 | 7 | 8, archivedAuthorityCopy?: "password" | "native-key") {
+  const f = await createHistoricalIncompleteProfileFixture({ ...(archivedAuthorityVersion === undefined ? {} : { archivedAuthorityVersion }),
+    ...(archivedAuthorityCopy === undefined ? {} : { archivedAuthorityCopy }) }), clock = manualClock(new Date("2026-11-01T12:00:00.000Z"));
+  const held: { f: typeof f; owners: unknown[] } = { f, owners: [] }; heldStoppedInventories.add(held);
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime); held.owners.push(maintenance);
+  const control = maintenance.beginStoppedMachineControlUpgrade(maintenance.maintenanceOperation()), claim = control.profileInventory(f.profileId);
+  const source = RuntimeAdmission.forStoppedControlInventory(claim), inventories: ReturnType<typeof composeStoppedControlCredentialInventory>[] = [];
+  held.owners.push(control, source, inventories);
+  let uncertain: unknown;
+  const guarded = <T>(read: () => T): T => {
+    try { return read(); } catch (error) { if (hasUnprovedSourceClosure(error)) uncertain = error; throw error; }
+  };
+  return { ...f, clock, maintenance, claim, source,
+    inspect() { return guarded(() => { const inventory = composeStoppedControlCredentialInventory({ claim, clock, hostFacts: { primaryDisplay: null } }); inventories.push(inventory); return inventory; }); },
+    revalidate(inventory: ReturnType<typeof composeStoppedControlCredentialInventory>) { return guarded(() => readStoppedCredentialConversion(inventory.proof, claim)); },
+    verifyArchive(path: string) { return guarded(() => verifyStoppedBackupManifestAtPath(source, path)); },
+    inspectPrimary() { return guarded(() => inspectAuthorityBackupReadOnly(source, f.databasePath)); },
+    async cleanup() { if (uncertain !== undefined) throw retainAuthoritySourceClosure([uncertain], { admission: held }); releaseStoppedMachineControlUpgrade(control, maintenance.maintenanceOperation(), false, { inventories, admission: maintenance }); source.release(); maintenance.release(); await f.close(); heldStoppedInventories.delete(held); },
+  };
+}
+function causeHas(error: unknown, message: string): boolean {
+  if (hasUnprovedSourceClosure(error)) throw error instanceof Error ? error : new AggregateError([error], "source-closure-unproved", { cause: error });
+  return error instanceof Error && (error.message === message || causeHas(error.cause, message)
+    || error instanceof AggregateError && error.errors.some((nested: unknown) => causeHas(nested, message)));
 }
 
-function retainedBackup(f: Awaited<ReturnType<typeof fixture>>) {
-  const directory = join(f.stateRoot, "backups", "authority");
-  const names = readdirSync(directory).filter(name => name.endsWith(".manifest.json")); assert.equal(names.length, 1);
-  const name = names[0]; assert.ok(name);
-  const manifestPath = join(directory, name), manifest = StoppedAuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(manifestPath, "utf8")));
-  return { manifestPath, manifest, path: join(directory, manifest.backupFileName) };
-}
-
-type ForwardUpgrade = Exclude<AuthorityUpgradeRecord, { phase: "baseline" }>;
-function changeUpgradeProof(f: Awaited<ReturnType<typeof fixture>>, transform: (record: ForwardUpgrade) => readonly AuthorityUpgradeRecord[]) {
-  const record = f.context.database.readProfileResourceCustody().upgrades.find(value => value.phase === "settled");
-  assert.ok(record && record.phase === "settled");
-  const records = transform(record).map(value => AuthorityUpgradeRecordSchema.parse(value));
-  const raw = new DatabaseSync(f.path);
+for (const version of [7, 8] as const) it(`qualifies a genuine bound SQL${version} archive under stopped conversion without downgrading the live primary`, async () => {
+  const f = await stoppedFixture(version);
   try {
-    const triggers = raw.prepare("SELECT name,sql FROM sqlite_schema WHERE type='trigger' AND tbl_name='database_upgrades' ORDER BY name").all();
-    assert.equal(triggers.length, 3);
-    raw.exec("BEGIN");
-    for (const trigger of triggers) { assert.equal(typeof trigger.name, "string"); assert.match(String(trigger.name), /^database_upgrades_[a-z_]+$/u); raw.exec(`DROP TRIGGER ${String(trigger.name)}`); }
-    raw.prepare("DELETE FROM database_upgrades WHERE id=?").run(record.recordKey);
-    for (const value of records) raw.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
-      .run(value.recordKey, value.upgradeId, value.phase, value.phase === "baseline" ? null : value.backup.sha256, canonicalJsonStringify(value), value.recordedAt);
-    for (const trigger of triggers) { assert.equal(typeof trigger.sql, "string"); raw.exec(String(trigger.sql)); }
-    raw.exec("COMMIT");
-  } finally { raw.close(); }
-}
-
-it("qualifies a genuine retained bound7 backup through its exact settled upgrade and preserves its bytes through erasure inventory", async () => {
-  const f = await upgradedFixture(8), backup = retainedBackup(f), bytes = readFileSync(backup.path);
-  let settlement: ReturnType<typeof f.erase> | undefined;
-  try {
-    assert.equal(backup.manifest.schemaVersion, 8);
-    assert.equal(backup.manifest.profileId, f.admission.profileBinding.profileId);
-    assert.equal(backup.manifest.installationId, f.admission.profileBinding.installationId);
-    await f.context.account.close();
-    await f.inventory.prepare();
-    settlement = f.erase();
-    const observed = f.inventory.assess({ ...settlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: true });
-    assert.equal(observed.logoutComplete, true);
-    assert.deepEqual(observed.backupPlaintext, []); assert.deepEqual(observed.unknownFormats, []);
-    assert.equal(readFileSync(backup.path).equals(bytes), true);
-  } finally { settlement?.admission.release(); await f.cleanup(); }
-});
-
-for (const mutation of ["absent", "duplicate", "unfinished", "forged-plan", "forged-path", "forged-source"] as const) it(`refuses retained bound7 copy with ${mutation} canonical upgrade provenance`, async () => {
-  const f = await upgradedFixture(8), backup = retainedBackup(f), bytes = readFileSync(backup.path);
-  try {
-    await f.context.account.close(); await f.inventory.prepare();
-    changeUpgradeProof(f, record => {
-      if (mutation === "absent") return [];
-      if (mutation === "duplicate") return [record, { ...record, recordKey: randomUUID(), upgradeId: FingerprintSchema.parse("e".repeat(64)) }];
-      if (mutation === "unfinished") return [{ ...record, phase: "committed" }];
-      if (mutation === "forged-plan") { assert.notEqual(record.planDigest, "e".repeat(64)); return [{ ...record, planDigest: FingerprintSchema.parse("e".repeat(64)) }]; }
-      if (mutation === "forged-source") { assert.notEqual(record.upgradeId, "e".repeat(64)); return [{ ...record, upgradeId: FingerprintSchema.parse("e".repeat(64)) }]; }
-      return [{ ...record, backup: { ...record.backup, manifestPath: `${record.backup.manifestPath}.foreign` } }];
-    });
-    const generation = f.context.database.getMeta().authorityGeneration;
-    await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "profile-inventory-backup-upgrade-unproved");
-    assert.equal(f.context.database.getMeta().authorityGeneration, generation);
-    assert.equal(readFileSync(backup.path).equals(bytes), true);
+    const archive = f.archive; assert.ok(archive);
+    const paths = [f.databasePath, f.protectedPath, f.keyPath, f.controlPath, f.registryPath, archive.path, archive.manifestPath], before = paths.map(path => readFileSync(path));
+    assert.equal(f.inspectPrimary().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    const verified = f.verifyArchive(archive.manifestPath);
+    assert.equal(verified.manifest.schemaVersion, version); assert.equal(verified.manifest.profileId, f.profileId);
+    assert.equal(verified.manifest.installationId, f.source.profileBinding.installationId);
+    const inventory = f.inspect(); f.revalidate(inventory);
+    assert.throws(() => f.source.assertCredentialRead(), /profile-control-upgrade-credential-read-refused/u);
+    assert.deepEqual(paths.map(path => readFileSync(path)), before);
   } finally { await f.cleanup(); }
 });
 
-it("refuses a genuine foreign bound7 copy even when its manifest claims the current source namespace", async () => {
-  const f = await upgradedFixture(8), other = await upgradedFixture(8);
+it("holds a real unbound SQL6 archive without inferring profile identity from its path", async () => {
+  const f = await stoppedFixture(6);
   try {
-    const target = retainedBackup(f), foreign = retainedBackup(other);
-    assert.notEqual(foreign.manifest.profileId, target.manifest.profileId);
-    await f.context.account.close(); await f.inventory.prepare();
-    copyFileSync(foreign.path, target.path);
-    writeFileSync(target.manifestPath, canonicalJsonStringify({ ...foreign.manifest,
-      backupFileName: target.manifest.backupFileName, sourceDatabaseIdentity: target.manifest.sourceDatabaseIdentity }), { mode: 0o600 });
-    await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "backup-profile-binding-mismatch");
-  } finally { await other.cleanup(); await f.cleanup(); }
-});
-
-it("refuses substitution of a qualified bound7 copy before assessment", async () => {
-  const f = await upgradedFixture(8), backup = retainedBackup(f);
-  let settlement: ReturnType<typeof f.erase> | undefined;
-  try {
-    await f.context.account.close(); await f.inventory.prepare();
-    settlement = f.erase();
-    const currentSettlement = settlement;
-    const bytes = readFileSync(backup.path); bytes[bytes.length - 1] ^= 1;
-    writeFileSync(backup.path, bytes, { mode: 0o600 });
-    assert.throws(() => f.inventory.assess({ ...currentSettlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: true }),
-      error => error instanceof Error && error.message === "profile-inventory-membership-changed");
-  } finally { settlement?.admission.release(); await f.cleanup(); }
-});
-
-it("retains named refusal for an unbound6 upgrade backup rather than deriving an old profile from its path", async () => {
-  const f = await upgradedFixture(6), backup = retainedBackup(f);
-  try {
-    assert.equal(backup.manifest.schemaVersion, 6); assert.equal(backup.manifest.profileId, undefined); assert.equal(backup.manifest.installationId, undefined);
-    const bytes = readFileSync(backup.path), credentials = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
-    await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "backup-profile-binding-required");
-    assert.equal(readFileSync(backup.path).equals(bytes), true);
-    assert.equal(readFileSync(join(f.stateRoot, "credentials", "protected.json")).equals(credentials), true);
+    const archive = f.archive; assert.ok(archive); assert.equal(archive.manifest.installationId, undefined); assert.equal(archive.manifest.profileId, undefined);
+    const paths = [f.databasePath, f.protectedPath, f.keyPath, archive.path, archive.manifestPath], before = paths.map(path => readFileSync(path));
+    assert.throws(() => f.inspect(), error => error instanceof CredentialMaintenanceHold && error.code === "CREDENTIAL_CONVERSION_UNSUPPORTED"
+      && causeHas(error, "backup-profile-binding-required"));
+    assert.deepEqual(paths.map(path => readFileSync(path)), before);
   } finally { await f.cleanup(); }
 });
 
-for (const backup of ["none", "clean", "captured-copy", "key-copy", "incomplete-capture"] as const) it(`assesses genuine canonical inventory after exact erasure with ${backup} backup`, async () => {
-  const f = await fixture();
-  let settlement: ReturnType<typeof f.erase> | undefined;
+for (const change of ["bytes", "size", "schema", "source", "manifest-binding", "symlink", "hardlink", "mode", "foreign-database"] as const)
+  it(`refuses ${change} archive substitution at the actual stopped verifier and preserves all sources`, async () => {
+    const f = await stoppedFixture(7), foreign = change === "foreign-database" ? await stoppedFixture(7) : undefined;
+    try {
+      const archive = f.archive; assert.ok(archive);
+      const clean = f.inspect(); f.revalidate(clean);
+      const primaryPaths = [f.databasePath, f.protectedPath, f.keyPath, f.controlPath, f.registryPath], primary = primaryPaths.map(path => readFileSync(path));
+      if (change === "bytes") { const bytes = readFileSync(archive.path), index = bytes.length - 1, prior = bytes[index]; assert.ok(prior !== undefined); bytes[index] = prior ^ 1; writeFileSync(archive.path, bytes); }
+      if (change === "size") writeFileSync(archive.manifestPath, JSON.stringify({ ...archive.manifest, byteSize: archive.manifest.byteSize + 1 }));
+      if (change === "schema") writeFileSync(archive.manifestPath, JSON.stringify({ ...archive.manifest, schemaVersion: 8, verification: { ...archive.manifest.verification, schemaVersion: 8 } }));
+      if (change === "source") writeFileSync(archive.manifestPath, JSON.stringify({ ...archive.manifest, sourceDatabaseIdentity: "e".repeat(64) }));
+      if (change === "manifest-binding") { const profileId = randomUUID(); writeFileSync(archive.manifestPath, JSON.stringify({ ...archive.manifest, profileId, verification: { ...archive.manifest.verification, profileId } })); }
+      if (change === "symlink" || change === "hardlink") {
+        const original = join(f.workspace, "original-archive.sqlite"); renameSync(archive.path, original);
+        if (change === "symlink") symlinkSync(original, archive.path); else linkSync(original, archive.path);
+      }
+      if (change === "mode") chmodSync(archive.path, 0o644);
+      if (change === "foreign-database") {
+        assert.ok(foreign?.archive); copyFileSync(foreign.archive.path, archive.path);
+        writeFileSync(archive.manifestPath, JSON.stringify({ ...foreign.archive.manifest, backupFileName: archive.manifest.backupFileName,
+          sourceDatabaseIdentity: archive.manifest.sourceDatabaseIdentity, installationId: archive.manifest.installationId, profileId: archive.manifest.profileId,
+          verification: { ...foreign.archive.manifest.verification, installationId: archive.manifest.installationId, profileId: archive.manifest.profileId } }));
+      }
+      const mutated = [readFileSync(archive.path), readFileSync(archive.manifestPath)], stat = lstatSync(archive.path);
+      const expected = change === "bytes" ? "profile-maintenance-backup-digest-mismatch" : change === "source" ? "profile-maintenance-backup-source-mismatch"
+        : change === "manifest-binding" || change === "foreign-database" ? "backup-profile-binding-mismatch"
+          : change === "symlink" || change === "hardlink" ? "authority-readonly-source-unsafe" : "profile-maintenance-backup-identity-invalid";
+      const refuses = (error: unknown): boolean => {
+        if (hasUnprovedSourceClosure(error)) throw error instanceof Error ? error : new AggregateError([error], "source-closure-unproved", { cause: error });
+        return change === "schema" ? error instanceof AuthoritySchemaVersionError && error.schemaVersion === 7 : causeHas(error, expected);
+      };
+      assert.throws(() => f.verifyArchive(archive.manifestPath), refuses);
+      assert.throws(() => f.revalidate(clean), change === "symlink" || change === "hardlink"
+        ? (error: unknown) => causeHas(error, "profile-inventory-path-unsafe") : refuses);
+      assert.deepEqual(primaryPaths.map(path => readFileSync(path)), primary);
+      assert.deepEqual([readFileSync(archive.path), readFileSync(archive.manifestPath)], mutated);
+      assert.equal(lstatSync(archive.path).ino, stat.ino); assert.equal(lstatSync(archive.path).mode, stat.mode);
+    } finally { await foreign?.cleanup(); await f.cleanup(); }
+  });
+
+for (const copy of ["clean", "password", "native-key"] as const) it(`assesses a genuinely verified historical SQL archive containing ${copy} workbook data`, async () => {
+  const f = await stoppedFixture(7, copy === "clean" ? undefined : copy);
   try {
-    if (backup === "captured-copy" || backup === "key-copy") {
-      const key = credentialKeyCustody.read(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")));
-      createWorkbookLibraryService({ repository: f.context.database.authority.workbooks, clock: f.clock }).create({
-        name: "Synthetic.xlsx", themes: [], hasFormulas: false,
-        sheets: [{ id: "sheet", name: "Synthetic", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: backup === "key-copy" ? key.key : f.capturedSecrets[1] }] }] }],
-      });
+    const archive = f.archive; assert.ok(archive);
+    assert.equal(f.verifyArchive(archive.manifestPath).manifest.schemaVersion, 7);
+    if (copy !== "clean") {
+      const key = credentialKeyCustody.read(JSON.parse(readFileSync(f.keyPath, "utf8")));
+      assert.equal(readFileSync(archive.path).includes(copy === "password" ? historicalIncompleteProfileFields.password : key.key), true);
     }
-    if (backup !== "none") await new AuthorityBackupService(f.admission, f.context.database,
-      { directory: join(f.stateRoot, "backups", "authority") }, f.clock).request({ trigger: "operator", requiredGeneration: f.context.database.getMeta().authorityGeneration });
-    await f.inventory.prepare();
-    settlement = f.erase();
-    const observed = f.inventory.assess({ ...settlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: backup !== "incomplete-capture" });
-    assert.equal(observed.entriesAbsent, true);
-    assert.equal(observed.inventoryMissing, false);
-    assert.equal(observed.logoutComplete, backup === "none" || backup === "clean");
-    if (backup === "captured-copy" || backup === "key-copy") assert.equal(observed.backupPlaintext.length, 1);
-    if (backup === "incomplete-capture") assert.equal(observed.unknownFormats.length, 1);
-  } finally { settlement?.admission.release(); await f.cleanup(); }
+    const paths = [f.databasePath, f.keyPath, f.protectedPath, f.controlPath, f.registryPath, archive.path, archive.manifestPath], before = paths.map(path => readFileSync(path));
+    if (copy === "clean") { const inventory = f.inspect(); f.revalidate(inventory); }
+    else assert.throws(() => f.inspect(), error => causeHas(error, "credential-maintenance-copy-capture-incomplete"));
+    assert.deepEqual(paths.map(path => readFileSync(path)), before);
+  } finally { await f.cleanup(); }
 });
 
 for (const mutation of ["forged-source-version", "missing-source-table", "extra-source-table"] as const) it(`rejects ${mutation} before accepting a backup into credential inventory`, async () => {
@@ -260,7 +184,7 @@ for (const mutation of ["forged-source-version", "missing-source-table", "extra-
       writeFileSync(manifestPath, JSON.stringify({ ...manifest, byteSize: bytes.length,
         sha256: createHash("sha256").update(bytes).digest("hex") }), { mode: 0o600 });
     }
-    await assert.rejects(f.inventory.prepare(), error => mutation === "forged-source-version"
+    await assert.rejects(verifyBackupManifestAtPath(f.admission, manifestPath), error => mutation === "forged-source-version"
       ? error instanceof AuthoritySchemaVersionError && error.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION
       : error instanceof Error && error.message === "authority-native-schema-shape-mismatch");
     assert.deepEqual(f.context.database.getMeta(), sourceBefore);
@@ -268,17 +192,20 @@ for (const mutation of ["forged-source-version", "missing-source-table", "extra-
   } finally { await f.cleanup(); }
 });
 
-for (const problem of ["extra-file", "contained-symlink", "unreferenced-backup"] as const) it(`refuses canonical inventory with ${problem}`, async () => {
-  const f = await fixture();
+for (const problem of ["extra-file", "contained-symlink", "unreferenced-backup"] as const) it(`refuses stopped conversion inventory with ${problem}`, async () => {
+  const f = await stoppedFixture();
   try {
-    await f.inventory.prepare();
-    if (problem === "extra-file") writeFileSync(join(f.stateRoot, "unowned.json"), "{}", { mode: 0o600 });
-    if (problem === "contained-symlink") symlinkSync(join(f.stateRoot, "credentials", "protected.json"), join(f.stateRoot, "credentials", "copy.json"));
+    const clean = f.inspect(); f.revalidate(clean);
+    if (problem === "extra-file") writeFileSync(join(f.profileRoot, "unowned.json"), "{}", { mode: 0o600 });
+    if (problem === "contained-symlink") symlinkSync(f.protectedPath, join(f.profileRoot, "credentials", "copy.json"));
     if (problem === "unreferenced-backup") {
-      mkdirSync(join(f.stateRoot, "backups", "authority"), { recursive: true, mode: 0o700 });
-      writeFileSync(join(f.stateRoot, "backups", "authority", "unowned.sqlite"), "synthetic", { mode: 0o600 });
+      mkdirSync(join(f.profileRoot, "backups", "authority"), { recursive: true, mode: 0o700 });
+      writeFileSync(join(f.profileRoot, "backups", "authority", "unowned.sqlite"), "synthetic", { mode: 0o600 });
     }
-    await assert.rejects(f.inventory.prepare());
+    const paths = [f.protectedPath, f.keyPath, f.databasePath, f.controlPath], before = paths.map(path => readFileSync(path));
+    assert.throws(() => f.revalidate(clean), error => causeHas(error, problem === "unreferenced-backup"
+      ? "credential-maintenance-backup-membership-unproved" : problem === "extra-file" ? "profile-inventory-unowned-entry" : "profile-inventory-path-unsafe"));
+    assert.deepEqual(paths.map(path => readFileSync(path)), before);
   } finally { await f.cleanup(); }
 });
 
@@ -294,38 +221,34 @@ for (const encoding of ["utf8", "utf16le", "utf16be"] as const) it(`detects ${en
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-for (const content of ["clean", "escaped-value", "escaped-key-material", "malformed"] as const) it(`inspects decoded canonical boot JSONL with ${content} content`, async () => {
-  const f = await fixture();
-  let settlement: ReturnType<typeof f.erase> | undefined;
-  try {
-    const error = new Error("synthetic boot failure"); error.stack = undefined;
-    appendEmergencyFault({ stateRoot: f.stateRoot, build: "synthetic", code: "DATABASE_WRITER_UNAVAILABLE", error, now: f.clock.now() });
-    const path = join(f.stateRoot, "logs", "boot.jsonl");
-    const record = JSON.parse(readFileSync(path, "utf8")) as { payload: { event: { message: string } } };
-    const key = credentialKeyCustody.read(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")));
-    const secret = content === "escaped-key-material" ? key.key : f.capturedSecrets[1]; assert.ok(secret);
-    if (content === "escaped-value" || content === "escaped-key-material") {
-      record.payload.event.message = secret;
-      const encoded = [...secret].map(character => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
-      const text = JSON.stringify(record).replace(JSON.stringify(secret), `"${encoded}"`);
-      assert.equal(text.includes(secret), false);
-      writeFileSync(path, `${text}\n`, { mode: 0o600 });
-    }
-    if (content === "malformed") writeFileSync(path, "{invalid}\n", { mode: 0o600 });
-    await f.inventory.prepare();
-    settlement = f.erase();
-    const observed = f.inventory.assess({ ...settlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: true });
-    assert.equal(observed.logoutComplete, content === "clean");
-    assert.equal(observed.backupPlaintext.includes(path), content === "escaped-value" || content === "escaped-key-material");
-    assert.equal(observed.unknownFormats.includes(path), content === "malformed");
-  } finally { settlement?.admission.release(); await f.cleanup(); }
-});
+for (const content of ["clean", "escaped-value", "escaped-key-material", "escaped-shadowed", "malformed"] as const)
+  it(`inspects stopped predecessor boot JSONL with ${content} content`, async () => {
+    const f = await stoppedFixture();
+    try {
+      const error = new Error("synthetic boot failure"); error.stack = undefined;
+      appendEmergencyFault({ stateRoot: f.profileRoot, build: "synthetic", code: "DATABASE_WRITER_UNAVAILABLE", error, now: f.clock.now() });
+      const path = join(f.profileRoot, "logs", "boot.jsonl"), record = z.looseObject({ payload: z.looseObject({ event: z.looseObject({ message: z.string() }) }) }).parse(JSON.parse(readFileSync(path, "utf8")));
+      const key = credentialKeyCustody.read(JSON.parse(readFileSync(f.keyPath, "utf8")));
+      const secret = content === "escaped-key-material" ? key.key : historicalIncompleteProfileFields.password;
+      if (content !== "clean" && content !== "malformed") {
+        record.payload.event.message = secret;
+        const encoded = [...secret].map(character => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
+        const replacement = content === "escaped-shadowed" ? `"${encoded}","message":"clean"` : `"${encoded}"`;
+        const text = JSON.stringify(record).replace(JSON.stringify(secret), replacement); assert.equal(text.includes(secret), false);
+        writeFileSync(path, text + "\n");
+      }
+      if (content === "malformed") writeFileSync(path, "{invalid}\n");
+      const paths = [path, f.protectedPath, f.keyPath, f.databasePath, f.controlPath], before = paths.map(path => readFileSync(path));
+      if (content === "clean") { const inventory = f.inspect(); f.revalidate(inventory); }
+      else assert.throws(() => f.inspect(), error => causeHas(error, "credential-maintenance-copy-capture-incomplete"));
+      assert.deepEqual(paths.map(path => readFileSync(path)), before);
+    } finally { await f.cleanup(); }
+  });
 
-for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material", "malformed"] as const) it(`inspects canonical retained browser JSON with ${content} content`, async () => {
+for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material", "malformed"] as const) it(`closes retained native browser resources while preserving ${content} JSON bytes`, async () => {
   const f = await fixture();
   const native=createBrowserSessionFactoryFixtures(f.clock,randomUUID(),{schedule:()=>({cancel(){}})}).fakeLauncher();
   const launch=vi.spyOn(DEFAULT_BROWSER_LAUNCHER,"launch").mockImplementation(input=>native.launcher.launch(input));
-  let settlement: ReturnType<typeof f.erase> | undefined;
   let worker: ReturnType<typeof bindWorkerProcessAdmission> | undefined;
   let primary:{error:unknown}|undefined;
   try {
@@ -348,7 +271,7 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material
       browserMode: "headless", profileDirectory: directory, acceptDownloads: false, exclusive: false, health: "closed",
       observedAt: f.clock.now().toISOString(), openedAt: f.clock.now().toISOString(), profileRevision: 1 });
     mkdirSync(directory, { recursive: true, mode: 0o700 });
-    const key = credentialKeyCustody.read(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")));
+    const key = nativeKey(f);
     const path = join(directory, "Preferences"), secret = content === "key-material" ? key.key : f.capturedSecrets[1]; assert.ok(secret);
     const escaped = [...secret].map(character => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
     const text = content === "clean" ? '{"profile":{"name":"Synthetic"}}' : content === "malformed" ? "{invalid}" : content === "escaped-shadowed" ? `{"synthetic":"${escaped}","synthetic":"clean"}` : `{"${escaped}":"synthetic"}`;
@@ -362,13 +285,8 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material
     await f.inventory.prepare();
     assert.equal(native.contextClosed(),true);assert.equal(native.launches().length,1);
     assert.equal(readFileSync(path,"utf8"),text);
-    settlement = f.erase();
-    const observed = f.inventory.assess({ ...settlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: true });
-    assert.equal(observed.logoutComplete, content === "clean");
-    assert.equal(observed.backupPlaintext.includes(path), content === "escaped-key" || content === "escaped-shadowed" || content === "key-material");
-    assert.equal(observed.unknownFormats.includes(path), content === "malformed");
   } catch(error){primary={error};}
-  try{launch.mockRestore();worker?.processLock.release();settlement?.admission.release();await f.cleanup();}
+  try{launch.mockRestore();worker?.processLock.release();await f.cleanup();}
   catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"browser-json-fixture-cleanup-failed",{cause:error});}
   if(primary!==undefined)throw primary.error;
 });
@@ -376,11 +294,11 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material
 for (const encoding of ["raw", "base64", "utf16le", "utf16be"] as const) it(`detects private stable key ${encoding} across the copy chunk boundary`, async () => {
   const f = await fixture(), path = join(f.stateRoot, "synthetic-copy.bin");
   try {
-    const key = credentialKeyCustody.read(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")));
+    const key = nativeKey(f);
     const bytes = encoding === "raw" ? Buffer.from(key.key, "base64") : Buffer.from(key.key, encoding === "base64" ? "utf8" : "utf16le");
     if (encoding === "utf16be") bytes.swap16();
     writeFileSync(path, Buffer.concat([Buffer.alloc(64 * 1024 - 3, 0x78), bytes, Buffer.alloc(17, 0x79)]), { mode: 0o600 });
-    const scan = { containsKey: (value: unknown) => inspectCredentialKeyCopy(boundProfileCredentials(f.admission), value), keyScanOverlap: 4095 };
+    const scan = { containsKey: (value: unknown) => value instanceof Uint8Array && Buffer.from(value).includes(bytes), keyScanOverlap: 4095 };
     assert.equal(scanProfileCredentialCopy(path, [], scan).containsSecret, true);
     writeFileSync(path, Buffer.alloc(64 * 1024 + 100, 0x78), { mode: 0o600 });
     assert.equal(scanProfileCredentialCopy(path, [], scan).containsSecret, false);
@@ -388,92 +306,11 @@ for (const encoding of ["raw", "base64", "utf16le", "utf16be"] as const) it(`det
 });
 
 
-it('certifies the unchanged bound backup from a canonical seven-to-current pending-setup conversion', async () => {
-  const f = await upgradedFixture(7);
-  let settlement: ReturnType<typeof f.erase> | undefined;
-  let bodyFailed = false;
-  let cleanupFailure: { error: unknown } | undefined;
-  try {
-    const backup = retainedBackup(f), bytes = readFileSync(backup.path);
-    assert.equal(backup.manifest.schemaVersion, 7);
-    await f.context.account.close();
-    const before = f.context.database.readProfileResourceCustody();
-    const proof = before.upgrades.find(record => record.phase === "settled");
-    assert.ok(proof && proof.phase === "settled");
-    assert.equal(proof.fromSchemaVersion, 7);
-    assert.equal(proof.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    const protectedPath = join(f.stateRoot, "credentials", "protected.json"), protectedBefore = readFileSync(protectedPath);
-    await f.inventory.prepare();
-    assert.deepEqual(f.context.database.readProfileResourceCustody(), before);
-    assert.equal(readFileSync(protectedPath).equals(protectedBefore), true);
-    assert.throws(() => f.admission.assertAuthorityDatabase(backup.path));
-    settlement = f.erase();
-    const observed = f.inventory.assess({ ...settlement, capturedSecrets: f.capturedSecrets, capturedSecretsComplete: true });
-    assert.equal(observed.logoutComplete, true);
-    assert.deepEqual(observed.backupPlaintext, []);
-    assert.deepEqual(observed.unknownFormats, []);
-    assert.equal(readFileSync(backup.path).equals(bytes), true);
-  } catch (error) {
-    bodyFailed = true; failedUpgradeFixtures.add({ profile: f, owners: [f.context, settlement], primary: error }); throw error;
-  } finally {
-    if (!bodyFailed) {
-      try { settlement?.admission.release(); await f.cleanup(); }
-      catch (error) { failedUpgradeFixtures.add({ profile: f, owners: [f.context, settlement], primary: error }); cleanupFailure = { error }; }
-    }
-  }
-  if (cleanupFailure !== undefined) {
-    const error = cleanupFailure.error;
-    if (error instanceof Error) throw error;
-    throw new AggregateError([error], 'profile-credential-inventory-cleanup-failed', { cause: error });
-  }
-});
-
-it.each([{ destination: 8, exact: false }, { destination: 8, exact: true }, { destination: 9, exact: false },
-  { destination: 9, exact: true }, { destination: 10, exact: false }, { destination: 10, exact: true }] as const)(
-  'checks the exact plan for a synthetic retained destination $destination with matching=$exact', async ({ destination, exact }) => {
-  const f = await upgradedFixture(7);
-  let bodyFailed = false;
-  let cleanupFailure: { error: unknown } | undefined;
-  try {
-    const backup = retainedBackup(f), bytes = readFileSync(backup.path);
-    await f.context.account.close();
-    await f.inventory.prepare();
-    const original = f.context.database.readProfileResourceCustody().upgrades.find(record => record.phase === "settled");
-    assert.ok(original && original.phase === "settled");
-    assert.equal(original.fromSchemaVersion, 7);
-    assert.equal(original.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    const historicalDigest = deriveAuthorityUpgradePlanDigest(7, original.upgradeId, destination);
-    assert.notEqual(original.planDigest, historicalDigest);
-    changeUpgradeProof(f, record => [AuthorityUpgradeRecordSchema.parse({ ...record, toSchemaVersion: destination,
-      ...(exact ? { planDigest: historicalDigest } : {}) })]);
-    const generation = f.context.database.getMeta().authorityGeneration;
-    if (exact) await f.inventory.prepare();
-    else await assert.rejects(f.inventory.prepare(), error => error instanceof Error && error.message === "profile-inventory-backup-upgrade-unproved");
-    assert.equal(f.context.database.getMeta().authorityGeneration, generation);
-    assert.equal(readFileSync(backup.path).equals(bytes), true);
-    changeUpgradeProof(f, () => [original]);
-    await f.inventory.prepare();
-    assert.deepEqual(f.context.database.readProfileResourceCustody().upgrades.find(record => record.recordKey === original.recordKey), original);
-  } catch (error) {
-    bodyFailed = true; failedUpgradeFixtures.add({ profile: f, owners: [f.context], primary: error }); throw error;
-  } finally {
-    if (!bodyFailed) {
-      try { await f.cleanup(); }
-      catch (error) { failedUpgradeFixtures.add({ profile: f, owners: [f.context], primary: error }); cleanupFailure = { error }; }
-    }
-  }
-  if (cleanupFailure !== undefined) {
-    const error = cleanupFailure.error;
-    if (error instanceof Error) throw error;
-    throw new AggregateError([error], 'profile-credential-inventory-cleanup-failed', { cause: error });
-  }
-});
-
 for(const purpose of ["logout","backup"] as const)it(`accepts completed verification cleanup with removed scratch directory for ${purpose}`,async()=>{
   const f=await fixture(),lock=f.lifetime,profileRunId=randomUUID();
   const smokeRoot=join(f.stateRoot,"scratch","live-smoke",profileRunId,"browsers");
   const native=createBrowserSessionFactoryFixtures(f.clock,randomUUID(),{schedule:()=>({cancel(){}})}).fakeLauncher();
-  let settlement:ReturnType<typeof f.erase>|undefined,stopped:RuntimeAdmission|undefined,restore:OfflineMaintenanceOperation|undefined;
+  let stopped:RuntimeAdmission|undefined,restore:OfflineMaintenanceOperation|undefined;
   let primary:{error:unknown}|undefined;
   try{
     await withSmokeWorker(f.context.database,async slot=>{
@@ -491,8 +328,7 @@ for(const purpose of ["logout","backup"] as const)it(`accepts completed verifica
     const facts=f.context.database.readProfileResourceCustody();assert.equal(facts.verificationProfiles[0]?.cleanup,"closed");
     await f.context.account.close();
     if(purpose==="logout"){
-      await f.inventory.prepare();settlement=f.erase();
-      assert.equal(f.inventory.assess({...settlement,capturedSecrets:f.capturedSecrets,capturedSecretsComplete:true}).logoutComplete,true);
+      await f.inventory.prepare();assert.equal(f.context.database.readProfileResourceCustody().verificationProfiles[0]?.cleanup,"closed");
     }else{
       const profileId=f.admission.profileBinding.profileId;f.context.database.close();f.admission.release();
       const processLockRoot=join(f.workspace,rebuildRuntimeIsolation.processLockRoot);
@@ -503,7 +339,7 @@ for(const purpose of ["logout","backup"] as const)it(`accepts completed verifica
       assert.equal(report.state,"verified");assert.equal(report.manifests.length,1);
     }
   }catch(error){primary={error};}
-  try{stopped?.release();restore?.release();settlement?.admission.release();await f.cleanup();}
+  try{stopped?.release();restore?.release();await f.cleanup();}
   catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"verification-cleanup-fixture-close-failed",{cause:error});}
   if(primary!==undefined)throw primary.error;
 }, scaledMs(30000));

@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import { foreignOriginCases } from "../../../../support/helpers/backend/http-route-harness.js";
 import { Hono } from "hono";
 import assert from "node:assert/strict";
@@ -16,7 +16,7 @@ import { RunDetailSectionResponseSchema } from "../../../../../src/models/dashbo
 import { DAY } from "../../../../support/helpers/backend/dashboard-harness.js";
 import { OPERATOR_JSON_HEADERS, captureDiagnosticBundle, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 {

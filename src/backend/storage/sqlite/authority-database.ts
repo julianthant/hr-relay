@@ -1,12 +1,15 @@
+import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
+import { CanonicalCrashRecoveryRequestSchema, RunClaimTokenSchema } from "../../../models/run/worker.js";
 import { privatePathRejects } from "../private-path.js";
 import { clearOperationProofSlots, revalidateOperationProof, outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
-import { assertOfflineMaintenanceForProcessRoot, type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
+import { type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
+import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { authoritySourceDatabaseIdentity, type AuthorityBackupExpectedSource } from "./database-identity.js";
-import { CanonicalCrashRecoveryRequestSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalClaimNextRequestSchema, WorkerStandingRecoveryRequestSchema, RunClaimOutcomeSchema, RunClaimRequestSchema, RunClaimTokenSchema, RunHeartbeatOutcomeSchema, RunHeartbeatRequestSchema, RunItemQuerySchema, RunPresentationRequestSchema, RunInjectPatchesRequestSchema, RunPriorityBumpRequestSchema, RunRequeueRequestSchema, RunResumeRequestSchema, RunTransitionRequestSchema, RunUpdateOutcomeSchema, StartPlanConsumeOutcomeSchema, StartPlanConsumeRequestSchema, WorkerControlRequestSchema, WorkerLifecycleRequestSchema, WorkerPoolPlanOutcomeSchema, WorkerPoolPlanRequestSchema, WorkerStartOutcomeSchema, WorkerStartRequestSchema, WorkerUpdateOutcomeSchema, type RunClaimOutcome, type RunHeartbeatOutcome, type RunUpdateOutcome, type StartPlanConsumeOutcome, type WorkerPoolPlanOutcome, type WorkerStartOutcome, type WorkerUpdateOutcome } from "./run-store-contracts.js";
+import { WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalClaimNextRequestSchema, WorkerStandingRecoveryRequestSchema, RunClaimOutcomeSchema, RunClaimRequestSchema, RunHeartbeatOutcomeSchema, RunHeartbeatRequestSchema, RunItemQuerySchema, RunPresentationRequestSchema, RunInjectPatchesRequestSchema, RunPriorityBumpRequestSchema, RunRequeueRequestSchema, RunResumeRequestSchema, RunTransitionRequestSchema, RunUpdateOutcomeSchema, StartPlanConsumeOutcomeSchema, StartPlanConsumeRequestSchema, WorkerControlRequestSchema, WorkerLifecycleRequestSchema, WorkerPoolPlanOutcomeSchema, WorkerPoolPlanRequestSchema, WorkerStartOutcomeSchema, WorkerStartRequestSchema, WorkerUpdateOutcomeSchema, type RunClaimOutcome, type RunHeartbeatOutcome, type RunUpdateOutcome, type StartPlanConsumeOutcome, type WorkerPoolPlanOutcome, type WorkerStartOutcome, type WorkerUpdateOutcome } from "./run-store-contracts.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
-import { retainAuthoritySourceClosure } from "../source-closure.js";
+import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySourceClosure } from "../source-closure.js";
 import { notificationCollectionTarget, type NotificationCollectionOperation, type NotificationCollectionTarget, NotificationFoldRequestSchema, NotificationRecordOutcomeSchema, NotificationRecordSchema, NotificationStateRequestSchema, requireMutableNotification, type NotificationRecord, type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
 import { AssistantActionRecordSchema, AssistantChatRecordSchema, AssistantGrantRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
@@ -14,7 +17,7 @@ import { createWorkbookLibraryRepository, validateWorkbookLibrary } from "./work
 import { WorkerControlRefusal, WorkerControlRecordSchema, type WorkerResetBinding } from "../../../models/run/worker-control.js";
 import { terminalDelegationDependencyRecord, RunResultRecordSchema, createRunTerminalEvidenceResult, deriveTerminalFailureDigest, terminalEvidenceResult, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, type RunResultRecord } from "../../../models/run/result.js";
 import { delegationJoinDisposition, DelegationManifestSchema, DependencyRecordSchema, type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
-import { WorkerSlotRecordSchema, workerPoolMember } from "../../../models/run/worker-slot.js";
+import { WorkerSlotRecordSchema, workerPoolMember, type WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import { createReadonlyAuthoritySnapshot, withReadonlyAuthoritySnapshot, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { DiagnosticAttachmentSchema, DiagnosticBundleSchema, type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
@@ -57,7 +60,7 @@ import { deriveStableUuid, lifecycleCommandId } from "../../../rules/identity/id
 import { createTimelineRepository, timelineEventFromRow, TimelineRecordError } from "./timeline-repository.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import { CommandIdentityConflictError, AuthorityCommandAuditRecordSchema, AuthorityCommandRecordSchema, StoredAuthorityCommandRecordSchema, BulkParentCommandRecordSchema, BulkRunCommandAcceptanceRecordSchema, CommandAuditRecordSchema, CommandRequestSchema, StorageRelocationCommandRequestSchema, RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
-import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
+import { assertCredentialStoreOwner, stoppedLogoutOwnsCredentialCommand } from "../configuration/credential-store.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
@@ -71,7 +74,7 @@ import { z } from "zod";
 import { assertWorkflowRunResultAuthorization, descriptorRuntimeNodes, workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityUpgradeRecordSchema, AuthorityTableNameSchema, ProjectionTableNameSchema, type AuthorityTableName, type TableName, type RunRecordRefusal } from "../../../models/config/authority.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { type Clock, systemClock, localDatePart } from "../../../rules/time/clock.js";
+import { type Clock, capturedInstantClock, systemClock, localDatePart } from "../../../rules/time/clock.js";
 import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
 import { type ActiveRuntimeConfigRecord, type RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
@@ -97,7 +100,7 @@ import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../mode
 import { DryRunScenarioResultSchema, type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
 import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
 import { IdempotencyKeySchema, WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteAttemptRecord, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
-import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
+import { LogoutOperationSchema, type LogoutOperation, ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isCurrentAuthoritySchemaVersion, isSupportedStoppedAuthoritySchemaVersion, SQLITE_MIGRATIONS, deriveAuthorityUpgradePlanDigest, auditMigrationTableCoverage, migrationTableNames, tableClassification } from "./migrations.js";
 import type { VerifiedBackup } from "./backup-service.js";
 import { AuthorityCopyInspectionSchema, SpanAuthorityReadSnapshotSchema, SpanAuthorityRunRootSchema, SpanAuthorityRunResolutionSchema, type AuthorityCopyInspection, type SpanAuthorityReadSnapshot, type SpanAuthorityRunRoot } from "./recovery-contracts.js";
@@ -260,6 +263,11 @@ type WriteIntentRepository = Readonly<{
   listByRun(runId: string): readonly z.infer<typeof WriteIntentRecordSchema>[];
   // Dry-run attempt and outbox evidence join through the run's intent rows because they have no run ID.
   countDryRunEvidenceByRun(runId: string): z.infer<typeof DryRunWriteSafetyCountsSchema>;
+}>;
+
+export type PendingLogoutServices = Readonly<{
+  browserClosure: ProfileBrowserClosure;
+  recover(database: AuthorityDatabase, operation: LogoutOperation, lifetime: RuntimeLifetimeLock): void;
 }>;
 
 export interface AuthorityWriteCommitHooks {
@@ -1726,12 +1734,20 @@ function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, candi
 
 export class AuthorityDatabase implements Disposable {
   readonly #admission: RuntimeAdmission;
+  readonly #admitMutation: () => void;
   #database: DatabaseSync;
   #clock: Clock;
   #path: string;
   #busyTimeoutMs: number;
   #credentialCommandIds: (commandId: string) => boolean;
   #closed = false;
+  #openedFileIdentity: Readonly<{ device: number; inode: number }> | undefined;
+  #coldLogout: Readonly<{ machine: RuntimeAdmission; operationId: string; admission: RuntimeAdmission; restore: OfflineMaintenanceOperation;
+    sourcePath: string; owner: RuntimeAdmission; inspection: ReturnType<RuntimeAdmission["capturePendingLogoutSnapshot"]> }> | undefined;
+  #logoutCapturedMembers: readonly Readonly<{ member: WorkerPoolMember; processId: number; leaseGeneration: number }>[] | undefined;
+  #logoutCompletion: Readonly<{ admission: RuntimeAdmission; operation: LogoutOperation; path: string; binding: Readonly<{ installationId: string; profileId: string }> }> | undefined;
+  #logoutPublication: Readonly<{ admission: RuntimeAdmission; operation: LogoutOperation }> | undefined;
+  #logoutBatch: Readonly<{ admission: RuntimeAdmission }> | undefined;
   #validatedExternalDataVersion: number | undefined;
   #snapshotExternalDataVersion: number | undefined;
   #transactionDepth = 0;
@@ -1755,11 +1771,23 @@ export class AuthorityDatabase implements Disposable {
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
     credentials?: CredentialStore,
-    purpose: "ordinary" | "profile-initialization" | "stopped-restore-projection" | "stopped-span-root-repair" = "ordinary",
+    purpose: "ordinary" | "profile-initialization" | "stopped-restore-projection" | "stopped-span-root-repair" | "stopped-logout-settlement" | "stopped-logout-inspection" = "ordinary",
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
-    if (purpose === "stopped-span-root-repair") this.#admission.assertReadOnlyAuthorityDatabase(options.path);
+    this.#admitMutation = purpose === "ordinary" ? () => this.#admission.assertWritable()
+      : purpose === "profile-initialization" ? () => this.#admission.assertProfileInitialization()
+      : purpose === "stopped-restore-projection" ? () => this.#admission.assertStoppedRestoreProjection(options.path)
+      : purpose === "stopped-span-root-repair" ? () => this.#admission.assertStoppedProfile(this.#admission.maintenanceOperation())
+      : purpose === "stopped-logout-settlement" ? () => { this.#admission.assertPendingLogoutSettlementDatabase(options.path); }
+      : () => { throw new Error("profile-logout-inspection-read-only-required"); };
+    if (purpose === "stopped-logout-inspection") {
+      if (options.openMode === "read-write") throw new Error("profile-logout-inspection-read-only-required");
+      this.#admission.assertPendingLogoutInspectionDatabase(options.path);
+    } else if (purpose === "stopped-logout-settlement") {
+      const operation = this.#admission.assertPendingLogoutSettlementDatabase(options.path);
+      if (operation.settlement?.phase === "done" && options.openMode === "read-write") throw new Error("profile-logout-settlement-already-done");
+    } else if (purpose === "stopped-span-root-repair") this.#admission.assertReadOnlyAuthorityDatabase(options.path);
     else this.#admission.assertAuthorityDatabase(options.path);
     if (credentials !== undefined) assertCredentialStoreOwner(credentials, this.#admission);
     const binding = this.#admission.profileBinding;
@@ -1775,6 +1803,7 @@ export class AuthorityDatabase implements Disposable {
       requireDatabaseSourcePath(options.path);
       const identity = lstatSync(options.path);
       if (!identity.isFile() || identity.nlink !== 1 || privatePathRejects(options.path, identity, "owner")) throw new Error("profile-database-identity-invalid");
+      this.#openedFileIdentity = Object.freeze({ device: identity.dev, inode: identity.ino });
     }
     if (existed && statSync(options.path).size === 0) {
       throw new Error(`authority database ${options.path} exists but is empty; refusing to replace it`);
@@ -1800,6 +1829,11 @@ export class AuthorityDatabase implements Disposable {
 
     const admittedDataVersion = readIntPragma(this.#database, "data_version");
     try {
+      if (options.path !== ":memory:") {
+        const identity = lstatSync(options.path);
+        if (this.#openedFileIdentity !== undefined && (identity.dev !== this.#openedFileIdentity.device || identity.ino !== this.#openedFileIdentity.inode)) throw new Error("profile-database-open-source-changed");
+        this.#openedFileIdentity ??= Object.freeze({ device: identity.dev, inode: identity.ino });
+      }
       const existingVersion = existed ? this.#admitExistingSchema() : undefined;
       if (existed) {
         const actual = ProfileDatabaseBindingSchema.parse(this.#database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get());
@@ -1818,6 +1852,7 @@ export class AuthorityDatabase implements Disposable {
       readAppSettings(this.#database);
       this.#database.exec("COMMIT");
       this.#credentialCommandIds = commandId => {
+        if (purpose === "stopped-logout-settlement") return stoppedLogoutOwnsCredentialCommand(this.#admission, commandId);
         if (credentials === undefined) throw new CredentialContextRequiredError();
         assertCredentialStoreOwner(credentials, this.#admission);
         return credentials.ownsCommandId(commandId);
@@ -2241,10 +2276,263 @@ export class AuthorityDatabase implements Disposable {
     return sqliteBackup(this.#database, destination, { rate: 100 });
   }
 
+  assertPendingLogoutCompletion(admission: RuntimeAdmission, operation: LogoutOperation): void {
+    const state = this.#logoutCompletion;
+    if (!this.#closed || state?.admission !== admission || canonicalJsonStringify(state.operation) !== canonicalJsonStringify(operation)) throw new Error("profile-logout-native-completion-required");
+    const file = lstatSync(state.path);
+    if (!file.isFile() || file.nlink !== 1 || privatePathRejects(state.path, file, "owner")
+      || file.dev !== operation.source.database.device || file.ino !== operation.source.database.inode) throw new Error("profile-logout-completion-source-changed");
+    const observed = withReadonlyAuthoritySnapshot(state.path, native => inspectNativeAuthority(native, CURRENT_AUTHORITY_SCHEMA_VERSION));
+    if (observed.installationId !== state.binding.installationId || observed.profileId !== state.binding.profileId
+      || observed.authorityContentFingerprint !== operation.settlement?.after) throw new Error("profile-logout-completion-source-changed");
+  }
+
+  async #completePendingLogout(admission: RuntimeAdmission, profileBrowserClosure: ProfileBrowserClosure): Promise<void> {
+    try {
+      if (this.#logoutCompletion === undefined) {
+        const path = join(admission.stateRoot, "state.db"), operation = admission.assertPendingLogoutSettlementDatabase(path);
+        if (operation.settlement?.phase !== "done") throw new Error("profile-logout-settlement-incomplete");
+        const { assertCredentialCopyResourcesClosed, probeStoppedProfileBrowsersClosed, enumerateProfileCredentialMembership } = await import("../maintenance/profile-inventory.js");
+        assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
+        await probeStoppedProfileBrowsersClosed(admission, this.#clock, profileBrowserClosure);
+        const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
+        assertCredentialCopyResourcesClosed(facts);
+        const settings = facts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
+          : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
+        const { resolveConfigWithProvenance } = await import("../../app/config/resolve.js");
+        const config = resolveConfigWithProvenance(settings, { primaryDisplay: null }, this.#clock,
+          { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
+        enumerateProfileCredentialMembership(admission, facts, config.paths.browserProfileRoot, profileBrowserClosure);
+        this.#logoutCompletion = { admission, operation, path, binding: { ...admission.profileBinding } };
+      }
+      this.assertPendingLogoutCompletion(admission, this.#logoutCompletion.operation);
+      admission.completePendingLogout(this);
+    } catch (error) {
+      const failure = hasUnprovedSourceClosure(error) ? error : retainAuthoritySourceClosure([error], { database: this, admission });
+      admission.retainSourceClosure(failure); retainUnprovedSourceOwners(failure, { database: this, admission });
+      throw failure;
+    }
+  }
+
+  #logoutContext(admission: RuntimeAdmission, restore: OfflineMaintenanceOperation, profileBrowserClosure: ProfileBrowserClosure) {
+    let disposed = false;
+    return Object.freeze({ admission, restore, facts: AuthorityDatabase.readProfileMaintenanceInventory(admission),
+      complete: async (): Promise<void> => {
+        if (disposed) throw new Error("profile-logout-context-released");
+        await this.#completePendingLogout(admission, profileBrowserClosure);
+      },
+      dispose: (): void => {
+        if (disposed) return;
+        try {
+          admission.release(); this.#coldLogout?.owner.release(); restore.release(); disposed = true;
+        } catch (error) {
+          const failure = hasUnprovedSourceClosure(error) ? error : retainAuthoritySourceClosure([error], { database: this, admission, restore });
+          admission.retainSourceClosure(failure); retainUnprovedSourceOwners(failure, { database: this, admission, restore }); throw failure;
+        }
+      },
+    });
+  }
+
+  assertPendingLogoutPublication(admission: RuntimeAdmission, input: LogoutOperation): void {
+    if (this.#logoutPublication?.admission !== admission || canonicalJsonStringify(this.#logoutPublication.operation) !== canonicalJsonStringify(input)) throw new Error("profile-logout-native-publication-required");
+  }
+
+  #publishPendingLogout(admission: RuntimeAdmission, operation: LogoutOperation): void {
+    this.#logoutPublication = { admission, operation };
+    try { admission.commitPendingLogoutSettlement(operation, this); }
+    finally { this.#logoutPublication = undefined; }
+  }
+
+  static async resumePendingLogout(machine: RuntimeAdmission, input: LogoutOperation, services: PendingLogoutServices, clock: Clock = systemClock) {
+    const operation = LogoutOperationSchema.parse(input), lifetime = machine.lifetime;
+    machine.assertColdPendingLogout(operation);
+    if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("profile-logout-cold-controller-required");
+    await lifetime.awaitOwnedChildrenClosed(); machine.assertColdPendingLogout(operation);
+    const context = machine.readInstallationContext();
+    if (context === undefined) throw new Error("profile-logout-cold-controller-required");
+    const restore = lifetime.beginOfflineMaintenance(context.workspace);
+    let owner: RuntimeAdmission | undefined, admission: RuntimeAdmission | undefined, copy: RuntimeAdmission | undefined, database: AuthorityDatabase | undefined;
+    let snapshot: ReturnType<typeof createReadonlyAuthoritySnapshot> | undefined;
+    let inspection: ReturnType<RuntimeAdmission["capturePendingLogoutSnapshot"]> | undefined;
+    try {
+      machine.assertColdPendingLogout(operation);
+      owner = machine.admitProfileSettlement(operation.operationId);
+      admission = machine.forStoppedLogoutSettlement(owner, operation, restore);
+      const path = join(admission.stateRoot, "state.db");
+      inspection = admission.capturePendingLogoutSnapshot(); snapshot = inspection.snapshot; copy = inspection.admission;
+      database = new AuthorityDatabase(copy, { path: snapshot.path, busyTimeoutMs: 250, migrationOwner: "profile-logout-inspection", openMode: "storage-doctor-read-only-no-migrate" }, clock,
+        undefined, undefined, undefined, undefined, "stopped-logout-inspection");
+      database.#coldLogout = { machine, operationId: operation.operationId, admission, restore, sourcePath: path, owner, inspection };
+      const stopped = await database.settlePendingLogout(machine, operation, [], services);
+      return stopped;
+    } catch (error) {
+      const failure = hasUnprovedSourceClosure(error) ? error : retainAuthoritySourceClosure([error], { admission: { machine, owner, admission, copy }, database, snapshot, restore });
+      machine.retainSourceClosure(failure); retainUnprovedSourceOwners(failure, { admission: { machine, owner, admission, copy }, database, snapshot, restore });
+      throw failure;
+    }
+  }
+
+  async settlePendingLogout(machine: RuntimeAdmission, input: LogoutOperation,
+    exits: readonly Readonly<{ member: WorkerPoolMember; processId: number; leaseGeneration: number; valid(): boolean }>[], services: PendingLogoutServices) {
+    const operation = LogoutOperationSchema.parse(input), lifetime = machine.lifetime, cold = this.#coldLogout;
+    const profileBrowserClosure = services.browserClosure;
+    const path = cold?.sourcePath ?? this.#path;
+    const matchesMember = (slot: z.infer<typeof WorkerSlotRecordSchema>, member: WorkerPoolMember) => slot.workerId === member.workerId
+      && slot.workflow === member.workflowId && slot.ordinal === member.ordinal && slot.poolIndex === member.poolIndex && slot.membershipRevision === member.membershipRevision;
+    if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("profile-logout-controller-required");
+    await lifetime.awaitOwnedChildrenClosed();
+    try {
+      if (cold === undefined) this.#admission.assertPendingLogoutNativeClose(machine, operation);
+      else if (cold.machine !== machine || cold.operationId !== operation.operationId) throw new Error("profile-logout-cold-owner-changed");
+      else machine.assertColdPendingLogout(operation);
+    }
+    catch (error) {
+      if (hasUnprovedSourceClosure(error)) { this.#admission.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission: this.#admission, database: this }); }
+      throw error;
+    }
+    if (cold === undefined && (this.#openedFileIdentity === undefined || canonicalJsonStringify(this.#openedFileIdentity) !== canonicalJsonStringify(operation.source.database))) throw new Error("profile-logout-native-source-changed");
+    let restore: OfflineMaintenanceOperation | undefined, admission: RuntimeAdmission | undefined, copyAdmission: RuntimeAdmission | undefined, database: AuthorityDatabase | undefined;
+    let snapshot: ReturnType<typeof createReadonlyAuthoritySnapshot> | undefined;
+    let inspection: ReturnType<RuntimeAdmission["capturePendingLogoutSnapshot"]> | undefined;
+    try {
+      if (this.#closed || !this.#database.isOpen) throw new Error("profile-logout-native-source-unavailable");
+      const observed = inspectNativeAuthority(this.#database, CURRENT_AUTHORITY_SCHEMA_VERSION);
+      const source = lstatSync(path);
+      if (source.dev !== operation.source.database.device || source.ino !== operation.source.database.inode) throw new Error("profile-logout-native-source-changed");
+      this.close();
+      if (cold === undefined) {
+        const context = machine.readInstallationContext();
+        if (context === undefined) throw new Error("profile-logout-controller-required");
+        restore = lifetime.beginOfflineMaintenance(context.workspace);
+        admission = machine.forStoppedLogoutSettlement(this.#admission, operation, restore);
+      } else {
+        cold.inspection.snapshot.assertUnchanged(); cold.inspection.dispose();
+        restore = cold.restore; admission = cold.admission;
+      }
+      const afterClose = profileAuthorityFileWitnesses(admission.stateRoot);
+      const closedSource = lstatSync(path);
+      if (closedSource.dev !== operation.source.database.device || closedSource.ino !== operation.source.database.inode) throw new Error("profile-logout-native-source-changed");
+      const copied = withAuthorityDatabaseReadOnly(admission, path, native => inspectNativeAuthority(native, CURRENT_AUTHORITY_SCHEMA_VERSION));
+      if (copied.installationId !== observed.installationId || copied.profileId !== observed.profileId || copied.schemaVersion !== observed.schemaVersion
+        || copied.authorityGeneration !== observed.authorityGeneration || copied.authorityContentFingerprint !== observed.authorityContentFingerprint
+        || canonicalJsonStringify(profileAuthorityFileWitnesses(admission.stateRoot)) !== canonicalJsonStringify(afterClose)) throw new Error("profile-logout-native-source-changed");
+      inspection = admission.capturePendingLogoutSnapshot(); snapshot = inspection.snapshot; copyAdmission = inspection.admission;
+      database = new AuthorityDatabase(copyAdmission, { path: snapshot.path, busyTimeoutMs: 250, migrationOwner: "profile-logout-inspection", openMode: "storage-doctor-read-only-no-migrate" }, this.#clock,
+        undefined, undefined, undefined, undefined, "stopped-logout-inspection");
+      const { probeStoppedProfileBrowsersClosed } = await import("../maintenance/profile-inventory.js");
+      await probeStoppedProfileBrowsersClosed(admission, this.#clock, profileBrowserClosure);
+      admission.assertPendingLogoutSettlementDatabase(path);
+      if (inspectNativeAuthority(database.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint !== copied.authorityContentFingerprint
+        || canonicalJsonStringify(profileAuthorityFileWitnesses(admission.stateRoot)) !== canonicalJsonStringify(afterClose)) throw new Error("profile-logout-native-source-changed");
+      if (operation.settlement === undefined) {
+        const facts = database.readProfileResourceCustody();
+        if (cold !== undefined) this.#logoutCapturedMembers = facts.leases.map(lease => {
+          const slot = facts.slots.find(slot => slot.workerId === lease.workerId);
+          if (slot === undefined) throw new Error("profile-logout-member-source-unavailable");
+          return { member: { workflowId: slot.workflow, workerId: slot.workerId, ordinal: slot.ordinal, poolIndex: slot.poolIndex,
+            membershipRevision: slot.membershipRevision }, processId: lease.processId, leaseGeneration: lease.leaseGeneration };
+        });
+        if (this.#logoutCapturedMembers === undefined) throw new Error("profile-logout-native-members-unprepared");
+        for (const captured of this.#logoutCapturedMembers) {
+          const lease = facts.leases.find(lease => lease.workerId === captured.member.workerId), slot = facts.slots.find(slot => slot.workerId === captured.member.workerId);
+          if (lease === undefined || slot === undefined || lease.processId !== captured.processId || lease.leaseGeneration !== captured.leaseGeneration
+            || !matchesMember(slot, captured.member)) throw new Error("profile-logout-captured-generation-changed");
+        }
+        const workers = cold !== undefined ? this.#logoutCapturedMembers.filter(member => facts.leases.some(lease => lease.workerId === member.member.workerId && lease.lifecycle.state !== "stopped")
+          || facts.browsers.some(browser => browser.workerId === member.member.workerId && browser.health !== "closed")
+          || facts.duoLeases.some(lease => lease.holder.workerId === member.member.workerId && lease.state === "held")) : exits.map(exit => {
+          const slot = facts.slots.find(slot => slot.workerId === exit.member.workerId), lease = facts.leases.find(lease => lease.workerId === exit.member.workerId);
+          if (!exit.valid() || slot === undefined || lease === undefined || lease.processId !== exit.processId || lease.leaseGeneration !== exit.leaseGeneration
+            || !matchesMember(slot, exit.member)) throw new Error("profile-logout-exit-source-changed");
+          return { member: exit.member, processId: exit.processId, leaseGeneration: lease.leaseGeneration };
+        });
+        if (new Set(workers.map(worker => worker.member.workerId)).size !== workers.length
+          || facts.leases.some(lease => lease.lifecycle.state !== "stopped" && !workers.some(worker => worker.member.workerId === lease.workerId))) throw new Error("profile-logout-exit-membership-unproved");
+        const stoppedAt = this.#clock.now().toISOString();
+        const requests = facts.runs.flatMap(run => {
+          const claim = runClaim(run);
+          if (claim === undefined) return [];
+          const worker = workers.find(worker => worker.member.workerId === claim.workerId);
+          if (worker === undefined) throw new Error("profile-logout-run-owner-unproved");
+          const identity = database!.crashRunRecoveryIdentity(run.envelope.runId);
+          if (identity.workerLifetime.leaseGeneration !== worker.leaseGeneration || identity.workerLifetime.membershipRevision !== worker.member.membershipRevision) throw new Error("profile-logout-run-generation-changed");
+          return [CanonicalCrashRecoveryRequestSchema.parse({ commandId: lifecycleCommandId("logout-crash", { operationId: operation.operationId,
+            runId: run.envelope.runId, version: run.version, ...identity }), runId: run.envelope.runId, expectedVersion: run.version,
+            claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, ...identity, now: stoppedAt })];
+        });
+        snapshot.assertUnchanged();
+        this.#publishPendingLogout(admission, LogoutOperationSchema.parse({ ...operation, settlement: { phase: "prepared", stoppedAt,
+          processId: process.pid, before: copied.authorityContentFingerprint, requests, workers } }));
+      }
+      if (operation.settlement?.after === copied.authorityContentFingerprint) {
+        for (const request of operation.settlement.requests) {
+          const command = database.authority.lifecycleJournal.getCommand(request.commandId), audit = database.authority.lifecycleJournal.findAuditByCommand(request.commandId);
+          const run = database.authority.runs.get(request.runId);
+          if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "recover-crash"
+            || canonicalJsonStringify(command.request) !== canonicalJsonStringify(request) || audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
+            || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command) || audit.result.kind !== "run" || audit.result.runId !== request.runId
+            || run === undefined || run.version < audit.result.appliedVersion) throw new Error("profile-logout-recovery-receipt-unproved");
+        }
+      }
+      database.close(); database = undefined;
+      snapshot.assertUnchanged(); inspection.dispose(); inspection = undefined; copyAdmission = undefined; snapshot = undefined;
+      const prepared = admission.assertPendingLogoutSettlementDatabase(path), settlement = prepared.settlement;
+      if (settlement === undefined) throw new Error("profile-logout-settlement-unprepared");
+      if (copied.authorityContentFingerprint !== settlement.before && copied.authorityContentFingerprint !== settlement.after) throw new Error("profile-logout-settlement-source-changed");
+      if (settlement.phase === "done") {
+        if (copied.authorityContentFingerprint !== settlement.after) throw new Error("profile-logout-settlement-source-changed");
+        return this.#logoutContext(admission, restore, profileBrowserClosure);
+      }
+      const clock = capturedInstantClock(settlement.stoppedAt);
+      database = new AuthorityDatabase(admission, { path, busyTimeoutMs: 250, migrationOwner: "profile-logout-settlement", openMode: "read-write" }, clock,
+        undefined, undefined, undefined, undefined, "stopped-logout-settlement");
+      database.#logoutBatch = { admission };
+      const sourceDatabase = database;
+      database.withAuthorityTransaction(() => services.recover(sourceDatabase, prepared, lifetime));
+      database.#logoutBatch = undefined;
+      database.close();
+      const committed = admission.assertPendingLogoutSettlementDatabase(path), expected = committed.settlement;
+      const readback = withAuthorityDatabaseReadOnly(admission, path, native => inspectNativeAuthority(native, CURRENT_AUTHORITY_SCHEMA_VERSION));
+      if (expected?.phase !== "commit-intent" || expected.after !== readback.authorityContentFingerprint) throw new Error("profile-logout-settlement-readback-failed");
+      database.#publishPendingLogout(admission, LogoutOperationSchema.parse({ ...committed, settlement: { ...expected, phase: "done" } }));
+      database = undefined;
+      return this.#logoutContext(admission, restore, profileBrowserClosure);
+    } catch (error) {
+      const failure = hasUnprovedSourceClosure(error) ? error : retainAuthoritySourceClosure([error], { database: { original: this, temporary: database }, admission: { admission, copyAdmission }, snapshot, restore });
+      this.#admission.retainSourceClosure(failure); admission?.retainSourceClosure(failure);
+      retainUnprovedSourceOwners(failure, { database: { original: this, temporary: database }, admission: { admission, copyAdmission }, snapshot, restore });
+      throw failure;
+    }
+  }
+
+  capturePendingLogoutSource() {
+    this.#assertOpen(); this.#admission.assertProfileRuntime();
+    if (this.#openedFileIdentity === undefined) throw new Error("profile-logout-native-source-required");
+    const identity = lstatSync(this.#path);
+    if (!identity.isFile() || identity.nlink !== 1 || privatePathRejects(this.#path, identity, "owner")
+      || identity.dev !== this.#openedFileIdentity.device || identity.ino !== this.#openedFileIdentity.inode) throw new Error("profile-logout-native-source-changed");
+    const facts = this.readProfileResourceCustody();
+    this.#logoutCapturedMembers = Object.freeze(facts.leases.map(lease => {
+      const slot = facts.slots.find(slot => slot.workerId === lease.workerId);
+      if (slot === undefined) throw new Error("profile-logout-member-source-unavailable");
+      return Object.freeze({ member: Object.freeze({ workflowId: slot.workflow, workerId: slot.workerId, ordinal: slot.ordinal,
+        poolIndex: slot.poolIndex, membershipRevision: slot.membershipRevision }), processId: lease.processId, leaseGeneration: lease.leaseGeneration });
+    }));
+    this.#admission.assertProfileRuntime();
+    return Object.freeze({ database: this.#openedFileIdentity });
+  }
+
+  #failNativeClosure(errors: readonly unknown[]): never {
+    const failure = retainAuthoritySourceClosure(errors, { database: this.#database, admission: this.#admission });
+    this.#admission.retainSourceClosure(failure);
+    throw failure;
+  }
+
   close(): void {
     if (this.#closed) return;
     if (this.#transactionDepth !== 0) throw new Error("cannot close authority database during a transaction");
-    this.#database.close();
+    try { this.#database.close(); }
+    catch (error) { this.#failNativeClosure([error]); }
     this.#closed = true;
   }
 
@@ -3496,14 +3784,17 @@ export class AuthorityDatabase implements Disposable {
           this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
           return result;
         } catch (error) {
-          this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
-          this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
+          try {
+            this.#database.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+            this.#database.exec(`RELEASE SAVEPOINT ${savepoint}`);
+          } catch (rollback) { this.#failNativeClosure([error, rollback]); }
           this.#authorityDirty = dirtyBefore;
           this.#workerMembershipChanges = workerMembershipBefore;
           this.#authorityCommitCallbacks.splice(callbacksBefore);
           throw error;
         } finally { this.#transactionDepth -= 1; }
       }
+      this.#admitMutation();
       const witnesses = new Map(outermostOperationProof()?.witnesses);
       this.#snapshotExternalDataVersion = readIntPragma(this.#database, "data_version");
       this.#database.exec("BEGIN IMMEDIATE");
@@ -3516,6 +3807,11 @@ export class AuthorityDatabase implements Disposable {
         this.#validateExternalQuerySources("mutation", searchValidation);
         const search = createRunSearchIndex(this.#database);
         const priorSearch = search.publication();
+        if (this.#logoutBatch !== undefined) {
+          const operation = this.#logoutBatch.admission.assertPendingLogoutSettlementDatabase(this.#path), settlement = operation.settlement;
+          const before = inspectNativeAuthority(this.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint;
+          if (settlement === undefined || (before !== settlement.before && !(settlement.phase === "commit-intent" && before === settlement.after))) throw new Error("profile-logout-settlement-source-changed");
+        }
         result = work();
         for (const workflow of this.#workerMembershipChanges) requireWorkerPoolRoster(this.authority, workflow);
         if (this.#authorityDirty) {
@@ -3524,11 +3820,21 @@ export class AuthorityDatabase implements Disposable {
           search.publishChanges(this.getMeta().authorityGeneration, this.#now(), priorSearch);
         }
         revalidateOperationProof(witnesses);
+        this.#admitMutation();
         this.#assertOpen();
+        if (this.#logoutBatch !== undefined) {
+          const admission = this.#logoutBatch.admission, operation = admission.assertPendingLogoutSettlementDatabase(this.#path), settlement = operation.settlement;
+          if (settlement === undefined) throw new Error("profile-logout-settlement-unprepared");
+          const after = inspectNativeAuthority(this.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint;
+          if (settlement.phase === "prepared") this.#publishPendingLogout(admission, LogoutOperationSchema.parse({ ...operation, settlement: { ...settlement, phase: "commit-intent", after } }));
+          else if (settlement.phase !== "commit-intent" || settlement.after !== after) throw new Error("profile-logout-settlement-postimage-changed");
+          this.#assertOpen();
+        }
         this.#database.exec("COMMIT");
         if (searchValidation === "none") this.#validatedExternalDataVersion = this.#snapshotExternalDataVersion;
       } catch (error) {
-        this.#database.exec("ROLLBACK");
+        try { this.#database.exec("ROLLBACK"); }
+        catch (rollback) { this.#failNativeClosure([error, rollback]); }
         this.#authorityCommitCallbacks.splice(0);
         throw error;
       } finally {

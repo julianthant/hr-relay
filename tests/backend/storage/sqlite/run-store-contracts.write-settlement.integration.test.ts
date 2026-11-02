@@ -1,7 +1,7 @@
+import { RunClaimTokenSchema } from "../../../../src/models/run/worker.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/write-sequencer-world.js";
 import { lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { RunClaimTokenSchema } from "../../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { reconstructConfirmedOperation } from "../../../../src/models/events/confirmed-operation.js";
 import { testRunLifecycle, testRunService } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";

@@ -1,4 +1,3 @@
-import { assertPreparedProfileVerifierInput, type PreparedProfileVerifier } from "../storage/configuration/verifier-store.js";
 import type { RuntimeAdmission } from "../storage/admission/admission.js";
 import { join } from "node:path";
 import { z } from "zod";
@@ -18,8 +17,6 @@ import {
 } from "../../models/profiles/profile.js";
 import { SignUpOperationSchema, type SignUpOperation } from "../../models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-import { createCredentialStore, captureCommittedCredentialReplay } from "../storage/configuration/credential-store.js";
-import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../models/config/protected-settings.js";
 
 
 
@@ -56,27 +53,14 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
     read(): ProfileRegistryDocument {
       return read();
     },
-    publishSignUp(operation: SignUpOperation, request: unknown, verifier: PreparedProfileVerifier): ProfileRegistryRow {
+    publishSignUp(operation: SignUpOperation, profile: RuntimeAdmission): ProfileRegistryRow {
       return withProfileLock(root, () => {
         read();
         const file = readPrivateFile(join(root, "machine", "operations", `${operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
         if (file === undefined) throw new ProfileRegistryAuthorityError();
         const pending = SignUpOperationSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
         if (canonicalJsonStringify(pending) !== canonicalJsonStringify(operation)) throw new Error("profile-signup-intent-mismatch");
-        const parsed = ProtectedSettingsApplyInputSchema.parse(request);
-        if (parsed.commandId !== pending.commandId || parsed.writeId !== pending.writeId || parsed.commandFingerprint !== pending.commandFingerprint
-          || parsed.expectedRevision !== pending.expectedRevision || parsed.protectedSchemaHash !== PROTECTED_SETTINGS_SCHEMA_HASH
-          || parsed.updatedAt !== pending.createdAt) throw new Error("profile-signup-receipt-mismatch");
-        const email = parsed.entries.ucpathUserId, password = parsed.entries.ucpathPassword;
-        if (email === undefined || !("set" in email) || password === undefined || !("set" in password)) throw new Error("profile-verifier-protected-input-required");
-        assertPreparedProfileVerifierInput(verifier, email.set, password.set);
-        const capability = admission.admitProfile(pending.profileId);
-        try {
-          const store = createCredentialStore({ admission: capability, stateRoot: capability.stateRoot, erasureJournalAdmission: admission,
-            erasureJournalPath: join(root, "machine", "erasures", `${pending.profileId}.json`) });
-          const witness = captureCommittedCredentialReplay(store, parsed);
-          admission.publishProfileRegistration(pending, witness, verifier);
-        } finally { capability.release(); }
+        admission.publishProfileRegistration(profile, pending);
         const row = read().profiles.find(entry => entry.profileId === pending.profileId);
         if (row === undefined) throw new ProfileRegistryAuthorityError();
         return row;
@@ -85,7 +69,7 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
     ensureRoot(profileId: string): string {
       return ensureProfileRoot(root, z.uuid().parse(profileId));
     },
-    update(profileId: string, patch: Partial<Pick<ProfileRegistryRow, "credentialState" | "duoState" | "lastSignedInAt" | "lifecycle">>): ProfileRegistryRow {
+    update(profileId: string, patch: Partial<Pick<ProfileRegistryRow, "lastSignedInAt" | "lifecycle">>): ProfileRegistryRow {
       return withProfileLock(root, () => {
         const id = z.uuid().parse(profileId);
         const current = read();

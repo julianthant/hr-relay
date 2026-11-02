@@ -3,7 +3,6 @@ import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { withStoppedProfileMaintenanceSync, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
-import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { createParkedWriteRoundTripTestWorld } from "../../../support/helpers/backend/parked-write-round-trip-world.js";
 import { WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_IMPL_FINGERPRINT, WriteFixtureProofSchema, writeFixtureDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
@@ -23,12 +22,9 @@ import { tmpdir } from "node:os";
 import { join as join_m0 } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { composeStorageCommand as composeStorageCommand_m0 } from "../../../../src/backend/app/composition/storage-compose.js";
-import { createChatGptCredentialRepository, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { observeProcessIdentity } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createCredentialSecretSource } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { type RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { AuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { requireSecret } from "../../../../src/models/config/secrets.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
@@ -513,7 +509,7 @@ afterEach(_afterEachFixture0);
     assert.equal(after.exitCode, 0, after.output);
     assert.match(after.output, /^backup: current/mu);
   });
-  it.each(["missing", "malformed"])("refuses %s established credentials without restore writes", async (credentialState) => {
+  it.each(["missing", "malformed"])("restores SQL while preserving %s independent credentials and reporting them unavailable", async (credentialState) => {
     const p = await paths("ready"); createAuthority(p);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
@@ -535,34 +531,20 @@ afterEach(_afterEachFixture0);
         join_m0(p.repoRoot, ".tracker/control/profile-registry.json"), credentialPath].map(fileBytes);
     const entries = readdirSync(p.stateRoot).sort();
     const backupBytes = Object.fromEntries(readdirSync(p.backupDirectory).map(name => [name, readFileSync(join_m0(p.backupDirectory, name))]));
-    if (credentialState === "missing") {
-      const restored = await composeStorageCommand(rebuildRuntimeIsolation,
-        ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
-      assert.equal(restored.exitCode, 1);
-      assert.match(restored.output, /authority restore REFUSED — credential-established-document-required/u);
-      const after = [p.authorityPath, `${p.authorityPath}-wal`, `${p.authorityPath}-shm`,
-      join_m0(p.repoRoot, ".tracker/control/profile-registry.json"), credentialPath].map(fileBytes);
-      assert.equal(after.every((bytes, index) => bytes === undefined ? before[index] === undefined : before[index] !== undefined && bytes.equals(before[index])), true);
-      assert.deepEqual(readdirSync(p.stateRoot).sort(), entries);
-      assert.equal(existsSync(credentialPath), false);
-      assert.equal(existsSync(join_m0(p.stateRoot, "credentials")), true);
-      assert.doesNotThrow(() => admission.assertLive());
-      assert.equal(existsSync(join_m0(p.repoRoot, ".tracker/control/journal.json")), false);
-      const raw = new DatabaseSync(p.authorityPath, { readOnly: true });
-      try { assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { raw.close(); }
-    } else {
-      const restored = await composeStorageCommand(rebuildRuntimeIsolation,
-        ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
-      assert.equal(restored.output.includes("synthetic-malformed-credential-canary"), false);
-      assert.equal(restored.exitCode, 1);
-      assert.match(restored.output, /authority restore REFUSED — credential store protected.json is malformed/u);
-      const after = [p.authorityPath, `${p.authorityPath}-wal`, `${p.authorityPath}-shm`,
-        join_m0(p.repoRoot, ".tracker/control/profile-registry.json"), credentialPath].map(fileBytes);
-      assert.equal(after.every((bytes, index) => bytes === undefined ? before[index] === undefined : before[index] !== undefined && bytes.equals(before[index])), true);
-      assert.deepEqual(readdirSync(p.stateRoot).sort(), entries);
-      assert.equal(existsSync(join_m0(p.repoRoot, ".tracker/control/journal.json")), false);
-      assert.equal(readFileSync(credentialPath, "utf8"), "synthetic-malformed-credential-canary");
-    }
+    const restored = await composeStorageCommand(rebuildRuntimeIsolation,
+      ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
+    assert.equal(restored.exitCode, 0);
+    const report = z.object({ state: z.literal("restored"), suspectFileName: z.string(),
+      credentials: z.object({ state: z.literal("unavailable"), code: z.literal("credential-store-unavailable") }) }).parse(JSON.parse(restored.output));
+    assert.equal(restored.output.includes("synthetic-malformed-credential-canary"), false);
+    assert.deepEqual(fileBytes(credentialPath), before[4]);
+    assert.deepEqual(readFileSync(join_m0(p.stateRoot, "backups", "suspects", report.suspectFileName)), before[0]);
+    assert.deepEqual(readdirSync(p.stateRoot).sort(), entries);
+    assert.equal(existsSync(join_m0(p.stateRoot, "credentials")), true);
+    assert.throws(() => admission.assertProfileRuntime(), /profile-restore-context-expired/u);
+    assert.equal(existsSync(join_m0(p.repoRoot, ".tracker/control/journal.json")), false);
+    const raw = new DatabaseSync(p.authorityPath, { readOnly: true });
+    try { assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { raw.close(); }
     assert.deepEqual(readFileSync(keyPath), keyBytes);
     for (const [name, bytes] of Object.entries(backupBytes)) assert.deepEqual(readFileSync(join_m0(p.backupDirectory, name)), bytes);
     assert.deepEqual(readdirSync(p.backupDirectory).sort(), Object.keys(backupBytes).sort());
@@ -725,35 +707,3 @@ try {
 });
 
 }
-
-describe("storage recover-chatgpt-lock", () => {
-  it("clears a dead owner's ChatGPT lock and stage, keeps the record, and refuses a live owner", async () => {
-    const root = realpathSync(mkdtempSync(join_m0(tmpdir(), "storage-chatgpt-lock-")));
-    try {
-      mkdirSync(join_m0(root, rebuildRuntimeIsolation.artifactRoot), { recursive: true, mode: 0o700 });
-      const admission = acquireEntrypointAdmission(root, "exclusive", await runtimeLifetimeLock());
-      try {
-        const stateRoot = admission.stateRoot, repository = createChatGptCredentialRepository({ admission, stateRoot });
-        const run = () => composeStorageCommand_m0(rebuildRuntimeIsolation, ["recover-chatgpt-lock"], manualClock(new Date("2026-10-15T12:00:00.000Z")), root, admission);
-        assert.deepEqual(await run(), { output: "storage recover-chatgpt-lock: no ChatGPT credential lock", exitCode: 0 });
-        const record: ChatGptCredentialRecord = { schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: null, registration: null, session: null };
-        await repository.withLock(async tx => { tx.replace(record, null); });
-        const directory = join_m0(stateRoot, "credentials"), id = randomUUID();
-        const lockPath = join_m0(directory, ".chatgpt-account.lock"), stagePath = join_m0(directory, `.chatgpt-account.${id}.tmp`);
-        writeFileSync(lockPath, JSON.stringify({ id, pid: 2_147_483_647, identity: { platform: "linux", startToken: "stale" } }), { mode: 0o600 });
-        writeFileSync(stagePath, "interrupted account stage", { mode: 0o600 });
-        assert.deepEqual(await run(), { output: "storage recover-chatgpt-lock: cleared an abandoned ChatGPT credential lock", exitCode: 0 });
-        assert.equal(existsSync(lockPath), false);
-        assert.equal(existsSync(stagePath), false);
-        assert.deepEqual(repository.read(), record);
-        const live = observeProcessIdentity(process.pid);
-        if (live.state !== "alive") throw new Error("synthetic test process identity is unavailable");
-        writeFileSync(lockPath, JSON.stringify({ id: randomUUID(), pid: process.pid, identity: live.identity }), { mode: 0o600 });
-        const refused = await run();
-        assert.equal(refused.exitCode, 1);
-        assert.match(refused.output, /CHATGPT_CREDENTIAL_BUSY/u);
-        assert.equal(existsSync(lockPath), true);
-      } finally { admission.release(); }
-    } finally { rmSync(root, { recursive: true, force: true }); }
-  });
-});

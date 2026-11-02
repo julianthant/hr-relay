@@ -1,138 +1,135 @@
-import type { RuntimeAdmission } from '../../../../src/backend/storage/admission/admission.js';
-import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import assert from "node:assert/strict";
+import { Entry } from "@napi-rs/keyring";
 import { randomUUID } from "node:crypto";
-import { copyFileSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { it } from "vitest";
 import { composeSelectedProfileStorage } from "../../../../src/backend/app/composition/storage-compose.js";
-import { composeProfileCredentialRepairInventory, composeProfileCredentialInitializationInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
-import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
-import { createCredentialStore, readForErasure, observeCredentialPresence } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { CredentialEraseInputSchema } from "../../../../src/models/config/credential-store.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
+import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import { createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { DuoCredentialRecordSchema } from "../../../../src/models/config/duo-credential-store.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
-import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 
-const retainedRestoredErasureOwners = new Set<object>();
+const retainedRestoreOwners = new Set<object>();
+const snapshot = (paths: readonly string[]) => paths.map(path => ({ path, bytes: existsSync(path) ? readFileSync(path) : undefined }));
+const unchanged = (before: ReturnType<typeof snapshot>) => assert.deepEqual(snapshot(before.map(source => source.path)), before);
 
-for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-mutation", "never-initialized", "missing-with-history", "retained-active-engine"] as const) it(`guards restored partial-history repair with ${copy} and preserves exact original erasure identity`, async () => {
-  const held: { fixture?: Awaited<ReturnType<typeof createBoundProfileFixture>>; context?: ReturnType<typeof composeSelectedProfileStorage>;
-    session?: ReturnType<typeof createProfileSession>; child?: RuntimeAdmission;
-    settlement?: RuntimeAdmission;
-    inventoryAdmission?: RuntimeAdmission;
-    database?: DatabaseSync; primary?: unknown } = {};
-  retainedRestoredErasureOwners.add(held);
-  let primary: { error: unknown } | undefined;
-  try {
-    const f = await createBoundProfileFixture();
-    held.fixture = f;
-    const clock = manualClock(new Date("2026-10-22T12:00:00.000Z"));
-    assert.equal(AuthorityDatabase.readProfileMaintenanceInventory(f.admission).settingsAuthority.state, "never-initialized");
-    if (copy !== "never-initialized") {
-      const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission, credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
-      held.context = context;
-      await context.account.close(); context.database.close();
-      assert.equal(AuthorityDatabase.readProfileMaintenanceInventory(f.admission).settingsAuthority.state, "initialized");
-    }
-    const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot, activity: { hasUnquiescedWork: () => false },
-      repairInventory: (child, request, writer, copies) => composeProfileCredentialRepairInventory({ machine: f.machine, admission: child, clock, hostFacts: { primaryDisplay: null } })(request, writer, copies),
-      initializationInventory: (child, operation, writer, copies) => composeProfileCredentialInitializationInventory({ machine: f.machine, admission: child,
-        clock, hostFacts: { primaryDisplay: null } })(operation, writer, copies) });
-    held.session = session;
-    const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
-    assert.equal(active.state, "active");
-    if (active.state !== "active") throw new Error("genuine profile sign-in refused");
-    const child = f.machine.admitProfile(active.profileId);
-    held.child = child;
-    const journalPath = join(f.machine.stateRoot, "machine", "erasures", `${active.profileId}.json`);
-    const store = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalAdmission: f.machine, erasureJournalPath: journalPath });
-    const path = join(child.stateRoot, "credentials", "protected.json"), older = readFileSync(path), prior = store.read();
-    const request = ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), writeId: randomUUID(), commandFingerprint: "d".repeat(64),
-      expectedRevision: prior.revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: clock.now().toISOString(),
-      entries: { ucpathPassword: { set: "synthetic-newer-erased-value" } } });
-    assert.equal(store.apply(request).state, "applied");
-    const erased = session.logOut(active.token, { at: clock.now().toISOString() });
-    assert.equal(erased.state, "refused");
-    if (erased.state !== "refused" || erased.operationId === undefined) throw new Error("exact retained logout operation required");
-    const operationPath = join(f.machine.stateRoot, "machine", "operations", `${erased.operationId}.json`);
-    const operation = LogoutOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
-    f.machine.publishProfileOperation({ ...operation, phase: "erasing" });
-    const settlement = f.machine.admitProfileSettlement(erased.operationId);
-    held.settlement = settlement;
-    const retained = createCredentialStore({ admission: settlement, stateRoot: settlement.stateRoot, erasureJournalAdmission: f.machine, erasureJournalPath: journalPath,
-      ...(copy === "missing-owner" ? {} : { repairInventory: (request, writer, copies) => {
-        const inventory = composeProfileCredentialRepairInventory({ machine: f.machine, admission: settlement, clock, hostFacts: { primaryDisplay: null } })(request, writer, copies);
-        if (copy === "membership-mutation") writeFileSync(join(f.stateRoot, "unowned.json"), "{}", { mode: 0o600 });
-        return inventory;
-      } }) });
-    const erase = CredentialEraseInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId, expectedRevision: operation.expectedRevision,
-      commandFingerprint: "b".repeat(64), protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: operation.at });
-    {
-      writeFileSync(path, older, { mode: 0o600 });
-      const passiveBefore = readFileSync(path), passiveHead = readFileSync(journalPath), passiveAnchor = readFileSync(`${journalPath}.authority`);
-      assert.throws(() => observeCredentialPresence(retained, settlement), /profile-settlement-credential-read-refused/u);
-      assert.equal(readFileSync(path).equals(passiveBefore), true);
-      assert.equal(readFileSync(journalPath).equals(passiveHead), true);
-      assert.equal(readFileSync(`${journalPath}.authority`).equals(passiveAnchor), true);
-      assert.throws(() => store.read(), error => {
-        if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
-        return true;
-      });
-      const stage = join(f.stateRoot, "credentials", `.protected.${randomUUID()}.${randomUUID()}.tmp`);
-      if (copy === "encrypted-stage") copyFileSync(path, stage);
-      const activeEnginePath = join(f.stateRoot, "credentials", "duo-webauthn.json");
-      if (copy === "retained-active-engine") writeFileSync(activeEnginePath, JSON.stringify({ rpId: "duosecurity.com", credentialId: "synthetic-retained-id",
-        privateKey: "synthetic-retained-key", signCount: 42, transport: "internal" }), { mode: 0o600 });
+for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-mutation", "never-initialized", "missing-with-history", "retained-active-engine"] as const)
+  it(`preserves canonical history and external counters at the real SQL restore boundary with ${copy}`, async () => {
+    const actualEntry: unknown = Entry; assert.equal(actualEntry, FakeKeyringEntry);
+    const f = await createBoundProfileFixture(), held = { fixture: f };
+    retainedRestoreOwners.add(held);
+    let primary: { error: unknown } | undefined;
+    try {
+      await (async () => {
+      const clock = manualClock(new Date("2026-11-01T12:00:00.000Z"));
+      const store = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot });
+      assert.equal(AuthorityDatabase.readProfileMaintenanceInventory(f.admission).settingsAuthority.state, "never-initialized");
+      if (copy !== "never-initialized") {
+        const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission, credentials: store,
+          clock, hostFacts: { primaryDisplay: null } });
+        await context.account.close(); context.database.close();
+        assert.equal(AuthorityDatabase.readProfileMaintenanceInventory(f.admission).settingsAuthority.state, "initialized");
+      }
+      const backupDirectory = join(f.stateRoot, "backups", "authority");
+      const originalPassword = store.read().entries.ucpathPassword?.value; assert.ok(originalPassword);
+      const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "canonical-restore-test" }, clock,
+        undefined, undefined, undefined, store);
+      let backup: Awaited<ReturnType<AuthorityBackupService["request"]>>;
+      try {
+        backup = await new AuthorityBackupService(f.admission, database, { directory: backupDirectory }, clock)
+          .request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
+      } finally { database.close(); }
+      const manifest = backup.manifests[0]; assert.ok(manifest);
+      const manifestPath = join(backupDirectory, `${manifest.backupFileName}.manifest.json`);
+      const owner = createCanonicalCredentials(f.admission), duo = owner.readRecord("duo"); assert.ok(duo);
+      const credential = DuoCredentialRecordSchema.parse(duo.value).credentials.find(row => row.state === "ready"); assert.ok(credential);
+      const reservationId = randomUUID(), reserved = owner.reserveDuoCounter(credential.credentialId, reservationId);
+      const request = ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), writeId: randomUUID(), commandFingerprint: "d".repeat(64),
+        expectedRevision: store.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: clock.now().toISOString(),
+        entries: { ucpathPassword: { set: "synthetic-post-backup-protected-value" } } });
+      const applied = store.apply(request); assert.equal(applied.state, "applied");
+      const profileId = f.admission.profileBinding.profileId;
+      const paths = [join(f.machine.stateRoot, "machine", "credential-keys", `${profileId}.json`),
+        join(f.stateRoot, "credentials", "protected.json"), join(f.machine.stateRoot, "machine", "duo-credentials", `${profileId}.json`),
+        join(f.stateRoot, "credentials", "chatgpt-account.json")];
+      const entry = new FakeKeyringEntry("Relay", `${f.admission.profileBinding.installationId}:${profileId}`), key = entry.getPassword(); assert.ok(key);
+      const backupBytes = readFileSync(join(backupDirectory, manifest.backupFileName));
+      assert.equal(backupBytes.includes(key), false); assert.equal(backupBytes.includes(Buffer.from(key, "base64")), false);
+      assert.equal(backupBytes.includes(originalPassword), false);
+      assert.equal(backupBytes.includes("synthetic-post-backup-protected-value"), false);
+      const canonicalBefore = snapshot(paths);
+      const options = { authorityPath: f.path, suspectDirectory: join(f.stateRoot, "backups", "suspects"), busyTimeoutMs: 250,
+        processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) };
+      const projection = async (path: string, operation: Parameters<OfflineAuthorityRestoreService["restore"]>[1]) => {
+        const admission = f.admission.stoppedRestoreProjection(path, operation);
+        try { const staged = AuthorityDatabase.openStoppedRestoreProjection(admission, { path, busyTimeoutMs: 250, migrationOwner: "canonical-restore-projection" }, clock); staged.close(); }
+        finally { admission.release(); }
+      };
+      if (copy === "missing-owner") {
+        const before = snapshot([f.path, ...paths]);
+        assert.throws(() => new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission, options, projection, clock), /profile-restore-credential-owner-required/u);
+        unchanged(before); assert.equal(entry.getPassword() === key, true); return;
+      }
       if (copy === "missing-with-history") {
-        const database = new DatabaseSync(f.path);
-        held.database = database;
-        database.prepare("DELETE FROM settings WHERE id='current'").run();
-        database.close();
-        const inventoryAdmission = settlement.forCredentialRepairInventory(erase);
-        held.inventoryAdmission = inventoryAdmission;
-        assert.throws(() => AuthorityDatabase.readProfileMaintenanceInventory(inventoryAdmission), /settings-current-missing-with-history/);
-        inventoryAdmission.release();
+        const source = new DatabaseSync(f.path);
+        try { source.prepare("DELETE FROM settings WHERE id='current'").run(); } finally { source.close(); }
+        const before = snapshot([f.path, ...paths]);
+        assert.throws(() => AuthorityDatabase.readProfileMaintenanceInventory(f.admission), /settings-current-missing-with-history/u);
+        unchanged(before); assert.equal(entry.getPassword() === key, true); return;
       }
-      if (copy !== "none" && copy !== "never-initialized") {
-        const before = readFileSync(path), head = readFileSync(journalPath), anchor = readFileSync(`${journalPath}.authority`);
-        if (copy === "retained-active-engine") {
-          const activeEngineBytes = readFileSync(activeEnginePath);
-          assert.throws(() => retained.erase(erase), /credential-maintenance-copy-capture-incomplete/u);
-          assert.equal(readFileSync(activeEnginePath).equals(activeEngineBytes), true);
-        } else assert.throws(() => retained.erase(erase), error => {
-        if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
-        return true;
-      });
-        assert.equal(readFileSync(path).equals(before), true); assert.equal(readFileSync(journalPath).equals(head), true);
-        assert.equal(readFileSync(`${journalPath}.authority`).equals(anchor), true);
-        if (copy === "encrypted-stage") unlinkSync(stage);
-      } else {
-      const exact = retained.erase(erase); assert.equal(exact.state, "applied");
-      const observed = readForErasure(retained, erased.operationId);
-      assert.equal(observed.revision, prior.revision + 1);
-      assert.equal(observed.entries.ucpathUserId, undefined); assert.equal(observed.entries.ucpathPassword, undefined);
-      assert.equal(retained.erase(erase).state, "applied");
-      const before = readFileSync(path);
-      assert.throws(() => retained.erase(CredentialEraseInputSchema.parse({ ...erase, expectedRevision: erase.expectedRevision - 1 })), error => {
-        if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
-        return true;
-      });
-      assert.throws(() => retained.erase(CredentialEraseInputSchema.parse({ ...erase, commandId: randomUUID() })), error => {
-        if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
-        return true;
-      });
-      assert.equal(readFileSync(path).equals(before), true);
+      let companion: string | undefined;
+      if (copy === "encrypted-stage") {
+        companion = join(f.stateRoot, "credentials", `.${profileId}.${randomUUID()}.canonical.tmp`);
+        copyFileSync(join(f.stateRoot, "credentials", "protected.json"), companion);
+      } else if (copy === "membership-mutation") {
+        companion = join(f.stateRoot, "credentials", "unowned.json"); writeFileSync(companion, "{}", { mode: 0o600, flag: "wx" });
+      } else if (copy === "retained-active-engine") {
+        companion = join(f.stateRoot, "credentials", "duo-webauthn.json");
+        writeFileSync(companion, JSON.stringify({ rpId: credential.scope.rpId, credentialId: credential.credentialId,
+          privateKey: credential.privateKeyPkcs8, signCount: reserved.count, transport: "usb" }), { mode: 0o600, flag: "wx" });
       }
+      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission, options, projection, clock, undefined, store);
+      if (companion !== undefined) {
+        const before = snapshot([f.path, ...paths, companion]);
+        await assert.rejects(restore.restore({ manifestPath }, f.admission.acquireOfflineMaintenance()), { code: "CREDENTIAL_OPERATION_PENDING" });
+        unchanged(before); assert.equal(entry.getPassword() === key, true); return;
+      }
+      const report = await restore.restore({ manifestPath }, f.admission.acquireOfflineMaintenance());
+      assert.equal(report.state, "restored"); unchanged(canonicalBefore); assert.equal(entry.getPassword() === key, true);
+      assert.throws(() => f.admission.assertProfileRuntime(), /profile-restore-context-expired/u);
+      assert.throws(() => store.read(), { code: "CREDENTIAL_UNAVAILABLE" });
+      f.renewAfterRestore();
+      const fresh = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot });
+      assert.equal(fresh.read().revision, request.expectedRevision + 1);
+      assert.equal(fresh.read().entries.ucpathPassword?.value, "synthetic-post-backup-protected-value");
+      assert.equal(fresh.ownsCommandId(request.commandId), true); assert.equal(fresh.acceptedAt(request.commandId), request.updatedAt);
+      assert.deepEqual(fresh.verifyReplay(request), applied); assert.deepEqual(fresh.apply(request), applied); unchanged(canonicalBefore);
+      const current = createCanonicalCredentials(f.admission);
+      assert.throws(() => current.reserveDuoCounter(credential.credentialId, reservationId), { code: "CREDENTIAL_CONFLICT" }); unchanged(canonicalBefore);
+      const next = current.reserveDuoCounter(credential.credentialId, randomUUID());
+      assert.equal(next.count, reserved.count + 1); assert.equal(next.revision, reserved.revision + 1);
+      for (const source of canonicalBefore.slice(1)) assert.deepEqual(readFileSync(source.path), source.bytes);
+      assert.equal(entry.getPassword() === key, true);
+      })();
+    } catch (error) { primary = { error }; }
+    if (primary !== undefined && hasUnprovedSourceClosure(primary.error)) {
+      throw retainAuthoritySourceClosure([primary.error], { admission: held });
     }
-
-  } catch (error) { primary = { error }; held.primary = error; }
-  if (primary !== undefined) throw retainAuthoritySourceClosure([primary.error], { admission: held });
-  try {
-    held.settlement?.release(); held.child?.release(); await held.fixture?.close();
-    retainedRestoredErasureOwners.delete(held);
-  } catch (error) { held.primary = error; throw retainAuthoritySourceClosure([error], { admission: held }); }
-});
+    try { await f.close(); retainedRestoreOwners.delete(held); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { admission: held }); }
+    if (primary !== undefined) {
+      const error = primary.error;
+      throw error instanceof Error ? error : new AggregateError([error], "canonical-restore-test-failed", { cause: error });
+    }
+  });

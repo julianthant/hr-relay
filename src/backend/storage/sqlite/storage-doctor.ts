@@ -1,3 +1,4 @@
+import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
 import { withOperationProof } from "../configuration/credential-safe-file.js";
 import { inspectRestoreEligibility, inspectStorageRecovery } from "./storage-recovery-status.js";
 import { verifyBackupLocationEvidence } from "./backup-location-evidence.js";
@@ -820,7 +821,8 @@ function inspectCredentialPresence(admission: RuntimeAdmission, stateRoot: strin
   try {
     if (credentials === undefined) throw new Error("credential-presence-owner-required");
     return ProtectedSettingsInspectionSchema.parse({ state: "available", entries: observeCredentialPresence(credentials, admission) });
-  } catch {
+  } catch (error) {
+    if (hasUnprovedSourceClosure(error)) { admission.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission: { admission, credentials } }); }
     return ProtectedSettingsInspectionSchema.parse({ state: "unavailable", cause: {
       code: "authority-unavailable",
       summary: `credentials in ${basename(join(stateRoot, "credentials"))} could not be verified read-only`,

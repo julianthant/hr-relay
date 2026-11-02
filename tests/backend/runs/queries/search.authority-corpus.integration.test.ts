@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { measuredSearchService } from "../../../support/helpers/backend/cross-date-search-harness.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -15,7 +15,7 @@ import { runRecordOf } from "../../../support/helpers/backend/dashboard-harness.
 import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 function corruptRunSource(raw: DatabaseSync, sql: string, ...values: (string | number | null)[]) {

@@ -7,7 +7,7 @@ import { z } from "zod";
 import type { JSONSchema } from "zod/v4/core";
 import { ConfigSchema, PROVIDER_CAPABILITY_CONFIG_KEYS, SettingsOverrideSchema } from "../../../src/models/config/schema.js";
 import { ProtectedValueSchemas } from "../../../src/models/config/protected-settings.js";
-import { SECRET_FILE_SPECS, SECRET_SPECS } from "../../../src/models/config/secrets.js";
+import { SECRET_SPECS } from "../../../src/models/config/secrets.js";
 import { RUNTIME_DEPENDENCY_REGISTRY } from "../../../src/models/runtime/runtime-dependencies.js";
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS, SETTINGS_CATALOG, SettingsCatalogRowSchema, SettingsCatalogSchema, settingsCatalogRow, ordinarySettingsObject } from "../../../src/models/config/catalog.js";
 import { gitVisibleFiles, REPO_ROOT, repoRelative } from "../support/helpers/guard-files.js";
@@ -58,11 +58,9 @@ function productionDeclarations(): ReadonlyMap<string, readonly string[]> {
 
 
 function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
-  const secretFileConfigPaths = new Set<string>(SECRET_FILE_SPECS.map(({ configPath }) => configPath));
   const ordinaryComposition = rows.filter((row) =>
     (row.sourceClass === "ordinary-settings" && !row.key.startsWith("providers."))
-    || (row.sourceClass === "runtime-isolation" && row.sensitivity === "ordinary"
-      && !secretFileConfigPaths.has(row.key))
+    || (row.sourceClass === "runtime-isolation" && row.sensitivity === "ordinary")
     || row.sourceClass === "derived-host"
   ).map(({ key }) => key);
   // Runtime-path defaults and provider accessors have their own direct source
@@ -85,7 +83,6 @@ function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
     { declaration: "defaultRuntimePaths", keys: rows.filter(({ defaultKind }) => defaultKind === "runtime-path").map(({ key }) => key) },
     { declaration: "providerInvocationConfig", keys: Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS).map((key) => `providers.${key}`) },
     { declaration: "optionalSecret", keys: SECRET_SPECS.map(({ name }) => name) },
-    { declaration: "requireSecretFile", keys: SECRET_FILE_SPECS.flatMap(({ name, configPath }) => [name, configPath]) },
     { declaration: "RUNTIME_DEPENDENCY_REGISTRY", keys: dependencySecretNames },
     { declaration: "establishHostPrimaryDisplay", keys: rows.filter(({ sourceClass }) => sourceClass === "derived-host").map(({ key }) => key) },
   ];
@@ -160,11 +157,11 @@ describe("settings catalog", () => {
     assert.deepEqual(coverageViolations(leaves), []);
     assert.deepEqual(coverageViolations([...leaves, "uncatalogued.setting"]), ["uncatalogued.setting"]);
     assert.deepEqual(coverageViolations(leaves.filter((leaf) => leaf !== "actor.label")), ["actor.label"]);
-    const external = [...SECRET_SPECS, ...SECRET_FILE_SPECS]
+    const external = SECRET_SPECS
       .map((spec) => spec.name);
     assert.deepEqual(SETTINGS_CATALOG.filter((row) => !["ordinary-settings", "runtime-isolation", "derived-host"].includes(row.sourceClass))
       .map((row) => row.key).filter((key) => key !== "activityPersonPseudonym").sort(),
-    external.filter((key) => key !== "duoWebauthnCredential").sort());
+    external.sort());
     assert.deepEqual(SETTINGS_CATALOG.filter((row) => row.sourceClass === "protected-store")
       .map((row) => row.key).sort(), Object.keys(ProtectedValueSchemas).sort());
   });
@@ -182,15 +179,15 @@ describe("settings catalog", () => {
     assert.equal(SettingsOverrideSchema.safeParse({ urls: { kuali: { test: { entry: "https://example.invalid" } } } }).success, true);
     assert.throws(() => ordinarySettingsObject("actor", z.strictObject({ id: z.string() })), /actor.label is missing/u);
   });
-  it("pins the 65-row closed registry and refuses a missing or duplicated row", () => {
-    assert.equal(SETTINGS_CATALOG.length, 65);
+  it("pins the 64-row closed registry and refuses a missing or duplicated row", () => {
+    assert.equal(SETTINGS_CATALOG.length, 64);
     assert.deepEqual(Object.fromEntries([
       "ordinary-settings", "protected-store", "derived-host", "runtime-isolation",
     ].map((sourceClass) => [sourceClass, SETTINGS_CATALOG.filter((row) => row.sourceClass === sourceClass).length])), {
       "ordinary-settings": 55,
       "protected-store": 5,
       "derived-host": 1,
-      "runtime-isolation": 4,
+      "runtime-isolation": 3,
     });
     assert.equal(SettingsCatalogSchema.safeParse(SETTINGS_CATALOG.slice(1)).success, false);
     assert.equal(SettingsCatalogSchema.safeParse([...SETTINGS_CATALOG.slice(1), SETTINGS_CATALOG[1]]).success, false);
@@ -211,7 +208,7 @@ describe("settings catalog", () => {
       ...settingsCatalogRow("ucpathPassword"), editability: "deployment",
     }).success, false);
     assert.deepEqual(SETTINGS_CATALOG.filter((row) => row.sensitivity === "protected-secret"
-      && row.sourceClass === "runtime-isolation").map((row) => row.key), ["duoWebauthnCredential"]);
+      && row.sourceClass === "runtime-isolation").map((row) => row.key), []);
   });
 
   it("matches the production settings-source reader inventory in both directions", () => {

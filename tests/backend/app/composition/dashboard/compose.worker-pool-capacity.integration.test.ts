@@ -702,8 +702,8 @@ const retainedCapacityCustody: {
     selectedAdmission.current = profile.machine.admitProfile(selectedProfileId);
     const currentAdmission = selectedAdmission.current;
     retained.selectedAdmission = currentAdmission;
-    const credentials = createCredentialStore({ admission: currentAdmission, stateRoot, erasureJournalAdmission: profile.machine,
-      erasureJournalPath: join(profile.machine.stateRoot, "machine", "erasures", `${currentAdmission.profileBinding.profileId}.json`) });
+    const credentials = createCredentialStore({ admission: currentAdmission, stateRoot,
+      });
 
     retained.credentials = credentials;
 
