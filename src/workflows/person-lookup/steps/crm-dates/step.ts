@@ -1,87 +1,66 @@
+import { CrmReadOnboardingDates } from "../../../../models/systems/crm/read-onboarding-dates.js";
+import { PersonLookupInput } from "../../../../models/workflows/person-lookup/input.js";
 import { PersonLookupResultSchema } from "../../../../models/workflows/person-lookup/result.js";
-/** `person-lookup-crm-dates` — read-only proof of the crm-dates step with its prerequisite reads. */
-import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
-import { requireFact } from "../../../../workflow-kit/workflow.js";
-import { defineWorkflowRole } from "../../../../workflow-kit/validation/module-role.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../../../models/workflow/presentation.js";
 import { derivePersonLookupOutcome } from "../../../../rules/matching/person-lookup.js";
-import {
-  PersonLookupInput,
-  PersonLookupCanonicalInput,
-  personLookupWorkflow,
-  PERSON_LOOKUP_NODE_PURPOSES,
-  SEARCHING_STEP,
-  CROSS_VERIFY_STEP,
-  ACTIVE_STATUS_STEP,
-  CRM_DATES_STEP,
-  searchingNode,
-  matchingNode,
-  searchIdentityNode,
-  crossVerifyNode,
-  crmIdentityNode,
-  selectedRecordNode,
-  crmResultsNode,
-  recoveryNode,
-  activeStatusNode,
-  crmDatesNode,
-  crmQuery,
-  CRM_IDENTITY_NODE,
-  SELECTED_RECORD_NODE,
-  SEARCH_IDENTITY_NODE,
-  ACTIVE_STATUS_NODE,
-  MATCHING_NODE,
-  CRM_DATES_NODE,
-} from "../../workflow.js";
+import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
+import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
+import { defineWorkflowStep, requireFact } from "../../../../workflow-kit/workflow.js";
+import { buildActiveStatus } from "../active-status/step.js";
+import { buildCrossVerify } from "../cross-verify/step.js";
+import { buildSearching } from "../searching/step.js";
 
-export const personLookupCrmDatesWorkflow = defineWorkflow({
-  id: "person-lookup-crm-dates",
-  version: 1,
-  code: "pld",
-  label: CRM_DATES_STEP.label,
-  summary: "Proves the Person Lookup crm-dates step with its prerequisite reads.",
-  icon: "Search",
-  category: "search",
-  input: PersonLookupInput,
-  canonicalInput: PersonLookupCanonicalInput,
-  inputSubject: personLookupWorkflow.inputSubject,
-  surface: { shape: "single" },
-  enqueue: "reject-active",
-  actions: STANDARD_WORKFLOW_ACTIONS,
-  surfaces: personLookupWorkflow.surfaces,
-  verdicts: [],
-  details: [],
-  identity: personLookupWorkflow.identity,
-  presentation: personLookupWorkflow.presentation,
-  nodePurposes: PERSON_LOOKUP_NODE_PURPOSES.filter(({ nodeId }) => [searchingNode, matchingNode, searchIdentityNode, crossVerifyNode, crmIdentityNode, selectedRecordNode, crmResultsNode, recoveryNode, activeStatusNode, crmDatesNode].some(entry => entry.id === nodeId)),
-  scenarios: personLookupWorkflow.scenarios,
-  role: defineWorkflowRole({ kind: "chunk-harness", of: "person-lookup", step: CRM_DATES_STEP.key }),
-  steps: ({ task, result }) => {
-    const searching = task(searchingNode, [], ({ input }) => {
-      if (input.mode !== "search") throw new Error("Search node requires Search mode");
-      return "emplId" in input ? { kind: "by-eid" as const, emplId: input.emplId } : { kind: "by-name" as const, name: input.name, keepNonHdh: input.keepNonHdh };
-    });
-    const matching = task(matchingNode, [searching], ({ input }) => {
-      if (input.mode !== "match") throw new Error("Match node requires Match mode");
-      return { lastName: input.lastName, firstName: input.firstName, ...(input.dob === undefined ? {} : { dob: input.dob }), ...(input.ssn === undefined ? {} : { ssn: input.ssn }) };
-    });
-    const initial = task(searchIdentityNode, [searching, matching], ({ input, outputs }) => ({ input, person: outputs.searching, match: outputs.matching }));
-    const crossVerify = task(crossVerifyNode, [initial, searching, matching], ({ input, outputs }) => crmQuery(input, outputs.searching, outputs.matching));
-    const identity = task(crmIdentityNode, [initial, crossVerify, searching, matching], ({ input, outputs }) => ({ input, person: outputs.searching, match: outputs.matching, crm: outputs["cross-verify"] }));
-    const selectedRecord = task(selectedRecordNode, [identity], ({ outputs }) => {
-      const record = requireFact(outputs["crm-identity"]?.crmRecord, "crm-identity", "crmRecord"); return record;
-    });
-    const crmResults = task(crmResultsNode, [initial, crossVerify, identity, searching, matching], ({ input, outputs }) => ({
-      query: crmQuery(input, outputs.searching, outputs.matching), records: requireFact(outputs["crm-identity"]?.unselectedCrmRecords, "crm-identity", "unselectedCrmRecords"),
-    }));
-    const recovery = task(recoveryNode, [identity, selectedRecord, crmResults], ({ outputs }) => ({ kind: "by-eid" as const, emplId: requireFact(outputs["crm-identity"]?.recoveryEid, "crm-identity", "recoveryEid") }));
-    const activeStatus = task(activeStatusNode, [initial, identity, recovery, selectedRecord, crmResults], ({ input, outputs }) => ({ input, identity: outputs["crm-identity"] ?? outputs["search-identity"], verifiedCrm: outputs["crm-selected-record"], recovered: outputs["crm-only-recovery"] }));
-    const crmDates = task(crmDatesNode, [activeStatus], ({ outputs }) => ({ eid: requireFact(outputs["active-status"]?.details.eid, "active-status", "details.eid"), ...(outputs["active-status"]?.details.name == null ? {} : { name: outputs["active-status"].details.name }) }));
-    return {
-      steps: [[SEARCHING_STEP, [searching, matching, initial]],
-        [CROSS_VERIFY_STEP, [crossVerify, identity, selectedRecord, crmResults]],
-        [ACTIVE_STATUS_STEP, [recovery, activeStatus]],
-        [CRM_DATES_STEP, [crmDates]]],
-      result: result(PersonLookupResultSchema, [initial, identity, matching, selectedRecord, crmResults, activeStatus, crmDates], ({ input, outputs }) => ({ activeStatus: outputs[ACTIVE_STATUS_NODE] ?? derivePersonLookupOutcome({ input, identity: outputs[CRM_IDENTITY_NODE] ?? outputs[SEARCH_IDENTITY_NODE], match: outputs[MATCHING_NODE], verifiedCrm: outputs[SELECTED_RECORD_NODE] }), crmDates: outputs[CRM_DATES_NODE] === undefined ? { state: "not-requested" as const } : { state: "included" as const, dates: outputs[CRM_DATES_NODE] } })),
-    };
+export const CRM_DATES_STEP = Object.freeze({
+  ...defineWorkflowStep({ key: "crm-dates", label: "Read CRM dates" }),
+  description: "Read employment and oath dates from the selected CRM record.",
+  system: "crm",
+  selection: { inputField: "includeCrmDates", selectedWhen: true },
+  operatorFields: [
+    ...[["employmentDate", "Employment date", "3/14/2031"], ["oathDate", "Oath date", "3/10/2031"]].map(([fieldPath, label, example]) => ({
+      label, example,
+      sources: [{ nodeId: "crm-dates", kind: "output" as const, fieldPath }]
+    })),
+  ],
+} as const);
+
+const crmDatesEntries = defineStepEntries(CRM_DATES_STEP);
+
+export const CRM_DATES_NODE = "crm-dates";
+
+export const crmDatesNode = crmDatesEntries.task(CRM_DATES_NODE, CrmReadOnboardingDates, {
+  replay: "checkpoint",
+  when: { kind: "is-present", of: { from: "node", nodeId: "active-status", path: "datesEid" } }
+});
+
+export function buildCrmDates(author: WorkflowAuthor<typeof PersonLookupInput>, search: ReturnType<typeof buildSearching>, crossverify: ReturnType<typeof buildCrossVerify>, activestatus: ReturnType<typeof buildActiveStatus>) {
+  const { task, result } = author;
+  const { matching, initial } = search;
+  const { identity, selectedRecord, crmResults } = crossverify;
+  const { activeStatus } = activestatus;
+  const crmDates = task(crmDatesNode, [activeStatus], ({ outputs }) => ({ eid: requireFact(outputs["active-status"]?.details.eid, "active-status", "details.eid"), ...(outputs["active-status"]?.details.name == null ? {} : { name: outputs["active-status"].details.name }) }));
+  return {
+    crmDates, steps: [[CRM_DATES_STEP, [crmDates]]] as const,
+    result: result(PersonLookupResultSchema, [initial, identity, matching, selectedRecord, crmResults, activeStatus, crmDates], ({ input, outputs }) => ({
+      activeStatus: outputs["active-status"] ?? derivePersonLookupOutcome({ input, identity: outputs["crm-identity"] ?? outputs["search-identity"], match: outputs.matching, verifiedCrm: outputs["crm-selected-record"] }),
+      crmDates: outputs["crm-dates"] === undefined ? { state: "not-requested" as const } : { state: "included" as const, dates: outputs["crm-dates"] },
+    }))
+  };
+}
+
+export const personLookupCrmDatesDefinition = defineStep({
+  group: CRM_DATES_STEP,
+  build: buildCrmDates,
+  proof: {
+    id: "person-lookup-crm-dates", order: 8,
+    build: (parent: WorkflowDefinition<typeof PersonLookupInput>) => ({
+      ...inheritStepProof(parent), code: "pld", label: CRM_DATES_STEP.label,
+      summary: "Proves the Person Lookup crm-dates step with its prerequisite reads.",
+      steps: (author: WorkflowAuthor<typeof PersonLookupInput>) => {
+        const searching = buildSearching(author);
+        const crossverify = buildCrossVerify(author, searching);
+        const activestatus = buildActiveStatus(author, searching, crossverify);
+        const built = buildCrmDates(author, searching, crossverify, activestatus);
+        return { steps: [...searching.steps, ...crossverify.steps, ...activestatus.steps, ...built.steps], result: built.result };
+      },
+    }),
   },
 });

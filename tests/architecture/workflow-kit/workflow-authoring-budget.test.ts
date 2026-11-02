@@ -11,8 +11,8 @@ import { dirname, join } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
 
-import { CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { workflowScenarioFolder, workflowSourceFolder, workflowSourcePath } from "../../../src/workflow-kit/validation/source-layout.js";
 import { gitVisibleFilesIn, REPO_ROOT } from "../support/helpers/guard-files.js";
 
@@ -307,7 +307,7 @@ export function auditWorkflowAuthoringBudget(
       if (!ts.isCallExpression(node)) return;
       const name = calleeName(node);
       if (name === undefined) return;
-      if (name === "defineWorkflow") defineWorkflowCalls += 1;
+      if (name === "defineWorkflow" || name === "defineStep") defineWorkflowCalls += 1;
       const banned = HAND_AUTHORED_CALLS.get(name);
       if (banned !== undefined) {
         violations.push(`${path}:${lineOf(source, node)} calls ${name}(): ${banned}`);

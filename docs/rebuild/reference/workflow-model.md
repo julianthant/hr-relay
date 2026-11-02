@@ -491,7 +491,7 @@ Every start surface publishes the committed run through `runQueuedSpanEvent` bef
 
 ## 8. Person Lookup
 
-`src/workflows/person-lookup/workflow.ts` declares four visible steps and ten graph nodes. Step order controls presentation. The table lists each step's nodes in declaration order.
+`src/workflows/person-lookup/workflow.ts` composes four visible steps and ten graph nodes from its step modules. Step order controls presentation. The table lists each step's nodes in declaration order.
 
 | Visible step | Node | Contract | Dependencies | Replay and condition |
 | --- | --- | --- | --- | --- |
@@ -535,3 +535,9 @@ Null and absent values omit the field, redacted values remain redacted, and reta
 unchanged. Logs collapses forwarding aliases only when declaration identity, direction and exact
 original observation cause agree. Independent observations, transitions and actions remain in order;
 missing historical lineage never becomes a match by equal label, value or time.
+
+Step modules own group metadata, typed entry wiring, omission declarations and result contributions
+through `defineStep`. Their proof recipes retain proof identity and order; `index.ts` derives each
+harness with `defineStepProof`. `inheritStepProof` shares parent ingress and presentation without
+copying declarations. Specialized proof ingress remains explicit in `StepProofSpec`. Workflow
+composition uses typed build results, without runtime group or entry lookups.

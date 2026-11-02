@@ -1,16 +1,40 @@
-import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
-import { defineWorkflowRole } from "../../../../workflow-kit/validation/module-role.js";
+import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
 import { OnboardingMatchHireSubject } from "../../../../models/workflows/onboarding/match-hire-subject.js";
-import { onboardingWorkflow, CRM_DATA_STEP, UCPATH_SEARCH_STEP, ONBOARDING_NODE_PURPOSES } from "../../workflow.js";
+import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
+import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
+import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
+import { searchPersonMatchTask } from "../../tasks/search-person-match.js";
+import { buildCrmData } from "../crm-data/step.js";
 
-const crm = onboardingWorkflow.steps[0], group = onboardingWorkflow.steps[1];
-const subject = group?.[1].find(entry => entry.id === "hire-subject");
-if (crm === undefined || group === undefined || subject === undefined) throw new Error("Onboarding UCPath proof requires its prerequisite checkpoints");
+const group = defineWorkflowStep({ key: "ucpath-search", label: "Check UCPath duplicates" });
+const entries = defineStepEntries(group);
 
-export const onboardingUcpathSearchWorkflow = defineWorkflow({
-  ...onboardingWorkflow, id: "onboarding-ucpath-search", code: "onu", label: UCPATH_SEARCH_STEP.label, details: [],
-  role: defineWorkflowRole({ kind: "chunk-harness", of: "onboarding", step: UCPATH_SEARCH_STEP.key }),
-  nodePurposes: ONBOARDING_NODE_PURPOSES.filter(node => [...crm[1], ...group[1]].some(entry => entry.id === node.nodeId)),
-  steps: ({ result }) => ({ steps: [[CRM_DATA_STEP, crm[1]], [UCPATH_SEARCH_STEP, group[1]]],
-    result: result(OnboardingMatchHireSubject.output, [subject], ({ outputs }) => OnboardingMatchHireSubject.output.parse(outputs["hire-subject"])) }),
+export function buildUcpathSearch(author: WorkflowAuthor<typeof OnboardingInput>, crm: ReturnType<typeof buildCrmData>) {
+  const call = searchPersonMatchTask(group);
+  const matches = author.task(call.identity, [crm.plan], ({ outputs }) => call.bind({ input: outputs["hire-plan"].employee }));
+  const subject = author.task(entries.task("hire-subject", OnboardingMatchHireSubject, { replay: "always-rerun" }), [crm.plan, matches], ({ input, outputs }) => ({
+    mode: input.mode, firstName: outputs["hire-plan"].employee.firstName, lastName: outputs["hire-plan"].employee.lastName,
+    match: outputs["ucpath-source"],
+  }));
+  return { matches, subject, steps: [[group, [matches, subject]]] as const,
+    result: author.result(OnboardingMatchHireSubject.output, [subject], ({ outputs }) => OnboardingMatchHireSubject.output.parse(outputs["hire-subject"])) };
+}
+
+export const onboardingUcpathSearchDefinition = defineStep({
+  group, build: buildUcpathSearch,
+  nodePurposes: [
+    { nodeId: "ucpath-source", purpose: "Read UCPath duplicate candidates using the validated legal name and identifiers." },
+    { nodeId: "hire-subject", purpose: "Keep unresolved UCPath identities separate from a new hire." },
+  ],
+  proof: {
+    id: "onboarding-ucpath-search", order: 1,
+    build: (parent: WorkflowDefinition<typeof OnboardingInput>) => ({
+      ...inheritStepProof(parent), code: "onu", label: group.label, summary: parent.summary,
+      steps: (author: WorkflowAuthor<typeof OnboardingInput>) => {
+        const crm = buildCrmData(author);
+        const ucpath = buildUcpathSearch(author, crm);
+        return { steps: [...crm.steps, ...ucpath.steps], result: ucpath.result };
+      },
+    }),
+  },
 });

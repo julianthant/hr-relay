@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
+import { compileWorkflow, workflowExplorerDeclaration } from "../../../src/workflow-kit/workflow-definition.js";
 import { descriptorRuntimeNodes, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
 import { crmStore } from "../../../src/backend/systems/crm/task-registry.js";
 import { createDeterministicCrmOnboardingDriver } from "../../../src/backend/systems/crm/driver/fake.js";
@@ -10,7 +10,9 @@ import { CrmReadOnboardingDates } from "../../../src/models/systems/crm/read-onb
 import { readHireDataTask } from "../../../src/backend/systems/crm/tasks/read-hire-data.js";
 import { readHirePlanTask } from "../../../src/workflows/onboarding/tasks/read-hire-plan.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
-import { onboardingWorkflow, ONBOARDING_STEPS, i9LookupInput, i9LookupItemId } from "../../../src/workflows/onboarding/workflow.js";
+import { onboardingWorkflow } from "../../../src/workflows/onboarding/workflow.js";
+import { i9LookupInput, i9LookupItemId } from "../../../src/workflows/onboarding/steps/i9-search/step.js";
+import { SearchPersonMatch } from "../../../src/models/systems/ucpath/search-person-match.js";
 import { registration } from "../../../src/workflows/onboarding/index.js";
 import { ONBOARDING_INPUT_EXAMPLE } from "../../../src/models/workflows/onboarding/input.js";
 import { OnboardingReadHirePlan } from "../../../src/models/workflows/onboarding/read-hire-plan.js";
@@ -56,10 +58,41 @@ describe("unregistered onboarding workflow", () => {
       ["crm-source", "hire-plan"], ["ucpath-source", "hire-subject"], ["i9-lookup-child", "i9-lookup"], ["i9-profile-plan"],
     ]);
     for (const [index, proof] of registration.proofs.entries()) {
-      assert.deepEqual(proof.definition.role, { kind: "chunk-harness", of: "onboarding", step: ONBOARDING_STEPS[index]?.key });
+      assert.deepEqual(proof.definition.role, { kind: "chunk-harness", of: "onboarding", step: descriptor.timeline[index]?.key });
     }
+    assert.equal(onboardingWorkflow.steps[0]?.[1][0]?.contracts[0], CrmReadHireData);
+    assert.equal(onboardingWorkflow.steps[1]?.[1][0]?.contracts[0], SearchPersonMatch);
     assert.equal(crmStore.tasks.readHireData.contract.id, "crm/read-hire-data");
     assert.ok(nodes.every(node => node.kind !== "transaction"));
+  });
+
+  it("preserves the read graph dependencies and exact task contracts", () => {
+    assert.deepEqual(workflowExplorerDeclaration(onboardingWorkflow).flatMap(group => group.entries), [
+      { id: "crm-source", kind: "task", nodeIds: ["crm-source"], dependsOn: [], taskIds: ["crm/read-hire-data"] },
+      { id: "hire-plan", kind: "task", nodeIds: ["hire-plan"], dependsOn: ["crm-source"], taskIds: ["workflow:onboarding/read-hire-plan"] },
+      { id: "ucpath-source", kind: "task", nodeIds: ["ucpath-source"], dependsOn: ["hire-plan"], taskIds: ["ucpath/search-person-match"] },
+      { id: "hire-subject", kind: "task", nodeIds: ["hire-subject"], dependsOn: ["hire-plan", "ucpath-source"], taskIds: ["workflow:onboarding/match-hire-subject"] },
+      { id: "i9-lookup-child", kind: "delegate", nodeIds: ["i9-lookup-child"], dependsOn: ["hire-plan", "hire-subject"], taskIds: [] },
+      { id: "i9-lookup", kind: "task", nodeIds: ["i9-lookup"], dependsOn: ["hire-plan", "hire-subject", "i9-lookup-child"], taskIds: ["workflow:onboarding/read-i9-lookup"] },
+      { id: "i9-profile-plan", kind: "task", nodeIds: ["i9-profile-plan"], dependsOn: ["hire-plan", "i9-lookup"], taskIds: ["workflow:onboarding/read-i9-profile-plan"] },
+    ]);
+    assert.deepEqual(onboardingWorkflow.result.references.map(reference => reference.id), ["hire-plan", "hire-subject", "i9-profile-plan"]);
+  });
+
+  it("preserves proof identities, shared ingress and every safety prerequisite", () => {
+    assert.deepEqual(registration.proofs.map(proof => [proof.definition.id, proof.definition.code, proof.order]), [
+      ["onboarding-crm-data", "onc", 0], ["onboarding-ucpath-search", "onu", 1],
+      ["onboarding-i9-search", "onis", 2], ["onboarding-i9-profile-creation", "onip", 3],
+    ]);
+    const entryIds = ["crm-source", "hire-plan", "ucpath-source", "hire-subject", "i9-lookup-child", "i9-lookup", "i9-profile-plan"];
+    const proofSizes = [2, 4, 6, 7];
+    const targets = ["hire-plan", "hire-subject", "i9-lookup", "i9-profile-plan"];
+    for (const [index, proof] of registration.proofs.entries()) {
+      assert.equal(proof.definition.input, onboardingWorkflow.input);
+      assert.equal(proof.definition.canonicalInput, onboardingWorkflow.canonicalInput);
+      assert.deepEqual(proof.definition.steps.flatMap(([, entries]) => entries.map(entry => entry.id)), entryIds.slice(0, proofSizes[index]));
+      assert.deepEqual(proof.definition.result.references.map(reference => reference.id), [targets[index]]);
+    }
   });
 
   it("delegates only new hires to the actual I-9 child schemas using snapshot legal names", () => {

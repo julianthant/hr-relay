@@ -17,6 +17,29 @@ describe("workflow definition compiler", () => {
 
 
 describe("manifest task owners", () => {
+  it("fingerprints inherited parent metadata even when the step recipe has no parent import", () => {
+    const root = mkdtempSync(join(tmpdir(), "relay-proof-parent-"));
+    try {
+      for (const name of ["typescript", "zod"]) {
+        const folder = join(root, "node_modules", name);
+        mkdirSync(folder, { recursive: true });
+        writeFileSync(join(folder, "package.json"), JSON.stringify({ version: "1.0.0" }));
+      }
+      const parent = join(root, "src/workflows/example/workflow.ts");
+      const step = join(root, "src/workflows/example/steps/read/step.ts");
+      mkdirSync(dirname(step), { recursive: true });
+      writeFileSync(parent, 'export const parent = defineWorkflow({ id: "example", label: "First" });\n');
+      writeFileSync(step, 'export const read = defineStep({ group: {}, proof: { id: "example-read", order: 0, build: () => ({}) } });\n');
+      const first = computeBuildManifest(root).workflows.find(workflow => workflow.id === "example-read");
+      expect(first?.sources.map(source => source.path)).toEqual([
+        "src/workflows/example/steps/read/step.ts", "src/workflows/example/workflow.ts",
+      ]);
+      writeFileSync(parent, 'export const parent = defineWorkflow({ id: "example", label: "Changed" });\n');
+      const changed = computeBuildManifest(root).workflows.find(workflow => workflow.id === "example-read");
+      expect(changed?.fingerprint).not.toBe(first?.fingerprint);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("hashes workflow-owned system task calls through the workflow without inventing task implementations", () => {
     const manifest = computeBuildManifest(resolve("."));
     expect(manifest.tasks.some(task => task.id === "ucpath/search-person-match")).toBe(true);

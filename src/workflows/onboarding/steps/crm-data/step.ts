@@ -1,16 +1,36 @@
-import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
-import { defineWorkflowRole } from "../../../../workflow-kit/validation/module-role.js";
+import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
 import { OnboardingReadHirePlan } from "../../../../models/workflows/onboarding/read-hire-plan.js";
-import { onboardingWorkflow, CRM_DATA_STEP, ONBOARDING_NODE_PURPOSES } from "../../workflow.js";
+import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
+import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
+import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
+import { readCrmDataTask } from "../../tasks/read-crm-data.js";
 
-const group = onboardingWorkflow.steps[0];
-const plan = group?.[1].find(entry => entry.id === "hire-plan");
-if (group === undefined || plan === undefined) throw new Error("Onboarding CRM proof requires the authored hire-plan checkpoint");
+const group = defineWorkflowStep({ key: "crm-data", label: "Read and validate hire data" });
+const entries = defineStepEntries(group);
 
-export const onboardingCrmDataWorkflow = defineWorkflow({
-  ...onboardingWorkflow, id: "onboarding-crm-data", code: "onc", label: CRM_DATA_STEP.label, details: [],
-  role: defineWorkflowRole({ kind: "chunk-harness", of: "onboarding", step: CRM_DATA_STEP.key }),
-  nodePurposes: ONBOARDING_NODE_PURPOSES.filter(node => group[1].some(entry => entry.id === node.nodeId)),
-  steps: ({ result }) => ({ steps: [[CRM_DATA_STEP, group[1]]],
-    result: result(OnboardingReadHirePlan.output, [plan], ({ outputs }) => OnboardingReadHirePlan.output.parse(outputs["hire-plan"])) }),
+export function buildCrmData(author: WorkflowAuthor<typeof OnboardingInput>) {
+  const call = readCrmDataTask(group);
+  const source = author.task(call.identity, [], call.bind);
+  const plan = author.task(entries.task("hire-plan", OnboardingReadHirePlan, { replay: "checkpoint" }), [source], ({ input, outputs }) => ({
+    crm: outputs["crm-source"], roster: input.roster,
+    ...(input.postalCodeOverride === undefined ? {} : { postalCodeOverride: input.postalCodeOverride }),
+    ...(input.configuredJobEndDate === undefined ? {} : { configuredJobEndDate: input.configuredJobEndDate }),
+  }));
+  return { source, plan, steps: [[group, [source, plan]]] as const,
+    result: author.result(OnboardingReadHirePlan.output, [plan], ({ outputs }) => OnboardingReadHirePlan.output.parse(outputs["hire-plan"])) };
+}
+
+export const onboardingCrmDataDefinition = defineStep({
+  group, build: buildCrmData,
+  nodePurposes: [
+    { nodeId: "crm-source", purpose: "Read the exact email-bound CRM hire record through the existing driver task." },
+    { nodeId: "hire-plan", purpose: "Validate hire values using legal and lived names from the supplied run-start roster snapshot." },
+  ],
+  proof: {
+    id: "onboarding-crm-data", order: 0,
+    build: (parent: WorkflowDefinition<typeof OnboardingInput>) => ({
+      ...inheritStepProof(parent), code: "onc", label: group.label, summary: parent.summary,
+      steps: buildCrmData,
+    }),
+  },
 });

@@ -1,14 +1,14 @@
 
 import assert from "node:assert/strict";
-import { describe,it } from "vitest";
+import { describe, it } from "vitest";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import {
-EXPLORER_SOURCE_ROOT,
-buildWorkflowExplorer,
-readScenarioSources,
-type ExplorerModuleView,
+  EXPLORER_SOURCE_ROOT,
+  buildWorkflowExplorer,
+  readScenarioSources,
+  type ExplorerModuleView,
 } from "../../../../src/backend/runs/queries/explorer.js";
 import {
   ExplorerWorkflowWireSchema,
@@ -18,22 +18,23 @@ import {
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import {
-DelegationEdgeIdSchema,
-FingerprintSchema,
-ItemIdSchema,
-WorkflowIdSchema,
+  DelegationEdgeIdSchema,
+  FingerprintSchema,
+  ItemIdSchema,
+  WorkflowIdSchema,
 } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { workflowSourcePath } from "../../../../src/workflow-kit/validation/source-layout.js";
 import {
-compileWorkflow,
-composeWorkflowModule,
+  compileWorkflow,
+  composeWorkflowModule,
 } from "../../../../src/workflow-kit/workflow-definition.js";
 import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
-import { separationsKualiReadWorkflow } from "../../../../src/workflows/separations/steps/kuali-extraction/step.js";
+import { registration as separationsKualiReadWorkflowRegistration } from "../../../../src/workflows/separations/index.js";
 import { explorerQueryDeps } from "../../../support/fixtures/explorer-seams.js";
+const separationsKualiReadWorkflow = separationsKualiReadWorkflowRegistration.proofs[1].definition;
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 const HASH = FingerprintSchema.parse("c".repeat(64));

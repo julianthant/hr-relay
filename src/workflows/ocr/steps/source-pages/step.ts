@@ -1,19 +1,75 @@
-import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
-import { defineWorkflowRole } from "../../../../workflow-kit/validation/module-role.js";
+import { ExtractPdfPages } from "../../../../models/processing/extraction/extract-pdf-pages.js";
+import { OcrPageWorkflowInputSchema } from "../../../../models/workflows/ocr-page/input.js";
+import { OcrInputSchema } from "../../../../models/workflows/ocr/input.js";
+import { ocrLookupRequests } from "../../../../models/workflows/ocr/lookup.js";
+import { OcrPageReadingSchema } from "../../../../models/workflows/ocr/page-accounting.js";
+import { ReadOcrResult } from "../../../../models/workflows/ocr/read-result.js";
+import { ReadOcrReviewSeed } from "../../../../models/workflows/ocr/read-review-seed.js";
 import { ReadOcrSourcePages } from "../../../../models/workflows/ocr/read-source-pages.js";
-import { ocrWorkflow, OCR_SOURCE_PAGES_STEP } from "../../workflow.js";
-
-const sourceStep = ocrWorkflow.steps.find(([step]) => step.key === OCR_SOURCE_PAGES_STEP.key);
-const source = sourceStep?.[1].find(entry => entry.id === "read-source-pages");
-if (sourceStep === undefined || source === undefined) throw new Error("OCR source-page proof requires its authored source group.");
-
-export const ocrSourcePagesWorkflow = defineWorkflow({
-  id: "ocr-source-pages", version: 1, code: "os", label: "OCR source pages", summary: "Proves complete source-page rendering and manual source bindings.",
-  icon: "FileScan", category: "documents", input: ocrWorkflow.input, canonicalInput: ocrWorkflow.canonicalInput,
-  inputSubject: ocrWorkflow.inputSubject, surface: ocrWorkflow.surface, enqueue: ocrWorkflow.enqueue,
-  actions: ocrWorkflow.actions, surfaces: ocrWorkflow.surfaces, verdicts: [], details: [],
-  identity: ocrWorkflow.identity, presentation: ocrWorkflow.presentation, scenarios: ocrWorkflow.scenarios,
-  role: defineWorkflowRole({ kind: "chunk-harness", of: "ocr", step: OCR_SOURCE_PAGES_STEP.key }),
-  steps: ({ result }) => ({ steps: [sourceStep], result: result(ReadOcrSourcePages.output, [source],
-    ({ outputs }) => ReadOcrSourcePages.output.parse(outputs["read-source-pages"])) }),
+import { OcrResultSchema } from "../../../../models/workflows/ocr/result.js";
+import { PersonLookupInput } from "../../../../models/workflows/person-lookup/input.js";
+import { PersonLookupResultSchema } from "../../../../models/workflows/person-lookup/result.js";
+import { WorkflowIdSchema } from "../../../../rules/identity/ids.js";
+import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
+import { defineStep, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
+import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
+const childPolicy = Object.freeze({
+  onChildFailed: "allow-partial", cascadeCancel: "cascade",
+  afterChildRetry: "resume-parent", visibility: "inline"
+} as const);
+export const OCR_SOURCE_PAGES_STEP = Object.freeze({ ...defineWorkflowStep({ key: "source-pages", label: "Prepare source pages" }), system: "local" as const });
+export function buildSourcePages({ task, result }: WorkflowAuthor<typeof OcrInputSchema>) {
+  const rendered = task({ id: "render-pages", contract: ExtractPdfPages, replay: "checkpoint" }, [], ({ input }) => ({ document: input.document }));
+  const source = task({ id: "read-source-pages", contract: ReadOcrSourcePages, replay: "checkpoint" }, [rendered],
+    ({ input, outputs }) => ({ request: input, rendered: outputs["render-pages"] }));
+  return {
+    rendered, source, steps: [[OCR_SOURCE_PAGES_STEP, [rendered, source]]] as const,
+    result: result(ReadOcrSourcePages.output, [source], ({ outputs }) => ReadOcrSourcePages.output.parse(outputs["read-source-pages"]))
+  };
+}
+export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
+  const { task, delegate, result } = author;
+  const sourcePages = buildSourcePages(author);
+  const { source } = sourcePages;
+  const pages = delegate({
+    id: "read-pages", label: "Read every original page",
+    target: { id: WorkflowIdSchema.parse("ocr-page"), input: OcrPageWorkflowInputSchema, result: OcrPageReadingSchema },
+    edgeId: "ocr-pages", cardinality: "many", await: "terminal", join: "all-settled", policy: childPolicy
+  }, [source], {
+    bind: ({ outputs }) => outputs["read-source-pages"].pages,
+    deriveChildItemId: (_input, context) => context.canonicalItemId,
+  });
+  const review = task({ id: "build-review", contract: ReadOcrReviewSeed, replay: "checkpoint" }, [source, pages],
+    ({ input, outputs }) => ({
+      sourceRunId: input.sourceRunId, roster: input.roster, formType: input.formType,
+      manifest: outputs["read-source-pages"].manifest, readingId: input.readingId, outcomes: [...outputs["read-pages"]]
+    }));
+  const identities = delegate({
+    id: "lookup-identities", label: "Verify proposed identities",
+    target: { id: WorkflowIdSchema.parse("person-lookup"), input: PersonLookupInput, result: PersonLookupResultSchema },
+    edgeId: "ocr-identities", cardinality: "many", await: "terminal", join: "all-settled", policy: childPolicy
+  }, [review], {
+    bind: ({ outputs }) => ocrLookupRequests(outputs["build-review"]).map(request => request.input),
+    deriveChildItemId: (_input, context) => context.canonicalItemId,
+  });
+  const completed = task({ id: "read-result", contract: ReadOcrResult, replay: "checkpoint" }, [review, identities],
+    ({ outputs }) => ({ review: outputs["build-review"], outcomes: [...outputs["lookup-identities"]] }));
+  return {
+    steps: [
+      ...sourcePages.steps,
+      [{ key: "page-readings", label: "Read document pages", system: "local" }, [pages]],
+      [{ key: "review-records", label: "Group records for review", system: "local" }, [review]],
+      [{ key: "identity-lookups", label: "Look up proposed identities", system: "ucpath" }, [identities, completed]],
+    ] as const, result: result(OcrResultSchema, [completed], ({ outputs }) => outputs["read-result"])
+  };
+}
+export const ocrSourcePagesDefinition = defineStep({
+  group: OCR_SOURCE_PAGES_STEP, build: buildOcr,
+  proof: {
+    id: "ocr-source-pages", order: 0,
+    build: (parent: WorkflowDefinition<typeof OcrInputSchema>) => ({
+      ...inheritStepProof(parent),
+      code: "os", label: "OCR source pages", summary: "Proves complete source-page rendering and manual source bindings.", steps: buildSourcePages,
+    }),
+  },
 });

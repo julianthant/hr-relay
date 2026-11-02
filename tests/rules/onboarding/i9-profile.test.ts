@@ -3,7 +3,7 @@ import { describe, it } from "vitest";
 import { OnboardingReadHirePlan } from "../../../src/models/workflows/onboarding/read-hire-plan.js";
 import { OnboardingReadI9Lookup, OnboardingReadI9ProfilePlan, OnboardingI9OutcomeSchema, OnboardingI9LookupSchema } from "../../../src/models/workflows/onboarding/i9-profile.js";
 import { readOnboardingI9Lookup, readI9ProfilePlan } from "../../../src/rules/onboarding/i9-profile.js";
-import { i9LookupInput, i9LookupItemId } from "../../../src/workflows/onboarding/workflow.js";
+import { i9LookupInput, i9LookupItemId } from "../../../src/workflows/onboarding/steps/i9-search/step.js";
 
 const plan = OnboardingReadHirePlan.output.parse(OnboardingReadHirePlan.example);
 const expectedItemId = i9LookupItemId(i9LookupInput(plan));

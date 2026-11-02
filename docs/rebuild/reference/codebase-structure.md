@@ -122,9 +122,10 @@ audits without making either workflow available in production registries. Their 
 at `ocr/steps/source-pages/step.ts` and `ocr-page/steps/read-page/step.ts` in the same unregistered inventory.
 
 `src/workflows/onboarding/` is unregistered while its write and spreadsheet capabilities are pending.
-Its `index.ts` declares the store and four retained step proofs: CRM data, UCPath duplicate search,
-delegated I-9 search, and the I-9 profile-creation plan. Typed system-task calls and one implementation
-per task ID live in `tasks/`; the parent workflow owns the I-9 child input and item-ID bindings;
+Its `index.ts` derives four retained proofs from step definitions: CRM data, UCPath duplicate search,
+delegated I-9 search, and the I-9 profile-creation plan. Each step owns its group, typed wiring,
+result and proof recipe; `workflow.ts` composes their build results. Thin system calls use `reuseTask`
+under `tasks/`, alongside one implementation per pure task ID. The I-9 search step owns child input and item-ID bindings;
 pure validation and profile decisions live in `src/rules/onboarding/`. Tests compose the definition
 and proofs through `tests/support/fixtures/onboarding/unregistered-workflows.ts`. Legal/lived names
 arrive through the declared run-start roster snapshot input. I-9 profile creation and UCPath hire

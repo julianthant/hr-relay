@@ -1,18 +1,45 @@
-import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
-import { defineWorkflowRole } from "../../../../workflow-kit/validation/module-role.js";
+import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
 import { OnboardingReadI9ProfilePlan } from "../../../../models/workflows/onboarding/i9-profile.js";
-import { onboardingWorkflow, ONBOARDING_STEPS, I9_CREATE_STEP } from "../../workflow.js";
+import { OnboardingResultSchema } from "../../../../models/workflows/onboarding/result.js";
+import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
+import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
+import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
+import { buildCrmData } from "../crm-data/step.js";
+import { buildUcpathSearch } from "../ucpath-search/step.js";
+import { buildI9Search } from "../i9-search/step.js";
 
-const group = onboardingWorkflow.steps[3];
-const profile = group?.[1].find(entry => entry.id === "i9-profile-plan");
-if (group === undefined || profile === undefined) throw new Error("Onboarding profile proof requires the authored creation plan");
+const group = defineWorkflowStep({ key: "i9-profile-creation", label: "Plan I-9 profile creation" });
+const entries = defineStepEntries(group);
 
-export const onboardingI9ProfileCreationWorkflow = defineWorkflow({
-  ...onboardingWorkflow, id: "onboarding-i9-profile-creation", code: "onip", label: I9_CREATE_STEP.label, details: [],
-  role: defineWorkflowRole({ kind: "chunk-harness", of: "onboarding", step: I9_CREATE_STEP.key }),
-  steps: ({ result }) => ({ steps: onboardingWorkflow.steps.map(([, entries], index) => {
-    const step = ONBOARDING_STEPS[index];
-    if (step === undefined) throw new Error("Onboarding proof has an undeclared step");
-    return [step, entries];
-  }), result: result(OnboardingReadI9ProfilePlan.output, [profile], ({ outputs }) => OnboardingReadI9ProfilePlan.output.parse(outputs["i9-profile-plan"])) }),
+export function buildI9ProfileCreation(author: WorkflowAuthor<typeof OnboardingInput>, crm: ReturnType<typeof buildCrmData>,
+  ucpath: ReturnType<typeof buildUcpathSearch>, i9: ReturnType<typeof buildI9Search>) {
+  const profile = author.task(entries.task("i9-profile-plan", OnboardingReadI9ProfilePlan, { replay: "checkpoint" }), [crm.plan, i9.lookup], ({ outputs }) => ({
+    plan: outputs["hire-plan"], lookup: outputs["i9-lookup"],
+  }));
+  return { profile, steps: [[group, [profile]]] as const,
+    result: author.result(OnboardingResultSchema, [crm.plan, ucpath.subject, profile], ({ outputs }) => ({
+      state: "implementation-incomplete", plan: outputs["hire-plan"], subject: outputs["hire-subject"], i9: outputs["i9-profile-plan"],
+      hireWrite: { state: "unimplemented", owner: "write-safety" }, rosterAccess: { state: "unimplemented", owner: "spreadsheets" },
+    } as const)) };
+}
+
+export const onboardingI9ProfileCreationDefinition = defineStep({
+  group, build: buildI9ProfileCreation,
+  nodePurposes: [
+    { nodeId: "i9-profile-plan", purpose: "Reuse a proven profile ID or declare the unimplemented creation write without submitting." },
+  ],
+  proof: {
+    id: "onboarding-i9-profile-creation", order: 3,
+    build: (parent: WorkflowDefinition<typeof OnboardingInput>) => ({
+      ...inheritStepProof(parent), code: "onip", label: group.label, summary: parent.summary,
+      steps: (author: WorkflowAuthor<typeof OnboardingInput>) => {
+        const crm = buildCrmData(author);
+        const ucpath = buildUcpathSearch(author, crm);
+        const i9 = buildI9Search(author, crm, ucpath);
+        const creation = buildI9ProfileCreation(author, crm, ucpath, i9);
+        return { steps: [...crm.steps, ...ucpath.steps, ...i9.steps, ...creation.steps],
+          result: author.result(OnboardingReadI9ProfilePlan.output, [creation.profile], ({ outputs }) => OnboardingReadI9ProfilePlan.output.parse(outputs["i9-profile-plan"])) };
+      },
+    }),
+  },
 });
