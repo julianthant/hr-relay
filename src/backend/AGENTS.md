@@ -25,8 +25,9 @@ task starts at the repository root.
   to the immutable run/digest and retained capture metadata. Never reconstruct evidence from current
   inputs or infer purge from a deadline; preserve safe download headers.
 - Boot upgrades supported registered person databases under stopped exclusive custody with a verified
-  backup before mutation. Missing, corrupt, foreign or future authority stops admission; ordinary readers
-  accept only the current schema.
+  backup before mutation. Startup repairs corrupt or unsettled same-person authority only from a verified
+  backup preserving current write evidence and credentials; missing, foreign, future or unprovable authority
+  stops admission. Ordinary readers accept only the current schema.
 
 Before changing a seam, read the relevant
 `docs/rebuild/reference/frontend-backend-integration.md`, `dashboard-surfaces.md`, and

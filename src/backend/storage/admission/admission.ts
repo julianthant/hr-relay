@@ -29,7 +29,7 @@ import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { assertCanonicalProfileBinding,assertLiveProfileDatabaseBinding,assertProfileRestoreDatabaseBinding,readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
 import { registerRuntimeAdmission,requireRuntimeAdmission } from "./admission-identity.js";
-import { acquireInstallation,acquireStoppedProfileControlUpgrade,assertInstallationLease,assertStoppedMachineMaintenance,fixedLayoutBindings,prepareFixedLayoutPublication,PROFILE_CUSTODY_PROOF,readProfilePublicationRegistry,requireStoppedControlProfileInventory,type AuthorityRestoreInput,type AuthorityRestoreVerifier,type CompletedRestoreCustody,type ExclusiveInstallationLease,type ExistingAuthorityEvidence,type FixedLayoutPublication,type FreshInitializationWitness,type InstallationLease,type ProfilePublicationRead,type ProfileRestoreContext,type RuntimeLocator,type RuntimePair,type StoppedControlProfileInventory,type StoppedProfileControlUpgradeAdmission } from "./installation.js";
+import { acquireInstallation,acquireStoppedProfileControlUpgrade,assertInstallationLease,assertStoppedMachineMaintenance,fixedLayoutBindings,prepareFixedLayoutPublication,PROFILE_CUSTODY_PROOF,readProfilePublicationRegistry,requireStoppedControlProfileInventory,type AuthorityRestoreInput,type AuthorityRestoreVerifier,type ExclusiveInstallationLease,type ExistingAuthorityEvidence,type FixedLayoutPublication,type FreshInitializationWitness,type InstallationLease,type ProfilePublicationRead,type ProfileRestoreContext,type RuntimeLocator,type RuntimePair,type StoppedControlProfileInventory,type StoppedProfileControlUpgradeAdmission } from "./installation.js";
 import { RuntimeLifetimeLock,WorkerRuntimeLifetimeLock,type OfflineMaintenanceOperation } from "./lifetime-lock.js";
 import { assertOfflineMaintenanceForProcessRoot } from "./process-root.js";
 
@@ -115,7 +115,7 @@ type AdmissionAuthority = Readonly<{
   assertHeld(publication?: ProfilePublicationRead): void;
   captureRestoreContext?(credentials: ReturnType<typeof captureStoppedCanonicalCredentialHead>): ProfileRestoreContext;
   beginAuthorityRestore?(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void;
-  settleAuthorityRestore?(input: AuthorityRestoreInput, outcome: "unchanged" | "replaced", verify: AuthorityRestoreVerifier, restore: OfflineMaintenanceOperation): void;
+  settleAuthorityRestore?(input: AuthorityRestoreInput, verify: AuthorityRestoreVerifier, restore: OfflineMaintenanceOperation): void;
   readAuthorityRestore?(operationId: string): AuthorityRestoreInput;
   assertAuthorityRestoreCurrent?(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void;
   assertProfileRuntime?(publication?: ProfilePublicationRead): void;
@@ -148,6 +148,8 @@ export class RuntimeAdmission {
   readonly #profileBinding: ProfileDatabaseBinding | undefined;
   readonly #profileParent: RuntimeAdmission | undefined;
   readonly #pendingLogout: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }> | undefined;
+  #automaticRestore: AuthorityRestoreInput | undefined;
+  #repairSchemaVersion: 8 | 9 | 10 | 11 | undefined;
   readonly #readyUpgrade: ReadyProfileUpgrade | undefined;
   readonly #flatBackup: Readonly<{ sourcePath: string; processLockRoot: string }> | undefined;
 
@@ -438,6 +440,7 @@ export class RuntimeAdmission {
     return Object.freeze({ kind: "profile", binding: this.#profileBinding });
   }
   profileMaintenanceSchemaVersion(): 6 | 8 | 9 | 10 | 11 {
+    if (this.#repairSchemaVersion !== undefined) { this.assertLive(); return this.#repairSchemaVersion; }
     this.assertLive();
     if (this.#flatBackup !== undefined) return 6;
     const backup = this.#readyUpgrade;
@@ -476,7 +479,7 @@ export class RuntimeAdmission {
   }
   assertProfileRestoreOwner(path: string): void {
     this.assertExclusive();
-    if (this.#scope !== "profile") throw new Error("profile-bound-authority-required");
+    if (this.#scope !== "profile" && this.#scope !== "profile-maintenance") throw new Error("profile-bound-authority-required");
     if (resolve(path) !== join(this.#stateRoot, "state.db")) throw new Error("profile-restore-authority-path-refused");
     this.assertStateRoot(path);
   }
@@ -537,9 +540,9 @@ export class RuntimeAdmission {
     let machine: RuntimeAdmission = this.#profileParent ?? this;
     while (machine.#profileParent !== undefined) machine = machine.#profileParent;
     if (machine.#scope !== "installation") throw new Error("browser-registry-installation-required");
-    const registry = machine.readProfileRegistry();
+    const registry = this.#automaticRestore === undefined ? machine.readProfileRegistry() : undefined;
     return Object.freeze({ machineRoot: machine.#stateRoot, installationId: machine.locator.installationId,
-      sessionGeneration: registry.sessionGeneration, profileId: this.#profileBinding?.profileId ?? null });
+      sessionGeneration: registry?.sessionGeneration ?? this.#automaticRestore?.profile.continuity.generation ?? (() => { throw new Error("profile-restore-epoch-unavailable"); })(), profileId: this.#profileBinding?.profileId ?? null });
   }
   assertBrowserRegistryLaunch(profileId: string, signup?: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): void {
     if (signup === undefined) {
@@ -825,12 +828,19 @@ export class RuntimeAdmission {
   admitProfileSettlement(operationId: string): RuntimeAdmission {
     return this.#admitProfile(this.#captureSettlementAccess(operationId));
   }
-  #admitProfile(claim: ProfileAccess, maintenance?: OfflineMaintenanceOperation, publication = false): RuntimeAdmission {
+  admitStoppedProfileRepair(profileId: string, operation: OfflineMaintenanceOperation): RuntimeAdmission {
+    this.assertExclusive(); this.assertOfflineMaintenance(operation);
+    const registry = this.readProfileRegistry();
+    if (!registry.profiles.some(row => row.profileId === profileId && row.lifecycle === "ready" && row.credentialState === "saved")) throw new Error("profile-repair-registration-required");
+    return this.#admitProfile(this.#captureProfileAccess(profileId), operation, false, true);
+  }
+  #admitProfile(claim: ProfileAccess, maintenance?: OfflineMaintenanceOperation, publication = false, repair = false): RuntimeAdmission {
     this.assertWritable();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
-    if (maintenance !== undefined) { this.assertOfflineMaintenance(maintenance); claim.verify("runtime"); }
+    if (maintenance !== undefined) { this.assertOfflineMaintenance(maintenance); claim.verify(repair ? "issue" : "runtime"); }
     else claim.verify(publication ? "custody" : "issue");
     const root = join(this.#stateRoot, "profiles", claim.profileId);
+    let repairSchema: 8 | 9 | 10 | 11 | undefined;
     this.assertStateRoot(root);
     if (claim.phase === "setup" && !publication) {
       ensureChildDirectory(this.#stateRoot, join(this.#stateRoot, "profiles"), "profiles", 0o700, 0o700);
@@ -840,7 +850,11 @@ export class RuntimeAdmission {
         const observed = readProfileDatabaseBinding(join(root, "state.db"));
         if (observed.state === "bound") assertCanonicalProfileBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
       }
-    } else if (!publication && claim.phase === "runtime") assertLiveProfileDatabaseBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
+    } else if (repair) {
+      assertProfileRestoreDatabaseBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
+      repairSchema = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11)]).parse(readProfileDatabaseBinding(join(root, "state.db")).schemaVersion);
+    }
+    else if (!publication && claim.phase === "runtime") assertLiveProfileDatabaseBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
     else if (!publication) assertCanonicalProfileBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
     const ancestry = new Map<string, DirectoryIdentity>();
     noSymlinkAncestry(root, ancestry);
@@ -854,7 +868,7 @@ export class RuntimeAdmission {
         this.#exclusiveInstallationLease().assertProfileRestoreHeld(restoreCustody.input, restoreCustody.restore);
         return;
       }
-      if (maintenance !== undefined) claim.verify("runtime");
+      if (maintenance !== undefined) claim.verify(repair ? "issue" : "runtime");
       const proof = outermostOperationProof();
       const verified = proof?.slots.get(PROFILE_CUSTODY_PROOF);
       if (verified instanceof WeakSet && verified.has(claim)) return;
@@ -866,16 +880,16 @@ export class RuntimeAdmission {
     };
     const lease = this.#authority as InstallationLease;
     assertInstallationLease(lease);
-    return new RuntimeAdmission(issuanceToken, { assertHeld,
+    const admitted = new RuntimeAdmission(issuanceToken, { assertHeld,
       captureRestoreContext: credentials => this.#exclusiveInstallationLease().captureProfileRestore(claim.profileId, credentials),
       beginAuthorityRestore: (input, restore) => {
         if (input.profile.binding.profileId !== claim.profileId || input.profile.binding.installationId !== this.locator.installationId) throw new Error("profile-restore-binding-mismatch");
         this.#exclusiveInstallationLease().beginAuthorityRestore(input, restore);
         restoreCustody = { input, restore };
       },
-      settleAuthorityRestore: (input, outcome, verify, restore) => {
+      settleAuthorityRestore: (input, verify, restore) => {
         if (restoreCustody === undefined || restoreCustody.restore !== restore || canonicalJsonStringify(restoreCustody.input) !== canonicalJsonStringify(input)) throw new Error("profile-restore-custody-mismatch");
-        this.#exclusiveInstallationLease().settleAuthorityRestore(input, outcome, verify, restore);
+        this.#exclusiveInstallationLease().settleAuthorityRestore(input, verify, restore);
         restoreSettled = true;
       },
       assertAuthorityRestoreCurrent: (input, restore) => {
@@ -888,7 +902,7 @@ export class RuntimeAdmission {
       },
       assertProfileRuntime: publication => {
         if (restoreCustody !== undefined || restoreSettled) throw new Error("profile-restore-runtime-refused");
-        claim.verify("runtime", publication);
+        claim.verify(repair ? "issue" : "runtime", publication);
       },
       assertPendingLogoutCustody: operationId => {
         this.assertLive();
@@ -901,6 +915,8 @@ export class RuntimeAdmission {
       readInstallationContext: () => this.readInstallationContext(), release() {} }, root, join(root, "artifacts"),
       [join(root, "state.db")], maintenance !== undefined ? "profile-maintenance" : claim.phase === "setup" ? "profile-initialization" : claim.phase === "settlement" ? "profile-settlement" : "profile", this.#mode, this.#locator,
       { installationId: this.locator.installationId, profileId: claim.profileId }, this);
+    admitted.#repairSchemaVersion = repairSchema;
+    return admitted;
   }
   get stateRoot(): string { this.assertLive(); return this.#stateRoot; }
   get artifactRoot(): string { this.assertLive(); return this.#artifactRoot; }
@@ -932,7 +948,7 @@ export class RuntimeAdmission {
   }
   assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string): void {
     this.assertLive();
-    if (this.#scope === "profile" || this.#scope === "profile-maintenance" || this.#scope === "profile-upgrade") {
+    if (this.#scope === "profile" || this.#scope === "profile-maintenance" || this.#scope === "profile-upgrade" || this.#scope === "profile-restore") {
       if (this.#profileParent === undefined) throw new Error("profile-parent-context-unavailable");
       this.#profileParent.assertFixedProcessLockRoot(workspaceRoot, processLockRoot);
       return;
@@ -1114,22 +1130,6 @@ export class RuntimeAdmission {
     return prepareFixedLayoutPublication(this.#exclusiveInstallationLease(), this, this.maintenanceOperation(), intent, sources);
   }
 
-  readCompletedRestores(): readonly CompletedRestoreCustody[] {
-    this.assertLive();
-    if (this.#scope === "stopped-control-inventory" && this.#stoppedControlInventory !== undefined) {
-      const source = requireStoppedControlProfileInventory(this.#stoppedControlInventory.claim);
-      source.revalidateSource();
-      return [];
-    }
-    const { profileId } = this.profileBinding;
-    let machine: RuntimeAdmission = this.#profileParent ?? this;
-    while (machine.#profileParent !== undefined) machine = machine.#profileParent;
-    if (machine.#scope !== "installation") throw new Error("completed-restore-installation-required");
-    const authority = machine.#authority;
-    assertInstallationLease(authority);
-    return authority.readCompletedRestores(profileId);
-  }
-
   assertOfflineMaintenance(operation: OfflineMaintenanceOperation): void {
     this.assertLive();
     if (this.#profileParent !== undefined) { this.#profileParent.assertOfflineMaintenance(operation); return; }
@@ -1174,11 +1174,11 @@ export class RuntimeAdmission {
     if (this.#authority.beginAuthorityRestore === undefined) throw new Error("profile-restore-authority-required");
     this.#authority.beginAuthorityRestore(input, restore);
   }
-  settleAuthorityRestore(input: AuthorityRestoreInput, outcome: "unchanged" | "replaced", verify: AuthorityRestoreVerifier,
+  settleAuthorityRestore(input: AuthorityRestoreInput, verify: AuthorityRestoreVerifier,
     restore: OfflineMaintenanceOperation): void {
     this.assertExclusive();
     if (this.#authority.settleAuthorityRestore === undefined) throw new Error("profile-restore-authority-required");
-    this.#authority.settleAuthorityRestore(input, outcome, verify, restore);
+    this.#authority.settleAuthorityRestore(input, verify, restore);
   }
   assertAuthorityRestoreCurrent(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void {
     this.assertExclusive();
@@ -1350,14 +1350,17 @@ export class RuntimeAdmission {
       this.assertLive(); lease.assertProfileRestoreHeld(input, restore);
     };
     const root = join(this.#stateRoot, "profiles", input.profile.binding.profileId);
-    return new RuntimeAdmission(issuanceToken, { assertHeld: held,
+    const recovered = new RuntimeAdmission(issuanceToken, { assertHeld: held,
       readInstallationContext: () => this.readInstallationContext(),
+      assertAuthorityRestoreCurrent: (binding, handle) => { held(); if (handle !== restore || canonicalJsonStringify(binding) !== canonicalJsonStringify(input)) throw new Error("profile-restore-custody-mismatch"); },
       readAuthorityRestore: id => { held(); if (id !== operationId) throw new Error("profile-restore-custody-mismatch"); return input; },
-      settleAuthorityRestore: (binding, outcome, verify, handle) => {
+      settleAuthorityRestore: (binding, verify, handle) => {
         held();
         if (handle !== restore || canonicalJsonStringify(binding) !== canonicalJsonStringify(input)) throw new Error("profile-restore-custody-mismatch");
-        lease.settleAuthorityRestore(binding, outcome, verify, handle); settled = true;
+        lease.settleAuthorityRestore(binding, verify, handle); settled = true;
       }, release: () => this.release() }, root, join(root, "artifacts"), [join(root, "state.db")], "profile-restore", "exclusive", this.#locator, input.profile.binding, this);
+    recovered.#automaticRestore = input;
+    return recovered;
   }
 
   static forStoppedControlInventory(value: StoppedControlProfileInventory): RuntimeAdmission {

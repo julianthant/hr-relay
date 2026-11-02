@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import { it,vi } from "vitest";
 import { z } from "zod";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
-import { composeProfileRuntime,composeStorageCommand,runOfflineAuthorityRestoreRecovery } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime,resumePendingAutomaticRestore,restoreNewestPersonBackup } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
@@ -85,7 +85,7 @@ const _afterEachFixture0 = async () => {
   for (const close of rootClosures.splice(0)) await close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
-it("keeps the owned restoring journal after process death and absent staging until explicit exact stopped settlement", async () => {
+it("keeps the owned restoring journal after process death and absent staging until automatic exact stopped settlement", async () => {
 try {
 
   const profile = await createBoundProfileFixture();
@@ -152,9 +152,7 @@ try {
   assert.deepEqual(readFileSync(journalPath), before);
   rmSync(message.stagedPath);
   assert.throws(() => acquireEntrypointAdmission(workspace, "shared", lifetime), /unfinished restoring/u);
-  const settled = await runOfflineAuthorityRestoreRecovery(workspace, ["--operation", message.operationId,
-    "--from", message.manifestPath, "--outcome", "replaced", "--json"], lifetime);
-  assert.deepEqual(settled.report, { state: "settled", operationId: message.operationId, outcome: "replaced" });
+  await resumePendingAutomaticRestore(workspace, lifetime);
   assert.equal(existsSync(journalPath), false);
   const admission = acquireEntrypointAdmission(workspace, "shared", lifetime);
   const signedOut = admission.admitProfile(message.profileId);
@@ -200,9 +198,8 @@ it("supported single-authority restore re-checks healthy without inventing repai
     AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"preflight-restore"},clock,undefined,undefined,undefined,boundProfileCredentials(admission)).close();
     const backup=await withOfflineMaintenance(admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, admission, operation, clock, join(workspace,rebuildRuntimeIsolation.processLockRoot)).then(closure => backupStoppedAuthority(closure, admission, stateRoot, clock, join(workspace,rebuildRuntimeIsolation.processLockRoot), operation)));
     const manifest=backup.manifests.at(-1);assert.ok(manifest);
-    const path=join(stateRoot,"backups","authority",`${manifest.backupFileName}.manifest.json`);
-    const restored=await composeStorageCommand(rebuildRuntimeIsolation,["restore","--from",path,"--json"],clock,workspace,admission,boundProfileCredentials(admission));
-    assert.equal(restored.exitCode,0,restored.output);
+    const restored=await restoreNewestPersonBackup(admission,admission.acquireOfflineMaintenance(),clock);
+    assert.equal(restored.state,"restored");
     const renewed = profile.renewAfterRestore();
     assert.throws(() => admission.assertLive(), /profile-restore-context-expired|released admission/u);
     const runner=new AuthorityHealthPreflightRunner(renewed.admission,{stateRootTrustAnchor:workspace,stateRoot,authorityPath,

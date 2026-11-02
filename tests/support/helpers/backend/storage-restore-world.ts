@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { testProcessImport } from "../../compiled-process.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { randomUUID } from "node:crypto";
@@ -18,9 +19,9 @@ import { fenceWriteFixture } from "../write-fence-fixture.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT, COMMAND_FIXTURES, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
 import { seedAtomicWriteOwner } from "../timeline-write-fixture.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from 'node:path';
-import { composeStorageCommand as composeNativeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { restoreNewestPersonBackup, composeStorageCommand as composeNativeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { type RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import type { CredentialStore } from "../../../../src/models/config/credential-store.js";
@@ -62,6 +63,12 @@ export function createStorageRestoreTestWorld() {
   const attemptClosureFailures = new Set<AuthoritySourceClosureUnprovedError>();
 
   async function composeStorageCommand(isolation:typeof rebuildRuntimeIsolation,args:readonly string[],clock:typeof CLOCK,repoRoot:string){const fixture=admissions.get(repoRoot);assert.ok(fixture);return composeNativeStorageCommand(isolation,args,clock,repoRoot,fixture.admission,boundProfileCredentials(fixture.admission));}
+  async function repairAutomatically(paths: DrillPaths) {
+    const fixture = admissions.get(paths.repoRoot); assert.ok(fixture);
+    const report = await restoreNewestPersonBackup(fixture.admission, fixture.admission.acquireOfflineMaintenance(), CLOCK);
+    return { exitCode: 0, output: JSON.stringify(report) };
+  }
+
 
   async function drillPaths(): Promise<DrillPaths> {
     const fixture = await createBoundProfileFixture();
@@ -351,9 +358,8 @@ export function createStorageRestoreTestWorld() {
   }
 
   function corrupt(paths: DrillPaths): void {
-    const bytes = readFileSync(paths.authorityPath);
-    bytes.fill(0x5a, 4096, Math.min(bytes.length, 40_960));
-    writeFileSync(paths.authorityPath, bytes);
+    const database = new DatabaseSync(paths.authorityPath);
+    try { database.exec("DROP TABLE run_search"); } finally { database.close(); }
   }
 
   function pretendAliveIdentity(pid: number) {
@@ -406,6 +412,6 @@ export function createStorageRestoreTestWorld() {
     roots.splice(0);
     assert.equal(retainedAttemptScratch.size, 0, 'storage-restore-attempt-scratch-retained');
   };
-  return { CLOCK, roots, admissions, composeStorageCommand, drillPaths, attemptingDrillPaths, renewConfirmedInSuccessor,
+  return { CLOCK, roots, admissions, composeStorageCommand, repairAutomatically, drillPaths, attemptingDrillPaths, renewConfirmedInSuccessor,
     get successorPermitsIssued() { return successorPermitsIssued; }, open, seedRealShapedAuthority, takeBackup, corrupt, pretendAliveIdentity, deadPid, cleanup };
 }

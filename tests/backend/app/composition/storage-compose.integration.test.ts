@@ -1,3 +1,4 @@
+import { restoreNewestPersonBackup } from "../../../../src/backend/app/composition/storage-compose.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
@@ -34,12 +35,10 @@ import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-qu
 import { RunRecordService, workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { buildCommittedSettlement, executeSequencedWriteCommit } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
 import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { timelineEventFromRow } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
-import { SpanAuthorityReconciliationWireSchema } from "../../../../src/models/dashboard/storage.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { checkpointLookupKey } from "../../../../src/models/workflow/checkpoint.js";
 import { ActorIdSchema, LOCAL_OPERATOR_ACTOR_ID, PositiveIntSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -72,7 +71,7 @@ function ordinary(expectedRevision = 1) {
 describe("SQLite settings authority", () => {
 afterEach(_afterEachFixture0);
 
-  it("after uncertain audit, real CLI restore preserves credentials and exact retry repairs the missing audit", async () => {
+  it("after uncertain audit, automatic restore preserves credentials and exact retry repairs the missing audit", async () => {
     const f = await fixture(undefined, true); const revision = f.store.read().revision; const request = protectedCommand(revision); assert.ok(f.admission);
     f.database.close();
     const backup = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["backup"], f.clock, f.repoRoot, f.admission, f.store);
@@ -86,7 +85,8 @@ afterEach(_afterEachFixture0);
     const credentialBytes = readFileSync(credentialPath);
     assert.equal(f.store.read().revision, revision + 1);
     reopened.close();
-    const restore = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["restore", "--from", join_m0(directory, name), "--json"], f.clock, f.repoRoot, f.admission, f.store);
+    const report = await restoreNewestPersonBackup(f.admission, f.admission.acquireOfflineMaintenance(), f.clock);
+    const restore = { exitCode: 0, output: JSON.stringify(report) };
     assert.equal(restore.exitCode, 0, restore.output);
     const renewed = f.renewAfterRestore();
     assert.throws(() => f.admission!.assertLive(), /profile-restore-context-expired|released admission/u);
@@ -131,6 +131,12 @@ function openAuthority(input: z.input<typeof AuthorityDatabaseOptionsSchema>, cl
 function composeStorageCommand(isolation: Parameters<typeof composeStorageCommand_m0>[0], args: readonly string[], clock = CLOCK, repoRoot: string) {
   const admission = admissions.get(repoRoot);
   return admission === undefined ? syntheticComposeStorageCommand_m1(isolation, args, clock, repoRoot) : composeStorageCommand_m0(isolation, args, clock, repoRoot, admission, boundProfileCredentials(admission));
+}
+
+async function repairAutomatically(p: Paths, clock = CLOCK) {
+  const admission = admissions.get(p.repoRoot); assert.ok(admission);
+  const report = await restoreNewestPersonBackup(admission, admission.acquireOfflineMaintenance(), clock);
+  return { exitCode: 0, output: JSON.stringify(report) };
 }
 
 const CLOCK = manualClock(new Date("2026-09-03T12:00:00.000Z"));
@@ -206,7 +212,7 @@ function createAuthority(p: Paths): number {
 describe("cli storage backup", () => {
 afterEach(_afterEachFixture0);
 
-  it("real restore warns about displaced fenced evidence without resurrecting the run", async () => {
+  it("automatic repair refuses a backup that would discard standalone fenced evidence", async () => {
     const p = await paths("ready"); createAuthority(p);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
@@ -223,34 +229,16 @@ afterEach(_afterEachFixture0);
       traceId: e.traceId, spanPath: `${e.traceId}/synthetic-write`, parentSpanPath: e.traceId, node: "synthetic-write", taskId: "ucpath/synthetic-write" });
     assert.equal(database.authority.timelineEvents.page({}).length, 2);
     database.close();
-    const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
-    assert.equal(restore.exitCode, 0, restore.output);
-    p.renewAfterRestore();
-    const restoreReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
-    const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
-    assert.equal(doctor.exitCode, 1, doctor.output);
-    const observed = z.object({ spanAuthority: z.unknown() }).parse(JSON.parse(doctor.output));
-    assert.equal(z.object({ state: z.string() }).parse(observed.spanAuthority).state, "degraded", JSON.stringify(observed.spanAuthority));
-    const report = z.object({ spanAuthority: z.object({ state: z.literal("degraded"),
-      problems: z.array(z.object({ state: z.string(), runId: z.string(), possibleExternalWrite: z.boolean().optional() })) }) }).parse(JSON.parse(doctor.output));
-    assert.ok(report.spanAuthority.problems.some((problem) => problem.state === "missing"
-      && problem.runId === e.runId && problem.possibleExternalWrite === true));
-    const preserved = AuthorityDatabase.inspectTimelineReadOnly(admissions.get(p.repoRoot)!, join_m0(p.stateRoot, "backups", "suspects", restoreReport.suspectFileName), 500, true);
-    assert.ok(preserved.recoveryEvidence?.runs.some(run => run.runId === e.runId));
-    assert.deepEqual(preserved.records.map(record => record.payload.kind === "span" ? record.payload.event.t : record.payload.kind), ["run.queued", "transaction.fenced"]);
-    for (let count = 0; count < 2; count++) {
-      const reopened = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "missing-stays-absent" }, CLOCK);
-      try { assert.deepEqual(new RunRecordService({ database: reopened, clock: CLOCK, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("read must never publish"); } }).read(e.runId), { state: "absent", runId: e.runId });
-        assert.equal(reopened.authority.runs.get(e.runId), undefined); assert.equal(reopened.authority.deletedRuns.get(e.runId), undefined); }
-      finally { reopened.close(); }
-    }
-    const next = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "new-identity-after-restore" }, CLOCK);
-    try {
-      const nextId = randomUUID(); next.authority.runs.enqueue({ ...queued, envelope: { ...e, runId: nextId } });
-      assert.equal(next.authority.runs.get(e.runId), undefined); assert.ok(next.authority.runs.get(nextId));
-    } finally { next.close(); }
+    const before = readFileSync(p.authorityPath);
+    await assert.rejects(repairAutomatically(p), /automatic-repair-verified-backup-missing/u);
+    assert.deepEqual(readFileSync(p.authorityPath), before);
+    assert.equal(existsSync(join_m0(p.repoRoot, ".tracker", "control", "journal.json")), false);
+    const retained = AuthorityDatabase.inspectTimelineReadOnly(admissions.get(p.repoRoot)!, p.authorityPath, 500, true);
+    assert.deepEqual(retained.records.map(record => record.payload.kind === "span" ? record.payload.event.t : record.payload.kind), ["run.queued", "transaction.fenced"]);
+    const current = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "fenced-source-retained" }, CLOCK);
+    try { assert.ok(current.authority.runs.get(e.runId)); } finally { current.close(); }
   });
-  it("reports a lost write attempt even when the restored run still exists at the same version", async () => {
+  it("refuses automatic replacement that would lose an attempt even when run versions agree", async () => {
     const p = await paths("ready"); createAuthority(p);
     const snapshot = authoritySnapshot(p);
     const commit = { ...ATOMIC_WRITE_COMMIT, transaction: { ...ATOMIC_WRITE_COMMIT.transaction, configFingerprint: snapshot.fingerprint } };
@@ -276,49 +264,15 @@ afterEach(_afterEachFixture0);
       fenceWriteFixture(newer, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     }
     finally { releaseSeededWriteOwners(newer, CLOCK.now().toISOString()); newer.close(); }
-    const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
-    assert.equal(restore.exitCode, 0, restore.output);
-    p.renewAfterRestore();
-    const restoreReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
-    const preserved = AuthorityDatabase.inspectTimelineReadOnly(admissions.get(p.repoRoot)!,
-      join_m0(p.stateRoot, "backups", "suspects", restoreReport.suspectFileName), 500, true)
-      .recoveryEvidence?.runs.find(run => run.runId === WRITE_INTENT_ATTEMPTING.runId);
-    assert.ok(preserved);
-    assert.deepEqual(preserved.attemptIds, [WRITE_ATTEMPT.writeAttemptId]);
-    const current = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "same-version-restore-control" }, CLOCK);
+    const before = readFileSync(p.authorityPath);
+    await assert.rejects(repairAutomatically(p), /automatic-repair-verified-backup-missing/u);
+    assert.deepEqual(readFileSync(p.authorityPath), before);
+    const retained = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "attempt-source-retained" }, CLOCK);
     try {
-      const worker = testAdmittedWorker(current, CLOCK, { path: p.authorityPath, workflow: ATOMIC_WRITE_COMMIT.transaction.workflowId,
-        poolIndex: 2, browserSystems: [ATOMIC_WRITE_COMMIT.transaction.system] });
-      const claimed = current.authority.runs.claimNext({ workflow: worker.member.workflow, workerId: worker.workerId,
-        workerLifetime: worker.workerLifetime, now: CLOCK.now().toISOString() });
-      assert.equal(claimed.state, "claimed");
-      if (claimed.state !== "claimed") throw new Error("same-version fixture owner could not claim");
-      assert.equal(claimed.run.envelope.runId, WRITE_INTENT_ATTEMPTING.runId);
-      const service = new RunRecordService({ database: current, clock: CLOCK, ids: { uuid: randomUUID },
-        publishQueued: () => { throw new Error("same-version control must not enqueue"); } });
-      const claim = { workerId: worker.workerId, claimGeneration: claimed.run.claimGeneration };
-      for (const state of ["validating", "running"] as const) {
-        const transition = service.workerTransition({ commandId: randomUUID(), runId: claimed.run.envelope.runId, claim,
-          lifecycle: { state, workerId: worker.workerId, workerLifetime: worker.workerLifetime,
-            claimedAt: CLOCK.now().toISOString(), heartbeatAt: CLOCK.now().toISOString() } });
-        assert.equal(transition.state, "applied");
-      }
-    } finally { releaseSeededWriteOwners(current, CLOCK.now().toISOString()); current.close(); }
-    const restored = AuthorityDatabase.inspectTimelineReadOnly(admissions.get(p.repoRoot)!, p.authorityPath, 500, true)
-      .recoveryEvidence?.runs.find(run => run.runId === WRITE_INTENT_ATTEMPTING.runId);
-    assert.ok(restored);
-    assert.equal(restored.version, preserved.version);
-    assert.deepEqual(restored.attemptIds, []);
-    const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], CLOCK, p.repoRoot);
-    assert.equal(doctor.exitCode, 1, doctor.output);
-    const report = z.object({ spanAuthority: z.object({ state: z.literal("degraded"), problems: z.array(z.object({
-      state: z.string(), runId: z.string(), possibleExternalWrite: z.boolean().optional() })) }) }).parse(JSON.parse(doctor.output));
-    assert.ok(report.spanAuthority.problems.some((problem) => problem.state === "restore-loss"
-      && problem.runId === WRITE_INTENT_ATTEMPTING.runId && problem.possibleExternalWrite === true));
-    const wire = z.object({ spanAuthority: z.unknown() }).parse(JSON.parse(doctor.output));
-    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse(wire.spanAuthority).success, true);
-    const text = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor"], CLOCK, p.repoRoot);
-    assert.ok(text.output.includes("newer preserved authority evidence; possibleExternalWrite=true"));
+      assert.deepEqual(retained.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), WRITE_ATTEMPT);
+      assert.equal(retained.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.writeIntentId, WRITE_INTENT_ATTEMPTING.writeIntentId);
+    } finally { retained.close(); }
+    assert.equal(existsSync(join_m0(p.repoRoot, ".tracker", "control", "journal.json")), false);
   });
 
   it.each(["corrupt", "file-symlink", "directory-symlink", "changed-during-read"] as const)(
@@ -509,7 +463,7 @@ afterEach(_afterEachFixture0);
     assert.equal(after.exitCode, 0, after.output);
     assert.match(after.output, /^backup: current/mu);
   });
-  it.each(["missing", "malformed"])("restores SQL while preserving %s independent credentials and reporting them unavailable", async (credentialState) => {
+  it.each(["missing", "malformed"])("refuses automatic SQL repair before effects with %s current credentials", async (credentialState) => {
     const p = await paths("ready"); createAuthority(p);
     const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
     assert.equal(backup.exitCode, 0, backup.output);
@@ -531,25 +485,15 @@ afterEach(_afterEachFixture0);
         join_m0(p.repoRoot, ".tracker/control/profile-registry.json"), credentialPath].map(fileBytes);
     const entries = readdirSync(p.stateRoot).sort();
     const backupBytes = Object.fromEntries(readdirSync(p.backupDirectory).map(name => [name, readFileSync(join_m0(p.backupDirectory, name))]));
-    const restored = await composeStorageCommand(rebuildRuntimeIsolation,
-      ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], CLOCK, p.repoRoot);
-    assert.equal(restored.exitCode, 0);
-    const report = z.object({ state: z.literal("restored"), suspectFileName: z.string(),
-      credentials: z.object({ state: z.literal("unavailable"), code: z.literal("credential-store-unavailable") }) }).parse(JSON.parse(restored.output));
-    assert.equal(restored.output.includes("synthetic-malformed-credential-canary"), false);
-    assert.deepEqual(fileBytes(credentialPath), before[4]);
-    assert.deepEqual(readFileSync(join_m0(p.stateRoot, "backups", "suspects", report.suspectFileName)), before[0]);
+    await assert.rejects(repairAutomatically(p));
+    assert.deepEqual([p.authorityPath, `${p.authorityPath}-wal`, `${p.authorityPath}-shm`,
+      join_m0(p.repoRoot, ".tracker/control/profile-registry.json"), credentialPath].map(fileBytes), before);
     assert.deepEqual(readdirSync(p.stateRoot).sort(), entries);
-    assert.equal(existsSync(join_m0(p.stateRoot, "credentials")), true);
-    assert.throws(() => admission.assertProfileRuntime(), /profile-restore-context-expired/u);
     assert.equal(existsSync(join_m0(p.repoRoot, ".tracker/control/journal.json")), false);
-    const raw = new DatabaseSync(p.authorityPath, { readOnly: true });
-    try { assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { raw.close(); }
-    assert.deepEqual(readFileSync(keyPath), keyBytes);
+    assert.equal(existsSync(join_m0(p.stateRoot, "backups", "suspects")), false);
     for (const [name, bytes] of Object.entries(backupBytes)) assert.deepEqual(readFileSync(join_m0(p.backupDirectory, name)), bytes);
-    assert.deepEqual(readdirSync(p.backupDirectory).sort(), Object.keys(backupBytes).sort());
+    assert.deepEqual(readFileSync(keyPath), keyBytes);
   });
-
 });
 
 it.each([false, true])("restore confirmation evidence survives recovery accounting (backup after commit: %s)", async (backupAfterCommit) => {
@@ -671,35 +615,28 @@ try {
     assert.equal(backup.exitCode, 0, backup.output);
     manifest = readdirSync(p.backupDirectory).filter(name => name.endsWith(".manifest.json")).sort().at(-1); assert.ok(manifest);
   }
-  const restore = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", join_m0(p.backupDirectory, manifest), "--json"], clock, p.repoRoot);
+  if (!backupAfterCommit) {
+    const bytes = readFileSync(p.authorityPath);
+    await assert.rejects(repairAutomatically(p, clock), /automatic-repair-verified-backup-missing/u);
+    assert.deepEqual(readFileSync(p.authorityPath), bytes); assert.deepEqual(inspect(p.authorityPath), committed);
+    return;
+  }
+  const restore = await repairAutomatically(p, clock);
   assert.equal(restore.exitCode, 0, restore.output); p.renewAfterRestore();
   const restoredReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
   const doctor = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, p.repoRoot);
   const current = inspect(p.authorityPath), preserved = inspect(join_m0(p.stateRoot, "backups", "suspects", restoredReport.suspectFileName));
-  assert.deepEqual(current, backupAfterCommit ? committed : before); assert.deepEqual(preserved, committed);
-  assert.equal(doctor.exitCode, backupAfterCommit ? 0 : 1, doctor.output);
-  if (backupAfterCommit) {
-    const healthy = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restored-resolution-replay" }, clock);
-    try {
-      const generation = healthy.getMeta().authorityGeneration;
-      assert.equal(resolutionKernel(healthy).execute(command).state, "already-applied");
-      assert.equal(healthy.getMeta().authorityGeneration, generation);
-    } finally { healthy.close(); }
-    const accounted = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, p.repoRoot);
-    assert.equal(accounted.exitCode, 0, accounted.output);
-    assert.deepEqual(inspect(p.authorityPath), committed);
-    return;
-  }
-  const retainedUnknown = inspect(p.authorityPath);
-  assert.equal(retainedUnknown.version, before.version);
-  assert.equal(retainedUnknown.lifecycle, "parked-write");
-  assert.equal(retainedUnknown.outcome, "parked"); assert.equal(retainedUnknown.outcomeCode, "unknown"); assert.equal(retainedUnknown.checkpoint, false);
-  const doctorAfter = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, p.repoRoot);
-  assert.equal(doctorAfter.exitCode, 1, doctorAfter.output);
-  const afterReport = z.object({ spanAuthority: SpanAuthorityReconciliationWireSchema }).parse(JSON.parse(doctorAfter.output));
-  assert.equal(afterReport.spanAuthority.state, "degraded");
-  if (afterReport.spanAuthority.state !== "degraded") throw new Error("expected restore-loss warning");
-  assert.ok(afterReport.spanAuthority.problems.some(problem => problem.state === "restore-loss" && problem.runId === current.runId && problem.possibleExternalWrite === true));
+  assert.deepEqual(current, committed); assert.deepEqual(preserved, committed);
+  assert.equal(doctor.exitCode, 0, doctor.output);
+  const healthy = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "restored-resolution-replay" }, clock);
+  try {
+    const generation = healthy.getMeta().authorityGeneration;
+    assert.equal(resolutionKernel(healthy).execute(command).state, "already-applied");
+    assert.equal(healthy.getMeta().authorityGeneration, generation);
+  } finally { healthy.close(); }
+  const accounted = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, p.repoRoot);
+  assert.equal(accounted.exitCode, 0, accounted.output);
+  assert.deepEqual(inspect(p.authorityPath), committed);
 } finally {
   await _afterEachFixture0();
   await rehearsal.cleanup();

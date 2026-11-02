@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,rmSync,writeFileSync } from "node:fs";
+import { existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
 import { createChatGptAccountService } from "../../../../src/backend/accounts/chatgpt-account-service.js";
-import { composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { restoreNewestPersonBackup } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
@@ -13,6 +13,7 @@ import { createChatGptCredentialRepository,verifyChatGptCredentialStore,type Cha
 import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { DatabaseSync } from "node:sqlite";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { boundProfileCredentials,createBoundProfileFixture,withOfflineMaintenance } from "../../../support/helpers/admission-fixture.js";
@@ -51,12 +52,11 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     await repository.withLock(async tx => { tx.replace(original, null); });
     const database = AuthorityDatabase.open(profile.admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "account-maintenance" },
       clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
-    let manifest: string;
     try {
       const backup = await new AuthorityBackupService(profile.admission, database, { directory: backupDirectory }, clock).request({
         trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
       const latest = backup.manifests.at(-1); assert.ok(latest);
-      manifest = join(backupDirectory, `${latest.backupFileName}.manifest.json`);
+      assert.equal(existsSync(join(backupDirectory, `${latest.backupFileName}.manifest.json`)), true);
     } finally { database.close(); }
     assert.ok(readdirSync(backupDirectory).every(name => name.endsWith(".sqlite") || name.endsWith(".manifest.json")));
     for (const name of readdirSync(backupDirectory)) assert.equal(readFileSync(join(backupDirectory, name)).includes(Buffer.from("synthetic-before-backup")), false);
@@ -65,16 +65,15 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     const credentialPath = join(stateRoot, "credentials", "chatgpt-account.json"), currentBytes = readFileSync(credentialPath);
     const report = await withOfflineMaintenance(profile.admission, operation => upgradeStorage(profileBrowserClosure, profile.admission, { stateRoot, processLockRoot, plan: false }, clock, operation));
     assert.equal(report.credentials, "unchanged"); assert.equal(readFileSync(credentialPath).equals(currentBytes), true);
-    const damaged = readFileSync(profile.path);
-    damaged.fill(0x5a, 4096, Math.min(damaged.length, 40_960)); writeFileSync(profile.path, damaged);
+    const damaged = new DatabaseSync(profile.path);
+    try { damaged.exec("DROP TABLE run_search"); } finally { damaged.close(); }
     const previous = profile.admission;
     const damagedBytes = readFileSync(profile.path);
     const detachedRoot = realpathSync(mkdtempSync(join(tmpdir(), "standalone-restore-context-")));
     const detachedArtifacts = join(detachedRoot, "artifacts"); mkdirSync(detachedArtifacts, { mode: 0o700 });
     const detached = RuntimeAdmission.syntheticRoots(detachedRoot, detachedArtifacts);
     try {
-      await assert.rejects(composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", manifest], clock,
-        process.cwd(), detached, boundProfileCredentials(previous)), { message: "runtime-admission: exclusive installation authority required" });
+      await withOfflineMaintenance(previous, operation => assert.rejects(restoreNewestPersonBackup(detached, operation, clock), /installation-required/u));
     } finally { detached.release(); rmSync(detachedRoot, { recursive: true, force: true }); }
     assert.equal(readFileSync(profile.path).equals(damagedBytes), true);
     assert.equal(readFileSync(credentialPath).equals(currentBytes), true);
@@ -83,9 +82,8 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     profile.admission.assertFixedProcessLockRoot(profile.workspace, processLockRoot);
     assert.throws(() => profile.admission.assertFixedProcessLockRoot(process.cwd(), processLockRoot));
     assert.throws(() => profile.admission.assertFixedProcessLockRoot(profile.workspace, join(profile.workspace, "foreign-locks")));
-    const restored = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", manifest], clock, process.cwd(),
-      previous, boundProfileCredentials(previous));
-    assert.equal(restored.exitCode, 0, restored.output); assert.equal(readFileSync(credentialPath).equals(currentBytes), true);
+    const restored = await withOfflineMaintenance(previous, operation => restoreNewestPersonBackup(previous, operation, clock));
+    assert.equal(restored.state, "restored"); assert.equal(readFileSync(credentialPath).equals(currentBytes), true);
     assert.throws(() => previous.assertProfileRuntime());
     assert.throws(() => repository.read(), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
     profile.renewAfterRestore();

@@ -301,13 +301,13 @@ Duo records hold pending/ready enrolled P256 material and exact browser scope. B
 
 Protected payload schema-4 authenticates current record, value-free history, retired identities and the latest exact request. Entries remain `{valueId,value,updatedAt}`. Only the latest apply/erase request retains plaintext inside ciphertext; history contains marked operations and receipts. Current reads never run old-format migration. Apply checks expectedRevision, schema hash and command/write identity; latest exact replay succeeds, divergent/reused identities refuse, and clear removes the entry while advancing revision. Retired history remains deny-only and cannot revive a value. Documents are bounded to 16 MiB and private requests to 64,000 bytes. Settings apply commits independently before the value-free SQLite audit; failed audit cannot roll back the private commit. Protected values never enter configuration fingerprints or snapshots. The local Settings editor deliberately serves authenticated protected values; unavailable authority is unknown, never an empty default.
 
-Registry document 3 binds immutable installation ID and safe revision. Control 6 binds logical registry digest/revision/epoch, operation membership and completed-restore custody; marker 7 selects the current tuple and external browser-root registry. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
+Registry document 3 binds immutable installation ID and safe revision. Control 7 binds logical registry digest/revision/epoch and operation membership; marker 8 selects the current tuple and external browser-root registry. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
 
 SQLite precommit proofs cover registry/verifier/control evidence, registry operations. Fixed-layout claims separately bind their exact external journal. Independent credential head and record publications retain their own authenticated writer checks and do not invalidate those registry proofs.
 
 `storage upgrade --machine-control` uses the existing stopped three-file forward protocol. Supported settled prior tuples and bound SQL schemas 8–11 require genuine source inspection and durable verified credential-free SQL backup before canonical key/frame/control publication. One receipt records exact tuple backups, encrypted credential plans, source fingerprints and the verified SQL archive. Publication resumes only exact recorded source-or-published prefixes. Old credentials/key plaintext are not copied into the new archive. Old runtime readers are deleted. Unknown software Duo counter history or unsupported pending journals produce a named HOLD before mutation; no clock seed, inferred absence, key adoption or silent retirement is allowed. Completed historical artifacts remain exact preserved inventory.
 
-Offline restore replaces SQLite only. It preserves current canonical head/key/generation/floors and credentials, and retains existing source/stage/suspect/completed-restore, settings and UNKNOWN-write proofs. Same-machine native key absence refuses. Same-person restore candidate checks bind immutable IDs, current paths, and verified manifest facts before replacement.
+Offline restore replaces SQLite only. It preserves current canonical head/key/generation/floors and credentials, and retains existing source/stage/suspect, settings and UNKNOWN-write proofs. Same-machine native key absence refuses. Same-person restore candidate checks bind immutable IDs, current paths, and verified manifest facts before replacement.
 
 ### Environment and private test inputs
 
@@ -449,8 +449,7 @@ and the original failures. `upgradeProfileAtStartup` uses this same engine befor
 ordinary profile composition. It requires stopped native/process/browser resources while preserving
 queued runs, unresolved write fences and pending artifact rows exactly; the stricter manual and
 credential-copy paths continue to require retired durable work.
-A changed source fails with `source-changed: re-plan upgrade`. Recovery, backups, and restores remain
-explicit operations in their storage owners; ordinary shutdown does not create a backup.
+A changed source fails with `source-changed: re-plan upgrade`. Startup completes repair and upgrade through their stopped storage owners before ordinary admission.
 
 ### Fixed application-data startup
 
@@ -482,7 +481,9 @@ does not compare later mutable person data with the migration snapshot.
 There are no relocation commands, HTTP routes, client methods, assistant actions, or Settings plans.
 `same-person-restore-candidate.ts` retains restore identity and manifest checks.
 
-`storage recover-restore` owns interrupted restore settlement under the lifetime listener.
+Startup owns automatic same-person repair before ordinary admission, providers or HTTP. It selects the newest verified supported backup that preserves current write fences, attempts, evidence, deletion tombstones and generated-file publication records. It refuses when current critical evidence or immutable identity cannot be inspected, or when a backup would weaken it; it never unions databases. Current runtime roots must match the admitted person.
+
+The one external control `journal.json` restore record (schema 3) binds source/stage/quarantine/manifest bytes, current canonical credential head, retained files and browser membership. Replacement advances the session epoch once and clears selection. Startup resumes only its exact interrupted prefix, verifies the original manifest and preserved evidence again, and publishes a read-only repair notice with the backup time. Unknown prefixes remain held. No restore command or picker exists. Settled schema-6 control converts once under stopped exclusive custody to logical control 7 and marker 8; old physical completed-restore entries are checked during that conversion and removed from current control.
 
 ## Settings and readiness readback
 
@@ -565,7 +566,7 @@ revision and canonical retirement command. Remove-worker retirement requires
 plan-excess retirement requires `retiredAt == proof.checkedAt`. Pending or UNKNOWN commands and
 verification or recovery holds continue to block closure.
 
-Offline profile restore requires the exact workspace-bound `OfflineMaintenanceOperation` issued by the genuine root lifetime. Recovery can issue that operation before admission and passes the same object into the exclusive installation lease. Each explicit command consumes it once and retains it through validation, source IO, and owned closure. Copies, foreign roots, expired operations, and replay refuse before effects. Runtime lock artifacts from an older build produce `RUNTIME_OLD_BUILD_ARTIFACTS` without interpretation or deletion. Restore binds canonical profile SQLite, verified backup physical origin, current control, and the authenticated canonical credential head. Replacement invalidates selected sessions idempotently through the existing restore journal. Its saved prior registry document must match captured logical control, and its saved successor must be exactly one revision and session epoch forward with selection cleared before any replay writes. Recovery acknowledges the exact observed outcome without repeating replacement. Current credentials and machine evidence remain outside the SQLite payload. Whole-machine rollback without an independent retained witness refuse before staging.
+Automatic profile restore requires the exact workspace-bound `OfflineMaintenanceOperation` issued by the genuine root lifetime. Startup recovery issues that operation before admission and passes the same object into the exclusive installation lease. The automatic path consumes it once and retains it through validation, source IO and owned closure. Copies, foreign roots and expired operations refuse before effects. Older runtime lock artifacts produce `RUNTIME_OLD_BUILD_ARTIFACTS` without interpretation or deletion. Current credentials, native keys, counter floors and machine evidence stay outside the SQLite payload. Whole-machine rollback without an independent retained witness refuses before staging. Replay accepts only the captured prior or exact one-epoch successor registry/control pair and reuses that successor without advancing twice.
 
 Source snapshot removal, isolated binding/login-copy database close, authenticated source/control descriptors, stopped backup descriptors and actual restore/process-custody close paths are owned closure boundaries. Failed closure raises `AuthoritySourceClosureUnprovedError` from the pure `storage/source-closure.ts` and retains the exact failed resource privately for the failure lifetime. Validation failures remain ordinary when actual database and snapshot cleanup succeeds; an uncertain close never authorizes exclusive-admission release or automatic retry.
 

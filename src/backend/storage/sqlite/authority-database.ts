@@ -1772,11 +1772,12 @@ export class AuthorityDatabase implements Disposable {
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
     credentials?: CredentialStore,
-    purpose: "stopped-layout-source" | "stopped-layout-target" | "ordinary" | "profile-initialization" | "stopped-restore-projection" | "stopped-span-root-repair" | "stopped-logout-settlement" | "stopped-logout-inspection" = "ordinary",
+    purpose: "stopped-startup-recovery" | "stopped-layout-source" | "stopped-layout-target" | "ordinary" | "profile-initialization" | "stopped-restore-projection" | "stopped-span-root-repair" | "stopped-logout-settlement" | "stopped-logout-inspection" = "ordinary",
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
-    this.#admitMutation = purpose === "stopped-layout-target" ? () => this.#admission.assertFixedLayoutDatabase(options.path)
+    this.#admitMutation = purpose === "stopped-startup-recovery" ? () => this.#admission.assertStoppedProfile(this.#admission.maintenanceOperation())
+      : purpose === "stopped-layout-target" ? () => this.#admission.assertFixedLayoutDatabase(options.path)
       : purpose === "stopped-layout-source" ? () => { throw new Error("fixed-layout-source-read-only-required"); }
       : purpose === "ordinary" ? () => this.#admission.assertWritable()
       : purpose === "profile-initialization" ? () => this.#admission.assertProfileInitialization()
@@ -1784,7 +1785,8 @@ export class AuthorityDatabase implements Disposable {
       : purpose === "stopped-span-root-repair" ? () => this.#admission.assertStoppedProfile(this.#admission.maintenanceOperation())
       : purpose === "stopped-logout-settlement" ? () => { this.#admission.assertPendingLogoutSettlementDatabase(options.path); }
       : () => { throw new Error("profile-logout-inspection-read-only-required"); };
-    if (purpose === "stopped-layout-source") {
+    if (purpose === "stopped-startup-recovery") this.#admission.assertStoppedProfile(this.#admission.maintenanceOperation());
+    else if (purpose === "stopped-layout-source") {
       if (options.openMode === "read-write") throw new Error("fixed-layout-source-read-only-required");
       this.#admission.assertReadOnlyAuthorityDatabase(options.path);
     } else if (purpose === "stopped-layout-target") this.#admission.assertFixedLayoutDatabase(options.path);
@@ -1974,6 +1976,17 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  static readRestoreCandidateInventory(owner: RuntimeAdmission, copy: RuntimeAdmission, path: string, operation: OfflineMaintenanceOperation) {
+    owner.assertStoppedProfile(operation); copy.assertReadOnlyAuthorityDatabase(path);
+    return withAuthorityDatabaseReadOnly(copy, path, database => {
+      const version = readIntPragma(database, "user_version"), meta = readMetaRow(database), binding = owner.profileBinding;
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || ![8, 9, 10, 11].includes(version)
+        || meta.schema_version !== version || meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) throw new Error("restore-candidate-binding-mismatch");
+      const facts = Object.freeze(browserProfileInventory(database));
+      owner.assertStoppedProfile(operation); return facts;
+    });
+  }
+
   static readStoppedBrowserInventory(admission: RuntimeAdmission, processLockRoot: string, clock: Clock) {
     const owner=requireRuntimeAdmission(admission),path=join(owner.stateRoot,"state.db");
     owner.assertStoppedAuthorityBackup(path,processLockRoot);
@@ -2097,6 +2110,12 @@ export class AuthorityDatabase implements Disposable {
       assertHeld();
       return { settings: settings === undefined ? initialSettingsFileRecord().settings : settings.saved?.settings ?? settings.initialization.settings.settings };
     });
+  }
+
+  static openStoppedStartupRecovery(admission: RuntimeAdmission, clock: Clock): AuthorityDatabase {
+    admission.assertStoppedProfile(admission.maintenanceOperation());
+    return new AuthorityDatabase(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250,
+      migrationOwner: "startup-crash-recovery" }, clock, undefined, undefined, undefined, undefined, "stopped-startup-recovery");
   }
 
   static openFixedLayoutSource(machine: RuntimeAdmission, admission: RuntimeAdmission, clock: Clock): AuthorityDatabase {

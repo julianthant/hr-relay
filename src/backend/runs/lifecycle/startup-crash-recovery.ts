@@ -61,6 +61,10 @@ export function reconcileStartupCrash(input: RecoveryInput): void {
   reconcileInterruptedRuns(input, input.lock);
 }
 
+export function reconcileStoppedStartupCrash(input: RecoveryInput): void {
+  reconcileInterruptedRuns(input, input.lock, undefined, true);
+}
+
 export function reconcileExitedWorker(input: RecoveryInput & {
   workerId: string; leaseGeneration: number;
 }): void {
@@ -68,12 +72,13 @@ export function reconcileExitedWorker(input: RecoveryInput & {
 }
 
 function reconcileInterruptedRuns(input: RecoveryInput, lock: RuntimeLifetimeLock,
-  worker?: Readonly<{ workerId: string; leaseGeneration: number }>): void {
+  worker?: Readonly<{ workerId: string; leaseGeneration: number }>, stopped = false): void {
   const { machine, admission, database, lifecycle, clock } = input;
   const notify = (code: CleanupCode, identity: unknown, runId?: string) => appendRecoveryNotification(database.authority, code, identity, clock.now().toISOString(), runId);
 
   try {
-    admission.assertProfileRuntime(); machine.assertLive();
+    if (stopped) admission.assertStoppedProfile(admission.maintenanceOperation()); else admission.assertProfileRuntime();
+    machine.assertLive();
     if (!(lock instanceof RuntimeLifetimeLock)) throw new Error("crash-recovery-lock-required");
     lock.assertHeld();
     if (machine.lifetime !== lock || admission.lifetime !== lock) throw new Error("crash-recovery-controller-mismatch");

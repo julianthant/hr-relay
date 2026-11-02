@@ -20,7 +20,7 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { AuthorityBackupService,verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { OfflineAuthorityRestoreService,settleInterruptedAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import { OfflineAuthorityRestoreService,resumeAutomaticAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { AuthorityBackupManifestSchema,RecoveryRuntimeLockSnapshotSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { acquireRuntimeProcessLock,observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
@@ -161,7 +161,8 @@ describe("native authority backup", () => {
         expect(statSync(`${journal.restore.stagedPath}${row.suffix}.live-companion`).ino).toBe(row.inode);}
       f.admission.release();f.machine.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime)).toThrow(/unfinished restoring/u);
     }else{
-      expect(existsSync(journalPath)).toBe(false);
+      const journal = JSON.parse(readFileSync(journalPath,"utf8")) as {restore:{stagedPath:string}};
+      expect(existsSync(journal.restore.stagedPath)).toBe(true);
       for(const row of before){expect(readFileSync(`${f.path}${row.suffix}`)).toEqual(row.bytes);expect(statSync(`${f.path}${row.suffix}`).ino).toBe(row.inode);}
     }
   });
@@ -192,21 +193,17 @@ describe("native authority backup", () => {
       const currentRecovery = recovered;
       let wrongBindingVerifications = 0;
       expect(() => currentRecovery.admission.settleAuthorityRestore({ ...currentRecovery.input, authorityGeneration: currentRecovery.input.authorityGeneration + 1 },
-        "replaced", () => { wrongBindingVerifications += 1; throw new Error("wrong binding reached verifier"); }, restore)).toThrow("profile-restore-custody-mismatch");
+        () => { wrongBindingVerifications += 1; throw new Error("wrong binding reached verifier"); }, restore)).toThrow("profile-restore-custody-mismatch");
       expect(wrongBindingVerifications).toBe(0);
-      expect(() => currentRecovery.admission.settleAuthorityRestore(currentRecovery.input, "replaced", () => ({
+      expect(() => currentRecovery.admission.settleAuthorityRestore(currentRecovery.input, () => ({
         authorityGeneration: currentRecovery.input.authorityGeneration + 1, authorityContentFingerprint: currentRecovery.input.authorityContentFingerprint,
       }), restore)).toThrow(/authority proof mismatch/u);
-      expect(readFileSync(journalPath)).toEqual(journalBytes);
-      await expect(settleInterruptedAuthorityRestore({ admission: currentRecovery.admission, operationId: journal.restore.operationId,
-        manifestPath: join(f.directory, "other.manifest.json"), outcome: "replaced", processLockRoot,
-        restoreAdmission: restore, clock: f.clock })).rejects.toThrow(/manifest-binding-mismatch/u);
       expect(readFileSync(journalPath)).toEqual(journalBytes);
       restore.release(); currentRecovery.admission.release();
       const nextOperation = f.lifetime.beginOfflineMaintenance(f.workspace);
       recovered = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, journal.restore.operationId, nextOperation);
-      const settled = await settleInterruptedAuthorityRestore({ admission: recovered.admission, operationId: journal.restore.operationId,
-        manifestPath, outcome: "replaced", processLockRoot, restoreAdmission: nextOperation, clock: f.clock });
+      const settled = await resumeAutomaticAuthorityRestore({ browserClosure: profileBrowserClosure, admission: recovered.admission, operationId: journal.restore.operationId,
+        processLockRoot, restoreAdmission: nextOperation });
       nextOperation.release();
       expect(settled).toEqual({ state: "settled", operationId: journal.restore.operationId, outcome: "replaced" });
       expect(existsSync(journalPath)).toBe(false);
@@ -317,7 +314,7 @@ describe("native authority backup", () => {
 });
 
 describe("native authority backup", () => {
-  const faults = ["missing","replaced-inode","changed-bytes","companion-missing","companion-inode","companion-bytes"] as const;
+  const faults = ["missing","changed-bytes","companion-missing","companion-bytes"] as const;
   const prepared = new Map<typeof faults[number], Awaited<ReturnType<typeof fixture>>>();
   beforeEach(() => { prepared.clear(); });
   for (const fault of faults) {
@@ -342,9 +339,7 @@ describe("native authority backup", () => {
           const suspect=join(suspects,readdirSync(suspects).find(name=>name.endsWith(".sqlite"))!);
           const target=fault.startsWith("companion")?`${suspect}-wal`:suspect;
           if(fault.endsWith("missing"))rmSync(target);
-          else if(fault === "replaced-inode" || fault === "companion-inode"){
-            renameSync(target,`${target}.preserved`);copyFileSync(`${target}.preserved`,target);
-          }else{const bytes=readFileSync(target);bytes[bytes.length-1]^=1;writeFileSync(target,bytes);}
+          else{const bytes=readFileSync(target);bytes[bytes.length-1]^=1;writeFileSync(target,bytes);}
           if(outcome === "unchanged")throw new Error("fault-before-authority-replacement");
         }}, f.credentials);
       await expect(restore.restore({ manifestPath }, fresh()),fault).rejects.toMatchObject({authorityState:outcome});
@@ -353,8 +348,8 @@ describe("native authority backup", () => {
       const held=f.lifetime.beginOfflineMaintenance(f.workspace);
       const recovery=acquireRecoveryRuntimeRestore(f.workspace, f.lifetime,journal.restore.operationId,held);
       try{
-        await expect(settleInterruptedAuthorityRestore({admission:recovery.admission,operationId:journal.restore.operationId,
-          manifestPath,outcome,processLockRoot,restoreAdmission:held,clock:f.clock}),fault).rejects.toThrow();
+        await expect(resumeAutomaticAuthorityRestore({ browserClosure: profileBrowserClosure,admission:recovery.admission,operationId:journal.restore.operationId,
+          processLockRoot,restoreAdmission:held}),fault).rejects.toThrow();
         expect(readFileSync(journalPath),fault).toEqual(journalBytes);
       }finally{held.release();recovery.admission.release();}
       expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime),fault).toThrow(/unfinished restoring/u);

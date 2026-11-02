@@ -10,13 +10,13 @@ import { ProfileSessionRefusedError } from "../../profiles/profile-errors.js";
 import { createProfileSession } from "../../profiles/profile-session.js";
 import type { CommandKernel } from "../../runs/commands/command-kernel.js";
 import { requireLifecycleApplied,RunRecordService } from "../../runs/lifecycle/run-record-service.js";
-import { reconcileExitedWorker,reconcileStoppedLogout } from "../../runs/lifecycle/startup-crash-recovery.js";
+import { reconcileExitedWorker,reconcileStoppedLogout,reconcileStoppedStartupCrash } from "../../runs/lifecycle/startup-crash-recovery.js";
 import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
 import { activeSettingsConfig,activeSettingsRuntimeIdentity,readBootSettings } from "../../runtime/settings/settings-runtime.js";
 import { isOfflineMaintenanceOperationActive,OfflineMaintenanceOperationUnavailableError,offlineMaintenanceWorkspace,RuntimeLifetimeLock,type OfflineMaintenanceOperation } from "../../storage/admission/lifetime-lock.js";
 import { readPrivateFile } from "../../storage/configuration/credential-safe-file.js";
 import { assertCredentialStoreOwner,createCredentialStore,type CredentialStoreHooks } from "../../storage/configuration/credential-store.js";
-import { prepareStoppedBackupClosure,StorageBackupClosureUnprovedError,type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
+import { prepareStoppedBackupClosure,probeRestoreProfileBrowsersClosed,StorageBackupClosureUnprovedError,type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,type AuthoritySourceClosureUnprovedError } from "../../storage/source-closure.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../storage/sqlite/migrations.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
@@ -24,12 +24,11 @@ import { composeProfileSettings } from "./dashboard/settings.js";
 import { assertProfileBrowserRoot,composeProfileClosureInventory } from "./profile-credential-inventory.js";
 
 import { randomUUID } from "node:crypto";
-import { existsSync,readdirSync,readFileSync } from "node:fs";
+import { existsSync,readdirSync } from "node:fs";
 import { basename,join,resolve } from "node:path";
 import { z } from "zod";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
-import { protectedSettingsReadback } from "../../../models/config/protected-settings.js";
 
 import { workerPoolMember,type WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import { IsoInstantSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
@@ -41,10 +40,10 @@ import { createNativeBrowserProbe } from "../../runtime/browser/native-browser.j
 import type { DashboardWorkerProcessSupervisor } from "../../runtime/workers/worker-supervisor.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
 import { acquireRecoveryRuntimeRestore,RuntimeAdmission as StorageAdmission,type RuntimeAdmission } from "../../storage/admission/admission.js";
-import { AuthorityDatabase,doctorAuthorityStorage,OfflineAuthorityRestoreService,OfflineRestoreFailure,summarizeSpanAuthorityReconciliation } from "../../storage/sqlite/index.js";
+import { AuthorityDatabase,doctorAuthorityStorage,OfflineAuthorityRestoreService,summarizeSpanAuthorityReconciliation } from "../../storage/sqlite/index.js";
 
-import { settleInterruptedAuthorityRestore } from "../../storage/sqlite/offline-restore.js";
-import { type OfflineRestoreReport,type StorageDoctorReport } from "../../storage/sqlite/recovery-contracts.js";
+import { resumeAutomaticAuthorityRestore } from "../../storage/sqlite/offline-restore.js";
+import { type StorageDoctorReport } from "../../storage/sqlite/recovery-contracts.js";
 import { createTransactionHistory } from "../../storage/sqlite/transaction-history.js";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
 import { DESCRIPTORS,descriptorSetHash,SERVER_REGISTRY } from "../registries/workflow-registry.js";
@@ -89,6 +88,61 @@ export class RegisteredPersonUpgradeRefusedError extends Error {
   constructor(cause: unknown) { super(ERROR_CATALOG.STORAGE_PROFILE_UPGRADE_REFUSED.text, { cause }); this.name = "RegisteredPersonUpgradeRefusedError"; }
 }
 
+export async function resumePendingAutomaticRestore(workspace: string, lifetime: RuntimeLifetimeLock): Promise<void> {
+  lifetime.assertExclusiveWorkspaceTarget(workspace);
+  const path = join(workspace, ".tracker", "control", "journal.json");
+  const file = readPrivateFile(path, { label: "lock", maxBytes: 16 * 1024 * 1024 });
+  if (file === undefined) return;
+  const pending = z.object({ schemaVersion: z.literal(3), phase: z.literal("restoring"), restore: z.object({ operationId: z.uuid() }) }).parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+  const operation = lifetime.beginOfflineMaintenance(workspace);
+  let admission: RuntimeAdmission | undefined;
+  try {
+    admission = acquireRecoveryRuntimeRestore(workspace, lifetime, pending.restore.operationId, operation).admission;
+    await resumeAutomaticAuthorityRestore({ browserClosure: profileBrowserClosure, admission, operationId: pending.restore.operationId,
+      processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot), restoreAdmission: operation });
+  } catch (error) {
+    if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission, restore: operation });
+    try { operation.release(); admission?.release(); } catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission, restore: operation }); }
+    throw error;
+  }
+  operation.release(); admission.release();
+}
+
+async function repairRegisteredPerson(workspace: string, lifetime: RuntimeLifetimeLock, profileId: string, clock: Clock): Promise<void> {
+  await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
+    const operation = machine.maintenanceOperation(), admission = machine.admitStoppedProfileRepair(profileId, operation);
+    owned.push(admission);
+    await restoreNewestPersonBackup(admission, operation, clock);
+  });
+}
+
+export async function restoreNewestPersonBackup(admission: RuntimeAdmission, operation: OfflineMaintenanceOperation, clock: Clock) {
+  const context = admission.readInstallationContext(); if (context === undefined) throw new Error("automatic-repair-installation-required");
+  const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot });
+  const service = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: join(admission.stateRoot, "state.db"),
+    suspectDirectory: join(admission.stateRoot, "backups", "suspects"), busyTimeoutMs: 250,
+    processLockRoot: join(context.workspace, rebuildRuntimeIsolation.processLockRoot) },
+    rebuildStagedProjections(admission.stateRoot, "startup", clock, admission), clock, undefined, credentials);
+  return service.restoreNewest(operation);
+}
+
+async function recoverRegisteredPersonCrash(workspace: string, lifetime: RuntimeLifetimeLock, profileId: string, clock: Clock): Promise<void> {
+  await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
+    const admission = machine.admitStoppedProfileRepair(profileId, machine.maintenanceOperation()); owned.push(admission);
+    let database: AuthorityDatabase | undefined, primary: { error: unknown } | undefined;
+    try {
+      await probeRestoreProfileBrowsersClosed(admission, join(workspace, rebuildRuntimeIsolation.processLockRoot), machine.maintenanceOperation(), clock, profileBrowserClosure);
+      database = AuthorityDatabase.openStoppedStartupRecovery(admission, clock);
+      const lifecycle = new RunRecordService({ database, clock, ids: { uuid: randomUUID },
+        publishQueued: () => { throw new Error("startup-crash-recovery-cannot-enqueue"); } });
+      reconcileStoppedStartupCrash({ machine, admission, database, lifecycle, clock, lock: lifetime });
+    } catch (error) { primary = { error }; }
+    if (primary !== undefined && hasUnprovedSourceClosure(primary.error)) throw retainAuthoritySourceClosure([primary.error], { admission, ...(database === undefined ? {} : { database }) });
+    try { database?.close(); } catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { admission, ...(database === undefined ? {} : { database }) }); }
+    if (primary !== undefined) throw primary.error;
+  });
+}
+
 export async function upgradeRegisteredPersonStores(workspace: string, lifetime: RuntimeLifetimeLock,
   hostFacts: HostConfigFacts, clock: Clock = systemClock): Promise<void> {
   lifetime.assertHeld();
@@ -111,6 +165,39 @@ export async function upgradeRegisteredPersonStores(workspace: string, lifetime:
       for (const profileId of profiles) if (AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId).schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup-readback-unproved");
     });
   } catch (error) { throw new RegisteredPersonUpgradeRefusedError(error); }
+}
+
+export async function initializeRegisteredPersonStores(workspace: string, lifetime: RuntimeLifetimeLock,
+  hostFacts: HostConfigFacts, clock: Clock = systemClock): Promise<void> {
+  lifetime.assertHeld();
+  if (!existsSync(join(workspace, ".tracker", "control", "installation.json"))) return;
+  try {
+    await resumePendingAutomaticRestore(workspace, lifetime);
+    const registered = await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? []
+      : machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready").map(row => row.profileId));
+    for (const profileId of registered) {
+      try { await withStoppedMachineStorage(workspace, lifetime, async machine => AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId)); }
+      catch (error) { if (hasUnprovedSourceClosure(error)) throw error; await repairRegisteredPerson(workspace, lifetime, profileId, clock); }
+    }
+    await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts, clock);
+    for (const profileId of registered) {
+      try { await recoverRegisteredPersonCrash(workspace, lifetime, profileId, clock); }
+      catch (error) {
+        if (hasUnprovedSourceClosure(error)) throw error;
+        await repairRegisteredPerson(workspace, lifetime, profileId, clock);
+        await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts, clock);
+        await recoverRegisteredPersonCrash(workspace, lifetime, profileId, clock);
+      }
+    }
+  } catch (error) {
+    if (error instanceof RegisteredPersonUpgradeRefusedError) throw error;
+    throw new AutomaticPersonRepairRefusedError(error);
+  }
+}
+
+export class AutomaticPersonRepairRefusedError extends Error {
+  readonly code = "STORAGE_AUTOMATIC_REPAIR_REFUSED";
+  constructor(cause: unknown) { super(ERROR_CATALOG.STORAGE_AUTOMATIC_REPAIR_REFUSED.text, { cause }); this.name = "AutomaticPersonRepairRefusedError"; }
 }
 
 export async function prepareApplicationDataWorkspace(sourceWorkspace: string, targetWorkspace: string, lifetime: RuntimeLifetimeLock,
@@ -141,6 +228,7 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
       createFixedLayoutDirectory(targetWorkspace); return;
     }
     publication = await withDefaultLayoutSource(sourceWorkspace, lifetime, async () => {
+      await resumePendingAutomaticRestore(sourceWorkspace, lifetime);
       await withStoppedMachineStorage(sourceWorkspace, lifetime, async convert => {
         if (convert.requiresFlatStoreMigration()) await convert.startCleanFlatStore(profileBrowserClosure);
       });
@@ -149,7 +237,7 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
         const { composeStoppedControlCredentialInventory } = await import("./profile-credential-inventory.js");
         await upgradeStoppedMachineControl(control, { plan: false, hostFacts }, clock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
       });
-      await upgradeRegisteredPersonStores(sourceWorkspace, lifetime, hostFacts, clock);
+      await initializeRegisteredPersonStores(sourceWorkspace, lifetime, hostFacts, clock);
       return withStoppedMachineStorage(sourceWorkspace, lifetime, async (machine, owned) => {
         const sources: Array<{ admission: RuntimeAdmission; closure: StoppedBackupClosure }> = [], profiles: FixedLayoutActivation[] = [];
         const registry = machine.readProfileRegistry(), operation = machine.maintenanceOperation();
@@ -700,56 +788,17 @@ export function composeProfileRuntime(input: Readonly<{
   });
 }
 
-export function restoreFailureDisposition(error: unknown): Readonly<{
-  heading:
-    | "authority restore REFUSED"
-    | "authority restore COMPANION-STATE FAILURE"
-    | "authority restore AUTHORITY-STATE UNCERTAIN"
-    | "authority restore POST-SWAP FAILURE";
-  authorityLine: string;
-}> {
-  if (error instanceof OfflineRestoreFailure && error.authorityState === "replaced") {
-    return Object.freeze({
-      heading: "authority restore POST-SWAP FAILURE",
-      authorityLine: "the authority database was replaced; inspect the post-swap failure before restarting runtime",
-    });
-  }
-  if (error instanceof OfflineRestoreFailure && error.authorityState === "companion-state-uncertain") {
-    return Object.freeze({
-      heading: "authority restore COMPANION-STATE FAILURE",
-      authorityLine: "the authority database was not replaced, but live WAL/SHM rollback is unproven; inspect recovery artifacts before restarting runtime",
-    });
-  }
-  if (error instanceof OfflineRestoreFailure && error.authorityState === "authority-state-uncertain") {
-    return Object.freeze({
-      heading: "authority restore AUTHORITY-STATE UNCERTAIN",
-      authorityLine: "the authority replacement outcome is unproven; inspect staged/live paths before restarting runtime",
-    });
-  }
-  return Object.freeze({
-    heading: "authority restore REFUSED",
-    authorityLine: "the live authority database was not modified",
-  });
-}
-
-// Stop proofs expire quickly because a process may restart immediately after inspection.
-
-const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();
-
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
   "       storage backup [--json]  verified person SQLite backup or stopped flat native6 byte archive",
   "       storage upgrade [--plan] [--machine-control] [--timeline-from <verified-copy-directory>] [--json]",
   "       storage cancel-queued-runs --plan [--json]",
   "       storage cancel-queued-runs --capture <digest> --apply [--json]",
-  "       storage restore --from <manifest.json> [--json]",
-  "       storage recover-restore --operation <id> --from <manifest.json> --outcome <unchanged|replaced> [--json]",
   "       storage repair-span-root --run <run-id> [--json]",
   "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces); exit 0 only when",
   "           authority, recovery inspection, credentials and span reconciliation are healthy; backup is reported, not gated",
   "  backup   write ONE verified authority backup + manifest under the state root's backups/authority;",
   "           this command is the only backup writer — the dashboard runs no cadence",
-  "  restore  quarantine the suspect authority and swap in one EXACT verified backup,",
   "           rebuilding projections against the staged copy first; the runtime must be",
   "           stopped and the manifest is never chosen for you",
   "  repair-span-root  append one marked SQLite run.queued root reconstructed from exact",
@@ -868,18 +917,6 @@ function formatReport(report: StorageDoctorReport): string {
   return lines.join("\n");
 }
 
-function formatRestoreReport(report: OfflineRestoreReport): string {
-  return [
-    `authority restore — ${report.state} ${report.restoredAt}`,
-    `from manifest: ${report.manifestFileName}`,
-    `from backup:   ${report.backupFileName} (generation ${String(report.authorityGeneration)})`,
-    `suspect kept:  ${report.suspectFileName}`,
-    `schema: v${String(report.schemaVersion)}${report.schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION ? "; storage upgrade required before runtime boot" : ""}`,
-    `projections rebuilt: ${String(report.projectionRebuilt)} · `
-    + `authority preserved across rebuild: ${String(report.authorityPreservedAcrossProjectionRebuild)}`,
-  ].join("\n");
-}
-
 function formatSpanRootRepairReport(report: SpanRootRepairReport): string {
   return [
     `span root repair — ${report.state} ${report.repairedAt}`,
@@ -967,117 +1004,6 @@ function rebuildStagedProjections(
       stagedAdmission.release();
     }
   };
-}
-
-export async function runOfflineAuthorityRestoreRecovery(workspace: string, args: readonly string[], lifetime: RuntimeLifetimeLock, clock: Clock = systemClock) {
-  if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("runtime-lifetime-required");
-  lifetime.assertHeld();
-  lifetime.assertExclusiveWorkspaceTarget(workspace);
-  const fields = new Map<string, string>(); let json = false;
-  for (let index = 0; index < args.length; index += 1) {
-    const field = args[index];
-    if (field === "--json" && !json) { json = true; continue; }
-    const value = args[index + 1];
-    if (field === undefined || !["--operation", "--from", "--outcome"].includes(field)
-      || fields.has(field) || value === undefined || value.startsWith("--")) throw new Error("storage-recover-restore-usage");
-    fields.set(field, value); index += 1;
-  }
-  const operationId = z.uuid().parse(fields.get("--operation"));
-  const manifestPath = z.string().min(1).parse(fields.get("--from"));
-  const outcome = z.enum(["unchanged", "replaced"]).parse(fields.get("--outcome"));
-  const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
-  const restore = lifetime.beginOfflineMaintenance(workspace);
-  let admission: RuntimeAdmission | undefined;
-  try {
-    const recovered = acquireRecoveryRuntimeRestore(workspace, lifetime, operationId, restore);
-    admission = recovered.admission;
-    const report = await settleInterruptedAuthorityRestore({ admission, operationId, manifestPath: resolve(manifestPath),
-      outcome, processLockRoot, restoreAdmission: restore, clock });
-    restore.release(); admission.release();
-    return { report, json };
-  } catch (error) {
-    if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission, restore });
-    try { restore.release(); admission?.release(); }
-    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission, restore }); }
-    throw error;
-  }
-}
-
-async function restoreCommand(
-  isolation: RuntimeIsolation,
-  rest: readonly string[],
-  clock: Clock,
-  repoRoot: string,
-  admission: RuntimeAdmission,
-  credentials: CredentialStore | undefined,
-): Promise<StorageCommandOutcome> {
-  const fromIndex = rest.indexOf("--from");
-  const manifestArgument = fromIndex === -1 ? undefined : rest[fromIndex + 1];
-  if (manifestArgument === undefined || manifestArgument.startsWith("--")) {
-    return {
-      output: `storage restore requires the exact backup manifest: --from <manifest.json>\n${STORAGE_USAGE}`,
-      exitCode: 2,
-    };
-  }
-  const operation = admission.acquireOfflineMaintenance();
-  let validatedOwner = false;
-  try {
-    const context = admission.readInstallationContext();
-    if (context === undefined) throw new Error("profile-restore-context-required");
-    if (credentials === undefined) throw new Error("profile-restore-credential-owner-required");
-    assertCredentialStoreOwner(credentials, admission);
-    validatedOwner = true;
-    const json = rest.includes("--json");
-    const stateRoot = admission.stateRoot;
-    const authorityPath = join(stateRoot, "state.db");
-    const processLockRoot = join(context.workspace, isolation.processLockRoot);
-    admission.assertFixedProcessLockRoot(context.workspace, processLockRoot);
-    const appVersion = PackageVersionSchema.parse(
-      JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")),
-    ).version;
-
-    const service = new OfflineAuthorityRestoreService(
-      profileBrowserClosure,
-      admission,
-      {
-        authorityPath,
-        suspectDirectory: join(stateRoot, "backups", "suspects"),
-        busyTimeoutMs: 5000,
-        processLockRoot,
-        },
-      rebuildStagedProjections(stateRoot, appVersion, clock, admission),
-      clock,
-      undefined,
-      credentials,
-    );
-    const report = await service.restore({ manifestPath: resolve(manifestArgument) }, operation);
-    // Observe credentials only AFTER successful SQLite replacement. Their failure
-    // neither authorizes a rollback nor changes the reported restore outcome.
-    const observation = (() => {
-      try { return { state: "available" as const, ...protectedSettingsReadback(credentials.read()) }; }
-      catch { return { state: "unavailable" as const, code: "credential-store-unavailable" as const }; }
-    })();
-    const availability = observation.state === "available"
-      ? `credentials: revision ${String(observation.revision)}; ${Object.entries(observation.entries).map(([name, entry]) => `${name}=${entry.present ? "present" : "absent"}`).join(" · ")}`
-      : "credentials: unavailable — credential-store-unavailable";
-    return {
-      output: json ? JSON.stringify({ ...report, credentials: observation }, null, 2) : `${formatRestoreReport(report)}\n${availability}`,
-      exitCode: 0,
-    };
-  } catch (error) {
-
-    if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission, restore: operation });
-    if (isOfflineMaintenanceOperationActive(operation)) operation.release();
-    if (!validatedOwner) throw error;
-    const disposition = restoreFailureDisposition(error);
-    return {
-      output: [
-        `${disposition.heading} — ${messageChain(error)}`,
-        disposition.authorityLine,
-      ].join("\n"),
-      exitCode: 1,
-    };
-  }
 }
 
 async function repairSpanRootCommand(
@@ -1209,7 +1135,7 @@ export async function prepareStorageBackupCommand(
             outcome = { output: json ? JSON.stringify(report, null, 2) : [
               `backup: verified — ${manifest.backupFileName}`,
               `  generation ${String(manifest.authorityGeneration)}, ${String(manifest.byteSize)} bytes, sha256 ${manifest.sha256}`,
-              `  manifest ${manifest.backupFileName}.manifest.json (restore with: storage restore --from <that manifest>)`,
+              `  manifest ${manifest.backupFileName}.manifest.json (used automatically for verified startup repair)`,
             ].join("\n"), exitCode: 0 };
           }
         }
@@ -1289,7 +1215,6 @@ export async function composeStorageCommand(
       return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: ${report.code}${key === undefined ? "" : ` { key: ${key} }`}; inspect state before retrying`, exitCode: 1 };
     }
   }
-  if (subcommand === "restore") return restoreCommand(isolation, rest, clock, repoRoot, admission, credentials);
   if (subcommand === "backup") return backupCommand(isolation, rest, clock, repoRoot, admission);
   if (subcommand === "repair-span-root") return repairSpanRootCommand(isolation, rest, clock, repoRoot, admission);
   if (subcommand !== "doctor") {

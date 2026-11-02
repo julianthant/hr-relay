@@ -1,15 +1,18 @@
-import { createHash,randomUUID } from "node:crypto";
+import { resolveConfigWithProvenance } from "../../app/config/resolve.js";
+import { initialSettingsFileRecord } from "../../../models/config/settings.js";
+import { randomUUID } from "node:crypto";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { AuthorityRestoreInput } from "../admission/installation.js";
 import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
-import { probeRestoreProfileBrowsersClosed,type ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
+import { probeAutomaticRestoreBrowsersClosed,probeRestoreProfileBrowsersClosed,probeRetainedBrowsersClosed,restoreBrowserMembershipDigest,type ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
+import { file, hash } from "../maintenance/existing-data-backup-files.js";
+import { restoreRetainedFilesDigest, assertRestoreRootMembership } from "../maintenance/automatic-restore-files.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { assertProfileRestoreDatabaseBinding } from "./profile-local-databases.js";
-import { requireSupportedRecoverySchema } from "./recovery-admission.js";
 
-import { chmodSync,closeSync,copyFileSync,existsSync,fsyncSync,mkdirSync,openSync,readFileSync,renameSync,rmSync,statSync } from "node:fs";
+import { chmodSync,closeSync,copyFileSync,existsSync,fsyncSync,mkdirSync,openSync,renameSync,rmSync,readdirSync,statSync } from "node:fs";
 import { basename,dirname,join,resolve } from "node:path";
 import { z } from "zod";
 
@@ -19,11 +22,13 @@ import { type RuntimeAdmission } from "../admission/admission.js";
 
 import { AuthorityDatabase } from "./authority-database.js";
 import { inspectAuthorityBackupReadOnly } from "./backup-inspection.js";
-import { verifyBackupBytesAtPath,verifyBackupManifestAtPath } from "./backup-service.js";
+import { parseBackupManifestFile,verifyBackupBytesAtPath,verifyBackupManifestAtPath } from "./backup-service.js";
+import { withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
+import { assertRestorePreservesWriteFences, readRestoreWriteFences, restoreWriteFenceDigest } from "./restore-write-fences.js";
 import { isCurrentAuthoritySchemaVersion } from "./migrations.js";
 
 import { OfflineRestoreReportSchema,OfflineRestoreRequestSchema,type OfflineRestoreReport } from "./recovery-contracts.js";
-import { validateSamePersonRestoreCandidate } from "./same-person-restore-candidate.js";
+import { assertRestoreRuntimePaths,validateSamePersonRestoreCandidate } from "./same-person-restore-candidate.js";
 
 export const OfflineRestoreOptionsSchema = z.strictObject({
   authorityPath: z.string().min(1),
@@ -117,22 +122,15 @@ function normalizeError(error: unknown, context: string): Error {
 }
 
 interface FileIdentity {
-  readonly dev: number;
-  readonly ino: number;
   readonly byteSize: number;
   readonly sha256: string;
 }
 
 function fileIdentity(path: string): FileIdentity {
-  const before = statSync(path);
-  const bytes = readFileSync(path);
-  const after = statSync(path);
-  if (before.dev !== after.dev || before.ino !== after.ino || before.size !== bytes.length
-    || before.size !== after.size || before.mtimeMs !== after.mtimeMs) throw new Error("restore-file-changed-during-observation");
+  const { bytes } = file(path, "managed data");
   return Object.freeze({
-    dev: before.dev, ino: before.ino,
     byteSize: bytes.byteLength,
-    sha256: createHash("sha256").update(bytes).digest("hex"),
+    sha256: hash(bytes),
   });
 }
 
@@ -190,6 +188,21 @@ function cleanupStagedPaths(
   return Object.freeze(failures);
 }
 
+function restoreCandidateConfig(admission: RuntimeAdmission, facts: ReturnType<typeof AuthorityDatabase.readRestoreCandidateInventory>, clock: Clock) {
+  const settings = facts.settingsAuthority.state === "never-initialized" ? undefined : facts.settingsAuthority.record;
+  const active = settings?.active;
+  const snapshot = active == null ? undefined : facts.configSnapshots.find(row => row.configSnapshotId === active.configSnapshotId);
+  if (active != null && (snapshot === undefined || snapshot.fingerprint !== active.configFingerprint)
+    || active == null && facts.configSnapshots.length !== 0) throw new Error("restore-candidate-active-settings-unavailable");
+  const saved = settings?.saved?.settings ?? settings?.initialization.settings.settings ?? initialSettingsFileRecord().settings;
+  const config = snapshot?.config ?? resolveConfigWithProvenance(saved, { primaryDisplay: null }, clock,
+    { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
+  const savedBrowserRoot = saved.paths?.browserProfileRoot;
+  assertRestoreRuntimePaths({ stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot, activePaths: config.paths,
+    ...(savedBrowserRoot === undefined ? {} : { savedBrowserRoot }) });
+  return config;
+}
+
 export class OfflineAuthorityRestoreService {
   readonly #browserClosure: ProfileBrowserClosure;
   readonly #runtimeAdmission: RuntimeAdmission;
@@ -225,6 +238,53 @@ export class OfflineAuthorityRestoreService {
     this.#fileOperations = fileOperations;
     this.#processLockRoot = resolve(options.processLockRoot);
 
+  }
+
+  async restoreNewest(operation: OfflineMaintenanceOperation): Promise<OfflineRestoreReport> {
+    this.#runtimeAdmission.assertOfflineMaintenance(operation);
+    const admission = this.#runtimeAdmission.forStoppedMaintenance(operation);
+    let primary: { error: unknown } | undefined, report: OfflineRestoreReport | undefined;
+    try {
+      const directory = join(admission.stateRoot, "backups", "authority"); admission.assertStateRoot(directory);
+      const originalFences = withReadonlyAuthoritySnapshot(this.#authorityPath, readRestoreWriteFences);
+      const rejected: unknown[] = [], candidates: Array<{ path: string; createdAt: string }> = [];
+      if (!existsSync(directory)) throw new Error("automatic-repair-backup-missing");
+      for (const name of readdirSync(directory).filter(name => name.endsWith(".manifest.json")).sort()) {
+        const path = join(directory, name);
+        try {
+          const manifest = parseBackupManifestFile(path);
+          if (manifest.installationId !== admission.profileBinding.installationId || manifest.profileId !== admission.profileBinding.profileId
+            || ![8, 9, 10, 11].includes(manifest.schemaVersion) || Date.parse(manifest.createdAt) > this.#clock.nowMs()) {
+            rejected.push(new Error("automatic-repair-backup-identity-version-or-time-invalid")); continue;
+          }
+          const verified = await verifyBackupManifestAtPath(admission, path);
+          assertRestorePreservesWriteFences(originalFences, withReadonlyAuthoritySnapshot(verified.backupPath, readRestoreWriteFences));
+          const copy = admission.verifiedReadOnlyCopy(verified.backupPath, verified.manifest.sha256);
+          let candidateFailure: { error: unknown } | undefined;
+          try { restoreCandidateConfig(admission, AuthorityDatabase.readRestoreCandidateInventory(admission, copy, verified.backupPath, operation), this.#clock); }
+          catch (error) { candidateFailure = { error }; }
+          if (candidateFailure !== undefined && hasUnprovedSourceClosure(candidateFailure.error)) throw retainAuthoritySourceClosure([candidateFailure.error], { admission: { admission, copy }, restore: operation });
+          copy.release(); if (candidateFailure !== undefined) throw candidateFailure.error;
+          candidates.push({ path, createdAt: manifest.createdAt });
+        } catch (error) {
+          if (hasUnprovedSourceClosure(error)) throw error;
+          rejected.push(error);
+        }
+      }
+      candidates.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt) || right.path.localeCompare(left.path));
+      const newest = candidates[0];
+      if (newest === undefined) throw new AggregateError(rejected, "automatic-repair-verified-backup-missing");
+      report = await this.restore({ manifestPath: newest.path }, operation);
+    } catch (error) { primary = { error }; }
+    if (primary !== undefined && hasUnprovedSourceClosure(primary.error)) {
+      this.#runtimeAdmission.retainSourceClosure(primary.error);
+      throw retainAuthoritySourceClosure([primary.error], { admission: { admission, owner: this.#runtimeAdmission }, restore: operation });
+    }
+    try { if (admission !== this.#runtimeAdmission) admission.release(); operation.release(); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { admission, restore: operation }); }
+    if (primary !== undefined) throw primary.error;
+    if (report === undefined) throw new Error("automatic-restore-result-missing");
+    return report;
   }
 
   async restore(input: unknown, operation: OfflineMaintenanceOperation): Promise<OfflineRestoreReport> {
@@ -263,12 +323,13 @@ export class OfflineAuthorityRestoreService {
     const profile = admission.captureProfileRestore(restoreAdmission);
     assertProfileRestoreDatabaseBinding(this.#authorityPath, profile.binding);
     const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource());
+    const originalFences = withReadonlyAuthoritySnapshot(this.#authorityPath, readRestoreWriteFences);
     if (!existsSync(this.#authorityPath) || statSync(this.#authorityPath).size === 0) {
       throw new Error(`suspect authority database ${this.#authorityPath} is missing or empty`);
     }
 
     const verified = await verifyBackupManifestAtPath(admission,request.manifestPath);
-    requireSupportedRecoverySchema(verified.manifest.schemaVersion);
+    if (![8, 9, 10, 11].includes(verified.manifest.schemaVersion)) throw new Error("automatic-restore-backup-schema-unsupported");
     if (verified.manifest.installationId !== profile.binding.installationId || verified.manifest.profileId !== profile.binding.profileId) throw new Error("profile-restore-backup-binding-mismatch");
     validateSamePersonRestoreCandidate({ admission: admission,
       activeAuthorityPath: this.#authorityPath, verifiedBackup: verified });
@@ -321,6 +382,9 @@ export class OfflineAuthorityRestoreService {
             );
           }
 
+          const candidate = AuthorityDatabase.readRestoreCandidateInventory(admission, stagedAdmission, stagedPath, restoreAdmission);
+          const config = restoreCandidateConfig(admission, candidate, this.#clock);
+          await probeRetainedBrowsersClosed({ admission, custody: candidate, config, browserClosure: this.#browserClosure, clock: this.#clock, signal: new AbortController().signal });
           let projectionRebuilt = false;
           let afterProjection = beforeProjection;
           if (isCurrentAuthoritySchemaVersion(verified.manifest.schemaVersion)) {
@@ -339,6 +403,9 @@ export class OfflineAuthorityRestoreService {
             throw new Error("projection rebuild mutated non-rebuildable authority state");
           }
 
+          const restoredFences = withReadonlyAuthoritySnapshot(stagedPath, readRestoreWriteFences);
+          assertRestorePreservesWriteFences(originalFences, restoredFences);
+          if (restoreWriteFenceDigest(withReadonlyAuthoritySnapshot(this.#authorityPath, readRestoreWriteFences)) !== restoreWriteFenceDigest(originalFences)) throw new Error("restore-write-fences-changed");
           (this.#fileOperations.syncPath ?? fsyncPath)(stagedPath);
           const liveIdentityBeforeReplace = fileIdentity(this.#authorityPath);
           const stagedIdentityBeforeReplace = fileIdentity(stagedPath);
@@ -348,6 +415,7 @@ export class OfflineAuthorityRestoreService {
             backupPath: verified.backupPath, backupSha256: verified.manifest.sha256,
             sourceDatabaseIdentity, authorityGeneration: afterProjection.authorityGeneration,
             authorityContentFingerprint: afterProjection.authorityContentFingerprint,
+            browserMembershipDigest: restoreBrowserMembershipDigest(admission), retainedFilesDigest: restoreRetainedFilesDigest(admission.stateRoot), unresolvedWriteDigest: restoreWriteFenceDigest(originalFences), backupTime: verified.manifest.createdAt, restoredAt: this.#clock.now().toISOString(),
             live: liveIdentityBeforeReplace, staged: stagedIdentityBeforeReplace, suspect: fileIdentity(suspectPath),
             companions: (["-wal", "-shm"] as const).filter(suffix => existsSync(`${this.#authorityPath}${suffix}`))
               .map(suffix => ({ suffix, binding: fileIdentity(`${this.#authorityPath}${suffix}`), suspect: fileIdentity(`${suspectPath}${suffix}`) })),
@@ -386,6 +454,7 @@ export class OfflineAuthorityRestoreService {
             }
             (this.#fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
             admission.assertAuthorityRestoreCurrent(restoreBinding, restoreAdmission);
+            if (restoreBrowserMembershipDigest(admission) !== restoreBinding.browserMembershipDigest) throw new Error("restore-browser-membership-changed");
             replacementAttempted = true;
             this.#fileOperations.atomicReplace(stagedPath, this.#authorityPath);
             authorityReplaced = true;
@@ -476,10 +545,14 @@ export class OfflineAuthorityRestoreService {
         } catch (error) {
           stagedPrimaryError = normalizeError(error, "offline authority restore failed");
         }
+        if (stagedPrimaryError !== undefined && hasUnprovedSourceClosure(stagedPrimaryError)) {
+          admission.retainSourceClosure(stagedPrimaryError);
+          throw retainAuthoritySourceClosure([stagedPrimaryError], { admission: { admission, stagedAdmission }, restore: restoreAdmission });
+        }
         stagedAdmission?.release();
-        if (restoreJournalHeld && restoreBinding !== undefined && (authorityState === "unchanged" || authorityState === "replaced")) {
+        if (restoreJournalHeld && restoreBinding !== undefined && authorityState === "replaced" && stagedPrimaryError === undefined) {
           try {
-            admission.settleAuthorityRestore(restoreBinding, authorityState, () => {
+            admission.settleAuthorityRestore(restoreBinding, () => {
               const actual = inspectAuthorityBackupReadOnly(admission, this.#authorityPath,
                 verified.manifest.schemaVersion, this.#busyTimeoutMs);
               return { authorityGeneration: actual.authorityGeneration,
@@ -532,30 +605,60 @@ export class OfflineAuthorityRestoreService {
   }
 }
 
-/** Recovery acknowledges an exact observed outcome; it never retries the replacement. */
-export async function settleInterruptedAuthorityRestore(input: Readonly<{
-  admission: RuntimeAdmission; operationId: string; manifestPath: string; outcome: "unchanged" | "replaced";
-  processLockRoot: string;
-  restoreAdmission: OfflineMaintenanceOperation; clock?: Clock;
-}>): Promise<Readonly<{ state: "settled"; operationId: string; outcome: "unchanged" | "replaced" }>> {
-  const admission = requireRuntimeAdmission(input.admission);
-  admission.assertExclusive();
-  admission.assertOfflineMaintenance(input.restoreAdmission);
-  input.restoreAdmission.consume();
-  assertOfflineMaintenanceForProcessRoot(input.restoreAdmission, input.processLockRoot);
+export async function resumeAutomaticAuthorityRestore(input: Readonly<{
+  admission: RuntimeAdmission; operationId: string; processLockRoot: string; restoreAdmission: OfflineMaintenanceOperation; browserClosure: ProfileBrowserClosure; clock?: Clock;
+}>): Promise<Readonly<{ state: "settled"; operationId: string; outcome: "replaced" }>> {
+  const admission = requireRuntimeAdmission(input.admission), operation = input.restoreAdmission;
+  admission.assertExclusive(); admission.assertOfflineMaintenance(operation); operation.consume();
+  assertOfflineMaintenanceForProcessRoot(operation, input.processLockRoot);
   const binding = admission.readAuthorityRestore(input.operationId);
-  if (resolve(input.manifestPath) !== binding.manifestPath) throw new Error("restore-recovery-manifest-binding-mismatch");
+  assertRestoreRootMembership(admission.stateRoot, binding.operationId);
+  if (restoreRetainedFilesDigest(admission.stateRoot) !== binding.retainedFilesDigest) throw new Error("restore-retained-files-changed");
+  await probeAutomaticRestoreBrowsersClosed(admission, input.processLockRoot, operation, input.clock ?? systemClock, input.browserClosure);
+  if (restoreBrowserMembershipDigest(admission) !== binding.browserMembershipDigest) throw new Error("restore-browser-membership-changed");
   const verified = await verifyBackupManifestAtPath(admission, binding.manifestPath);
   if (verified.backupPath !== binding.backupPath || verified.manifest.sourceDatabaseIdentity !== binding.sourceDatabaseIdentity
-    || verified.manifest.sha256 !== binding.backupSha256
+    || verified.manifest.sha256 !== binding.backupSha256 || verified.manifest.createdAt !== binding.backupTime
+    || fileIdentity(binding.manifestPath).sha256 !== binding.manifestSha256
     || verified.manifest.authorityGeneration !== binding.authorityGeneration
-    || verified.manifest.authorityContentFingerprint !== binding.authorityContentFingerprint) {
-    throw new Error("restore-recovery-backup-authority-binding-mismatch");
+    || verified.manifest.authorityContentFingerprint !== binding.authorityContentFingerprint) throw new Error("restore-recovery-backup-authority-binding-mismatch");
+  const same = (path: string, expected: FileIdentity) => {
+    if (!fileIdentityEquals(fileIdentity(path), expected)) throw new Error("restore-recovery-file-changed");
+  };
+  same(binding.suspectPath, binding.suspect);
+  const original = withReadonlyAuthoritySnapshot(binding.suspectPath, readRestoreWriteFences);
+  if (restoreWriteFenceDigest(original) !== binding.unresolvedWriteDigest) throw new Error("restore-recovery-write-fences-changed");
+  const stagePresent = existsSync(binding.stagedPath);
+  if (stagePresent) {
+    same(binding.authorityPath, binding.live); same(binding.stagedPath, binding.staged);
+    assertRestorePreservesWriteFences(original, withReadonlyAuthoritySnapshot(binding.stagedPath, readRestoreWriteFences));
+  } else same(binding.authorityPath, binding.staged);
+  for (const suffix of ["-wal", "-shm"] as const) {
+    const row = binding.companions.find(value => value.suffix === suffix), live = `${binding.authorityPath}${suffix}`,
+      displaced = `${binding.stagedPath}${suffix}.live-companion`;
+    if (row === undefined) { if (existsSync(live) || existsSync(displaced) || existsSync(`${binding.suspectPath}${suffix}`)) throw new Error("restore-recovery-companion-unowned"); continue; }
+    same(`${binding.suspectPath}${suffix}`, row.suspect);
+    if (stagePresent) {
+      if (existsSync(live) === existsSync(displaced)) throw new Error("restore-recovery-companion-outcome-unproved");
+      same(existsSync(live) ? live : displaced, row.binding);
+      if (existsSync(live)) renameSync(live, displaced);
+    } else {
+      if (existsSync(live)) throw new Error("restore-recovery-live-companion-unowned");
+      if (existsSync(displaced)) same(displaced, row.binding);
+    }
   }
-  validateSamePersonRestoreCandidate({ admission, activeAuthorityPath: binding.authorityPath, verifiedBackup: verified });
-  admission.settleAuthorityRestore(binding, input.outcome, () => {
+  fsyncPath(dirname(binding.authorityPath)); admission.assertAuthorityRestoreCurrent(binding, operation);
+  if (stagePresent) { renameSync(binding.stagedPath, binding.authorityPath); fsyncPath(dirname(binding.authorityPath)); }
+  same(binding.authorityPath, binding.staged);
+  assertRestorePreservesWriteFences(original, withReadonlyAuthoritySnapshot(binding.authorityPath, readRestoreWriteFences));
+  for (const row of binding.companions) {
+    const path = `${binding.stagedPath}${row.suffix}.live-companion`;
+    if (existsSync(path)) { same(path, row.binding); rmSync(path); }
+  }
+  fsyncPath(dirname(binding.authorityPath));
+  admission.settleAuthorityRestore(binding, () => {
     const actual = inspectAuthorityBackupReadOnly(admission, binding.authorityPath, verified.manifest.schemaVersion);
     return { authorityGeneration: actual.authorityGeneration, authorityContentFingerprint: actual.authorityContentFingerprint };
-  }, input.restoreAdmission);
-  return Object.freeze({ state: "settled", operationId: binding.operationId, outcome: input.outcome });
+  }, operation);
+  return Object.freeze({ state: "settled", operationId: binding.operationId, outcome: "replaced" });
 }

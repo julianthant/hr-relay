@@ -89,20 +89,13 @@ async function runAdmittedEnvironmentBootstrap(
     catch (error) { throw new FixedLayoutRefusedError(error); }
   }
   if (entrypoint === "cli" && entrypointArgs[0] === "dashboard" && dependencies.acquireAdmission === undefined) {
-    const { upgradeRegisteredPersonStores } = await import("../composition/storage-compose.js");
-    await upgradeRegisteredPersonStores(workspace, rootLifetime(), hostConfigFacts(workerBootstrapEnvironment()));
+    const { initializeRegisteredPersonStores } = await import("../composition/storage-compose.js");
+    await initializeRegisteredPersonStores(workspace, rootLifetime(), hostConfigFacts(workerBootstrapEnvironment()));
   }
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "cancel-queued-runs") {
     const { runOfflineQueuedRunCancellation } = await import("../../storage/maintenance/cancel-queued-runs.js");
     const { report, json } = await runOfflineQueuedRunCancellation(profileBrowserClosure, workspace, entrypointArgs.slice(2), rootLifetime());
     process.stdout.write(json ? `${JSON.stringify(report)}\n` : `storage queued runs: ${report.state}; ${String(report.runIds.length)} runs\n`);
-    return;
-  }
-  if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-restore") {
-    const { runOfflineAuthorityRestoreRecovery } = await import("../composition/storage-compose.js");
-    const { report, json } = await runOfflineAuthorityRestoreRecovery(workspace, entrypointArgs.slice(2), rootLifetime());
-    process.stdout.write(json ? `${JSON.stringify(report)}\n`
-      : `storage restore: verified ${report.outcome} operation ${report.operationId} settled\n`);
     return;
   }
   const bootDiagnostics = entrypoint === "cli" && entrypointArgs[0] === "explain" && entrypointArgs[1] === "diagnostics" && entrypointArgs.includes("--boot");

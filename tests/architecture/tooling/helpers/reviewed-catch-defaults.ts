@@ -69,7 +69,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/storage/admission/installation.ts",
 
-      "sha256": "e175db9e3381a09f648e74438b51ee6101df34d8d8f7b31be523051ceb84eb1f",
+      "sha256": "7215c28062d7b2325bcdaf1a740c19e90131f1fd3b0972a109861230e2f74a0d",
     "reason": "Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
   },
   {
@@ -115,7 +115,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
 
-    "sha256": "81362051d5fca1ca00e8b3c4b3c040c942e655712d39f3f27b012e742516c16f",
+    "sha256": "0c0b0c8b11419e76a2dd45d89558850bce69e040b9edd029469bbd60e7f81773",
 
     "reason": "Failed constructor cleanup retains the actual native database and admission with both opening and close failures. Failed rollback retains database custody with the original failure; successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or named search refusal, never validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody releases; required native browser closure precedes cancellation. Bounded layout publication validates exact prestate or committed backup-bound state; failed rollback, native close or baseline-copy disposal propagates with its actual retained owners."
   },
@@ -151,7 +151,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/bootstrap/secure-env-bootstrap.ts",
-    "sha256": "b8d204b8ddbe33711f902f7e1bd48205c2cb7a19aee16f9ffd92a4049a50ff8b",
+    "sha256": "cc23a88119b73bb6a208477f11b72de7cc290d2e608150f24133d7c11954a10b",
     "reason": "The root listener or inherited lifetime is acquired before admission. Unproved source closure retains admission and rethrows; typed runtime or source-closure uncertainty retains the outer lifetime, while settled paths await its close. Stopped maintenance releases admission only when custody was not retained. No failed bootstrap becomes successful runtime admission. The real browser closure port is supplied to dashboard admission and offline cancellation without changing the failure-retention path. Fixed-layout failure preserves its cause before ordinary admission, so nested closure uncertainty retains the same root listener."
   },
   {
