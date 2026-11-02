@@ -27,7 +27,7 @@ export const onboardingCrmDataDefinition = defineStep({
     { nodeId: "hire-plan", purpose: "Validate hire values using legal and lived names from the supplied run-start roster snapshot." },
   ],
   proof: {
-    id: "onboarding-crm-data", order: 0,
+    id: "onboarding-crm-data", order: 15,
     build: (parent: WorkflowDefinition<typeof OnboardingInput>) => ({
       ...inheritStepProof(parent), code: "onc", label: group.label, summary: parent.summary,
       steps: buildCrmData,

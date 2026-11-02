@@ -1,5 +1,5 @@
 import { describe,expect,it } from "vitest";
-import { childWorkflowModuleOf, createWorkflowRegistry, DESCRIPTORS, personLookupModule, separationsModule, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { childWorkflowModuleOf, createWorkflowRegistry, DESCRIPTORS, onboardingModule, personLookupModule, separationsModule, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
@@ -32,8 +32,8 @@ describe("workflow descriptor registry", () => {
   });
 
   it("preserves the existing public module identities and picker order", () => {
-    expect(WORKFLOW_MODULES).toEqual([personLookupModule, separationsModule]);
-    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations"]);
+    expect(WORKFLOW_MODULES).toEqual([personLookupModule, separationsModule, onboardingModule]);
+    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations", "onboarding"]);
     for (const module of WORKFLOW_MODULES) {
       expect(workflowModuleOf(module.descriptor.id)).toBe(module);
       expect(SERVER_REGISTRY[module.descriptor.id]).toBe(module);

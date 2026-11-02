@@ -63,6 +63,11 @@ describe("Person Lookup task implementations", () => {
         "workflow:i9-check/read-retention-row",
         "workflow:i9-lookup/read-result",
 
+        "workflow:onboarding/match-hire-subject",
+        "workflow:onboarding/read-hire-plan",
+        "workflow:onboarding/read-i9-lookup",
+        "workflow:onboarding/read-i9-profile-plan",
+
         "workflow:person-lookup/read-active-status",
         "workflow:person-lookup/read-resolved-identity",
 

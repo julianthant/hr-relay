@@ -14,6 +14,8 @@ import { onboardingWorkflow } from "../../../src/workflows/onboarding/workflow.j
 import { i9LookupInput, i9LookupItemId } from "../../../src/workflows/onboarding/steps/i9-search/step.js";
 import { SearchPersonMatch } from "../../../src/models/systems/ucpath/search-person-match.js";
 import { registration } from "../../../src/workflows/onboarding/index.js";
+import { childWorkflowModuleOf, workflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
+import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { ONBOARDING_INPUT_EXAMPLE } from "../../../src/models/workflows/onboarding/input.js";
 import { OnboardingReadHirePlan } from "../../../src/models/workflows/onboarding/read-hire-plan.js";
 import { OnboardingReadI9ProfilePlan, OnboardingI9OutcomeSchema } from "../../../src/models/workflows/onboarding/i9-profile.js";
@@ -22,14 +24,15 @@ import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding
 import { I9LookupInputSchema, I9SignerOutputSchema } from "../../../src/models/systems/i9/read-section2-signer.js";
 import { readI9LookupTask } from "../../../src/workflows/onboarding/tasks/read-i9-lookup.js";
 import { TaskRefusal, createSeparationTaskFixtures } from "../../support/helpers/separation-task-fixtures.js";
-import { UNREGISTERED_ONBOARDING_MODULES } from "../../support/fixtures/onboarding/unregistered-workflows.js";
+import { classifyEvidenceLeaf, evidenceLeaves, redactEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
 import { DataPointSchema } from "../../../src/rules/workflow/task-provenance.js";
+import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 
 const descriptor = compileWorkflow(onboardingWorkflow).descriptor;
 const nodes = descriptorRuntimeNodes(descriptor);
 const plan = OnboardingReadHirePlan.output.parse(OnboardingReadHirePlan.example);
 
-describe("unregistered onboarding workflow", () => {
+describe("read-only onboarding workflow", () => {
   it("onboarding/crm-extraction — binds the real CRM task output to the snapshot-backed hire plan", async () => {
     const source = nodes.find(node => node.id === "crm-source");
     const planNode = nodes.find(node => node.id === "hire-plan");
@@ -50,9 +53,12 @@ describe("unregistered onboarding workflow", () => {
     assert.deepEqual(result.roster, ONBOARDING_INPUT_EXAMPLE.roster.binding);
   });
   it("has workflow-owned task calls, a harness for every timeline checkpoint and exact implementation bindings", () => {
-    assert.equal(registration.exposure.kind, "unregistered");
-    assert.equal(WORKFLOW_DESCRIPTORS.some(value => String(value.id) === "onboarding"), false);
-    assert.equal(UNREGISTERED_ONBOARDING_MODULES.length, 5);
+    assert.deepEqual(registration.exposure, { kind: "public", order: 2 });
+    const registered = workflowModuleOf("onboarding");
+    assert.equal(WORKFLOW_DESCRIPTORS.find(value => String(value.id) === "onboarding"), registered.descriptor);
+    assert.equal(childWorkflowModuleOf("onboarding", "i9-lookup").descriptor.id, "i9-lookup");
+    assert.deepEqual(STEP_PROOF_MODULES.filter(module => module.role.kind === "chunk-harness" && module.role.of === "onboarding")
+      .map(module => module.descriptor.id), registration.proofs.map(proof => proof.definition.id));
     assert.deepEqual(descriptor.timeline.map(step => step.key), ["crm-data", "ucpath-search", "i9-search", "i9-profile-creation"]);
     assert.deepEqual(onboardingWorkflow.steps.map(([, entries]) => entries.map(entry => entry.id)), [
       ["crm-source", "hire-plan"], ["ucpath-source", "hire-subject"], ["i9-lookup-child", "i9-lookup"], ["i9-profile-plan"],
@@ -81,8 +87,8 @@ describe("unregistered onboarding workflow", () => {
 
   it("preserves proof identities, shared ingress and every safety prerequisite", () => {
     assert.deepEqual(registration.proofs.map(proof => [proof.definition.id, proof.definition.code, proof.order]), [
-      ["onboarding-crm-data", "onc", 0], ["onboarding-ucpath-search", "onu", 1],
-      ["onboarding-i9-search", "onis", 2], ["onboarding-i9-profile-creation", "onip", 3],
+      ["onboarding-crm-data", "onc", 15], ["onboarding-ucpath-search", "onu", 16],
+      ["onboarding-i9-search", "onis", 17], ["onboarding-i9-profile-creation", "onip", 18],
     ]);
     const entryIds = ["crm-source", "hire-plan", "ucpath-source", "hire-subject", "i9-lookup-child", "i9-lookup", "i9-profile-plan"];
     const proofSizes = [2, 4, 6, 7];
@@ -124,6 +130,36 @@ describe("unregistered onboarding workflow", () => {
     assert.deepEqual(result.hireWrite, { state: "unimplemented", owner: "write-safety" });
     assert.deepEqual(result.rosterAccess, { state: "unimplemented", owner: "spreadsheets" });
     assert.equal(result.i9.state, "creation-required");
+    assert.match(descriptor.summary ?? "", /Read-only.*not yet available/u);
+    assert.deepEqual(descriptor.outcomeProjection, { fieldPath: "state", cases: [
+      { value: "implementation-incomplete", label: "Hire unavailable", tone: "warning" },
+    ] });
+    assert.ok(descriptor.details.some(detail => "kind" in detail.source && detail.source.kind === "result" && detail.source.fieldPath === "hireWrite.state"));
+  });
+
+  it("classifies registered inputs and every planning outcome without exposing SSNs in diagnostic evidence", () => {
+    for (const proof of [{ definition: onboardingWorkflow }, ...registration.proofs]) {
+      for (const leaf of evidenceLeaves(ONBOARDING_INPUT_EXAMPLE)) {
+        classifyEvidenceLeaf({ kind: "workflow-input", workflowId: WorkflowIdSchema.parse(proof.definition.id) }, leaf.path);
+      }
+    }
+    const terminal = workflowTerminalResultExecution(descriptor);
+    const outcomes = [
+      OnboardingReadI9ProfilePlan.example,
+      { state: "not-required", subjectState: "existing-person" },
+      { state: "existing-profile", profileId: "900001", i9Status: "signed" },
+      { state: "review-required", reason: "lookup-restricted" },
+    ];
+    for (const i9 of outcomes) {
+      const result = terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: {
+        "hire-plan": plan, "hire-subject": { state: "new-hire", candidateEids: [] }, "i9-profile-plan": i9,
+      } });
+      for (const leaf of evidenceLeaves(result)) classifyEvidenceLeaf({ kind: "workflow-result", workflowId: descriptor.id }, leaf.path);
+    }
+    const ssn = "234567890";
+    const redacted = redactEvidenceLeaf({ kind: "task-output", taskId: OnboardingReadHirePlan.id },
+      { path: "employee.ssn", field: "ssn", value: ssn });
+    assert.equal(JSON.stringify(redacted).includes(ssn), false);
   });
 
   it("records exact successful child observations and refuses failure without recording absence", async () => {

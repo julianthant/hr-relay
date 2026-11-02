@@ -66,12 +66,14 @@ describe("workflow descriptor registry", () => {
     expect(WORKFLOW_DESCRIPTORS.map(({ id }) => String(id))).toEqual([
       "person-lookup",
       "separations",
+      "onboarding",
     ]);
     expect(WORKFLOW_MODULES.map(({ descriptor }) => String(descriptor.id))).toEqual([
       "person-lookup",
       "separations",
+      "onboarding",
     ]);
-    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations"]);
+    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations", "onboarding"]);
     for (const descriptor of STEP_PROOF_DESCRIPTORS) {
       expect(() => workflowModuleOf(descriptor.id)).toThrow(/not registered/u);
     }

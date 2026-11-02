@@ -29,7 +29,7 @@ export const onboardingI9ProfileCreationDefinition = defineStep({
     { nodeId: "i9-profile-plan", purpose: "Reuse a proven profile ID or declare the unimplemented creation write without submitting." },
   ],
   proof: {
-    id: "onboarding-i9-profile-creation", order: 3,
+    id: "onboarding-i9-profile-creation", order: 18,
     build: (parent: WorkflowDefinition<typeof OnboardingInput>) => ({
       ...inheritStepProof(parent), code: "onip", label: group.label, summary: parent.summary,
       steps: (author: WorkflowAuthor<typeof OnboardingInput>) => {

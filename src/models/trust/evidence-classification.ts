@@ -380,7 +380,67 @@ function onbaseSavedLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
   ];
 }
 
+function onboardingPrivateLeaves(scope: EvidenceValueScope, ...paths: readonly string[]): unknown[] {
+  return paths.map(path => ({ scope, path, classification: "direct-identifier", transform: "digest" }));
+}
+
+function onboardingRosterLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...onboardingPrivateLeaves(scope, `${prefix}workbookId`, `${prefix}snapshotId`, `${prefix}rowKey.email`),
+    ...open(scope, `${prefix}workbookType`, `${prefix}runId`, `${prefix}capturedAt`),
+  ];
+}
+
+function onboardingPlanLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  return [
+    ...onboardingPrivateLeaves(scope, `${prefix}recordId`, `${prefix}postalCodeOverride`,
+      ...["firstName", "lastName", "middleName", "preferredFirstName", "preferredLastName", "preferredMiddleName",
+        "ssn", "dob", "address", "addressLine2", "city", "state", "postalCode", "phone", "email", "positionNumber",
+        "departmentNumber", "recruitmentNumber", "employeeClassification", "hourlyRateMinor", "effectiveDate",
+        "expectedJobEndDate"].map(path => `${prefix}employee.${path}`)),
+    ...onboardingRosterLeaves(scope, `${prefix}roster.`),
+    ...open(scope, `${prefix}jobEndDateSource`, `${prefix}ssnState`),
+  ];
+}
+
+function onboardingSubjectLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  return [
+    ...open(scope, `${prefix}state`),
+    ...onboardingPrivateLeaves(scope, `${prefix}person.emplId`, `${prefix}person.name`),
+    ...population(scope, `${prefix}candidateEids`, `${prefix}candidates`),
+  ];
+}
+
+function onboardingLookupLeaves(scope: EvidenceValueScope): unknown[] {
+  return [
+    ...open(scope, "state", "subjectState", "childRunId", "result.i9Status"),
+    ...onboardingPrivateLeaves(scope, "result.signerName", "result.profileId", "result.i9Id"),
+  ];
+}
+
+function onboardingProfileLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  return [
+    ...open(scope, ...["state", "subjectState", "i9Status", "reason", "write.state", "write.owner"].map(path => `${prefix}${path}`)),
+    ...onboardingPrivateLeaves(scope, `${prefix}profileId`,
+      ...["firstName", "lastName", "middleName", "ssn", "dob", "email", "departmentNumber", "startDate"].map(path => `${prefix}request.${path}`)),
+  ];
+}
+
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-i9-profile-creation"].flatMap(id => [
+    ...open(workflowInput(id), "mode", "configuredJobEndDate"),
+    ...onboardingPrivateLeaves(workflowInput(id), "email", "postalCodeOverride", "roster.references.livedName",
+      ...["legalName", "livedName"].flatMap(name => ["firstName", "lastName", "middleName"].map(part => `roster.references.${name}.${part}`))),
+    ...onboardingRosterLeaves(workflowInput(id), "roster.binding."),
+  ]),
+  ...[taskOutput("workflow:onboarding/read-hire-plan"), workflowResult("onboarding-crm-data")].flatMap(scope => onboardingPlanLeaves(scope)),
+  ...[taskOutput("workflow:onboarding/match-hire-subject"), workflowResult("onboarding-ucpath-search")].flatMap(scope => onboardingSubjectLeaves(scope)),
+  ...[taskOutput("workflow:onboarding/read-i9-lookup"), workflowResult("onboarding-i9-search")].flatMap(scope => onboardingLookupLeaves(scope)),
+  ...[taskOutput("workflow:onboarding/read-i9-profile-plan"), workflowResult("onboarding-i9-profile-creation")].flatMap(scope => onboardingProfileLeaves(scope)),
+  ...onboardingPlanLeaves(workflowResult("onboarding"), "plan."),
+  ...onboardingSubjectLeaves(workflowResult("onboarding"), "subject."),
+  ...onboardingProfileLeaves(workflowResult("onboarding"), "i9."),
+  ...open(workflowResult("onboarding"), "state", "hireWrite.state", "hireWrite.owner", "rosterAccess.state", "rosterAccess.owner"),
   ...[
     "recordId", "recordUrl", "requestedEmail", "personalEmail", "workEmail", "recordFirstName", "recordLastName",
     "department", "recruitmentNumber", "fields.positionNumber", "fields.firstName", "fields.lastName", "fields.middleName",

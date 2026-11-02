@@ -1,6 +1,5 @@
 import type { WorkflowModule } from "../../../src/workflow-kit/workflow-definition.js";
 import { UNREGISTERED_OCR_MODULES } from "../../support/fixtures/ocr/unregistered-workflows.js";
-import { UNREGISTERED_ONBOARDING_MODULES } from "../../support/fixtures/onboarding/unregistered-workflows.js";
 import { createRetainedDashboardMockFixtures } from "../../support/helpers/retained-dashboard-mock-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -489,7 +488,7 @@ function auditedWorkflowSources(modules: readonly WorkflowModule[] = [...WORKFLO
 function repositoryInputs(tree: WorkflowAuthoringBudgetTree): WorkflowAuthoringBudgetInputs {
   return {
     workflows: auditedWorkflowSources(),
-    unregisteredWorkflows: auditedWorkflowSources([...UNREGISTERED_OCR_MODULES, ...UNREGISTERED_ONBOARDING_MODULES]),
+    unregisteredWorkflows: auditedWorkflowSources(UNREGISTERED_OCR_MODULES),
     tree,
     genericIdAllowlist: GENERIC_WORKFLOW_ID_ALLOWLIST,
     preCanonicalScenarios: PRE_CANONICAL_SCENARIOS,
@@ -848,7 +847,7 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
       scannedWorkflowFiles.length >= 2,
       `arm (b) entered only ${scannedWorkflowFiles.length} workflow.ts file(s)`,
     );
-    assert.deepEqual(scannedWorkflowFiles, [...registered, ...auditedWorkflowSources([...UNREGISTERED_OCR_MODULES, ...UNREGISTERED_ONBOARDING_MODULES])].map(({ sourcePath }) => sourcePath).sort());
+    assert.deepEqual(scannedWorkflowFiles, [...registered, ...auditedWorkflowSources(UNREGISTERED_OCR_MODULES)].map(({ sourcePath }) => sourcePath).sort());
     assert.deepEqual(auditWorkflowAuthoringBudget(repositoryInputs(tree)), []);
   });
 

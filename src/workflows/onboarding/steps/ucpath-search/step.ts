@@ -27,7 +27,7 @@ export const onboardingUcpathSearchDefinition = defineStep({
     { nodeId: "hire-subject", purpose: "Keep unresolved UCPath identities separate from a new hire." },
   ],
   proof: {
-    id: "onboarding-ucpath-search", order: 1,
+    id: "onboarding-ucpath-search", order: 16,
     build: (parent: WorkflowDefinition<typeof OnboardingInput>) => ({
       ...inheritStepProof(parent), code: "onu", label: group.label, summary: parent.summary,
       steps: (author: WorkflowAuthor<typeof OnboardingInput>) => {

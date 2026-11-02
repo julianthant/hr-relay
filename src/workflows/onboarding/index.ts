@@ -8,7 +8,7 @@ import { onboardingI9SearchDefinition } from "./steps/i9-search/step.js";
 import { onboardingI9ProfileCreationDefinition } from "./steps/i9-profile-creation/step.js";
 
 export const registration = deepFreeze({
-  definition: onboardingWorkflow, exposure: { kind: "unregistered" }, store: onboardingStore,
+  definition: onboardingWorkflow, exposure: { kind: "public", order: 2 }, store: onboardingStore,
   proofs: [
     defineStepProof(onboardingWorkflow, onboardingCrmDataDefinition),
     defineStepProof(onboardingWorkflow, onboardingUcpathSearchDefinition),

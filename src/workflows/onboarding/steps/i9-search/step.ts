@@ -48,7 +48,7 @@ export const onboardingI9SearchDefinition = defineStep({
     { nodeId: "i9-lookup", purpose: "Retain only the exact successful child result; failure never proves profile absence." },
   ],
   proof: {
-    id: "onboarding-i9-search", order: 2,
+    id: "onboarding-i9-search", order: 17,
     build: (parent: WorkflowDefinition<typeof OnboardingInput>) => ({
       ...inheritStepProof(parent), code: "onis", label: group.label, summary: parent.summary,
       steps: (author: WorkflowAuthor<typeof OnboardingInput>) => {
