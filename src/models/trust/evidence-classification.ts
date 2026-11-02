@@ -684,6 +684,13 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     { scope, path: "fictional.managerComments", classification: "direct-identifier", transform: "drop" },
   ]),
 
+  ...open(workflowResult("wiring-projection"), "done"),
+  { scope: workflowInput("wiring-projection"), path: "name", classification: "direct-identifier", transform: "drop" },
+  ...["archive.fileName", "archive.artifact.id"].map(path => ({
+    scope: taskOutput("workflow:wiring-projection/read-archive"), path, classification: "direct-identifier", transform: "drop",
+  })),
+  ...open(taskOutput("workflow:wiring-projection/read-archive"), "archive.artifact.sha256", "archive.artifact.bytes", "archive.artifact.mediaType"),
+
   /* The write-sequencer's sealed transaction fixture exercises every role
      through the same declaration refusal as production; it has no bypass. */
   ...person(taskOutput("ucpath/read-write-fixture-probe"), "eid"),

@@ -34,6 +34,7 @@ import { defineWorkflowDescriptor } from "../../../../../src/workflow-kit/workfl
 import { testRunLifecycle, testWorkerPorts } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { foundationFixture } from "../../../../support/helpers/database-foundation/fixtures.js";
+import { createRunRecordServiceTestWorld } from "../../../../support/helpers/backend/run-record-service-world.js";
 import { happySessionHarness, ManualScheduler, recordingEmitter, recordingLogger, sessionManagerFor } from "../../../../support/helpers/phase1f-executor-harness.js";
 
 it("publishes a task's one batch zip through the real checkpoint, outbox, worker sink and retained documents path", async () => {
@@ -95,36 +96,40 @@ it("publishes a task's one batch zip through the real checkpoint, outbox, worker
 });
 
 it("publishes retained run output at its moved physical destination without rewriting run evidence", async () => {
-  const f = await foundationFixture(), target = realpathSync(mkdtempSync(join(tmpdir(), "named-output-layout-")));
+  const world = createRunRecordServiceTestWorld(), f = await world.interruptedFixture({ nativePaths: true });
+  const target = realpathSync(mkdtempSync(join(tmpdir(), "named-output-layout-")));
   let lifetime: RuntimeLifetimeLock | undefined, machine: RuntimeAdmission | undefined, admission: RuntimeAdmission | undefined, database: AuthorityDatabase | undefined;
   try {
-    const artifacts = createContentAddressedArtifactWriter({ admission: f.profile.admission }); await artifacts.ready;
+    const artifacts = createContentAddressedArtifactWriter({ admission: f.admission }); await artifacts.ready;
     const bytes = Buffer.from("retained output across layout conversion"), artifact = await artifacts.put(bytes, { mediaType: "application/zip" });
-    const fileName = `Moved ${randomUUID()}.zip`, profileId = f.profile.admission.profileBinding.profileId, run = f.db.authority.runs.get(f.run.envelope.runId); assert.ok(run);
+    const fileName = `Moved ${randomUUID()}.zip`, profileId = f.admission.profileBinding.profileId, run = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(run);
+    const activeBefore = f.database.authority.runtimeConfig.get(); assert.ok(activeBefore);
+    const snapshotBefore = f.database.authority.configSnapshots.get(activeBefore.configSnapshotId); assert.ok(snapshotBefore);
+    const workspace = f.machine.readInstallationContext()?.workspace; assert.ok(workspace);
     const row = ArtifactOutboxStorageRecordSchema.parse({ outboxId: randomUUID(), artifactId: randomUUID(), projectionId: "batch-archive", stableKeyFingerprint: "a".repeat(64),
       keyValues: [{ field: "archive.fileName", value: fileName }], sinkId: `documents-file-${run.envelope.runId}`, sourceRunId: run.envelope.runId, sourceNodeId: "searching", state: "pending",
       payload: { schemaHash: "b".repeat(64), value: namedArtifactOutput(artifact, fileName) }, createdAt: f.clock.now().toISOString() });
-    f.db.authority.artifactOutbox.insert(row);
-    f.db.close(); await f.profile.closeController();
+    f.database.authority.artifactOutbox.insert(row);
+    await f.closeController();
     lifetime = await RuntimeLifetimeLock.acquire(0);
-    await prepareApplicationDataWorkspace(f.profile.workspace, target, lifetime, { primaryDisplay: null }, f.clock);
+    await prepareApplicationDataWorkspace(workspace, target, lifetime, { primaryDisplay: null }, f.clock);
     machine = acquireEntrypointAdmission(target, "shared", lifetime); admission = machine.admitProfile(profileId);
     database = AuthorityDatabase.open(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "moved-output-proof" }, f.clock,
       undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: admission.stateRoot }));
     assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
-    assert.deepEqual(database.authority.configSnapshots.get(f.snapshot.configSnapshotId), f.snapshot);
+    assert.deepEqual(database.authority.configSnapshots.get(snapshotBefore.configSnapshotId), snapshotBefore);
     assert.deepEqual(database.authority.artifactOutbox.get(row.outboxId), row);
     const movedArtifacts = createContentAddressedArtifactWriter({ admission }); await movedArtifacts.ready;
     const projector = composeWorkerArtifactProjector({ admission, database, artifacts: movedArtifacts, clock: f.clock });
     await projector.projectOutbox([row.outboxId]);
     const active = database.authority.runtimeConfig.get(); assert.ok(active);
     const snapshot = database.authority.configSnapshots.get(active.configSnapshotId); assert.ok(snapshot);
-    assert.notEqual(snapshot.config.paths.onboardingDocsDir, f.snapshot.config.paths.onboardingDocsDir);
+    assert.notEqual(snapshot.config.paths.onboardingDocsDir, snapshotBefore.config.paths.onboardingDocsDir);
     assert.deepEqual(readFileSync(join(snapshot.config.paths.onboardingDocsDir, fileName)), bytes);
-    assert.equal(existsSync(join(f.snapshot.config.paths.onboardingDocsDir, fileName)), false);
-    assert.deepEqual(database.authority.configSnapshots.get(f.snapshot.configSnapshotId), f.snapshot);
+    assert.equal(existsSync(join(snapshotBefore.config.paths.onboardingDocsDir, fileName)), false);
+    assert.deepEqual(database.authority.configSnapshots.get(snapshotBefore.configSnapshotId), snapshotBefore);
     assert.equal(database.authority.artifactOutbox.get(row.outboxId)?.state, "projected");
-  } finally { database?.close(); admission?.release(); machine?.release(); await lifetime?.close(); await f.dispose(); rmSync(target, { recursive: true, force: true }); }
+  } finally { database?.close(); admission?.release(); machine?.release(); await lifetime?.close(); await world.cleanup(); rmSync(target, { recursive: true, force: true }); }
 });
 
 it("keeps an interrupted named publication pending and refuses to duplicate its external effect", async () => {
