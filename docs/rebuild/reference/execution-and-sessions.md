@@ -225,7 +225,8 @@ hands off to native authentication; failures, cancellation and late replies reje
 binds the actual token to the factory's signing scope. The broker may install and wait before a
 ceremony, but signing and reply require that current unretired token, matching worker/system and
 credential identity, unexpired TTL and current profile/worker ownership. Stop drains pending broker
-work alongside native context closure; either failure retains the profile reservation.
+work before closing its native context, within one shared proof deadline. Native closure is attempted
+even if broker stop fails; either failure retains the profile reservation.
 Explicitly disabled `features.duoWebAuthn` launches Chromium with extensions disabled.
 
 ### 4.3 Acquisition deadline
