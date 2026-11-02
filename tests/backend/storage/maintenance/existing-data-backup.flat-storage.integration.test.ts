@@ -14,6 +14,7 @@ import { prepareStorageBackupCommand, composeStorageCommand } from "../../../../
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { SourceRecordSchema, StorageBackupSchema, retainedStorageBackup, hash } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -57,6 +58,7 @@ it("archives raw native6 bytes without login or person adoption and excludes pre
   const paths = [f.databasePath, f.protectedPath, f.artifact, f.reportPath, f.browserPreferencesPath];
   for (const path of [f.databasePath, f.artifact, f.reportPath]) chmodSync(path, 0o644);
   const admission = await acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime);
+  const installationId = admission.locator.installationId;
   try {
     assert.equal(admission.isFlatBackup(), true);
     assert.throws(() => admission.profileBinding, /profile-bound-authority-required/u);
@@ -94,7 +96,7 @@ it("archives raw native6 bytes without login or person adoption and excludes pre
     const source = SourceRecordSchema.parse(JSON.parse(readFileSync(join(root, "source.json"), "utf8")));
     assert.equal(record.operationId, report.archive.operationId);
     assert.equal(record.sourceDigest, hash(readFileSync(join(root, "source.json"))));
-    assert.deepEqual(retainedStorageBackup(f.workspace, admission.locator.installationId, report.archive), {
+    assert.deepEqual(retainedStorageBackup(f.workspace, installationId, report.archive), {
       backupPath: report.archive.backupPath, backupDigest: report.archive.backupDigest,
     });
     for (const path of ["profile/state.db", "control/installation.json", "workspace-data/reports/historical-report.csv", `profile/artifacts/${f.artifact.split("/").at(-1) ?? ""}`]) {
@@ -127,10 +129,9 @@ it("archives raw native6 bytes without login or person adoption and excludes pre
     assert.equal(report.archive.byteSize, record.files.reduce((total, entry) => total + entry.size, 0));
     assert.equal(existsSync(join(f.stateRoot, "backups")), false);
     const firstBackup = oldArtifactSnapshot(root), sourceRecord = readFileSync(join(root, "source.json"));
-    const repeated = await prepareStorageBackupCommand(rebuildRuntimeIsolation, ["--json"], systemClock, f.workspace, admission);
-    const afterProbe = [oldArtifactSnapshot(f.stateRoot), oldArtifactSnapshot(join(f.workspace, "data"))];
-    await assert.rejects(repeated.run(), { code: "STORAGE_BACKUP_SOURCE_CHANGED" });
-    assert.deepEqual([oldArtifactSnapshot(f.stateRoot), oldArtifactSnapshot(join(f.workspace, "data"))], afterProbe);
+    assert.throws(() => admission.assertLive(), { code: "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE" });
+    await assert.rejects(prepared.run(), { code: "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE" });
+    assert.deepEqual([oldArtifactSnapshot(f.stateRoot), oldArtifactSnapshot(join(f.workspace, "data"))], sourceBefore);
     assert.deepEqual(oldArtifactSnapshot(root), firstBackup);
     assert.deepEqual(readFileSync(join(root, "source.json")), sourceRecord);
     untouched(f);
@@ -144,10 +145,9 @@ for (const options of [{ unknownWrite: true, closedBrowser: false, unretiredWork
     try {
       if (options.unknownWrite) {
         assert.equal(database.prepare("SELECT state FROM runs").get()?.state, "parked-write");
-        const lifecycle = database.prepare("SELECT lifecycle_json FROM runs").get()?.lifecycle_json;
-        const historicalLifecycle: unknown = JSON.parse(String(lifecycle));
-        assert.ok(historicalLifecycle !== null && typeof historicalLifecycle === "object" && "code" in historicalLifecycle);
-        assert.equal(historicalLifecycle.code, "unknown");
+        const run = runRecordFromRow(database.prepare("SELECT * FROM runs").get());
+        assert.equal(run.lifecycle.state, "parked-write"); assert.ok(run.lifecycle.state === "parked-write");
+        assert.equal(run.lifecycle.code, "unknown");
         assert.equal(database.prepare("SELECT status FROM write_intents").get()?.status, "parked");
       }
       if (options.unretiredWorker) {
