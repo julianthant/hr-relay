@@ -35,6 +35,12 @@ describe("Person Lookup task implementations", () => {
 
         "ocr/extract-form-page",
 
+        "onbase/match-import",
+        "onbase/read-source-page",
+        "onbase/stage-import",
+        "onbase/upload-import",
+        "onbase/verify-import",
+
         "roster/match-spreadsheet",
 
         "ucpath/create-termination",
