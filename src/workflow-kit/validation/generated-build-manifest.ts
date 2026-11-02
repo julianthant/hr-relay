@@ -13867,7 +13867,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "7e61b9664b033b88a6536ee3d54f4061cabef08e7f618adffa89aca6b325ddfa",
+      "fingerprint": "807c8c9de1c556ac5c1b02ead24b8e2fb0b9a42ae654d63e7ae495adcc661801",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -13919,7 +13919,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -14011,7 +14011,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
@@ -14265,7 +14265,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/create-termination"
     },
     {
-      "fingerprint": "8d938539d6b853a911e20efea2542b6294031cc57417d2d063532c08b97559eb",
+      "fingerprint": "0c19144e341592d2d75e03ca641edfd4946b3a4ee2f17a4ae06d245f7eecfcfb",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -14317,7 +14317,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -14409,7 +14409,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
@@ -14663,7 +14663,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/delete-pending-terminations"
     },
     {
-      "fingerprint": "3ccc145306ac0c09357b748ee958fec582e2c7db530f5cd194e915a286163d81",
+      "fingerprint": "ee94d0013c4068b63d765a57dd7c32df3f6c6573134bd2011c8e6b6c65dd6efc",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -14715,7 +14715,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -14807,7 +14807,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
@@ -15061,7 +15061,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-existing-termination"
     },
     {
-      "fingerprint": "1e801ec0990a6b1473b7dfe4dcf930c209f6d66e00a379289e933334137f047c",
+      "fingerprint": "12852a51c6bec3d7746eae2512a43441c9a652e1da836cfbee1ee937f26ca04c",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -15113,7 +15113,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -15205,7 +15205,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
@@ -15459,7 +15459,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-pending-terminations"
     },
     {
-      "fingerprint": "2dd0777c020bca6a24faf435b5b0aa8fc6860932ecb73088d95e2718b7675d28",
+      "fingerprint": "b9ee8127ac28b3f65ebd68f99101bfd656a932ad5ffe04dbe1be9613dd12962c",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -15511,7 +15511,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -15603,7 +15603,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
@@ -15861,7 +15861,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "fd8b369e161dfae2b132f970a3d4f1a945787e7b4eec1dcd602a777e5f3471a6",
+      "fingerprint": "f689334ede7ef0031ec7d8804ad9ee19059f1e8274ae5f44860d0214e75e8368",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -15913,7 +15913,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -16005,7 +16005,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
@@ -16263,7 +16263,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-pending-termination-set"
     },
     {
-      "fingerprint": "4600c23c61a564737b764140d5fc137b0173ca86128f1228ecdbe65c17aceb50",
+      "fingerprint": "c154b6819cfacd209c3b36c4d857c11b07b24f4882341d06f1994c3ac7be2733",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -16315,7 +16315,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -16407,7 +16407,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
@@ -16665,7 +16665,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-transaction-findings"
     },
     {
-      "fingerprint": "089930287ad514a776dc4f65eb82cfca25194419c5e338e3ab84520f8705164a",
+      "fingerprint": "98f57dba8a7674927b392288a7e0762726138d9bb1d4d4effc30639614ecf23a",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -16717,7 +16717,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -16809,7 +16809,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
@@ -17063,7 +17063,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-match"
     },
     {
-      "fingerprint": "cd668a70cb1edabf560d65a0ee2560ca0386fbef170a36d4a9c03d59dc3fbd59",
+      "fingerprint": "25edc2f0127ce8de2e47f83cce2d2443bb9c85f9f0bc91bf6935a793009b8948",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -17115,7 +17115,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -17207,7 +17207,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
@@ -17461,7 +17461,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "3b9bde9e91ba75f548e8b9345ec9f518b4fbfb6c980df1a22a7bf40a61aad0a2",
+      "fingerprint": "8f97308097a04ae26904f2a5a4d70aaafde034cb06fb2556c99ebec0e4898589",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -17513,7 +17513,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -17605,7 +17605,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
@@ -17863,7 +17863,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-pending-termination-sweep"
     },
     {
-      "fingerprint": "f7cc76551e4e2602e7d3cebc889b88b5ea7390a719917e76cb9175f52b584721",
+      "fingerprint": "af5b92a7e9840f6fa3554b85cc405f4ae1fc83ce0ab006f37bc9a124da6c0775",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -17915,7 +17915,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -18007,7 +18007,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
@@ -18265,7 +18265,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-termination"
     },
     {
-      "fingerprint": "03b6a4e2aa8041ea21c381650fc58ac810fa9f9ff9c7b246f2ea267dd3360aca",
+      "fingerprint": "f1cecbdd2bd772017071bbd4c608fd81e6bd7c3676d478668f3abffd342e9909",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -18317,7 +18317,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -18409,7 +18409,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
@@ -18667,7 +18667,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-pending-terminations-cleared"
     },
     {
-      "fingerprint": "60b1a226c5724ddd95a4c3e1dcf3d70244702880cd933939ec697d7d376466c7",
+      "fingerprint": "0b8921e786336e01b902c2f2666d420f08129f3dba9ba59f086ffe41c8a7a49a",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -18719,7 +18719,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -18811,7 +18811,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
@@ -19069,7 +19069,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination"
     },
     {
-      "fingerprint": "aa314eba4cadc99e2111a2571a99ee393b8ad7d6b3ad6fda38c23604e662e7a2",
+      "fingerprint": "12ff5c5424a7ddd0d8b3f6374d5e02a53c011d91f0729ead1846eb05d8b3ea5a",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -19121,7 +19121,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/termination-verdict.ts",
-          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+          "sha256": "d78ee88b3096464893dfd55061dc98021e7b76f5da440713670f2f4535abc518"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -19213,7 +19213,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/systems/ucpath/match-existing-termination.ts",
-          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+          "sha256": "15e2fe6db5238a991d020276519ce18dd590c2ee7ae3e6b5842aede88c54295b"
         },
         {
           "path": "src/models/systems/ucpath/match-pending-terminations.ts",
