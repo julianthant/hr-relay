@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { ApplicationLifecycleSchema } from "../../../models/dashboard/application-lifecycle.js";
 import { runClaim } from "../../../models/run/record.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
@@ -27,7 +28,7 @@ export function createApplicationLifecycle(input: Readonly<{
     const runtime = input.database.authority.runtimeConfig.get();
     if (runtime === undefined) throw new Error("application-runtime-unavailable");
     return ApplicationLifecycleSchema.parse({ runtimeGeneration: runtime.generation,
-      state: quitting ? "quitting" : admission.state === "open" ? "ready" : blocked ? "blocked" : "pausing",
+      state: quitting ? "quitting" : admission.state === "open" ? "ready" : "pausing",
       targets: active.map(run => ({ runId: run.envelope.runId, expectedVersion: run.version })),
       update: input.updateHost === undefined ? "installer-unavailable" : busy || blocked ? "deferred" : input.updateHost.pending() ? "pending" : "idle",
     });
@@ -35,10 +36,9 @@ export function createApplicationLifecycle(input: Readonly<{
   const observeQuit = () => {
     scheduled = undefined;
     try {
-      const state = snapshot();
-      if (state.state === "blocked") return;
+      snapshot();
       const ready = input.database.withAuthorityReadSnapshot(() => input.database.readProfileResourceCustody().runs
-        .every(run => run.lifecycle.state === "terminal" || runClaim(run) === undefined && run.pause?.state === "paused"));
+        .every(run => run.lifecycle.state === "terminal" || run.lifecycle.state === "parked-write" || runClaim(run) === undefined && run.pause?.state === "paused"));
       if (!ready) { scheduled = setTimeout(observeQuit, 50); return; }
       quitting = true;
       input.requestQuit();
@@ -48,7 +48,11 @@ export function createApplicationLifecycle(input: Readonly<{
     quitAccepted() { if (!quitting && scheduled === undefined) scheduled = setTimeout(observeQuit, 0); },
     async installIdleUpdate() {
       if (input.updateHost === undefined) throw new Error("application-update-installer-unavailable");
-      if (snapshot().update !== "pending") throw new Error("application-update-work-active");
+      input.database.withAuthorityTransaction(repositories => {
+        const current = snapshot();
+        if (current.update !== "pending" || repositories.runs.admission().state !== "open") throw new Error("application-update-work-active");
+        repositories.runs.holdAdmission({ commandId: randomUUID(), runtimeGeneration: current.runtimeGeneration, reason: "update" });
+      });
       await input.updateHost.install();
     },
     dispose() { if (scheduled !== undefined) clearTimeout(scheduled); scheduled = undefined; },

@@ -1,3 +1,4 @@
+import { captureRunContinuation, validateRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
 import { authenticateRootRun, authenticateRunPriority } from "./delegation-root-authority.js";
 import { z } from "zod";
 import type { WorkerResetBinding } from "../../../models/run/worker-control.js";
@@ -278,6 +279,7 @@ function resolveDelegationRetry(repositories: AuthorityRepositories, manifest: D
   let child = original;
   const history = [original.envelope.runId];
   for (;;) {
+    if (history.length > 32) throw new Error("delegation-retry-history-limit");
     const commandId = lifecycleCommandId("delegation-retry", { dependencyId, previousRunId: child.envelope.runId });
     const command = repositories.lifecycleJournal.getCommand(commandId);
     if (command === undefined) return { child, history, attempt: child === original ? "original" as const : "retry" as const };
@@ -289,7 +291,11 @@ function resolveDelegationRetry(repositories: AuthorityRepositories, manifest: D
     const parent = repositories.runs.get(manifest.parentRunId), next = repositories.runs.get(retry.replacementRunId);
     const terminal = childTerminalSettlement(child, repositories);
     const source = repositories.commands.get(retry.sourceCommandId), sourceAudit = repositories.commandAudits.findByCommand(retry.sourceCommandId);
-    const lifecycle = repositories.lifecycleJournal.getCommand(lifecycleCommandId("operator-retry", retry.sourceCommandId));
+    const continued = retry.continuationOwner === undefined ? undefined
+      : authenticateContinuationRetryOwner(repositories, child, retry.continuationOwner, retry.sourceCommandId);
+    const lifecycleId = continued === undefined ? lifecycleCommandId("operator-retry", retry.sourceCommandId)
+      : lifecycleCommandId("continuation-child-retry", { ownerRunId: continued.current.envelope.runId, previousRunId: child.envelope.runId });
+    const lifecycle = repositories.lifecycleJournal.getCommand(lifecycleId);
     const lifecycleAudit = lifecycle === undefined ? undefined : repositories.lifecycleJournal.findAuditByCommand(lifecycle.commandId);
     const lifecycleRequest = lifecycle === undefined || !("kind" in lifecycle) || lifecycle.kind !== "run-lifecycle" ? undefined : CanonicalRetrySourceRequestSchema.parse(lifecycle.request);
     if (parent === undefined || parent.version < retry.parentVersion || terminal === undefined || terminal.state === "satisfied"
@@ -298,10 +304,13 @@ function resolveDelegationRetry(repositories: AuthorityRepositories, manifest: D
       || canonicalJsonStringify(retry.policy) !== canonicalJsonStringify(manifest.policy)
       || retry.originalRunId !== original.envelope.runId || retry.originalAttempt !== original.envelope.attempt
       || retry.previousRunId !== child.envelope.runId || retry.previousAttempt !== child.envelope.attempt || retry.resultDigest !== terminal.result.resultDigest
-      || source?.family !== "run" || source.type !== "retry" || source.target.runId !== child.envelope.runId
-      || lifecycleRequest?.expectedVersion !== source.target.expectedVersion || lifecycleRequest.runId !== child.envelope.runId
-      || lifecycleRequest.sourceCommandId !== source.commandId || child.version < source.target.expectedVersion || sourceAudit?.result.state !== "applied"
-      || canonicalJsonStringify(sourceAudit.request) !== canonicalJsonStringify(source) || !sourceAudit.versionChanges.some(change => change.target.family === "run" && change.target.runId === retry.replacementRunId && change.before === 0 && change.after === 1)
+      || source === undefined || (sourceAudit === undefined ? continued === undefined : sourceAudit.result.state !== "applied" || canonicalJsonStringify(sourceAudit.request) !== canonicalJsonStringify(source))
+      || lifecycleRequest?.runId !== child.envelope.runId || lifecycleRequest.expectedVersion > child.version
+      || lifecycleRequest.sourceCommandId !== source.commandId
+      || canonicalJsonStringify(lifecycleRequest.continuationOwner ?? null) !== canonicalJsonStringify(retry.continuationOwner ?? null)
+      || (continued === undefined && (source.family !== "run" || source.type !== "retry" || source.target.runId !== child.envelope.runId
+        || lifecycleRequest.expectedVersion !== source.target.expectedVersion))
+      || sourceAudit !== undefined && !sourceAudit.versionChanges.some(change => change.target.family === "run" && change.target.runId === retry.replacementRunId && change.before === 0 && change.after === 1)
       || lifecycle === undefined || !("kind" in lifecycle) || lifecycle.kind !== "run-lifecycle" || lifecycle.operation !== "retry"
       || lifecycleAudit === undefined || !("kind" in lifecycleAudit) || lifecycleAudit.kind !== "run-lifecycle" || lifecycleAudit.result.kind !== "run"
       || lifecycleAudit.result.runId !== retry.replacementRunId || canonicalJsonStringify(lifecycleAudit.request) !== canonicalJsonStringify(lifecycle)
@@ -313,12 +322,47 @@ function resolveDelegationRetry(repositories: AuthorityRepositories, manifest: D
   }
 }
 
-export function prepareDelegationRetry(repositories: AuthorityRepositories, run: RunRecord, request: Readonly<{ commandId: string; sourceCommandId?: string }>) {
+function authenticateContinuationRetryOwner(repositories: AuthorityRepositories,
+  run: RunRecord, owner: NonNullable<z.infer<typeof DelegationRetryRequestSchema>["continuationOwner"]>, sourceCommandId: string, visited = new Set<string>()) {
+  if (visited.size >= 16 || visited.has(owner.runId)) throw new Error("delegation-continuation-owner-cycle-or-depth");
+  visited.add(owner.runId);
+  const current = repositories.runs.get(owner.runId);
+  if (current === undefined || current.version < owner.version || current.envelope.attempt !== owner.attempt
+    || current.envelope.workflow !== repositories.runs.get(run.envelope.parent?.runId ?? "")?.envelope.workflow
+    || !validateRunContinuation(repositories, current.envelope).some(source => source.envelope.runId === run.envelope.parent?.runId)) {
+    throw new Error("delegation-continuation-owner-unavailable");
+  }
+  const issue = repositories.lifecycleJournal.findContinuationIssue(owner.runId);
+  const source = repositories.commands.get(sourceCommandId);
+  if (issue?.result.kind !== "run" || issue.result.appliedVersion !== owner.version || source === undefined) throw new Error("delegation-continuation-source-unavailable");
+  if (issue.request.operation === "retry") {
+    const retry = CanonicalRetrySourceRequestSchema.parse(issue.request.request);
+    if (retry.continuationOwner !== undefined) {
+      const previous = repositories.runs.get(retry.runId);
+      if (previous === undefined || retry.sourceCommandId !== sourceCommandId) throw new Error("delegation-continuation-source-unavailable");
+      authenticateContinuationRetryOwner(repositories, previous, retry.continuationOwner, sourceCommandId, visited);
+    } else if (retry.sourceCommandId !== sourceCommandId || source.family !== "run" || source.type !== "retry"
+      || source.target.runId !== retry.runId || source.target.expectedVersion !== retry.expectedVersion
+      || current.envelope.retryOf !== retry.runId) throw new Error("delegation-continuation-source-mismatch");
+  } else if (issue.request.operation === "create") {
+    const create = CanonicalCreateRunRequestSchema.parse(issue.request.request);
+    if (source.family !== "start" || source.type !== "start-run" || current.envelope.sourceBound?.confirmationCommandId !== sourceCommandId
+      || create.commandId !== lifecycleCommandId("operator-create", { commandId: sourceCommandId, entry: 0 })
+      || canonicalJsonStringify(create.continuation) !== canonicalJsonStringify(issue.result.continuation)) throw new Error("delegation-continuation-source-mismatch");
+  } else throw new Error("delegation-continuation-source-unavailable");
+  authenticateOperatorSource(repositories, source);
+  return { current, source };
+}
+
+export function prepareDelegationRetry(repositories: AuthorityRepositories, run: RunRecord, request: Readonly<{ commandId: string; sourceCommandId?: string; continuationOwner?: z.infer<typeof DelegationRetryRequestSchema>["continuationOwner"] }>) {
   const parent = run.envelope.parent === undefined ? undefined : repositories.runs.get(run.envelope.parent.runId);
   const source = request.sourceCommandId === undefined ? undefined : repositories.commands.get(request.sourceCommandId);
-  if (parent === undefined
-    || source?.family !== "run" || source.type !== "retry" || source.target.runId !== run.envelope.runId || source.target.expectedVersion !== run.version
-    || request.commandId !== lifecycleCommandId("operator-retry", source.commandId)) throw new Error("delegation-retry-source-unavailable");
+  const continued = request.continuationOwner === undefined || request.sourceCommandId === undefined ? undefined
+    : authenticateContinuationRetryOwner(repositories, run, request.continuationOwner, request.sourceCommandId);
+  if (parent === undefined || source === undefined
+    || (continued === undefined && (source.family !== "run" || source.type !== "retry" || source.target.runId !== run.envelope.runId || source.target.expectedVersion !== run.version
+    || request.commandId !== lifecycleCommandId("operator-retry", source.commandId)))
+    || continued !== undefined && request.commandId !== lifecycleCommandId("continuation-child-retry", { ownerRunId: continued.current.envelope.runId, previousRunId: run.envelope.runId })) throw new Error("delegation-retry-source-unavailable");
   authenticateOperatorSource(repositories, source);
   const groups = repositories.delegationManifests.listByParentRun(parent.envelope.runId)
     .map(manifest => ({ manifest, ...authenticateDelegationGroup(repositories, manifest) }));
@@ -328,7 +372,8 @@ export function prepareDelegationRetry(repositories: AuthorityRepositories, run:
   if (parent.cancelRequested === true && selectedChild.group.manifest.policy.cascadeCancel !== "independent") {
     throw new Error("delegation-retry-source-unavailable");
   }
-  if (parent.lifecycle.state === "terminal") {
+  if (continued !== undefined && (parent.lifecycle.state !== "terminal" || parent.lifecycle.outcome !== "failed")) throw new Error("delegation-continuation-parent-ineligible");
+  if (parent.lifecycle.state === "terminal" && continued === undefined) {
     const independentCancellation = parent.lifecycle.outcome === "cancelled"
       && selectedChild.group.manifest.policy.cascadeCancel === "independent"
       && delegationCancellationAvailability(repositories, parent.envelope.runId).state === "available";
@@ -483,6 +528,13 @@ export function assertResetCancellationAdmission(repositories: AuthorityReposito
 }
 
 export function assertDelegationReplacement(repositories: AuthorityRepositories, original: RunRecord, previous: RunRecord, next: RunRecord): void {
+  validateRunContinuation(repositories, next.envelope);
+  const origin = repositories.lifecycleJournal.findRunOrigin(next.envelope.runId);
+  const issuance = origin === undefined ? undefined : repositories.lifecycleJournal.findAuditByCommand(origin.commandId);
+  if (issuance === undefined || !("kind" in issuance) || issuance.kind !== "run-lifecycle" || issuance.result.kind !== "run"
+    || canonicalJsonStringify(issuance.result.continuation) !== canonicalJsonStringify(captureRunContinuation(repositories, previous))) {
+    throw new Error("delegation-retry-continuation-binding-mismatch");
+  }
   authenticateRunPriority(repositories, next, previous.envelope.priority, LOCAL_OPERATOR_ACTOR_ID);
   const fields = ["browserMode", "captureBrowserScreenshots", "operationDisplayCapability", "operationDisplaySnapshot", "stepOmissions"] as const;
   if (fields.some(field => canonicalJsonStringify(next.envelope[field] ?? null) !== canonicalJsonStringify(original.envelope[field] ?? null))

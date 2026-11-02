@@ -5,9 +5,11 @@ import { PublicRerunPlanSchema, SourceBoundRunSchema } from "../../../models/run
 import { RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { WorkerStandingRecoveryRequestSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema, CanonicalCreateRunRequestSchema, CanonicalClaimNextRequestSchema, CanonicalTransitionRequestSchema, CanonicalRenewClaimRequestSchema, CanonicalWorkerTransitionRequestSchema, CanonicalFailureTerminalizeRequestSchema, CanonicalSuccessTerminalizeRequestSchema, CanonicalCancellationTerminalizeRequestSchema, CanonicalRequeueRequestSchema, CanonicalRetrySourceRequestSchema, CanonicalDeleteRequestSchema, CanonicalPurgeRequestSchema } from "./run-store-contracts.js";
+import { ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema, CanonicalAcknowledgePauseRequestSchema, WorkerStandingRecoveryRequestSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema, CanonicalCreateRunRequestSchema, CanonicalClaimNextRequestSchema, CanonicalTransitionRequestSchema, CanonicalRenewClaimRequestSchema, CanonicalWorkerTransitionRequestSchema, CanonicalFailureTerminalizeRequestSchema, CanonicalSuccessTerminalizeRequestSchema, CanonicalCancellationTerminalizeRequestSchema, CanonicalRequeueRequestSchema, CanonicalRetrySourceRequestSchema, CanonicalDeleteRequestSchema, CanonicalPurgeRequestSchema } from "./run-store-contracts.js";
 
 const schemas = {
+  "application-admission": ApplicationAdmissionRequestSchema,
+  pause: CanonicalPauseRequestSchema, resume: CanonicalPauseRequestSchema, "acknowledge-pause": CanonicalAcknowledgePauseRequestSchema,
   "recover-crash": CanonicalCrashRecoveryRequestSchema,
   "delegation-invocation": DelegationInvocationRequestSchema,
   "delegation-admission": DelegationAdmissionRequestSchema,
@@ -24,7 +26,7 @@ const schemas = {
 export function validateNativeLifecycleRequest(input: unknown): void {
   const command = RunLifecycleCommandRecordSchema.parse(input);
   if (!Object.hasOwn(schemas,command.operation)) throw new Error("run-lifecycle-operation-unavailable");
-  const operation = z.enum(["delegation-invocation","delegation-admission","delegation-settlement","delegation-retry","create","claim-next","transition","recover-crash","renew-claim","worker-transition","worker-admission","worker-standing-recovery","worker-verification-admission","worker-verification-retirement","terminalize","requeue","retry","restart","delete","purge"]).parse(command.operation);
+  const operation = z.enum(["application-admission","pause","resume","acknowledge-pause","delegation-invocation","delegation-admission","delegation-settlement","delegation-retry","create","claim-next","transition","recover-crash","renew-claim","worker-transition","worker-admission","worker-standing-recovery","worker-verification-admission","worker-verification-retirement","terminalize","requeue","retry","restart","delete","purge"]).parse(command.operation);
   const parsed = schemas[operation].parse(command.request);
   if (z.object({commandId:z.string()}).parse(parsed).commandId !== command.commandId
     || canonicalJsonStringify(parsed) !== canonicalJsonStringify(command.request)
@@ -32,12 +34,12 @@ export function validateNativeLifecycleRequest(input: unknown): void {
     throw new Error("run-lifecycle-request-binding-mismatch");
   }
   let expectedFence: unknown;
-  if (["delegation-invocation","create","claim-next","purge","worker-admission","worker-standing-recovery","worker-verification-admission","worker-verification-retirement"].includes(operation)) expectedFence = {kind:"none"};
+  if (["application-admission","delegation-invocation","create","claim-next","purge","worker-admission","worker-standing-recovery","worker-verification-admission","worker-verification-retirement"].includes(operation)) expectedFence = {kind:"none"};
   else if (operation === "delegation-admission") {
     const request = DelegationAdmissionRequestSchema.parse(parsed);
     expectedFence = { kind: "terminal", expectedVersion: request.expectedVersion, ...request.claim };
   }
-  else if (operation === "renew-claim" || operation === "worker-transition") expectedFence = {kind:"claim",...z.object({claim:z.object({workerId:z.string(),claimGeneration:z.number()})}).parse(parsed).claim};
+  else if (operation === "renew-claim" || operation === "worker-transition" || operation === "acknowledge-pause") expectedFence = {kind:"claim",...z.object({claim:z.object({workerId:z.string(),claimGeneration:z.number()})}).parse(parsed).claim};
   else if (operation === "recover-crash") {
     const request = CanonicalCrashRecoveryRequestSchema.parse(parsed);
     expectedFence = { kind: "terminal", expectedVersion: request.expectedVersion, ...request.claim };

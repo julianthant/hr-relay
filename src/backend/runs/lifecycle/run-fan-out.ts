@@ -57,6 +57,7 @@ export interface FanOutEnvelope {
   readonly commandId: string;
   readonly actorId: string;
   readonly sourceBound?: RunEnvelope["sourceBound"];
+  readonly continuation?: RunEnvelope["continuation"];
   readonly recovery?: RunEnvelope["recovery"];
   readonly relaunch?: Readonly<{ archivedRunId: string; archiveFingerprint: string }>;
   readonly workflow: string;
@@ -171,6 +172,10 @@ export function fanOutQueuedRuns(
     if (outcome.state === "refused") refuse("run lifecycle refused", outcome.refusal);
     const record = requireLifecycleApplied(outcome);
     runs.push(record);
+    for (const child of lifecycle.continueDelegations(record, envelope.commandId)) {
+      affectedTargets.push(runTarget(child.envelope.runId));
+      versionChanges.push({ target: runTarget(child.envelope.runId), before: 0, after: child.version });
+    }
     affectedTargets.push(runTarget(record.envelope.runId));
     versionChanges.push({ target: runTarget(record.envelope.runId), before: 0, after: record.version });
   }

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AssistantModelPreferenceSchema } from "../../models/dashboard/assistant.js";
 import { NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
 import { StoredAssistantPermissionModeSchema } from "../../models/profiles/assistant-permission-mode.js";
+import { RunContinuationSchema } from "../../models/run/continuation.js";
 import { RunDisplayNameSchema } from "../../models/run/display-name.js";
 import { WorkerSlotRecordSchema } from "../../models/run/worker-slot.js";
 import { WorkerControlBasisSchema } from "../../models/run/worker.js";
@@ -515,6 +516,7 @@ export const CommandAuditRecordSchema = z.strictObject({
 
 /** Internal persistence for lifecycle idempotency, deliberately separate from the product command union: it cannot be submitted through the command kernel and carries no run input. */
 export const RunLifecycleCommandOperationSchema = z.enum([
+  "application-admission",
   "delegation-invocation",
   "delegation-admission",
   "delegation-settlement",
@@ -567,11 +569,13 @@ export const RunLifecycleCommandRecordSchema = z.strictObject({
 });
 
 export const RunLifecycleCommandResultIdentitySchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("application"), runtimeGeneration: PositiveIntSchema }),
   z.strictObject({ kind: z.literal("worker-recovery"), workerId: WorkerIdSchema, oldLeaseGeneration: PositiveIntSchema,
     leaseGeneration: PositiveIntSchema, phase: z.enum(["idle", "paused"]), settledAt: IsoInstantSchema }),
   z.strictObject({ kind: z.literal("worker"), slot: WorkerSlotRecordSchema,
     beforePoolVersion: NonNegativeIntSchema, afterPoolVersion: PositiveIntSchema }),
   z.strictObject({ kind: z.literal("run"), runId: RunIdSchema, appliedVersion: PositiveIntSchema,
+    continuation: RunContinuationSchema.optional(),
     terminal: z.strictObject({ outcome: z.enum(["cancelled", "discarded", "superseded"]), endedAt: IsoInstantSchema }).optional(),
   }),
   z.strictObject({ kind: z.literal("deletion"), runIds: z.array(RunIdSchema).min(1) }),

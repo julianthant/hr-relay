@@ -1,4 +1,5 @@
-import { AuthenticatedRunContinuation, readContinuationGate, validateRunContinuation } from "../checkpoints/run-continuation.js";
+import { AuthenticatedRunContinuation } from "../checkpoints/run-continuation-delegation.js";
+import { RunContinuationRefusedError, readContinuationGate, validateRunContinuation } from "../checkpoints/run-continuation.js";
 import { RunClaimTokenSchema, type RunClaimToken } from "../../../models/run/worker.js";
 import { DryRunSampleSchema, type DryRunStep, type DryRunBinding } from "../../../models/workflow/dry-run.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
@@ -677,10 +678,10 @@ export async function executeClaimedRun(
     const continuationSources = validateRunContinuation(deps.authority.authority, envelope);
     const continuationAuthority = envelope.continuation === undefined ? undefined
       : deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, envelope));
-    if (envelope.continuation !== undefined && continuationAuthority === undefined) throw new Error("run-continuation-authority-unavailable");
+    if (envelope.continuation !== undefined && continuationAuthority === undefined) throw new RunContinuationRefusedError("run-continuation-authority-unavailable");
     const sourceScopeFor = (sourceRunId: string, dependsOn: readonly NodeId[]): RuntimeScope => {
       const source = continuationSources.find(row => row.envelope.runId === sourceRunId);
-      if (source === undefined) throw new Error("run-continuation-input-source-unavailable");
+      if (source === undefined) throw new RunContinuationRefusedError("run-continuation-input-source-unavailable");
       const values: Record<string, JsonValue> = {};
       for (const dependency of dependsOn) {
         const own = deps.authority.authority.runCheckpoints.listByAttempt(source.envelope.workflow, source.envelope.itemId, String(dependency), source.envelope.attempt)
@@ -2039,7 +2040,7 @@ export async function executeClaimedRun(
               if (canonicalJsonStringify(original) !== canonicalJsonStringify(continued)
                 || sourceEvidence.manifest.cardinality !== node.cardinality || sourceEvidence.manifest.join !== node.join
                 || canonicalJsonStringify(sourceEvidence.manifest.policy) !== canonicalJsonStringify(node.policy)
-                || sourceEvidence.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")) throw new Error("run-continuation-child-input-mismatch");
+                || sourceEvidence.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")) throw new RunContinuationRefusedError("run-continuation-child-input-mismatch");
             }
             const raw = sourceEvidence === undefined ? await deps.childRuns.executeChildRun({
               descriptor, node, run: getRun(), claim,
@@ -2132,6 +2133,9 @@ export async function executeClaimedRun(
       && failure.outcome.state === "refused" && failure.outcome.refusal.reason === "lost")) {
       return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: failure.message });
     }
+    if (failure instanceof RunContinuationRefusedError) return await terminalizeAsFailure(buildEntryValidationFailureRecord({
+      run: getRun(), failureId: deps.ids.uuid(), code: failure.code, problems: [failure.message], occurredAt: instant(),
+    }));
     throw failure;
   }
 }

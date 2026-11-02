@@ -1,4 +1,4 @@
-import type { AuthenticatedRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
+import type { AuthenticatedRunContinuation } from "../../runtime/checkpoints/run-continuation-delegation.js";
 import { delegationEvidenceOutput, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../models/run/result.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { evaluateNodeCondition, nodeConditionDependency } from "../../../models/workflow/node-condition.js";

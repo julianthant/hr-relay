@@ -50,7 +50,11 @@ export interface StartPlanService {
 }
 
 export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanService {
+  const assertAdmission = () => deps.authority.withAuthorityTransaction(repositories => {
+    if (repositories.runs.admission().state !== "open") throw new RerunRefusedError("invalid-state", "Relay is pausing work to quit.");
+  });
   const scopeFor = (input: unknown) => {
+    assertAdmission();
     const ingress = StartPlanIngressSchema.parse(input);
     const descriptor = deps.descriptors.resolve(ingress.workflowId);
     if (descriptor === undefined) throw new TargetNotFoundError("Preflight workflow is not registered.");
@@ -71,12 +75,14 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
       }));
     },
     async prepare(input: unknown, signal: AbortSignal): Promise<void> {
+      assertAdmission();
       if (deps.preflight === undefined) return;
       const scope = scopeFor(input);
       await deps.preflight.prepare(scope, signal);
       deps.preflight.assertReady(scope);
     },
     plan(input: unknown): StartPlanWire {
+      assertAdmission();
       const ingress = StartPlanIngressSchema.parse(input);
       if (deps.preflight !== undefined) deps.preflight.assertReady(scopeFor(input));
       const descriptor = deps.descriptors.resolve(ingress.workflowId);

@@ -387,7 +387,8 @@ export function composeProfileActivity(input: Readonly<{
   const observe = () => {
     input.admission.assertLive();
     const before = input.database.readProfileResourceCustody();
-    let busy = profileResourceCustodyBusy(shutdown ? { ...before, runs: before.runs.filter(run => run.pause?.state !== "paused") } : before);
+    let busy = profileResourceCustodyBusy(shutdown ? { ...before, runs: before.runs.filter(run => run.pause?.state !== "paused" && run.lifecycle.state !== "parked-write"),
+      writeIntents: before.writeIntents.filter(intent => intent.status === "attempting" && !("runId" in intent && before.runs.some(run => run.envelope.runId === intent.runId && run.lifecycle.state === "parked-write"))) } : before);
     for (const slot of before.slots) {
       const lease = before.leases.find(value => value.workerId === slot.workerId);
       if (slot.retiredAt !== null) continue;
@@ -417,15 +418,17 @@ export function composeProfileActivity(input: Readonly<{
       shutdown = true;
       input.database.withAuthorityTransaction(() => {
         for (const run of input.database.readProfileResourceCustody().runs) {
-          if (run.lifecycle.state === "terminal") continue;
+          if (run.lifecycle.state === "terminal" || run.lifecycle.state === "parked-write") continue;
           requireLifecycleApplied(input.lifecycle.pause({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version }));
         }
       });
       const completion = (async () => {
         for (;;) {
           const facts = input.database.readProfileResourceCustody();
-          if (facts.runs.some(run => run.lifecycle.state === "parked-write")
-            || facts.writeIntents.some(intent => !["committed", "observed-present"].includes(intent.status))) throw new Error("profile-shutdown-write-unresolved");
+          if (facts.writeIntents.some(intent => intent.status === "attempting" && !("runId" in intent && facts.runs.some(run => run.envelope.runId === intent.runId && run.lifecycle.state === "parked-write")))) {
+            await new Promise<void>(resolve => setTimeout(resolve, 50));
+            continue;
+          }
           if (!facts.runs.some(run => runClaim(run) !== undefined)) break;
           await new Promise<void>(resolve => setTimeout(resolve, 50));
         }
@@ -784,7 +787,7 @@ export function composeProfileRuntime(input: Readonly<{
         const ordinary = entry.ordinary;
         if (ordinary?.context === undefined || ordinary.state === "closed") continue;
         if (ordinary.activity === undefined) throw new Error("profile-resource-custody-unavailable");
-        if (purpose === "shutdown" && entry.logout === undefined) ordinary.activity.requestShutdown(profileId);
+        if (purpose === "shutdown" && ordinary.logout === undefined) ordinary.activity.requestShutdown(profileId);
         else ordinary.activity.requestCancellation(profileId);
       }
     } catch (error) { throw new RuntimeCustodyUncertainError([error]); }

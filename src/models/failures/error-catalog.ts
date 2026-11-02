@@ -13,6 +13,8 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  RUN_CONTINUATION_REFUSED: catalogEntry("Saved completed steps could not be authenticated for this continuation. No saved result was reused; review the retained failure before starting work.", EmptyParametersSchema),
+  APPLICATION_ADMISSION_REFUSED: catalogEntry("Relay could not secure idle update or shutdown admission. Work remains held; restart Relay after resolving the retained failure.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_BACKUP_FAILED: catalogEntry("The automatic shutdown backup could not be verified. Relay has not completed a clean shutdown.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_REPAIR_NOTICE_UNAVAILABLE: catalogEntry("The automatic repair notice could not be read. Stored repair evidence has been retained.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_REPAIR_REFUSED: catalogEntry("Relay could not safely repair saved person data. Your data and unresolved writes have been retained; startup cannot continue.", EmptyParametersSchema),

@@ -13,7 +13,7 @@ let activeRunCommand: Readonly<{ repositories: AuthorityRepositories; request: s
 
 export function withCanonicalRunCommandScope<Result extends object>(repositories: AuthorityRepositories, request: CommandRequest,
   work: () => Result, parentCommandId?: string): Result {
-  if (activeRunCommand !== undefined || request.family !== "run" || (request.type !== "retry" && request.type !== "cancel")) {
+  if (activeRunCommand !== undefined || !(request.family === "start" || request.family === "run" && (request.type === "retry" || request.type === "cancel"))) {
     throw new Error("canonical-run-command-scope-unavailable");
   }
   repositories.commands.assertIdentity(request, parentCommandId);

@@ -28,6 +28,17 @@ it("cancels only previous-local-day pristine queues, records notifications, and 
   assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), notifications);
 });
 
+it("retains an explicitly paused previous-day queue through startup", async () => {
+  const f = await world.fixture();
+  const run = world.created(f.service, f.request);
+  const paused = f.service.pause({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version });
+  assert.ok(paused.state === "applied");
+  f.clock.advanceWall(24 * 60 * 60 * 1000);
+  reconcileStartupCrash({ ...f, lifecycle: f.service, lock: f.lifetime });
+  assert.deepEqual(f.database.authority.runs.get(run.envelope.runId), paused.run);
+  assert.equal(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID).length, 0);
+});
+
 for (const mode of ["none", "attempting", "parked"] as const) it(`recovers an interrupted run with ${mode} write state and releases its resources once`, async () => {
   const f = await world.interruptedFixture(), now = f.clock.now().toISOString();
   const workerId = f.recoveryRequest.claim.workerId, leaseGeneration = f.recoveryRequest.workerLifetime.leaseGeneration;

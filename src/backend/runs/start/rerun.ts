@@ -1,3 +1,5 @@
+import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
+import { readContinuationGate, validateRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
 import { captureRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { RerunPlanRefusalCode } from "../../../models/run/rerun.js";
@@ -72,6 +74,7 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   if (run.version !== source.expectedVersion) throw new RerunRefusedError("source-stale", "Rerun source revision changed; replan");
   if (run.envelope.workflow !== descriptor.id) throw new RerunRefusedError("schema-mismatch", "Rerun source workflow changed");
   const older = run.envelope.contractFingerprint !== descriptor.contractFingerprint || run.envelope.descriptorVersion !== descriptor.version;
+  if (older) throw new RerunRefusedError("schema-mismatch", "Completed steps require the original workflow contract.");
   // Use the same authority disposition predicate as RunRecordService.read.
   if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed"
     || repositories.writeIntents.listAttemptingByItem({ workflowId: descriptor.id, itemId: run.envelope.itemId }).length > 0
@@ -98,15 +101,22 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
     || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success)) {
     throw new RerunRefusedError("schema-mismatch", "Rerun source canonical input is invalid");
   }
-  const checkpoints = repositories.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId)
-    .filter((checkpoint) => checkpoint.runId === source.runId);
+  const retainedSources = new Map([run, ...validateRunContinuation(repositories, run.envelope)].map(source => [source.envelope.runId, source]));
+  const checkpoints = run.envelope.continuation === undefined
+    ? repositories.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId).filter(checkpoint => checkpoint.runId === run.envelope.runId)
+    : descriptorRuntimeNodes(descriptor).flatMap(node => {
+    const checkpoint = readRunCheckpoint(repositories, run.envelope, String(node.id), true);
+    return checkpoint === undefined ? [] : [checkpoint];
+  });
   const latest = new Map<string, (typeof checkpoints)[number]>();
   for (const checkpoint of checkpoints) {
+    const checkpointSource = retainedSources.get(checkpoint.runId);
+    if (checkpointSource === undefined) throw new RerunRefusedError("schema-mismatch", "Rerun checkpoint source is unavailable");
     const node = descriptorRuntimeNodes(descriptor).find((candidate) => candidate.id === checkpoint.nodeId);
     const schema = node?.kind === "task" ? node.uses.output : node?.kind === "transaction" ? TransactionOutcomeSchema : undefined;
     if (checkpoint.workflowId !== descriptor.id || checkpoint.itemId !== run.envelope.itemId
-      || checkpoint.attempt > run.envelope.attempt
-      || (checkpoint.claimGeneration !== undefined && checkpoint.claimGeneration > run.claimGeneration)
+      || checkpoint.attempt > checkpointSource.envelope.attempt
+      || (checkpoint.claimGeneration !== undefined && checkpoint.claimGeneration > checkpointSource.claimGeneration)
       || checkpoint.descriptorVersion !== run.envelope.descriptorVersion || checkpoint.contractFingerprint !== run.envelope.contractFingerprint
       || (!older && (schema === undefined || checkpoint.output.schemaHash !== deriveSchemaHash(schema, "output")
         || !schema.safeParse(checkpoint.output.value).success))) {
@@ -125,12 +135,12 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
       latest.set(String(checkpoint.nodeId), checkpoint);
     }
   }
-  const gates = repositories.gateResults.listByRun(source.runId).filter(gate => {
-    if (gate.runId !== source.runId) throw new RerunRefusedError("schema-mismatch", "Rerun gate evidence is invalid");
-    return !older || descriptorRuntimeNodes(descriptor).some(node => String(node.id) === String(gate.gateId));
+  const gates = descriptorRuntimeNodes(descriptor).flatMap(node => { const gate = readContinuationGate(repositories, run.envelope, String(node.id)); return gate === undefined ? [] : [gate]; }).filter(gate => {
+    if (!retainedSources.has(gate.runId)) throw new RerunRefusedError("schema-mismatch", "Rerun gate evidence is invalid");
+    return !older || descriptorRuntimeNodes(descriptor).some(node => String(node.id) === String(gate.nodeId));
   });
   for (const gate of gates) {
-    const node = descriptorRuntimeNodes(descriptor).find((candidate) => String(candidate.id) === String(gate.gateId));
+    const node = descriptorRuntimeNodes(descriptor).find((candidate) => String(candidate.id) === String(gate.nodeId));
     if (!older && (node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output")
       || !node.result.safeParse(gate.result.value).success)) throw new RerunRefusedError("schema-mismatch", "Rerun gate evidence is invalid");
   }
@@ -173,7 +183,7 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
         outputs[String(dependency)] = checkpoint.output.value;
       }
       else {
-        const gate = gates.find((candidate) => String(candidate.gateId) === String(dependency));
+        const gate = gates.find((candidate) => String(candidate.nodeId) === String(dependency));
         if (gate !== undefined) {
           const dependencyNode = descriptorRuntimeNodes(descriptor).find(candidate => String(candidate.id) === String(dependency));
           if (dependencyNode?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(dependencyNode.result, "output")

@@ -1,4 +1,5 @@
-import { AuthenticatedRunContinuation, validateRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
+import { validateRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
+import { AuthenticatedRunContinuation } from "../../runtime/checkpoints/run-continuation-delegation.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash,randomUUID } from "node:crypto";
 import { existsSync,lstatSync,statSync } from "node:fs";
@@ -79,7 +80,8 @@ import { createReadonlyAuthoritySnapshot,withAuthorityDatabaseReadOnly,withReado
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { runRecordColumns,runRecordFromRow,transitionRunRecord,updateRunRecord } from "./run-record-row.js";
 import { createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
-import { CanonicalClaimNextRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerControlRequestSchema,WorkerLifecycleRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,WorkerStandingRecoveryRequestSchema,WorkerStartOutcomeSchema,WorkerStartRequestSchema,WorkerUpdateOutcomeSchema,WorkerVerificationAdmissionRequestSchema,WorkerVerificationRetirementRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type WorkerStartOutcome,type WorkerUpdateOutcome } from "./run-store-contracts.js";
+import { continuationDelegationGroups } from "../../runtime/checkpoints/run-continuation-delegation.js";
+import { ApplicationAdmissionRequestSchema, CanonicalClaimNextRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerControlRequestSchema,WorkerLifecycleRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,WorkerStandingRecoveryRequestSchema,WorkerStartOutcomeSchema,WorkerStartRequestSchema,WorkerUpdateOutcomeSchema,WorkerVerificationAdmissionRequestSchema,WorkerVerificationRetirementRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type WorkerStartOutcome,type WorkerUpdateOutcome } from "./run-store-contracts.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings } from "./settings-storage.js";
@@ -203,6 +205,7 @@ type RunLifecycleJournalRepository = Readonly<{
   getCommand(commandId: string): z.infer<typeof AuthorityCommandRecordSchema> | undefined;
   insertAudit(input: unknown): ImmutableInsertResult<z.infer<typeof RunLifecycleCommandAuditRecordSchema>>;
   findAuditByCommand(commandId: string): z.infer<typeof AuthorityCommandAuditRecordSchema> | undefined;
+  findContinuationIssue(runId: string): z.infer<typeof RunLifecycleCommandAuditRecordSchema> | undefined;
   findRunOrigin(runId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   findCancellation(runId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   listDelegationInvocations(parentRunId: string): readonly z.infer<typeof RunLifecycleCommandRecordSchema>[];
@@ -328,6 +331,7 @@ type DeletedRunRepository = Readonly<{
 type CanonicalRunClaimOutcome = RunClaimOutcome | Readonly<{ state: "refused"; refusal: RunRecordRefusal }>;
 
 type RunRepository = Readonly<{
+  holdAdmission(input: unknown): void;
   admission(): Readonly<{ state: "open" } | { state: "draining"; commandId: string }>;
 
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
@@ -4830,6 +4834,20 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       lifecycleJournal: Object.freeze({
+        findContinuationIssue: (runId: string) => {
+          const row = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+            AND json_extract(request_json,'$.operation') IN ('create','retry','resume')
+            AND json_extract(outcome_json,'$.result.kind')='run'
+            AND json_extract(outcome_json,'$.result.runId')=?
+            AND json_type(outcome_json,'$.result.continuation')='object'
+            ORDER BY CAST(json_extract(outcome_json,'$.result.appliedVersion') AS INTEGER) DESC LIMIT 1`).get(RunIdSchema.parse(runId));
+          if (row === undefined) return undefined;
+          const command = RunLifecycleCommandRecordSchema.parse(commandFromRow(row));
+          const audit = this.authority.lifecycleJournal.findAuditByCommand(command.commandId);
+          if (audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
+            || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)) throw new Error("run-continuation-issue-unavailable");
+          return audit;
+        },
         findRunOrigin: (runId: string) => {
           const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
             AND json_extract(request_json,'$.operation') IN ('create','retry','restart')
@@ -4951,7 +4969,9 @@ export class AuthorityDatabase implements Disposable {
           const previous = repositories.runs.get(request.previousRunId), next = repositories.runs.get(request.replacementRunId);
           if (previous === undefined || next === undefined) throw new Error("delegation-retry-run-unavailable");
           const proof = prepareDelegationRetry(repositories, previous, { sourceCommandId: request.sourceCommandId,
-            commandId: lifecycleCommandId("operator-retry", request.sourceCommandId) });
+            commandId: request.continuationOwner === undefined ? lifecycleCommandId("operator-retry", request.sourceCommandId)
+              : lifecycleCommandId("continuation-child-retry", { ownerRunId: request.continuationOwner.runId, previousRunId: request.previousRunId }),
+            ...(request.continuationOwner === undefined ? {} : { continuationOwner: request.continuationOwner }) });
           const dependency = proof.child.dependency;
           assertDelegationReplacement(this.authority, proof.child.original, previous, next);
           if (request.commandId !== lifecycleCommandId("delegation-retry", { dependencyId: dependency.dependencyId, previousRunId: previous.envelope.runId })
@@ -5557,6 +5577,8 @@ export class AuthorityDatabase implements Disposable {
         const candidate = runRecordFromRow(row);
         if (candidate.envelope.parent !== undefined && (request.workerLifetime === undefined || lease?.workflow !== slot.workflow)) continue;
         if (eligible !== undefined && (!authenticateDescendantHome(this.authority, candidate, slot.workflow) || !eligible(candidate))) continue;
+        if (candidate.envelope.continuation !== undefined && continuationDelegationGroups(this.authority, candidate.envelope)
+          .some(({ group }) => group.children.some(({ child }) => child.lifecycle.state !== "terminal"))) continue;
         this.authority.dependencies.reconcile(candidate.envelope.runId, request.now);
         if (this.authority.dependencies.readiness(candidate.envelope.runId, candidate.cancelRequested === true ? "cancel" : "join").state !== "ready") continue;
         const notBefore = candidate.lifecycle.state === "queued" ? candidate.lifecycle.notBefore : undefined;
@@ -5623,15 +5645,30 @@ export class AuthorityDatabase implements Disposable {
   #runAdmission(): Readonly<{ state: "open" } | { state: "draining"; commandId: string }> {
     const generation = this.authority.runtimeConfig.get()?.generation;
     const row = z.strictObject({ commandId: z.uuid() }).optional().parse(this.#database.prepare(`SELECT id AS commandId FROM commands
-      WHERE family='application' AND state IN ('executing','succeeded')
+      WHERE state IN ('executing','succeeded') AND ((family='application'
       AND json_extract(request_json,'$.type')='pause-all-and-quit'
       AND json_extract(request_json,'$.payload.confirmed')=1
-      AND json_extract(request_json,'$.target.runtimeGeneration')=? ORDER BY created_at,id LIMIT 1`).get(generation ?? 0));
+      AND json_extract(request_json,'$.target.runtimeGeneration')=?) OR (family='run-lifecycle'
+      AND json_extract(request_json,'$.operation')='application-admission'
+      AND json_extract(request_json,'$.request.runtimeGeneration')=?)) ORDER BY created_at,id LIMIT 1`).get(generation ?? 0, generation ?? 0));
     return row === undefined ? { state: "open" } : { state: "draining", commandId: row.commandId };
   }
 
   #buildRunRepository(): RunRepository {
     return Object.freeze({
+      holdAdmission: (input: unknown) => this.withAuthorityTransaction(repositories => {
+        const request = ApplicationAdmissionRequestSchema.parse(input);
+        if (repositories.runtimeConfig.get()?.generation !== request.runtimeGeneration) throw new Error("application-runtime-stale");
+        const current = this.#runAdmission();
+        if (current.state !== "open" && current.commandId !== request.commandId) throw new Error("application-admission-held");
+        const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", operation: "application-admission",
+          commandId: request.commandId, request,
+          requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0application-admission\0${canonicalJsonStringify(request)}`),
+          fence: { kind: "none" }, recordedAt: this.#clock.now().toISOString() });
+        repositories.lifecycleJournal.insertCommand(command);
+        repositories.lifecycleJournal.insertAudit({ kind: "run-lifecycle", auditId: request.commandId, request: command,
+          result: { kind: "application", runtimeGeneration: request.runtimeGeneration }, completedAt: command.recordedAt });
+      }),
       admission: () => this.#runAdmission(),
       enqueue: (input: unknown) => {
         const record = RunRecordSchema.parse(input);

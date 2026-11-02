@@ -156,7 +156,7 @@ export interface WorkflowDescriptorResolver {
 
 
 type RunCommand = Extract<CommandRequest, { family: "run" }>;
-type RunBasicCommand = Extract<RunCommand, { type: "retry" | "restart" | "cancel" | "bump" }>;
+type RunBasicCommand = Extract<RunCommand, { type: "retry" | "restart" | "cancel" | "bump" | "pause" | "resume" }>;
 
 type RunRecoveryCommand = RunBasicCommand;
 type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
@@ -643,13 +643,15 @@ function executeRetry(
   const planning = workflowPlanning(descriptor);
   const value = current.input.parsed?.value;
   if (value === undefined) throw new Error("retry source lacks canonical input");
-  const record = lifecycleRun(request, dependencies.lifecycle[request.type === "restart" ? "restart" : "retry"]({
+  const record = lifecycleRun(request, dependencies.lifecycle.retry({
     commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
     runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
     runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
     sourceCommandId: request.commandId,
   }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({ title: planning.title(value), subtitle: planning.subtitle(value) })), actorId: request.requestedBy }));
-  return applied(request, [runTarget(record.envelope.runId), runTarget(request.target.runId)], [
+  const children = dependencies.lifecycle.continueDelegations(record, request.commandId);
+  return applied(request, [runTarget(record.envelope.runId), runTarget(request.target.runId), ...children.map(child => runTarget(child.envelope.runId))], [
+    ...children.map(child => ({ target: runTarget(child.envelope.runId), before: 0, after: child.version })),
     { target: runTarget(record.envelope.runId), before: 0, after: record.version },
   ]);
 
@@ -2375,15 +2377,21 @@ function dispatchActive(
       if (request.type === "pause-all-and-quit" && dependencies.applicationQuitAvailable !== true) reject(request, "capability-unavailable", "Application quit host is unavailable.");
       if (request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", "Application commands require the dashboard operator.");
       if (repositories.runtimeConfig.get()?.generation !== request.target.runtimeGeneration) reject(request, "runtime-stale", "Application runtime changed.");
-      const active = repositories.runs.listPage({ offset: 0, limit: 10000 }).filter(run => run.lifecycle.state !== "terminal");
-      if (active.length === 10000 || new Set(request.payload.targets.map(target => target.runId)).size !== request.payload.targets.length
+      const active: RunRecord[] = [];
+      const pageSize = 1000;
+      for (let offset = 0; ; offset += pageSize) {
+        const page = repositories.runs.listPage({ offset, limit: pageSize });
+        active.push(...page.filter(run => run.lifecycle.state !== "terminal"));
+        if (page.length < pageSize) break;
+      }
+      if (new Set(request.payload.targets.map(target => target.runId)).size !== request.payload.targets.length
         || active.length !== request.payload.targets.length
         || active.some(run => !request.payload.targets.some(target => target.runId === run.envelope.runId && target.expectedVersion === run.version))) {
         reject(request, "policy-refused", "Active run membership changed; reload before pausing all.");
       }
-      if (active.some(run => run.lifecycle.state === "parked-write")) reject(request, "invalid-state", "Resolve UNKNOWN writes before quitting.");
       const changes: VersionChange[] = [];
       for (const run of active) {
+        if (run.lifecycle.state === "parked-write") continue;
         const next = lifecycleRun(request, dependencies.lifecycle.pause({
           commandId: lifecycleCommandId("application-pause", { commandId: request.commandId, runId: run.envelope.runId }),
           runId: run.envelope.runId, expectedVersion: run.version,
@@ -2432,6 +2440,7 @@ function dispatchActive(
       return executeNotification(repositories, request, now);
     case "intake":
       if (request.type === "enqueue-intake-manifest") {
+        if (repositories.runs.admission().state !== "open") reject(request, "policy-refused", "Relay is pausing work to quit.");
         repositories.runtimeConfig.requireSettingsCurrent();
       }
       return executeIntake(dependencies, repositories, request, now);
@@ -2677,7 +2686,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             return replay(dependencies, repositories, request, now);
           }
           const auditId = dependencies.ids.uuid();
-          const application = request.family === "run" && (request.type === "retry" || request.type === "cancel")
+          const application = request.family === "start" || request.family === "run" && (request.type === "retry" || request.type === "cancel")
             ? withCanonicalRunCommandScope(repositories, request,
               () => dispatchActive(dependencies, repositories, request, now, auditId), parentCommandId)
             : dispatchActive(dependencies, repositories, request, now, auditId);

@@ -1,3 +1,4 @@
+import { ContinuationRetryOwnerSchema } from "./delegation-contracts.js";
 import { RunClaimTokenSchema } from "../../../models/run/worker.js";
 import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
 
@@ -58,6 +59,14 @@ import {
 } from "./run-terminal-contracts.js";
 
 export { WorkerClaimLifetimeSchema } from "../../../models/run/worker.js";
+
+export const ApplicationAdmissionRequestSchema = z.strictObject({ commandId: CommandIdSchema,
+  runtimeGeneration: PositiveIntSchema, reason: z.enum(["update", "shutdown"]) });
+
+export const CanonicalPauseRequestSchema = z.strictObject({ commandId: CommandIdSchema, runId: RunIdSchema,
+  expectedVersion: PositiveIntSchema });
+export const CanonicalAcknowledgePauseRequestSchema = z.strictObject({ commandId: CommandIdSchema, runId: RunIdSchema,
+  claim: RunClaimTokenSchema });
 
 export const RunClaimRequestSchema = z.strictObject({
   workerLifetime: WorkerClaimLifetimeSchema.optional(),
@@ -314,6 +323,7 @@ export const CanonicalRequeueRequestSchema = z.strictObject({
 });
 
 export const CanonicalRetrySourceRequestSchema = z.strictObject({
+  continuationOwner: ContinuationRetryOwnerSchema.optional(),
   sourceCommandId: CommandIdSchema.optional(),
   ...CanonicalVersionIdentityFields,
   runtimeConfig: RuntimeConfigClaimTokenSchema,

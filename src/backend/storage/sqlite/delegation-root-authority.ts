@@ -1,3 +1,4 @@
+import { captureRunContinuation, validateRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
@@ -91,8 +92,10 @@ export function authenticateStartPlanRun(repositories: AuthorityRepositories, ru
   validateNativeLifecycleRequest(created);
   const request = CanonicalCreateRunRequestSchema.parse(created.request);
   const source = plan.rerun === undefined ? undefined : repositories.runs.get(plan.rerun.source.runId);
+  validateRunContinuation(repositories, run.envelope);
   const expectedRetry = source?.envelope.itemId === entry.itemId ? source.envelope.runId : undefined;
-  if (request.commandId !== createId || request.sessionId !== session.sessionId
+  if (!same(request.continuation, source === undefined ? undefined : captureRunContinuation(repositories, source))
+    || request.commandId !== createId || request.sessionId !== session.sessionId
     || !same(request.input, valueFreeProtectedData(run.input, retainedRunProtectedBindings(run)))
     || request.matchKey !== entry.matchKey || request.retryOf !== expectedRetry
     || envelope.retryOf !== expectedRetry || request.appVersion !== run.appVersion
@@ -113,7 +116,7 @@ export function authenticateRootRun(repositories: AuthorityRepositories, candida
   let current = candidate;
   for (;;) {
     const run = current;
-    if (visited.has(run.envelope.runId) || run.envelope.parent !== undefined) {
+    if (visited.size >= 32 || visited.has(run.envelope.runId) || run.envelope.parent !== undefined) {
       throw new Error("delegation-root-ancestry-cycle");
     }
     visited.add(run.envelope.runId);
@@ -145,6 +148,8 @@ export function authenticateRootRun(repositories: AuthorityRepositories, candida
       || repositories.writeIntents.listByRun(previous.envelope.runId).some(intent => intent.status === "attempting" || intent.status === "parked")) {
       throw new Error("delegation-root-retry-authority-unavailable");
     }
+    validateRunContinuation(repositories, run.envelope);
+    if (!same(settled.result.continuation, captureRunContinuation(repositories, previous))) throw new Error("delegation-root-continuation-binding-mismatch");
     authenticateRunPriority(repositories, run, previous.envelope.priority, source.requestedBy);
     const fields = ["workflow", "itemId", "descriptorVersion", "contractFingerprint", "operationDisplayCapability", "operationDisplaySnapshot",
       "requestedInstance", "resolvedInstance", "shape", "dryRun",

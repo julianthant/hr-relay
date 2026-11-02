@@ -1,3 +1,5 @@
+import { protectedSubjectDisplay } from "../start/protected-input.js";
+import { continuationDelegationGroups } from "../../runtime/checkpoints/run-continuation-delegation.js";
 import { captureRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
 import { CanonicalCrashRecoveryRequestSchema } from "../../../models/run/worker.js";
 import { deriveWriteAuthorityReason } from "../../../rules/write-safety/write-safety.js";
@@ -6,11 +8,11 @@ import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { WorkerControlRefusal, WorkerResetBindingSchema } from "../../../models/run/worker-control.js";
 import { authenticateParkedWriteRecheck, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { RunDeletionRefusedError } from "../../storage/sqlite/native-run-deletion.js";
-import { runSettingsAvailable, selectNewRunIdentity } from "../settings/run-settings.js";
+import { selectRunRuntime, runSettingsAvailable, selectNewRunIdentity } from "../settings/run-settings.js";
 import { delegatedCandidateEligible, runRuntimeMatches } from "./run-claim-admission.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { z } from "zod";
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { workflowPlanning, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import {
   RunExistenceSchema,
   type RunExistence,
@@ -39,6 +41,8 @@ import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } fro
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { DeletedRunRecord } from "../../../models/run/deleted-run.js";
 import {
+  CanonicalPauseRequestSchema,
+  CanonicalAcknowledgePauseRequestSchema,
   CanonicalCancellationTerminalizeRequestSchema,
   CanonicalWriteResolutionTransitionRequestSchema,
   CanonicalClaimNextRequestSchema,
@@ -595,8 +599,7 @@ export class RunRecordService {
   }
 
   private changePause(input: unknown, operation: "pause" | "resume"): RunMutationOutcome | RunExistence {
-    const request = z.strictObject({ commandId: CommandIdSchema, runId: RunIdSchema,
-      expectedVersion: z.number().int().positive() }).parse(input);
+    const request = CanonicalPauseRequestSchema.parse(input);
     return this.dependencies.database.withAuthorityTransaction(repositories => {
       const journal = this.inspectJournal(repositories, operation, request, { kind: "version", expectedVersion: request.expectedVersion });
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
@@ -614,7 +617,7 @@ export class RunRecordService {
         return { state: "applied" as const, run: current };
       }
       const now = this.dependencies.clock.now().toISOString();
-      const result = repositories.runs.setPause({ ...request, now,
+      const result = repositories.runs.setPause({ runId: request.runId, expectedVersion: request.expectedVersion, now,
         ...(operation === "resume" ? { continuation: captureRunContinuation(repositories, current) } : {}),
         pause: operation === "resume" ? undefined : runClaim(current) === undefined
           ? { state: "paused", requestedAt: now, pausedAt: now, commandId: request.commandId }
@@ -626,8 +629,7 @@ export class RunRecordService {
   }
 
   acknowledgePause(input: unknown): RunMutationOutcome {
-    const request = z.strictObject({ commandId: CommandIdSchema, runId: RunIdSchema,
-      claim: z.strictObject({ workerId: z.uuid(), claimGeneration: z.number().int().positive() }) }).parse(input);
+    const request = CanonicalAcknowledgePauseRequestSchema.parse(input);
     return this.dependencies.database.withAuthorityTransaction(repositories => {
       const journal = this.inspectJournal(repositories, "acknowledge-pause", request, { kind: "claim", ...request.claim });
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
@@ -636,7 +638,7 @@ export class RunRecordService {
       if (source.state !== "present" || source.run.pause?.state !== "requested") return refused({ reason: "invalid-state" });
       this.assertCurrentExecution({ runId: request.runId, claim: request.claim });
       const now = this.dependencies.clock.now().toISOString();
-      const result = repositories.runs.setPause({ ...request, expectedVersion: source.run.version, now, acknowledge: true,
+      const result = repositories.runs.setPause({ runId: request.runId, claim: request.claim, expectedVersion: source.run.version, now, acknowledge: true,
         pause: { ...source.run.pause, state: "paused", pausedAt: now } });
       if (result.state === "conflict") return refused({ reason: "lost" });
       this.recordJournal(repositories, journal.command, journalRun(result.run));
@@ -1066,8 +1068,10 @@ export class RunRecordService {
       });
       this.dependencies.admitQueuedRun?.(next);
       repositories.runs.enqueue(next);
+      this.recordJournal(repositories, journal.command, journalRun(next));
       if (delegation !== undefined) {
-        const retryRequest = DelegationRetryRequestSchema.parse({ commandId: lifecycleCommandId("delegation-retry", {
+        const retryRequest = DelegationRetryRequestSchema.parse({
+          ...(request.continuationOwner === undefined ? {} : { continuationOwner: request.continuationOwner }), commandId: lifecycleCommandId("delegation-retry", {
           dependencyId: delegation.child.dependency.dependencyId, previousRunId: run.envelope.runId }),
           sourceCommandId: delegation.source.commandId, invocationCommandId: delegation.group.invocation.commandId,
           manifestId: delegation.group.manifest.manifestId, dependencyId: delegation.child.dependency.dependencyId,
@@ -1081,11 +1085,36 @@ export class RunRecordService {
         repositories.dependencies.activateRetry(retryRequest, now);
         this.recordJournal(repositories, retryJournal.command, journalRun(next));
       }
-      this.recordJournal(repositories, journal.command, journalRun(next));
       this.dependencies.publishQueued(next, publication);
       return { state: "applied", run: next };
     });
     return outcome;
+  }
+
+  continueDelegations(parent: RunRecord, sourceCommandId: string): readonly RunRecord[] {
+    return this.dependencies.database.withAuthorityTransaction(repositories => {
+      const replacements: RunRecord[] = [];
+      for (const { group } of continuationDelegationGroups(repositories, parent.envelope)) {
+        for (const member of group.children) {
+          const child = member.child;
+          if (child.lifecycle.state !== "terminal" || child.lifecycle.outcome !== "failed") continue;
+          const descriptor = this.dependencies.resolveDescriptor?.(child.envelope.workflow);
+          if (descriptor === undefined) throw new Error("delegation-continuation-descriptor-unavailable");
+          const replacement = requireLifecycleApplied(this.retry({
+            commandId: lifecycleCommandId("continuation-child-retry", { ownerRunId: parent.envelope.runId, previousRunId: child.envelope.runId }),
+            sourceCommandId, runId: child.envelope.runId, expectedVersion: child.version,
+            continuationOwner: { runId: parent.envelope.runId, version: parent.version, attempt: parent.envelope.attempt },
+            runtimeConfig: selectRunRuntime(repositories), appVersion: parent.appVersion,
+          }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(child), () => ({
+            title: workflowPlanning(descriptor).title(child.input.parsed.value),
+            subtitle: workflowPlanning(descriptor).subtitle(child.input.parsed.value),
+          })), actorId: "local-operator" }));
+          replacements.push(replacement);
+          replacements.push(...this.continueDelegations(replacement, sourceCommandId));
+        }
+      }
+      return replacements;
+    });
   }
 
   delete(input: unknown): RunDeletionOutcome {
@@ -1385,6 +1414,7 @@ function refused(refusal: RunRecordRefusal): Readonly<{ state: "refused"; refusa
 function journalRun(run: RunRecord) {
   const lifecycle = run.lifecycle;
   return { kind: "run" as const, runId: run.envelope.runId, appliedVersion: run.version,
+    ...(run.envelope.continuation === undefined ? {} : { continuation: run.envelope.continuation }),
     ...(lifecycle.state === "terminal" && (lifecycle.outcome === "cancelled" || lifecycle.outcome === "discarded" || lifecycle.outcome === "superseded")
       ? { terminal: { outcome: lifecycle.outcome, endedAt: lifecycle.endedAt } } : {}),
   };
