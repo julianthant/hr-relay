@@ -160,7 +160,7 @@ test("A path target waits for its verified authority without a false unavailable
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   let release: (() => void) | undefined;
   const pending = new Promise<void>(resolve => { release = resolve; });
-  await page.route("**/api/v1/settings/storage-relocation", async route => { await pending; await route.continue(); });
+  await page.route("**/api/v1/settings/editable", async route => { await pending; await route.continue(); });
   try {
     await page.goto(`${server.baseUrl}/?settings=paths&settingsTarget=paths.stateRoot`);
     await expect(page.getByRole("heading", { name: "Paths", exact: true })).toBeVisible();

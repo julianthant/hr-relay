@@ -1,9 +1,6 @@
 import { z } from "zod";
 
 export const NativePathFieldSchema = z.enum([
-  "paths.stateRoot",
-  "paths.artifactRoot",
-  "paths.browserProfileRoot",
   "paths.duoExtensionDir",
   "paths.reportsDir",
   "paths.downloadsDir",

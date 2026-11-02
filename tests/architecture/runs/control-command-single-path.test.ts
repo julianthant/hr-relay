@@ -1,27 +1,27 @@
-import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../../support/fixtures/operator-command-fixtures.js";
+import { randomUUID } from "node:crypto";
 import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import { admitDirectWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
-import { randomUUID } from "node:crypto";
+import { seedSyntheticRuntimeConfig,singleAppliedRunId } from "../../support/fixtures/operator-command-fixtures.js";
 
 import assert from "node:assert/strict";
-import { PositiveIntSchema } from "../../../src/rules/identity/ids.js";
-import { SETTINGS_SCHEMA_HASH } from "../../../src/models/config/settings.js";
 import { readFileSync } from "node:fs";
-import { join, relative } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { join,relative } from "node:path";
 import ts from "typescript";
-import { createCommandKernel, PHASE1_ACTIVE_COMMAND_ARMS, PHASE1_DEFERRED_COMMAND_ARMS, type CommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
-import { CommandRequestSchema, CommandResultSchema, COMMAND_FAMILY_REGISTRY } from "../../../src/rules/commands/commands.js";
-import { manualClock } from "../../../src/rules/time/clock.js";
-import { AuthorityDatabase, type AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { boundProfileCredentials, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
+import { afterEach,describe,it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { createCommandKernel,PHASE1_ACTIVE_COMMAND_ARMS,PHASE1_DEFERRED_COMMAND_ARMS,type CommandKernel } from "../../../src/backend/runs/commands/command-kernel.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
-import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
+import { AuthorityDatabase,type AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { SETTINGS_SCHEMA_HASH } from "../../../src/models/config/settings.js";
+import { COMMAND_FAMILY_REGISTRY,CommandRequestSchema,CommandResultSchema } from "../../../src/rules/commands/commands.js";
+import { PositiveIntSchema } from "../../../src/rules/identity/ids.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
 import { fixtureDescriptor } from "../../support/fixtures/descriptor-fixtures.js";
-import { COMMAND_FIXTURES, HASH_B, NOW, UUID_2, UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { QUEUED_RUN, sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
-import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
+import { NO_INTAKE_PROJECTIONS,UNWIRED_INTAKE_PARSER } from "../../support/fixtures/intake-kernel-seams.js";
+import { COMMAND_FIXTURES,HASH_B,NOW,UUID_2,UUID_4 } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { QUEUED_RUN,sequentialIdFactory } from "../../support/fixtures/phase1f-run-fixtures.js";
+import { boundProfileCredentials,createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
+import { REPO_ROOT,walkFiles } from "../support/helpers/guard-files.js";
 
 function withoutIntakeCommandReceiptRead(content: string): string {
   const source = ts.createSourceFile("candidate.ts", content, ts.ScriptTarget.Latest, true);
@@ -436,23 +436,6 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
       entries: { ucpathPassword: { clear: true } },
     },
   },
-
-  {
-    commandId: "abababab-abab-4aba-8aba-abababababab", requestedAt: NOW,
-    requestedBy: "local-operator", source: "dashboard", family: "storage-relocation", type: "plan-storage-relocation",
-    target: { installationId: UUID_2, sourceGeneration: 0,
-      sourcePair: { stateRoot: "/synthetic/state", artifactRoot: "/synthetic/state/artifacts" }, expectedRevision: 0 },
-    payload: { writeId: UUID_4, desiredPair: { stateRoot: "/synthetic/next-state", artifactRoot: "/synthetic/next-state/artifacts" },
-      desiredDigest: HASH_B, requestFingerprint: HASH_B },
-  },
-  {
-    commandId: "cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd", requestedAt: NOW,
-    requestedBy: "local-operator", source: "dashboard", family: "storage-relocation", type: "cancel-storage-relocation",
-    target: { installationId: UUID_2, sourceGeneration: 0,
-      sourcePair: { stateRoot: "/synthetic/state", artifactRoot: "/synthetic/state/artifacts" }, expectedRevision: 1 },
-    payload: { writeId: "efefefef-efef-4efe-8efe-efefefefefef", cancelledPlanCommandId: "abababab-abab-4aba-8aba-abababababab",
-      cancelledPlanDigest: HASH_B, requestFingerprint: HASH_B },
-  },
 ]);
 
 /* ── the partition (ref dashboard-surfaces authority) ────────── */
@@ -486,14 +469,12 @@ const EXPECTED_ACTIVE = {
     "exclude-intake-row", "validate-intake", "enqueue-intake-manifest",
   ],
   settings: ["apply-settings", "apply-protected-settings"],
-  "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
 
 } as const;
 
 const EXPECTED_DEFERRED = {
   intake: [],
   settings: [],
-  "storage-relocation": [],
   run: [],
   notification: [],
 } as const;
@@ -651,8 +632,8 @@ describe("control-command-single-path", () => {
     assert.equal(new Set(partitioned).size, partitioned.length);
   });
 
-  it("refuses prohibited audit authority in the relocation restore candidate", () => {
-    const source = readFileSync(join(REPO_ROOT, "src/backend/storage/sqlite/relocation-restore-candidate.ts"), "utf8");
+  it("refuses prohibited audit authority in the same-person restore candidate", () => {
+    const source = readFileSync(join(REPO_ROOT, "src/backend/storage/sqlite/same-person-restore-candidate.ts"), "utf8");
     assert.ok(!source.includes("commandAudits"));
     const additions = [
       'function probe(repo: any) { repo.commandAudits.insert({}); }',
@@ -726,7 +707,6 @@ describe("control-command-single-path", () => {
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
     const settingsAuditReaders = new Map([
       ["src/backend/runtime/settings/settings-runtime.ts", 1],
-      ["src/backend/storage/maintenance/storage-relocation-plans.ts", 1],
       ["src/backend/storage/sqlite/backup-service.ts", 0],
       ["src/backend/runs/lifecycle/run-record-service.ts", 1],
       ["src/backend/runs/recovery/span-root-repair.ts", 1],
@@ -823,7 +803,7 @@ describe("control-command-single-path", () => {
         : request.family === "assistant-model-preference"
           ? await harness.kernel.executeAssistantModelPreference(structuredClone(request))
           : harness.kernel.execute(structuredClone(request)));
-      if (DEFERRED_KEYS.has(key) || request.family === "storage-relocation") {
+      if (DEFERRED_KEYS.has(key)) {
         assert.equal(result.state, "rejected", key);
         if (result.state !== "rejected") continue;
         assert.equal(result.code, "capability-unavailable", key);

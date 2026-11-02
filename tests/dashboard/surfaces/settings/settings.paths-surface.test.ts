@@ -6,28 +6,22 @@ import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it } from "vitest";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
-import { useStorageRelocation } from "../../../../src/dashboard/surfaces/settings/general/settings-relocation-model.js";
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
 import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
-import { SettingsCommandRequestSchema,StorageRelocationPlanViewSchema } from "../../../../src/rules/commands/commands.js";
+import { SettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../parity/helpers/fixture-settings.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-const SOURCE = { stateRoot: "/tmp/fixture-state", artifactRoot: "/tmp/fixture-artifacts" };
-const INITIAL = StorageRelocationPlanViewSchema.parse({ revision: 0, installationId: "11111111-1111-4111-8111-111111111111",
-  sourceGeneration: 0, sourcePair: SOURCE, pending: null });
 let root: Root | undefined;
 let host: HTMLElement | undefined;
-let _currentController: ReturnType<typeof useStorageRelocation> | undefined;
-afterEach(() => { if (root !== undefined) act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; _currentController = undefined; });
+afterEach(() => { if (root !== undefined) act(() => root?.unmount()); host?.remove(); root = undefined; host = undefined; });
 async function idle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 750)); }); }
 
-describe("storage relocation Paths controls", () => {
+describe("ordinary output Paths controls", () => {
   it("guards an uncertain ordinary path save on exit without claiming it was saved", async () => {
     let guard: ((proceed: () => void) => void) | undefined;
     let exits = 0;
     const client = { editableSettings: () => Promise.resolve(FIXTURE_EDITABLE_SETTINGS),
-      storageRelocationPlans: () => Promise.resolve(INITIAL),
       pickSettingsPath: () => Promise.resolve({ state: "selected", field: "paths.downloadsDir", path: "/tmp/new-artifacts" }),
       executeCommand: () => Promise.reject(new Error("synthetic lost response")),
     } as unknown as DashboardClient;
@@ -56,7 +50,6 @@ describe("storage relocation Paths controls", () => {
     const commands: unknown[] = [];
     let selection: "cancelled" | "selected" = "cancelled";
     const client = { editableSettings: () => Promise.resolve(FIXTURE_EDITABLE_SETTINGS),
-      storageRelocationPlans: () => Promise.resolve(INITIAL),
       pickSettingsPath: () => Promise.resolve(selection === "selected"
         ? { state: "selected", field: "paths.downloadsDir", path: "/tmp/chosen-downloads" }
         : { state: "cancelled", field: "paths.downloadsDir" }),

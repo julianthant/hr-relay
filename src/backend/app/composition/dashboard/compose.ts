@@ -4,6 +4,13 @@ import configuredWorkflowSources from "../../../../../config/dashboard-workflow-
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
 import { ConfigSchema } from "../../../../models/config/schema.js";
 import { ASSISTANT_DEFAULT_EFFORT,ASSISTANT_DEFAULT_MODEL,AssistantModelPreferenceSchema,AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
+import { createAssistantWorkflowStarts } from "../../../assistant/workflow-start.js";
+import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
+import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
+import { assertPrivateProfilePath,createBrowserRoots } from "../../../storage/browser-roots.js";
+import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
+
 import { notificationSourceEventOf,notificationWireOf } from "../../../../models/dashboard/projection.js";
 import { EVENT_STREAM_RETENTION_DAYS } from "../../../../models/events/retention.js";
 import { admitOcrExtraction } from "../../../../models/ocr/extraction.js";
@@ -31,15 +38,13 @@ import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.
 import { assistantKnowledgeArtifact,loadProductionAssistantContext } from "../../../assistant/context.js";
 import { createAssistantService } from "../../../assistant/service.js";
 import { assistantSurfaceCoverage,createProductionAssistantTools } from "../../../assistant/tools.js";
-import { createAssistantWorkflowStarts } from "../../../assistant/workflow-start.js";
 import { importEmergencyFaults,withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
 import { CHATGPT_OCR_MODEL,createChatGptOcrPageReader } from "../../../processing/providers/chatgpt-ocr-adapter.js";
-import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import type { ProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { type ActiveProfileSession } from "../../../profiles/profile-session.js";
 import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
-import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
+
 import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-projection.js";
 import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
 import { notificationDisplayContext } from "../../../runs/queries/notification-display.js";
@@ -50,13 +55,11 @@ import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onb
 import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
 import { createWorkerBrowserChannel } from "../../../runtime/workers/worker-browser-channel.js";
 import { RuntimeAdmission } from "../../../storage/admission/admission.js";
-import { assertPrivateProfilePath,createBrowserRoots } from "../../../storage/browser-roots.js";
 import { ensureChildDirectory } from "../../../storage/configuration/credential-safe-file.js";
-import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
-import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
 import { failureStatus } from "../../../transports/http/routes/failure-status.js";
 import { operatorMutationIngressGuard } from "../../../transports/http/routes/operator-mutation-ingress.js";
 import { openStaticBundle,staticBundleHandler } from "../../../transports/http/static-bundle.js";
+
 import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import { composeRuntimePreflight,type RuntimePreflight } from "../../preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "../../preflight/runtime-runners.js";
@@ -101,7 +104,6 @@ import { createContentAddressedArtifactWriter } from "../../../storage/artifacts
 import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 import { createNoteTimelineWriter,type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
-import { createStorageRelocationPlanReader } from "../../../storage/maintenance/storage-relocation-plans.js";
 import { AuthorityDatabase,AuthorityHealthPreflightRunner,summarizeBackupHealth } from "../../../storage/sqlite/index.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
 import { RunLogsStreamHub } from "../../../transports/http/subscriptions/run-logs-stream.js";
@@ -599,14 +601,9 @@ async function composeDashboardRuntimeStartup(
   const { persistedSettings, resolved } = bootConfig;
   const protectedSettingsAuthority = context.credentials;
   const protectedSecrets = { read: () => { assertCurrent(); const result = context.protectedSecrets.read(); assertCurrent(); return result; } };
-  const storageRelocationPlans: ReturnType<typeof createStorageRelocationPlanReader> = {
-    read: () => { assertCurrent(); return createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot }).read(); },
-    project: repositories => { assertCurrent(); return createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot }).project(repositories); },
-    validate: request => { assertCurrent(); createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot }).validate(request); },
-  };
   const settingsBoundary = composeSettings({ database, hostFacts, clock, active: activeSettingsRuntimeIdentity,
     environment: env, credentials: protectedSettingsAuthority,
-    runtimeStoragePair, storageRelocationPlans,
+    runtimeStoragePair,
     resolveSettings: settings => { assertCurrent(); const result = context.resolveSettings(settings); assertCurrent(); return result; }, assertCurrent });
 
   const now = clock.now().toISOString();
@@ -885,7 +882,6 @@ async function composeDashboardRuntimeStartup(
       if (database.authority.assistantAuthorization.actionByCommand(command.commandId) === undefined) return;
         assistantAuthorization.assertEffect(command.commandId, command);
     },
-    storageRelocationPlans,
   });
 
   const assistantAuthorization = composeProfileAssistantAuthorization(profile.runtime, profile.token, kernel, clock);

@@ -1,21 +1,22 @@
-import { HubPermissionSettings, HubBrowserWindowSettings } from "./hub-preferences.js";
-import { useDelayedLoading } from "../../shared/loading/loading-model.js";
-import { LoadingRegion, SettingsRowsSkeleton } from "../../shared/loading/loading.js";
-import { SettingsSectionSkeleton } from "../settings-loading.js";
-import { useRef, useState, type ReactNode } from "react";
-import type { DeleteAccountPresentation } from "./delete-account-model.js";
 import { Form } from "@heroui/react";
+import { useRef,useState,type ReactNode } from "react";
+import { z } from "zod";
+import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
 import type { EditableSettingsLeafWire } from "../../../../models/dashboard/settings-editor.js";
-import { Banner, BodySection, Button, Dialog, DialogContent, DialogFooter, DateInput, Field, FormGroup, Input, PageHeading, Switch, dsText } from "../../../ds/ui.js";
-import { formatSetting, settingInput, type SettingsDraftOperation } from "../editor/settings-draft-model.js";
+import { Banner,BodySection,Button,DateInput,Dialog,DialogContent,DialogFooter,Field,FormGroup,Input,PageHeading,Switch,dsText } from "../../../ds/ui.js";
+import { useDelayedLoading } from "../../shared/loading/loading-model.js";
+import { LoadingRegion,SettingsRowsSkeleton } from "../../shared/loading/loading.js";
+import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
+import { formatSetting,settingInput,type SettingsDraftOperation } from "../editor/settings-draft-model.js";
 import type { useEditableSettings } from "../editor/settings-editor-model.js";
 import { SettingsSaveFeedback } from "../editor/settings-feedback.js";
-import { settingNote, settingTitle, settingPlaceholderCopy } from "../settings-presentation.js";
-import { BackupRestoreControls, FixedStorageRows } from "./settings-relocation.js";
-import { SettingsPathPicker } from "./settings-path-picker.js";
-import type { NativePathField } from "../../../../models/dashboard/native-path-picker.js";
+import { SettingsSectionSkeleton } from "../settings-loading.js";
+import { settingNote,settingPlaceholderCopy,settingTitle } from "../settings-presentation.js";
 import { ChatGptAccountSettings } from "./chatgpt-account.js";
-import { useSettingsFormFocus } from "../editor/settings-autosave-model.js";
+import type { DeleteAccountPresentation } from "./delete-account-model.js";
+import { HubBrowserWindowSettings,HubPermissionSettings } from "./hub-preferences.js";
+import { SettingsPathPicker } from "./settings-path-picker.js";
+import { AppDataPaths } from "./settings-storage.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
@@ -90,14 +91,16 @@ function GeneralContent({ editor, year }: { editor: Editor; year: number }) {
 function PathsContent({ editor }: { editor: Editor }) {
   const loaded = editor.editor.state === "loaded";
   const show = useDelayedLoading(editor.editor.state === "loading");
+  const locations = editor.editor.state === "loaded" ? z.strictObject({ stateRoot: z.string().min(1), artifactRoot: z.string().min(1) }).parse({
+    stateRoot: editor.editor.document.deployment["paths.stateRoot"], artifactRoot: editor.editor.document.deployment["paths.artifactRoot"],
+  }) : undefined;
   const paths = (fields: readonly NativePathField[]) => loaded
     ? fields.map(field => <PathRow key={field} editor={editor} field={field} />)
     : show ? <LoadingRegion label="Loading workflow paths" className="[&>*+*]:border-t [&>*+*]:border-ui-stroke"><SettingsRowsSkeleton rows={fields.length} wide copy={fields.map(settingPlaceholderCopy)} /></LoadingRegion> : null;
   return <>
     <BodySection title="Folders"><FormGroup label="Folders">{editor.editor.state === "failed" ? <div className="hub-settings-row"><div><div className="hub-row-label">Couldn’t load your folders</div><span className="hub-row-note">Your saved folders are unchanged.</span></div><Button variant="secondary" onClick={editor.reload}>Try again</Button></div> : paths(["paths.onboardingDocsDir", "paths.downloadsDir", "paths.reportsDir"])}</FormGroup></BodySection>
-    <FixedStorageRows editor={editor.relocationEditor} />
-    <BodySection title="Backup and restore"><BackupRestoreControls state="unavailable" /></BodySection>
-    {(loaded || editor.editor.state === "loading") && <BodySection title="Workflow locations"><FormGroup label="Workflow locations">{paths(["paths.browserProfileRoot", "paths.duoExtensionDir", "paths.i9CheckTrackerPath"])}</FormGroup></BodySection>}
+    <AppDataPaths locations={locations} loading={editor.editor.state === "loading"} readProblem={editor.readProblem !== undefined} onRetry={editor.reload} />
+    {(loaded || editor.editor.state === "loading") && <BodySection title="Workflow locations"><FormGroup label="Workflow locations">{paths(["paths.duoExtensionDir", "paths.i9CheckTrackerPath"])}</FormGroup></BodySection>}
   </>;
 }
 

@@ -33,7 +33,7 @@ function audit(file: string, text: string): string[] {
           if (imported === "registerRuntimeAdmission") {
             registrations.add(binding.name.text);
             if (file !== owner || binding.name.text !== imported || binding.isTypeOnly) findings.push(`${file}: foreign identity issuer`);
-          } else if (!["requireRuntimeAdmission", "ProfileBrowserRootRefusalError", "ProfileStorageRelocationUnsupportedError"].includes(imported)) findings.push(`${file}: unknown identity import`);
+          } else if (!["requireRuntimeAdmission", "ProfileBrowserRootRefusalError"].includes(imported)) findings.push(`${file}: unknown identity import`);
         }
       }
     }

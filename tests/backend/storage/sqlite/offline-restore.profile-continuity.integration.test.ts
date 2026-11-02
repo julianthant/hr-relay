@@ -1,51 +1,56 @@
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
-import { BrowserProfileStillClosingError } from "../../../../src/workflow-kit/session.js";
-import { reconcileStoppedLogout } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
-import { testProcessImport } from "../../../support/compiled-process.js";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
-import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
-import { RuntimeLifetimeLock, RuntimeAlreadyRunningError, type OfflineMaintenanceOperation, isOfflineMaintenanceOperationActive } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
-import { NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-browser.js";
-import * as nativeBrowserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
-import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { z } from "zod";
-import { acquireInstallation, CompletedRestoreCustodySchema, type ExclusiveInstallationLease } from "../../../../src/backend/storage/admission/installation.js";
-import { AuthorityDatabase as FixtureAuthorityDatabase } from "../../../support/helpers/synthetic-database-admission.js";
-import fs from "node:fs";
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import fs,{ copyFileSync,existsSync,lstatSync,readdirSync,readFileSync,renameSync,rmSync,writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-import { acquireRecoveryRuntimeRestore, RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { ProfileStorageRelocationUnsupportedError } from "../../../../src/backend/storage/admission/admission-identity.js";
-import { seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
-import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
-import { ATOMIC_WRITE_COMMIT, CONFIG_SNAPSHOT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { runClaim } from "../../../../src/models/run/record.js";
-import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
+import { join } from 'node:path';
+import { describe,it,vi } from "vitest";
+import { z } from "zod";
+import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
+import { reconcileStoppedLogout } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-browser.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { CompletedRestoreCustodySchema } from "../../../../src/backend/storage/admission/installation.js";
+import { isOfflineMaintenanceOperationActive,RuntimeAlreadyRunningError,RuntimeLifetimeLock,type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import * as nativeBrowserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { BrowserProfileStillClosingError } from "../../../../src/workflow-kit/session.js";
+import { testProcessImport } from "../../../support/compiled-process.js";
+import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
+import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
+import { AuthorityDatabase as FixtureAuthorityDatabase } from "../../../support/helpers/synthetic-database-admission.js";
+
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
+
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
-import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { initialSettingsFileRecord, SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
-import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
-import { manualClock, systemClock, type Clock } from "../../../../src/rules/time/clock.js";
+import { acquireRecoveryRuntimeRestore,RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+
+import { CanonicalCredentialHeadSchema,createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
-import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
-import { spawn } from "node:child_process";
-import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, rmSync, readdirSync, lstatSync } from "node:fs";
-import { join } from 'node:path';
-import { describe, it, vi } from "vitest";
-import { createBoundProfileFixture, signInBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
+
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { OfflineAuthorityRestoreService, OfflineRestoreFailure, settleInterruptedAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import { OfflineAuthorityRestoreService,OfflineRestoreFailure,settleInterruptedAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { createCanonicalCredentials, CanonicalCredentialHeadSchema } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { DuoCredentialRecordSchema } from "../../../../src/models/config/duo-credential-store.js";
+import { deriveSettingsPatchFingerprint,initialSettingsFileRecord,SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
+import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
+import { runClaim } from "../../../../src/models/run/record.js";
+import { manualClock,systemClock,type Clock } from "../../../../src/rules/time/clock.js";
+import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
+
+import { ATOMIC_WRITE_COMMIT,CONFIG_SNAPSHOT,WRITE_ATTEMPT,WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { createBoundProfileFixture,signInBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+
+import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
+
+import { seedAtomicWriteOwner } from "../../../support/helpers/timeline-write-fixture.js";
+import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { scaledMs } from "../../../support/time-scale.js";
 
 async function world(clock: Clock = systemClock) {
@@ -292,26 +297,6 @@ describe("profile restore continuity", () => {
     finally { await closeCustodyFixture(() => f.close(), primary); }
   });
 
-  it("refuses raw lease relocation of completed custody before destination or journal effects", async () => {
-    const f = await world();
-    let lease: ExclusiveInstallationLease | undefined;
-    let held: OfflineMaintenanceOperation | undefined;
-    let primary: { error: unknown } | undefined;
-    try {
-      const manifestPath = await f.backup();
-      await f.restore().restore({ manifestPath }, f.operation());
-      f.machine.release();
-      const activeLease = acquireInstallation(f.workspace, "exclusive", f.lifetime); lease = activeLease;
-      const activeHeld = activeLease.beginOfflineMaintenance(); held = activeHeld;
-      const before = storageTree(f.workspace), destination = { stateRoot: join(f.workspace, "destination-state"), artifactRoot: join(f.workspace, "destination-artifacts") };
-      assert.throws(() => activeLease.beginRelocation(destination, { commandId: randomUUID(), revision: 1, expectedRevision: 0,
-        requestFingerprint: "a".repeat(64), desiredDigest: "b".repeat(64) }, activeHeld), ProfileStorageRelocationUnsupportedError);
-      assert.deepEqual(storageTree(f.workspace), before);
-      assert.equal(existsSync(destination.stateRoot), false); assert.equal(existsSync(destination.artifactRoot), false);
-    } catch (error) { primary = { error }; }
-    finally { await closeCustodyFixture(async () => { held?.release(); lease?.release(); await f.close(); }, primary); }
-  });
-
   for (const mutation of ["missing", "substituted", "extra companion", "divergent row", "duplicate operation", "missing history"] as const) {
     it(`refuses completed restore ${mutation} custody before admitting credential copies`, async () => {
       const f = await world();
@@ -444,13 +429,12 @@ describe("profile restore continuity", () => {
     } finally { await f.close(); }
   });
 
-  it("refuses whole-machine restore and relocation without an independent retained continuity witness", async () => {
+  it("refuses whole-machine restore without an independent retained continuity witness", async () => {
     const f = await world();
     try {
       const manifestPath = await f.backup(), before = readFileSync(f.path);
       assert.throws(() => new OfflineAuthorityRestoreService(profileBrowserClosure, f.machine,
         { authorityPath: f.path, suspectDirectory: join(f.stateRoot, "backups", "suspects"), busyTimeoutMs: 250, processLockRoot: f.processLockRoot}, async () => {}), /profile-bound-authority-required/);
-      assert.throws(() => f.machine.assertStorageRelocationSupported(), ProfileStorageRelocationUnsupportedError);
       assert.deepEqual(readFileSync(f.path), before);
       assert.ok(existsSync(manifestPath));
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);

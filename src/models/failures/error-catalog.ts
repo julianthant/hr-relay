@@ -56,7 +56,7 @@ export const ERROR_CATALOG = Object.freeze({
   CREDENTIAL_INITIALIZATION_RETAINED_DUO_KEY_MISMATCH: catalogEntry("A retained Duo credential copy uses a different encryption key. Preserve the profile and its original key before continuing credential conversion.", EmptyParametersSchema),
   RUNTIME_CUSTODY_UNCERTAIN: catalogEntry("Runtime resource closure is unproved. Preserve the current installation and process custody before restarting.", EmptyParametersSchema),
   PROFILE_BROWSER_ROOT_REFUSED: catalogEntry("Browser storage must stay inside the selected profile in an owned directory without links.", EmptyParametersSchema),
-  PROFILE_STORAGE_RELOCATION_UNSUPPORTED: catalogEntry("Storage relocation is unavailable for profile installations. Keep the current installation roots.", EmptyParametersSchema),
+  STORAGE_FIXED_LAYOUT_REFUSED: catalogEntry("Relay could not verify its app data at the fixed location. Your data has been retained; startup cannot continue.", EmptyParametersSchema),
   ASSISTANT_INVALID: catalogEntry("The assistant request or response was invalid.", EmptyParametersSchema),
   ASSISTANT_CONTEXT_UNAVAILABLE: catalogEntry("Verified public source context is unavailable.", EmptyParametersSchema),
   ASSISTANT_CONTEXT_STALE: catalogEntry("The public source context does not match this runtime.", EmptyParametersSchema),

@@ -18,7 +18,8 @@ import { authenticateDocument } from "../configuration/credential-store.js";
 import { validateDuoKeyPair } from "../configuration/duo-signing.js";
 import { emailKey,passwordMatches } from "../configuration/synthetic-verifier.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
-import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
+import { requireFixedLayoutProfileClaim,type FixedLayoutActivation,type FixedLayoutIntent,type FixedLayoutProfileClaim } from "../maintenance/fixed-layout.js";
+import type { ProfileBrowserClosure,StoppedBackupClosure } from "../maintenance/profile-inventory.js";
 import { privatePathRejects } from "../private-path.js";
 import { assertSourceClosuresProved,AuthoritySourceClosureUnprovedError,hasUnprovedSourceClosure,rememberUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import type { AuthorityDatabase } from "../sqlite/authority-database.js";
@@ -27,10 +28,33 @@ import type { AuthorityBackupExpectedSource } from "../sqlite/database-identity.
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { assertCanonicalProfileBinding,assertLiveProfileDatabaseBinding,assertProfileRestoreDatabaseBinding,readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
-import { ProfileStorageRelocationUnsupportedError,registerRuntimeAdmission,requireRuntimeAdmission } from "./admission-identity.js";
-import { acquireInstallation,acquireStoppedProfileControlUpgrade,assertInstallationLease,assertStoppedMachineMaintenance,PROFILE_CUSTODY_PROOF,readProfilePublicationRegistry,requireStoppedControlProfileInventory,type AuthorityRestoreInput,type AuthorityRestoreVerifier,type CompletedRestoreCustody,type ExclusiveInstallationLease,type ExistingAuthorityEvidence,type FreshInitializationWitness,type InstallationLease,type ProfilePublicationRead,type ProfileRestoreContext,type RelocationActivationVerifier,type RelocationCompletionReceipt,type RelocationInventory,type RelocationPlanBinding,type RelocationPreparationVerifier,type RelocationVerifier,type RuntimeLocator,type RuntimePair,type StoppedControlProfileInventory,type StoppedProfileControlUpgradeAdmission,type VerifiedSourceControlEntries } from "./installation.js";
+import { registerRuntimeAdmission,requireRuntimeAdmission } from "./admission-identity.js";
+import { acquireInstallation,acquireStoppedProfileControlUpgrade,assertInstallationLease,assertStoppedMachineMaintenance,fixedLayoutBindings,prepareFixedLayoutPublication,PROFILE_CUSTODY_PROOF,readProfilePublicationRegistry,requireStoppedControlProfileInventory,type AuthorityRestoreInput,type AuthorityRestoreVerifier,type CompletedRestoreCustody,type ExclusiveInstallationLease,type ExistingAuthorityEvidence,type FixedLayoutPublication,type FreshInitializationWitness,type InstallationLease,type ProfilePublicationRead,type ProfileRestoreContext,type RuntimeLocator,type RuntimePair,type StoppedControlProfileInventory,type StoppedProfileControlUpgradeAdmission } from "./installation.js";
 import { RuntimeLifetimeLock,WorkerRuntimeLifetimeLock,type OfflineMaintenanceOperation } from "./lifetime-lock.js";
 import { assertOfflineMaintenanceForProcessRoot } from "./process-root.js";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 export class ProfileFlatStoreMigrationError extends Error {
   readonly code = "PROFILE_FLAT_STORE_MIGRATION_FAILED";
@@ -96,33 +120,15 @@ type AdmissionAuthority = Readonly<{
   assertAuthorityRestoreCurrent?(input: AuthorityRestoreInput, restore: OfflineMaintenanceOperation): void;
   assertProfileRuntime?(publication?: ProfilePublicationRead): void;
   assertPendingLogoutCustody?(operationId: string): void;
-  readRelocationReceipts?(): readonly RelocationCompletionReceipt[];
-  readInstallationContext?(): Readonly<{ workspace: string; locator: RuntimeLocator; receipts: readonly RelocationCompletionReceipt[] }> | undefined;
+  readInstallationContext?(): Readonly<{ workspace: string; locator: RuntimeLocator }> | undefined;
   release(): void;
 }>;
 
-export type RuntimeRelocationOperation = Readonly<{
-  operationId: string;
-  inventory(): RelocationInventory;
-  prepareDestinationRoots(): void;
-  verifiedSourceControlEntries(): VerifiedSourceControlEntries;
-  readPriorReceipts(): readonly RelocationCompletionReceipt[];
-  destinationAdmission(): RuntimeAdmission;
-  sourceVerificationAdmission(): RuntimeAdmission;
-  recordVerifiedPreparation(verify: RelocationPreparationVerifier): void;
-  recordActivationIntent(verify: RelocationActivationVerifier): void;
-  recordVerifiedStage(verify: RelocationVerifier): void;
-  fenceRelocationSource(): void;
-  retainRelocationSources(): void;
-  switchRelocationLocator(verify: RelocationVerifier): RuntimeLocator;
-  settleRelocation(verify: RelocationVerifier): void;
-}>;
-
-type AdmissionScope = "profile-maintenance" | "flat-backup" | "profile-restore" | "installation" | "adoption-inspection" | "stopped-staged" | "stopped-projection" | "synthetic-stopped-staged"
-  | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification"
+type AdmissionScope = "profile-layout" | "profile-maintenance" | "flat-backup" | "profile-restore" | "installation" | "adoption-inspection" | "stopped-staged" | "stopped-projection" | "synthetic-stopped-staged"
+  | "verified-copy" | "synthetic-verified-copy" | "synthetic"
   | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile-ready-upgrade" | "profile" | "profile-settlement" | "profile-pending-logout-inventory" | "stopped-control-inventory" | "stopped-incomplete-profile-inventory";
 
-type ReadyProfileUpgrade = Readonly<{ purpose: "manual" | "startup"; sourcePath: string; processLockRoot: string; sourceSchemaVersion: 6 | 8 | 9 | 10 | 11; copyPath?: string;
+type ReadyProfileUpgrade = Readonly<{ purpose: "manual" | "startup" | "layout"; sourcePath: string; processLockRoot: string; sourceSchemaVersion: 6 | 8 | 9 | 10 | 11; copyPath?: string;
   qualification: { current: Readonly<{ kind: "inspection" }> | Readonly<{ kind: "qualified"; sourceFingerprint: string }> | Readonly<{ kind: "revoked" }> } }>;
 
 /** A lifetime-bound, path-specific authority to open this installation's physical storage. */
@@ -137,6 +143,7 @@ export class RuntimeAdmission {
   #released = false;
   readonly #sourceFailures = new Set<unknown>();
   #stoppedControlInventory: Readonly<{ claim: StoppedControlProfileInventory; source: ReturnType<typeof requireStoppedControlProfileInventory> }> | undefined;
+  #layoutClaim: FixedLayoutProfileClaim | undefined;
   #stoppedLogout: { operation: LogoutOperation; restore: OfflineMaintenanceOperation; witness: ReturnType<InstallationLease["capturePendingProfileLogout"]> } | undefined;
   readonly #profileBinding: ProfileDatabaseBinding | undefined;
   readonly #profileParent: RuntimeAdmission | undefined;
@@ -164,6 +171,27 @@ export class RuntimeAdmission {
     this.#locator = locator === undefined ? undefined : Object.freeze({ ...locator });
     registerRuntimeAdmission(this);
     Object.freeze(this);
+  }
+
+  static forFixedLayoutProfile(machine: RuntimeAdmission, claim: FixedLayoutProfileClaim): RuntimeAdmission {
+    const source = requireFixedLayoutProfileClaim(claim, machine);
+    const admission = new RuntimeAdmission(issuanceToken, { assertHeld: source.assertHeld,
+      readInstallationContext: () => machine.readInstallationContext(), release() {} },
+      source.stateRoot, source.artifactRoot, [join(source.stateRoot, "state.db")], "profile-layout", "exclusive",
+      machine.locator, source.binding, machine);
+    admission.#layoutClaim = claim;
+    return admission;
+  }
+  fixedLayoutActivation(): FixedLayoutActivation {
+    this.assertLive();
+    if (this.#scope !== "profile-layout" || this.#layoutClaim === undefined || this.#profileParent === undefined) throw new Error("fixed-layout-admission-required");
+    return requireFixedLayoutProfileClaim(this.#layoutClaim, this.#profileParent).activation;
+  }
+  assertFixedLayoutDatabase(path: string): void {
+    this.assertLive();
+    if (this.#scope !== "profile-layout" || this.#layoutClaim === undefined || this.#profileParent === undefined) throw new Error("fixed-layout-admission-required");
+    const source = requireFixedLayoutProfileClaim(this.#layoutClaim, this.#profileParent);
+    if (path !== join(source.stateRoot, "state.db") || this.#stateRoot !== source.stateRoot) throw new Error("fixed-layout-database-path-refused");
   }
 
   get locator(): RuntimeLocator {
@@ -197,11 +225,14 @@ export class RuntimeAdmission {
       return stopped;
     } catch (error) { if (stopped !== this) stopped.release(); throw error; }
   }
+  forStoppedProfileLayout(browserClosure: ProfileBrowserClosure, profileId: string, restore: OfflineMaintenanceOperation, clock: Clock, hostFacts: HostConfigFacts): Promise<RuntimeAdmission> {
+    return this.#readyStoppedProfileUpgrade(browserClosure, profileId, restore, clock, hostFacts, "layout");
+  }
   forStartupProfileUpgrade(browserClosure: ProfileBrowserClosure, profileId: string, restore: OfflineMaintenanceOperation, clock: Clock, hostFacts: HostConfigFacts): Promise<RuntimeAdmission> {
     return this.#readyStoppedProfileUpgrade(browserClosure, profileId, restore, clock, hostFacts, "startup");
   }
   async #readyStoppedProfileUpgrade(browserClosure: ProfileBrowserClosure, profileId: string | undefined, restore: OfflineMaintenanceOperation | undefined,
-    clock: Clock | undefined, hostFacts: HostConfigFacts | undefined, purpose: "manual" | "startup" = "manual"): Promise<RuntimeAdmission> {
+    clock: Clock | undefined, hostFacts: HostConfigFacts | undefined, purpose: "manual" | "startup" | "layout" = "manual"): Promise<RuntimeAdmission> {
     const lease = this.#exclusiveInstallationLease();
     if (profileId === undefined || restore === undefined || clock === undefined || hostFacts === undefined) throw new Error("profile-stopped-upgrade-runtime-claim-required");
     const claim = this.#captureProfileAccess(profileId);
@@ -217,6 +248,7 @@ export class RuntimeAdmission {
     const binding = { installationId: this.locator.installationId, profileId: claim.profileId };
     const observed = readProfileDatabaseBinding(path);
     if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION)) throw new Error("profile-stopped-upgrade-bound-required");
+    if (purpose === "layout" && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("fixed-layout-current-schema-required");
     assertCanonicalProfileBinding(path, binding);
     const ancestry = new Map<string, DirectoryIdentity>();
     noSymlinkAncestry(root, ancestry);
@@ -251,10 +283,10 @@ export class RuntimeAdmission {
       const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
       assertUnpublishedSource();
       const before = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
-      const { readStoppedProfileUpgradeInventory, probeStoppedProfileBrowsersClosed } = await import("../maintenance/profile-inventory.js");
+      const { readStoppedProfileUpgradeInventory, readStoppedProfileLayoutInventory, probeStoppedProfileBrowsersClosed } = await import("../maintenance/profile-inventory.js");
       assertUnpublishedSource();
       await probeStoppedProfileBrowsersClosed(admission, clock, browserClosure);
-      readStoppedProfileUpgradeInventory({ machine: this, admission, clock, hostFacts, browserClosure });
+      (purpose === "layout" ? readStoppedProfileLayoutInventory : readStoppedProfileUpgradeInventory)({ machine: this, admission, clock, hostFacts, browserClosure });
       const after = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
       if (before.schemaVersion !== observed.schemaVersion || before.authorityGeneration !== after.authorityGeneration
         || before.authorityContentFingerprint !== after.authorityContentFingerprint) throw new Error("profile-stopped-upgrade-source-changed");
@@ -310,13 +342,23 @@ export class RuntimeAdmission {
     this.assertAuthorityDatabase(path);
   }
   assertReadyStoppedProfileUpgradeOwner(machine: RuntimeAdmission): "manual" | "startup" {
+    const purpose = this.#readyUpgrade?.purpose;
+    if (purpose !== "manual" && purpose !== "startup") throw new Error("profile-stopped-upgrade-owner-required");
+    this.#assertReadyStoppedProfileOwner(machine, purpose);
+    return purpose;
+  }
+  assertReadyStoppedProfileLayoutOwner(machine: RuntimeAdmission): void {
+    this.#assertReadyStoppedProfileOwner(machine, "layout");
+  }
+  #assertReadyStoppedProfileOwner(machine: RuntimeAdmission, purpose: "manual" | "startup" | "layout"): void {
     this.assertLive();
-    if (this.#readyUpgrade === undefined || this.#readyUpgrade.copyPath !== undefined || this.#profileParent !== machine) throw new Error("profile-stopped-upgrade-owner-required");
+    if (this.#readyUpgrade === undefined || this.#readyUpgrade.copyPath !== undefined || this.#profileParent !== machine
+      || this.#readyUpgrade.purpose !== purpose) throw new Error("profile-stopped-upgrade-owner-required");
     this.assertStoppedProfileUpgrade(this.#readyUpgrade.sourcePath, this.#readyUpgrade.processLockRoot);
-    return this.#readyUpgrade.purpose;
   }
   assertProfileMigration(path: string, sourceVersion: number, sourceFingerprint?: string): "ready" | "setup" {
     if (this.#readyUpgrade !== undefined) {
+      if (this.#readyUpgrade.purpose === "layout") throw new Error("fixed-layout-schema-mutation-refused");
       this.assertStoppedProfileUpgrade(path, this.#readyUpgrade.processLockRoot);
       if (![8, 9, 10].includes(this.#readyUpgrade.sourceSchemaVersion) || sourceVersion !== this.#readyUpgrade.sourceSchemaVersion) throw new Error("profile-stopped-upgrade-version-refused");
       const proof = this.#readyUpgrade.qualification.current;
@@ -486,6 +528,7 @@ export class RuntimeAdmission {
   }
   assertBrowserRegistryCustody(): void {
     this.assertLive(); assertSourceClosuresProved(this.#sourceFailures);
+    if (this.#scope === "profile-layout") throw new Error("fixed-layout-browser-mutation-refused");
     this.#profileParent?.assertBrowserRegistryCustody();
     this.lifetime.assertSourceCustody();
   }
@@ -738,6 +781,7 @@ export class RuntimeAdmission {
   }
   assertCredentialRead(): void {
     this.assertLive();
+    if (this.#scope === "profile-layout") throw new Error("fixed-layout-credential-read-refused");
     if (this.#scope === "stopped-control-inventory" || this.#scope === "stopped-incomplete-profile-inventory") throw new Error("profile-control-upgrade-credential-read-refused");
     if (this.#readyUpgrade !== undefined || this.#scope === "profile-upgrade") throw new Error("profile-stopped-upgrade-credential-read-refused");
     if (this.#scope === "profile-maintenance" || this.#scope === "profile-settlement" || this.#scope === "profile-restore" || this.#scope === "profile-pending-logout-inventory") throw new Error("profile-settlement-credential-read-refused");
@@ -868,12 +912,11 @@ export class RuntimeAdmission {
     lifetime.assertHeld();
     return lifetime;
   }
-  readInstallationContext(): Readonly<{ workspace: string; locator: RuntimeLocator;
-    receipts: readonly RelocationCompletionReceipt[] }> | undefined {
+  readInstallationContext(): Readonly<{ workspace: string; locator: RuntimeLocator }> | undefined {
     this.assertLive();
     if (this.#scope === "synthetic") return undefined;
     if ((this.#readyUpgrade !== undefined || this.#flatBackup !== undefined) && this.#profileParent !== undefined) return this.#profileParent.readInstallationContext();
-    if (this.#scope === "stopped-incomplete-profile-inventory" || this.#scope === "stopped-control-inventory" || this.#scope === "profile-restore" || this.#scope === "stopped-staged" || this.#scope === "stopped-projection" || this.#scope === "synthetic-stopped-staged") {
+    if (this.#scope === "profile-layout" || this.#scope === "stopped-incomplete-profile-inventory" || this.#scope === "stopped-control-inventory" || this.#scope === "profile-restore" || this.#scope === "stopped-staged" || this.#scope === "stopped-projection" || this.#scope === "synthetic-stopped-staged") {
       if (this.#authority.readInstallationContext === undefined) throw new Error("runtime-admission: staged installation context unavailable");
       return this.#authority.readInstallationContext();
     }
@@ -898,13 +941,6 @@ export class RuntimeAdmission {
     const lease = this.#authority as InstallationLease;
     assertInstallationLease(lease);
     lease.assertFixedProcessLockRoot(workspaceRoot, processLockRoot);
-  }
-  readRelocationReceipts(): readonly RelocationCompletionReceipt[] {
-    this.assertLive();
-    if (this.#scope !== "installation" || this.#authority.readRelocationReceipts === undefined) {
-      throw new Error("runtime-admission: installation receipt authority required");
-    }
-    return this.#authority.readRelocationReceipts();
   }
   assertLive(publication?: ProfilePublicationRead): void {
     if (!(#released in this) || this.#released) throw new Error("runtime-admission: missing or released admission");
@@ -933,6 +969,7 @@ export class RuntimeAdmission {
   }
   assertWritable(): void {
     this.assertLive();
+    if (this.#scope === "profile-layout") throw new Error("fixed-layout-runtime-refused");
     if (this.#flatBackup !== undefined) throw new Error("flat-backup-runtime-refused");
     if (this.#scope === "stopped-control-inventory" || this.#scope === "stopped-incomplete-profile-inventory") throw new Error("profile-control-upgrade-write-refused");
     if (this.#readyUpgrade !== undefined || this.#scope === "profile-upgrade") throw new Error("profile-stopped-upgrade-runtime-refused");
@@ -942,7 +979,7 @@ export class RuntimeAdmission {
     if (this.#scope === "adoption-inspection") throw new Error("runtime-admission: adoption inspection is read-only");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization has database-only write authority");
     if (this.#scope === "verified-copy" || this.#scope === "synthetic-verified-copy"
-      || this.#scope === "relocation-source-verification") throw new Error("runtime-admission: verification is read-only");
+     ) throw new Error("runtime-admission: verification is read-only");
   }
   assertAuthorityDatabase(path: string): void {
     if (this.#scope === "installation") throw new Error("profile-bound-authority-required");
@@ -950,7 +987,7 @@ export class RuntimeAdmission {
     else if (this.#scope === "adoption-initialization") this.assertLive();
     else this.assertWritable();
     this.assertStorageRootsSafe();
-    if (path === ":memory:" && this.#scope !== "relocation-destination" && this.#scope !== "adoption-initialization"
+    if (path === ":memory:" && this.#scope !== "adoption-initialization"
       && this.#scope !== "profile-initialization" && this.#scope !== "profile-upgrade" && this.#scope !== "profile") return;
     if (!this.#authorityDatabasePaths.has(path === ":memory:" ? path : resolve(path))) throw new Error("runtime-admission: authority database path is outside admission");
   }
@@ -969,11 +1006,11 @@ export class RuntimeAdmission {
     if (this.#scope === "profile-pending-logout-inventory") {
       if (path === ":memory:" || this.#pendingLogout?.copyPath !== undefined && path !== this.#pendingLogout.copyPath) throw new Error("profile-pending-logout-path-refused");
     }
-    if (this.#scope === "relocation-source-verification" || this.#scope === "adoption-initialization") {
+    if (this.#scope === "adoption-initialization") {
       throw new Error("runtime-admission: inspection database authority unavailable");
     }
     this.#assertPhysicalStorageRootsSafe();
-    if (path === ":memory:" && this.#scope !== "relocation-destination"
+    if (path === ":memory:"
       && this.#scope !== "profile-maintenance" && this.#scope !== "profile" && this.#scope !== "profile-restore" && this.#scope !== "profile-initialization" && this.#scope !== "profile-upgrade") return;
     const checked = resolve(path);
     if (this.#authorityDatabasePaths.has(checked)) return;
@@ -1032,6 +1069,7 @@ export class RuntimeAdmission {
 
   assertArtifactRoot(path: string): void {
     this.assertReadable();
+    if (this.#scope === "profile-layout" || this.#readyUpgrade?.purpose === "layout") throw new Error("fixed-layout-artifact-mutation-refused");
     if (this.#flatBackup !== undefined) throw new Error("flat-backup-artifact-refused");
     if (this.#scope === "stopped-control-inventory" || this.#scope === "stopped-incomplete-profile-inventory") throw new Error("profile-control-upgrade-artifact-refused");
     if (this.#scope === "profile-pending-logout-inventory") throw new Error("profile-pending-logout-write-refused");
@@ -1067,6 +1105,13 @@ export class RuntimeAdmission {
     this.assertLive();
     if (this.#profileParent !== undefined) return this.#profileParent.beginOfflineMaintenance();
     return this.#exclusiveInstallationLease().beginOfflineMaintenance();
+  }
+
+  fixedLayoutBindings(targetWorkspace: string): FixedLayoutIntent["bindings"] {
+    return fixedLayoutBindings(this.#exclusiveInstallationLease(), targetWorkspace);
+  }
+  prepareFixedLayoutPublication(intent: FixedLayoutIntent, sources: readonly Readonly<{ admission: RuntimeAdmission; closure: StoppedBackupClosure }>[]): FixedLayoutPublication {
+    return prepareFixedLayoutPublication(this.#exclusiveInstallationLease(), this, this.maintenanceOperation(), intent, sources);
   }
 
   readCompletedRestores(): readonly CompletedRestoreCustody[] {
@@ -1144,75 +1189,6 @@ export class RuntimeAdmission {
     this.assertExclusive();
     if (this.#authority.readAuthorityRestore === undefined) throw new Error("profile-restore-authority-required");
     return this.#authority.readAuthorityRestore(operationId);
-  }
-  assertStorageRelocationSupported(): void {
-    this.assertLive();
-    const locator = this.#locator;
-    if (this.#profileBinding === undefined || locator === undefined || existsSync(join(locator.stateRoot, "machine")) || existsSync(join(locator.stateRoot, "profiles"))) throw new ProfileStorageRelocationUnsupportedError();
-  }
-  beginRelocation(destination: RuntimePair, plan: RelocationPlanBinding,
-    restore: OfflineMaintenanceOperation): RuntimeRelocationOperation {
-    this.assertStorageRelocationSupported();
-    const lease = this.#exclusiveInstallationLease();
-    const operationId = lease.beginRelocation(destination, plan, restore);
-    return this.#relocationOperation(lease, operationId);
-  }
-
-  resumeRelocation(operationId: string): RuntimeRelocationOperation {
-    this.assertStorageRelocationSupported();
-    return this.#relocationOperation(this.#exclusiveInstallationLease(), operationId);
-  }
-
-  #relocationOperation(lease: ExclusiveInstallationLease, operationId: string): RuntimeRelocationOperation {
-    const initial = lease.relocationInventory();
-    if (initial.operationId !== operationId || initial.installationId !== this.locator.installationId
-      || initial.fromGeneration !== this.locator.generation && initial.fromGeneration + 1 !== this.locator.generation) {
-      throw new Error("runtime-admission: relocation operation binding mismatch");
-    }
-    const binding = canonicalJsonStringify({ operationId: initial.operationId, installationId: initial.installationId,
-      fromGeneration: initial.fromGeneration, source: initial.source, destination: initial.destination,
-      plan: initial.plan, pinnedEntries: initial.pinnedEntries, retentions: initial.retentions });
-    const inventory = (): RelocationInventory => {
-      this.assertLive();
-      const current = lease.relocationInventory();
-      const currentBinding = canonicalJsonStringify({ operationId: current.operationId, installationId: current.installationId,
-        fromGeneration: current.fromGeneration, source: current.source, destination: current.destination,
-        plan: current.plan, pinnedEntries: current.pinnedEntries, retentions: current.retentions });
-      if (currentBinding !== binding) throw new Error("runtime-admission: relocation operation changed");
-      return current;
-    };
-    const child = (pair: RuntimePair, scope: AdmissionScope): RuntimeAdmission => new RuntimeAdmission(issuanceToken,
-      { assertHeld: () => { inventory(); }, release() {} }, pair.stateRoot, pair.artifactRoot,
-      scope === "relocation-destination" ? [join(pair.stateRoot, "state.db")] : [],
-      scope, "exclusive");
-    return Object.freeze({ operationId, inventory,
-      prepareDestinationRoots: () => { inventory(); lease.prepareDestinationRoots(); },
-      verifiedSourceControlEntries: () => { inventory(); return lease.verifiedSourceControlEntries(); },
-      readPriorReceipts: () => { inventory(); return lease.readPriorReceipts(); },
-      destinationAdmission: () => child(inventory().destination, "relocation-destination"),
-      sourceVerificationAdmission: () => {
-        const current = inventory();
-        if (current.phase !== "retained" && current.phase !== "switched") {
-          throw new Error("runtime-admission: fully retained source required for verification");
-        }
-        const state = current.retentions.find((row) => row.role === "state");
-        const artifact = current.retentions.find((row) => row.role === "artifact");
-        const stateRoot = state?.retained ?? current.source.stateRoot;
-        const artifactRoot = artifact?.retained ?? (state !== undefined
-          && (current.source.artifactRoot === current.source.stateRoot
-            || current.source.artifactRoot.startsWith(`${current.source.stateRoot}/`))
-          ? join(state.retained, relative(current.source.stateRoot, current.source.artifactRoot))
-          : current.source.artifactRoot);
-        return child({ stateRoot, artifactRoot }, "relocation-source-verification");
-      },
-      recordVerifiedStage: (verify: RelocationVerifier) => { inventory(); lease.recordVerifiedStage(verify); },
-      recordVerifiedPreparation: (verify: RelocationPreparationVerifier) => { inventory(); lease.recordVerifiedPreparation(verify); },
-      recordActivationIntent: (verify: RelocationActivationVerifier) => { inventory(); lease.recordActivationIntent(verify); },
-      fenceRelocationSource: () => { inventory(); lease.fenceRelocationSource(); },
-      retainRelocationSources: () => { inventory(); lease.retainRelocationSources(); },
-      switchRelocationLocator: (verify: RelocationVerifier) => { inventory(); return lease.switchRelocationLocator(verify); },
-      settleRelocation: (verify: RelocationVerifier) => { inventory(); lease.settleRelocation(verify); },
-    });
   }
 
   stoppedRestoreProjection(path: string, restore: OfflineMaintenanceOperation): RuntimeAdmission {
@@ -1303,9 +1279,6 @@ export class RuntimeAdmission {
       || !/^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite)$/u.test(resolve(path).slice(dirname(resolve(path)).length + 1)))) throw new Error("profile-stopped-upgrade-copy-refused");
     if (this.#pendingLogout?.copyPath !== undefined) throw new Error("profile-pending-logout-copy-delegation-refused");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot delegate copy authority");
-    if (this.#scope === "relocation-source-verification") {
-      throw new Error("runtime-admission: source verification is limited to retained roots");
-    }
     if (!/^[0-9a-f]{64}$/u.test(expectedSha256)) throw new Error("runtime-admission: invalid copy digest");
     const checked = resolve(path);
     if (this.#scope === "stopped-control-inventory" && !within(this.#stateRoot, checked) && !this.#stoppedControlBackupPath(checked)) throw new Error("profile-control-upgrade-copy-path-refused");
@@ -1727,21 +1700,6 @@ export function acquireInitialRuntimeAdmission(workspace: string, lifetime: Runt
   verifyExisting: (pair: RuntimePair, inspection: RuntimeAdmission) => ExistingAuthorityEvidence,
   initializeFresh: (pair: RuntimePair, initialization: RuntimeAdmission) => void): RuntimeAdmission {
   return RuntimeAdmission.acquireInitial(workspace, lifetime, verifyExisting, initializeFresh);
-}
-
-export function acquireRecoveryRuntimeRelocation(workspace: string, lifetime: RuntimeLifetimeLock,
-  binding: Readonly<{ installationId: string; fromGeneration: number; operationId: string }>,
-  restore: OfflineMaintenanceOperation): Readonly<{ admission: RuntimeAdmission; operation: RuntimeRelocationOperation }> {
-  const lease = acquireInstallation(workspace, "exclusive", lifetime, { offlineOperation: restore, recoverRelocation: { ...binding, restoreAdmission: restore } });
-  try {
-    const admission = RuntimeAdmission.fromInstallationLease(lease);
-    return Object.freeze({ admission, operation: admission.resumeRelocation(binding.operationId) });
-  } catch (error) {
-    if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission: lease, restore });
-    try { restore.release(); lease.release(); }
-    catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: lease, restore }); }
-    throw error;
-  }
 }
 
 export function acquireRecoveryRuntimeRestore(workspace: string, lifetime: RuntimeLifetimeLock, operationId: string,

@@ -1,28 +1,28 @@
 import { createHash } from "node:crypto";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute,join,relative,resolve } from "node:path";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { Clock } from "../../../rules/time/clock.js";
-import { systemClock } from "../../../rules/time/clock.js";
-import { FingerprintSchema } from "../../../rules/identity/ids.js";
-import { defaultRuntimePaths } from "./runtime-paths.js";
-import { HostConfigFactsSchema, type HostConfigFacts } from "../../../models/config/host-display.js";
+import { HostConfigFactsSchema,type HostConfigFacts } from "../../../models/config/host-display.js";
 import {
-  ConfigLeafPathSchema,
-  ConfigProvenanceSchema,
-  configLeafPaths,
-  type ConfigProvenance,
+ConfigLeafPathSchema,
+ConfigProvenanceSchema,
+configLeafPaths,
+type ConfigProvenance,
 } from "../../../models/config/provenance.js";
 import {
-  ConfigSchema,
-  SettingsOverrideInputSchema,
-  DEFAULT_DISPLAY,
-  type Config,
-  type SettingsOverride,
+ConfigSchema,
+DEFAULT_DISPLAY,
+SettingsOverrideInputSchema,
+type Config,
+type SettingsOverride,
 } from "../../../models/config/schema.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock } from "../../../rules/time/clock.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { defaultRuntimePaths } from "./runtime-paths.js";
 
-export { ConfigLeafPathSchema, ConfigProvenanceSchema, configLeafPaths } from "../../../models/config/provenance.js";
-export type { ConfigLeafPath, ConfigProvenance } from "../../../models/config/provenance.js";
+export { ConfigLeafPathSchema,ConfigProvenanceSchema,configLeafPaths } from "../../../models/config/provenance.js";
+export type { ConfigLeafPath,ConfigProvenance } from "../../../models/config/provenance.js";
 export const ResolvedConfigSchema = z.strictObject({
   config: ConfigSchema,
   /** Provenance is explanatory metadata, never runtime decision input. */
@@ -135,6 +135,8 @@ function resolveInternal(settingsInput: unknown, hostFactsInput: HostConfigFacts
   const settings = SettingsOverrideInputSchema.parse(settingsInput);
   const hostFacts = HostConfigFactsSchema.parse(hostFactsInput);
   const admittedPair = runtimeStoragePair === undefined ? undefined : RuntimeStoragePairSchema.parse(runtimeStoragePair);
+  if (admittedPair !== undefined && settings.paths?.browserProfileRoot !== undefined
+    && settings.paths.browserProfileRoot !== join(admittedPair.stateRoot, "browsers")) throw new Error("fixed-person-browser-root-required");
   const defaults = ConfigSchema.parse({
     paths: { ...defaultRuntimePaths(), ...admittedPair,
       ...(admittedPair === undefined ? {} : { reportsDir: join(admittedPair.stateRoot, "files", "reports"), downloadsDir: join(admittedPair.stateRoot, "files", "downloads"),

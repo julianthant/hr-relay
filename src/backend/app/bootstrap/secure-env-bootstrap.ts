@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
 import { acquireRuntimeLifetimeLock,receiveRuntimeLifetimeLock,RuntimeLifetimeLock,WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 
@@ -6,13 +7,12 @@ import { join } from "node:path";
 import { hostConfigFacts } from "../../../models/config/host-display.js";
 import { assertNoMigratedEnvironmentKeys,workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import { systemClock } from "../../../rules/time/clock.js";
-import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
 import { acquireExclusiveRuntimeAdmission,RuntimeAdmission } from "../../storage/admission/admission.js";
 import { acquireDashboardEntrypointAdmission,acquireEntrypointAdmission,acquireStorageBackupEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
-import { inspectPendingRelocationStatus } from "../../storage/admission/installation.js";
+import { FixedLayoutRefusedError } from "../../storage/maintenance/fixed-layout.js";
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
 import { RuntimeCustodyUncertainError } from "../composition/storage-compose.js";
-import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
+import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
@@ -28,9 +28,6 @@ export interface SecureEnvironmentBootstrapDependencies {
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
   readonly acquireAdmission?: (mode: "shared" | "exclusive", lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock) => RuntimeAdmission;
   readonly validateDashboardBundle?: (workspace: string) => void;
-  readonly runRelocation?: (input: Readonly<{ workspace: string; args: readonly string[];
-    admission?: RuntimeAdmission }>) => Promise<Readonly<{ operationId: string; generation: number }>>;
-  readonly inspectRelocationStatus?: (workspace: string) => ReturnType<typeof inspectPendingRelocationStatus>;
 }
 
 export function secureEnvironmentEntrypoint(
@@ -74,7 +71,8 @@ async function runAdmittedEnvironmentBootstrap(
   lifetime.parentSignal.throwIfAborted();
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
-  const workspace = fileURLToPath(new URL("../../../..", import.meta.url));
+  const repoRoot = fileURLToPath(new URL("../../../..", import.meta.url));
+  const workspace = lifetime.lock instanceof WorkerRuntimeLifetimeLock ? lifetime.lock.workspace : applicationDataWorkspace();
   const workerLifetime = (): WorkerRuntimeLifetimeLock => {
     if (!(lifetime.lock instanceof WorkerRuntimeLifetimeLock)) throw new Error("inherited-worker-lifetime-required");
     lifetime.lock.assertHeld();
@@ -85,6 +83,11 @@ async function runAdmittedEnvironmentBootstrap(
     lifetime.lock.assertHeld();
     return lifetime.lock;
   };
+  if (dependencies.acquireAdmission === undefined && !(lifetime.lock instanceof WorkerRuntimeLifetimeLock)) {
+    const { prepareApplicationDataWorkspace } = await import("../composition/storage-compose.js");
+    try { await prepareApplicationDataWorkspace(repoRoot, workspace, rootLifetime(), hostConfigFacts(workerBootstrapEnvironment())); }
+    catch (error) { throw new FixedLayoutRefusedError(error); }
+  }
   if (entrypoint === "cli" && entrypointArgs[0] === "dashboard" && dependencies.acquireAdmission === undefined) {
     const { upgradeRegisteredPersonStores } = await import("../composition/storage-compose.js");
     await upgradeRegisteredPersonStores(workspace, rootLifetime(), hostConfigFacts(workerBootstrapEnvironment()));
@@ -100,38 +103,6 @@ async function runAdmittedEnvironmentBootstrap(
     const { report, json } = await runOfflineAuthorityRestoreRecovery(workspace, entrypointArgs.slice(2), rootLifetime());
     process.stdout.write(json ? `${JSON.stringify(report)}\n`
       : `storage restore: verified ${report.outcome} operation ${report.operationId} settled\n`);
-    return;
-  }
-  if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "relocate") {
-    const { parseRelocationCommand, runOfflineStorageRelocation, StorageRelocationIncompleteError } = await import("../composition/storage/relocate.js");
-    const command = parseRelocationCommand(entrypointArgs.slice(2));
-    if (command.kind === "status") {
-      const pending = (dependencies.inspectRelocationStatus ?? inspectPendingRelocationStatus)(workspace);
-      process.stdout.write(command.json ? `${JSON.stringify(pending === undefined
-        ? { state: "settled" } : { state: "pending", ...pending })}\n`
-        : pending === undefined ? "storage relocate: no pending operation\n"
-          : `storage relocate: ${pending.phase} operation ${pending.operationId}; run storage relocate --resume ${pending.operationId}\n`);
-      return;
-    }
-    const admission = command.kind === "plan"
-      ? (dependencies.acquireAdmission ?? ((requested) => acquireEntrypointAdmission(workspace, requested, rootLifetime())))("exclusive", lifetime.lock)
-      : undefined;
-    try {
-      try {
-        const result = dependencies.runRelocation === undefined
-          ? await runOfflineStorageRelocation({ workspace, lifetime: rootLifetime(), command, ...(admission === undefined ? {} : { admission }) })
-          : await dependencies.runRelocation({ workspace, args: entrypointArgs.slice(2),
-            ...(admission === undefined ? {} : { admission }) });
-        process.stdout.write(command.json ? `${JSON.stringify(result)}\n`
-          : `storage relocate: verified operation ${result.operationId}; active generation ${String(result.generation)}\n`);
-      } catch (error) {
-        if (!(error instanceof StorageRelocationIncompleteError)) throw error;
-        process.stderr.write(command.json ? `${JSON.stringify({ state: "incomplete", operationId: error.operationId,
-          resume: `storage relocate --resume ${error.operationId}` })}\n`
-          : `storage relocate: operation ${error.operationId} incomplete; run storage relocate --resume ${error.operationId}\n`);
-        process.exitCode = 1;
-      }
-    } finally { admission?.release(); }
     return;
   }
   const bootDiagnostics = entrypoint === "cli" && entrypointArgs[0] === "explain" && entrypointArgs[1] === "diagnostics" && entrypointArgs.includes("--boot");

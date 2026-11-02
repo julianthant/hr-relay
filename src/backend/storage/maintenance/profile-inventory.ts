@@ -459,8 +459,18 @@ export function credentialCopyProcessCustody(input: Readonly<{ machine: RuntimeA
 export function readStoppedProfileUpgradeInventory(input: Readonly<{
   machine: RuntimeAdmission; admission: RuntimeAdmission; clock: Clock; hostFacts: HostConfigFacts; browserClosure: ProfileBrowserClosure;
 }>) {
+  return readStoppedProfileInventory(input, input.admission.assertReadyStoppedProfileUpgradeOwner(input.machine));
+}
+export function readStoppedProfileLayoutInventory(input: Parameters<typeof readStoppedProfileUpgradeInventory>[0]) {
+  return readStoppedProfileInventory(input, "layout");
+}
+function readStoppedProfileInventory(input: Parameters<typeof readStoppedProfileUpgradeInventory>[0], purpose: "manual" | "startup" | "layout") {
   const { machine, admission } = input;
-  const purpose = admission.assertReadyStoppedProfileUpgradeOwner(machine);
+  const assertOwner = () => {
+    if (purpose === "layout") admission.assertReadyStoppedProfileLayoutOwner(machine);
+    else if (admission.assertReadyStoppedProfileUpgradeOwner(machine) !== purpose) throw new Error("profile-stopped-upgrade-purpose-changed");
+  };
+  assertOwner();
   const operation = machine.maintenanceOperation();
   machine.assertOfflineMaintenance(operation);
   const context = machine.readInstallationContext();
@@ -474,13 +484,13 @@ export function readStoppedProfileUpgradeInventory(input: Readonly<{
     { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
   const savedBrowserRoot = probeConfig.paths.browserProfileRoot;
   const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, input.browserClosure);
-  if (purpose !== "startup" && membership.unsupported.length !== 0) throw new Error("profile-stopped-upgrade-copy-custody-unproved");
+  if (purpose === "manual" && membership.unsupported.length !== 0) throw new Error("profile-stopped-upgrade-copy-custody-unproved");
   const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path));
   if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))
     || backups.some(backup => backup.manifest.installationId !== admission.profileBinding.installationId
       || backup.manifest.profileId !== admission.profileBinding.profileId)) throw new Error("profile-stopped-upgrade-backup-membership-unproved");
   const login = countProfileCredentialLoginRows(membership.loginDataPaths);
   if (login === "unreadable" || typeof login === "number" && login > 0) throw new Error("profile-stopped-upgrade-login-copy-present");
-  admission.assertReadyStoppedProfileUpgradeOwner(machine);
+  assertOwner();
   return Object.freeze({ operationId: operation.operationId, facts, membership, backups });
 }

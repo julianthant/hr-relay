@@ -1,17 +1,16 @@
-import { afterAll, afterEach, it } from "vitest";
+import { afterAll,afterEach,it } from "vitest";
 import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
-import { act, createElement, StrictMode } from "react";
+import { act,createElement,StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
 import { useEditableSettings } from "../../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
+import { EditableSettingsWireSchema,type EditableSettingsWire } from "../../../../../src/models/dashboard/settings-editor.js";
+import { createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
 import { FixtureCommandBinding } from "../../../../support/helpers/dashboard/command-binding.js";
 import { syntheticSettingsAuthority } from "../../../../support/helpers/dashboard/settings-harness.js";
-import { FIXTURE_STORAGE_RELOCATION } from "../../../../parity/helpers/fixture-settings.js";
-import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../../../src/models/dashboard/settings-editor.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -25,9 +24,8 @@ async function setup() {
   authority.apply({ "actor.label": { set: "Newer saved values" } });
   const newer = authority.read();
   let read = () => Promise.resolve(newer);
-  let relocationRead = () => Promise.resolve({ ...FIXTURE_STORAGE_RELOCATION, revision: 2 });
   const writes: unknown[] = [];
-  const client = { editableSettings: () => read(), storageRelocationPlans: () => relocationRead(),
+  const client = { editableSettings: () => read(),
     executeCommand: (request: unknown) => { writes.push(request); throw new Error("unexpected write"); } } as unknown as DashboardClient;
   let controller: ReturnType<typeof useEditableSettings> | undefined;
   function Harness({ actorId, descriptorFingerprint }: { actorId: string; descriptorFingerprint: string }) {
@@ -44,7 +42,7 @@ async function setup() {
   await render();
   return { authority, initial, newer, client, writes, render,
     controller: () => { assert.ok(controller); return controller; },
-    setRead(value: typeof read) { read = value; }, setRelocationRead(value: typeof relocationRead) { relocationRead = value; } };
+    setRead(value: typeof read) { read = value; } };
 }
 
 for (const replacement of ["client", "actor", "descriptor"] as const) {
@@ -53,7 +51,6 @@ for (const replacement of ["client", "actor", "descriptor"] as const) {
     await act(async () => {
       h.controller().update("actor.label", "Retained ordinary draft");
       h.controller().protectedEditor.update("ucpathUserId", "Retained credential draft");
-      h.controller().relocationEditor.update("artifactRoot", "/tmp/retained-artifacts");
     });
     const draft = structuredClone(h.controller().draft);
     const protectedDraft = structuredClone(h.controller().protectedEditor.draft);
@@ -61,19 +58,14 @@ for (const replacement of ["client", "actor", "descriptor"] as const) {
     h.setRead(() => new Promise(resolve => { settleOld = resolve; }));
     await act(async () => h.controller().reload());
     let settleNew: ((value: EditableSettingsWire) => void) | undefined;
-    let settleRelocation: ((value: typeof FIXTURE_STORAGE_RELOCATION) => void) | undefined;
     h.setRead(() => new Promise(resolve => { settleNew = resolve; }));
-    h.setRelocationRead(() => new Promise(resolve => { settleRelocation = resolve; }));
     await h.render(replacement === "client" ? { ...h.client } : h.client,
       replacement === "actor" ? "other-operator" : "local-operator", replacement === "descriptor" ? "e".repeat(64) : "d".repeat(64));
     assert.equal(h.controller().locked, true); assert.equal(h.controller().protectedEditor.locked, true);
-    assert.equal(h.controller().relocationEditor.locked, true);
-    await act(async () => { h.controller().submit(); h.controller().protectedEditor.submit(); h.controller().relocationEditor.submit(); });
     assert.deepEqual(h.writes, []);
-    assert.ok(settleNew); assert.ok(settleRelocation);
-    await act(async () => { settleNew?.(h.initial); settleRelocation?.(FIXTURE_STORAGE_RELOCATION); });
+    assert.ok(settleNew);
+    await act(async () => { settleNew?.(h.initial); });
     assert.equal(h.controller().locked, false); assert.equal(h.controller().protectedEditor.locked, false);
-    assert.equal(h.controller().relocationEditor.locked, false);
     assert.ok(settleOld);
     await act(async () => settleOld?.(h.newer));
     const editor = h.controller().editor; assert.ok(editor.state === "loaded");
@@ -111,14 +103,13 @@ for (const problem of ["rollback", "divergent-fingerprint", "divergent-values", 
   });
 }
 
-for (const family of ["ordinary", "protected", "relocation"] as const) {
+for (const family of ["ordinary", "protected"] as const) {
   it(`retains the unknown ${family} envelope across actor replacement without dispatching it as the new actor`, async () => {
     const h = await setup();
-    const control = () => family === "ordinary" ? h.controller() : family === "protected" ? h.controller().protectedEditor : h.controller().relocationEditor;
+    const control = () => family === "ordinary" ? h.controller() : h.controller().protectedEditor;
     await act(async () => {
       if (family === "ordinary") h.controller().update("actor.label", "Retained draft");
       else if (family === "protected") h.controller().protectedEditor.update("ucpathUserId", "Retained draft");
-      else h.controller().relocationEditor.update("artifactRoot", "/tmp/retained-artifacts");
     });
     await act(async () => control().submit());
     assert.equal(control().save.state, "unconfirmed"); const original = structuredClone(h.writes[0]);
@@ -138,18 +129,13 @@ it("hides old authority and retains drafts while blocking writes when replacemen
   await act(async () => {
     h.controller().update("actor.label", "Retained ordinary draft");
     h.controller().protectedEditor.update("ucpathUserId", "Retained protected draft");
-    h.controller().relocationEditor.update("artifactRoot", "/tmp/retained-artifacts");
   });
   const draft = structuredClone(h.controller().draft);
   const protectedDraft = structuredClone(h.controller().protectedEditor.draft);
   h.setRead(() => Promise.reject(new Error("replacement unavailable")));
-  h.setRelocationRead(() => Promise.reject(new Error("replacement unavailable")));
   await h.render({ ...h.client });
   assert.equal(h.controller().locked, true); assert.equal(h.controller().protectedEditor.locked, true);
-  assert.equal(h.controller().relocationEditor.locked, true);
-  await act(async () => { h.controller().submit(); h.controller().protectedEditor.submit(); h.controller().relocationEditor.submit(); });
   const editor = h.controller().editor; assert.equal(editor.state, "failed");
-  assert.equal(h.controller().relocationEditor.read.state, "unavailable");
   assert.deepEqual(h.controller().draft, draft); assert.deepEqual(h.controller().protectedEditor.draft, protectedDraft);
   assert.deepEqual(h.writes, []);
 });
@@ -175,7 +161,7 @@ it("reopens from the exact verified document while sharing a pending refresh and
   const held = Promise.withResolvers<EditableSettingsWire>();
   let calls = 0;
   const client = { editableSettings: () => ++calls === 1 ? Promise.resolve(original) : held.promise,
-    storageRelocationPlans: () => Promise.resolve(FIXTURE_STORAGE_RELOCATION) } as unknown as DashboardClient;
+    } as unknown as DashboardClient;
   let controller: ReturnType<typeof useEditableSettings> | undefined;
   const seen: ReturnType<typeof useEditableSettings>["editor"][] = [];
   function Probe() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); seen.push(controller.editor); return null; }
@@ -192,13 +178,12 @@ it("reopens from the exact verified document while sharing a pending refresh and
 
 for (const outcome of ["success", "failure"] as const) it(`settles editable and relocation ${outcome} after the production StrictMode effect replay`, async () => {
   const authority = await syntheticSettingsAuthority(profileFixtures.create); cleanups.push(authority.close);
-  const client = { editableSettings: () => outcome === "success" ? Promise.resolve(authority.read()) : Promise.reject(new Error("synthetic editable unavailable")), storageRelocationPlans: () => outcome === "success" ? Promise.resolve(FIXTURE_STORAGE_RELOCATION) : Promise.reject(new Error("synthetic relocation unavailable")) } as unknown as DashboardClient;
+  const client = { editableSettings: () => outcome === "success" ? Promise.resolve(authority.read()) : Promise.reject(new Error("synthetic editable unavailable")) } as unknown as DashboardClient;
   let state: ReturnType<typeof useEditableSettings> | undefined;
   function Probe() { state = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); return null; }
   const root = createRoot(document.createElement("div")); cleanups.push(() => { act(() => root.unmount()); });
   await act(async () => root.render(createElement(StrictMode, { children: createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(Probe) }) }) })));
   assert.equal(state?.editor.state, outcome === "success" ? "loaded" : "failed");
-  assert.equal(state?.relocationEditor.read.state, outcome === "success" ? "available" : "unavailable");
   if (state?.editor.state === "failed") assert.equal(state.editor.message, formatErrorCatalogFailure(createErrorCatalogFailure("SETTINGS_INITIAL_READ_UNAVAILABLE", {})).text);
 });
 

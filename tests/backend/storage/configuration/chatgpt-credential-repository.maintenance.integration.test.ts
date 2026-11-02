@@ -1,24 +1,23 @@
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
-import { withOfflineMaintenance, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
-import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { createChatGptAccountService } from "../../../../src/backend/accounts/chatgpt-account-service.js";
-import { createChatGptCredentialRepository, verifyChatGptCredentialStore, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
-import { verifyRelocationLiveReferences } from "../../../../src/backend/storage/maintenance/relocation-inventory.js";
+import { composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { createChatGptCredentialRepository,verifyChatGptCredentialStore,type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
+import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { boundProfileCredentials,createBoundProfileFixture,withOfflineMaintenance } from "../../../support/helpers/admission-fixture.js";
 
-it("signed-out credential cleanup remains valid for custody and relocation", async () => {
+it("signed-out credential cleanup preserves current custody", async () => {
   const profile = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const service = createChatGptAccountService({ admission: profile.admission, stateRoot: profile.stateRoot, clock });
   const directories = [join(profile.stateRoot, "credentials"), join(profile.machine.stateRoot, "machine", "credential-keys"),
@@ -36,9 +35,6 @@ it("signed-out credential cleanup remains valid for custody and relocation", asy
     }
     profile.machine.assertExclusive();
     verifyChatGptCredentialStore({ admission: profile.admission, stateRoot: profile.stateRoot });
-    verifyRelocationLiveReferences({ admission: profile.admission, source: { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot },
-      credentials: boundProfileCredentials(profile.admission) });
-    assert.throws(() => profile.admission.assertStorageRelocationSupported(), { code: "PROFILE_STORAGE_RELOCATION_UNSUPPORTED" });
   } finally { await service.close(); await profile.close(); }
 });
 
@@ -99,33 +95,4 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     assert.equal(current?.session?.refreshToken, "synthetic-current-refresh");
     assert.equal(readFileSync(credentialPath).equals(currentBytes), true);
   } finally { await profile.close(); }
-});
-
-
-for (const owner of ["missing", "foreign"] as const) it(`refuses ${owner} protected inventory owner before changing current profile bytes`, async () => {
-  const profile = await createBoundProfileFixture(), foreign = await createBoundProfileFixture();
-  const paths = [profile.path, join(profile.stateRoot, "credentials"),
-    join(profile.machine.stateRoot, "machine", "credential-keys"), join(profile.machine.stateRoot, "machine", "erasures"), join(profile.machine.stateRoot, "machine", "credential-operations")];
-  const before = paths.map(path => path === profile.path ? { kind: "file" as const, path, bytes: readFileSync(path) }
-    : { kind: "directory" as const, path, present: existsSync(path), names: existsSync(path) ? readdirSync(path).sort() : [],
-      files: existsSync(path) ? readdirSync(path).sort().map(name => ({ name, bytes: readFileSync(join(path, name)) })) : [] });
-  const failures: unknown[] = [];
-  try {
-    const input = { admission: profile.admission, source: { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot },
-      ...(owner === "foreign" ? { credentials: boundProfileCredentials(foreign.admission) } : {}) };
-    assert.throws(() => verifyRelocationLiveReferences(input), owner === "missing"
-      ? { code: "CREDENTIAL_CONTEXT_REQUIRED" } : { message: "credential-store-owner-mismatch" });
-    for (const entry of before) {
-      if (entry.kind === "file") assert.equal(readFileSync(entry.path).equals(entry.bytes), true);
-      else {
-        assert.equal(existsSync(entry.path), entry.present);
-        assert.deepEqual(existsSync(entry.path) ? readdirSync(entry.path).sort() : [], entry.names);
-        for (const file of entry.files) assert.equal(readFileSync(join(entry.path, file.name)).equals(file.bytes), true);
-      }
-    }
-    profile.admission.assertLive(); foreign.admission.assertLive();
-  } catch (error) { failures.push(error); }
-  try { await profile.close(); } catch (error) { failures.push(error); }
-  try { await foreign.close(); } catch (error) { failures.push(error); }
-  if (failures.length > 0) throw new AggregateError(failures, "inventory fixture failed", { cause: failures[0] });
 });

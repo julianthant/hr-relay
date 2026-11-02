@@ -7,7 +7,7 @@ import { ActivityPopulationError } from "../../../runs/queries/activity-populati
 import { ActivitySnapshotError } from "../../../runs/queries/activity-selection.js";
 import { ProtectedSubjectDisplayRefusedError } from "../../../runs/start/protected-input.js";
 import { RerunRefusedError } from "../../../runs/start/rerun.js";
-import { ProfileBrowserRootRefusalError,ProfileStorageRelocationUnsupportedError } from "../../../storage/admission/admission-identity.js";
+import { ProfileBrowserRootRefusalError } from "../../../storage/admission/admission-identity.js";
 import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
 
 import { z } from "zod";
@@ -32,7 +32,7 @@ export function failureStatus(
     return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };
   }
   const message = errorText(error);
-  if (error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError || error instanceof ProfileStorageRelocationUnsupportedError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
+  if (error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof DashboardReadFailedError) return { status: 500, body: wireError("DASHBOARD_READ_FAILED", ERROR_CATALOG.DASHBOARD_READ_FAILED.text, false) };
   if (error instanceof ActivitySnapshotError) return { status: 409, body: wireError(error.code, message, false) };
   if (error instanceof ActivityPopulationError) return { status: error.code === "ACTIVITY_POPULATION_RANGE_INVALID" || error.code === "ACTIVITY_POPULATION_BROWSE_INVALID" ? 400 : error.code === "ACTIVITY_POPULATION_SOURCE_MISMATCH" ? 500 : 409, body: wireError(error.code, message, false) };

@@ -28,8 +28,8 @@ describe("native macOS path picker", () => {
       return { state: "exited", code: 0, stdout: seen.length === 1 ? `${p.folder}/\n` : `${p.file}\n` };
     };
     const picker = createNativePathPicker({ platform: "darwin", execute });
-    assert.deepEqual(await picker.pick({ field: "paths.stateRoot", initialPath: p.folder }, controller().signal),
-      { state: "selected", field: "paths.stateRoot", path: p.folder });
+    assert.deepEqual(await picker.pick({ field: "paths.reportsDir", initialPath: p.folder }, controller().signal),
+      { state: "selected", field: "paths.reportsDir", path: p.folder });
     assert.deepEqual(await picker.pick({ field: "paths.i9CheckTrackerPath", initialPath: p.file }, controller().signal),
       { state: "selected", field: "paths.i9CheckTrackerPath", path: p.file });
     assert.equal(seen.length, 2);
@@ -71,11 +71,11 @@ describe("native macOS path picker", () => {
       seen.push([...args]);
       return new Promise(resolve => { release = resolve; });
     } });
-    await assert.rejects(picker.pick({ field: "paths.browserProfileRoot", initialPath: "relative/path" }, controller().signal), InvalidNativePickerHintError);
-    await assert.rejects(picker.pick({ field: "paths.browserProfileRoot", initialPath: join(p.root, "linked") }, controller().signal), InvalidNativePickerHintError);
-    const pending = picker.pick({ field: "paths.browserProfileRoot", initialPath: join(p.folder, "not-created") }, controller().signal);
-    assert.deepEqual(await picker.pick({ field: "paths.browserProfileRoot" }, controller().signal),
-      { state: "unavailable", field: "paths.browserProfileRoot", reason: "busy" });
+    await assert.rejects(picker.pick({ field: "paths.downloadsDir", initialPath: "relative/path" }, controller().signal), InvalidNativePickerHintError);
+    await assert.rejects(picker.pick({ field: "paths.downloadsDir", initialPath: join(p.root, "linked") }, controller().signal), InvalidNativePickerHintError);
+    const pending = picker.pick({ field: "paths.downloadsDir", initialPath: join(p.folder, "not-created") }, controller().signal);
+    assert.deepEqual(await picker.pick({ field: "paths.downloadsDir" }, controller().signal),
+      { state: "unavailable", field: "paths.downloadsDir", reason: "busy" });
     assert.deepEqual(seen[0]?.slice(2), [p.folder]);
     release?.({ state: "exited", code: 0, stdout: `${p.folder}\n` });
     assert.equal((await pending).state, "selected");
@@ -105,8 +105,8 @@ describe("native macOS path picker", () => {
     } });
     const aborted = controller();
     aborted.abort();
-    assert.equal((await picker.pick({ field: "paths.stateRoot" }, aborted.signal)).state, "unavailable");
-    assert.equal((await picker.pick({ field: "paths.stateRoot" }, controller().signal)).state, "cancelled");
+    assert.equal((await picker.pick({ field: "paths.reportsDir" }, aborted.signal)).state, "unavailable");
+    assert.equal((await picker.pick({ field: "paths.reportsDir" }, controller().signal)).state, "cancelled");
     assert.equal(calls, 1);
   });
 });

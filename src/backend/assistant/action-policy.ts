@@ -1,25 +1,24 @@
 import { z } from "zod";
 import {
-  AssistantApprovalBindingSchema,
-  AssistantConfigDescriptorSchema,
-  AssistantDecisionSchema,
-  AssistantModelProposalSchema,
-  AssistantResolvedActionSchema,
-  readAssistantAuthority,
-  type AssistantApprovalBinding,
-  type AssistantDecision,
-  type AssistantRefusalCode,
-  type AssistantStaleField,
+AssistantApprovalBindingSchema,
+AssistantConfigDescriptorSchema,
+AssistantDecisionSchema,
+AssistantModelProposalSchema,
+AssistantResolvedActionSchema,
+readAssistantAuthority,
+type AssistantApprovalBinding,
+type AssistantDecision,
+type AssistantRefusalCode,
+type AssistantStaleField,
 } from "../../models/profiles/assistant-permissions.js";
 import {
-  commandEffectClass,
-  commandEffectIsWeaker,
-  deriveSettingsCommandFingerprint,
-  storageRelocationRequestFingerprint,
-  type CommandRequest,
+commandEffectClass,
+commandEffectIsWeaker,
+deriveSettingsCommandFingerprint,
+type CommandRequest,
 } from "../../rules/commands/commands.js";
-import { FingerprintSchema, PositiveIntSchema, WorkerIdSchema } from "../../rules/identity/ids.js";
-import { JsonValueSchema, canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { FingerprintSchema,PositiveIntSchema,WorkerIdSchema } from "../../rules/identity/ids.js";
+import { JsonValueSchema,canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 
 const CONFIG_KEYS = [
@@ -88,12 +87,6 @@ function optionIdentity(command: CommandRequest): OptionIdentity {
   if (command.type === "apply-settings") {
     if (command.payload.assistantPermission !== undefined || safeJson(command.payload.patch) === undefined) return { kind: "unbound" };
     return { kind: "existing-fingerprint", fingerprint: FingerprintSchema.parse(deriveSettingsCommandFingerprint(command)) };
-  }
-  if (command.family === "storage-relocation") {
-    return {
-      kind: "existing-fingerprint",
-      fingerprint: FingerprintSchema.parse(storageRelocationRequestFingerprint(command)),
-    };
   }
   if (!("payload" in command)) return { kind: "none" };
   const fields = safeJson(command.payload);

@@ -1,7 +1,6 @@
-import { lstatSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { lstatSync,readFileSync } from "node:fs";
+import { dirname,isAbsolute,join,resolve,sep } from "node:path";
 import type { Config } from "../../../models/config/schema.js";
-import { defaultBrowserProfileRoot } from "../../app/config/runtime-paths.js";
 
 type PathKey = "paths.browserProfileRoot" | "paths.duoCredential" | "paths.duoExtensionDir";
 
@@ -43,48 +42,6 @@ function ownedDirectory(key: PathKey, path: string, allowMissing: boolean): bool
   return true;
 }
 
-function validateProfile(path: string, installationDefault: string, config: Config): void {
-  const key = "paths.browserProfileRoot";
-  requiredPath(key, path);
-  const internal = path === join(config.paths.stateRoot, "browsers");
-  const protectedRoots = [
-    ...(internal ? [] : [config.paths.stateRoot]), config.paths.artifactRoot,
-    join(config.paths.stateRoot, "locks"), join(config.paths.stateRoot, "credentials"), config.paths.duoExtensionDir,
-  ];
-  if (protectedRoots.some(root => path === root || path.startsWith(`${root}${sep}`) || root.startsWith(`${path}${sep}`))) {
-    fail(key, "overlaps-runtime-location");
-  }
-  if (ownedDirectory(key, path, true)) {
-    if (path !== installationDefault) {
-      let entries;
-      try { entries = readdirSync(path); }
-      catch { fail(key, "directory-unreadable"); }
-      if (entries.length !== 0) fail(key, "fresh-empty-profile-required");
-    }
-    return;
-  }
-  let ancestor = dirname(path);
-  while (true) {
-    try {
-      const metadata = lstatSync(ancestor);
-      const ownedSafe = metadata.uid === (process.getuid?.() ?? -1)
-        && (metadata.mode & 0o700) === 0o700 && (metadata.mode & 0o022) === 0;
-      const stickyTemporary = (metadata.mode & 0o1000) !== 0 && (metadata.mode & 0o002) !== 0;
-      if (!metadata.isDirectory() || metadata.isSymbolicLink()
-        || (!ownedSafe && !stickyTemporary)) {
-        fail(key, "unsafe-profile-parent");
-      }
-      break;
-    } catch (error) {
-      if (error instanceof OrdinaryPathValidationError) throw error;
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") fail(key, "parent-unavailable");
-      const next = dirname(ancestor);
-      if (next === ancestor) fail(key, "parent-unavailable");
-      ancestor = next;
-    }
-  }
-}
-
 function validateExtension(path: string): void {
   const key = "paths.duoExtensionDir";
   requiredPath(key, path);
@@ -107,11 +64,10 @@ function validateExtension(path: string): void {
 export function validateOrdinaryPathChanges(
   previous: Config,
   candidate: Config,
-  installationDefault: () => string = defaultBrowserProfileRoot,
 ): void {
   if (previous.paths.duoCredential !== candidate.paths.duoCredential) fail("paths.duoCredential", "retired-setting");
   if (previous.paths.browserProfileRoot !== candidate.paths.browserProfileRoot) {
-    validateProfile(candidate.paths.browserProfileRoot, installationDefault(), candidate);
+    fail("paths.browserProfileRoot", "fixed-root");
   }
   if (previous.paths.duoExtensionDir !== candidate.paths.duoExtensionDir) validateExtension(candidate.paths.duoExtensionDir);
 }
