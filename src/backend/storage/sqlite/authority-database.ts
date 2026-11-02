@@ -2089,7 +2089,11 @@ export class AuthorityDatabase implements Disposable {
             requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0transition\0${canonicalJsonStringify(request)}`),
             fence: { kind: "version", expectedVersion: current.version }, recordedAt: now });
           const updated = transitionRunRecord(current, RunRecordSchema.parse({ ...current, lifecycle }), now);
-          updateRunRecord(database, updated);
+          if (Object.hasOwn(updated, "pause")) throw new Error("queued-run-cancellation-pause-refused");
+          const entries = Object.entries(runRecordColumns(updated)).filter(([key]) => key !== "id" && key !== "pause_state");
+          const changes = Number(database.prepare(`UPDATE runs SET ${entries.map(([key]) => `${key} = ?`).join(",")} WHERE id = ? AND version = ?`)
+            .run(...entries.map(([, value]) => value), updated.envelope.runId, current.version).changes);
+          if (changes !== 1) throw new Error("run-version-fence-lost");
           insertNativeCommand(database, command);
           const audit = RunLifecycleCommandAuditRecordSchema.parse({ kind: "run-lifecycle", auditId: commandId, request: command,
             result: { kind: "run", runId: current.envelope.runId, appliedVersion: updated.version, terminal: { outcome: "cancelled", endedAt: now } }, completedAt: now });

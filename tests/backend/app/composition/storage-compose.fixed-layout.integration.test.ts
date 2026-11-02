@@ -1,3 +1,4 @@
+import { removeSchema13RunPause } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
 import { DatabaseSync } from "node:sqlite";
@@ -79,6 +80,7 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 |
       const native = new DatabaseSync(profile.path);
       try {
         native.exec("BEGIN EXCLUSIVE");
+        removeSchema13RunPause(native);
         restorePreReadingArtifactRetention(native);
         native.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(sourceVersion);
         native.exec(`PRAGMA user_version=${sourceVersion}; COMMIT`);
@@ -211,6 +213,7 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     const source = new DatabaseSync(profile.path);
     try {
       source.exec("BEGIN EXCLUSIVE");
+      removeSchema13RunPause(source);
       restorePreReadingArtifactRetention(source);
       source.exec("UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT");
     }

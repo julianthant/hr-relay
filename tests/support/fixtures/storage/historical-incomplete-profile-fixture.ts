@@ -1,3 +1,4 @@
+import { removeSchema13RunPause } from "./historical-run-schema.js";
 import { restorePreReadingArtifactRetention } from "./pre-reading-artifact-retention.js";
 import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { createWorkbookLibraryRepository } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
@@ -80,6 +81,7 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
       assert.ok(editor); database.exec(editor);
     }
     if (options.sourceVersion < 9) database.exec("DROP TABLE assistant_model_preference");
+    removeSchema13RunPause(database);
     restorePreReadingArtifactRetention(database);
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(options.sourceVersion);
     database.exec(`PRAGMA user_version=${options.sourceVersion}; COMMIT`);
