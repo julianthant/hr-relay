@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { it } from "vitest";
 import { GENERATED_OUTPUTS } from "../../../scripts/build/generated-outputs.js";
 import { mergeGeneratedConflicts } from "../../../scripts/build/merge-generated-conflicts.js";
+import { collectSourceClosure } from "../../../scripts/build/workflow-build-manifest.js";
 
 const manifest = "src/workflow-kit/validation/generated-build-manifest.ts";
 const authored = "workflow.ts";
@@ -54,6 +55,17 @@ it("resolves generated conflicts from the combined sources and retains both merg
     const parents = execFileSync("git", ["show", "-s", "--format=%P", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
     assert.equal(parents, `${head} ${staging}`);
     assert.equal(readFileSync(join(root, manifest), "utf8"), "regenerated combined manifest\n");
+  });
+});
+
+it("keeps the generated manifest import resolvable while computing fresh source fingerprints", () => {
+  fixture(false, (root, _head, staging) => {
+    writeFileSync(join(root, authored), `import "./${manifest.replace(/\.ts$/u, ".js")}";\n`);
+    execFileSync("git", ["commit", "-am", "reference generated manifest"], { cwd: root });
+    assert.equal(mergeGeneratedConflicts(root, staging, checkout => {
+      assert.deepEqual(collectSourceClosure(checkout, join(checkout, authored)).map(source => source.path), [authored]);
+      writeFileSync(join(checkout, manifest), "regenerated combined manifest\n");
+    }), true);
   });
 });
 
