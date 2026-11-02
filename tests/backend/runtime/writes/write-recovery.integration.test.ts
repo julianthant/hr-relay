@@ -3,6 +3,7 @@ import { createProfileFixtureSet } from "../../../support/helpers/admission-fixt
 import { createWriteRecoveryTestWorld } from "../../../support/helpers/backend/write-recovery-world.js";
 import { lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { executeSequencedWriteCommit } from "../../../../src/backend/runtime/writes/write-sequencer.js";
+import { RecoveryActivityError } from "../../../../src/backend/runtime/writes/recovery-activity.js";
 import { reconstructConfirmedOperation } from "../../../../src/models/events/confirmed-operation.js";
 import { testRunContinuation } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
@@ -299,7 +300,12 @@ describe("ref write-safety §4 recovery matrix", () => {
     try {
       await assert.rejects(
         h.recovery.recover({ descriptor: writeFixtureDescriptor, writeIntentId, signal: SIGNAL }),
-        /already has a bound run config fingerprint/,
+        error => {
+          assert.ok(error instanceof RecoveryActivityError);
+          assert.ok(error.cause instanceof Error);
+          assert.match(error.cause.message, /already has a bound run config fingerprint/);
+          return true;
+        },
       );
     } finally {
       h.manager.releaseRunConfigFingerprint();

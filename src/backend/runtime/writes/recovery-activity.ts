@@ -67,7 +67,7 @@ export async function executeRecoveryProbe(input: Readonly<{
   } catch (error) { throw new RecoveryActivityError(error); }
 
   let active = true;
-  let noteFailure: unknown;
+  let noteFailure: RecoveryActivityError | undefined;
   const endId = deriveStableUuid("recovery-activity-ended", activity.activityId);
   const assertOpen = (): void => {
     const saved = repositories.timelineEvents.get(activity.activityId);
@@ -91,8 +91,11 @@ export async function executeRecoveryProbe(input: Readonly<{
     catch (error) { noteFailure = new RecoveryActivityError(error); throw noteFailure; }
   };
   let outcome: Awaited<ReturnType<typeof executeIdempotencyProbe>> | undefined;
-  let failure: unknown;
+  let failure: Error | undefined;
   let closureFailure: unknown;
+  let probeFailure: Error | undefined;
+  let taskSignal: AbortSignal | undefined;
+  const acceptedActions: BrowserAction[] = [];
   try {
     outcome = await withBrowserActionNotes(probe.clock, async () => {
       try { await sessions.closeAll("parked"); }
@@ -107,8 +110,6 @@ export async function executeRecoveryProbe(input: Readonly<{
           { runId: activity.runId, descriptorFingerprint: run.envelope.contractFingerprint });
       } catch (error) { throw new RecoveryActivityError(error); }
       let callbackSettlement: Promise<unknown> | undefined;
-      let probeFailure: unknown;
-      let acceptingActions = true;
       let verdict: typeof outcome;
       try {
         const snapshot = run.envelope.operationDisplaySnapshot;
@@ -116,12 +117,13 @@ export async function executeRecoveryProbe(input: Readonly<{
           retainCallback: settlement => { callbackSettlement = settlement; probe.retainCallback?.(settlement); } }, {
           commitContract: input.node.commit.uses, commitInput: input.commitInput,
           instance, signal: input.signal,
+          onTaskSignal: signal => { taskSignal = signal; },
           screenshotOwner: { nodeId: activity.nodeId, attempt: activity.attempt, log: probe.log },
-          actionBinderForInput: (taskId, parsedInput) => {
+          actionBinderForInput: snapshot === undefined ? undefined : (taskId, parsedInput) => {
             try {
             const system = probe.stores.stores.flatMap(store => Object.values(store.tasks))
               .find(task => task.contract.id === taskId)?.driver?.system;
-            const invocation = snapshot === undefined ? undefined : createConfirmedInvocation({ binding: {
+            const invocation = createConfirmedInvocation({ binding: {
               snapshot, runId: activity.runId, attempt: activity.attempt, claimGeneration: run.claimGeneration,
               taskAttempt: 1, nodeId: activity.nodeId, taskId, contractRole: "probe",
               parsedInput: JsonValueSchema.parse(parsedInput), protectedBindings: retainedRunProtectedBindings(run),
@@ -131,19 +133,22 @@ export async function executeRecoveryProbe(input: Readonly<{
             }, clock: probe.clock, traceId: activity.traceId, registeredDriverSystem: system });
             return action => {
               try {
-                if (!acceptingActions) throw probeFailure;
+                if (probeFailure !== undefined) throw probeFailure;
                 input.signal.throwIfAborted();
+                taskSignal?.throwIfAborted();
                 assertOpen();
-                return invocation?.binder(action) ?? action;
+                return invocation.binder(action);
               } catch (error) {
-                if (!acceptingActions || input.signal.aborted) throw error;
+                if (probeFailure !== undefined || input.signal.aborted || taskSignal?.aborted === true) throw error;
                 noteFailure = new RecoveryActivityError(error); throw noteFailure;
               }
             };
             } catch (error) { noteFailure = new RecoveryActivityError(error); throw noteFailure; }
           },
         });
-      } catch (error) { acceptingActions = false; probeFailure = error; }
+      } catch (error) {
+        probeFailure = error instanceof Error ? error : new Error("Recovery probe failed", { cause: error });
+      }
       const cleanup: unknown[] = [];
       try { await sessions.closeAll("parked"); } catch (error) { closureFailure = error; cleanup.push(error); }
       try { await callbackSettlement; } catch (error) { cleanup.push(error); }
@@ -155,12 +160,21 @@ export async function executeRecoveryProbe(input: Readonly<{
         probeFailure === undefined ? cleanup : [probeFailure, ...cleanup], "Recovery probe cleanup failed"));
       if (probeFailure !== undefined) throw probeFailure;
       return verdict!;
-    }, actions => {
-      const status = drainBrowserActionNotes({ actions,
+    }, () => {
+      drainBrowserActionNotes({ actions: acceptedActions,
         emitAction: emit, warn: () => probe.log.warn("Recovery action note could not be recorded") });
-      if (status.failed > 0) throw noteFailure;
+      if (noteFailure !== undefined) throw noteFailure;
+    }, action => {
+      if (probeFailure !== undefined) throw probeFailure;
+      input.signal.throwIfAborted();
+      taskSignal?.throwIfAborted();
+      try { assertOpen(); }
+      catch (error) { noteFailure = new RecoveryActivityError(error); throw noteFailure; }
+      acceptedActions.push(action);
     });
-  } catch (error) { failure = error; }
+  } catch (error) {
+    failure = error instanceof Error ? error : new Error("Recovery probe failed", { cause: error });
+  }
   active = false;
   let endFailure: unknown;
   try {

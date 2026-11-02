@@ -23,7 +23,8 @@ import { ManualScheduler, recordingLogger } from "../../../support/helpers/phase
 import { UUID_5, UUID_6, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { buildWriteFixtureRegistry, WriteFixtureProbe, WRITE_FIXTURE_EID, WRITE_FIXTURE_FINGERPRINT,
   WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, unknownProbeVerdict,
-  writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureTransactionNode } from "../../../support/fixtures/write-sequencer-fixtures.js";
+  writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureTransactionNode,
+  writeFixtureSessions, writeFixtureSessionManager } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
 const profiles = createProfileFixtureSet();
 const world = createWriteRecoveryTestWorld(profiles.create);
@@ -77,20 +78,26 @@ async function fixture(snapshot = false) {
 }
 
 describe("durable recovery activity authority", () => {
-  it("files canonical actions and a required capture at their actual times on an old retained run", async () => {
-    const f = await fixture(true);
+  for (const snapshot of [false, true]) it(`files actions and a required capture on an old run with snapshot=${snapshot}`, async () => {
+    const f = await fixture(snapshot);
     const before = canonicalJsonStringify([f.input.run, f.input.intent]);
     const openedAt = f.h.clock.now().toISOString();
     f.h.world.probeResults.push(unknownProbeVerdict(openedAt));
     assert.equal((await executeRecoveryProbe(f.input)).state, "unknown");
     const records = readTimelineRecords(f.h.database.authority.timelineEvents, 0, WRITE_FIXTURE_RUN_ID).records;
     const notes = records.flatMap(record => record.payload.kind === "note" ? [record] : []);
-    assert.deepEqual(records.map(record => record.payload.kind),
-      ["recovery-activity-started", "note", "note", "note", "recovery-activity-ended"]);
-    assert.deepEqual(notes.map(record => record.occurredAt), [openedAt, openedAt, f.h.clock.now().toISOString()]);
+    assert.deepEqual(records.map(record => record.payload.kind), snapshot
+      ? ["recovery-activity-started", "note", "note", "note", "recovery-activity-ended"]
+      : ["recovery-activity-started", "note", "recovery-activity-ended"]);
+    assert.deepEqual(notes.map(record => record.occurredAt), snapshot
+      ? [openedAt, openedAt, f.h.clock.now().toISOString()] : [f.h.clock.now().toISOString()]);
     assert.ok(notes.every(record => record.recordedAt === f.h.clock.now().toISOString()));
-    assert.ok(notes.slice(0, 2).every(record => record.payload.kind === "note" && record.payload.note.action?.operation?.runId === WRITE_FIXTURE_RUN_ID));
-    assert.ok(notes.slice(0, 2).every(record => record.payload.kind === "note" && record.payload.note.action?.operation?.taskId === WriteFixtureProbe.id));
+    if (snapshot) {
+      assert.ok(notes.slice(0, 2).every(record => record.payload.kind === "note" && record.payload.note.action?.operation?.runId === WRITE_FIXTURE_RUN_ID));
+      assert.ok(notes.slice(0, 2).every(record => record.payload.kind === "note" && record.payload.note.action?.operation?.taskId === WriteFixtureProbe.id));
+    } else {
+      assert.ok(notes.every(record => record.payload.kind === "note" && record.payload.note.action?.operation === undefined));
+    }
     const screenshot = notes.at(-1)?.payload;
     assert.ok(screenshot?.kind === "note" && screenshot.note.action?.value === `${UUID_5}:${UUID_7}`);
     assert.equal(canonicalJsonStringify([f.input.run, f.input.intent]), before);
@@ -154,8 +161,8 @@ describe("durable recovery activity authority", () => {
     }
   });
 
-  for (const abort of ["deadline", "cancel"] as const) it(`keeps ${abort} cleanup open until the actual callback settles, with no late notes`, async () => {
-    const f = await fixture(true);
+  for (const snapshot of [false, true]) for (const abort of ["deadline", "cancel"] as const) it(`keeps ${abort} cleanup open with snapshot=${snapshot}, with no late notes`, async () => {
+    const f = await fixture(snapshot);
     let release!: () => void;
     f.h.world.probeWait = new Promise<void>(resolve => { release = resolve; });
     f.h.world.probeResults.push(unknownProbeVerdict(f.h.clock.now().toISOString()));
@@ -173,6 +180,51 @@ describe("durable recovery activity authority", () => {
     await rejection;
     assert.deepEqual(f.h.database.authority.timelineEvents.page({}).map(record => record.payload.kind), ["recovery-activity-started", "recovery-activity-ended"]);
     assert.equal(f.h.database.authority.writeIntents.get(f.input.intent.writeIntentId)?.status, "attempting");
+  });
+
+  it("rejects callback-tail actions at the task deadline while real session failure cleanup is held", async () => {
+    const f = await fixture(true);
+    let releaseProbe!: () => void, releaseCleanup!: () => void, captureStarted!: () => void;
+    f.h.world.probeWait = new Promise<void>(resolve => { releaseProbe = resolve; });
+    const cleanupWait = new Promise<void>(resolve => { releaseCleanup = resolve; });
+    const captureWait = new Promise<void>(resolve => { captureStarted = resolve; });
+    const harness = writeFixtureSessions(f.h.world);
+    const sessions = await writeFixtureSessionManager({ ...harness, factory: { ...harness.factory,
+      open: async input => {
+        const resource = await harness.factory.open(input);
+        return { ...resource, screenshot: async () => {
+          captureStarted();
+          await cleanupWait;
+          assert.ok(resource.screenshot);
+          return resource.screenshot();
+        } };
+      },
+    } }, f.input.probe.stores, f.h.clock);
+    f.h.world.probeResults.push(unknownProbeVerdict(f.h.clock.now().toISOString()));
+    let callback: Promise<unknown> | undefined;
+    let settled = false;
+    const operation = executeRecoveryProbe({ ...f.input, sessions,
+      probe: { ...f.input.probe, retainCallback: settlement => { callback = settlement; } },
+    }).finally(() => { settled = true; });
+    const rejection = assert.rejects(operation, /deadline/);
+    try {
+      while (!f.h.world.events.includes("probe")) await Promise.resolve();
+      const deadline = f.scheduler.pending()[0]; assert.ok(deadline); deadline.fire();
+      await captureWait;
+      releaseProbe();
+      assert.ok(callback); await callback;
+      assert.equal(settled, false);
+      assert.deepEqual(f.h.database.authority.timelineEvents.page({}).map(record => record.payload.kind), ["recovery-activity-started"]);
+      releaseCleanup();
+      await rejection;
+      assert.deepEqual(f.h.database.authority.timelineEvents.page({}).map(record => record.payload.kind), ["recovery-activity-started", "recovery-activity-ended"]);
+      assert.equal(f.h.database.authority.writeIntents.get(f.input.intent.writeIntentId)?.status, "attempting");
+      assert.equal(f.h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID, f.input.run.envelope.itemId, WRITE_FIXTURE_NODE_ID), undefined);
+    } finally {
+      releaseProbe(); releaseCleanup();
+      try { await rejection; }
+      finally { await sessions.closeAll("worker-stop"); }
+    }
   });
 
   it("refuses a required capture failure and leaves no checkpoint or write settlement", async () => {
