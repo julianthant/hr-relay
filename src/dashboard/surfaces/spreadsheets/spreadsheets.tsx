@@ -2,7 +2,7 @@ import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adap
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { importSpreadsheetInWorker } from "./spreadsheet-import-client.js";
 import { SpreadsheetEditor } from "./spreadsheet-editor.js";
-import { type EditableWorkbook } from "./spreadsheet-editor-model.js";
+import { type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, Input, useToasts } from "../../ds/ui.js";
 import { SpreadsheetImportDialog } from "./spreadsheet-import.js";

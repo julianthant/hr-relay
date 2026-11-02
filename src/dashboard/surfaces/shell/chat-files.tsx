@@ -1,7 +1,7 @@
 import { useId, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { ArrowDown, Folder } from 'lucide-react';
 import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton } from '../../ds/ui.js';
-import { cellText } from '../spreadsheets/spreadsheet-editor-model.js';
+import { cellText } from '../../../rules/spreadsheets/workbook-io.js';
 import type { SpreadsheetFileReference } from '../spreadsheets/spreadsheet-chat-registration-model.js';
 import { saveSpreadsheetDownload } from '../spreadsheets/spreadsheet-chat-registration-model.js';
 import { useChatFileObjectUrl, useChatFilePreview, type ChatFile, type ChatFilesPort } from './chat-files-model.js';

@@ -4,7 +4,7 @@ import { expect } from '@playwright/test';
 import { test } from "./helpers/fixtures.js";
 
 import { readFile } from 'node:fs/promises';
-import { importSpreadsheet } from '../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { importWorkbook as importSpreadsheet } from '../../src/rules/spreadsheets/workbook-io.js';
 import { PARITY_DIST_DIR } from './helpers/bundle.js';
 import { installTheme, PARITY_THEMES } from './helpers/capture.js';
 import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js';

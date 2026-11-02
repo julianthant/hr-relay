@@ -5,6 +5,10 @@ This reference owns test selection, runner containment, coverage policy, and gua
 acceptance scope and the gate schedule. A declared test, scenario ID, or guard is not evidence that
 it ran.
 
+Tracked TypeScript files use LF on every platform through `.gitattributes`. Build manifests and
+reviewed-source pins hash the exact checkout bytes; consistent line endings preserve those byte
+checks when generation moves between Windows, macOS and Linux.
+
 ## 1. Test layers and ownership
 
 Tests mirror source once under `tests/`. A source path under `src/` drops that prefix. Tests for

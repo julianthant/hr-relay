@@ -1,5 +1,6 @@
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
-import { cellText, type SpreadsheetSaveResult, type EditableWorkbook } from "./spreadsheet-editor-model.js";
+import { type SpreadsheetSaveResult } from './spreadsheet-editor-model.js';
+import { cellText, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { useSyncExternalStore } from "react";
 import { MOCK_ROSTER_ROWS, ROSTER_FIELDS, ROSTER_SHEETS } from "./spreadsheet-mock-data.js";
 import { fieldForSpreadsheetHeader, spreadsheetField, spreadsheetHeaderKey, type SpreadsheetColumnBinding } from './spreadsheet-fields-model.js';

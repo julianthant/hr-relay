@@ -188,10 +188,11 @@ export function testProjectTopologyViolations(
   root: string,
   definitions: readonly TestProjectDefinition[] = REBUILD_TEST_PROJECTS,
 ): string[] {
-  const all = globSync(["tests/**/*.test.ts", "tests/**/*.test.tsx"], { cwd: root }).sort();
+  const collect = (patterns: readonly string[]) => globSync([...patterns], { cwd: root }).map(path => path.replaceAll("\\", "/"));
+  const all = collect(["tests/**/*.test.ts", "tests/**/*.test.tsx"]).sort();
   const projects = definitions.map(({ name, include, exclude }) => {
-    const excluded = new Set(globSync([...exclude], { cwd: root }));
-    const collected = globSync([...include], { cwd: root }).filter((path) => !excluded.has(path));
+    const excluded = new Set(collect(exclude));
+    const collected = collect(include).filter((path) => !excluded.has(path));
     return { name, files: collected };
   });
   const parity = all.filter((path) => path.startsWith("tests/parity/"));
