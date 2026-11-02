@@ -1,3 +1,4 @@
+import type { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
 import { delegationEvidenceOutput, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../models/run/result.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { evaluateNodeCondition, nodeConditionDependency } from "../../../models/workflow/node-condition.js";
@@ -29,6 +30,7 @@ import type {
 } from "../../../rules/workflow/task-provenance.js";
 import { FactProvenanceSchema } from "../../../models/workflow/checkpoint.js";
 import type { FactProvenance } from "../../../models/workflow/checkpoint.js";
+import type { TransactionOutcome } from "../../../rules/write-safety/write-safety.js";
 
 type ParsedDataPoint = z.output<typeof DataPointSchema>;
 
@@ -49,6 +51,7 @@ export type TaskProvenanceCollectorInput = Readonly<{
   readonly upstreamEvidence: z.input<typeof TaskUpstreamCheckpointEvidenceSchema>;
   readonly clock: Clock;
   readonly canonicalInput?: JsonValue;
+  readonly continuation?: AuthenticatedRunContinuation;
   readonly observationSpanPath?: string;
 
   readonly onRecord: (batch: RecordedDataBatch) => void;
@@ -65,6 +68,14 @@ export function jsonLeafPaths(value: JsonValue, prefix = ""): readonly string[] 
     return [prefix];
   }
   return entries.flatMap(([key, child]) => jsonLeafPaths(child, prefix.length === 0 ? key : `${prefix}.${key}`));
+}
+
+export function transactionCheckpointProvenance(outcome: TransactionOutcome, observedAt: string): readonly FactProvenance[] {
+  const instant = IsoInstantSchema.parse(observedAt);
+  return jsonLeafPaths(JsonValueSchema.parse(outcome)).map(path => FactProvenanceSchema.parse({
+    path, source: outcome.proofSource === "operator-attestation" ? "operator" : "live",
+    observedAt: instant, originalObservedAt: instant,
+  }));
 }
 
 function isJsonArray(value: JsonValue): value is readonly JsonValue[] {
@@ -144,7 +155,7 @@ function validateCheckpointSet(
   const expected = new Set(expectedDependencies);
   const actual = new Set<string>([
     ...evidence.checkpoints.map(({ nodeId }) => nodeId),
-    ...evidence.gateResults.map(({ gateId }) => gateId),
+    ...evidence.gateResults.map(({ nodeId }) => nodeId),
     ...evidence.skippedGates,
     ...evidence.skippedTasks,
     ...(evidence.children ?? []).map((child) => child.evidence.nodeId),
@@ -158,7 +169,7 @@ function validateCheckpointSet(
     if (!expected.has(child.evidence.nodeId)) throw new Error(`task ${taskId} received undeclared upstream child ${child.evidence.nodeId}`);
   }
   for (const gate of evidence.gateResults) {
-    if (!expected.has(gate.gateId)) {
+    if (!expected.has(gate.nodeId)) {
       throw new Error(`task ${taskId} received undeclared upstream gate result ${gate.gateId}`);
     }
   }
@@ -201,8 +212,8 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
   const evidence = TaskUpstreamCheckpointEvidenceSchema.parse(input.upstreamEvidence);
   validateCheckpointSet(execution.taskId, node.dependsOn, evidence);
   const conditionEvidence = evidence.conditionEvidence;
-  const directIds = new Set([...evidence.checkpoints.map(row => String(row.nodeId)), ...evidence.gateResults.map(row => String(row.gateId)), ...evidence.skippedTasks.map(String), ...evidence.skippedGates.map(String), ...(evidence.children ?? []).map(row => String(row.evidence.nodeId))]);
-  const conditionIds = [...conditionEvidence.checkpoints.map(row => String(row.nodeId)), ...conditionEvidence.gateResults.map(row => String(row.gateId)), ...conditionEvidence.skippedTasks.map(String), ...conditionEvidence.skippedGates.map(String)];
+  const directIds = new Set([...evidence.checkpoints.map(row => String(row.nodeId)), ...evidence.gateResults.map(row => String(row.nodeId)), ...evidence.skippedTasks.map(String), ...evidence.skippedGates.map(String), ...(evidence.children ?? []).map(row => String(row.evidence.nodeId))]);
+  const conditionIds = [...conditionEvidence.checkpoints.map(row => String(row.nodeId)), ...conditionEvidence.gateResults.map(row => String(row.nodeId)), ...conditionEvidence.skippedTasks.map(String), ...conditionEvidence.skippedGates.map(String)];
   if (new Set(conditionIds).size !== conditionIds.length || conditionIds.some(id => directIds.has(id))) throw new Error("duplicate or overlapping condition evidence");
   const allCheckpoints = [...evidence.checkpoints, ...conditionEvidence.checkpoints];
   const allGates = [...evidence.gateResults, ...conditionEvidence.gateResults];
@@ -243,9 +254,9 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     outputs[String(checkpoint.nodeId)] = JsonValueSchema.parse(producer.uses.output.parse(checkpoint.output.value));
   }
   for (const gate of allGates) {
-    const producer = nodes.find(node => String(node.id) === String(gate.gateId));
-    if (producer?.kind !== "gate" || gate.runId !== execution.runId || gate.result.schemaHash !== deriveSchemaHash(producer.result, "output")) throw new Error(`invalid condition gate ${gate.gateId}`);
-    outputs[String(gate.gateId)] = JsonValueSchema.parse(producer.result.parse(gate.result.value));
+    const producer = nodes.find(node => String(node.id) === String(gate.nodeId));
+    if (producer?.kind !== "gate" || String(gate.gateId) !== String(producer.id) || (gate.runId !== execution.runId && !input.continuation?.permitsGate(gate)) || gate.result.schemaHash !== deriveSchemaHash(producer.result, "output")) throw new Error(`invalid condition gate ${gate.gateId}`);
+    outputs[String(gate.nodeId)] = JsonValueSchema.parse(producer.result.parse(gate.result.value));
   }
   for (const id of visited) {
     const skipped = nodes.find(node => String(node.id) === id);
@@ -257,7 +268,7 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
   }
   const childFacts = (evidence.children ?? []).flatMap((child) => {
     const declared = nodes.find((candidate) => candidate.id === child.evidence.nodeId);
-    if (declared?.kind !== "child-run" || child.evidence.parentRunId !== execution.runId || child.evidence.edgeId !== declared.edgeId
+    if (declared?.kind !== "child-run" || (child.evidence.parentRunId !== execution.runId && !input.continuation?.permitsDelegation(child.evidence)) || child.evidence.edgeId !== declared.edgeId
       || child.evidence.manifest.cardinality !== declared.cardinality || child.evidence.manifest.join !== declared.join
       || canonicalJsonStringify(child.evidence.manifest.policy) !== canonicalJsonStringify(declared.policy)
       || child.evidence.children.some(member => member.run.envelope.workflow !== declared.target.id)) throw new Error("task-child-upstream-identity-mismatch");

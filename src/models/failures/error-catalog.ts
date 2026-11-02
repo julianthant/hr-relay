@@ -13,6 +13,8 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  RUN_CONTINUATION_REFUSED: catalogEntry("Saved completed steps could not be authenticated for recovery. No saved result was reused; review the source run before starting work.", EmptyParametersSchema),
+  APPLICATION_ADMISSION_REFUSED: catalogEntry("Relay could not secure idle update or shutdown admission. Work remains held; restart Relay after resolving the retained failure.", EmptyParametersSchema),
   UNEXPECTED_CONTACT_PAGE: catalogEntry("UCPath did not show the expected Emergency Contact page.", EmptyParametersSchema),
   CONTACT_IDENTITY_UNREADABLE: catalogEntry("UCPath did not display a readable employee ID and name for these contacts.", EmptyParametersSchema),
   CONTACT_SUBJECT_MISMATCH: catalogEntry("UCPath displayed another employee ID. No contact was saved.", EmptyParametersSchema),

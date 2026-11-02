@@ -26,6 +26,7 @@ import { systemClock, manualClock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { scaledMs } from "../../../support/time-scale.js";
+import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
 async function fixture() {
   const f = await createBoundProfileFixture();
@@ -87,6 +88,25 @@ it("observes actual empty canonical owners and awaits synthetic drain scheduling
     assert.ok(settle); settle();
     await activity.awaitCancellation();
     assert.equal(activity.hasUnquiescedWork(profileId), false);
+  } finally { settle?.(); await f.cleanup(); }
+});
+
+it("holds shutdown admission before awaiting children and rejects a late enqueue", async () => {
+  const f = await fixture();
+  let settle: (() => void) | undefined;
+  const completion = new Promise<void>(resolve => { settle = resolve; });
+  try {
+    const activity = composeProfileActivity({ ...f.input, supervisor: { ...f.input.supervisor, drainOwnedChildren: () => completion } });
+    const profileId = f.admission.profileBinding.profileId;
+    assert.equal(f.context.database.authority.runs.admission().state, "open");
+    activity.requestShutdown(profileId);
+    assert.equal(f.context.database.authority.runs.admission().state, "draining");
+    assert.throws(() => f.context.database.authority.runs.enqueue(QUEUED_RUN), /application-admission-draining/u);
+    assert.equal(activity.hasUnquiescedWork(profileId), true);
+    assert.ok(settle); settle();
+    await activity.awaitCancellation();
+    assert.equal(activity.hasUnquiescedWork(profileId), false);
+    assert.equal(f.context.database.authority.runs.admission().state, "draining");
   } finally { settle?.(); await f.cleanup(); }
 });
 
@@ -479,4 +499,45 @@ it("keeps logical command custody after worker acknowledgement until the complet
     assert.equal(f.context.database.getMeta().authorityGeneration, generation);
     assert.equal(isDeepStrictEqual(byteSnapshot(f.workspace), before), true);
   } finally { workerAck(); finishCommand(); await f.cleanup(); }
+});
+
+for (const failure of ["none", "worker", "command", "both"] as const) it(`shutdown awaits command custody after worker acknowledgement with ${failure} failure`, async () => {
+  const f = await fixture(), profileId = f.admission.profileBinding.profileId;
+  let finishWorker = () => {}, finishCommand = () => {}, rejectWorker = (_error: Error) => {}, rejectCommand = (_error: Error) => {};
+  const workerCompletion = new Promise<void>((resolve, reject) => { finishWorker = resolve; rejectWorker = reject; });
+  const commandCompletion = new Promise<void>((resolve, reject) => { finishCommand = resolve; rejectCommand = reject; });
+  const workerFailure = new Error("fixture shutdown worker failure"), commandFailure = new Error("fixture shutdown command failure");
+  let commandBusy = true, commandCancelled = false, commandAwaited = false, workerRequested = false;
+  try {
+    const command = {
+      hasUnquiescedWork(id: string) { assert.equal(id, profileId); return commandBusy; },
+      requestCancellation(id: string) { assert.equal(id, profileId); commandCancelled = true; },
+      awaitCancellation() { commandAwaited = true; return commandCompletion; },
+    };
+    const activity = composeProfileActivity({ ...f.input, commandActivities: new Set([command]), supervisor: {
+      ...f.input.supervisor, drainOwnedChildren: request => {
+        assert.equal(request.reason, "application-shutdown"); workerRequested = true; return workerCompletion;
+      },
+    } });
+    activity.requestShutdown(profileId);
+    assert.equal(commandCancelled, true); assert.equal(commandAwaited, true); assert.equal(workerRequested, true);
+    assert.equal(activity.hasUnquiescedWork(profileId), true);
+    assert.equal(f.context.database.authority.runs.admission().state, "draining");
+    if (failure === "worker" || failure === "both") rejectWorker(workerFailure); else finishWorker();
+    await workerCompletion.catch(() => {});
+    assert.equal(activity.hasUnquiescedWork(profileId), true);
+    commandBusy = false;
+    if (failure === "command" || failure === "both") rejectCommand(commandFailure); else finishCommand();
+    if (failure === "none") {
+      await activity.awaitCancellation(); assert.equal(activity.hasUnquiescedWork(profileId), false);
+    } else {
+      await assert.rejects(activity.awaitCancellation(), error => {
+        assert.ok(error instanceof AggregateError);
+        if (failure === "worker" || failure === "both") assert.equal(error.errors.includes(workerFailure), true);
+        if (failure === "command" || failure === "both") assert.equal(error.errors.includes(commandFailure), true);
+        return true;
+      });
+      assert.throws(() => activity.hasUnquiescedWork(profileId), AggregateError);
+    }
+  } finally { finishWorker(); finishCommand(); await f.cleanup(); }
 });

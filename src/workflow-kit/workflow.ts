@@ -1,3 +1,4 @@
+import type { RunContinuation } from "../models/run/continuation.js";
 import { DryRunStepSchema } from "../models/workflow/dry-run.js";
 import { WorkbookIdSchema } from "../models/dashboard/workbooks.js";
 import { lifecycleCommandId } from "../rules/commands/lifecycle-command-id.js";
@@ -459,6 +460,7 @@ interface WorkflowTerminalRun {
     dryRun: boolean;
     /** The steps this run omitted; an asserted dependency must name one of them. */
     stepOmissions?: readonly Readonly<{ step: string }>[];
+    continuation?: RunContinuation;
   }>;
   readonly input: Readonly<{
     parsed: Readonly<{ schemaHash: string; value: unknown; protectedBindings?: readonly ProtectedInputBinding[] }>;
@@ -1267,10 +1269,15 @@ export function defineWorkflowDescriptor<
     const dependencies: TerminalDependencyRecord[] = [...expectedDependencies, ...dependencySpecFor(additional.map(entry => entry.nodeId), purpose)].map((expected) => {
       const entry = byNode.get(expected.nodeId);
       if (entry === undefined) throw new Error(`${purpose} dependency ${expected.nodeId} is missing`);
+      const sourceParent = entry.state === "delegation-resolved" || entry.state === "child-resolved"
+        ? entry.parentRunId === currentRun.envelope.runId
+          ? { runId: currentRun.envelope.runId, attempt: currentRun.envelope.attempt }
+          : currentRun.envelope.continuation?.sources.find(source => source.runId === entry.parentRunId)
+        : undefined;
       if (entry.state === "delegation-resolved") {
         const node = nodeByIdOrThrow(id, nodes, entry.nodeId, purpose);
-        if (node.kind !== "child-run" || entry.parentRunId !== currentRun.envelope.runId || entry.edgeId !== node.edgeId
-          || entry.invocationCommandId !== lifecycleCommandId("delegation-invocation", { runId: currentRun.envelope.runId, attempt: currentRun.envelope.attempt, nodeId: node.id })
+        if (node.kind !== "child-run" || sourceParent === undefined || entry.edgeId !== node.edgeId
+          || entry.invocationCommandId !== lifecycleCommandId("delegation-invocation", { runId: sourceParent.runId, attempt: sourceParent.attempt, nodeId: node.id })
           || entry.manifest.cardinality !== node.cardinality || entry.manifest.join !== node.join
           || canonicalJsonStringify(entry.manifest.policy) !== canonicalJsonStringify(node.policy)
           || entry.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")
@@ -1285,7 +1292,7 @@ export function defineWorkflowDescriptor<
         if (node.kind !== "child-run" || node.await !== "terminal" || node.cardinality !== "one" || node.join !== "one") throw new Error("terminal-child-dependency-shape-mismatch");
         const child = entry.childRun;
         const result = RunResultRecordSchema.parse(entry.result);
-        if (entry.parentRunId !== currentRun.envelope.runId || entry.edgeId !== node.edgeId
+        if (sourceParent === undefined || entry.edgeId !== node.edgeId
           || child.workflowId !== node.target.id || result.runId !== child.runId || result.workflowId !== child.workflowId
           || result.attempt !== child.attempt || result.descriptorVersion !== child.descriptorVersion
           || result.contractFingerprint !== child.contractFingerprint || result.resultSchemaHash !== deriveSchemaHash(node.target.result, "output")) throw new Error("terminal-child-dependency-identity-mismatch");
@@ -1529,6 +1536,7 @@ export function defineWorkflowDescriptor<
         resultDigest: deriveRunResultDigest(resultValue),
         ...(sourceBindings === undefined ? {} : { operationSources: retainedSources, operationSourceDigest: sha256Hex(`hrauto:result-operation-sources:v1\0${canonicalJsonStringify(retainedSources)}`) }),
         ...(sourceBindings === undefined ? {} : { operationLineage: retainedLineage, operationLineageDigest: sha256Hex(`hrauto:result-operation-lineage:v1\0${canonicalJsonStringify(retainedLineage)}`) }),
+        ...(currentRun.envelope.continuation === undefined ? {} : { continuation: currentRun.envelope.continuation }),
         dependencies,
         dependencyDigest: deriveTerminalDependencyDigest(dependencies),
         createdAt: clock.now().toISOString(),
@@ -1596,6 +1604,7 @@ export function defineWorkflowDescriptor<
         resultSchemaHash: schemaHash,
         result: resultValue,
         resultDigest: deriveRunResultDigest(resultValue),
+        ...(currentRun.envelope.continuation === undefined ? {} : { continuation: currentRun.envelope.continuation }),
         dependencies,
         dependencyDigest: deriveTerminalDependencyDigest(dependencies),
         createdAt: clock.now().toISOString(),

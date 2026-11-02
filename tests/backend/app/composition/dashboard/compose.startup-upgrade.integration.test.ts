@@ -1,3 +1,4 @@
+import { removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../../support/fixtures/storage/historical-run-schema.js";
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../../support/fixtures/storage/pre-reading-artifact-retention.js";
 import assert from "node:assert/strict";
@@ -96,7 +97,8 @@ it.each([8, 9, 10, 11, 12, 13] as const)("automatically upgrades registered sche
     assert.equal(starts, 0); assert.equal(readProfileDatabaseBinding(profile.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     const after = rows(profile.path, sourceVersion);
     for (const [table, previous] of Object.entries(before)) {
-      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, pause_state: null })));
+      else if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, previous.length), previous);
       else assert.deepEqual(after[table], previous);
     }
@@ -280,8 +282,8 @@ it("preserves a real UNKNOWN parked write, its fenced attempt and stopped worker
     const native = new DatabaseSync(path);
     try {
       native.exec("BEGIN EXCLUSIVE");
-      assert.equal(native.prepare("SELECT COUNT(*) AS count FROM exclusive_session_leases").get()?.count, 0);
-      native.exec("DROP TABLE exclusive_session_leases");
+      removeSchema15RunPause(native);
+      removeEmptyExclusiveSessionLeaseFixture(native);
       restoreEmptyPreMasterWorkbookFixture(native);
       restorePreReadingArtifactRetention(native);
       native.exec("UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT");
@@ -293,7 +295,8 @@ it("preserves a real UNKNOWN parked write, its fenced attempt and stopped worker
     await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts);
     const after = rows(path, 10);
     for (const [table, previous] of Object.entries(before)) {
-      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, pause_state: null })));
+      else if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, previous.length), previous);
       else assert.deepEqual(after[table], previous);
     }
@@ -331,8 +334,8 @@ function historicalTen(path: string): void {
   const database = new DatabaseSync(path);
   try {
     database.exec("BEGIN EXCLUSIVE");
-    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM exclusive_session_leases").get()?.count, 0);
-    database.exec("DROP TABLE exclusive_session_leases");
+    removeSchema15RunPause(database);
+    removeEmptyExclusiveSessionLeaseFixture(database);
     restoreEmptyPreMasterWorkbookFixture(database);
     restorePreReadingArtifactRetention(database);
     database.exec("UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT");
@@ -387,7 +390,8 @@ for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] 
           continue;
         }
         if (move && ["database_states", "settings", "run_search"].includes(table)) continue;
-        if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+        if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, pause_state: null })));
+        else if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
         else if (table === "database_upgrades" || move && ["commands", "command_audits", "settings_snapshots"].includes(table)) assert.deepEqual(after[table]?.slice(0, previous.length), previous);
         else assert.deepEqual(after[table], previous);
       }
@@ -419,7 +423,8 @@ it("upgrades a pending sign-up database before onboarding recovery without publi
     assert.deepEqual(readFileSync(operationPath), operation);
     const after = rows(f.path, 10);
     for (const [table, previous] of Object.entries(before)) {
-      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, pause_state: null })));
+      else if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, previous.length), previous);
       else assert.deepEqual(after[table], previous);
     }

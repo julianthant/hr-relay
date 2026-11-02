@@ -29,11 +29,13 @@ function fixture(failAt?: "audit" | "insert") {
   let privateCommits = 0;
   let privateRecord: ProtectedStoreRecord | undefined;
   let nextId = 1;
+  let admission: "open" | "draining" = "open";
   const clock = manualClock(new Date(NOW));
   const authority: CommandAuthority = { withAuthorityTransaction: (work) => {
     const state: State = { commands: new Map(durable.commands), audits: new Map(durable.audits),
       snapshots: new Map(durable.snapshots), current: durable.current, active: durable.active };
     const repositories = {
+      runs: { admission: () => ({ state: admission }) },
       commands: {
         assertIdentity(input: unknown) { const command = CommandRequestSchema.parse(input);
           const existing = state.commands.get(command.commandId);
@@ -93,8 +95,21 @@ function fixture(failAt?: "audit" | "insert") {
   };
   return { execute, ordinary, authority, durable: () => durable,
     privateCommits: () => privateCommits,
+    holdAdmission: () => { admission = "draining"; },
     loseCurrent: () => { durable.current = undefined; } };
 }
+
+it("refuses ordinary settings changes while application admission is held", () => {
+  const f = fixture();
+  f.holdAdmission();
+  const result = f.execute(f.ordinary());
+  assert.equal(result.state, "rejected");
+  if (result.state === "rejected") assert.equal(result.code, "not-editable");
+  assert.equal(f.durable().current, undefined);
+  assert.equal(f.durable().active, undefined);
+  assert.equal(f.durable().snapshots.size, 0);
+  assert.equal(f.privateCommits(), 0);
+});
 
 it("refuses browser-root selection before journaling settings or touching credentials", () => {
   const f = fixture(), patch = { "paths.browserProfileRoot": { set: "/unselected-authority" } };

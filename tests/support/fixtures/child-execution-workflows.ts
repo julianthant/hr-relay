@@ -52,6 +52,18 @@ export const childExecutionModules = [plan1Leaf, childExecutionNested, childExec
   .map(compiled => composeWorkflowModule(compiled, plan1Stores.stores));
 export const childExecutionStores = plan1Stores;
 
+export const childContinuationRoot = compileWorkflow(defineWorkflow({ ...common, id: "fixture-child-continuation", code: "fcc",
+  steps: ({ delegate, result }) => {
+    const children = delegate({ id: "members", target: leaf, edgeId: "members", cardinality: "many", await: "terminal", join: "all", policy }, [], {
+      bind: ({ input }) => [
+        { ...input, emplId: EidSchema.parse("10800001"), mode: "ok" as const },
+        { ...input, emplId: EidSchema.parse("10800002"), mode: "fail" as const },
+      ], deriveChildItemId: (_input, identity) => identity.canonicalItemId,
+    });
+    return { steps: [[{ key: "members", label: "Members" }, [children]]], result: result(Plan1Input, [], ({ input }) => input) };
+  } }), { manifest });
+export const childContinuationModules = [composeWorkflowModule(plan1Leaf, plan1Stores.stores), composeWorkflowModule(childContinuationRoot, plan1Stores.stores)];
+
 export function childUnawaitedModules(cascadeCancel: "cascade" | "independent") {
   const compiled = compileWorkflow(defineWorkflow({ ...common, id: `fixture-child-unawaited-${cascadeCancel}`, code: "fcu",
     steps: ({ delegate, result }) => {

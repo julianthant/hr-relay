@@ -100,7 +100,7 @@ it("drains cancellation and actual browser closure before selection revocation",
     await started.promise;
     const activity = composeProfileActivity({ admission: w.f.admission, database: w.context.database, clock,
       commandActivities: new Set([w.manager]), supervisor: { state: "not-constructed" },
-      lifecycle: { read: () => { throw new Error("no runs"); }, transition: () => { throw new Error("no runs"); } } });
+      lifecycle: { read: () => { throw new Error("no runs"); }, transition: () => { throw new Error("no runs"); }, pause: () => { throw new Error("no runs"); } } });
     assert.equal(activity.hasUnquiescedWork(w.profileId), true);
     activity.requestCancellation(w.profileId); await activity.awaitCancellation(); await rejected;
     assert.equal(w.native.contextClosed(), true);
@@ -173,7 +173,7 @@ it("attempts command drainage even when worker drainage fails", async () => {
     await started.promise;
     const activity = composeProfileActivity({ admission: w.f.admission, database: w.context.database, clock,
       commandActivities: new Set([w.manager]), supervisor: { memberEvidence: () => undefined, drainOwnedChildren: async () => { throw workerFailure; } },
-      lifecycle: { read: () => { throw new Error("no runs"); }, transition: () => { throw new Error("no runs"); } } });
+      lifecycle: { read: () => { throw new Error("no runs"); }, transition: () => { throw new Error("no runs"); }, pause: () => { throw new Error("no runs"); } } });
     activity.requestCancellation(w.profileId);
     await assert.rejects(activity.awaitCancellation(), error => error instanceof AggregateError && error.errors.includes(workerFailure));
     await rejected;

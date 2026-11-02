@@ -64,7 +64,7 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "worker-browser", type: "refresh-browser", target: { ...WORKER_TARGET, browserSessionId: UUID_4 } },
   { ...BASE_COMMAND, family: "worker-browser", type: "reopen-browser", target: { ...WORKER_TARGET, browserSessionId: UUID_4 } },
   { ...BASE_COMMAND, family: "settings", type: "apply-settings", target: { expectedRevision: 1 }, payload: { settingsSchemaHash: HASH_A, patchFingerprint: HASH_B, patch: { "browser.headless": { set: false } } } },
-  ...["retry", "restart", "cancel", "bump", "delete"].map((type) => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
+  ...["retry", "restart", "recover-run", "cancel", "bump", "delete"].map((type) => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
   { ...BASE_COMMAND, family: "run", type: "rename", target: RUN_TARGET, payload: { displayName: "Summer onboarding" } },
   { ...BASE_COMMAND, family: "run", type: "recheck-write", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: HASH_A }, payload: { occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST } },
   { ...BASE_COMMAND, family: "run", type: "resolve-write-absent", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: HASH_A }, payload: { occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST } },
@@ -77,6 +77,9 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "notification", type: "notification-unread-all", target: { actorId: "local-operator", members: [{ notificationId: UUID_3, expectedVersion: 1 }], matchingCount: 1 } },
   { ...BASE_COMMAND, family: "notification", type: "notification-snooze-all", target: { actorId: "local-operator", members: [{ notificationId: UUID_3, expectedVersion: 1 }], matchingCount: 1 } },
   { ...BASE_COMMAND, family: "notification", type: "notification-unsnooze-all", target: { actorId: "local-operator", members: [{ notificationId: UUID_3, expectedVersion: 1 }], matchingCount: 1 } },
+  ...["pause", "resume"].map(type => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
+  { ...BASE_COMMAND, family: "application", type: "pause-all", target: { runtimeGeneration: 1 }, payload: { targets: [RUN_TARGET] } },
+  { ...BASE_COMMAND, family: "application", type: "pause-all-and-quit", target: { runtimeGeneration: 1 }, payload: { confirmed: true, targets: [RUN_TARGET] } },
 ];
 
 export const SUBJECT_EVIDENCE = {

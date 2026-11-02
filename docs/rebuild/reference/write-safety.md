@@ -96,6 +96,17 @@ A source-bound rerun can carry exact server-owned repeat authorization. Ordinary
 
 `executeTransaction` checks the source warning set against the current node, task, system, natural-business-key digest, and completion evidence. Missing or stale acknowledgment refuses. A newly discovered relevant completion requires acknowledgment rather than silently becoming prior-work reuse.
 
+Explicit `run/recover-run` and same-run Resume may carry authenticated continuation; ordinary Rerun
+does not capture one. The separate recovery planner validates retained transaction inputs and exact
+settlement proof before admission. For a continuation, the sequencer first reads that exact node through `readRunCheckpoint`, which authenticates
+the durable owner, issuance, retained sources and checkpoint digest. Only a returned predecessor checkpoint
+suppresses repeat authorization for that node. Own-run repeat checkpoints retain their occurrence key.
+Predecessor replay still requires the current natural key's
+settled durable proof, no unresolved sibling occurrence, and matching descriptor, implementation,
+transaction, output and proof schemas. It returns the retained settlement without another probe,
+prepare, submit, intent or checkpoint. Missing or unsupported continuation evidence grants no repeat
+or replay authority; ordinary source-bound repetition keeps its existing consent checks.
+
 `repeatOccurrenceKey` in `src/models/run/rerun.ts` derives one occurrence key from the business digest, consumed confirmation command, and transaction node. The intent retains its `occurrence` provenance. The sequencer queries all intents for the business digest and refuses a different unresolved occurrence. A new occurrence cannot bypass an `attempting`, `parked`, or other unresolved sibling.
 
 A selected repeat reaches fresh prepare, binding, fence, commit, and verification. `isFreshOccurrenceProof` in `src/backend/runtime/gates/repeat-proof.ts` rejects an earlier receipt as proof of the new occurrence. Recovery and operator-requested rechecks apply the same check. Generic business-key absence cannot settle a repeat occurrence, and an old confirmation cannot authorize another click.

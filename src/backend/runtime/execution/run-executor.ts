@@ -1,3 +1,5 @@
+import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
+import { RunContinuationRefusedError, readContinuationGate, validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
 import { RunClaimTokenSchema, type RunClaimToken } from "../../../models/run/worker.js";
 import { DryRunSampleSchema, type DryRunStep, type DryRunBinding } from "../../../models/workflow/dry-run.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
@@ -47,7 +49,7 @@ import type { BuildManifest } from "../../../models/workflow/build-manifest.js";
 import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, RunCheckpointRecordSchema, type CheckpointPatch, type ReplayedCheckpoint, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "../checkpoints/checkpoint-patch.js";
 import { deriveArtifactProjectionRows } from "../../../models/workflow/artifact-projection.js";
-import type { RuntimeFlowNode, RuntimeScope } from "../../../models/workflow/graph.js";
+import { projectTransactionOutcome, type RuntimeFlowNode, type RuntimeScope } from "../../../models/workflow/graph.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { planStepOmissions } from "../../../models/workflow/step-omission.js";
@@ -314,7 +316,7 @@ function taskIndexOf(stores: TaskStoreRegistry): ReadonlyMap<string, AnyTask> {
 
 type PlanEntry =
   | Readonly<{ mode: "execute" }>
-  | Readonly<{ mode: "replay"; record: RunCheckpointRecord }>
+  | Readonly<{ mode: "replay"; record: RunCheckpointRecord; deferred?: true; patches?: readonly CheckpointPatch[] }>
   | Readonly<{ mode: "skipped-condition" }>
 
   | Readonly<{ mode: "asserted"; replay?: RunCheckpointRecord }>
@@ -673,6 +675,40 @@ export async function executeClaimedRun(
         protectedInputBindings: retainedRunProtectedBindings(getRun()) };
     };
 
+    const continuationSources = validateRunContinuation(deps.authority.authority, envelope);
+    const continuationAuthority = envelope.continuation === undefined ? undefined
+      : deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, envelope));
+    if (envelope.continuation !== undefined && continuationAuthority === undefined) throw new RunContinuationRefusedError("run-continuation-authority-unavailable");
+    const sourceScopeFor = (sourceRunId: string, dependsOn: readonly NodeId[]): RuntimeScope => {
+      const source = sourceRunId === runId ? getRun() : continuationSources.find(row => row.envelope.runId === sourceRunId);
+      if (source === undefined) throw new RunContinuationRefusedError("run-continuation-input-source-unavailable");
+      const values: Record<string, JsonValue> = {};
+      for (const dependency of dependsOn) {
+        const own = deps.authority.authority.runCheckpoints.listByAttempt(source.envelope.workflow, source.envelope.itemId, String(dependency), source.envelope.attempt)
+          .filter(row => row.runId === sourceRunId).at(-1);
+        const checkpoint = own ?? (source.envelope.continuation === undefined ? undefined : readRunCheckpoint(deps.authority.authority, source.envelope, String(dependency), true));
+        const gate = readContinuationGate(deps.authority.authority, source.envelope, String(dependency));
+        if (checkpoint !== undefined) {
+          const dependencyNode = nodes.find(node => node.id === dependency);
+          values[String(dependency)] = dependencyNode?.kind === "transaction"
+            ? JsonValueSchema.parse(projectTransactionOutcome(dependencyNode.commit.uses, checkpoint.output.value, "Continuation source scope")) : checkpoint.output.value;
+        }
+        else if (gate !== undefined) values[String(dependency)] = gate.result.value;
+        else {
+          const dependencyNode = nodes.find(node => node.id === dependency);
+          if (dependencyNode?.kind === "child-run") {
+            const child = deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, source.envelope)
+              .dependency(String(dependency), String(dependencyNode.edgeId), true));
+            if (child !== undefined) { values[String(dependency)] = JsonValueSchema.parse(delegationEvidenceOutput(child, dependencyNode.target.result)); continue; }
+          }
+          if ((dependencyNode?.kind === "task" || dependencyNode?.kind === "gate" && dependencyNode.resolvedBy === "operator") && dependencyNode.when !== undefined
+            && !evaluateNodeCondition(dependencyNode.when, sourceScopeFor(sourceRunId, dependencyNode.dependsOn))) continue;
+          throw new RunContinuationRefusedError("run-continuation-input-context-unavailable");
+        }
+      }
+      return { input: source.input.parsed.value, outputs: values, configuration: Object.freeze(configurationValues),
+        protectedInputBindings: retainedRunProtectedBindings(source) };
+    };
     const startAt = envelope.startAt;
     let startIndex: number | undefined;
     if (startAt !== undefined) {
@@ -711,14 +747,14 @@ export async function executeClaimedRun(
         plan.set(String(node.id), replay === undefined ? { mode: "asserted" } : { mode: "asserted", replay });
         continue;
       }
-      const explicit = startIndex !== undefined;
-      const inAncestorRegion = explicit ? index < (startIndex ?? 0) : ancestorRegionOpen;
+      const explicit = startIndex !== undefined && envelope.continuation === undefined;
+      const inAncestorRegion = envelope.continuation !== undefined || (explicit ? index < (startIndex ?? 0) : ancestorRegionOpen);
       if (!inAncestorRegion) {
         plan.set(String(node.id), { mode: "execute" });
         continue;
       }
       if (node.kind === "task") {
-        if (node.replay === "always-rerun") {
+        if (node.replay === "always-rerun" && envelope.continuation === undefined) {
           // NEVER consult loadCheckpoint for an always-rerun node (§5.3).
           plan.set(String(node.id), { mode: "execute" });
           continue;
@@ -726,7 +762,8 @@ export async function executeClaimedRun(
         let conditionKnown = true;
         for (const dependency of node.dependsOn) {
           const dependencyEntry = plan.get(String(dependency));
-          if (dependencyEntry === undefined || dependencyEntry.mode === "execute" || dependencyEntry.mode === "asserted") {
+          if (dependencyEntry === undefined || dependencyEntry.mode === "execute" || dependencyEntry.mode === "asserted"
+            || !Object.hasOwn(outputs, String(dependency))) {
             conditionKnown = false;
           }
         }
@@ -740,7 +777,7 @@ export async function executeClaimedRun(
         }
         const stored = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
 
-        if ((envelope.recovery === "restart-from-start" || envelope.sourceBound !== undefined) && stored !== undefined && stored.runId !== runId) {
+        if ((envelope.recovery === "restart-from-start" || envelope.sourceBound !== undefined && envelope.continuation === undefined) && stored !== undefined && stored.runId !== runId) {
           if (explicit) {
             problems.push(
               `node "${node.id}" (${labelOf(node)}) cannot be replayed on a restart-from-start attempt; `
@@ -775,9 +812,18 @@ export async function executeClaimedRun(
         }
         if (load.found) {
           const record = requireStoredCheckpoint(stored, String(node.id));
+          const deferred = node.dependsOn.some(dependency => !Object.hasOwn(outputs, String(dependency)));
+          if (!deferred && envelope.continuation !== undefined) {
+            const original = node.uses.input.parse(node.bind(sourceScopeFor(record.runId, node.dependsOn)));
+            const continued = node.uses.input.parse(node.bind(scopeFor(node.dependsOn)));
+            if (canonicalJsonStringify(original) !== canonicalJsonStringify(continued)) {
+              problems.push(`Completed node "${node.id}" has incompatible corrected input; continuation refused`);
+              continue;
+            }
+          }
           const nodePatches = injectedByNode.get(String(node.id));
           let effective = record;
-          if (nodePatches !== undefined) {
+          if (nodePatches !== undefined && !deferred) {
             injectedByNode.delete(String(node.id));
             try {
               const patched = applyCheckpointPatches({
@@ -799,7 +845,10 @@ export async function executeClaimedRun(
               continue;
             }
           }
-          plan.set(String(node.id), { mode: "replay", record: effective });
+          if (deferred && nodePatches !== undefined) injectedByNode.delete(String(node.id));
+          plan.set(String(node.id), { mode: "replay", record: effective, ...(deferred ? { deferred: true,
+            ...(nodePatches === undefined ? {} : { patches: nodePatches }) } : {}) });
+          if (deferred) continue;
           outputs[String(node.id)] = JsonValueSchema.parse(effective.output.value);
           checkpointRecords.set(String(node.id), effective);
           hydrateActionSources(effective);
@@ -811,7 +860,7 @@ export async function executeClaimedRun(
           });
           continue;
         }
-        if (explicit) {
+        if (explicit || envelope.continuation?.checkpoints.some(row => row.nodeId === node.id)) {
           problems.push(
             `missing context "${node.id}" (${labelOf(node)} → ${node.uses.id}) — ${load.reason}: ${load.detail}; `
             + `replay policy is "checkpoint".`,
@@ -826,16 +875,23 @@ export async function executeClaimedRun(
         if (node.resolvedBy === "operator" && node.when !== undefined
           && node.dependsOn.every((dependency) => outputs[String(dependency)] !== undefined)
           && !evaluateNodeCondition(node.when, scopeFor(node.dependsOn))) {
-          if (deps.authority.authority.gateResults.get(`${runId}:${node.id}`) !== undefined) {
+          if (readContinuationGate(deps.authority.authority, envelope, String(node.id)) !== undefined) {
             problems.push(`inapplicable gate "${node.id}" carries a stored operator result; evidence changed`);
             continue;
           }
           plan.set(String(node.id), { mode: "skipped-condition" });
           continue;
         }
-        const stored = deps.authority.authority.gateResults.get(`${runId}:${node.id}`);
+        const stored = readContinuationGate(deps.authority.authority, envelope, String(node.id));
         if (stored !== undefined) {
-          if (stored.runId !== runId || String(stored.gateId) !== String(node.id) || stored.result.schemaHash !== deriveSchemaHash(node.result, "output")) throw new Error(`gate "${node.id}" stored result binding changed`);
+          if ((stored.runId !== runId && !envelope.continuation?.gates.some(row => row.runId === stored.runId && row.nodeId === node.id)) || String(stored.nodeId) !== String(node.id) || stored.result.schemaHash !== deriveSchemaHash(node.result, "output")) throw new Error(`gate "${node.id}" stored result binding changed`);
+          if (stored.runId !== runId) {
+            const source = continuationSources.find(row => row.envelope.runId === stored.runId);
+            if (source === undefined || canonicalJsonStringify(source.input.parsed) !== canonicalJsonStringify(initial.input.parsed)) {
+              problems.push(`Completed gate "${node.id}" has incompatible corrected input; continuation refused`);
+              continue;
+            }
+          }
           outputs[String(node.id)] = JsonValueSchema.parse(node.result.parse(stored.result.value));
           plan.set(String(node.id), { mode: "replay-gate" });
           continue;
@@ -874,7 +930,7 @@ export async function executeClaimedRun(
 
     if (canonicalInput !== undefined) {
       const scheduled = nodes
-        .filter((node) => plan.get(String(node.id))?.mode === "execute")
+        .filter((node) => plan.get(String(node.id))?.mode === "execute" && !(node.kind === "transaction" && envelope.continuation?.checkpoints.some(row => row.nodeId === node.id)))
         .map((node) => node.id);
       const firstNode = nodes[0];
       if (firstNode === undefined) throw new Error(`${descriptor.id} declares no nodes`);
@@ -960,7 +1016,7 @@ export async function executeClaimedRun(
     const gateResultFor = (nodeId: string): GateResultRecord | undefined => {
       const gateNode = nodes.find((candidate) => String(candidate.id) === nodeId);
       if (gateNode?.kind !== "gate") return undefined;
-      return deps.authority.authority.gateResults.get(`${runId}:${nodeId}`);
+      return readContinuationGate(deps.authority.authority, envelope, nodeId);
     };
 
     const invokeTask = async (
@@ -1022,6 +1078,7 @@ export async function executeClaimedRun(
       for (const dependency of node.dependsOn) if (skippedReasons.get(String(dependency)) === "condition-false") gatherCondition(String(dependency));
       const collector = createTaskProvenanceCollector({
         descriptor,
+        ...(continuationAuthority === undefined ? {} : { continuation: continuationAuthority }),
         canonicalInput,
         execution: {
           runId,
@@ -1454,12 +1511,57 @@ export async function executeClaimedRun(
     };
 
     for (const [index, node] of nodes.entries()) {
+      if (getRun().pause?.state === "requested") {
+        requireLifecycleApplied(deps.lifecycle.acknowledgePause({
+          commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, commandId: getRun().pause?.commandId }),
+          runId, claim,
+        }));
+        return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: "paused" });
+      }
       if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "exercised" });
       checkCancellation();
       if (input.signal.aborted) throw abortReason(`run ${runId} execution was aborted`);
-      const entry = plan.get(String(node.id));
+      let entry = plan.get(String(node.id));
       if (entry === undefined) throw new Error(`node "${node.id}" has no execution plan entry`);
       if (entry.mode === "replay") {
+        if (entry.deferred) {
+          if (node.kind !== "task") throw new RunContinuationRefusedError("run-continuation-deferred-task-required");
+          if (excludedByBranch(node)) { skippedReasons.set(String(node.id), "branch-not-selected"); continue; }
+          const scope = scopeFor(node.dependsOn);
+          if (node.when !== undefined && !evaluateNodeCondition(node.when, scope)) {
+            skippedReasons.set(String(node.id), "condition-false"); continue;
+          }
+          if (node.dependsOn.some(dependency => !Object.hasOwn(scope.outputs, String(dependency)) && !skippedReasons.has(String(dependency)))) {
+            throw new RunContinuationRefusedError("run-continuation-task-context-unavailable");
+          }
+          if (envelope.continuation !== undefined
+            && canonicalJsonStringify(node.uses.input.parse(node.bind(sourceScopeFor(entry.record.runId, node.dependsOn))))
+              !== canonicalJsonStringify(node.uses.input.parse(node.bind(scope)))) {
+            throw new RunContinuationRefusedError("run-continuation-task-input-mismatch");
+          }
+          const freshness = auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
+            replayed: [{ nodeId: node.id, taskId: node.uses.id, freshness: node.uses.freshness, provenance: entry.record.provenance }],
+            scheduled: nodes.filter(candidate => plan.get(String(candidate.id))?.mode === "execute"
+              && !(candidate.kind === "transaction" && envelope.continuation?.checkpoints.some(row => row.nodeId === candidate.id))).map(candidate => candidate.id),
+            now: clock.now(), attempt: envelope.attempt, ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) });
+          if (freshness.length > 0) return await terminalizeAsFailure(buildEntryValidationFailureRecord({ run: getRun(), failureId: deps.ids.uuid(),
+            problems: freshness, occurredAt: instant() }));
+          if (entry.patches !== undefined) {
+            let patched: ReturnType<typeof applyCheckpointPatches>;
+            try {
+              patched = applyCheckpointPatches({ replayed: entry.record, patches: entry.patches, outputSchema: node.uses.output,
+                attempt: envelope.attempt, claimGeneration: claim.claimGeneration, runId, writtenAt: instant() });
+            } catch (error) {
+              return await terminalizeAsFailure(buildEntryValidationFailureRecord({ run: getRun(), failureId: deps.ids.uuid(),
+                problems: [`injected correction for node "${node.id}" was refused: ${error instanceof Error ? error.message : String(error)}`], occurredAt: instant() }));
+            }
+            deps.authority.authority.runCheckpoints.insert(patched.record);
+            entry = { mode: "replay", record: patched.record };
+          }
+          outputs[String(node.id)] = entry.record.output.value;
+          checkpointRecords.set(String(node.id), entry.record);
+          hydrateActionSources(entry.record);
+        }
         recordCheckpointReplay(String(node.id), entry.record);
         if (node.kind === "task") {
           const owed = await resumePendingProjections(node, entry.record);
@@ -1474,7 +1576,7 @@ export async function executeClaimedRun(
       }
       if (entry.mode === "replay-gate") {
         if (node.kind !== "gate") throw new Error(`node "${node.id}" is not a gate but planned a gate replay`);
-        const stored = deps.authority.authority.gateResults.get(`${runId}:${node.id}`);
+        const stored = readContinuationGate(deps.authority.authority, envelope, String(node.id));
         if (stored === undefined) throw new Error(`gate "${node.id}" stored result disappeared mid-execution`);
         const expectedHash = deriveSchemaHash(node.result, "output");
         if (stored.result.schemaHash !== expectedHash) {
@@ -1677,7 +1779,7 @@ export async function executeClaimedRun(
         case "gate": {
           if (node.resolvedBy === "operator" && node.when !== undefined
             && !evaluateNodeCondition(node.when, scopeFor(node.dependsOn))) {
-            if (deps.authority.authority.gateResults.get(`${runId}:${node.id}`) !== undefined) {
+            if (readContinuationGate(deps.authority.authority, envelope, String(node.id)) !== undefined) {
               return await failNode(node, undefined, new Error(`inapplicable gate "${node.id}" carries a stored operator result; evidence changed`));
             }
             skippedReasons.set(String(node.id), "condition-false");
@@ -1728,7 +1830,19 @@ export async function executeClaimedRun(
               + "refusing to skip a write node",
             ));
           }
+          const transactionCheckpointBefore = envelope.dryRun ? undefined : readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
           const transactionScope = scopeFor(node.dependsOn);
+          if (!envelope.dryRun && envelope.continuation !== undefined) {
+            const checkpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
+            if (checkpoint !== undefined) {
+              const originalScope = sourceScopeFor(checkpoint.runId, node.dependsOn);
+              const mappings = (scope: RuntimeScope) => ({ prepare: node.prepare.uses.input.parse(node.prepare.bind(scope)),
+                commit: node.commit.uses.input.parse(node.commit.bind(scope)) });
+              if (canonicalJsonStringify(mappings(originalScope)) !== canonicalJsonStringify(mappings(transactionScope))) {
+                throw new RunContinuationRefusedError("run-continuation-transaction-input-mismatch");
+              }
+            }
+          }
           let previewBinding: DryRunBinding | undefined;
           if (envelope.dryRun) {
             try {
@@ -1908,6 +2022,8 @@ export async function executeClaimedRun(
             }
             checkpointRecords.set(String(node.id), record);
             if (storedOutcome.disposition === "committed" && storedOutcome.proofSource === "normal-output"
+              && (durableCommitProof !== undefined || savedEffectProof !== undefined || committedGestures.length > 0 || savedVerifications.length > 0
+                || transactionCheckpointBefore === undefined && record.runId === runId && record.claimGeneration === claim.claimGeneration)
               && deps.confirmedActionPublisher !== undefined && operationDisplaySnapshot !== undefined) {
               const system = taskIndex.get(node.commit.uses.id)?.driver?.system;
               if (system === undefined) throw new Error("confirmed-submit-registered-driver-missing");
@@ -1982,11 +2098,20 @@ export async function executeClaimedRun(
             input.signal.throwIfAborted();
             checkCancellation();
             requireOriginalClaim(getRun());
-            const raw = await deps.childRuns.executeChildRun({
+            const sourceEvidence = continuationAuthority?.delegation(String(node.id), String(node.edgeId));
+            if (sourceEvidence !== undefined) {
+              const original = node.bind(sourceScopeFor(sourceEvidence.parentRunId, node.dependsOn));
+              const continued = node.bind(scopeFor(node.dependsOn));
+              if (canonicalJsonStringify(original) !== canonicalJsonStringify(continued)
+                || sourceEvidence.manifest.cardinality !== node.cardinality || sourceEvidence.manifest.join !== node.join
+                || canonicalJsonStringify(sourceEvidence.manifest.policy) !== canonicalJsonStringify(node.policy)
+                || sourceEvidence.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")) throw new RunContinuationRefusedError("run-continuation-child-input-mismatch");
+            }
+            const raw = sourceEvidence === undefined ? await deps.childRuns.executeChildRun({
               descriptor, node, run: getRun(), claim,
               scope: scopeFor(node.dependsOn),
               signal: input.signal,
-            });
+            }) : delegationEvidenceOutput(sourceEvidence, node.target.result);
             input.signal.throwIfAborted();
             const pending = DelegationPendingSchema.safeParse(raw);
             if (pending.success) {
@@ -2006,7 +2131,7 @@ export async function executeClaimedRun(
             checkCancellation();
             requireOriginalClaim(getRun());
             deps.lifecycle.assertCurrentExecution({ runId, claim });
-            const evidence = deps.authority.withAuthorityTransaction?.(repositories => repositories.dependencies.evidence(runId, node.id));
+            const evidence = sourceEvidence ?? deps.authority.withAuthorityTransaction?.(repositories => repositories.dependencies.evidence(runId, node.id));
             if (evidence === undefined) throw new Error("delegation-outcome-authority-unavailable");
             const output = delegationEvidenceOutput(evidence, node.target.result);
             if (canonicalJsonStringify(raw) !== canonicalJsonStringify(output)) throw new Error("delegation-outcome-value-mismatch");
@@ -2038,6 +2163,10 @@ export async function executeClaimedRun(
     }
 
 
+    if (getRun().pause?.state === "requested") {
+      requireLifecycleApplied(deps.lifecycle.acknowledgePause({ commandId: lifecycleCommandId("executor-final-pause", { runId, generation: claim.claimGeneration }), runId, claim }));
+      return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: "paused" });
+    }
     if (envelope.dryRun) {
       const first = nodes.find(node => node.kind === "transaction");
       if (first === undefined) throw new Error("dry-run preview has no transaction boundary");
@@ -2069,6 +2198,9 @@ export async function executeClaimedRun(
       && failure.outcome.state === "refused" && failure.outcome.refusal.reason === "lost")) {
       return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: failure.message });
     }
+    if (failure instanceof RunContinuationRefusedError) return await terminalizeAsFailure(buildEntryValidationFailureRecord({
+      run: getRun(), failureId: deps.ids.uuid(), code: failure.code, problems: [failure.message], occurredAt: instant(),
+    }));
     throw failure;
   }
 }

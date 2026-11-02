@@ -146,6 +146,7 @@ export function composeCommandRequest(
       return { state: "refused", reason: "Open Rerun to review steps and values before starting a new run." };
     case "archive":
       return { state: "refused", reason: "Archive page removed" };
+    case "recover-run":
     case "cancel":
     case "bump":
     case "delete":
@@ -330,6 +331,34 @@ export async function verifyShellCommandEffect(
   const rootRead = await readRow(request.target.runId);
   if (rootRead === undefined) return mismatch([...snapshots.values()]);
   const root = rootRead;
+  if (request.type === "recover-run") {
+    if (!("affectedTargets" in reply) || root.rowRevision.valueOf() !== request.target.expectedVersion.valueOf()
+      || !reply.affectedTargets.some(target => target.family === "run" && target.runId === root.runId)) return mismatch(reply);
+    const rows: QueueSurfaceWire[] = [];
+    for (const target of reply.affectedTargets) {
+      if (target.family !== "run") return mismatch(reply);
+      const row = await readRow(target.runId);
+      if (row === undefined) return mismatch(reply);
+      rows.push(row);
+    }
+    const recovered = rows.filter(row => row.runId !== root.runId && row.workflowId === root.workflowId
+      && row.itemId === root.itemId && row.attempt > root.attempt);
+    if (recovered.length !== 1 || recovered[0] === undefined) return mismatch(rows);
+    const next = recovered[0];
+    if (next.descriptorHash !== root.descriptorHash || next.configFingerprint !== root.configFingerprint || next.dryRun !== root.dryRun) return mismatch(rows);
+    for (const row of rows) {
+      let current = row;
+      const visited = new Set<string>();
+      while (current.runId !== root.runId && current.runId !== next.runId) {
+        if (visited.size >= 32 || visited.has(current.runId) || current.lineage.state !== "child") return mismatch(rows);
+        visited.add(current.runId);
+        const parent = await readRow(current.lineage.parentRunId);
+        if (parent === undefined) return mismatch(rows);
+        current = parent;
+      }
+    }
+    return { state: "matched", evidence: rows };
+  }
   if (request.type === "rename") return root.rowRevision === request.target.expectedVersion + 1
     && root.displayName.state === "present" && root.displayName.value === request.payload.displayName
     ? { state: "matched", evidence: root } : mismatch(root);
