@@ -15,7 +15,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `docs/roadmap/roadmap.md` | Roadmap content. |
 | `docs/roadmap/index.html` | Generated roadmap site. |
 | `fast-duo/` | Shared software authenticator, isolated signup runtime, and backend-signed workflow login runtime. |
-| `scripts/build/` | Workflow manifest generation and checks. |
+| `scripts/build/` | Workflow registry and manifest generation and checks. |
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. |
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
@@ -25,7 +25,9 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `src/` | Application source. |
 | `tests/` | Tests, fixtures, helpers, and process entrypoints. |
 
-`npm run build:manifest` generates `src/workflow-kit/validation/generated-build-manifest.ts`.
+`npm run build:registries` reads workflow indexes and generates `src/workflows/generated-descriptors.ts`
+and `src/backend/app/registries/generated-{workflow-modules,workflow-stores,step-proof-modules}.ts`.
+`npm run build:manifest` runs that generator, then generates `src/workflow-kit/validation/generated-build-manifest.ts`.
 `npm run stores:catalog` generates the catalog section in `docs/rebuild/reference/stores.md`.
 `npm run roadmap` generates the roadmap site. Each command has a corresponding `:check` command.
 `npm run web:build` produces the dashboard bundle in `dist/`.
@@ -109,8 +111,10 @@ Paths in this table are relative to `src/backend/`.
 ### Workflow ownership and imports
 
 `src/workflows/person-lookup/` and `src/workflows/separations/` each contain `workflow.ts`,
-`task-registry.ts`, and `tasks/`. The workflow definition is browser-safe. The registry loads
-backend task implementations. The unregistered `src/workflows/ocr/` and `src/workflows/ocr-page/`
+`task-registry.ts`, `index.ts`, and `tasks/`. The workflow definition is browser-safe. The index declares
+registration, importing the definition, backend task store and retained proofs. The generated descriptor
+tuple imports definitions directly, keeping those backend imports out of the dashboard.
+The unregistered `src/workflows/ocr/` and `src/workflows/ocr-page/`
 folders use the same layout; their test-only composition inventory in
 `tests/support/fixtures/ocr/unregistered-workflows.ts` supports compiler, layout, bundle and manifest
 audits without making either workflow available in production registries. Their retained proofs live
@@ -121,8 +125,9 @@ the I-9 system store, then retains its typed result through `tasks/read-result.t
 store. Its one `lookup` timeline checkpoint groups both tasks. The registered harness at
 `steps/lookup/step.ts` reuses that exact group. Results contain `signerName`, `i9Status`, and record
 IDs when a summary was read.
-`CHILD_ONLY_WORKFLOW_MODULES` in the backend workflow registry admits these modules separately
-from the public workflow tuple. A caller must declare its delegation edge to resolve a child.
+Its `index.ts` declares child-only exposure, the store and the retained proof. The generated
+`CHILD_ONLY_WORKFLOW_MODULES` admits it separately from the public workflow tuple. A caller must
+declare its delegation edge to resolve a child.
 
 Person Lookup has four chunk harnesses at `src/workflows/person-lookup/steps/<step>/step.ts`:
 `searching`, `cross-verify`, `active-status`, and `crm-dates`.

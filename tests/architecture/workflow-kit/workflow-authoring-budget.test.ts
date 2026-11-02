@@ -372,6 +372,7 @@ export function auditWorkflowAuthoringBudget(
     allowedArtifacts.add(`${scenarioFolder}/dry-run.scenario.ts`);
     if (sourcePath.endsWith("/workflow.ts")) {
       allowedArtifacts.add(`${sourcePath.slice(0, -"workflow.ts".length)}task-registry.ts`);
+      allowedArtifacts.add(`${sourcePath.slice(0, -"workflow.ts".length)}index.ts`);
       for (const taskFile of inputs.tree.artifactFiles) {
         if (/\/tasks\/[^/]+\.ts$/u.test(taskFile) && taskFile.startsWith(`${sourcePath.slice(0, -"workflow.ts".length)}tasks/`)) {
           allowedArtifacts.add(taskFile);

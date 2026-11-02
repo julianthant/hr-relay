@@ -207,14 +207,13 @@ _No tasks registered — this store is a declaration-only placeholder._
 |---|---|---|---|---|---|---|---|---|---|
 | `ocr/extract-form-page` | Reading form page | read | extract | — (sessionless) | `ocr.extract` | `formType`, `page`, `sourcePage` | `formType`, `source`, `readAt`, `sourceSha256`, `sourcePage`, `pageKind`, `record`, `pageFingerprint` | 4h | bound |
 
-### `workflow:person-lookup`
+### `roster`
 
-**Kind:** workflow mini-store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 2 (2 read · 0 prepare · 0 commit)
+**Kind:** service store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 1 (1 read · 0 prepare · 0 commit)
 
 | Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| `workflow:person-lookup/read-resolved-identity` | Identity cross-check | read | read | — (sessionless) | — | `input`, `person`, `match`, `crm` | `shouldCheckCrm`, `ucpathFound`, `crmErrorCode`, `state`, `crmIdentity`, `unselectedCrmRecords`, `selected`, `crmRecord`, `candidateEids`, `recoveryEid`, `crmState`, `method` | ∞ | bound |
-| `workflow:person-lookup/read-active-status` | Read employment status | read | read | — (sessionless) | — | `input`, `identity`, `verifiedCrm`, `recovered`, `match` | `ucpathSelection`, `datesEid`, `state`, `reason`, `code`, `hdh`, `candidateEids`, `details` | ∞ | bound |
+| `roster/match-spreadsheet` | Matching against roster | read | match | — (sessionless) | — | `subjects`, `rosterFileRef`, `sheet`, `mapping`, `readAt` | `matches` | 24h | bound |
 
 ### `workflow:i9-lookup`
 
@@ -224,13 +223,14 @@ _No tasks registered — this store is a declaration-only placeholder._
 |---|---|---|---|---|---|---|---|---|---|
 | `workflow:i9-lookup/read-result` | Retain I-9 signer result | read | read | — (sessionless) | — | `signer` | `i9Status="signed"` + `signerName`, `profileId`, `i9Id` / `i9Status="unsigned"` + `signerName`, `profileId`, `i9Id` / `i9Status="historical"` + `signerName`, `profileId`, `i9Id` / `i9Status="not-found"` + `signerName` / `i9Status="unable-to-access"` + `signerName` | ∞ | bound |
 
-### `roster`
+### `workflow:person-lookup`
 
-**Kind:** service store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 1 (1 read · 0 prepare · 0 commit)
+**Kind:** workflow mini-store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 2 (2 read · 0 prepare · 0 commit)
 
 | Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| `roster/match-spreadsheet` | Matching against roster | read | match | — (sessionless) | — | `subjects`, `rosterFileRef`, `sheet`, `mapping`, `readAt` | `matches` | 24h | bound |
+| `workflow:person-lookup/read-resolved-identity` | Identity cross-check | read | read | — (sessionless) | — | `input`, `person`, `match`, `crm` | `shouldCheckCrm`, `ucpathFound`, `crmErrorCode`, `state`, `crmIdentity`, `unselectedCrmRecords`, `selected`, `crmRecord`, `candidateEids`, `recoveryEid`, `crmState`, `method` | ∞ | bound |
+| `workflow:person-lookup/read-active-status` | Read employment status | read | read | — (sessionless) | — | `input`, `identity`, `verifiedCrm`, `recovered`, `match` | `ucpathSelection`, `datesEid`, `state`, `reason`, `code`, `hdh`, `candidateEids`, `details` | ∞ | bound |
 
 ### `workflow:separations`
 

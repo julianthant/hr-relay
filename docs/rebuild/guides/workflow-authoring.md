@@ -60,27 +60,41 @@ backend task implementations, browser drivers, Playwright or credential access i
 
 For a new operator workflow:
 
-1. Create `src/workflows/<id>/workflow.ts` with one `defineWorkflow` call.
-2. In `src/backend/app/registries/workflow-registry.ts`, import the definition, export the module
-   through `composeWorkflowModule(compileWorkflow(definition), taskStoreRegistry.stores)`, and add
-   it to `WORKFLOW_MODULES`.
-3. In `src/workflows/descriptor-registry.ts`, import the same definition and add
-   `compileWorkflow(definition).descriptor` to `WORKFLOW_DESCRIPTORS` in the same order.
-   `tests/workflows/descriptor-registry.test.ts` checks tuple equality and descriptor identity.
-4. Run `npm run build:manifest`, then `npm run build:manifest:check`. The generator discovers the
-   definition sources; do not hand-edit
-   `src/workflow-kit/validation/generated-build-manifest.ts`.
-5. Register any new workflow-owned store through `src/backend/app/registries/task-registry.ts`,
-   then regenerate and check the store catalog.
-6. Record copied source provenance, acceptance evidence and unfinished checks in the brief's
+1. Create `src/workflows/<id>/workflow.ts` with one `defineWorkflow` call, workflow-owned `tasks/`
+   and `task-registry.ts`, and retained harnesses under `steps/<step>/step.ts`.
+2. Create `index.ts` in that folder. Import the real definition, store and harness values, then
+   export `registration = deepFreeze({ ... } as const)` using `deepFreeze` from
+   `src/rules/validation/immutability.ts`. Follow Person Lookup or Separations:
+
+   ```ts
+   export const registration = deepFreeze({
+     definition: exampleWorkflow,
+     exposure: { kind: "public", order: 2 },
+     store: exampleStore,
+     proofs: [{ definition: exampleReadWorkflow, order: 9 }],
+   } as const);
+   ```
+
+   Import definitions from `./workflow.js`, the store from `./task-registry.js`, and each harness
+   from `./steps/<step>/step.js`. Definition export names end in `Workflow`; generated module
+   exports replace that suffix with `Module`. List every retained harness exactly once.
+   Public picker orders and registered proof orders are nonnegative integers, unique across indexes.
+   Use `{ kind: "child-only" }` for a workflow admitted only through declared delegation edges,
+   or `{ kind: "unregistered" }` to keep its module, store and proofs out of production registries.
+3. Run `npm run build:manifest` and `npm run stores:catalog`. The manifest command first runs
+   `build:registries`, which derives the backend module/store/proof lists and a separate browser-safe
+   descriptor tuple. Existing registry imports remain the public entrypoints; do not edit generated lists.
+4. Run `npm run build:manifest:check` and `npm run stores:catalog:check`. Registry freshness is part
+   of the manifest check. `build:registries` and `build:registries:check` also run independently.
+5. Record copied source provenance, acceptance evidence and unfinished checks in the brief's
    evidence folder.
 
-Register harnesses separately through `STEP_PROOF_MODULES` in
-`src/backend/app/registries/step-proof-modules.ts`. They do not enter the operator tuple or picker.
+Harnesses declared in `index.ts` enter the generated `STEP_PROOF_MODULES` list.
+They do not enter the operator tuple or picker.
 A group without a harness needs no step folder.
 
-Register delegated-only workflows in `CHILD_ONLY_WORKFLOW_MODULES` in the backend workflow
-registry. Keep them out of the public module and descriptor tuples and give them no start surface.
+Declare delegated-only workflows with child-only exposure in their `index.ts`. Generation places
+them in `CHILD_ONLY_WORKFLOW_MODULES`, outside the public tuples. Give them no start surface.
 The registry resolves a child only for a parent that declares its delegation edge. A child may
 remain registered without a parent; I-9 Lookup uses this shape.
 
