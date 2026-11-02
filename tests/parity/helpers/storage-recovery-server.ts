@@ -48,7 +48,7 @@ export async function storageRecoveryTarget() {
     const { AuthorityDatabase } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/authority-database.ts"))});
     const { AuthorityBackupService } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/backup-service.ts"))});
     const { OfflineAuthorityRestoreService } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/offline-restore.ts"))});
-    const { profileBrowserClosure } = await import(${JSON.stringify(sourceUrl("src/backend/runtime/browser/native-profile-probe.ts"))});
+    const { profileBrowserClosure } = await import(${JSON.stringify(sourceUrl("src/backend/runtime/browser/profile-browser-closure.ts"))});
     const { createCredentialStore } = await import(${JSON.stringify(sourceUrl("src/backend/storage/configuration/credential-store.ts"))});
     const { PROTECTED_SETTINGS_SCHEMA_HASH } = await import(${JSON.stringify(sourceUrl("src/models/config/protected-settings.ts"))});
     const { observeRuntimeLockSnapshot } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/runtime-process-locks.ts"))});

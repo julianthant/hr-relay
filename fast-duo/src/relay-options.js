@@ -2,6 +2,7 @@ export async function mountRelayOptions(initial) {
   const $ = id => document.getElementById(id);
   let profile = initial;
   let busy = false;
+  let polling = false, actionGeneration = 0;
   let selected = 'key';
   let unavailable = false;
   for (const selector of ['.tabs', '.activity', '#addAccount', '#pause', '#legacy', '#intro', '#accountForm', '#aliasForm', '#accountActions', '#advanced', '#editDetails', '#closeEditor', '#refreshTabs', '#duoTab', 'label[for="duoTab"]']) {
@@ -123,17 +124,22 @@ export async function mountRelayOptions(initial) {
     $('message').setAttribute('role', 'alert');
   }
   async function command(type, method, attemptId) {
-    if (busy) return;
+    const stateRead = type === 'STATE';
+    if (busy || stateRead && polling) return;
+    if (stateRead) polling = true;
+    else { busy = true; actionGeneration++; }
+    const generation = actionGeneration;
     const focusedMethod = document.activeElement?.closest('.relay-method-card')?.dataset.method;
-    busy = true; render();
+    if (!stateRead) render();
     try {
       const response = await chrome.runtime.sendMessage({ type, ...(method === undefined ? {} : { method }), ...(attemptId === undefined ? {} : { attemptId }) });
+      if (stateRead && generation !== actionGeneration) return;
       if (!response?.success || response.result?.relaySetup !== true) throw new Error('Relay setup refused');
       const next = response.result.profile;
       if (next.operationId !== profile.operationId || next.profileId !== profile.profileId) throw new Error('Relay setup replaced');
       profile = next; if (type !== 'STATE' || unavailable === 'state') unavailable = false;
-    } catch { if (type !== 'STATE' || !unavailable) unavailable = type === 'STATE' ? 'state' : 'action'; }
-    finally { busy = false; render(); if (focusedMethod && document.activeElement === document.body) $('accountList').querySelector(`[data-method="${focusedMethod}"]`).focus({ preventScroll: true }); }
+    } catch { if ((!stateRead || generation === actionGeneration) && (type !== 'STATE' || !unavailable)) unavailable = type === 'STATE' ? 'state' : 'action'; }
+    finally { if (stateRead) polling = false; else busy = false; render(); if (focusedMethod && document.activeElement === document.body) $('accountList').querySelector(`[data-method="${focusedMethod}"]`).focus({ preventScroll: true }); }
   }
   $('transport').addEventListener('change', () => { selected = $('transport').value === 'usb' ? 'key' : 'touch'; render(); });
   $('openLogin').addEventListener('click', () => { void command('RELAY_OPEN_PORTAL'); });

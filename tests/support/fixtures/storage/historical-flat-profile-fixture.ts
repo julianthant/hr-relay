@@ -24,7 +24,7 @@ import { retainedHistoricalData } from "./retained-historical-data.js";
 
 export const historicalFlatFields = Object.freeze({ firstName: "Flat", lastName: "Fixture", email: "flat-fixture@ucsd.edu", password: "disposable-flat-owner-password" });
 
-export async function createHistoricalFlatProfileFixture(options: { unknownWrite?: boolean; laterProtectedChange?: boolean; closedBrowser?: boolean; unretiredWorker?: boolean } = {}) {
+export async function createHistoricalFlatProfileFixture(options: { unknownWrite?: boolean; laterProtectedChange?: boolean; closedBrowser?: boolean; unretiredWorker?: boolean; nonterminalWorker?: boolean; neverInitialized?: boolean } = {}) {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "flat-profile-claim-")));
   const lifetime = await RuntimeLifetimeLock.acquire(0);
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(workspace, name));
@@ -39,7 +39,9 @@ export async function createHistoricalFlatProfileFixture(options: { unknownWrite
     raw.prepare("INSERT INTO database_upgrades VALUES(?,'fresh','baseline',NULL,?,?)").run(baseline.recordKey, canonicalJsonStringify(baseline), at);
     inspectNativeAuthority(raw, 6);
   } finally { raw.close(); }
-  const artifact = retainedHistoricalData({ databasePath, profileRoot: stateRoot }, options.unknownWrite, 6);
+  const artifact = options.neverInitialized ? join(artifactRoot, `${"a".repeat(64)}.artifact`)
+    : retainedHistoricalData({ databasePath, profileRoot: stateRoot }, options.unknownWrite, 6);
+  if (options.neverInitialized) writeFileSync(artifact, "unreferenced managed artifact", { mode: 0o600 });
   let browser: ReturnType<typeof WorkerBrowserObservationSchema.parse> | undefined;
   if (options.closedBrowser) {
     const native = new DatabaseSync(databasePath);
@@ -60,8 +62,10 @@ export async function createHistoricalFlatProfileFixture(options: { unknownWrite
         slot.phase, slot.retiredAt, slot.retirementCommandId, slot.reservationCommandId, canonicalJsonStringify(slot), at, at);
       const lease = WorkerLeaseRecordSchema.parse({ workerId: slot.workerId, workflow: slot.workflow, browserSystems: ["ucpath"], processId: 2147483647,
         leaseGeneration: 1, controlRevision: 1, control: { directive: "stop", requestedAt: at, requestedBy: "local-operator" },
-        lifecycle: { state: "stopped", startedAt: at, stoppedAt: at, reason: "shutdown" }, version: 1, createdAt: at, updatedAt: at });
-      native.prepare("INSERT INTO worker_leases VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(lease.workerId, lease.workerId, lease.workflow, 1, 1, "stopped", "stop", null, 1, canonicalJsonStringify(lease), at, at);
+        lifecycle: options.nonterminalWorker ? { state: "stopping", startedAt: at, heartbeatAt: at }
+          : { state: "stopped", startedAt: at, stoppedAt: at, reason: "shutdown" }, version: 1, createdAt: at, updatedAt: at });
+      native.prepare("INSERT INTO worker_leases VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(lease.workerId, lease.workerId, lease.workflow, 1, 1, lease.lifecycle.state, "stop",
+        lease.lifecycle.state === "stopping" ? lease.lifecycle.heartbeatAt : null, 1, canonicalJsonStringify(lease), at, at);
       browser = WorkerBrowserObservationSchema.parse({ workerId: slot.workerId, leaseGeneration: 1, sessionId: randomUUID(), system: "ucpath",
         configFingerprint: config?.fingerprint, signInFingerprint: "a".repeat(64), browserMode: "headless", profileDirectory: join(stateRoot, "browsers", "w1", "ucpath"),
         acceptDownloads: true, exclusive: true, health: "closed", observedAt: at, openedAt: at, profileRevision: 1 });
@@ -118,7 +122,8 @@ export async function createHistoricalFlatProfileFixture(options: { unknownWrite
     return { kind: "verified-existing", pair, authorityGeneration: facts.authorityGeneration, databaseIdentity: facts.authorityContentFingerprint };
   }, () => { throw new Error("existing flat fixture must never initialize fresh data"); });
   assert.equal(machine.locator.stateRoot, stateRoot); machine.release();
-  return { workspace, lifetime, stateRoot, artifactRoot, processLockRoot, databasePath, protectedPath, artifact, reportPath, record, request, browser,
+  const browserPreferencesPath = join(stateRoot, "browsers", "w1", "ucpath", "Default", "Preferences");
+  return { browserPreferencesPath, workspace, lifetime, stateRoot, artifactRoot, processLockRoot, databasePath, protectedPath, artifact, reportPath, record, request, browser,
     async close() {
       const closed = spawnSync("lsof", ["-nP", "+D", workspace, "-Fn"], { encoding: "utf8" });
       assert.equal(closed.error, undefined); assert.equal(closed.status, 1, "historical flat fixture closure unproved");

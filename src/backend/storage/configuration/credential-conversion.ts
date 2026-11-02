@@ -1,4 +1,4 @@
-import { CredentialMaintenanceHold, inspectStoppedCanonicalConversionCopy, inspectStoppedCanonicalConversion, prepareStoppedCanonicalCredentials, type CanonicalCredentialConversionPlan } from "./canonical-credential-store.js";
+import { CredentialMaintenanceHold, inspectStoppedCurrentCanonicalCredentials, inspectStoppedCanonicalConversionCopy, inspectStoppedCanonicalConversion, prepareStoppedCanonicalCredentials, type CanonicalCredentialConversionPlan } from "./canonical-credential-store.js";
 import { z } from "zod";
 import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
 import { DuoEnrollmentScopeSchema } from "../../../models/config/duo-credential-store.js";
@@ -138,8 +138,40 @@ function decryptSource(metadata: Readonly<{ nonce: string; tag: string; cipherte
   return decodeSource(Buffer.concat([decipher.update(ciphertext), decipher.final()]));
 }
 
+function readStoppedCredentialKey(source: Extract<ReturnType<RuntimeAdmission["readStoppedControlCredentialInventorySource"]>, { credentialFormat: "legacy" }>) {
+  const keyPath = join(source.machineRoot, "machine", "credential-keys", `${source.binding.profileId}.json`);
+  const keyFile = sourceFile(keyPath, undefined, 4096), raw = decodeSource(keyFile.bytes);
+  const inline = StoppedInlineKey.safeParse(raw), metadata = StoppedNativeKey.safeParse(raw);
+  const identity = inline.success ? inline.data : metadata.success ? metadata.data : undefined;
+  if (identity === undefined || identity.installationId !== source.binding.installationId || identity.profileId !== source.binding.profileId
+    || identity.keyId !== source.key.keyId) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
+  const keyDocument = inline.success ? inline.data : metadata.success ? credentialKeyCustody.read({ schemaVersion: 2,
+    installationId: metadata.data.installationId, profileId: metadata.data.profileId, keyId: metadata.data.keyId, keyDigest: metadata.data.keyDigest }) : undefined;
+  if (keyDocument === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
+  const key = Buffer.from(keyDocument.key, "base64");
+  if (key.length !== 32 || key.toString("base64") !== keyDocument.key) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
+  if (inline.success) {
+    try { credentialKeyCustody.read({ schemaVersion: 2, ...source.binding, keyId: identity.keyId, keyDigest: sourceHash(key) }); }
+    catch (error) { if (!(error instanceof CredentialKeyCustodyError) || error.code !== "CREDENTIAL_KEYCHAIN_MISSING") throw error; }
+  }
+  const witnessedDigest = metadata.success && metadata.data.legacyWitness === true ? sourceHash(encodePrivate(keyDocument)) : sourceHash(keyFile.bytes);
+  if (keyFile.identity.device !== source.key.file.device || keyFile.identity.inode !== source.key.file.inode
+    || witnessedDigest !== source.key.file.digest) throw new Error("profile-control-upgrade-credential-source-changed");
+  return { key, identity, keyDocument };
+}
+
+export function assertStoppedCredentialSourceFormat(admission: RuntimeAdmission, claim: StoppedControlProfileInventory): void {
+  const source = admission.readStoppedControlCredentialInventorySource(claim);
+  source.assertHeld();
+  if (source.credentialFormat !== "legacy") return;
+  try { ProtectedEnvelope.parse(decodeSource(sourceFile(join(source.stateRoot, "credentials", "protected.json")).bytes)); }
+  catch (error) { throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED", { cause: error }); }
+  readStoppedCredentialKey(source);
+}
+
 export function inspectStoppedCredentialSource(admission: RuntimeAdmission, claim: StoppedControlProfileInventory) {
   const source = admission.readStoppedControlCredentialInventorySource(claim);
+  if (source.credentialFormat !== "legacy") throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
   try {
     source.assertHeld();
     const legacyDuo = readPrivateFile(join(source.stateRoot, "credentials", "duo-webauthn.json"), { label: "protected.json", maxBytes: 64_000 });
@@ -147,25 +179,8 @@ export function inspectStoppedCredentialSource(admission: RuntimeAdmission, clai
       DuoCredentialFileSchema.parse(decodeSource(legacyDuo.bytes));
       throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_COUNTER_UNPROVED");
     }
-    const keyPath = join(source.machineRoot, "machine", "credential-keys", `${claim.profileId}.json`),
-      journalPath = join(source.machineRoot, "machine", "erasures", `${claim.profileId}.json`);
-    const keyFile = sourceFile(keyPath, undefined, 4096), raw = decodeSource(keyFile.bytes);
-    const inline = StoppedInlineKey.safeParse(raw), metadata = StoppedNativeKey.safeParse(raw);
-    const identity = inline.success ? inline.data : metadata.success ? metadata.data : undefined;
-    if (identity === undefined || identity.installationId !== source.binding.installationId || identity.profileId !== source.binding.profileId
-      || identity.keyId !== source.key.keyId) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-    const keyDocument = inline.success ? inline.data : metadata.success ? credentialKeyCustody.read({ schemaVersion: 2,
-      installationId: metadata.data.installationId, profileId: metadata.data.profileId, keyId: metadata.data.keyId, keyDigest: metadata.data.keyDigest }) : undefined;
-    if (keyDocument === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-    const key = Buffer.from(keyDocument.key, "base64");
-    if (key.length !== 32 || key.toString("base64") !== keyDocument.key) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-    if (inline.success) {
-      try { credentialKeyCustody.read({ schemaVersion: 2, ...source.binding, keyId: identity.keyId, keyDigest: sourceHash(key) }); }
-      catch (error) { if (!(error instanceof CredentialKeyCustodyError) || error.code !== "CREDENTIAL_KEYCHAIN_MISSING") throw error; }
-    }
-    const witnessedDigest = metadata.success && metadata.data.legacyWitness === true ? sourceHash(encodePrivate(keyDocument)) : sourceHash(keyFile.bytes);
-    if (keyFile.identity.device !== source.key.file.device || keyFile.identity.inode !== source.key.file.inode
-      || witnessedDigest !== source.key.file.digest) throw new Error("profile-control-upgrade-credential-source-changed");
+    const { key, identity, keyDocument } = readStoppedCredentialKey(source);
+    const journalPath = join(source.machineRoot, "machine", "erasures", `${claim.profileId}.json`);
     let erased: string[] = [], retired: string[] = [];
     if (source.head.state === "never-erased") {
       if (readPrivateFile(journalPath, { label: "lock", maxBytes: 64_000 }) !== undefined
@@ -255,10 +270,21 @@ function inspectResumedCredentialSource(admission: RuntimeAdmission, claim: Stop
   }) };
 }
 
+function inspectCurrentCredentialSource(admission: RuntimeAdmission, claim: StoppedControlProfileInventory) {
+  const source = admission.readStoppedControlCredentialInventorySource(claim), captured = inspectStoppedCurrentCanonicalCredentials(admission, claim);
+  const document = authenticateDocument(captured.records.protected.value), chatgpt = captured.records.chatgpt.value === null ? undefined : ChatGptCredentialRecordSchema.parse(captured.records.chatgpt.value);
+  return { records: captured.records, retired: captured.retired, copies: copyInspection(source, document, chatgpt, captured.keyDocument,
+    bytes => {
+      const record = captured.decryptProtected(bytes);
+      if (record === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
+      return authenticateDocument(record.value);
+    }) };
+}
+
 export type StoppedCredentialCopyInspection = ReturnType<typeof inspectStoppedCredentialSource>["copies"];
 export interface StoppedControlCredentialAttestation { readonly profileId: string }
 const conversionInventories = new WeakMap<StoppedControlCredentialAttestation, Readonly<{
-  claim: StoppedControlProfileInventory; admission: RuntimeAdmission; plan: CanonicalCredentialConversionPlan;
+  claim: StoppedControlProfileInventory; admission: RuntimeAdmission; plan: CanonicalCredentialConversionPlan | undefined;
   revalidate(): void;
 }>>();
 
@@ -268,17 +294,22 @@ export function prepareStoppedCredentialConversion(admission: RuntimeAdmission, 
   try {
     return withOperationProof(() => {
       const pending = source.pendingPlan();
-      const captured = pending === undefined ? inspectStoppedCredentialSource(admission, claim) : inspectResumedCredentialSource(admission, claim, pending);
+      const captured = source.credentialFormat === "canonical" ? inspectCurrentCredentialSource(admission, claim)
+        : pending === undefined ? inspectStoppedCredentialSource(admission, claim) : inspectResumedCredentialSource(admission, claim, pending);
       const inventory = assess(captured.copies);
       inventory.revalidateBeforeKeyIntent(); inventory.revalidate()();
-      const plan = pending ?? prepareStoppedCanonicalCredentials(admission, claim, source.conversionOperationId, captured.records, captured.retired);
+      const plan = source.credentialFormat === "canonical" ? undefined
+        : pending ?? prepareStoppedCanonicalCredentials(admission, claim, source.conversionOperationId, captured.records, captured.retired);
       const proof = Object.freeze({ profileId: claim.profileId });
       conversionInventories.set(proof, { claim, admission, plan, revalidate() {
         withOperationProof(() => {
           source.revalidateSource(); inventory.revalidateBeforeKeyIntent(); inventory.revalidate()();
-          if (source.pendingPlan() !== undefined) inspectStoppedCanonicalConversion(admission, claim, plan);
+          if (source.pendingPlan() !== undefined) {
+            if (plan === undefined) throw new Error("profile-control-upgrade-plan-membership");
+            inspectStoppedCanonicalConversion(admission, claim, plan);
+          }
           else {
-            const current = inspectStoppedCredentialSource(admission, claim);
+            const current = source.credentialFormat === "canonical" ? inspectCurrentCredentialSource(admission, claim) : inspectStoppedCredentialSource(admission, claim);
             if (canonicalJsonStringify(current.records) !== canonicalJsonStringify(captured.records)
               || canonicalJsonStringify(current.retired) !== canonicalJsonStringify(captured.retired)) throw new Error("profile-control-upgrade-credential-source-changed");
           }

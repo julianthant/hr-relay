@@ -13,7 +13,7 @@ if (actualEntry !== FakeKeyringEntry || process.env.RELAY_TEST_KEYCHAIN === unde
 if (!process.connected || process.send === undefined) throw new Error("retention-worker-ipc-required");
 const { z } = await import("zod");
 const [port, workspace, profileId, scenario, crashNonce] = z.tuple([z.coerce.number().int().positive().max(65535), z.string().min(1), z.uuid(),
-  z.enum(["readonly-native-close", "worker-native-open", "writer-close", "duo-read-first", "duo-read-second", "stopped-head-close", "protected-source", "chatgpt-source", "account-projection", "stopped-control-snapshot-disposal", "setup-protected-close", "authenticated-upgrade-key-close", "authenticated-upgrade-service-inspection", "authenticated-upgrade-binding-consume", "authenticated-upgrade-unproved-close", "authenticated-upgrade-closed-publication-refusal", "protected-crash-before", "protected-crash-after", "logout-prepared", "logout-commit-intent", "logout-after-commit", "logout-done", "logout-ready", "logout-unlink", "logout-writer-close", "logout-third-image", "logout-resume", "logout-unknown-copy", "logout-live-process", "logout-browser-root", "logout-key-replacement", "logout-snapshot-disposal", "logout-process-observation", "logout-seed", "logout-seed-unknown", "logout-unknown", "logout-browser-busy", "logout-browser-unproved", "logout-process-root-copy", "logout-exited-process", "logout-exit-only"]), z.uuid().optional()]).parse(process.argv.slice(2));
+  z.enum(["readonly-native-close", "worker-native-open", "writer-close", "duo-read-first", "duo-read-second", "stopped-head-close", "protected-source", "chatgpt-source", "account-projection", "stopped-control-snapshot-disposal", "setup-protected-close", "authenticated-upgrade-key-close", "authenticated-upgrade-service-inspection", "authenticated-upgrade-binding-consume", "authenticated-upgrade-unproved-close", "authenticated-upgrade-closed-publication-refusal", "protected-crash-before", "protected-crash-after", "logout-prepared", "logout-commit-intent", "logout-after-commit", "logout-done", "logout-ready", "logout-unlink", "logout-writer-close", "logout-third-image", "logout-resume", "logout-unknown-copy", "logout-live-process", "logout-browser-root", "logout-key-replacement", "logout-snapshot-disposal", "logout-process-observation", "logout-seed", "logout-seed-unknown", "logout-unknown", "logout-browser-busy", "logout-browser-unproved", "logout-process-root-copy", "logout-exited-process", "logout-exit-only", "browser-root-native-success", "browser-root-busy", "browser-root-close-unproved", "browser-root-stage-close", "browser-root-observed-publication", "browser-root-rm-refusal", "browser-root-unknown-seed", "browser-root-unknown-resume"]), z.uuid().optional()]).parse(process.argv.slice(2));
 const { WorkerRuntimeLifetimeLock, isOfflineMaintenanceOperationActive } = await import("../../../src/backend/storage/admission/lifetime-lock.js");
 const { acquireSharedRuntimeAdmission, RuntimeAdmission } = await import("../../../src/backend/storage/admission/admission.js");
 const { createCanonicalCredentials, captureStoppedCanonicalCredentialHead } = await import("../../../src/backend/storage/configuration/canonical-credential-store.js");
@@ -342,7 +342,10 @@ async function runSetupProtectedClose(): Promise<void> {
 }
 
 try {
-  if (scenario.startsWith("authenticated-upgrade-")) {
+  if (scenario.startsWith("browser-root-")) {
+    const { runBrowserRootRetentionCase } = await import("./browser-root-retention.js");
+    await runBrowserRootRetentionCase({ scenario, workspace, nonce: z.uuid().parse(crashNonce) });
+  } else if (scenario.startsWith("authenticated-upgrade-")) {
     const { runAuthenticatedUpgradeRetentionCase } = await import("./authenticated-upgrade-retention-cases.js");
     await runAuthenticatedUpgradeRetentionCase({ scenario, workspace, nonce: z.uuid().parse(crashNonce) });
   } else if (scenario === "worker-native-open") await runWorkerNativeOpening();
@@ -351,7 +354,8 @@ try {
   else if (scenario === "stopped-control-snapshot-disposal") await runStoppedSnapshot();
   else await runCurrent();
   lifetime.assertHeld();
-  process.send({ scenario, assertionsComplete: true, ...(scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("authenticated-upgrade-") ? { nonce: z.uuid().parse(crashNonce) } : {}) });
+  process.send({ scenario, assertionsComplete: true, ...(scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("authenticated-upgrade-") || scenario.startsWith("browser-root-") ? { nonce: z.uuid().parse(crashNonce) } : {}),
+    ...(scenario === "browser-root-unknown-seed" ? { keychain: FakeKeyringEntry.snapshot() } : {}) });
 } catch (error) {
   const name = error instanceof Error && ["AssertionError", "TypeError", "RangeError", "SyntaxError"].includes(error.name) ? error.name : "Error";
   const locations = error instanceof Error ? (error.stack ?? "").split("\n").slice(1).flatMap(line => {
@@ -359,7 +363,28 @@ try {
     const match = /(?:^|\/)((?:tests|src)\/[A-Za-z0-9_./-]+\.(?:[cm]?js|tsx?):[1-9]\d*:[1-9]\d*)\)?$/u.exec(line.replaceAll("\\", "/").trim());
     return match?.[1] === undefined || match[1].length > 240 ? [] : [match[1]];
   }).slice(0, 8) : [];
-  process.send({ scenario, assertionsComplete: false, failure: { name, locations } });
+  const pending = [error], seen = new Set<unknown>(), causes = new Set<string>();
+  const names = new Set(["Error", "AssertionError", "TypeError", "RangeError", "SyntaxError", "TimeoutError", "NativeBrowserClosureUnprovedError", "BrowserLaunchUncertainError", "ProfileCustodyUnavailableError", "BrowserRootUnavailableError"]);
+  while (pending.length > 0) {
+    const failure = pending.pop(); if (seen.has(failure)) continue; seen.add(failure);
+    if (failure instanceof Error) {
+      if (names.has(failure.name)) causes.add(failure.name);
+      if (failure.message === "runtime-control: profile-registry-observation-changed") causes.add("profile-registry-observation-changed");
+      if (/Timeout [0-9]+ms exceeded/u.test(failure.message)) causes.add("native-launch-timeout");
+      const nativeTiming: unknown = Reflect.get(failure, "relayNativeProbeTiming");
+      if (nativeTiming !== undefined) {
+        const timing = z.strictObject({ attempt: z.number().int().min(1).max(2), elapsedMs: z.number().int().safe().nonnegative(),
+          spawnObserved: z.boolean(), exitObserved: z.boolean() }).parse(nativeTiming);
+        causes.add(`native-probe-${timing.attempt}-launch-${timing.elapsedMs}ms`);
+        causes.add(timing.spawnObserved ? "native-spawn-observed" : "native-spawn-unreported");
+        causes.add(timing.exitObserved ? "native-exit-observed" : "native-exit-unreported");
+      }
+      if ("code" in failure && ["EACCES", "EPERM", "ENOENT", "ETIMEDOUT", "EBUSY"].includes(String(failure.code))) causes.add(String(failure.code));
+      pending.push(failure.cause);
+    }
+    if (failure instanceof AggregateError) { const nested: readonly unknown[] = failure.errors; pending.push(...nested); }
+  }
+  process.send({ scenario, assertionsComplete: false, failure: { name, locations, causes: [...causes] } });
 }
 
 
@@ -655,12 +680,17 @@ async function runLogout(): Promise<void> {
     }
   };
   if (scenario === "logout-browser-busy" || scenario === "logout-browser-unproved") {
-    const { profileBrowserClosure, BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } = await import("../../../src/backend/runtime/browser/native-profile-probe.js");
+    const { profileBrowserClosure } = await import("../../../src/backend/runtime/browser/profile-browser-closure.js");
+    const { BrowserProfileStillClosingError } = await import("../../../src/workflow-kit/session.js");
+    const { NativeBrowserClosureUnprovedError } = await import("../../../src/backend/runtime/browser/native-browser.js");
     const refusal = scenario === "logout-browser-busy" ? new BrowserProfileStillClosingError(new Error("synthetic native busy"))
       : new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
     let probes = 0;
-    profileBrowserClosure.probeClosed = async profiles => {
-      probes++; assert.deepEqual(profiles, []);
+    profileBrowserClosure.probeClosed = async (profiles, _timing, _clock, _signal, owner) => {
+      probes++; assert.deepEqual(profiles, []); assert.ok(owner instanceof RuntimeAdmission);
+      assert.equal(owner.stateRoot, join(root, "profiles", profileId));
+      assert.equal(owner.lifetime, controller);
+      assert.deepEqual(owner.assertPendingLogoutSettlementDatabase(join(owner.stateRoot, "state.db")), readOperation());
       throw refusal;
     };
     startLogout();

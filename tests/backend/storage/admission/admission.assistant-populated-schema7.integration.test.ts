@@ -1,5 +1,5 @@
-import { retainedBrowserProfiles } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { retainedBrowserProfiles } from "../../../../src/backend/storage/maintenance/profile-custody.js";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";

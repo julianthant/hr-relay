@@ -1,8 +1,8 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { withOfflineMaintenance, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { once } from "node:events";
 import { z } from "zod";
@@ -105,7 +105,7 @@ try {
     const { AuthorityDatabase } = await import(${JSON.stringify(url("src/backend/storage/sqlite/authority-database.ts"))});
     const { AuthorityBackupService } = await import(${JSON.stringify(url("src/backend/storage/sqlite/backup-service.ts"))});
     const { OfflineAuthorityRestoreService } = await import(${JSON.stringify(url("src/backend/storage/sqlite/offline-restore.ts"))});
-    const { profileBrowserClosure } = await import(${JSON.stringify(url("src/backend/runtime/browser/native-profile-probe.ts"))});
+    const { profileBrowserClosure } = await import(${JSON.stringify(url("src/backend/runtime/browser/profile-browser-closure.ts"))});
     const { observeRuntimeLockSnapshot } = await import(${JSON.stringify(url("src/backend/storage/sqlite/runtime-process-locks.ts"))});
 
     const { createCredentialStore } = await import(${JSON.stringify(url("src/backend/storage/configuration/credential-store.ts"))});

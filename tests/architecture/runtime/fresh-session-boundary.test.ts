@@ -73,8 +73,7 @@ describe("fresh session boundary", () => {
       .map(({ path }) => path)
       .sort();
     assert.deepEqual(resetCallers, [
-      "src/backend/runtime/browser/browser-session-factory.ts",
-      "src/backend/runtime/browser/native-profile-probe.ts",
+      "src/backend/runtime/browser/native-browser.ts",
       "src/workflow-kit/session.ts",
     ]);
     const loop = readFileSync(join(REPO_ROOT, "src/backend/runtime/workers/worker-loop.ts"), "utf8");

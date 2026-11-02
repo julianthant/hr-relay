@@ -1,10 +1,12 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { BrowserProfileStillClosingError } from "../../../../src/workflow-kit/session.js";
 import { reconcileStoppedLogout } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
 import { RuntimeLifetimeLock, RuntimeAlreadyRunningError, type OfflineMaintenanceOperation, isOfflineMaintenanceOperationActive } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
-import { profileBrowserClosure, BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-browser.js";
 import * as nativeBrowserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { z } from "zod";
@@ -711,7 +713,7 @@ describe("profile restore continuity", () => {
         import { createProfileRegistry } from './src/backend/profiles/registry.ts';
         import { createCredentialStore } from './src/backend/storage/configuration/credential-store.ts';
         import { OfflineAuthorityRestoreService } from './src/backend/storage/sqlite/offline-restore.ts';
-        import { profileBrowserClosure } from './src/backend/runtime/browser/native-profile-probe.ts';
+        import { profileBrowserClosure } from './src/backend/runtime/browser/profile-browser-closure.ts';
         import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
         import { reconcileStoppedLogout } from './src/backend/runs/lifecycle/startup-crash-recovery.ts';
                 import { acquireRuntimeProcessLock, observeRuntimeLockSnapshot } from "./src/backend/storage/sqlite/runtime-process-locks.ts";

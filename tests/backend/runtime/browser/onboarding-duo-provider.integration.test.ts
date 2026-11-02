@@ -1,3 +1,5 @@
+import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
+import { DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, realpathSync } from "node:fs";
@@ -21,15 +23,23 @@ for (const pendingClose of [false, true]) it(pendingClose
   ? "real synthetic MV3 pending software-key attempt retains UNKNOWN across whole-window closure and reopen"
   : "real Relay UI and private draft log in once in a separate same-window Duo tab and keep method attempts separate", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "onboarding-launch-")));
-  const browserRoot = join(root, "browsers"); mkdirSync(browserRoot, { mode: 0o700 });
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(root, file));
   const lifetime = await runtimeLifetimeLock();
   const machine = acquireEntrypointAdmission(root, "exclusive", lifetime);
+  const browserRoot = join(machine.stateRoot, "browsers", "onboarding"); mkdirSync(browserRoot, { recursive: true, mode: 0o700 });
   const processLockRoot = join(root, rebuildRuntimeIsolation.processLockRoot); mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
-  let context: BrowserContext | undefined, launches = 0, acquisitions = 0, submissions = 0;
+  let context: BrowserContext | undefined, launches = 0, acquisitions = 0, submissions = 0, nativeProbes = 0, nativeClosures = 0;
+  const nativeContexts = new Set<BrowserContext>();
   let owner: DraftDuoBrowserOwner | undefined;
-  const provider = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: realpathSync(join(process.cwd(), "fast-duo")), clock: systemClock, closeProofMs: 5000,
+  const provider = createProfileOnboardingDuoProvider({ browserRoots: createBrowserRoots(machine), browserRoot, extensionDirectory: realpathSync(join(process.cwd(), "fast-duo")), clock: systemClock, closeProofMs: 5000,
     launcher: { async launch(input) {
+      if (input.nativeOnly === true) {
+        assert.equal(input.headless, true); assert.equal(input.extensionDirectory, ""); assert.equal(input.acceptDownloads, false);
+        nativeProbes++;
+        const probe = await DEFAULT_BROWSER_LAUNCHER.launch(input); nativeContexts.add(probe);
+        probe.once("close", () => { nativeClosures++; nativeContexts.delete(probe); });
+        return probe;
+      }
       launches++; assert.equal(input.headless, false);
       // Full Chromium exercises the synthetic extension UI without a desktop session.
       context = await chromium.launchPersistentContext(input.profileDirectory, { channel: "chromium", headless: true,
@@ -157,6 +167,8 @@ for (const pendingClose of [false, true]) it(pendingClose
       assert.ok(owner); const stale = owner; assert.throws(() => stale.assertCurrent()); await assert.rejects(stale.acquireCredentials());
       assert.equal(machine.readProfileRegistry().profiles.length, 0);
     }
+    assert.equal(launches, pendingClose ? 3 : 2); assert.equal(nativeProbes, launches);
+    assert.equal(nativeClosures, nativeProbes); assert.equal(nativeContexts.size, 0);
   } catch (error) { failure = error; }
   try { await profile.close(); }
   catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], "onboarding fixture and cleanup failed"); }

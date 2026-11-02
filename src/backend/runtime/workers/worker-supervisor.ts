@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import { WorkerRetirementProofSchema, type WorkerRetirementProof } from "../../../models/run/worker-slot.js";
 import { mintWorkerSupervisorEffect, type WorkerSupervisorEffect } from "../../storage/sqlite/worker-control.js";
 import { WorkerLifecycleBindingSchema, type WorkerLifecycleBinding } from "../../../models/run/worker-control.js";
@@ -45,6 +46,7 @@ export interface WorkerProcessSpawnRequest {
 
 
 export interface SpawnedWorkerHandle {
+  readonly nativeProcess?: ChildProcess;
   readonly pid: number | undefined;
   kill(signal: "SIGTERM" | "SIGKILL"): boolean;
   onExit(listener: (code: number | null, signal: string | null) => void): void;
@@ -87,6 +89,8 @@ export interface WorkerCliLaunchSpec {
   readonly cwd: string;
 }
 
+export type WorkerRetirement = Readonly<{ proof: WorkerRetirementProof; assertCurrent(): void }>;
+
 export interface DashboardWorkerSupervisorDependencies {
   readonly launch: WorkerCliLaunchSpec;
   readonly admission?: (request: WorkerSupervisorRequest) => void;
@@ -102,7 +106,7 @@ export interface DashboardWorkerSupervisorDependencies {
 
   readonly standingRecoverySettled?: (commandId: string) => boolean;
   readonly assertStoppedLifetime?: (member: WorkerPoolMember, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>) => void;
-  readonly proveRetirement: (member: WorkerPoolMember) => WorkerRetirementProof;
+  readonly proveRetirement: (member: WorkerPoolMember, child?: SpawnedWorkerHandle) => WorkerRetirement | Promise<WorkerRetirement>;
   readonly onFault: (error: Error) => void;
   readonly onExit: (member: WorkerPoolMember, pid: number | undefined, valid: () => boolean) => void;
 }
@@ -836,7 +840,9 @@ export function createDashboardWorkerProcessSupervisor(
           void record.exitObserved.then(() => { timeout.cancel(); resolve(); });
         });
       }
-      const proof = WorkerRetirementProofSchema.parse(deps.proveRetirement(member));
+      const retirement = await deps.proveRetirement(member, record?.child);
+      retirement.assertCurrent();
+      const proof = WorkerRetirementProofSchema.parse(retirement.proof);
       if (proof.workerId !== member.workerId || proof.membershipRevision !== member.membershipRevision) throw new Error("worker-retirement-proof-identity-mismatch");
       facts.push({ member, stage: "retired", proof });
     }
@@ -956,12 +962,14 @@ export function createDashboardWorkerProcessSupervisor(
       } else if (record.state !== "exited" || record.exit?.reportedBy !== "os"
         || record.pid !== binding.lifetime.processId || record.leaseStartedAt !== binding.lifetime.startedAt
         || canonicalJsonStringify(record.member) !== canonicalJsonStringify(member) || deps.leases.observe(member.workerId) !== undefined) throw new WorkerControlRefusal("worker-retry-death-unproved");
-      deps.proveRetirement(member);
+      const retirement = await deps.proveRetirement(member, record?.child);
+      retirement.assertCurrent();
       const request = { command: "spawn-worker" as const, member, commandId };
       await deps.prepareAdmission?.(request);
       if (closed || draining !== undefined) throw new WorkerControlRefusal("worker-lifecycle-supervisor-unavailable");
       if (records.get(member.workerId) !== record || record !== undefined && (record.state !== "exited" || record.exit?.reportedBy !== "os")) throw new WorkerControlRefusal("worker-retry-owner-changed");
       if (record === undefined) deps.assertStoppedLifetime?.(member, binding.lifetime);
+      retirement.assertCurrent();
       deps.admission?.(request);
       await spawnWorker(member, commandId);
       const born = requireLiveOwnedChild("spawn-worker", member);
@@ -1010,8 +1018,13 @@ export function createDashboardWorkerProcessSupervisor(
       });
       if (owned.recoveryFailure !== undefined) throw owned.recoveryFailure;
       if (owned.exit?.reportedBy !== "os") throw new WorkerControlRefusal("worker-removal-death-unproved");
-      const retirement = WorkerRetirementProofSchema.parse(deps.proveRetirement(member));
-      return mintWorkerSupervisorEffect(binding, { kind: "remove", retirement }, () => records.get(member.workerId) === owned && owned.state === "exited" && owned.exit?.reportedBy === "os");
+      const retirement = await deps.proveRetirement(member, owned.child);
+      retirement.assertCurrent();
+      const proof = WorkerRetirementProofSchema.parse(retirement.proof);
+      return mintWorkerSupervisorEffect(binding, { kind: "remove", retirement: proof }, () => {
+        retirement.assertCurrent();
+        return records.get(member.workerId) === owned && owned.state === "exited" && owned.exit?.reportedBy === "os";
+      });
     },
     async retryWorker(input: WorkerLifecycleBinding): Promise<WorkerSupervisorEffect> {
       const { binding, born, birth } = await spawnReplacement(input), member = binding.member;

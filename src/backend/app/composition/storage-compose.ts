@@ -1,3 +1,5 @@
+import { createNativeBrowserProbe } from "../../runtime/browser/native-browser.js";
+import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
 import { LogoutOperationSchema, type LogoutOperation } from "../../../models/profiles/profile.js";
 import { readPrivateFile } from "../../storage/configuration/credential-safe-file.js";
 import { reconcileExitedWorker, reconcileStoppedLogout } from "../../runs/lifecycle/startup-crash-recovery.js";
@@ -5,7 +7,6 @@ import { runClaim } from "../../../models/run/record.js";
 import { prepareStoppedBackupClosure, StorageBackupClosureUnprovedError, type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
 import { isOfflineMaintenanceOperationActive, OfflineMaintenanceOperationUnavailableError, type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { type AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
-import { profileBrowserClosure } from "../../runtime/browser/native-profile-probe.js";
 import { assertProfileBrowserRoot, composeProfileClosureInventory } from "./profile-credential-inventory.js";
 import { createAssistantAuthorization } from "../../assistant/authorization.js";
 import type { CommandKernel } from "../../runs/commands/command-kernel.js";
@@ -585,7 +586,7 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
 
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
-  "       storage backup [--json]  verified SQLite backup; stopped flat native6 includes private coupled companions",
+  "       storage backup [--json]  verified person SQLite backup or stopped flat native6 byte archive",
   "       storage upgrade [--plan] [--machine-control] [--timeline-from <verified-copy-directory>] [--json]",
   "       storage cancel-queued-runs --plan [--json]",
   "       storage cancel-queued-runs --capture <digest> --apply [--json]",
@@ -957,7 +958,7 @@ async function repairSpanRootCommand(
       processLockRoot,
       busyTimeoutMs: 5000,
     }, clock);
-    const report = service.repair({ runId }, operation);
+    const report = await service.repair({ runId }, operation);
     return {
       output: json ? JSON.stringify(report, null, 2) : formatSpanRootRepairReport(report),
       exitCode: 0,
@@ -1046,19 +1047,22 @@ export async function prepareStorageBackupCommand(
             ? await (await import("../../storage/maintenance/existing-data-backup.js")).backupFlatStorage(closure, storage, clock)
             : await backupStoppedAuthority(closure, storage, stateRoot, clock, join(repoRoot, isolation.processLockRoot), operation);
           selected?.assertCurrent();
-          const manifest = report.manifests.at(-1);
-          if (manifest === undefined) throw new Error("verified backup run reported no manifest");
-          outcome = {
-            output: json
-              ? JSON.stringify(report, null, 2)
-              : [
-                  `backup: verified — ${manifest.backupFileName}`,
-                  `  generation ${String(manifest.authorityGeneration)}, ${String(manifest.byteSize)} bytes, sha256 ${manifest.sha256}`,
-                  `  manifest ${manifest.backupFileName}.manifest.json${"coupledBackup" in report ? "" : " (restore with: storage restore --from <that manifest>)"}`,
-                  ...("coupledBackup" in report ? [`  private coupled companions: ${report.coupledBackup.backupPath}; no flat data is carried into sign-up`] : []),
-                ].join("\n"),
-            exitCode: 0,
-          };
+          if ("kind" in report) {
+            outcome = { output: json ? JSON.stringify(report, null, 2) : [
+              "flat archive: verified",
+              `  ${String(report.archive.fileCount)} files, ${String(report.archive.byteSize)} bytes, sha256 ${report.archive.backupDigest}`,
+              `  receipt ${report.archive.backupPath}`,
+              "  immutable historical bytes; no person restore or adoption",
+            ].join("\n"), exitCode: 0 };
+          } else {
+            const manifest = report.manifests.at(-1);
+            if (manifest === undefined) throw new Error("verified backup run reported no manifest");
+            outcome = { output: json ? JSON.stringify(report, null, 2) : [
+              `backup: verified — ${manifest.backupFileName}`,
+              `  generation ${String(manifest.authorityGeneration)}, ${String(manifest.byteSize)} bytes, sha256 ${manifest.sha256}`,
+              `  manifest ${manifest.backupFileName}.manifest.json (restore with: storage restore --from <that manifest>)`,
+            ].join("\n"), exitCode: 0 };
+          }
         }
       } catch (error) {
         if (hasUnprovedSourceClosure(error)) {
@@ -1108,9 +1112,9 @@ export async function composeStorageCommand(
         const { composeStoppedControlCredentialInventory } = await import("./profile-credential-inventory.js");
         const { hostConfigFacts } = await import("../../../models/config/host-display.js");
         const { workerBootstrapEnvironment } = await import("../../../models/config/secrets.js");
-        const report = await upgradeStoppedMachineControl(admission, { plan: rest.includes("--plan"), hostFacts: hostConfigFacts(workerBootstrapEnvironment()) }, clock, composeStoppedControlCredentialInventory);
+        const report = await upgradeStoppedMachineControl(admission, { plan: rest.includes("--plan"), hostFacts: hostConfigFacts(workerBootstrapEnvironment()) }, clock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
         operation.release();
-        return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: machine-control ${report.state} (${String(report.profileCount)} profiles)\nruntime access: ${report.runtimeAccess}`, exitCode: 0 };
+        return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: machine-control ${report.state} (${String(report.profileCount)} profiles)\nruntime access: ${report.runtimeAccess}${report.state === "planned" ? "\nBrowser closure will be checked when the upgrade runs." : ""}`, exitCode: 0 };
       }
       const { upgradeStorage } = await import("../../storage/maintenance/upgrade.js");
       const report = await upgradeStorage(profileBrowserClosure, admission,{ stateRoot: admission.stateRoot,

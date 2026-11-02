@@ -154,6 +154,7 @@ describe("real processes: two children supervised concurrently through the compo
       const events: PoolEffectEvent[] = [];
       const spawn = realStubSpawner(owner.records, profile.lifetime);
       const control = composeWorkerProcessControl({
+    admission: profile.admission,
     onExit: () => undefined,
         profileRoot: resolved.config.paths.browserProfileRoot,
         database, clock: systemClock, scheduler: createTimeoutDeadlineScheduler(systemClock),

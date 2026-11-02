@@ -20,6 +20,7 @@ export const ERROR_CATALOG = Object.freeze({
   PRIVATE_FILE_LOCK_UNAVAILABLE: catalogEntry("Local storage is busy with another operation. Wait for that operation to finish before trying again.", EmptyParametersSchema),
   RUN_CRASH_RESOURCES_RELEASED: catalogEntry("Resources held by an interrupted worker were released.", EmptyParametersSchema),
   BROWSER_CLOSURE_UNPROVED: catalogEntry("Browser closure could not be verified. No file replacement or credential erasure has started.", EmptyParametersSchema),
+  BROWSER_ROOT_UNAVAILABLE: catalogEntry("Browser ownership could not be verified. The browser and its files remain unavailable until stopped recovery succeeds.", EmptyParametersSchema),
   BROWSER_PROFILE_STILL_CLOSING: catalogEntry("The browser profile is still in use or closing. Wait for it to close before continuing.", EmptyParametersSchema),
   LIVE_SMOKE_VERIFICATION_REFUSED: catalogEntry("Browser verification could not finish safely. Preserve its saved state and resolve the refusal before trying again.", EmptyParametersSchema),
   STARTUP_CRASH_RECOVERY_REFUSED: catalogEntry("Saved runs and writes could not be reconciled after interruption. Preserve their state and resolve the refusal before starting work.", EmptyParametersSchema),

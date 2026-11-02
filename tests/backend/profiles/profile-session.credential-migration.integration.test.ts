@@ -1,3 +1,4 @@
+import { createNativeBrowserProbe } from "../../../src/backend/runtime/browser/native-browser.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -48,7 +49,7 @@ for (const format of [2, 3] as const) {
       maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
       const before = storageTree(f.workspace), keys = keySnapshot();
       await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock,
-        composeStoppedControlCredentialInventory), error => containsCode(error, "CREDENTIAL_CONVERSION_UNSUPPORTED"));
+        composeStoppedControlCredentialInventory, createNativeBrowserProbe), error => containsCode(error, "CREDENTIAL_CONVERSION_UNSUPPORTED"));
       assert.deepEqual(storageTree(f.workspace), before); assert.equal(keySnapshot(), keys);
       assert.equal(z.looseObject({ schemaVersion: z.number().int() }).parse(JSON.parse(readFileSync(f.protectedPath, "utf8"))).schemaVersion, format);
     } finally { maintenance?.release(); await f.close(); }
@@ -62,7 +63,7 @@ it("holds an explicitly unsupported historical wiped row before publishing a can
     const before = storageTree(f.workspace), keys = keySnapshot();
     maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
     await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock,
-      composeStoppedControlCredentialInventory), error => containsCode(error, "CREDENTIAL_CONVERSION_UNSUPPORTED"));
+      composeStoppedControlCredentialInventory, createNativeBrowserProbe), error => containsCode(error, "CREDENTIAL_CONVERSION_UNSUPPORTED"));
     assert.deepEqual(storageTree(f.workspace), before); assert.equal(keySnapshot(), keys);
   } finally { maintenance?.release(); await f.close(); }
 });

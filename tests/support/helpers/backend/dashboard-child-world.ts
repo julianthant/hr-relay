@@ -96,10 +96,11 @@ export function createDashboardChildTestWorld(releaseAdmissionFixtures: () => vo
       };
       records.push(record);
       let transfer: Promise<void>;
-      try { transfer = lifetime.share(child); }
+      try { transfer = lifetime.share(child); lifetime.observeOwnedChildClosure(child); }
       catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }
       void transfer.catch(error => { child.kill("SIGKILL"); child.emit("error", error); });
       return Object.freeze({
+        nativeProcess: child,
         pid: child.pid,
         kill: (signal: "SIGTERM" | "SIGKILL"): boolean => child.kill(signal),
         onExit: (listener: (code: number | null, signal: string | null) => void): void => {

@@ -143,19 +143,19 @@ export class RuntimeAdmission {
   readonly #mode: "shared" | "exclusive" | "synthetic";
   #released = false;
   readonly #sourceFailures = new Set<unknown>();
-  #stoppedControlInventory: StoppedControlProfileInventory | undefined;
+  #stoppedControlInventory: Readonly<{ claim: StoppedControlProfileInventory; source: ReturnType<typeof requireStoppedControlProfileInventory> }> | undefined;
   #stoppedLogout: { operation: LogoutOperation; restore: OfflineMaintenanceOperation; witness: ReturnType<InstallationLease["capturePendingProfileLogout"]> } | undefined;
   readonly #profileBinding: ProfileDatabaseBinding | undefined;
   readonly #profileParent: RuntimeAdmission | undefined;
   readonly #pendingLogout: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }> | undefined;
   readonly #readyUpgrade: ReadyProfileUpgrade | undefined;
-  readonly #flatBackup: ReadyProfileUpgrade | undefined;
+  readonly #flatBackup: Readonly<{ sourcePath: string; processLockRoot: string }> | undefined;
 
   private constructor(token: typeof issuanceToken, authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
     authorityDatabasePaths: readonly string[],
     scope: AdmissionScope,
     mode: "shared" | "exclusive" | "synthetic", locator?: RuntimeLocator, binding?: ProfileDatabaseBinding, profileParent?: RuntimeAdmission,
-    pendingLogout?: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }>, readyUpgrade?: ReadyProfileUpgrade, flatBackup?: ReadyProfileUpgrade) {
+    pendingLogout?: Readonly<{ owner: RuntimeAdmission; operation: string; copyPath?: string }>, readyUpgrade?: ReadyProfileUpgrade, flatBackup?: Readonly<{ sourcePath: string; processLockRoot: string }>) {
     if (token !== issuanceToken) throw new Error("runtime-admission: unissued capability");
     this.#authority = authority;
     this.#stateRoot = stateRoot;
@@ -326,8 +326,9 @@ export class RuntimeAdmission {
       const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
       assertUnpublishedSource();
       const before = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
-      const { readStoppedProfileUpgradeInventory } = await import("../maintenance/profile-inventory.js");
+      const { readStoppedProfileUpgradeInventory, probeStoppedProfileBrowsersClosed } = await import("../maintenance/profile-inventory.js");
       assertUnpublishedSource();
+      await probeStoppedProfileBrowsersClosed(admission, clock, browserClosure);
       readStoppedProfileUpgradeInventory({ machine: this, admission, clock, hostFacts, browserClosure });
       const after = AuthorityDatabase.inspectStoppedUpgrade(admission, path, processLockRoot, clock);
       if (before.schemaVersion !== observed.schemaVersion || before.authorityGeneration !== after.authorityGeneration
@@ -351,6 +352,12 @@ export class RuntimeAdmission {
     if (path !== this.#flatBackup.sourcePath || processLockRoot !== this.#flatBackup.processLockRoot) throw new Error("flat-backup-source-refused");
   }
   isFlatBackup(): boolean { this.assertLive(); return this.#scope === "flat-backup"; }
+  flatBackupTiming() {
+    this.assertLive();
+    const parent = this.#profileParent;
+    if (!this.isFlatBackup() || parent === undefined || parent.#scope !== "installation") throw new Error("flat-backup-authority-required");
+    return (parent.#authority as InstallationLease).readFlatStartCleanIntent()?.timing;
+  }
   assertStoppedProfileUpgrade(path: string, processLockRoot: string): void {
     if (this.#scope === "profile-maintenance") {
       this.assertReadOnlyAuthorityDatabase(path);
@@ -390,7 +397,7 @@ export class RuntimeAdmission {
   }
   #stoppedControlBackupPath(path: string): boolean {
     if (this.#scope !== "stopped-control-inventory" || this.#stoppedControlInventory === undefined) return false;
-    const source = requireStoppedControlProfileInventory(this.#stoppedControlInventory), directory = source.backupDirectory;
+    const source = requireStoppedControlProfileInventory(this.#stoppedControlInventory.claim), directory = source.backupDirectory;
     return isAbsolute(path) && resolve(path) === path && (path === directory || dirname(path) === directory
       && /^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite(?:\.manifest\.json)?)$/u.test(basename(path)));
   }
@@ -408,7 +415,8 @@ export class RuntimeAdmission {
       this.assertStateRoot(path);
       return;
     }
-    const backup = this.#flatBackup ?? this.#readyUpgrade;
+    if (this.#flatBackup !== undefined) throw new Error("flat-backup-archive-only");
+    const backup = this.#readyUpgrade;
     if (backup !== undefined) {
       this.assertLive();
       const directory = join(this.#stateRoot, "backups", "authority");
@@ -421,7 +429,8 @@ export class RuntimeAdmission {
     this.assertWritable();
   }
   assertAuthorityBackupSource(path: string, sourceFingerprint: string): void {
-    const backup = this.#flatBackup ?? this.#readyUpgrade;
+    if (this.#flatBackup !== undefined) throw new Error("flat-backup-archive-only");
+    const backup = this.#readyUpgrade;
     this.assertReadOnlyAuthorityDatabase(path);
     if (backup !== undefined) {
       const proof = backup.qualification.current;
@@ -435,12 +444,7 @@ export class RuntimeAdmission {
   authorityBackupExpectedSource(): AuthorityBackupExpectedSource {
     this.assertLive();
     const path = join(this.#stateRoot, "state.db");
-    if (this.#flatBackup !== undefined) {
-      const backup = this.#flatBackup, proof = backup.qualification.current;
-      if (backup.copyPath !== undefined || backup.sourceSchemaVersion !== 6 || proof.kind !== "qualified") throw new Error("authority-backup-source-unqualified");
-      this.assertAuthorityBackupSource(path, proof.sourceFingerprint);
-      return Object.freeze({ kind: "unbound-predecessor", schemaVersion: 6, authorityContentFingerprint: proof.sourceFingerprint });
-    }
+    if (this.#flatBackup !== undefined) throw new Error("flat-backup-archive-only");
     if (this.#scope === "profile-upgrade") {
       this.assertReadOnlyAuthorityDatabase(path);
       this.assertOfflineMaintenance(this.maintenanceOperation());
@@ -458,9 +462,10 @@ export class RuntimeAdmission {
     return Object.freeze({ kind: "profile", binding: this.#profileBinding });
   }
   profileMaintenanceSchemaVersion(): 6 | 8 | 9 | 10 | 11 {
-    const backup = this.#flatBackup ?? this.#readyUpgrade;
     this.assertLive();
-    if (this.#scope === "stopped-control-inventory" && this.#stoppedControlInventory !== undefined) return requireStoppedControlProfileInventory(this.#stoppedControlInventory).schemaVersion;
+    if (this.#flatBackup !== undefined) return 6;
+    const backup = this.#readyUpgrade;
+    if (this.#scope === "stopped-control-inventory" && this.#stoppedControlInventory !== undefined) return requireStoppedControlProfileInventory(this.#stoppedControlInventory.claim).schemaVersion;
     if (backup === undefined) return CURRENT_AUTHORITY_SCHEMA_VERSION;
     const observed = readProfileDatabaseBinding(backup.copyPath ?? backup.sourcePath);
     if (backup.sourceSchemaVersion === 6) {
@@ -544,6 +549,47 @@ export class RuntimeAdmission {
       throw new Error("profile-machine-authority-required");
     }
     return (this.#authority as InstallationLease).readProfileRegistry();
+  }
+  assertBrowserRegistryCustody(): void {
+    this.assertLive(); assertSourceClosuresProved(this.#sourceFailures);
+    this.#profileParent?.assertBrowserRegistryCustody();
+    this.lifetime.assertSourceCustody();
+  }
+  captureBrowserRegistryContext() {
+    this.assertLive();
+    let machine: RuntimeAdmission = this.#profileParent ?? this;
+    while (machine.#profileParent !== undefined) machine = machine.#profileParent;
+    if (machine.#scope !== "installation") throw new Error("browser-registry-installation-required");
+    const registry = machine.readProfileRegistry();
+    return Object.freeze({ machineRoot: machine.#stateRoot, installationId: machine.locator.installationId,
+      sessionGeneration: registry.sessionGeneration, profileId: this.#profileBinding?.profileId ?? null });
+  }
+  assertBrowserRegistryLaunch(profileId: string, signup?: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): void {
+    if (signup === undefined) {
+      this.assertProfileRuntime();
+      if (this.profileBinding.profileId !== profileId) throw new Error("browser-registry-profile-mismatch");
+      return;
+    }
+    const operation = this.#browserRegistrySignup(profileId, signup);
+    if (operation.phase !== "applying" || operation.onboarding?.abort !== undefined) throw new Error("browser-registry-signup-unavailable");
+  }
+  assertBrowserRegistryCleanup(profileId: string, signup: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): string {
+    return canonicalJsonStringify(this.#browserRegistrySignup(profileId, signup));
+  }
+  #browserRegistrySignup(profileId: string, signup: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): SignUpOperation {
+    this.#assertMachineRuntime();
+    const file = readPrivateFile(join(this.#stateRoot, "machine", "operations", `${z.uuid().parse(signup.operationId)}.json`), { label: "lock", maxBytes: 1_048_576 });
+    if (file === undefined) throw new Error("browser-registry-signup-unavailable");
+    const operation = SignUpOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+    if (operation.profileId !== profileId || operation.operationId !== signup.operationId
+      || !(operation.phase === "applying" || operation.phase === "publishing")
+      || operation.onboarding?.accountId !== signup.accountId || operation.onboarding.generation !== signup.providerGeneration) throw new Error("browser-registry-signup-unavailable");
+    return operation;
+  }
+  assertBrowserRegistryMaintenance(): OfflineMaintenanceOperation {
+    const operation = this.maintenanceOperation();
+    this.assertOfflineMaintenance(operation);
+    return operation;
   }
   publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument): void {
     this.#assertMachineRuntime();
@@ -978,7 +1024,8 @@ export class RuntimeAdmission {
     this.assertReadable();
     if (this.#scope === "stopped-incomplete-profile-inventory" && resolve(path) !== join(this.#stateRoot, "state.db")) throw new Error("profile-incomplete-inventory-path-refused");
     if (this.#scope === "stopped-control-inventory" && path === ":memory:") throw new Error("profile-control-upgrade-inspection-path-refused");
-    const backup = this.#flatBackup ?? this.#readyUpgrade;
+    if (this.#flatBackup !== undefined && path !== this.#flatBackup.sourcePath) throw new Error("flat-archive-database-path-refused");
+    const backup = this.#readyUpgrade;
     if (backup !== undefined) {
       if (path === ":memory:" || backup.copyPath !== undefined && path !== backup.copyPath) throw new Error("profile-stopped-upgrade-path-refused");
       if (backup.copyPath === undefined && path !== backup.sourcePath
@@ -1091,7 +1138,7 @@ export class RuntimeAdmission {
   readCompletedRestores(): readonly CompletedRestoreCustody[] {
     this.assertLive();
     if (this.#scope === "stopped-control-inventory" && this.#stoppedControlInventory !== undefined) {
-      const source = requireStoppedControlProfileInventory(this.#stoppedControlInventory);
+      const source = requireStoppedControlProfileInventory(this.#stoppedControlInventory.claim);
       source.revalidateSource();
       return [];
     }
@@ -1410,14 +1457,13 @@ export class RuntimeAdmission {
     const issued = requireStoppedControlProfileInventory(value);
     const admission = new RuntimeAdmission(issuanceToken, { assertHeld: issued.assertHeld, readInstallationContext: issued.readInstallationContext, retainSourceClosure: issued.retainSourceClosure, release() {} },
       issued.stateRoot, issued.artifactRoot, [join(issued.stateRoot, "state.db")], "stopped-control-inventory", "exclusive", issued.locator, issued.binding);
-    admission.#stoppedControlInventory = value;
+    admission.#stoppedControlInventory = { claim: value, source: issued };
     return admission;
   }
   readStoppedControlCredentialInventorySource(claim: StoppedControlProfileInventory): ReturnType<typeof requireStoppedControlProfileInventory> {
     requireRuntimeAdmission(this);
-    if (this.#scope !== "stopped-control-inventory" || this.#stoppedControlInventory !== claim) throw new Error("stopped-control-inventory-unissued");
-    this.assertLive();
-    return requireStoppedControlProfileInventory(claim);
+    if (this.#scope !== "stopped-control-inventory" || this.#stoppedControlInventory?.claim !== claim) throw new Error("stopped-control-inventory-unissued");
+    return this.#stoppedControlInventory.source;
   }
   #installationRootLifetime(): RuntimeLifetimeLock {
     this.assertLive();
@@ -1473,29 +1519,54 @@ export class RuntimeAdmission {
     const { lease, restore } = this.#stoppedMachineMaintenance();
     try {
       if (!lease.flatStoreMigrationPending()) {
-        lease.eraseFlatStoreCredentials(restore);
-        const backup = await this.forStoppedFlatBackup();
-        const { backupFlatStorage } = await import("../maintenance/existing-data-backup.js");
-        const { prepareStoppedBackupClosure } = await import("../maintenance/profile-inventory.js");
-        const closure = await prepareStoppedBackupClosure(browserClosure, backup, restore, systemClock,
-          join(lease.readInstallationContext().workspace, rebuildRuntimeIsolation.processLockRoot));
-        await backupFlatStorage(closure, backup, systemClock);
+        const { captureFlatArchiveSource } = await import("../maintenance/existing-data-backup-files.js");
+        const { assertFlatStartCleanCredentials } = await import("../maintenance/flat-start-clean.js");
+        assertFlatStartCleanCredentials(captureFlatArchiveSource({ workspace: lease.readInstallationContext().workspace,
+          stateRoot: this.stateRoot, installationId: this.locator.installationId, operationId: restore.operationId }).document);
       }
-      lease.startCleanFlatStore(restore);
+      const backup = await this.#forStoppedFlatSource();
+      const { prepareStoppedBackupClosure, assertStoppedBackupClosure, flatBackupBrowserCensus } = await import("../maintenance/profile-inventory.js");
+      const closure = await prepareStoppedBackupClosure(browserClosure, backup, restore, systemClock,
+        join(lease.readInstallationContext().workspace, rebuildRuntimeIsolation.processLockRoot));
+      const current = () => { assertStoppedBackupClosure(closure, backup, restore); };
+      if (!lease.flatStoreMigrationPending()) {
+        const { backupFlatStorage } = await import("../maintenance/existing-data-backup.js");
+        await backupFlatStorage(closure, backup, systemClock);
+        const { timing } = flatBackupBrowserCensus(backup.stateRoot, restore, systemClock);
+        current(); lease.prepareFlatStartClean(restore, timing);
+      }
+      await lease.startCleanFlatStore(restore, backup, closure);
     } catch (error) {
-      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: this });
+      if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission: this });
       throw new ProfileFlatStoreMigrationError(error);
     }
   }
   async forStoppedFlatBackup(): Promise<RuntimeAdmission> {
+    const { lease } = this.#stoppedMachineMaintenance();
+    if (lease.flatStoreMigrationPending()) throw new Error("flat-start-clean-pending");
+    return this.#forStoppedFlatSource();
+  }
+  async #forStoppedFlatSource(): Promise<RuntimeAdmission> {
     const { lease, restore } = this.#stoppedMachineMaintenance(), context = lease.readInstallationContext();
     const root = join(context.workspace, rebuildRuntimeIsolation.stateRoot), path = join(root, "state.db");
     const processLockRoot = join(context.workspace, rebuildRuntimeIsolation.processLockRoot);
     const ancestry = new Map<string, DirectoryIdentity>();
     noSymlinkAncestry(root, ancestry); noSymlinkAncestry(join(root, "artifacts"), ancestry);
+    const { assertFlatStartCleanFiles, readFlatStartCleanSource } = await import("../maintenance/flat-start-clean.js");
+    let cleanupIdentity: string | undefined;
     const assertSource = () => {
       this.assertLive(); assertStoppedMachineMaintenance(lease, restore);
+      if (this.stateRoot !== root || this.artifactRoot !== join(root, "artifacts")) throw new Error("flat-backup-source-refused");
       if (!noSymlinkAncestry(root, ancestry) || !noSymlinkAncestry(join(root, "artifacts"), ancestry)) throw new Error("flat-backup-source-changed");
+      const pending = lease.readFlatStartCleanIntent();
+      if (pending !== undefined) {
+        const { cursor: _cursor, pending: _pending, phase: _phase, result: _result, ...identity } = pending;
+        const current = canonicalJsonStringify(identity);
+        if (cleanupIdentity !== undefined && current !== cleanupIdentity) throw new Error("flat-start-clean-intent-changed");
+        cleanupIdentity = current;
+        assertFlatStartCleanFiles(readFlatStartCleanSource(context.workspace, this.locator.installationId, pending), pending);
+        return;
+      }
       if (this.stateRoot !== root || this.artifactRoot !== join(root, "artifacts")
         || ["machine", "profiles"].some(name => existsSync(join(root, name)))
         || ["profile-registry.json", "profile-flat-claim.json", "profile-publication.json", "profile-owner-claims"].some(name => existsSync(join(context.workspace, ".tracker", "control", name)))) throw new Error("flat-backup-source-refused");
@@ -1510,22 +1581,20 @@ export class RuntimeAdmission {
         size: info.size, modified: info.mtimeMs, changed: info.ctimeMs };
       return { sourcePath, before: canonicalJsonStringify(identity(value?.stat) ?? null), identity };
     });
-    const qualification: ReadyProfileUpgrade["qualification"] = { current: { kind: "inspection" } };
     const assertHeld = () => {
       assertSource();
+      if (lease.flatStoreMigrationPending()) return;
       for (const source of sources) if (canonicalJsonStringify(source.identity(lstatSync(source.sourcePath, { throwIfNoEntry: false })) ?? null) !== source.before) throw new Error("flat-backup-source-changed");
     };
     const child = new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release: () => this.release() },
       root, join(root, "artifacts"), [path], "flat-backup", "exclusive", this.#locator, undefined, this, undefined, undefined,
-      { sourcePath: path, processLockRoot, sourceSchemaVersion: 6, qualification });
+      { sourcePath: path, processLockRoot });
     try {
       const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
-      const source = AuthorityDatabase.inspectStoppedUpgrade(child, path, processLockRoot, systemClock);
-      if (source.schemaVersion !== 6 || source.installationId !== undefined || source.profileId !== undefined) throw new Error("flat-backup-schema-refused");
-      qualification.current = { kind: "qualified", sourceFingerprint: source.authorityContentFingerprint };
+      if (!lease.flatStoreMigrationPending()) AuthorityDatabase.readFlatArchiveInventory(path, restore);
       return child;
     } catch (error) {
-      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: child });
+      if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission: child });
       child.release(); throw error;
     }
   }

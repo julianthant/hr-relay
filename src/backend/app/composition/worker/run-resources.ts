@@ -17,7 +17,9 @@ import { lstatSync } from "node:fs";
 import type { WorkerId } from "../../../../rules/identity/ids.js";
 import type { DebugEvent } from "../../../../models/events/timeline.js";
 import { createCensusGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
-import type { AuthorityRepositories } from "../../../storage/sqlite/authority-database.js";
+import type { AuthorityDatabase, AuthorityRepositories } from "../../../storage/sqlite/authority-database.js";
+import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
+import { createBrowserRoots } from "../../../storage/browser-roots.js";
 import { composeDuoCeremonyGateFactory, type DuoCeremonyGateFactory } from "../../../runtime/gates/duo-ceremony-gate.js";
 import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
 import type { WorkerBrowserSessionFactory } from "../../../runtime/workers/worker-sessions.js";
@@ -30,6 +32,7 @@ export function createRunResourcesFactory(input:Readonly<{
  nominatim:NonNullable<NonNullable<WorkerRunResources["providers"]>["adapters"]["geocode.nominatim"]> & { stop():Promise<void> };
  ocr:NonNullable<NonNullable<WorkerRunResources["providers"]>["adapters"]["ocr.extract"]>;
  authority:AuthorityRepositories;artifacts:ContentAddressedArtifactWriter;clock:Clock;ids:IdFactory;
+ admission:RuntimeAdmission;database:AuthorityDatabase;
  isolation:RuntimeIsolation;protectedSecrets:Pick<CredentialStore,"read">;scheduler:MonotonicDeadlineScheduler;
  environment:Readonly<Record<string,string|undefined>>;sessionFactory?:WorkerBrowserSessionFactory;duoCeremony?:DuoCeremonyGateFactory;
  assertProfileOwner:(workerId:WorkerId)=>void;
@@ -69,9 +72,10 @@ export function createRunResourcesFactory(input:Readonly<{
  });
 }
 
-export type BrowserProfileAuthority = Pick<BrowserSessionFactoryOptions, "slotOrdinal" | "admitProfile" | "duo" | "assertCurrent">;
-export function createBrowserProfileAuthority(input: Readonly<{duo?:DuoSigningSource;authority:AuthorityRepositories;assertProfileOwner:(workerId:WorkerId)=>void}>): BrowserProfileAuthority {
+export type BrowserProfileAuthority = Pick<BrowserSessionFactoryOptions, "slotOrdinal" | "admitProfile" | "duo" | "assertCurrent" | "browserRoots" | "browserOwner">;
+export function createBrowserProfileAuthority(input: Readonly<{duo?:DuoSigningSource;authority:AuthorityRepositories;admission:RuntimeAdmission;database:AuthorityDatabase;assertProfileOwner:(workerId:WorkerId)=>void}>): BrowserProfileAuthority {
  return {
+    browserRoots:createBrowserRoots(input.admission),browserOwner:{database:input.database,profileId:input.admission.profileBinding.profileId},
     ...(input.duo===undefined?{}:{duo:input.duo}),assertCurrent:workerId=>input.assertProfileOwner(workerId),
     slotOrdinal:(workerId,system)=>{
      input.assertProfileOwner(workerId);

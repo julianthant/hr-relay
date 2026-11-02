@@ -1,37 +1,23 @@
+import { BrowserProfileStillClosingError, BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
+import { mockBrowserRootPort } from "../../../support/helpers/browser/browser-roots.js";
 import { fixtureDuoSigningSource, fixtureWorkflowWorker } from "../../../support/helpers/browser/duo-signing.js";
-import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
-import { BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join,resolve as resolvePath } from "node:path";
 import { tsImport } from "tsx/esm/api";
 import { beforeEach, describe,it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import {
-assertFastDuoReady,
-BrowserProfileAdmissionSchema,
-BrowserProfileStillClosingError,
-browserSignInFingerprint,
-DuoProvisioningError,
-PlaywrightWorkerSessionFactory,
-ProfileCustodyUnavailableError,
-workerProfileDirectory,
-probeClosedBrowserProfile,
-type BrowserDeadlineScheduler
-} from "../../../../src/backend/runtime/browser/browser-session-factory.js";
-
+import { assertFastDuoReady, BrowserProfileAdmissionSchema, browserSignInFingerprint, DuoProvisioningError, PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError, workerProfileDirectory, type BrowserDeadlineScheduler } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import type {
 AuthenticatedApplicationEvidence, SystemLoginContext
 } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import type { Config } from "../../../../src/models/config/schema.js";
-
 import { FingerprintSchema,WorkerIdSchema,WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { fixtureDuoCeremonyGate } from "../../../support/helpers/duo-ceremony-fixtures.js";
@@ -90,7 +76,7 @@ describe("worker browser session factory", () => {
     await withTempRuntime(async ({ config }) => {
       const native = fakeLauncher(); let profileAdmissions = 0, secretReads = 0, logins = 0;
       const binding = recordingBindings().ucpath; assert.ok(binding);
-      const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
+      const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
         scheduler: NEVER_SCHEDULER, slotOrdinal: () => 1, newSessionId: () => SESSION_ID,
         protectedSecrets: { read: () => { secretReads++; throw new Error("probe must not read credentials"); } },
         assertCurrent: () => undefined,
@@ -100,33 +86,6 @@ describe("worker browser session factory", () => {
       assert.equal(native.launches().length, 1); assert.equal(native.contextClosed(), true);
       assert.equal(profileAdmissions, 0); assert.equal(secretReads, 0); assert.equal(logins, 0);
       assert.equal(existsSync(workerProfileDirectory({ profileRoot: config.paths.browserProfileRoot, slotOrdinal: 1, system: "ucpath" })), true);
-    });
-  });
-  it("refuses missing retained profile directories without launching or creating them", async () => {
-    await withTempRuntime(async ({ config }) => {
-      const native = fakeLauncher(), directory = workerProfileDirectory({profileRoot:config.paths.browserProfileRoot,slotOrdinal:1,system:"crm"});
-      await assert.rejects(probeClosedBrowserProfile({profileRoot:config.paths.browserProfileRoot,
-        launch:{profileDirectory:directory,extensionDirectory:config.paths.duoExtensionDir,downloadsPath:config.paths.downloadsDir,viewport:{width:800,height:600},timeoutMs:1000},
-        clock:CLOCK,scheduler:NEVER_SCHEDULER,closeProofMs:1000,signal:new AbortController().signal,launcher:native.launcher}), ProfileCustodyUnavailableError);
-      assert.equal(native.launches().length,0);assert.equal(existsSync(config.paths.browserProfileRoot),false);
-    });
-  });
-  for (const closure of ["busy","missing-event","timeout"] as const) it(`refuses native ${closure} before an offline effect`, async () => {
-    await withTempRuntime(async ({config})=>{
-      const directory=workerProfileDirectory({profileRoot:config.paths.browserProfileRoot,slotOrdinal:1,system:"crm"});
-      mkdirSync(directory,{recursive:true,mode:0o700});
-      const native=fakeLauncher({emitCloseEvent:closure!=="missing-event",hangOnClose:closure==="timeout"});
-      let effects=0;
-      const operation=async()=>{
-        await probeClosedBrowserProfile({profileRoot:config.paths.browserProfileRoot,
-          launch:{profileDirectory:directory,extensionDirectory:config.paths.duoExtensionDir,downloadsPath:config.paths.downloadsDir,viewport:{width:800,height:600},timeoutMs:1000},
-          clock:CLOCK,scheduler:IMMEDIATE_SCHEDULER,closeProofMs:1000,signal:new AbortController().signal,
-          launcher:closure==="busy"?{launch:async()=>{throw new Error("Failed to create a ProcessSingleton for your profile directory.");}}:native.launcher});
-        effects++;
-      };
-      await assert.rejects(operation(),closure==="busy"?BrowserProfileStillClosingError:AuthoritySourceClosureUnprovedError);
-      assert.equal(effects,0);
-      if(closure!=="busy") await assert.rejects(operation(),ProfileCustodyUnavailableError);
     });
   });
   it("maps Chromium profile-in-use refusal without reserving the queued run's next acquisition", async () => {
@@ -520,7 +479,7 @@ describe("worker browser session factory", () => {
       const harness = fakeLauncher({ page });
       const verifier = verifierFor();
       const evidence: AuthenticatedApplicationEvidence[] = [];
-      const factory = new PlaywrightWorkerSessionFactory({
+      const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(),
         config,
         protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-value" }),
         isolation: rebuildRuntimeIsolation,
@@ -716,7 +675,7 @@ describe("required profile custody admission", () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher({ page: fakePage() });
       let launches = 0;
-      const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
+      const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
         scheduler: NEVER_SCHEDULER, slotOrdinal: () => 1, newSessionId: () => SESSION_ID,
         protectedSecrets: protectedSecretSource({}), bindings: recordingBindings(),
         assertCurrent: () => undefined,
@@ -732,7 +691,7 @@ describe("required profile custody admission", () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher({ page: fakePage() });
       let launches = 0;
-      const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
+      const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config, isolation: rebuildRuntimeIsolation, clock: CLOCK,
         scheduler: NEVER_SCHEDULER, slotOrdinal: () => 1, newSessionId: () => SESSION_ID,
         protectedSecrets: protectedSecretSource({}), bindings: recordingBindings(),
         assertCurrent: () => undefined,

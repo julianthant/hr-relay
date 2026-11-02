@@ -1,3 +1,4 @@
+import { hasUncertainBrowserLaunch } from "../../runtime/browser/native-browser.js";
 import { createDuoCredentialStore } from "../../storage/configuration/duo-credential-store.js";
 import { createNominatimWorkerAdapter } from "../../processing/providers/nominatim-owner.js";
 import { createNominatimGeocodeAdapter } from "../../processing/providers/geocode-adapters.js";
@@ -29,6 +30,7 @@ import { createRunResourcesFactory, type BrowserProfileAuthority } from "./worke
 import { bindFailureCapture } from "../../runs/lifecycle/failure-resolution.js";
 import { createCredentialStore } from "../../storage/configuration/credential-store.js";
 import { captureSelectedProfileStorage, RuntimeCustodyUncertainError } from "./storage-compose.js";
+import { withOperationProof } from "../../storage/configuration/credential-safe-file.js";
 import { assertProfileBrowserRoot } from "./profile-credential-inventory.js";
 import { type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
@@ -351,6 +353,17 @@ function startWorkerMaintenance(input: Readonly<{
   });
 }
 
+export const WorkerLaunchUncertainReportSchema = z.strictObject({
+  state: z.literal("launch-uncertain"), custody: z.literal("held"), workerId: WorkerIdSchema, workflowId: WorkflowIdSchema,
+});
+export class WorkerLaunchUncertainError extends RuntimeCustodyUncertainError {
+  readonly report: z.infer<typeof WorkerLaunchUncertainReportSchema>;
+  constructor(workerId: string, workflowId: string, causes: readonly unknown[]) {
+    super(causes); this.name = "WorkerLaunchUncertainError";
+    this.report = Object.freeze(WorkerLaunchUncertainReportSchema.parse({ state: "launch-uncertain", custody: "held", workerId, workflowId }));
+  }
+}
+
 export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<WorkerLoopReport> {
   if (!(input.lifetimeLock instanceof RuntimeLifetimeLock) && !(input.lifetimeLock instanceof WorkerRuntimeLifetimeLock)) throw new Error("worker-runtime-lifetime-lock-required");
   input.lifetimeLock.assertHeld();
@@ -443,6 +456,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   try {
     selected.assertCurrent();
     issued = machine.admitProfile(selected.profileId);
+    selected.assertCurrent();
     protectedAuthority = createCredentialStore({ admission: issued, stateRoot });
   } catch (error) {
     if (hasUnprovedSourceClosure(error)) {
@@ -455,7 +469,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     throw error;
   }
   const admission = issued;
-  const assertCurrent = (): void => { selected.assertCurrent(); admission.assertProfileRuntime(); };
+  const assertCurrent = (): void => withOperationProof(() => admission.assertProfileRuntime());
   const assertBrowserRoot = (root: string): void => { assertCurrent(); assertProfileBrowserRoot(admission, root); };
   let opened: AuthorityDatabase | undefined;
   const bound = (() => {
@@ -584,12 +598,12 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   ocrAccount = createChatGptAccountService({ admission, stateRoot, clock });
   accountClosureProven = false;
   const ocr = createChatGptOcrAdapter({ account: ocrAccount, artifacts, clock, model: CHATGPT_OCR_MODEL, assertCurrent });
-  resources = createRunResourcesFactory({duo,ocr,nominatim:input.lifetimeLock instanceof RuntimeLifetimeLock ? createNominatimGeocodeAdapter({clock}) : createNominatimWorkerAdapter(clock),preflight:runtimePreflight,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+  resources = createRunResourcesFactory({duo,ocr,nominatim:input.lifetimeLock instanceof RuntimeLifetimeLock ? createNominatimGeocodeAdapter({clock}) : createNominatimWorkerAdapter(clock),preflight:runtimePreflight,admission,database,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
     assertBrowserRoot,
     onDebug: (category, debugWorkerId, event) => {
       debugEvents.emit({ category, ...event }, { kind: "worker", workerId: debugWorkerId });
     },
-    assertProfileOwner: requestedWorkerId => {
+    assertProfileOwner: requestedWorkerId => withOperationProof(() => {
       assertCurrent();
       if (requestedWorkerId !== workerId) throw new Error("browser-profile-worker-owner-mismatch");
       input.lifetimeLock.assertHeld();
@@ -597,7 +611,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       if (lease?.processId !== process.pid || lease.leaseGeneration !== workerLifetime.leaseGeneration
         || member?.membershipRevision !== workerLifetime.membershipRevision || member.retiredAt !== null
         || !isLiveWorker(lease)) throw new Error("browser-profile-worker-owner-mismatch");
-    },
+    }),
     ...(input.sessionFactory === undefined ? {} : {sessionFactory:input.sessionFactory}),
     ...(input.createSessionFactory === undefined ? {} : {createSessionFactory:input.createSessionFactory}),
     ...(input.duoCeremony === undefined ? {} : {duoCeremony:input.duoCeremony})});
@@ -847,8 +861,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         },
         providers: baselineResources.providers,
         resourcesForRun: run => { assertCurrent(); return ownedResources.forRun(run); },
-        idleCadence: () => resolveConfigWithProvenance(readSettings(database.authority).settings,hostFacts,clock,
-          { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.daemon.idleRepollMs,
+        idleCadence: () => withOperationProof(() => resolveConfigWithProvenance(readSettings(database.authority).settings,hostFacts,clock,
+          { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.daemon.idleRepollMs),
         artifacts,
         writeSequencerFor: (sessions, taskDeadlineMs) => createWriteSequencer({
           stores,
@@ -870,7 +884,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     } catch (loopError) {
       await stopGateSources();
       maintenance.stop();
-      settleLease(database, clock, workerId, leaseGeneration, "crashed", loopError, log);
+      if (!hasUncertainBrowserLaunch(loopError)) settleLease(database, clock, workerId, leaseGeneration, "crashed", loopError, log);
       throw loopError;
     } finally {
       resetObserver.stop();
@@ -881,7 +895,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     if (background !== undefined) {
       // The loop settled because maintenance aborted it; the background error
       // is the real cause and must not be flattened into an "abandoned" report.
-      settleLease(database, clock, workerId, leaseGeneration, "crashed", background, log);
+      if (!hasUncertainBrowserLaunch(background)) settleLease(database, clock, workerId, leaseGeneration, "crashed", background, log);
       throw background instanceof Error
         ? background
         : new Error("worker maintenance failed with a non-Error value", { cause: background });
@@ -912,7 +926,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   } catch (error) {
     cleanupErrors.push(error);
   }
-  const browserClosureUnproved = runtimeReport?.closure === "unproved" || runtimeError instanceof WorkerSessionClosureUnprovedError;
+  const launchUncertain = [runtimeError, ...cleanupErrors].some(hasUncertainBrowserLaunch);
+  const browserClosureUnproved = launchUncertain || runtimeReport?.closure === "unproved" || runtimeError instanceof WorkerSessionClosureUnprovedError;
   if (databaseClosureProven && !browserClosureUnproved && cleanupErrors.length === 0) {
     try {
       admission.release();
@@ -921,7 +936,9 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     }
   }
   if (!databaseClosureProven || browserClosureUnproved || cleanupErrors.length > 0) {
-    throw new RuntimeCustodyUncertainError(runtimeError === undefined ? cleanupErrors : [runtimeError, ...cleanupErrors]);
+    const errors = runtimeError === undefined ? cleanupErrors : [runtimeError, ...cleanupErrors];
+    if (launchUncertain) throw new WorkerLaunchUncertainError(workerId, workflowId, errors);
+    throw new RuntimeCustodyUncertainError(errors);
   }
   if (cleanupErrors.length === 1 && runtimeError === undefined) throw cleanupErrors[0];
   if (cleanupErrors.length > 0) {

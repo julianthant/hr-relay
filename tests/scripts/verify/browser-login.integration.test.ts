@@ -1,10 +1,12 @@
+import { BrowserLaunchUncertainError } from "../../../src/backend/runtime/browser/native-browser.js";
+import { mockBrowserRootPort } from "../../support/helpers/browser/browser-roots.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../support/helpers/admission-fixture.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { randomUUID } from "node:crypto";
 import { RuntimeLifetimeLockReleasedError, type RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { RuntimeCustodyUncertainError } from "../../../src/backend/app/composition/storage-compose.js";
 import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure } from "../../../src/backend/storage/source-closure.js";
-import { chmodSync, existsSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, rmdirSync, rmSync, symlinkSync } from "node:fs";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { z } from "zod";
@@ -15,7 +17,7 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { createDuoCeremonyGateFactory } from "../../../src/backend/runtime/gates/duo-ceremony-gate.js";
 import { BrowserLandingStallError, BrowserLoginError, DuoTerminalRefusalError } from "../../../src/backend/systems/browser-shared/login-contract.js";
 import { WorkerSessionManager, WorkerSessionClosureUnprovedError, SessionAcquisitionTimeoutError } from "../../../src/backend/runtime/workers/worker-sessions.js";
-import { deleteOwnedBrowserProfile, PlaywrightWorkerSessionFactory, workerProfileDirectory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
+import { PlaywrightWorkerSessionFactory, workerProfileDirectory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
 
 import { FingerprintSchema, WorkerIdSchema } from "../../../src/rules/identity/ids.js";
 
@@ -263,7 +265,7 @@ describe("registered browser-login smoke lifecycle", () => {
       const failure = new Error("fixture uncertain launcher rejection");
       try {
         await assert.rejects(withSmokeWorker(database, async (slot, ownedGates) => {
-          const factory = new PlaywrightWorkerSessionFactory({ config: { ...config,
+          const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config: { ...config,
             paths: { ...config.paths, browserProfileRoot: profileRoot } },
             protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }),
             isolation: rebuildRuntimeIsolation, clock, scheduler, slotOrdinal: () => slot.ordinal,
@@ -282,7 +284,7 @@ describe("registered browser-login smoke lifecycle", () => {
           try { await manager.withDriver({ system: "ucpath", access: "read", session: "reuse-worker" }, "prod",
             new AbortController().signal, async () => { throw new Error("uncertain launcher callback reached"); }); }
           catch (error) { errors.push(error); }
-          await closeSmokeSessions(manager, () => { deleteOwnedBrowserProfile(profileRoot, join(profileRoot, `w${slot.ordinal}`)); },
+          await closeSmokeSessions(manager, async () => { await factory.discardProfile({ workerId: slot.workerId, system: "ucpath", instance: "prod", configFingerprint: credentialKey }); rmdirSync(join(profileRoot, `w${slot.ordinal}`)); },
             errors);
         }, clock), error => {
           assert.ok(error instanceof RuntimeCustodyUncertainError);
@@ -293,7 +295,15 @@ describe("registered browser-login smoke lifecycle", () => {
           const launch: unknown = nested.errors[0], closure: unknown = nested.errors[1];
           assert.ok(launch instanceof AggregateError);
           assert.equal(launch.cause, failure);
-          assert.deepEqual(launch.errors, [failure]);
+          assert.equal(launch.errors.length, 2);
+          assert.equal(launch.errors[0], failure);
+          const retained: unknown = launch.errors[1];
+          assert.ok(retained instanceof AuthoritySourceClosureUnprovedError);
+          assert.equal(retained.errors.length, 1);
+          const uncertain: unknown = retained.errors[0];
+          assert.ok(uncertain instanceof BrowserLaunchUncertainError);
+          assert.deepEqual(uncertain.errors, [failure]);
+          assert.equal(uncertain.cause, failure);
           assert.ok(closure instanceof WorkerSessionClosureUnprovedError);
           assert.deepEqual(closure.errors, [launch]);
           return true;
@@ -320,15 +330,17 @@ describe("registered browser-login smoke lifecycle", () => {
         let current = helpers.fakeLauncher();
         const first = current;
         let launches = 0;
+        const nativeProbes: ReturnType<typeof helpers.fakeLauncher>[] = [];
         let logins = 0;
         const binding = helpers.recordingBindings().ucpath;
         if (binding === undefined) throw new Error("fixture ucpath binding unavailable");
         await withSmokeWorker(database, async (slot, ownedGates) => {
-          const factory = new PlaywrightWorkerSessionFactory({ config, protectedSecrets: protectedSecretSource({
+          const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config, protectedSecrets: protectedSecretSource({
             ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }), isolation: rebuildRuntimeIsolation,
             clock, scheduler, slotOrdinal: () => slot.ordinal,
             newSessionId: () => `00000000-0000-4000-8000-00000000000${launches}`,
             launcher: { launch: input => {
+              if (input.nativeOnly === true && input.extensionDirectory === "") { const native = helpers.fakeLauncher(); nativeProbes.push(native); return native.launcher.launch(input); }
               if (launches > 0) current = helpers.fakeLauncher();
               launches += 1;
               return current.launcher.launch(input);
@@ -353,10 +365,11 @@ describe("registered browser-login smoke lifecycle", () => {
             await manager.withDriver({ system: "ucpath", access: "read", session: "reuse-worker" }, "prod",
               new AbortController().signal, async driver => { expect(driver.system).toBe("ucpath"); });
           } catch (error) { errors.push(error); }
-          await closeSmokeSessions(manager, () => { deleteOwnedBrowserProfile(config.paths.browserProfileRoot,
-            join(config.paths.browserProfileRoot, `w${slot.ordinal}`)); }, errors);
+          await closeSmokeSessions(manager, async () => { await factory.discardProfile({ workerId: slot.workerId, system: "ucpath", instance: "prod", configFingerprint: credentialKey }); rmdirSync(join(config.paths.browserProfileRoot, `w${slot.ordinal}`)); }, errors);
         }, clock);
         expect(launches).toBe(2);
+        expect(nativeProbes).toHaveLength(2);
+        expect(nativeProbes.every(native => native.contextClosed())).toBe(true);
         expect(logins).toBe(2);
         expect(first.contextClosed()).toBe(true);
         expect(current.contextClosed()).toBe(true);
@@ -387,7 +400,7 @@ describe("registered browser-login smoke lifecycle", () => {
         const binding = helpers.recordingBindings().ucpath;
         if (binding === undefined) throw new Error("fixture ucpath binding unavailable");
         const operation = withSmokeWorker(database, async (slot, ownedGates) => {
-          const factory = new PlaywrightWorkerSessionFactory({ config, protectedSecrets: protectedSecretSource({
+          const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config, protectedSecrets: protectedSecretSource({
             ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }), isolation: rebuildRuntimeIsolation,
             clock, scheduler, slotOrdinal: () => slot.ordinal, newSessionId: () => "00000000-0000-4000-8000-000000000001",
             launcher: { ...harness.launcher, launch: async input => {
@@ -414,8 +427,7 @@ describe("registered browser-login smoke lifecycle", () => {
           try { await manager.withDriver({ system: "ucpath", access: "read", session: "reuse-worker" }, "prod",
             new AbortController().signal, async () => { throw new Error("timed-out driver callback reached"); }); }
           catch (error) { errors.push(error); }
-          await closeSmokeSessions(manager, () => { attemptedDeletion = true; deleteOwnedBrowserProfile(config.paths.browserProfileRoot,
-            join(config.paths.browserProfileRoot, `w${slot.ordinal}`)); }, errors);
+          await closeSmokeSessions(manager, async () => { attemptedDeletion = true; await factory.discardProfile({ workerId: slot.workerId, system: "ucpath", instance: "prod", configFingerprint: credentialKey }); rmdirSync(join(config.paths.browserProfileRoot, `w${slot.ordinal}`)); }, errors);
         }, clock);
         const completed = operation.then(() => undefined, (error: unknown) => error);
         await started;

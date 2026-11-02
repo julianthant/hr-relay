@@ -1,3 +1,4 @@
+import type { BrowserProfileProbeFactory } from "../browser-roots.js";
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../source-closure.js";
@@ -243,7 +244,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
 type StoppedMachineControl = ReturnType<RuntimeAdmission["beginStoppedMachineControlUpgrade"]>;
 
 export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, input: Readonly<{ plan: boolean; hostFacts: HostConfigFacts }>, clock: Clock,
-  composeInventory: (input: Readonly<{ claim: ReturnType<StoppedMachineControl["profileInventory"]>; hostFacts: HostConfigFacts; clock: Clock }>) => { readonly proof: Parameters<StoppedMachineControl["recordProfileInventory"]>[1]; dispose(): void }) {
+  composeInventory: (input: Readonly<{ claim: ReturnType<StoppedMachineControl["profileInventory"]>; hostFacts: HostConfigFacts; clock: Clock }>) => { readonly proof: Parameters<StoppedMachineControl["recordProfileInventory"]>[1]; dispose(): void }, createProbe: BrowserProfileProbeFactory) {
   requireRuntimeAdmission(machine).assertExclusive();
   const context = machine.readInstallationContext();
   if (context === undefined) throw new Error("profile-control-upgrade-machine-membership-unknown");
@@ -258,7 +259,8 @@ export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, in
   let primary: { error: unknown } | undefined;
   try {
     control = machine.beginStoppedMachineControlUpgrade(restore);
-    if (!control.machineControlCurrent() || control.upgradeIntentPresent()) {
+    await control.prepareBrowserInventory(input.plan, createProbe);
+    if (!input.plan && (!control.machineControlCurrent() || control.upgradeIntentPresent())) {
       for (const profileId of control.registeredProfileIds()) {
         const claim = control.profileInventory(profileId);
         const inventory = composeInventory({ claim, hostFacts: input.hostFacts, clock });

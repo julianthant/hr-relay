@@ -25,9 +25,9 @@ Installation admission owns the active storage roots. None of these authorities 
 | Entrypoint admission and secure bootstrap | `src/backend/storage/admission/bootstrap-admission.ts`, `src/backend/app/bootstrap/secure-env-bootstrap.ts` |
 
 [Execution and sessions](execution-and-sessions.md) owns browser leases, Duo ceremonies, and shutdown.
-The strict `native-profile-probe` entry dispatches to the credential-free browser leaf before ordinary
-bootstrap import. It accepts only bounded stdin profile/deadline data and performs no credential
-GET/SET/DELETE, controller admission, provider initialization or authentication.
+Browser probes run through `runtime/browser/native-browser.ts` under the registry authority in
+`storage/browser-roots.ts` and the existing admission and native root lifetime. The stopped control converter records its browser plan before native probing and performs
+credential assessment after actual browser closure. Ordinary bootstrap has no probe child selector.
 [Operator trust](operator-trust.md) owns capture, classified local evidence, and outbound data.
 [Stores](stores.md) owns the table catalog. [Guards and tests](guards-and-tests.md) owns verification.
 
@@ -290,6 +290,8 @@ value-free revision. `validateBootSecrets` currently has an empty required-at-bo
 `machine/credential-keys/<profileId>.json` is the sole external head: immutable installation/person binding, native key metadata, lifecycle and erasure generation, durable Duo counter floors, consumed request IDs and retired identities. Nested key binding must match the actual outer/path binding before native key access. The random 32-byte person key lives in the OS credential store through `credential-key-custody.ts`: service `Relay`, account `<installationId>:<profileId>`, macOS Keychain or Windows Credential Manager. Public catalog errors retain original private source causes and owners.
 
 One `machine/credential-operations/<profileId>.json` owns active creation or erasure. Creation records planned native metadata/digest before native set, authenticates exact encrypted stages and source prefixes, and publishes the head last. Missing or mismatched prepared key custody never regenerates or adopts an unknown key. Abort can settle only its exact authenticated create prefix to finish deletion; the erased head binds the erase source plan digest before native key deletion. Counter floors and retired identities remain external to SQLite.
+
+Canonical head and record reads check current profile access at entry and before returning authenticated values. Read-only namespace traversal retains liveness and private-path checks inside that synchronous operation; it does not repeat the profile registry and pending-operation census for each file. Publication and external-effect boundaries retain fresh current-profile checks.
 
 The common writer uses a short cross-process nonce mutex, authenticates the current head and namespace, checks exact expected revision, stages/fsyncs/replaces, and verifies readback. Same-operation stages retain exact inode/bytes custody. Unknown descendants, unsafe ancestry/permissions/links or unexplained stages refuse. An attempted native replacement with uncertain outcome reports uncertainty and never claims rollback. Actual descriptor/database closure failures are remembered by profile admission, installation parent and native lifetime; successful rereads or safe HTTP/account projections cannot clear that custody or release the listener.
 
@@ -604,34 +606,57 @@ before profile runtime composition. It does not become a profile and none of its
 are carried into sign-up. Runtime admission retains flat detection only for this migration and the
 stopped backup command.
 
-Startup first erases the flat `credentials/` directory, including protected, ChatGPT and Duo files,
-so the new backup contains none of those credentials. It then uses the existing stopped SQLite
-backup and coupled private-copy writer. The verified backup, source record and copies live outside
-the removed state under `.tracker/control/storage-backups/<installationId>/`. Backup or verification
-failure stops startup with `PROFILE_FLAT_STORE_MIGRATION_FAILED`; all non-credential source data
-remains in place. Unsupported paths, active or UNKNOWN resource custody, corrupt or changed data
-remain refusals. An existing backup containing credentials cannot authorize the migration.
+Startup proves native browser and OS process closure before archiving or erasing anything. The
+stopped raw-byte archive excludes recognized credential, browser/auth and runtime containers;
+those sources remain intact until the archive and its exact source membership verify. Backup or
+verification failure stops startup with `PROFILE_FLAT_STORE_MIGRATION_FAILED` and preserves all
+source data, including credentials. The archive lives outside the removed state at
+`.tracker/control/storage-backups/<installationId>/`. Its historical rows stay opaque and are never
+adopted into a new person.
 
-Only after verification does a durable `flat-start-clean.json` intent authorize removal. Every
-remaining source file must match the backup or source record's captured identity and digest.
-Restart verifies the same backup and resumes that deletion prefix, then initializes an empty
-profile registry. Installation markers, artifact-root identity and fixed process locks stay in
-place. The backup remains verified and retained after removal; sign-up creates a fresh private
-profile using the ordinary onboarding path.
+The finite start-clean reader accepts the known plaintext native6 credential layout. Encrypted,
+key-bearing or unknown layouts refuse before browser preparation or erasure; no native key account
+is inferred from old HR data. Registered-person credential/key erasure stays with its canonical owner.
+
+After verification, schema2 `flat-start-clean.json` binds the archive operation, source digest and
+membership, planned private verifier-pepper digest, recorded probe timing and deletion cursor.
+Each unlink or empty-directory removal first records the one pending member. Recovery accepts only
+that member's exact present/absent outcomes: prior members must be absent and later members must
+remain unchanged. New files, changed evidence or a substituted archive refuse. Fresh native and OS
+closure precede recovery, even after the old database is gone; the saved operation supplies timing
+and the physical census uses the remaining exact membership. An uncertain resource close retains
+its actual admission and lifetime.
+
+Empty registry publication reuses the exact prepared pepper and verifies every existing publication
+prefix. The completed registry digest remains in `flat-start-clean-complete.json`; normal bootstrap
+then uses current registry readers and sign-up creates a fresh private profile. Installation markers,
+artifact-root identity and the empty fixed process-lock directory stay in place. Ordinary document
+and report roots outside the erased state are preserved.
 
 `npm run cli -- storage backup [--json]` still backs up a selected READY profile through its
 registered child, or a stopped native6 flat source through its finite backup admission. The command
 neither signs in nor creates a profile. Its owner holds the same root-issued offline operation through
 an explicit native browser closure step, then captures source bytes and runs the backup. The real
-probe can update browser state; the backup copies that post-probe state and never launches a browser.
+probe can update browser state; source capture follows that probe and backup IO never launches a browser.
 A private in-memory closure observation binds the exact operation, admitted source, browser census
 and directory identities. Backup revalidates that observation and read-only OS closure at its IO
 boundaries; copied, foreign, expired or changed observations refuse. Unproved closure retains owners.
-Coupled copies complement the verified SQLite backup. Every existing source file keeps its bytes,
-inode and mode throughout backup IO, including browser Preferences; the probe finishes before that
-interval. The flat backup is a one-time pre-migration source snapshot. A fresh command probes again;
-changed post-probe source refuses with STORAGE_BACKUP_SOURCE_CHANGED and preserves the first
-verified backup and source.json. It never overwrites that receipt or creates a versioned substitute.
-An exact interrupted copy prefix may resume; missing, extra or corrupt completed copies refuse.
+The flat archive copies the original SQLite database and every present sidecar unchanged, along
+with recognized HR-managed files. Its schema2 source intent records files, directories and absent
+database companions, source modes, sizes and SHA-256 digests. Entire recognized Chromium profile,
+credential, key/auth and runtime containers are excluded with exact private member/digest census;
+unknown source shapes refuse. Credential-free means excluding Relay's identified credential owners,
+not scanning arbitrary HR payload bytes. Unretired, nonterminal and UNKNOWN historical rows remain
+opaque bytes: archiving never retires, cancels, adopts or retries them. Registered-person backup and
+UNKNOWN-write protections stay at their existing owners.
+Every source file keeps its bytes and mode throughout archive IO. Path and descriptor identities
+remain transient same-operation checks. Receipt authority is exact operation/source membership and
+bytes, with independent copy readback and fresh physical closure before completion; it persists no
+inode authority. Empty source directories are metadata only; physical copy directories are exactly
+file ancestors. The schema2 receipt is an immutable archive, never a person restore manifest.
+A fresh command probes again; changed post-probe source refuses with STORAGE_BACKUP_SOURCE_CHANGED
+and preserves the first verified archive and source.json. It never overwrites that receipt or
+creates a versioned substitute. An exact interrupted copy prefix may resume; missing, extra or
+corrupt completed copies and old schema1 receipts refuse.
 A genuinely abandoned admission mutex requires current closed process custody and exact backup,
 source-record, allocation and recovery-history evidence. Unproved source closure retains custody.

@@ -55,10 +55,10 @@ function actualReplacement(f: Awaited<ReturnType<typeof fixture>>, commandId: st
         onExit: listener => { actual.on("exit", listener); }, onError: listener => { actual.on("error", listener); } };
     },
     assertStoppedLifetime: (member, lifetime) => { beforeDeath?.(); f.database.assertStoppedWorkerLifetime(member, lifetime); },
-    proveRetirement: member => { f.database.assertWorkerLifecycleRelease(member.workerId); return WorkerRetirementProofSchema.parse({
+    proveRetirement: member => { f.database.assertWorkerLifecycleRelease(member.workerId); return { proof: WorkerRetirementProofSchema.parse({
       workerId: member.workerId, membershipRevision: member.membershipRevision, checkedAt: f.now,
       processStopped: true, browsersClosed: true, exclusive: true,
-    }); },
+    }), assertCurrent: () => { f.database.assertWorkerLifecycleRelease(member.workerId); } }; },
     leases: { observe: id => { const lease = f.database.authority.workerLeases.get(id); return lease === undefined || lease.lifecycle.state === "stopped"
       ? undefined : { processId: lease.processId, startedAt: lease.lifecycle.startedAt }; } },
     gracefulStop: { request: () => { throw new Error("browserless replacement must not request another stop"); } },

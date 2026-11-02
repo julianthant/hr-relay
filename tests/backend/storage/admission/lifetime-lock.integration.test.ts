@@ -1,5 +1,5 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { createAdmissionChildFixtures } from "../../../support/helpers/storage/admission-child-fixtures.js";
 import assert from "node:assert/strict";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
@@ -184,9 +184,21 @@ it("keeps machine publication with the controller and creates no PID lease or ad
     worker.stderr?.resume();
     closed = once(worker, "close");
     const verified = once(worker, "message");
-    await lock.share(worker);
+    const owned = worker;
+    assert.throws(() => lock.assertOwnedChildClosed(owned), /runtime-lifetime-child-close-unproved/u);
+    assert.throws(() => lock.observeOwnedChildClosure(owned), /runtime-lifetime-child-unowned/u);
+    const shared = lock.share(owned);
+    lock.observeOwnedChildClosure(owned);
+    assert.throws(() => lock.observeOwnedChildClosure(owned), /runtime-lifetime-child-unowned/u);
+    const exited = new Promise<void>((resolve, reject) => { owned.once("exit", () => {
+      try { assert.throws(() => lock.assertOwnedChildClosed(owned), /runtime-lifetime-child-close-unproved/u); resolve(); }
+      catch (error) { reject(error instanceof Error ? error : new Error("child CLOSE assertion failed", { cause: error })); }
+    }); });
+    await shared;
     assert.deepEqual((await verified)[0], { kind: "verified", profiles: 0, publication: "refused" });
+    await exited;
     assert.deepEqual(await closed, [0, null]);
+    await lock.awaitOwnedChildClosed(owned); lock.assertOwnedChildClosed(owned);
     for (const name of ["admission-mutex", "leases", ".installation-mutation.lock"]) {
       await assert.rejects(access(join(directory, ".tracker", "control", name)), { code: "ENOENT" });
     }

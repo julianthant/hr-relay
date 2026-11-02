@@ -1,3 +1,4 @@
+import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
 import assert from "node:assert/strict";
 import { Entry } from "@napi-rs/keyring";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -178,7 +179,7 @@ it("converts a complete supported inline-key predecessor only through stopped co
     try {
       unchanged(before); assert.equal(entry.getPassword(), null);
       assert.throws(() => maintenance.admitProfile(f.profileId));
-      const report = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock, composeStoppedControlCredentialInventory);
+      const report = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
       assert.equal(report.state, "upgraded"); assert.equal(report.runtimeAccess, "onboarding-incomplete");
       const child = maintenance.forStoppedIncompleteProfileInventory(f.profileId);
       try {
@@ -220,7 +221,7 @@ for (const change of ["key", "keyId", "filename", "inode", "witness", "registry"
       try {
         await assert.rejects(async () => {
           maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-          await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock, composeStoppedControlCredentialInventory);
+          await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
         });
         assert.equal(native.mock.calls.length, 0); unchanged(before); assert.equal(entry.getPassword(), null); assert.equal(statSync(path).ino, identity.ino);
       } finally { native.mockRestore(); maintenance?.release(); }

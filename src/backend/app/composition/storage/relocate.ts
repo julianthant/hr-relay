@@ -1,7 +1,7 @@
+import { profileBrowserClosure } from "../../../runtime/browser/profile-browser-closure.js";
 import { ProfileStorageRelocationUnsupportedError, requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../../storage/source-closure.js";
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
-import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
 import { prepareStoppedBackupClosure, type StoppedBackupClosure } from "../../../storage/maintenance/profile-inventory.js";
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, constants, copyFileSync, fsyncSync, linkSync, lstatSync, openSync, readFileSync, unlinkSync } from "node:fs";

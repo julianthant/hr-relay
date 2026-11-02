@@ -83,7 +83,7 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "authenticateDocument" },
   { importer: "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
 ] as const;
-const RETENTION_CASES_MODULE = "tests/support/processes/authenticated-upgrade-retention-cases.js";
+const RETENTION_CASES_MODULES = ["tests/support/processes/authenticated-upgrade-retention-cases.js", "tests/support/processes/browser-root-retention.js"];
 const RETENTION_CASES_OWNER = "tests/support/processes/credential-source-retention-worker.ts";
 const PROCESS_ENTRYPOINTS = [
   { file: "credential-source-retention-worker.ts", consumers: ["tests/support/helpers/credential-source-retention.ts"] },
@@ -207,7 +207,7 @@ function capabilityViolations(path: string, text: string): string[] {
 }
 function processImportViolations(path: string, text: string): string[] {
   return importsFromText(path, text).filter(({ resolved }) => resolved.startsWith("tests/support/processes/"))
-    .filter(({ resolved }) => path !== RETENTION_CASES_OWNER || resolved !== RETENTION_CASES_MODULE)
+    .filter(({ resolved }) => path !== RETENTION_CASES_OWNER || !RETENTION_CASES_MODULES.includes(resolved))
     .map(({ resolved }) => `${path} -> ${resolved}`);
 }
 
@@ -272,7 +272,7 @@ function childEntrypointBound(path: string, text: string, file: string): boolean
       return !urlShadowed && node.arguments.length === 1 && url !== undefined && ts.isNewExpression(url) && canonicalPath(url);
     }
     if (ts.isNewExpression(node) && node.expression.getText(source) === "URL" && node.arguments?.length === 2) {
-      return ts.isStringLiteral(node.arguments[0]) && node.arguments[0].text.endsWith(`/support/processes/${file}`)
+      return ts.isStringLiteral(node.arguments[0])
         && relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), node.arguments[0].text)) === `tests/support/processes/${file}`
         && node.arguments[1].getText(source) === "import.meta.url";
     }
@@ -358,8 +358,11 @@ describe("test-data ownership", () => {
   it("process fixtures are exactly recorded child entrypoints and cannot be imported", () => {
     const files = sourceFiles(["tests", "scripts", "src"]);
     assert.deepEqual(sourceFiles(["tests/support/processes"]).map((path) => path.split("/").at(-1)).toSorted(),
-      [...PROCESS_ENTRYPOINTS.map((entry) => entry.file), "authenticated-upgrade-retention-cases.ts"].toSorted());
-    assert.equal(importsOf(RETENTION_CASES_OWNER).filter(({ resolved }) => resolved === RETENTION_CASES_MODULE).length, 1);
+      [...PROCESS_ENTRYPOINTS.map((entry) => entry.file), ...RETENTION_CASES_MODULES.map(path => path.split("/").at(-1)?.replace(/\.js$/u, ".ts"))].toSorted());
+    for (const module of RETENTION_CASES_MODULES) {
+      assert.equal(importsOf(RETENTION_CASES_OWNER).filter(({ resolved }) => resolved === module).length, 1);
+      assert.equal(processImportViolations("tests/support/helpers/violation.ts", `import "../processes/${module.split("/").at(-1) ?? ""}";`).length, 1);
+    }
     assert.equal(processImportViolations("tests/support/helpers/violation.ts", 'import "../processes/authenticated-upgrade-retention-cases.js";').length, 1);
     assert.deepEqual(files.filter((path) => path !== "tests/architecture/tooling/test-data-ownership.test.ts").flatMap((path) => processImportViolations(path, readFileSync(join(REPO_ROOT, path), "utf8"))), []);
     for (const entry of PROCESS_ENTRYPOINTS) {

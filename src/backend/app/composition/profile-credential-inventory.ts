@@ -1,16 +1,14 @@
-
+import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
 import { inspectStoppedCanonicalConversion } from "../../storage/configuration/canonical-credential-store.js";
 import { prepareStoppedCredentialConversion, releaseStoppedCredentialConversion, type StoppedCredentialCopyInspection } from "../../storage/configuration/credential-conversion.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
-import { profileBrowserClosure } from "../../runtime/browser/native-profile-probe.js";
+import { createBrowserRoots, planStoppedBrowserRoots } from "../../storage/browser-roots.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
-import { assertRetainedProfileBrowserRoot, inventoryFileIdentity, enumerateProfileCredentialMembership, assertCredentialCopyResourcesClosed, assertRetainedBrowsersClosed, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
-
+import { inventoryFileIdentity, enumerateProfileCredentialMembership, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
+import { assertRetainedProfileBrowserRoot, assertCredentialCopyResourcesClosed, retainedBrowserProfiles } from "../../storage/maintenance/profile-custody.js";
 import { migrationTableNames } from "../../storage/sqlite/migrations.js";
 import { readEmergencyFaults } from "../../logs/emergency-faults.js";
-
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
-
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { createHash } from "node:crypto";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
@@ -21,9 +19,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { countProfileCredentialLoginRows } from "../../profiles/credential-inventory.js";
 import { verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../storage/sqlite/backup-service.js";
 import { withAuthorityDatabaseReadOnly } from "../../storage/sqlite/readonly-authority-snapshot.js";
-
 import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
-
 import { requireStoppedControlProfileInventory, type StoppedControlProfileInventory } from "../../storage/admission/installation.js";
 import { RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
@@ -191,7 +187,20 @@ export function composeProfileClosureInventory(input: Readonly<{ admission: Runt
       : readSettings(input.database.authority).settings;
     const config = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
       { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
-    await probeRetainedBrowsersClosed({ browserClosure: profileBrowserClosure, admission, custody, config,
+    if (admission === input.admission) {
+      admission.assertProfileRuntime();
+      const binding = admission.captureBrowserRegistryContext(), document = createBrowserRoots(admission).inventory();
+      const retained = retainedBrowserProfiles(admission.stateRoot, custody, config.paths.browserProfileRoot, profileBrowserClosure)
+        .filter(row => {
+          if (lstatSync(row.profileDirectory, { throwIfNoEntry: false }) !== undefined) return true;
+          if (!row.cleanupCompleted) throw new Error("profile-closure-browser-custody-unproved");
+          return false;
+        });
+      const rows = document.roots.filter(row => row.profileId === binding.profileId);
+      if (rows.length !== retained.length || rows.some(row => row.launch.state !== "closed" || row.native !== undefined
+        || row.sessionGeneration > binding.sessionGeneration || !retained.some(profile => profile.profileDirectory === join(binding.machineRoot, row.directory)))) throw new Error("profile-closure-browser-custody-unproved");
+      admission.assertProfileRuntime();
+    } else await probeRetainedBrowsersClosed({ browserClosure: profileBrowserClosure, admission, custody, config,
       clock: input.clock, signal: new AbortController().signal });
     admission.assertReadable();
     enumerateProfileCredentialMembership(admission, custody, config.paths.browserProfileRoot, profileBrowserClosure);
@@ -228,7 +237,8 @@ export function composeStoppedControlCredentialInventory(input: Readonly<{ claim
           : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
         const config = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
           { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
-        assertRetainedBrowsersClosed(admission, facts, config, profileBrowserClosure);
+        const browserPlan = source.browserPlan() ?? planStoppedBrowserRoots(admission, input.claim, 1, input.clock);
+        if (browserPlan.roots.some(row => row.profileId === source.binding.profileId && (row.launch.state !== "closed" || row.native?.phase !== "observed"))) throw new Error("profile-control-upgrade-browser-closure-unproved");
         const membership = enumerateProfileCredentialMembership(admission, facts, config.paths.browserProfileRoot, profileBrowserClosure, undefined, stages);
         const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path));
         if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))) throw new Error("credential-maintenance-backup-membership-unproved");

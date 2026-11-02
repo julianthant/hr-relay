@@ -1,7 +1,7 @@
 import { assertOfflineMaintenanceForProcessRoot } from "../../storage/admission/process-root.js";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { type OfflineMaintenanceOperation } from "../../storage/admission/lifetime-lock.js";
-import { assertStoppedProfileBrowsersClosed, type ProfileBrowserClosure } from "../../storage/maintenance/profile-inventory.js";
+import { probeStoppedProfileBrowsersClosed, type ProfileBrowserClosure } from "../../storage/maintenance/profile-inventory.js";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -80,7 +80,7 @@ export class OfflineSpanRootRepairService {
 
   }
 
-  repair(input: unknown, admission: OfflineMaintenanceOperation): SpanRootRepairReport {
+  async repair(input: unknown, admission: OfflineMaintenanceOperation): Promise<SpanRootRepairReport> {
     this.#runtimeAdmission.assertOfflineMaintenance(admission);
     admission.consume();
     let outcome: { report: SpanRootRepairReport } | { error: unknown };
@@ -89,7 +89,7 @@ export class OfflineSpanRootRepairService {
       stopped = this.#runtimeAdmission.forStoppedMaintenance(admission);
       assertOfflineMaintenanceForProcessRoot(admission, this.#processLockRoot);
       const request = SpanRootRepairRequestSchema.parse(input);
-      assertStoppedProfileBrowsersClosed(stopped,this.#clock,this.#browserClosure);
+      await probeStoppedProfileBrowsersClosed(stopped,this.#clock,this.#browserClosure);
 
       const before = AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(
         stopped,

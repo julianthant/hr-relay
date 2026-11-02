@@ -1,21 +1,25 @@
+import { createNativeBrowserProbe, DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-browser.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
-import { profileBrowserClosure, DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
+import { BrowserRootsSchema } from "../../../../src/backend/storage/browser-root-contract.js";
+import { seedRegisteredBrowserProfiles } from "../../../support/helpers/browser/browser-roots.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { withSmokeWorker } from "../../../../scripts/verify/browser-login.js";
 import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
 import { retainAuthoritySourceClosure, hasUnprovedSourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
-import { chmodSync, copyFileSync, existsSync, linkSync, lstatSync, renameSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, linkSync, lstatSync, renameSync, rmdirSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { deleteOwnedBrowserProfile, probeClosedBrowserProfile, workerProfileDirectory } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
+import { workerProfileDirectory } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import { z } from "zod";
@@ -48,6 +52,39 @@ async function fixture(f?: Awaited<ReturnType<typeof createBoundProfileFixture>>
     async cleanup() { await context.account.close(); context.database.close(); await f.close(); },
   };
 }
+
+for (const state of ["earlier", "current", "future", "unknown"] as const)
+  it(`ordinary drain checks ${state} session evidence without native acquisition`, async () => {
+    const base = await createBoundProfileFixture();
+    const path = join(base.machine.stateRoot, "machine", "browser-roots.json");
+    let f: Awaited<ReturnType<typeof fixture>> | undefined;
+    let original: Buffer | undefined;
+    const launch = vi.spyOn(DEFAULT_BROWSER_LAUNCHER, "launch").mockImplementation(async () => { throw new Error("ordinary drain must not acquire a browser"); });
+    try {
+      const seeded = await seedRegisteredBrowserProfiles(base, manualClock(new Date("2026-10-21T12:00:00.000Z")), ["crm"]);
+      f = await fixture(base);
+      original = readFileSync(path);
+      const document = BrowserRootsSchema.parse(JSON.parse(original.toString("utf8")));
+      const row = document.roots[0]; assert.ok(row); assert.equal(document.roots.length, 1);
+      const generation = f.admission.captureBrowserRegistryContext().sessionGeneration;
+      assert.ok(generation > 0);
+      row.sessionGeneration = state === "earlier" ? generation - 1 : state === "future" ? generation + 1 : generation;
+      if (state === "unknown") row.launch.state = "unknown";
+      writeFileSync(path, JSON.stringify(BrowserRootsSchema.parse(document)), { mode: 0o600 });
+      const before = readFileSync(path), directory = seeded.paths[0]; assert.ok(directory);
+      const identity = lstatSync(directory);
+      if (state === "earlier" || state === "current") await f.inventory.prepare();
+      else await assert.rejects(f.inventory.prepare(), { message: "profile-closure-browser-custody-unproved" });
+      assert.deepEqual(readFileSync(path), before);
+      const after = lstatSync(directory);
+      assert.equal(after.dev, identity.dev); assert.equal(after.ino, identity.ino);
+      assert.equal(launch.mock.calls.length, 0);
+    } finally {
+      launch.mockRestore();
+      if (original !== undefined) writeFileSync(path, original, { mode: 0o600 });
+      if (f === undefined) await base.close(); else await f.cleanup();
+    }
+  });
 
 function nativeKey(f: Awaited<ReturnType<typeof fixture>>) {
   const head = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")));
@@ -270,7 +307,11 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material
       sessionId: randomUUID(), system: "crm", configFingerprint: config.fingerprint, signInFingerprint: config.fingerprint,
       browserMode: "headless", profileDirectory: directory, acceptDownloads: false, exclusive: false, health: "closed",
       observedAt: f.clock.now().toISOString(), openedAt: f.clock.now().toISOString(), profileRevision: 1 });
-    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    await createBrowserRoots(f.admission).probe({ profileId: f.admission.profileBinding.profileId,
+      profileRoot: config.config.paths.browserProfileRoot, profileDirectory: directory, credentialFingerprint: config.fingerprint,
+      owner: { kind: "worker", database: f.context.database, workerId: worker.workerId } },
+    createNativeBrowserProbe({ clock: f.clock, scheduler: { schedule: () => ({ cancel() {} }) }, closeProofMs: 1000, launchTimeoutMs: 1000,
+      signal: new AbortController().signal, launcher: native.launcher }));
     const key = nativeKey(f);
     const path = join(directory, "Preferences"), secret = content === "key-material" ? key.key : f.capturedSecrets[1]; assert.ok(secret);
     const escaped = [...secret].map(character => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");
@@ -315,15 +356,17 @@ for(const purpose of ["logout","backup"] as const)it(`accepts completed verifica
   try{
     await withSmokeWorker(f.context.database,async slot=>{
       const directory=workerProfileDirectory({profileRoot:smokeRoot,slotOrdinal:slot.ordinal,system:"crm"});
-      mkdirSync(directory,{recursive:true,mode:0o700});
-      await probeClosedBrowserProfile({profileRoot:smokeRoot,launch:{profileDirectory:directory,extensionDirectory:"",downloadsPath:directory,viewport:{width:800,height:600},timeoutMs:1000},
-        clock:f.clock,scheduler:{schedule:()=>({cancel(){}})},closeProofMs:1000,signal:new AbortController().signal,launcher:native.launcher});
+      const roots = createBrowserRoots(f.admission), owner = { profileId: f.admission.profileBinding.profileId, profileRoot: smokeRoot, profileDirectory: directory,
+        credentialFingerprint: "a".repeat(64), owner: { kind: "worker" as const, database: f.context.database, workerId: slot.workerId } };
+      const options = createNativeBrowserProbe({ clock:f.clock,scheduler:{schedule:()=>({cancel(){}})},closeProofMs:1000,launchTimeoutMs:1000,signal:new AbortController().signal,launcher:native.launcher });
+      await roots.probe(owner, options);
       assert.equal(native.contextClosed(),true);
       const snapshot=f.context.database.readProfileResourceCustody().configSnapshots[0];assert.ok(snapshot);
       f.context.database.authority.workerControls.observe({workerId:slot.workerId,leaseGeneration:1,sessionId:randomUUID(),system:"crm",configFingerprint:snapshot.fingerprint,
         signInFingerprint:snapshot.fingerprint,browserMode:"headless",profileDirectory:directory,acceptDownloads:false,exclusive:false,health:"closed",
         observedAt:f.clock.now().toISOString(),openedAt:f.clock.now().toISOString(),profileRevision:1});
-      deleteOwnedBrowserProfile(smokeRoot,join(smokeRoot,`w${slot.ordinal}`));assert.equal(existsSync(directory),false);
+      await roots.withUnused(directory, options, async unused => { unused.remove(); }, owner);
+      rmdirSync(join(smokeRoot,`w${slot.ordinal}`));assert.equal(existsSync(directory),false);
     },f.clock,{lock,...f.admission.profileBinding,profileRunId,system:"crm",credentialKey:FingerprintSchema.parse("a".repeat(64))});
     const facts=f.context.database.readProfileResourceCustody();assert.equal(facts.verificationProfiles[0]?.cleanup,"closed");
     await f.context.account.close();

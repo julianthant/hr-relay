@@ -1,3 +1,4 @@
+import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { createWorkbookLibraryRepository } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { DatabaseSync } from "node:sqlite";
@@ -104,7 +105,7 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
 export const historicalIncompleteProfileFields = Object.freeze({ firstName: "Historical", lastName: "Fixture",
   email: "historical-fixture@ucsd.edu", password: "disposable-historical-fixture" });
 
-function assertClosedWorkspace(workspace: string): void {
+export function assertClosedWorkspace(workspace: string): void {
   const result = spawnSync("lsof", ["-nP", "+D", workspace, "-Fn"], { encoding: "utf8" });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 1, "historical fixture source closure unproved");
@@ -182,7 +183,7 @@ function historicalAuthorityArchive(profileRoot: string, binding: { installation
 
 export async function convertHistoricalIncompleteProfileFixture(fixture: { workspace: string; lifetime: RuntimeLifetimeLock }): Promise<void> {
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace, fixture.lifetime);
-  try { await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock, composeStoppedControlCredentialInventory); }
+  try { await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe); }
   finally { maintenance.release(); }
 }
 
@@ -260,6 +261,7 @@ export async function createHistoricalIncompleteProfileFixture(options: { keyFor
       credentialKey: { keyId: head.key.keyId, binding: { installationId, profileId: draft.profileId },
         file: { device: keyStat.dev, inode: keyStat.ino, digest: createHash("sha256").update(keyBytes).digest("hex") } } }],
     duo: [{ profileId: draft.profileId, state: "never-initialized", revision: 0 }] });
+  unlinkSync(join(machineRoot, "browser-roots.json"));
   fixtureJson(join(machineRoot, "profile-registry-version.json"), { schemaVersion: 5 });
   const databasePath = join(profileRoot, "state.db");
   let archive: ReturnType<typeof historicalAuthorityArchive> | undefined;

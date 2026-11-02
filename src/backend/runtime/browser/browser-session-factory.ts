@@ -1,17 +1,18 @@
+import { createNativeBrowserProbe, BrowserLaunchUncertainError, chromiumProfileInUse, DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, closeContextWithProof, observeContextLifecycle, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
+import { BrowserProfileStillClosingError, BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { privatePathRejects } from "../../storage/private-path.js";
+import type { BrowserRoots, BrowserRootLaunch, BrowserRootLaunchInput } from "../../storage/browser-roots.js";
+import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import { retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { provisionWorkflowDuo } from "./workflow-duo-provider.js";
 import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
-import { DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, BrowserProfileStillClosingError, ProfileCustodyUnavailableError,
-  profileReservations, assertPrivateProfilePath, probeClosedBrowserProfile, closeContextWithProof, observeContextLifecycle,
-  workerProfileDirectory, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-profile-probe.js";
-export { BrowserProfileStillClosingError, ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT, probeClosedBrowserProfile,
-  workerProfileDirectory, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-profile-probe.js";
-import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
+import { ProfileCustodyUnavailableError, profileReservations, assertPrivateProfilePath, workerProfileDirectory } from "../../storage/browser-roots.js";
+export { ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT, workerProfileDirectory } from "../../storage/browser-roots.js";
+export type { BrowserDeadlineScheduler, PersistentContextLauncher } from "./native-browser.js";
 import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-
 import { lstatSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import type { BrowserContext, Frame, Page } from "playwright";
@@ -65,6 +66,8 @@ export const BrowserProfileAdmissionSchema = z.strictObject({
 export type BrowserProfileAdmission = z.infer<typeof BrowserProfileAdmissionSchema>;
 
 export interface BrowserSessionFactoryOptions {
+  readonly browserRoots: BrowserRoots;
+  readonly browserOwner: Readonly<{ database: AuthorityDatabase; profileId: string }>;
   readonly config: Config;
   readonly duo?: DuoSigningSource;
   readonly protectedSecrets: ProtectedSecretSource;
@@ -75,7 +78,7 @@ export interface BrowserSessionFactoryOptions {
   readonly assertCurrent: (workerId: WorkerId) => void;
   readonly slotOrdinal: (workerId: WorkerId, system: BrowserSystemId) => number;
   readonly admitProfile: (input: Readonly<{ workerId: WorkerId; system: BrowserSystemId; instance: RuntimeInstance;
-    configFingerprint: Fingerprint; signInFingerprint: Fingerprint; browserMode: BrowserPresentationMode; profileDirectory: string }>) => Promise<BrowserProfileAdmission>;
+    configFingerprint: Fingerprint; signInFingerprint: Fingerprint; browserMode: BrowserPresentationMode; profileDirectory: string }>, purpose?: "acquire" | "cleanup") => Promise<BrowserProfileAdmission>;
   readonly bindings?: BrowserSystemBindings;
   readonly launcher?: PersistentContextLauncher;
   // Session proof diagnostics name the observed marker, never its sensitive value.
@@ -136,6 +139,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
   readonly #options: BrowserSessionFactoryOptions;
   readonly #bindings: BrowserSystemBindings;
   readonly #launcher: PersistentContextLauncher;
+  readonly #launches = new Map<string, BrowserRootLaunch>();
   readonly #owned = new Map<string, Readonly<{ context: BrowserContext; lifecycle: ContextLifecycle; duo?: Awaited<ReturnType<typeof provisionWorkflowDuo>> }>>();
 
   constructor(options: BrowserSessionFactoryOptions) {
@@ -152,12 +156,10 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       slotOrdinal: this.#options.slotOrdinal(WorkerIdSchema.parse(input.workerId), system), system });
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
-    mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
     try {
-      await probeClosedBrowserProfile({ profileRoot: config.paths.browserProfileRoot, launcher: this.#launcher,
-        launch: { profileDirectory, extensionDirectory: config.paths.duoExtensionDir, downloadsPath: config.paths.downloadsDir,
-          viewport: { width: config.display.screenWidth, height: config.display.screenHeight }, timeoutMs: config.timeouts.sessionAcquireMs },
-        clock, scheduler, closeProofMs: config.browser.closeProofMs, signal: input.signal });
+      await this.#options.browserRoots.probe(this.#rootInput(WorkerIdSchema.parse(input.workerId), profileDirectory, null), createNativeBrowserProbe({
+        launcher: this.#launcher, clock, scheduler, closeProofMs: config.browser.closeProofMs,
+        launchTimeoutMs: config.timeouts.sessionAcquireMs, signal: input.signal }));
     } catch (error) {
       if (error instanceof BrowserProfileStillClosingError || error instanceof ProfileCustodyUnavailableError) throw error;
       throw new BrowserSessionClosureUnprovedError([error], `${system} native profile probe closure is unproved`, { cause: error });
@@ -213,22 +215,14 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
     assertFastDuoReady(config, this.#options.duo);
     profileReservations.add(profileDirectory);
+    const rootOwner = this.#rootInput(workerId, profileDirectory, signInFingerprint);
     if (resetRequired) {
-      const previous = await this.#launchProfile(profileDirectory, browserMode, input.acceptDownloads, system);
-      const lifecycle = observeContextLifecycle(previous);
-      this.#owned.set(profileDirectory, { context: previous, lifecycle });
-      try {
-        await this.#closeWithProof(previous, lifecycle, system, "profile-reset");
-        this.#releaseProfile(profileDirectory);
-      } catch (error) {
-        throw new BrowserSessionClosureUnprovedError([error], `${system} browser profile reset did not close its launch probe`, { cause: error });
-      }
-      assertCurrent();
-      deleteOwnedBrowserProfile(config.paths.browserProfileRoot, profileDirectory);
+      profileReservations.delete(profileDirectory);
+      await this.#unusedProfile(rootOwner, async unused => { assertCurrent(); unused.remove(); });
       profileReservations.add(profileDirectory);
     }
     assertCurrent();
-    const context = await this.#launchProfile(profileDirectory, browserMode, input.acceptDownloads, system);
+    const context = await this.#launchProfile(rootOwner, browserMode, input.acceptDownloads, system);
 
     const lifecycle = observeContextLifecycle(context);
     let signingToken: DuoCeremonyLeaseToken | undefined;
@@ -452,47 +446,68 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     });
     const instance = RuntimeInstanceSchema.parse(input.instance);
     const identity = { ...input, instance, browserMode, profileDirectory, signInFingerprint: browserSignInFingerprint(config, this.#options.protectedSecrets, input.system, instance, this.#options.duo) };
-    const { profileRevision: _revision, resetRequired: _reset, ...admitted } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(identity));
+    const { profileRevision: _revision, resetRequired: _reset, ...admitted } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(identity, "cleanup"));
     this.#options.assertCurrent(input.workerId);
     if (canonicalJsonStringify(admitted) !== canonicalJsonStringify(identity)) throw new ProfileCustodyUnavailableError();
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
-    deleteOwnedBrowserProfile(config.paths.browserProfileRoot, profileDirectory);
+    await this.#unusedProfile(this.#rootInput(input.workerId, profileDirectory, identity.signInFingerprint), async unused => { unused.remove(); });
     return Object.freeze({ profileDirectory });
   }
 
-  async #launchProfile(profileDirectory: string, browserMode: BrowserPresentationMode, acceptDownloads: boolean, system: BrowserSystemId, timeoutMs?: number): Promise<BrowserContext> {
+  #rootInput(workerId: WorkerId, profileDirectory: string, credentialFingerprint: string | null): BrowserRootLaunchInput {
+    return { profileId: this.#options.browserOwner.profileId, profileRoot: this.#options.config.paths.browserProfileRoot,
+      profileDirectory, credentialFingerprint, owner: { kind: "worker", database: this.#options.browserOwner.database, workerId } };
+  }
+
+  async #unusedProfile(owner: BrowserRootLaunchInput, body: Parameters<BrowserRoots["withUnused"]>[2]): Promise<void> {
+    const { config, clock, scheduler } = this.#options;
+    await this.#options.browserRoots.withUnused(owner.profileDirectory, createNativeBrowserProbe({ launcher: this.#launcher,
+      clock, scheduler, closeProofMs: config.browser.closeProofMs, launchTimeoutMs: config.timeouts.sessionAcquireMs,
+      signal: new AbortController().signal }), body, owner);
+  }
+
+  async #launchProfile(owner: BrowserRootLaunchInput, browserMode: BrowserPresentationMode, acceptDownloads: boolean, system: BrowserSystemId, timeoutMs?: number): Promise<BrowserContext> {
     const { config } = this.#options;
+    const profileDirectory = owner.profileDirectory, launch = this.#options.browserRoots.beginLaunch(owner);
+    this.#launches.set(profileDirectory, launch);
     const extensionDirectory = join(profileDirectory, "relay-extension");
     try {
       mkdirSync(dirname(profileDirectory), { recursive: true, mode: 0o700 });
       if (config.features.duoWebAuthn) {
         mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
-        deleteOwnedBrowserProfile(config.paths.browserProfileRoot, extensionDirectory);
+        deleteOwnedExtension(config.paths.browserProfileRoot, extensionDirectory);
         stageFastDuoExtension(config.paths.duoExtensionDir, extensionDirectory, "workflow");
       }
     } catch (error) {
-      profileReservations.delete(profileDirectory);
-      throw error;
+      launch.uncertain(error);
     }
+    let context: BrowserContext | undefined;
     try {
-      return await this.#launcher.launch({ profileDirectory, ...(config.features.duoWebAuthn ? {} : { nativeOnly: true }), headless: browserMode === "headless",
+      context = await this.#launcher.launch({ profileDirectory, ...(config.features.duoWebAuthn ? {} : { nativeOnly: true }), headless: browserMode === "headless",
         extensionDirectory, acceptDownloads, downloadsPath: config.paths.downloadsDir,
         viewport: { width: config.display.screenWidth, height: config.display.screenHeight },
         ...(timeoutMs === undefined ? {} : { timeoutMs }) });
+      launch.opened();
+      return context;
     } catch (error) {
-      if (error instanceof Error && ["Failed to create a ProcessSingleton for your profile directory.", "Opening in existing browser session."]
-        .some(message => error.message.includes(message))) {
-        profileReservations.delete(profileDirectory);
+      if (context === undefined && chromiumProfileInUse(error)) {
+        launch.closing(); launch.closed(); this.#launches.delete(profileDirectory); profileReservations.delete(profileDirectory);
         throw new BrowserProfileStillClosingError(error);
       }
-      throw new BrowserSessionClosureUnprovedError([error], `${system} browser launch failed and its closure is unproved`, { cause: error });
+      const uncertain = new BrowserLaunchUncertainError([error], `${system} browser launch closure is unproved`, { cause: error });
+      const failure = retainAuthoritySourceClosure([uncertain], { directory: { context, profileDirectory, system } });
+      try { return launch.uncertain(failure); }
+      catch (retained) { throw new BrowserLaunchUncertainError([error, retained], `${system} browser launch closure is unproved`, { cause: error }); }
     }
   }
 
   #releaseProfile(profileDirectory: string): void {
     const owned = this.#owned.get(profileDirectory);
     if (owned === undefined || !owned.lifecycle.closed() || owned.context.pages().length !== 0) throw new ProfileCustodyUnavailableError();
+    const launch = this.#launches.get(profileDirectory);
+    if (launch === undefined) throw new ProfileCustodyUnavailableError();
+    launch.closed(); this.#launches.delete(profileDirectory);
     this.#owned.delete(profileDirectory);
     profileReservations.delete(profileDirectory);
   }
@@ -532,7 +547,11 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     system: BrowserSystemId,
     reason: BrowserSessionCloseReason,
   ): Promise<void> {
-    const duo = [...this.#owned.values()].find(owned => owned.context === context)?.duo;
+    const owned = [...this.#owned.entries()].find(([, owned]) => owned.context === context), duo = owned?.[1].duo;
+    const launch = owned === undefined ? undefined : this.#launches.get(owned[0]);
+    const errors: unknown[] = [];
+    try { if (launch === undefined) throw new ProfileCustodyUnavailableError(); launch.closing(); }
+    catch (error) { errors.push(error); }
     let timer: ReturnType<BrowserDeadlineScheduler["schedule"]> | undefined;
     const brokerClose = duo === undefined ? undefined : Promise.race([duo.stop(), new Promise<never>((_resolve, reject) => {
       timer = this.#options.scheduler.schedule(this.#options.clock.monotonicMs() + this.#options.config.browser.closeProofMs,
@@ -544,15 +563,20 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         closeProofMs: this.#options.config.browser.closeProofMs }, context, lifecycle, system, reason),
     ]);
     timer?.cancel();
-    const errors: unknown[] = [];
     for (const result of results) if (result.status === "rejected") { const reason: unknown = result.reason; errors.push(reason); }
-    if (errors.length > 0) throw new BrowserSessionClosureUnprovedError(errors, `${system} browser and Duo broker closure is unproved`);
+    if (errors.length > 0) {
+      const failure = retainAuthoritySourceClosure(errors, { directory: { context, owned, launch } });
+      try { if (launch !== undefined) launch.uncertain(failure); }
+      catch (retained) { errors.push(retained); }
+      throw new BrowserSessionClosureUnprovedError([...errors, failure], `${system} browser session closure is unproved`, { cause: errors[0] });
+    }
   }
 }
 
 
-export function deleteOwnedBrowserProfile(profileRoot: string, profileDirectory: string): void {
+function deleteOwnedExtension(profileRoot: string, profileDirectory: string): void {
   const root = AbsolutePathSchema.parse(profileRoot), directory = AbsolutePathSchema.parse(profileDirectory);
+  if (!directory.endsWith(`${sep}relay-extension`)) throw new ProfileCustodyUnavailableError();
   assertPrivateProfilePath(root, directory);
   if ([...profileReservations].some(path => path === directory || path.startsWith(`${directory}${sep}`))) throw new ProfileCustodyUnavailableError();
   const verify = (path: string): void => {

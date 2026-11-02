@@ -1,6 +1,5 @@
 import { testProcessImport } from "../../../../support/compiled-process.js";
-import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../../support/helpers/admission-fixture.js";
-import { afterAll } from "vitest";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../../../../support/helpers/admission-fixture.js";
 import { WorkerStopDirectiveContextSchema } from "../../../../../src/backend/runtime/workers/worker-loop.js";
 import { createDashboardChildTestWorld } from "../../../../support/helpers/backend/dashboard-child-world.js";
 import { instrumentPool,kernelOver,type PoolEffectEvent } from "../../../../support/helpers/backend/dashboard-pool-world.js";
@@ -10,6 +9,8 @@ import { seedSyntheticRuntimeConfig } from "../../../../support/fixtures/operato
 import { releaseAdmissionFixture,releaseAdmissionFixtures } from "../../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
+import { spawn, type ChildProcess } from "node:child_process";
+import { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
 import { join } from "node:path";
 import { afterEach,describe,it } from "vitest";
 import { composeWorkerProcessControl } from "../../../../../src/backend/app/composition/dashboard/compose.js";
@@ -46,9 +47,7 @@ function required<T>(value: T | undefined, what: string): T {
 
 const { openDatabases, cleanups, cleanup } = createDashboardChildTestWorld(releaseAdmissionFixtures, releaseAdmissionFixture);
 
-const profiles = createProfileFixtureSet();
 const heldProfiles: BoundProfileStorageFixture[] = [];
-afterAll(() => profiles.close());
 afterEach(async () => {
   await cleanup();
   for (const profile of heldProfiles.splice(0)) await profile.close();
@@ -113,14 +112,20 @@ class FakeWorkerChild implements SpawnedWorkerHandle {
   #exitListeners: ((code: number | null, signal: string | null) => void)[] = [];
   #errorListeners: ((error: Error) => void)[] = [];
 
-  constructor(pid: number | undefined, killResult = true) {
+  constructor(pid: number | undefined, killResult = true, readonly nativeProcess?: ChildProcess) {
     this.pid = pid;
     this.#killResult = killResult;
+    nativeProcess?.once("exit", (code, signal) => {
+      for (const listener of this.#exitListeners) listener(code, signal);
+    });
+    nativeProcess?.on("error", error => {
+      for (const listener of this.#errorListeners) listener(error);
+    });
   }
 
   kill(signal: "SIGTERM" | "SIGKILL"): boolean {
     this.signalsSent.push(signal);
-    return this.#killResult;
+    return this.nativeProcess?.kill(signal) ?? this.#killResult;
   }
 
   onExit(listener: (code: number | null, signal: string | null) => void): void {
@@ -132,6 +137,10 @@ class FakeWorkerChild implements SpawnedWorkerHandle {
   }
 
   emitExit(code: number | null, signal: string | null): void {
+    if (this.nativeProcess !== undefined) {
+      this.nativeProcess.send({ kind: "fixture-stop" });
+      return;
+    }
     for (const listener of this.#exitListeners) listener(code, signal);
   }
 
@@ -154,7 +163,7 @@ interface SoakHarness {
 
 interface SoakHarnessOptions {
   /** Per-worker fake-child behavior; default is a healthy signalable child. */
-  readonly childFor?: (member: WorkerPoolMember, pid: number) => FakeWorkerChild;
+  readonly childFor?: (member: WorkerPoolMember, pid: number, lifetime: RuntimeLifetimeLock) => FakeWorkerChild;
 
   readonly interceptPool?: (
     pool: WorkerPoolRuntimeSeam,
@@ -163,7 +172,8 @@ interface SoakHarnessOptions {
 }
 
 async function openSoakHarness(options?: SoakHarnessOptions): Promise<SoakHarness> {
-  const profile = await profiles.create(); heldProfiles.push(profile);
+  const profile = await createBoundProfileFixture({ sharedMachine: true }); heldProfiles.push(profile);
+  const lifetime = profile.admission.lifetime; assert.ok(lifetime instanceof RuntimeLifetimeLock);
   const root = profile.stateRoot;
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
@@ -179,6 +189,7 @@ async function openSoakHarness(options?: SoakHarnessOptions): Promise<SoakHarnes
   const events: PoolEffectEvent[] = [];
   let nextPid = 7000;
   const control = composeWorkerProcessControl({
+    admission: profile.admission,
     onExit: () => undefined,
     profileRoot: join(root, "browsers"),
     database,
@@ -195,7 +206,7 @@ async function openSoakHarness(options?: SoakHarnessOptions): Promise<SoakHarnes
       nextPid += 1;
       const child = options?.childFor === undefined
         ? new FakeWorkerChild(nextPid)
-        : options.childFor(request.member, nextPid);
+        : options.childFor(request.member, nextPid, lifetime);
       children.push(child);
       return child;
     },
@@ -255,7 +266,31 @@ describe("soak: overlapping command sequences over the composed pool door (deter
   it(
     "serializes SAME-workflow commands, interleaves DIFFERENT workflows, and every acknowledgement is truthful",
     async () => {
-      const harness = await openSoakHarness();
+      const harness = await openSoakHarness({ childFor(member, pid, lifetime) {
+        if (member.workflowId !== PL || member.poolIndex !== 2) return new FakeWorkerChild(pid);
+        const source = new URL("../../../../../src/backend/storage/admission/lifetime-lock.ts", import.meta.url).href;
+        const native = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "--eval", `
+          import { WorkerRuntimeLifetimeLock } from ${JSON.stringify(source)};
+          const stopped = new Promise(resolve => process.on("message", value => { if (value?.kind === "fixture-stop") resolve(); }));
+          const lock = await WorkerRuntimeLifetimeLock.receive(Number(process.argv[1]), () => process.exit(1));
+          await stopped; await lock.close(); process.disconnect();
+        `, String(lifetime.port)], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
+        native.stderr?.resume();
+        const child = new FakeWorkerChild(native.pid, true, native);
+        const closed = new Promise<void>(resolve => { native.once("close", () => resolve()); });
+        const shared = Promise.resolve().then(() => {
+          const transfer = lifetime.share(native);
+          try { lifetime.observeOwnedChildClosure(native); }
+          catch (error) { return transfer.then(() => { throw error; }); }
+          return transfer;
+        });
+        cleanups.push(async () => {
+          if (native.exitCode === null && native.signalCode === null) native.kill("SIGKILL");
+          await closed; await shared; lifetime.assertOwnedChildClosed(native);
+        });
+        void shared.catch(error => { native.kill("SIGKILL"); native.emit("error", error); });
+        return child;
+      } });
 
       // ── plan up, both workflows, driven concurrently ────────────────────
       const planPlId = nextCommandId();

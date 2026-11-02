@@ -1,8 +1,10 @@
+import { createNativeBrowserProbe } from "../../../runtime/browser/native-browser.js";
+import { profileBrowserClosure } from "../../../runtime/browser/profile-browser-closure.js";
+import { assertPrivateProfilePath, createBrowserRoots } from "../../../storage/browser-roots.js";
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
 import { createAssistantWorkflowStarts } from "../../../assistant/workflow-start.js";
 import { readProfileDatabaseBinding } from "../../../storage/sqlite/profile-local-databases.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../storage/sqlite/migrations.js";
-import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
@@ -31,14 +33,14 @@ import type { ProfileOnboardingDuoProvider } from "../../../profiles/onboarding-
 import { consumeAuthenticatedProfileUpgrade, type ActiveProfileSession, type AuthenticatedProfileUpgrade, type ProfileUpgradeRequired } from "../../../profiles/profile-session.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { operatorMutationIngressGuard } from "../../../transports/http/routes/operator-mutation-ingress.js";
-import { staticBundleHandler } from "../../../transports/http/static-bundle.js";
+import { staticBundleHandler, openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
 import { withEmergencyTimelineWriter, importEmergencyFaults } from "../../../logs/emergency-faults.js";
 import { WorkerRetirementProofSchema, workerPoolMember } from "../../../../models/run/worker-slot.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
-import { deleteOwnedBrowserProfile, workerProfileDirectory } from "../../../runtime/browser/browser-session-factory.js";
+import { workerProfileDirectory } from "../../../runtime/browser/browser-session-factory.js";
 import type { DashboardBuildCommand } from "./build-identity.js";
 import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
 import { composeRuntimePreflight, type RuntimePreflight } from "../../preflight/runtime-admission.js";
@@ -58,7 +60,7 @@ import { composeStorage } from "./storage.js";
 import { composeIntake } from "./intake.js";
 import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-projection.js";
 import { composeFailureResolution } from "./failure-resolution.js";
-import { localDatePart, runtimeTimeZone } from "../../../../rules/time/clock.js";
+import { localDatePart, runtimeTimeZone, systemClock } from "../../../../rules/time/clock.js";
 import { EVENT_STREAM_RETENTION_DAYS } from "../../../../models/events/retention.js";
 import { createOperatorProjection } from "./queue.js";
 import { createOperatorRunDetail } from "./run-detail.js";
@@ -66,14 +68,12 @@ import { createTrustNotifications } from "./notifications.js";
 import { createTrustReadDependencies } from "./trust.js";
 import { composeDataQueries } from "./data.js";
 export { dataOriginViewsOf } from "./run-detail-descriptors.js";
-import { ActorIdSchema } from "../../../../rules/identity/ids.js";
+import { ActorIdSchema, FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
-
 import { spawn as spawnChildProcess } from "node:child_process";
-import type { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
-import { readFileSync, realpathSync } from "node:fs";
+import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
+import { readFileSync, realpathSync, lstatSync, rmdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../../../models/config/define-runtime-isolation.js";
 import { descriptorSetHash, DESCRIPTORS, INTAKE_PROJECTIONS, SERVER_REGISTRY } from "../../registries/workflow-registry.js";
@@ -87,10 +87,8 @@ import { RunRecordService, runContinuationPort } from "../../../runs/lifecycle/r
 import { createStorageRelocationPlanReader } from "../../../storage/maintenance/storage-relocation-plans.js";
 import { createWriteResolutionExecutor } from "../../../runtime/writes/write-recovery.js";
 import type { Clock } from "../../../../rules/time/clock.js";
-import { systemClock } from "../../../../rules/time/clock.js";
 import { composeProfileAssistantAuthorization, composeProfileRuntime, RuntimeCustodyUncertainError } from "../storage-compose.js";
 import { systemIdFactory, type IdFactory } from "../../../../rules/identity/identifiers.js";
-import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 import { assertNoMigratedEnvironmentKeys, hostAwareResolutionEnvironment, workerBootstrapEnvironment } from "../../../../models/config/secrets.js";
 import { probePrimaryDisplay } from "../../host/primary-display.js";
 import { createPreflightAuthority } from "../../../../models/preflight/preflight.js";
@@ -104,7 +102,6 @@ import { createRunLogStreamStore } from "../../../logs/run-log-stream.js";
 import { RunLogsStreamHub } from "../../../transports/http/subscriptions/run-logs-stream.js";
 import { createContentAddressedArtifactWriter } from "../../../storage/artifacts/content-addressed-artifact-writer.js";
 import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
-
 import { createIntakeParser } from "../../../processing/spreadsheet/intake-parser.js";
 import { activeSettingsRuntimeIdentity, readBootSettings } from "../../../runtime/settings/settings-runtime.js";
 import { createDashboardCommandService } from "../../../runs/commands/command-service.js";
@@ -116,7 +113,6 @@ import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/re
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
 import { dispatchMountedRequest, startDashboardHttpServer, type DashboardHttpServer, type DashboardHttpListener } from "../../../transports/http/http-server.js";
 import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
-
 import { createDashboardPreflightRunners } from "../../preflight/dashboard-runners.js";
 
 export interface DashboardRuntime {
@@ -196,6 +192,7 @@ export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.Pr
 const WORKER_BIRTH_TIMEOUT_MS = 60_000;
 
 export interface WorkerProcessControlInput {
+  readonly admission: RuntimeAdmission;
   readonly onExit: DashboardWorkerSupervisorDependencies["onExit"];
   readonly profileRoot: string;
   readonly database: AuthorityDatabase;
@@ -333,8 +330,8 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       return audit !== undefined && "kind" in audit && audit.kind === "run-lifecycle" && audit.result.kind === "worker-recovery";
     },
     assertStoppedLifetime: (member, lifetime) => { input.database.assertStoppedWorkerLifetime(member, lifetime); },
-    proveRetirement: member => {
-      return input.database.withAuthorityTransaction(repositories => {
+    proveRetirement: async (member, child) => {
+      const capture = () => input.database.withAuthorityTransaction(repositories => {
         const slot = repositories.workerSlots.get(member.workerId);
         const lease = repositories.workerLeases.get(member.workerId);
         const pending = repositories.workerControls.pending(`worker-pool:${member.workflowId}`);
@@ -349,14 +346,59 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
           || lease !== undefined && isLiveWorker(lease)
           || repositories.workerControls.browsers(member.workerId).some(browser => browser.health !== "closed")) throw new WorkerControlRefusal("worker-retirement-closure-not-proved");
         input.database.assertWorkerLifecycleRelease(member.workerId);
-        const profileDirectory = join(input.profileRoot, `w${String(slot.ordinal)}`);
-        for (const browser of repositories.workerControls.browsers(member.workerId)) {
+        const browsers = repositories.workerControls.browsers(member.workerId);
+        for (const browser of browsers) {
           if (browser.profileDirectory !== workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: slot.ordinal, system: browser.system })) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
         }
-        deleteOwnedBrowserProfile(input.profileRoot, profileDirectory);
-        return WorkerRetirementProofSchema.parse({ workerId: member.workerId, membershipRevision: member.membershipRevision,
-          checkedAt: input.clock.now().toISOString(), processStopped: true, browsersClosed: true, exclusive: true });
+        return { browsers, browserSystems: lease?.browserSystems, processId: lease?.processId, identity: canonicalJsonStringify({ slot, lease: lease ?? null, pending, standing: standing ?? null, browsers }) };
       });
+      const before = capture(), roots = createBrowserRoots(input.admission);
+      const directory = join(input.profileRoot, `w${String(member.ordinal)}`);
+      const retained = roots.inventory().roots.filter(row => row.profileId === input.admission.profileBinding.profileId && row.owner.kind === "worker" && row.owner.workerId === member.workerId);
+      const process = child?.nativeProcess, lifetime = input.admission.lifetime;
+      const requiresChild = before.processId !== undefined && before.processId !== null || process !== undefined
+        || retained.length !== 0 || lstatSync(directory, { throwIfNoEntry: false }) !== undefined;
+      const rootAssertions: Array<() => void> = [];
+      const assertCurrent = () => {
+        input.admission.assertProfileRuntime();
+        if (capture().identity !== before.identity) throw new WorkerControlRefusal("worker-retirement-owner-changed");
+        if (requiresChild) {
+          if (process === undefined || !(lifetime instanceof RuntimeLifetimeLock)
+            || before.processId !== undefined && before.processId !== null && process.pid !== before.processId) throw new WorkerControlRefusal("worker-retirement-child-close-unproved");
+          lifetime.assertOwnedChildClosed(process);
+        }
+        for (const assertRoot of rootAssertions) assertRoot();
+      };
+      if (requiresChild) {
+        if (process === undefined || !(lifetime instanceof RuntimeLifetimeLock)) throw new WorkerControlRefusal("worker-retirement-child-close-unproved");
+        await lifetime.awaitOwnedChildClosed(process);
+        assertCurrent();
+        for (const row of retained) {
+          const profileDirectory = join(input.admission.captureBrowserRegistryContext().machineRoot, row.directory);
+          const browser = before.browsers.find(browser => browser.profileDirectory === profileDirectory);
+          if (!before.browserSystems?.some(system => profileDirectory === workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: member.ordinal, system }))
+            || browser === undefined && (row.credentialFingerprint !== null || row.launch.state !== "closed" || row.native !== undefined)) {
+            throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
+          }
+          const assertRoot = await roots.withUnused(profileDirectory, createNativeBrowserProbe({ clock: input.clock, scheduler: input.scheduler,
+            closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs, launchTimeoutMs: ConfigSchema.shape.timeouts.parse(undefined).sessionAcquireMs,
+            signal: new AbortController().signal }), async ({ remove, assertCurrent: assertRoot }) => {
+            assertCurrent();
+            remove();
+            return assertRoot;
+          },
+          { profileId: row.profileId, profileRoot: input.profileRoot, profileDirectory, credentialFingerprint: browser?.signInFingerprint ?? null,
+            owner: { kind: "worker", database: input.database, workerId: member.workerId, stoppedProcess: process } });
+          rootAssertions.push(assertRoot);
+          assertCurrent();
+        }
+        assertCurrent();
+        assertPrivateProfilePath(input.profileRoot, directory);
+        if (lstatSync(directory, { throwIfNoEntry: false }) !== undefined) rmdirSync(directory);
+      }
+      assertCurrent();
+      return Object.freeze({ proof: WorkerRetirementProofSchema.parse({ workerId: member.workerId, membershipRevision: member.membershipRevision,
+        checkedAt: input.clock.now().toISOString(), processStopped: true, browsersClosed: true, exclusive: true }), assertCurrent });
     },
     onFault: input.onFault,
   });
@@ -378,13 +420,14 @@ function realWorkerProcessSpawner(lock: RuntimeLifetimeLock, nominatim: ReturnTy
     });
     nominatim.attach(child);
     let transfer: Promise<void>;
-    try { transfer = lock.share(child); }
+    try { transfer = lock.share(child); lock.observeOwnedChildClosure(child); }
     catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }
     void transfer.catch(error => {
       child.kill("SIGKILL");
       child.emit("error", error);
     });
     return Object.freeze({
+      nativeProcess: child,
       pid: child.pid,
       kill: (signal: "SIGTERM" | "SIGKILL"): boolean => child.kill(signal),
       onExit: (listener: (code: number | null, signal: string | null) => void): void => {
@@ -736,6 +779,7 @@ async function composeDashboardRuntimeStartup(
   profile.runtime.beginSupervisorConstruction(profile.token);
   const nominatim = createNominatimGeocodeAdapter({clock});
   const workerControl = composeWorkerProcessControl({
+    admission,
     onExit: (member, pid, valid) => profile.runtime.workerExited(admission, member, pid, valid),
     profileRoot: resolved.config.paths.browserProfileRoot,
     database,
@@ -1129,7 +1173,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       const browsers = join(machine.stateRoot, "browsers"), browserRoot = join(browsers, "onboarding");
       ensureChildDirectory(machine.stateRoot, browsers, "onboarding browsers", 0o700, 0o700);
       ensureChildDirectory(browsers, browserRoot, "onboarding browsers", 0o700, 0o700);
-      onboardingDuo = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: join(realpathSync(repoRoot), "fast-duo"),
+      onboardingDuo = createProfileOnboardingDuoProvider({ browserRoots: createBrowserRoots(machine), browserRoot, extensionDirectory: join(realpathSync(repoRoot), "fast-duo"),
         clock, closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs });
     }
     const profile = composeProfileRuntime({ admission: machine, clock, hostFacts: facts,  onboardingDuo });

@@ -1,4 +1,5 @@
 import { testProcessImport } from "../../../support/compiled-process.js";
+import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { assertRuntimeLifetimeHeld } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { once } from "node:events";
@@ -146,10 +147,10 @@ it("retires a real worker only after its opened Chromium profile closes, custody
     childClosures.push(once(child, "close"));
     children.push(child); child.stdout?.on("data", chunk => output.push(String(chunk))); child.stderr?.on("data", chunk => output.push(String(chunk)));
     let transfer: Promise<void>;
-    try { transfer = profile.lifetime.share(child); }
+    try { transfer = profile.lifetime.share(child); profile.lifetime.observeOwnedChildClosure(child); }
     catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }
     void transfer.catch(error => { child.emit("error", error); child.kill("SIGTERM"); });
-    return { pid: child.pid, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
+    return { pid: child.pid, nativeProcess: child, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
   };
   try {
     runtime = await composeDashboardRuntime({ lifetimeLock: profile.lifetime, ...profile.dashboardInput, preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, repoRoot: root,
@@ -230,6 +231,12 @@ it("retires a real worker only after its opened Chromium profile closes, custody
       const profileDirectory = browser.profileDirectory;
       return profileDirectory.startsWith(slotDirectory + "/");
     }));
+    const rootAdmission = profile.dashboardInput.profile.runtime.selectedContext(profile.dashboardInput.profile.token).admission;
+    const nativeOnly = createBrowserRoots(rootAdmission).inventory().roots.find(row => row.directory.endsWith(`/w${String(member.ordinal)}/crm`));
+    assert.ok(nativeOnly);
+    assert.equal(nativeOnly.credentialFingerprint, null);
+    assert.equal(nativeOnly.launch.state, "closed");
+    assert.equal(nativeOnly.native, undefined);
     const resizing = post("plan-worker-count", { workflowId: "person-lookup", expectedVersion: 1 }, { desiredWorkers: 1 });
     await waitFor(() => db.authority.workerControls.pending("worker-pool:person-lookup").some(control => control.phase.state === "executing"), "retirement reservation missing", diagnostics);
     assert.ok(existsSync(slotDirectory), "opened profile must remain until close is observed");

@@ -1,12 +1,17 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { profileProcessQuery } from "../../../../src/backend/storage/maintenance/process-closure.js";
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { withOfflineMaintenance, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
+import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { detachBoundFixtureWorkers, stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { default as assert } from "node:assert/strict";
-import { existsSync, readFileSync, mkdirSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
@@ -138,7 +143,7 @@ it("rechecks the actual native schema after priming its immutable expected ident
 });
 }
 
-for (const fault of ["missing", "copied", "foreign", "expired", "census-changed", "os-query"] as const) it(`refuses ${fault} stopped backup closure before backup IO`, async () => {
+for (const fault of ["missing", "copied", "foreign", "expired", "census-changed"] as const) it(`refuses ${fault} stopped backup closure before backup IO`, async () => {
   const f = await fixture(), other = fault === "foreign" ? await fixture() : undefined;
   let operation = f.admission.acquireOfflineMaintenance();
   let foreignOperation: ReturnType<typeof f.admission.acquireOfflineMaintenance> | undefined;
@@ -153,31 +158,67 @@ for (const fault of ["missing", "copied", "foreign", "expired", "census-changed"
     }
     if (fault === "expired") { operation.release(); operation = f.admission.acquireOfflineMaintenance(); }
     if (fault === "census-changed") mkdirSync(join(f.stateRoot, "browsers", "w99", "ucpath"), { recursive: true, mode: 0o700 });
-    const query = fault === "os-query" ? vi.spyOn(profileProcessQuery, "spawnSync").mockReturnValue({ pid: 0, output: [],
-      stdout: "", stderr: "synthetic incomplete observation", status: 1, signal: null }) : undefined;
-    try {
-      await assert.rejects(async () => {
+    await assert.rejects(async () => {
         if (fault === "missing") {
           const result: unknown = Reflect.apply(backupStoppedAuthority, undefined, [undefined, f.admission, f.stateRoot, f.clock, f.processLockRoot, operation]);
           await result;
         } else await backupStoppedAuthority(candidate, f.admission, f.stateRoot, f.clock, f.processLockRoot, operation);
-      }, { code: "STORAGE_BACKUP_CLOSURE_UNPROVED" });
-      assert.deepEqual(readFileSync(f.path), before);
-      assert.equal(existsSync(join(f.stateRoot, "backups")), false);
-    } finally { query?.mockRestore(); }
+    }, { code: "STORAGE_BACKUP_CLOSURE_UNPROVED" });
+    assert.deepEqual(readFileSync(f.path), before);
+    assert.equal(existsSync(join(f.stateRoot, "backups")), false);
   } finally { operation.release(); foreignOperation?.release(); await _afterEachFixture0(); }
 });
 
-it("backs up under genuine prepared closure without invoking native browser launch again", async () => {
-  const f = await fixture(), operation = f.admission.acquireOfflineMaintenance();
+for (const state of ["open", "closing"] as const) it(`refuses a registered ${state} browser root before stopped backup IO`, async () => {
+  const f = await fixture(), roots = createBrowserRoots(f.admission);
+  const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "backup-registry-test" }, clock,
+    undefined, undefined, undefined, boundProfileCredentials(f.admission));
+  let launch: ReturnType<typeof roots.beginLaunch> | undefined;
   try {
+    const resolved = resolveConfigWithProvenance({}, { primaryDisplay: null }, clock, f.admission);
+    database.authority.runtimeConfig.initialize({ ...CONFIG_SNAPSHOT, ...resolved, capturedAt: clock.now().toISOString() });
+    const worker = testAdmittedWorker(database, clock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: ["crm"] });
+    const profileRoot = resolved.config.paths.browserProfileRoot, profileDirectory = join(profileRoot, `w${worker.member.ordinal}`, "crm");
+    launch = roots.beginLaunch({ profileId: f.admission.profileBinding.profileId, profileRoot, profileDirectory,
+      credentialFingerprint: resolved.fingerprint, owner: { kind: "worker", database, workerId: worker.workerId } });
+    mkdirSync(profileDirectory, { recursive: true, mode: 0o700 }); launch.opened();
+    if (state === "closing") launch.closing();
+    database.authority.workerControls.observe({ workerId: worker.workerId, leaseGeneration: worker.lease.leaseGeneration,
+      sessionId: randomUUID(), system: "crm", configFingerprint: resolved.fingerprint, signInFingerprint: resolved.fingerprint,
+      browserMode: "headless", profileDirectory, acceptDownloads: false, exclusive: false, health: "closed",
+      observedAt: clock.now().toISOString(), openedAt: clock.now().toISOString(), profileRevision: 1 });
+    stopSyntheticDatabaseWorkers({ database, path: f.path }); detachBoundFixtureWorkers(database); database.close();
+    const before = readFileSync(f.path), registry = roots.inventory();
+    assert.equal(registry.roots.length, 1); assert.equal(registry.roots[0]?.launch.state, state);
+    const operation = f.admission.acquireOfflineMaintenance();
+    const native = vi.spyOn(profileBrowserClosure, "probeClosed").mockRejectedValue(new Error("unproved-registry-must-refuse-before-native-probe"));
+    const query = vi.spyOn(profileProcessQuery, "spawnSync").mockImplementation(() => { throw new Error("current-owner-proof-must-not-query-os"); });
+    try {
+      await assert.rejects(prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, clock, f.processLockRoot),
+        { code: "STORAGE_BACKUP_CLOSURE_UNPROVED" });
+      assert.equal(native.mock.calls.length, 0); assert.equal(query.mock.calls.length, 0);
+      assert.deepEqual(readFileSync(f.path), before); assert.deepEqual(roots.inventory(), registry);
+      assert.equal(existsSync(join(f.stateRoot, "backups")), false);
+    } finally { native.mockRestore(); query.mockRestore(); operation.release(); }
+  } finally { if (launch !== undefined) { launch.closing(); launch.closed(); } database.close(); await _afterEachFixture0(); }
+});
+
+it("backs up with a verified empty registry without an OS census or a second native launch", async () => {
+  const f = await fixture(), operation = f.admission.acquireOfflineMaintenance();
+  const query = vi.spyOn(profileProcessQuery, "spawnSync").mockImplementation(() => { throw new Error("current-owner-proof-must-not-query-os"); });
+  try {
+    const independent = [join(f.stateRoot, ".env"), join(f.stateRoot, "settings.json")];
+    for (const path of independent) writeFileSync(path, "malformed disposable independent settings", { mode: 0o600 });
+    assert.deepEqual(createBrowserRoots(f.admission).inventory().roots, []);
     const closure = await prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, f.clock, f.processLockRoot);
     const native = vi.spyOn(profileBrowserClosure, "probeClosed").mockRejectedValue(new Error("backup-must-not-launch-browser"));
     try {
       const before = readFileSync(f.path);
       const report = await backupStoppedAuthority(closure, f.admission, f.stateRoot, f.clock, f.processLockRoot, operation);
-      assert.equal(report.state, "verified"); assert.equal(native.mock.calls.length, 0);
+      assert.equal(report.state, "verified"); assert.equal(native.mock.calls.length, 0); assert.equal(query.mock.calls.length, 0);
+      assert.deepEqual(createBrowserRoots(f.admission).inventory().roots, []);
       assert.deepEqual(readFileSync(f.path), before);
+      for (const path of independent) assert.equal(readFileSync(path, "utf8"), "malformed disposable independent settings");
     } finally { native.mockRestore(); }
-  } finally { operation.release(); await _afterEachFixture0(); }
+  } finally { query.mockRestore(); operation.release(); await _afterEachFixture0(); }
 });

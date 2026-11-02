@@ -1,6 +1,6 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { CanonicalCredentialError, initializeCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { withOfflineMaintenance } from "../../../support/helpers/admission-fixture.js";
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { storageRecoveryFixture, credentialTrap, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";

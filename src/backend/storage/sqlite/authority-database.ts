@@ -1,10 +1,13 @@
+import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-custody.js";
+import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
+import type { ChildProcess } from "node:child_process";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
 import { CanonicalCrashRecoveryRequestSchema, RunClaimTokenSchema } from "../../../models/run/worker.js";
 import { privatePathRejects } from "../private-path.js";
 import { clearOperationProofSlots, revalidateOperationProof, outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
 import { type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
-import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
+import { type OfflineMaintenanceOperation, RuntimeLifetimeLock, offlineMaintenanceWorkspace } from "../admission/lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { authoritySourceDatabaseIdentity, type AuthorityBackupExpectedSource } from "./database-identity.js";
 import { WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalClaimNextRequestSchema, WorkerStandingRecoveryRequestSchema, RunClaimOutcomeSchema, RunClaimRequestSchema, RunHeartbeatOutcomeSchema, RunHeartbeatRequestSchema, RunItemQuerySchema, RunPresentationRequestSchema, RunInjectPatchesRequestSchema, RunPriorityBumpRequestSchema, RunRequeueRequestSchema, RunResumeRequestSchema, RunTransitionRequestSchema, RunUpdateOutcomeSchema, StartPlanConsumeOutcomeSchema, StartPlanConsumeRequestSchema, WorkerControlRequestSchema, WorkerLifecycleRequestSchema, WorkerPoolPlanOutcomeSchema, WorkerPoolPlanRequestSchema, WorkerStartOutcomeSchema, WorkerStartRequestSchema, WorkerUpdateOutcomeSchema, type RunClaimOutcome, type RunHeartbeatOutcome, type RunUpdateOutcome, type StartPlanConsumeOutcome, type WorkerPoolPlanOutcome, type WorkerStartOutcome, type WorkerUpdateOutcome } from "./run-store-contracts.js";
@@ -67,7 +70,7 @@ import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, statSync, lstatSync, openSync, closeSync, fsyncSync, unlinkSync, constants } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -1980,7 +1983,6 @@ export class AuthorityDatabase implements Disposable {
   }
 
   static async readFlatQueuedRunCancellation(path: string) {
-    const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
     return withReadonlyAuthoritySnapshot(path, database => flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed));
   }
 
@@ -1988,7 +1990,7 @@ export class AuthorityDatabase implements Disposable {
   static async cancelQueuedRunsNative6(browserClosure: ProfileBrowserClosure, lease: InstallationLease, restore: OfflineMaintenanceOperation, expectedDigest: string, clock: Clock) {
     const { assertInstallationLease: assertLease, inspectFlatOfflineRunMaintenance } = await import("../admission/installation.js");
     const assertInstallationLease: typeof import("../admission/installation.js").assertInstallationLease = assertLease;
-    const { assertCredentialCopyResourcesClosed, probeFlatBrowserInventoryClosed } = await import("../maintenance/profile-inventory.js");
+    const { probeFlatBrowserInventoryClosed } = await import("../maintenance/profile-inventory.js");
     assertInstallationLease(lease);
     if (lease.mode !== "exclusive") throw new Error("queued-run-cancellation-exclusive-required");
     const workspace = lease.readInstallationContext().workspace;
@@ -2001,14 +2003,14 @@ export class AuthorityDatabase implements Disposable {
         || lease.locator.installationId !== installation.installationId) throw new Error("queued-run-cancellation-installation-changed");
     };
     assertHeld(); requireDatabaseSourcePath(path);
+    const initial = await AuthorityDatabase.readFlatQueuedRunCancellation(path);
+    if (initial.digest !== expectedDigest) throw new Error("queued-run-cancellation-capture-changed");
+    await probeFlatBrowserInventoryClosed(lease, restore, stateRoot, clock, browserClosure);
+    assertHeld();
     const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, allowExtension: false, timeout: 5000 });
     let runIds: string[] | undefined;
     let failure: { error: unknown } | undefined;
     try {
-      const initial=flatQueuedRunCancellationInventory(database,assertCredentialCopyResourcesClosed);
-      if(initial.digest!==expectedDigest)throw new Error("queued-run-cancellation-capture-changed");
-      await probeFlatBrowserInventoryClosed(stateRoot,maintenanceInventory(database,inspectNativeAuthority(database,6)),clock,browserClosure);
-      assertHeld();
       database.exec("BEGIN IMMEDIATE");
       try {
         const inventory = flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed);
@@ -2059,14 +2061,37 @@ export class AuthorityDatabase implements Disposable {
     return runIds;
   }
 
-  static readFlatBackupRecoveryInventory(path: string, restore: OfflineMaintenanceOperation) {
-    assertOfflineMaintenanceForProcessRoot(restore, join(dirname(path), "locks"));
+  static readFlatArchiveInventory(path: string, restore: OfflineMaintenanceOperation) {
+    const workspace = offlineMaintenanceWorkspace(restore), root = join(workspace, rebuildRuntimeIsolation.stateRoot);
+    const assertHeld = () => {
+      assertOfflineMaintenanceForProcessRoot(restore, join(workspace, rebuildRuntimeIsolation.processLockRoot));
+      if (path !== join(root, "state.db") && (dirname(path) !== join(root, "backups", "authority")
+        || !/^authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite$/u.test(basename(path)))) throw new Error("flat-archive-database-path-refused");
+      requireDatabaseSourcePath(path);
+    };
+    assertHeld();
     return withReadonlyAuthoritySnapshot(path, database => {
-      const inspection = inspectNativeAuthority(database, 6);
-      if (inspection.installationId !== undefined || inspection.profileId !== undefined) throw new Error("flat-backup-recovery-binding-refused");
-      const facts = maintenanceInventory(database, inspection);
-      assertOfflineMaintenanceForProcessRoot(restore, join(dirname(path), "locks"));
-      return { inspection, facts };
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || readIntPragma(database, "user_version") !== 6) throw new Error("flat-backup-schema-refused");
+      assertNativeSchema(database, 6);
+      QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
+      if (database.prepare("PRAGMA foreign_key_check").all().length !== 0) throw new Error("flat-archive-integrity-refused");
+      const meta = readMetaRow(database);
+      if (meta.schema_version !== 6 || meta.installation_id !== undefined || meta.profile_id !== undefined) throw new Error("flat-backup-schema-refused");
+      const settings = readAppSettings(database);
+      const configSnapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
+        .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", row)));
+      const expectedPaths = { stateRoot: root, artifactRoot: join(root, "artifacts"), browserProfileRoot: join(root, "browsers"),
+        duoCredential: join(root, "credentials", "duo-webauthn.json"), reportsDir: join(workspace, "data", "reports"),
+        downloadsDir: join(workspace, "data", "downloads"), onboardingDocsDir: join(workspace, "data", "onboarding"),
+        i9CheckTrackerPath: join(workspace, "data", "reports", "i9-check-tracker.xlsx") };
+      if (configSnapshots.some(snapshot => {
+        const { duoExtensionDir: _extension, ...paths } = snapshot.config.paths;
+        return canonicalJsonStringify(paths) !== canonicalJsonStringify(expectedPaths);
+      }) || settings !== undefined && Object.keys((settings.saved?.settings ?? settings.initialization.settings.settings).paths ?? {}).length !== 0) throw new Error("existing-data-flat-custom-paths-unsupported");
+      if (settings !== undefined && (settings.active === null || !configSnapshots.some(snapshot => snapshot.configSnapshotId === settings.active?.configSnapshotId
+        && snapshot.fingerprint === settings.active.configFingerprint))) throw new Error("existing-data-flat-settings-unavailable");
+      assertHeld();
+      return { settings: settings === undefined ? initialSettingsFileRecord().settings : settings.saved?.settings ?? settings.initialization.settings.settings };
     });
   }
 
@@ -2292,7 +2317,7 @@ export class AuthorityDatabase implements Disposable {
       if (this.#logoutCompletion === undefined) {
         const path = join(admission.stateRoot, "state.db"), operation = admission.assertPendingLogoutSettlementDatabase(path);
         if (operation.settlement?.phase !== "done") throw new Error("profile-logout-settlement-incomplete");
-        const { assertCredentialCopyResourcesClosed, probeStoppedProfileBrowsersClosed, enumerateProfileCredentialMembership } = await import("../maintenance/profile-inventory.js");
+        const { probeStoppedProfileBrowsersClosed, enumerateProfileCredentialMembership } = await import("../maintenance/profile-inventory.js");
         assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
         await probeStoppedProfileBrowsersClosed(admission, this.#clock, profileBrowserClosure);
         const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
@@ -2503,6 +2528,35 @@ export class AuthorityDatabase implements Disposable {
       retainUnprovedSourceOwners(failure, { database: { original: this, temporary: database }, admission: { admission, copyAdmission }, snapshot, restore });
       throw failure;
     }
+  }
+
+  browserWorkerOwner(admission: RuntimeAdmission, workerId: string, profileDirectory: string, stoppedProcess?: ChildProcess) {
+    if (this.#admission !== admission) throw new Error("browser-profile-database-owner-mismatch");
+    this.#assertOpen(); admission.assertProfileRuntime();
+    const id = WorkerIdSchema.parse(workerId), slot = this.authority.workerSlots.get(id), lease = this.authority.workerLeases.get(id);
+    if (slot === undefined || slot.retiredAt !== null) throw new Error("browser-profile-worker-owner-mismatch");
+    const verification = this.authority.workerSlots.verification(id);
+    if (verification !== undefined) {
+      const binding = admission.profileBinding, lock = admission.lifetime;
+      if (!(lock instanceof RuntimeLifetimeLock) || stoppedProcess !== undefined || lease !== undefined
+        || verification.request.lockPort !== lock.port || verification.request.installationId !== binding.installationId
+        || verification.request.profileId !== binding.profileId || verification.slot.membershipRevision !== slot.membershipRevision
+        || profileDirectory !== join(admission.stateRoot, "scratch", "live-smoke", verification.request.profileRunId, "browsers", `w${String(slot.ordinal)}`, verification.request.system)) throw new Error("browser-profile-worker-owner-mismatch");
+      lock.assertHeld();
+      return Object.freeze({ kind: "worker" as const, workerId: slot.workerId, workflowId: slot.workflow,
+        ordinal: slot.ordinal, membershipRevision: slot.membershipRevision, leaseGeneration: verification.request.leaseGeneration });
+    }
+    if (lease === undefined) throw new Error("browser-profile-worker-owner-mismatch");
+    if (stoppedProcess === undefined) {
+      if (lease.processId !== process.pid || !isLiveWorker(lease) || lease.lifecycle.state === "stopping") throw new Error("browser-profile-worker-owner-mismatch");
+    } else {
+      if (!(admission.lifetime instanceof RuntimeLifetimeLock) || stoppedProcess.pid !== lease.processId || lease.lifecycle.state !== "stopped") throw new Error("browser-profile-worker-owner-mismatch");
+      admission.lifetime.assertOwnedChildClosed(stoppedProcess);
+      this.assertStoppedWorkerLifetime(workerPoolMember(slot), { leaseGeneration: lease.leaseGeneration, processId: lease.processId, startedAt: lease.lifecycle.startedAt });
+    }
+    admission.lifetime.assertHeld();
+    return Object.freeze({ kind: "worker" as const, workerId: slot.workerId, workflowId: slot.workflow,
+      ordinal: slot.ordinal, membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration });
   }
 
   capturePendingLogoutSource() {
