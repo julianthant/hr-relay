@@ -21,7 +21,6 @@ export const MACOS_FILES: readonly string[] = [
   "tests/backend/storage/configuration/chatgpt-credential-repository.maintenance.integration.test.ts",
   "tests/backend/storage/configuration/credential-key-custody.integration.test.ts",
   "tests/backend/storage/configuration/credential-store.storage-restore-drill.integration.test.ts",
-  "tests/backend/storage/maintenance/cancel-queued-runs.integration.test.ts",
   "tests/backend/storage/maintenance/existing-data-backup.flat-storage.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
@@ -42,6 +41,7 @@ export const MACOS_FILES: readonly string[] = [
 
 // Native browser process proofs run on macOS one at a time, without competing files.
 export const SERIAL_FILES: readonly string[] = [
+  "tests/backend/storage/maintenance/cancel-queued-runs.integration.test.ts",
   "tests/backend/storage/browser-roots.native.integration.test.ts",
   "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts",
   "tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts",

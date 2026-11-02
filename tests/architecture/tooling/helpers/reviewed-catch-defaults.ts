@@ -13,7 +13,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "f599520ff0c9a3cca626690c1420db3eb35fa18fbfe5a413b0ee7a2e0fdb0d18",
+    "sha256": "ef2739a057884d58a44bcd1cbe4ae5c1c0029f03787aa748cacd142c1a1a9c06",
     "reason": "Startup source-closure uncertainty records failed producer closure before unwind, retaining dependent database and admission custody. Selected-context open failure retains typed custody uncertainty and rethrows. Unproved upgrade failure remains retained in the exact exclusive admission and root lifetime; settled cleanup clears exclusiveOwner only after release. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and immediate stop promises, whose callers await and propagate failures before storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately. Required native browser closure failures follow the same upgrade rejection and custody-retention path."
   },
   {
@@ -68,7 +68,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "144938cbf98bb9b72c3b6ac21dd809bd83d44f4c68814b7dc19014a1ce5895f9",
+      "sha256": "36de0c8c4ff3a07b6b33e249b561462758909081fefe5c4bc29bb4d5303b1d49",
     "reason": "Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
   },
   {
