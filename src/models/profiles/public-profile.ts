@@ -21,8 +21,11 @@ export const ProfileOnboardingMethodStateSchema = z.strictObject({
   platformAuthenticator: z.enum(["native-platform", "chromium-platform"]).optional(),
 });
 export type ProfileOnboardingMethodState = z.infer<typeof ProfileOnboardingMethodStateSchema>;
+export const PROFILE_ONBOARDING_STATE = "onboarding";
+export const PROFILE_ONBOARDING_ROUTE_KEY = "onboarding";
+
 export const ProfileOnboardingStateSchema = z.strictObject({
-  state: z.literal("onboarding"), operationId: z.uuid(), profileId: ProfileIdSchema,
+  state: z.literal(PROFILE_ONBOARDING_STATE), operationId: z.uuid(), profileId: ProfileIdSchema,
   step: z.enum(["duo", "ready"]),
   methods: z.strictObject({ key: ProfileOnboardingMethodStateSchema, touch: ProfileOnboardingMethodStateSchema }),
 }).superRefine((value, context) => {

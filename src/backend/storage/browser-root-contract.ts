@@ -2,6 +2,8 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { BrowserSystemIdSchema, WorkerIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 
+export const PROFILE_ONBOARDING_BROWSER_DIRECTORY = "onboarding";
+
 const Integer = z.number().int().safe().nonnegative();
 const Generation = Integer.positive();
 const Digest = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -24,7 +26,7 @@ export const BrowserRootSchema = z.strictObject({ profileId: z.uuid(), profileRo
     && row.directory.startsWith(`${row.profileRoot}/w${row.owner.ordinal}/`)
     && BrowserSystemIdSchema.safeParse(row.directory.slice(`${row.profileRoot}/w${row.owner.ordinal}/`.length)).success
     && row.owner.workerId === `${row.owner.workflowId}-worker-${row.owner.ordinal}`
-    : row.owner.kind === 'signup' ? row.profileRoot === "browsers/onboarding" && row.directory === `${row.profileRoot}/onboarding-${row.owner.operationId}-${row.profileId}-${row.owner.accountId}-g${row.owner.providerGeneration}`
+    : row.owner.kind === 'signup' ? row.profileRoot === `browsers/${PROFILE_ONBOARDING_BROWSER_DIRECTORY}` && row.directory === `${row.profileRoot}/onboarding-${row.owner.operationId}-${row.profileId}-${row.owner.accountId}-g${row.owner.providerGeneration}`
     : row.profileRoot.startsWith(prefix) && row.directory === `${row.profileRoot}/commands/sharepoint`;
   if (!valid) {
     context.addIssue({ code: "custom", message: "browser root escapes its person" });
