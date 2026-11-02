@@ -90,6 +90,10 @@ It assigns sequence numbers within that incarnation. On exit it closes the publi
 browser teardown and warns about pending events. Publication health does not settle a run or an
 external write.
 
+An uncertain browser launch throws `WorkerLaunchUncertainError` with a strict report containing
+`state: "launch-uncertain"`, `custody: "held"`, worker and workflow identity. It retains root and
+source custody and leaves the lease unchanged; it does not report a crashed or stopped lease.
+
 ### 3.0 Startup claim recovery
 
 The controller holds the exclusive runtime lifetime listener before selecting a profile. Workers

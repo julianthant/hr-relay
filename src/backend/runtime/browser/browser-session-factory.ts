@@ -6,7 +6,7 @@ import { provisionWorkflowDuo } from "./workflow-duo-provider.js";
 import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
 import { ProfileCustodyUnavailableError, profileReservations, assertPrivateProfilePath, workerProfileDirectory } from "../../storage/browser-roots.js";
-import { chromiumProfileInUse, DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, BrowserProfileStillClosingError, closeContextWithProof, observeContextLifecycle, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
+import { BrowserLaunchUncertainError, chromiumProfileInUse, DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, BrowserProfileStillClosingError, closeContextWithProof, observeContextLifecycle, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
 export { ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT, workerProfileDirectory } from "../../storage/browser-roots.js";
 export { BrowserProfileStillClosingError, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
 import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
@@ -496,9 +496,10 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         launch.closing(); launch.closed(); this.#launches.delete(profileDirectory); profileReservations.delete(profileDirectory);
         throw new BrowserProfileStillClosingError(error);
       }
-      const failure = retainAuthoritySourceClosure([error], { directory: { context, profileDirectory, system } });
+      const uncertain = new BrowserLaunchUncertainError([error], `${system} browser launch closure is unproved`, { cause: error });
+      const failure = retainAuthoritySourceClosure([uncertain], { directory: { context, profileDirectory, system } });
       try { return launch.uncertain(failure); }
-      catch (retained) { throw new BrowserSessionClosureUnprovedError([error, retained], `${system} browser launch closure is unproved`, { cause: error }); }
+      catch (retained) { throw new BrowserLaunchUncertainError([error, retained], `${system} browser launch closure is unproved`, { cause: error }); }
     }
   }
 

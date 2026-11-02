@@ -1,3 +1,4 @@
+import { BrowserLaunchUncertainError } from "../../../src/backend/runtime/browser/native-browser.js";
 import { mockBrowserRootPort } from "../../support/helpers/browser/browser-roots.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../support/helpers/admission-fixture.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
@@ -298,8 +299,11 @@ describe("registered browser-login smoke lifecycle", () => {
           assert.equal(launch.errors[0], failure);
           const retained: unknown = launch.errors[1];
           assert.ok(retained instanceof AuthoritySourceClosureUnprovedError);
-          assert.deepEqual(retained.errors, [failure]);
-          assert.equal(retained.cause, failure);
+          assert.equal(retained.errors.length, 1);
+          const uncertain: unknown = retained.errors[0];
+          assert.ok(uncertain instanceof BrowserLaunchUncertainError);
+          assert.deepEqual(uncertain.errors, [failure]);
+          assert.equal(uncertain.cause, failure);
           assert.ok(closure instanceof WorkerSessionClosureUnprovedError);
           assert.deepEqual(closure.errors, [launch]);
           return true;

@@ -1,8 +1,25 @@
 import { chromium, type BrowserContext } from "playwright";
 import type { Clock } from "../../../rules/time/clock.js";
-import type { BrowserSessionCloseReason } from "../../../workflow-kit/session.js";
+import { BrowserSessionClosureUnprovedError, type BrowserSessionCloseReason } from "../../../workflow-kit/session.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
+
+export class BrowserLaunchUncertainError extends BrowserSessionClosureUnprovedError {
+  constructor(errors: readonly unknown[], message: string, options?: ErrorOptions) {
+    super(errors, message, options); this.name = "BrowserLaunchUncertainError";
+  }
+}
+
+export function hasUncertainBrowserLaunch(error: unknown): boolean {
+  const pending = [error], seen = new Set<unknown>();
+  while (pending.length > 0) {
+    const value = pending.pop(); if (seen.has(value)) continue; seen.add(value);
+    if (value instanceof BrowserLaunchUncertainError) return true;
+    if (value instanceof Error) pending.push(value.cause);
+    if (value instanceof AggregateError) { const errors: readonly unknown[] = value.errors; pending.push(...errors); }
+  }
+  return false;
+}
 
 export class NativeBrowserClosureUnprovedError extends AuthoritySourceClosureUnprovedError {
   readonly code = "BROWSER_CLOSURE_UNPROVED";
@@ -130,7 +147,8 @@ export async function runNativeContextProbe(input: NativeBrowserProbeInput): Pro
     if (chromiumProfileInUse(error)) {
         throw new BrowserProfileStillClosingError(error);
     }
-    throw new NativeBrowserClosureUnprovedError([retainAuthoritySourceClosure([error], { directory: { context, profileDirectory: input.launch.profileDirectory } })]);
+    const failure = context === undefined ? new BrowserLaunchUncertainError([error], "native browser launch is uncertain", { cause: error }) : error;
+    throw new NativeBrowserClosureUnprovedError([retainAuthoritySourceClosure([failure], { directory: { context, profileDirectory: input.launch.profileDirectory } })]);
   }
   input.signal.throwIfAborted();
 }
