@@ -92,8 +92,8 @@ it("keeps initialization counts visible and uses the same eligibility for stoppe
       try {
         const inventory = AuthorityDatabase.readIncompleteOnboardingInventory(child);
         assert.equal(inventory.empty, true);
-        assert.equal(inventory.counts.length, 39);
-        for (const [table, count] of [["commands", 1], ["command_audits", 1], ["settings", 1], ["settings_snapshots", 2]] as const) {
+        assert.equal(inventory.counts.length, 42);
+        for (const [table, count] of [["commands", 1], ["command_audits", 1], ["settings", 1], ["settings_snapshots", 2], ["workbook_types", 1]] as const) {
           assert.equal(inventory.counts.find(row => row.table === table)?.count, count);
         }
         assert.equal(inventory.artifactReferenceCount, 0);
@@ -222,13 +222,39 @@ for (const activity of ["business", "deleted-history", "artifact-reference", "wo
           const service = createWorkbookLibraryService({ clock: manualClock(new Date(initial.capturedAt)),
             repository: createWorkbookLibraryRepository({ database, mutate: work => work().result, read: work => work() }) });
           const first = service.create({ name: "Fixture.xlsx", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Fixture", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "fixture" }] }] }] });
-          service.save(first.libraryId, first.version, { ...first.workbook, name: "Saved.xlsx" });
+          const saved = service.save(first.libraryId, first.version, { ...first.workbook, name: "Saved.xlsx" });
+          service.operatorOperation(saved.libraryId, 'reviewed', { kind: 'version', expectedVersion: saved.version, name: 'Reviewed' });
+          assert.equal(service.versions(saved.libraryId).length, 1);
         }
         inspectNativeAuthority(database);
       } finally { database.close(); }
       const before = readFileSync(f.databasePath);
       await assert.rejects(reclassify(f), /profile-incomplete-activity-present/u);
       assert.deepEqual(readFileSync(f.databasePath), before);
+    } finally { await f.close(); }
+  });
+}
+
+for (const initialized of [false, true]) for (const change of ['renamed', 'fields', 'key', 'default', 'extra'] as const) {
+  it(`refuses ${change} workbook type activity with initialization ${initialized} without changing custody`, async () => {
+    const f = await createHistoricalIncompleteProfileFixture();
+    try {
+      const database = new DatabaseSync(f.databasePath);
+      try {
+        if (initialized) initialize(database);
+        const value: { id: string; name: string; keyFieldId: string | null; fields: string[]; defaultWorkbookId: string | null } = { id: 'general', name: 'General workbook', keyFieldId: null, fields: [], defaultWorkbookId: null };
+        if (change === 'renamed') value.name = 'Edited General';
+        if (change === 'fields') value.fields = ['eid'];
+        if (change === 'key') { value.fields = ['eid']; value.keyFieldId = 'eid'; }
+        if (change === 'default') value.defaultWorkbookId = 'selected-workbook';
+        if (change === 'extra') database.prepare('INSERT INTO workbook_types VALUES(?,?)').run('extra', JSON.stringify({ ...value, id: 'extra' }));
+        else database.prepare('UPDATE workbook_types SET payload_json=? WHERE id=?').run(JSON.stringify(value), 'general');
+        inspectNativeAuthority(database);
+      } finally { database.close(); }
+      const paths = [f.databasePath, f.registryPath, f.keyPath, f.protectedPath, f.controlPath];
+      const before = paths.map(path => readFileSync(path));
+      await assert.rejects(reclassify(f), /profile-incomplete-activity-present/u);
+      assert.deepEqual(paths.map(path => readFileSync(path)), before);
     } finally { await f.close(); }
   });
 }

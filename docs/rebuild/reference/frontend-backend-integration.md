@@ -9,8 +9,12 @@ Run and item Pause/Resume, exact-membership Pause all, and confirmed Pause all a
 canonical typed command facade. The application lifecycle query supplies runtime generation,
 current target versions and update availability. Application pause commands refresh every affected
 run in the served projection before quit notification. Queue producers retain the orthogonal pause
-state and available pause command; this wiring adds no new visual controls. Retry and Rerun accept
-failed sources only, and recognized Restart requests are refused. Host updater installation has no
+state and available pause command. Ordinary Rerun accepts done, failed and interrupted sources and
+starts fresh; native Retry and Restart retain their lifecycle semantics. A separate server-authored
+Recover completed steps action composes `run/recover-run` through the same client and confirmation
+flow. The server derives its checkpoint recovery plan from an exact failed or interrupted source.
+Readback verifies the new item attempt while the source remains unchanged. Incompatible contracts,
+uncertain writes and unavailable retained evidence show the named recovery refusal. Host updater installation has no
 production dispatch; its absence remains explicit in the lifecycle query.
 
 ## Client facade and boundaries
@@ -168,6 +172,7 @@ field membership and discriminated states. The client checks identity as well as
 | Analytics | `queries/activity-queries.ts` | `activity.ts`: `GET /api/v1/reports/activity`, `/api/v1/reports/activity.csv`, `/api/v1/reports/activity/population`, `/api/v1/reports/activity/population/selected`, `/api/v1/reports/activity/population.csv` |
 | Explorer | `queries/explorer-queries.ts` | `explorer.ts`: read-only `GET /api/v1/explorer` |
 | Intake | `queries/intake-queries.ts` | `intake.ts`: `POST /api/v1/intake/files`, `GET /api/v1/intake/:sessionId` |
+| Workbook revisions | `queries/workbook-library-queries.ts` | `workbooks.ts`: read-only `GET /api/v1/workbooks/:libraryId/revisions/:version`; exact CAS revision for attachment open/download, independent of named-version history |
 | Commands | `commands/shared-commands.ts` | `commands.ts`: `POST /api/v1/commands`, `/api/v1/commands/bulk` |
 | Day events | `subscriptions/subscription.ts` | `shell.ts`: `GET /events/v1?topics=dashboard-day:<day>` |
 

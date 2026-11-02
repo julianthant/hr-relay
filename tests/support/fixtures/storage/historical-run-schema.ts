@@ -5,8 +5,8 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { runRecordColumns, runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 
-export function removeSchema13RunPause(database: DatabaseSync): void {
-  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 13);
+export function removeSchema14RunPause(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 14);
   assert.equal(database.prepare("SELECT count(*) AS count FROM runs WHERE json_type(lifecycle_json,'$.pause') IS NOT NULL").get()?.count, 0);
   database.exec("DROP TRIGGER run_pause_insert; DROP TRIGGER run_pause_update; ALTER TABLE runs DROP COLUMN pause_state");
 }

@@ -96,7 +96,9 @@ A source-bound rerun can carry exact server-owned repeat authorization. Ordinary
 
 `executeTransaction` checks the source warning set against the current node, task, system, natural-business-key digest, and completion evidence. Missing or stale acknowledgment refuses. A newly discovered relevant completion requires acknowledgment rather than silently becoming prior-work reuse.
 
-For a continuation, it first reads that exact node through `readRunCheckpoint`, which authenticates
+Explicit `run/recover-run` and same-run Resume may carry authenticated continuation; ordinary Rerun
+does not capture one. The separate recovery planner validates retained transaction inputs and exact
+settlement proof before admission. For a continuation, the sequencer first reads that exact node through `readRunCheckpoint`, which authenticates
 the durable owner, issuance, retained sources and checkpoint digest. Only a returned predecessor checkpoint
 suppresses repeat authorization for that node. Own-run repeat checkpoints retain their occurrence key.
 Predecessor replay still requires the current natural key's

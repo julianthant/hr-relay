@@ -1,4 +1,4 @@
-import { captureRunContinuation, validateRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
+import { captureRunContinuation, validateRunContinuation } from "./run-continuation.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
@@ -6,7 +6,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import type { AuthorityRepositories } from "./authority-database.js";
 import { validateNativeLifecycleRequest } from "./native-lifecycle-request.js";
-import { CanonicalCreateRunRequestSchema, CanonicalRetrySourceRequestSchema, CanonicalTransitionRequestSchema } from "./run-store-contracts.js";
+import { CanonicalCreateRunRequestSchema, CanonicalRetrySourceRequestSchema, CanonicalRecoverRunRequestSchema, CanonicalTransitionRequestSchema } from "./run-store-contracts.js";
 
 function same(left: unknown, right: unknown): boolean {
   return canonicalJsonStringify(left ?? null) === canonicalJsonStringify(right ?? null);
@@ -94,7 +94,7 @@ export function authenticateStartPlanRun(repositories: AuthorityRepositories, ru
   const source = plan.rerun === undefined ? undefined : repositories.runs.get(plan.rerun.source.runId);
   validateRunContinuation(repositories, run.envelope);
   const expectedRetry = source?.envelope.itemId === entry.itemId ? source.envelope.runId : undefined;
-  if (!same(request.continuation, source === undefined ? undefined : captureRunContinuation(repositories, source))
+  if (request.continuation !== undefined
     || request.commandId !== createId || request.sessionId !== session.sessionId
     || !same(request.input, valueFreeProtectedData(run.input, retainedRunProtectedBindings(run)))
     || request.matchKey !== entry.matchKey || request.retryOf !== expectedRetry
@@ -127,17 +127,17 @@ export function authenticateRootRun(repositories: AuthorityRepositories, candida
       if (actors.some(actor => actor !== root.session.origin.actorId)) throw new Error("delegation-root-retry-binding-mismatch");
       return root;
     }
-    if (origin.operation !== "retry" && origin.operation !== "restart") throw new Error("delegation-root-origin-unavailable");
+    if (origin.operation !== "retry" && origin.operation !== "restart" && origin.operation !== "recover") throw new Error("delegation-root-origin-unavailable");
     validateNativeLifecycleRequest(origin);
-    const request = CanonicalRetrySourceRequestSchema.parse(origin.request);
+    const request = (origin.operation === "recover" ? CanonicalRecoverRunRequestSchema : CanonicalRetrySourceRequestSchema).parse(origin.request);
     const previous = repositories.runs.get(request.runId);
     const source = request.sourceCommandId === undefined ? undefined : repositories.commands.get(request.sourceCommandId);
     const audit = request.sourceCommandId === undefined ? undefined : repositories.commandAudits.findByCommand(request.sourceCommandId);
     const settled = repositories.lifecycleJournal.findAuditByCommand(origin.commandId);
     if (previous === undefined || previous.envelope.parent !== undefined || previous.lifecycle.state !== "terminal"
-      || previous.version < request.expectedVersion || source?.family !== "run" || source.type !== origin.operation
+      || previous.version < request.expectedVersion || source?.family !== "run" || source.type !== (origin.operation === "recover" ? "recover-run" : origin.operation)
       || source.target.runId !== previous.envelope.runId || source.target.expectedVersion !== request.expectedVersion
-      || origin.commandId !== lifecycleCommandId(`operator-${origin.operation}`, source.commandId)
+      || origin.commandId !== lifecycleCommandId(origin.operation === "recover" ? "operator-recover-run" : `operator-${origin.operation}`, source.commandId)
       || audit?.result.state !== "applied" || !same(audit.request, source)
       || !audit.result.affectedTargets.some(target => target.family === "run" && target.runId === run.envelope.runId)
       || !audit.versionChanges.some(change => change.target.family === "run" && change.target.runId === run.envelope.runId
@@ -149,7 +149,7 @@ export function authenticateRootRun(repositories: AuthorityRepositories, candida
       throw new Error("delegation-root-retry-authority-unavailable");
     }
     validateRunContinuation(repositories, run.envelope);
-    if (!same(settled.result.continuation, captureRunContinuation(repositories, previous))) throw new Error("delegation-root-continuation-binding-mismatch");
+    if (!same(settled.result.continuation, origin.operation === "recover" ? captureRunContinuation(repositories, previous) : undefined)) throw new Error("delegation-root-continuation-binding-mismatch");
     authenticateRunPriority(repositories, run, previous.envelope.priority, source.requestedBy);
     const fields = ["workflow", "itemId", "descriptorVersion", "contractFingerprint", "operationDisplayCapability", "operationDisplaySnapshot",
       "requestedInstance", "resolvedInstance", "shape", "dryRun",

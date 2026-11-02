@@ -124,10 +124,21 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
     assert.ok(run); return run;
   }
   async function execute(run: RunRecord) {
-    const owner = executionOwners.get(run.envelope.workflow); assert.ok(owner);
-    const { slot, workerLifetime, manager } = owner;
+    let root = run;
+    const visited = new Set<string>();
+    while (root.envelope.parent !== undefined) {
+      assert.ok(visited.size < 32 && !visited.has(root.envelope.runId), "fixture child ancestry must be bounded and exact");
+      visited.add(root.envelope.runId);
+      const parent = database.authority.runs.get(root.envelope.parent.runId); assert.ok(parent);
+      root = parent;
+    }
+    const home = executionOwners.get(root.envelope.workflow); assert.ok(home);
+    const execution = executionOwners.get(run.envelope.workflow); assert.ok(execution);
+    const { slot, workerLifetime } = home, { manager } = execution;
+    const target = descriptors.resolve(run.envelope.workflow); assert.ok(target);
+    manager.configureExecution(target.id, stores);
     const active = database.authority.runtimeConfig.get(); assert.ok(active);
-    const claimed = requireLifecycleApplied(lifecycle.claimNext({ commandId: ids.uuid(), workflow: run.envelope.workflow,
+    const claimed = requireLifecycleApplied(lifecycle.claimNext({ commandId: ids.uuid(), workflow: root.envelope.workflow,
       workerId: slot.workerId, workerLifetime, runtimeConfig: { generation: active.generation, settingsRevision: active.settingsRevision,
         settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint } }));
     assert.equal(claimed.envelope.runId, run.envelope.runId);

@@ -1,4 +1,4 @@
-import { RunContinuationRefusedError, continuationEvidenceDigest, validateRunContinuation } from "./run-continuation.js";
+import { RunContinuationRefusedError, continuationEvidenceDigest, validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import type { RunEnvelope } from "../../../models/run/envelope.js";
 

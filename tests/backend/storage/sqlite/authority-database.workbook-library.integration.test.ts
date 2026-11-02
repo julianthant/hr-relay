@@ -17,7 +17,7 @@ async function fixture() {
 }
 afterEach(async () => { for (const profile of profiles.splice(0)) await profile.close(); });
 
-it("accounts for workbook snapshots and history in one authority generation, persists dates, and refuses stale saves", async () => {
+it("accounts separately for durable admission and atomic master settlement, persists dates, and refuses stale saves", async () => {
   const f = await fixture();
   let database = f.open();
   try {
@@ -25,26 +25,26 @@ it("accounts for workbook snapshots and history in one authority generation, per
     const first = service().create(workbook);
     assert.equal(database.getMeta().authorityGeneration, 1);
     const second = service().save(first.libraryId, 1, { ...first.workbook, name: "Saved.xlsx" });
-    assert.equal(database.getMeta().authorityGeneration, 2);
+    assert.equal(database.getMeta().authorityGeneration, 3);
     assert.throws(() => service().save(first.libraryId, 1, first.workbook), { code: "WORKBOOK_VERSION_CONFLICT" });
-    assert.equal(database.getMeta().authorityGeneration, 2);
+    assert.equal(database.getMeta().authorityGeneration, 5);
     const inspection = database.inspectSchema();
     const fingerprint = inspectAuthorityBackupReadOnly(f.path).authorityContentFingerprint;
     database.close(); database = f.open();
     assert.deepEqual(service().read(first.libraryId), second);
-    assert.deepEqual(service().history(first.libraryId), [first, second]);
+    assert.deepEqual(service().history(first.libraryId), []);
     assert.deepEqual(database.inspectSchema(), inspection);
     assert.equal(inspectAuthorityBackupReadOnly(f.path).authorityContentFingerprint, fingerprint);
     assert.throws(() => database.withAuthorityTransaction(() => {
       service().save(second.libraryId, 2, { ...second.workbook, name: "Rolled back.xlsx" });
       throw new Error("rollback-workbook");
     }), /rollback-workbook/u);
-    assert.equal(database.getMeta().authorityGeneration, 2);
-    assert.deepEqual(service().history(first.libraryId), [first, second]);
+    assert.equal(database.getMeta().authorityGeneration, 5);
+    assert.deepEqual(service().history(first.libraryId), []);
   } finally { database.close(); }
 });
 
-it.each(["head", "history-value", "history-gap"])("refuses corrupt workbook %s during authority admission", async corruption => {
+it.each(["head", "creation-value", "creation-missing"])("refuses corrupt workbook %s during authority admission", async corruption => {
   const f = await fixture(), database = f.open();
   const service = createWorkbookLibraryService({ repository: database.authority.workbooks, clock });
   const first = service.create(workbook);
@@ -54,11 +54,12 @@ it.each(["head", "history-value", "history-gap"])("refuses corrupt workbook %s d
   try {
     if (corruption === "head") raw.prepare("UPDATE workbook_library SET saved_at=? WHERE id=?").run("2026-10-16T00:00:00.000Z", first.libraryId);
     else {
-      raw.exec("DROP TRIGGER workbook_library_history_immutable; DROP TRIGGER workbook_library_history_retained");
-      if (corruption === "history-value") raw.prepare("UPDATE workbook_library_history SET payload_json='{}' WHERE workbook_id=? AND version=1").run(first.libraryId);
-      else raw.prepare("DELETE FROM workbook_library_history WHERE workbook_id=? AND version=1").run(first.libraryId);
-      raw.exec("CREATE TRIGGER workbook_library_history_immutable BEFORE UPDATE ON workbook_library_history BEGIN SELECT RAISE(ABORT,'workbook-history-immutable'); END");
-      raw.exec("CREATE TRIGGER workbook_library_history_retained BEFORE DELETE ON workbook_library_history BEGIN SELECT RAISE(ABORT,'workbook-history-retained'); END");
+      const triggers = raw.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND tbl_name='workbook_creations'").all();
+      raw.exec("DROP TRIGGER workbook_creations_immutable; DROP TRIGGER workbook_creations_retained");
+      if (corruption === "creation-value") raw.prepare("UPDATE workbook_creations SET payload_json='{}' WHERE id=?").run(first.libraryId);
+      else raw.prepare("DELETE FROM workbook_creations WHERE id=?").run(first.libraryId);
+      for (const trigger of triggers) if (typeof trigger.sql === 'string' && !trigger.sql.includes('BEFORE INSERT')) raw.exec(trigger.sql);
+
     }
   } finally { raw.close(); }
   assert.throws(f.open, error => error instanceof Error && error.cause instanceof WorkbookLibraryError

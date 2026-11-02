@@ -66,6 +66,7 @@ export const CommandActionSchema = z.enum([
   "apply-settings",
   "apply-protected-settings",
   "retry",
+  "recover-run",
   "pause",
   "resume",
   "restart",
@@ -289,8 +290,9 @@ export const ApplicationCommandRequestSchema = z.discriminatedUnion("type", [
 ]);
 
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
-    /** Retry continues a failed item; Restart is recognized and refused by lifecycle policy. */
+    /** Native Retry/Restart remain distinct from explicit checkpoint recovery. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "restart", "pause", "resume", "cancel", "bump"]), target: RunVersionTargetSchema }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("recover-run"), target: RunVersionTargetSchema }),
   /** Delete means delete: a terminal queue run and every row it owns leave authority. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("delete"), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
@@ -365,6 +367,7 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
 ]);
 
 export const CommandRejectionCodeSchema = z.enum([
+  "RUN_CONTINUATION_REFUSED",
   "invalid-state",
   "target-not-found",
   "target-deleted",
@@ -538,6 +541,7 @@ export const RunLifecycleCommandOperationSchema = z.enum([
   "requeue",
   "retry",
   "restart",
+  "recover",
   "delete",
   "purge",
 ]);
@@ -763,6 +767,7 @@ export const COMMAND_EFFECT_BY_ACTION = {
   pause: "local-write",
   resume: "external-submit",
   retry: "external-submit",
+  "recover-run": "external-submit",
   restart: "external-submit",
   cancel: "destructive",
   bump: "local-write",
@@ -806,6 +811,7 @@ export const COMMAND_ASSISTANT_METADATA = {
   pause: "Pause a run after its current step",
   resume: "Continue a paused run",
   retry: "Resume an eligible run",
+  "recover-run": "Recover authenticated completed steps from a failed or interrupted run",
   restart: "Restart an eligible run",
   cancel: "Cancel an eligible run",
   bump: "Change run priority",
@@ -843,7 +849,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"],
   settings: ["apply-settings", "apply-protected-settings"],
-  run: ["retry", "pause", "resume", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"],
+  run: ["retry", "recover-run", "pause", "resume", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"],
 } as const satisfies Record<z.infer<typeof CommandFamilySchema>, readonly z.infer<typeof CommandActionSchema>[]>;
@@ -885,7 +891,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"] },
   { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
-  { family: "run", actions: ["retry", "pause", "resume", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"] },
+  { family: "run", actions: ["retry", "recover-run", "pause", "resume", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"] },
 ].map((entry) => ({

@@ -382,22 +382,24 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-The current schema is 13. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
+The current schema is 14. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
 
-The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11 and 12. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
+Fresh workbook storage contains one General type seed. Incomplete-profile inventory reports that row and treats only its exact initial payload as pristine, alongside either bare authority or authenticated Settings initialization. Extra or edited types and workbook masters, creations, operations or named versions remain activity that blocks withdrawal.
+
+The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12 and 13. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 13` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 14` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
 ordinary startup. Ordinary writable opens and stopped upgrades use SQLite existing-only mode,
 including when a source disappears during opening. Only `initializeProfile`, after its issued setup
 admission check, creates the absent canonical profile database and its current baseline.
-Schemas 1–12 are inspected only under stopped upgrade or maintenance authority; ordinary readers
-use the current layout. Stopped inspection projects the absent pre-v13 pause column as null only
+Schemas 1 through 13 are inspected only under stopped upgrade or maintenance authority; ordinary readers
+use the current layout. Stopped inspection projects the absent pre-v14 pause column as null only
 after validating the predecessor's registered schema, including run/search/timeline/result owners.
-The forward v13 migration adds the pause scalar and its JSON-equality triggers before runtime opens.
+The forward v14 migration adds the pause scalar and its JSON-equality triggers before runtime opens.
 
 Assistant grants, chats and once-consumable actions use three profile-owned authority tables.
 An explicit operator `apply-settings` command may carry `assistantPermission` with the expected
@@ -426,6 +428,7 @@ source or creating a backup.
 or upgrades schema 1, 2, 3, 4, 5 or 6 under stopped exclusive custody. The schema 1 path first adds the
 stream-head index. Schemas 1 and 2 then rebuild `worker_pools` with `desired_workers >= 0`.
 Migration 4 adds the workbook library and immutable version history, and protects imported artifacts’ workbook provenance. Migration 12 preserves existing OCR extraction content and artifact IDs in explicit `unbound-source` envelopes. New source-bound reading versions append under their canonical extraction IDs; ordinary readers accept only the current stored envelope.
+Migration 13 keeps one mutable workbook master, preserves immutable creation evidence, and converts retained revisions to explicitly named migration versions. New versions are manual and named; run writes and Sync use durable operation receipts, never automatic versions.
 Migration 6 removes `workers` from retained start plans. Current readers reject that field; stopped
 upgrade validates the schema 5 choice before removing it.
 Under restore admission, the service rechecks the source fingerprint, creates a stopped-authority

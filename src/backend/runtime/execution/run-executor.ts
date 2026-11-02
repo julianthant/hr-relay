@@ -1,5 +1,5 @@
-import { AuthenticatedRunContinuation } from "../checkpoints/run-continuation-delegation.js";
-import { RunContinuationRefusedError, readContinuationGate, validateRunContinuation } from "../checkpoints/run-continuation.js";
+import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
+import { RunContinuationRefusedError, readContinuationGate, validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
 import { RunClaimTokenSchema, type RunClaimToken } from "../../../models/run/worker.js";
 import { DryRunSampleSchema, type DryRunStep, type DryRunBinding } from "../../../models/workflow/dry-run.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";

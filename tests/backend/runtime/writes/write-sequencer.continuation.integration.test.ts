@@ -4,7 +4,7 @@ import { afterEach, describe, it } from "vitest";
 import { RunRecordService, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { readRunCheckpoint } from "../../../../src/backend/runtime/checkpoints/run-checkpoint-reader.js";
-import { captureRunContinuation, continuationEvidenceDigest } from "../../../../src/backend/runtime/checkpoints/run-continuation.js";
+import { captureRunContinuation, continuationEvidenceDigest } from "../../../../src/backend/storage/sqlite/run-continuation.js";
 import { buildNodeFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -67,7 +67,7 @@ function claimQueued(h: Harness, lifecycle: RunRecordService, queued: RunRecord)
   const lifetime = testWorkerLifetime(h.database, WRITE_FIXTURE_WORKFLOW_ID, 1);
   let run = requireLifecycleApplied(lifecycle.claimNext({ commandId: randomUUID(), workflow: WRITE_FIXTURE_WORKFLOW_ID,
     workerId: lifetime.workerId, workerLifetime: lifetime.workerLifetime,
-    configFingerprint: queued.envelope.configFingerprint, runtimeConfig: selectRunRuntime(h.database.authority) }));
+    runtimeConfig: selectRunRuntime(h.database.authority) }));
   assert.equal(run.envelope.runId, queued.envelope.runId);
   const claim = { workerId: lifetime.workerId, claimGeneration: run.claimGeneration };
   const base = { workerId: lifetime.workerId, workerLifetime: lifetime.workerLifetime,
@@ -107,7 +107,8 @@ async function fixture(changeCheckpoint?: (row: RunCheckpointRecord) => RunCheck
       workflow: WRITE_FIXTURE_WORKFLOW_ID, descriptorVersion: from.envelope.descriptorVersion,
       contractFingerprint: from.envelope.contractFingerprint, configFingerprint: from.envelope.configFingerprint,
       configSnapshotId: from.envelope.configSnapshotId, resolvedInstance: from.envelope.resolvedInstance,
-      priority: from.envelope.priority, shape: from.envelope.shape, dryRun: false, browserMode: from.envelope.browserMode,
+      priority: from.envelope.priority, shape: from.envelope.shape, dryRun: false,
+      ...(from.envelope.browserMode === undefined ? {} : { browserMode: from.envelope.browserMode }),
       input: from.input, retryOf: from.envelope.runId, sourceBound,
       ...(retain ? { continuation } : {}), runtimeConfig: selectRunRuntime(h.database.authority) }));
   }

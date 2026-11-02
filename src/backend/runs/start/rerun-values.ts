@@ -1,5 +1,3 @@
-import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
-import { readContinuationGate, validateRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
 import { validateRerunSourcePlan, RerunRefusedError } from "./rerun.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -80,33 +78,25 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       const older = descriptor.version !== run.envelope.descriptorVersion
         || descriptor.contractFingerprint !== run.envelope.contractFingerprint;
       const { lifecycle } = run;
-      if (lifecycle.state !== "terminal" || lifecycle.outcome !== "failed") refuse("source-ineligible");
+      if (lifecycle.state !== "terminal" || !["done", "failed", "interrupted"].includes(lifecycle.outcome)) refuse("source-ineligible");
       if (!older && (run.input.parsed.schemaHash !== deriveSchemaHash(descriptor.canonicalInput, "output")
         || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success)) refuse("source-invalid");
       const repositories = deps.database.authority;
       try { validateRerunSourcePlan(repositories, run); }
       catch (error) { if (error instanceof RerunRefusedError) refuse("source-invalid"); throw error; }
-      const retainedSources = new Map([run, ...validateRunContinuation(repositories, run.envelope)].map(source => [source.envelope.runId, source]));
-      const intents = [...retainedSources.values()].flatMap(source => repositories.writeIntents.listByRun(source.envelope.runId));
-      if (intents.some((intent) => !("runId" in intent) || !retainedSources.has(intent.runId)
-        || intent.workflowId !== descriptor.id || intent.itemId !== run.envelope.itemId || intent.runAttempt > (retainedSources.get(intent.runId)?.envelope.attempt ?? 0))) refuse("source-invalid");
+      const intents = repositories.writeIntents.listByRun(request.runId);
+      if (intents.some((intent) => !("runId" in intent) || intent.runId !== request.runId
+        || intent.workflowId !== descriptor.id || intent.itemId !== run.envelope.itemId || intent.runAttempt > run.envelope.attempt)) refuse("source-invalid");
       if (intents.some(({ status }) => status === "parked" || status === "attempting")
         || repositories.writeIntents.listAttemptingByItem({ workflowId: descriptor.id, itemId: run.envelope.itemId }).length > 0) refuse("source-ineligible");
       const nodes = descriptorRuntimeNodes(descriptor);
       const nodeById = new Map(nodes.map((node) => [String(node.id), node]));
       const checkpoints = new Map<string, RunCheckpointRecord>();
-      const retainedCheckpoints = run.envelope.continuation === undefined
-        ? repositories.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId).filter(checkpoint => checkpoint.runId === run.envelope.runId)
-        : nodes.flatMap(node => {
-        const checkpoint = readRunCheckpoint(repositories, run.envelope, String(node.id), true);
-        return checkpoint === undefined ? [] : [checkpoint];
-      });
-      for (const checkpoint of retainedCheckpoints) {
-        const checkpointSource = retainedSources.get(checkpoint.runId);
-        if (checkpointSource === undefined) refuse("source-invalid");
+      for (const checkpoint of repositories.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId)) {
+        if (checkpoint.runId !== request.runId) continue;
         if (checkpoint.workflowId !== descriptor.id || checkpoint.itemId !== run.envelope.itemId
-          || checkpoint.attempt > checkpointSource.envelope.attempt
-          || (checkpoint.claimGeneration !== undefined && checkpoint.claimGeneration > checkpointSource.claimGeneration)) refuse("source-invalid");
+          || checkpoint.attempt > run.envelope.attempt
+          || (checkpoint.claimGeneration !== undefined && checkpoint.claimGeneration > run.claimGeneration)) refuse("source-invalid");
         if (checkpoint.descriptorVersion !== run.envelope.descriptorVersion
           || checkpoint.contractFingerprint !== run.envelope.contractFingerprint) refuse("source-invalid");
         const node = nodeById.get(checkpoint.nodeId);
@@ -120,15 +110,15 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           || (checkpoint.attempt === previous.attempt && checkpoint.claimGeneration !== undefined
             && (previous.claimGeneration === undefined || checkpoint.claimGeneration > previous.claimGeneration))) checkpoints.set(checkpoint.nodeId, checkpoint);
       }
-      const gates = nodes.flatMap(node => { const gate = readContinuationGate(repositories, run.envelope, String(node.id)); return gate === undefined ? [] : [gate]; }).filter(gate => {
-        if (!retainedSources.has(gate.runId)) refuse("source-invalid");
-        const node = nodeById.get(gate.nodeId);
+      const gates = repositories.gateResults.listByRun(request.runId).filter(gate => {
+        if (gate.runId !== request.runId) refuse("source-invalid");
+        const node = nodeById.get(gate.gateId);
         return !older || (node?.kind === "gate" && gate.result.schemaHash === deriveSchemaHash(node.result, "output")
           && node.result.safeParse(gate.result.value).success);
       });
       for (const gate of gates) {
-        const node = nodeById.get(gate.nodeId);
-        if (!retainedSources.has(gate.runId) || node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output")
+        const node = nodeById.get(gate.gateId);
+        if (gate.runId !== request.runId || node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output")
           || !node.result.safeParse(gate.result.value).success) refuse("source-invalid");
       }
       const failures = repositories.failures.listByRun(request.runId);
@@ -162,7 +152,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
             || (observed.attempt === checkpoint.attempt && observed.startedAt !== undefined && observed.startedAt > checkpoint.writtenAt))) {
           fact = { nodeId: node.id, state: "unfinished", reason: "incomplete-execution" };
         } else if (checkpoint !== undefined) fact = { nodeId: node.id, state: "completed", reason: "checkpoint" };
-        else if (gates.some(({ nodeId }) => String(nodeId) === String(node.id))) fact = { nodeId: node.id, state: "completed", reason: "gate-result" };
+        else if (gates.some(({ gateId }) => String(gateId) === String(node.id))) fact = { nodeId: node.id, state: "completed", reason: "gate-result" };
         else fact = { nodeId: node.id, state: "unfinished", reason: "not-recorded" };
         facts.set(node.id, fact);
       }
@@ -170,7 +160,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       for (const intent of intents) {
         if (intent.status !== "committed") continue;
         const node = nodes.find((candidate) => candidate.kind === "transaction" && "bindingProof" in intent
-          && intent.bindingProof.afterPrepareSpanPath === `${retainedSources.get(intent.runId)?.envelope.traceId}/${candidate.id}/prepare`);
+          && intent.bindingProof.afterPrepareSpanPath === `${run.envelope.traceId}/${candidate.id}/prepare`);
         if (node?.kind !== "transaction" || intent.taskId !== node.commit.uses.id) refuse("source-invalid");
         const step = descriptor.timeline.find((category) => category.nodes.some(({ id }) => id === node.id));
         if (step === undefined) refuse("source-invalid");
@@ -191,7 +181,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         const outcome = TransactionOutcomeSchema.parse(checkpoint.output.value);
         if (outcome.disposition === "committed") {
           const matching = intents.some((intent) => intent.status === "committed" && intent.taskId === node.commit.uses.id
-            && intent.bindingProof.afterPrepareSpanPath === `${retainedSources.get(checkpoint.runId)?.envelope.traceId}/${node.id}/prepare`
+            && intent.bindingProof.afterPrepareSpanPath === `${run.envelope.traceId}/${node.id}/prepare`
             && canonicalJsonStringify(intent.completionProof) === canonicalJsonStringify(outcome.proof));
           if (!matching) refuse("source-invalid");
           continue;
@@ -206,7 +196,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
               : stored.output.value;
           }
           else {
-            const gate = gates.find(({ nodeId }) => String(nodeId) === String(dependency));
+            const gate = gates.find(({ gateId }) => String(gateId) === String(dependency));
             if (gate === undefined) refuse("source-invalid");
             outputs[dependency] = gate.result.value;
           }

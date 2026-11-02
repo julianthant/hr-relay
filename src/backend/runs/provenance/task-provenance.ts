@@ -1,4 +1,4 @@
-import type { AuthenticatedRunContinuation } from "../../runtime/checkpoints/run-continuation-delegation.js";
+import type { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
 import { delegationEvidenceOutput, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../models/run/result.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { evaluateNodeCondition, nodeConditionDependency } from "../../../models/workflow/node-condition.js";
@@ -30,6 +30,7 @@ import type {
 } from "../../../rules/workflow/task-provenance.js";
 import { FactProvenanceSchema } from "../../../models/workflow/checkpoint.js";
 import type { FactProvenance } from "../../../models/workflow/checkpoint.js";
+import type { TransactionOutcome } from "../../../rules/write-safety/write-safety.js";
 
 type ParsedDataPoint = z.output<typeof DataPointSchema>;
 
@@ -67,6 +68,14 @@ export function jsonLeafPaths(value: JsonValue, prefix = ""): readonly string[] 
     return [prefix];
   }
   return entries.flatMap(([key, child]) => jsonLeafPaths(child, prefix.length === 0 ? key : `${prefix}.${key}`));
+}
+
+export function transactionCheckpointProvenance(outcome: TransactionOutcome, observedAt: string): readonly FactProvenance[] {
+  const instant = IsoInstantSchema.parse(observedAt);
+  return jsonLeafPaths(JsonValueSchema.parse(outcome)).map(path => FactProvenanceSchema.parse({
+    path, source: outcome.proofSource === "operator-attestation" ? "operator" : "live",
+    observedAt: instant, originalObservedAt: instant,
+  }));
 }
 
 function isJsonArray(value: JsonValue): value is readonly JsonValue[] {

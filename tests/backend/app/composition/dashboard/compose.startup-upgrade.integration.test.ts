@@ -1,4 +1,5 @@
-import { removeSchema13RunPause } from "../../../../support/fixtures/storage/historical-run-schema.js";
+import { removeSchema14RunPause } from "../../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreEmptyPreMasterWorkbookFixture } from '../../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../../support/fixtures/storage/pre-reading-artifact-retention.js";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
@@ -81,7 +82,7 @@ function rows(path: string, version: number) {
     .map(table => [table, database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
 }
 
-it.each([8, 9, 10, 11] as const)("automatically upgrades registered schema %s before the first HTTP listener or sign-in", async sourceVersion => {
+it.each([8, 9, 10, 11, 12] as const)("automatically upgrades registered schema %s before the first HTTP listener or sign-in", async sourceVersion => {
   const profile = await createHistoricalRegisteredProfileFixture({ sourceVersion });
   const machineRoot = join(profile.workspace, ".tracker", "data"), protectedPath = join(profile.stateRoot, "credentials", "protected.json");
   const keyPath = join(machineRoot, "machine", "credential-keys", `${profile.binding.profileId}.json`);
@@ -281,7 +282,8 @@ it("preserves a real UNKNOWN parked write, its fenced attempt and stopped worker
     const native = new DatabaseSync(path);
     try {
       native.exec("BEGIN EXCLUSIVE");
-      removeSchema13RunPause(native);
+      removeSchema14RunPause(native);
+      restoreEmptyPreMasterWorkbookFixture(native);
       restorePreReadingArtifactRetention(native);
       native.exec("UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT");
     }
@@ -331,7 +333,8 @@ function historicalTen(path: string): void {
   const database = new DatabaseSync(path);
   try {
     database.exec("BEGIN EXCLUSIVE");
-    removeSchema13RunPause(database);
+    removeSchema14RunPause(database);
+    restoreEmptyPreMasterWorkbookFixture(database);
     restorePreReadingArtifactRetention(database);
     database.exec("UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT");
   }

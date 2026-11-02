@@ -1,7 +1,7 @@
+import { planRunRecovery } from "../start/recovery-plan.js";
 import { protectedSubjectDisplay } from "../start/protected-input.js";
-import { RerunRefusedError, validateCompletedTransactionContinuations } from "../start/rerun.js";
-import { continuationDelegationGroups } from "../../runtime/checkpoints/run-continuation-delegation.js";
-import { captureRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
+import { continuationDelegationGroups } from "../../storage/sqlite/run-continuation-delegation.js";
+import { captureRunContinuation, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { CanonicalCrashRecoveryRequestSchema } from "../../../models/run/worker.js";
 import { deriveWriteAuthorityReason } from "../../../rules/write-safety/write-safety.js";
 import { assertWorkerResetParkedWrite } from "../../storage/sqlite/worker-control.js";
@@ -55,6 +55,7 @@ import {
   CanonicalRenewClaimRequestSchema,
   CanonicalRequeueRequestSchema,
   CanonicalRetrySourceRequestSchema,
+  CanonicalRecoverRunRequestSchema,
   CanonicalSuccessTerminalizeRequestSchema,
   CanonicalTerminalizeRequestSchema,
   CanonicalTransitionRequestSchema,
@@ -1033,23 +1034,17 @@ export class RunRecordService {
       const { run } = source;
       if (run.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: run.version });
       if (repositories.runs.admission().state !== "open") return refused({ reason: "policy-refused" });
-      if (source.disposition !== "live" || run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed" || restart) return refused({ reason: "invalid-state" });
+      if (source.disposition !== "live" || run.lifecycle.state !== "terminal") return refused({ reason: "invalid-state" });
       if (repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return refused({ reason: "policy-refused" });
       if (run.envelope.parent !== undefined && restart) return refused({ reason: "policy-refused" });
       const delegation = run.envelope.parent === undefined ? undefined : prepareDelegationRetry(repositories, run, request);
-      if (delegation !== undefined && (request.continuationOwner === undefined
-        && repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId
-        || !runSettingsAvailable(repositories, run.envelope)
+      if (delegation !== undefined && (repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId
         || request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint)) return refused({ reason: "runtime-stale" });
       if (descriptor.id !== run.envelope.workflow || descriptor.version !== run.envelope.descriptorVersion
         || descriptor.contractFingerprint !== run.envelope.contractFingerprint) {
         return refused({ reason: "schema-mismatch", digest: run.envelope.contractFingerprint });
       }
       if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
-      if (request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint) return refused({ reason: "runtime-stale" });
-      const continuation = captureRunContinuation(repositories, run);
-      try { validateCompletedTransactionContinuations(repositories, descriptor, run); }
-      catch (error) { if (error instanceof RerunRefusedError) return refused({ reason: "policy-refused" }); throw error; }
       if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,
       }).some((entry) => entry.lifecycle.state !== "terminal")) return refused({ reason: "policy-refused" });
@@ -1062,10 +1057,91 @@ export class RunRecordService {
       }));
       delete envelope.recovery;
       delete envelope.sourceBound;
+      delete envelope.continuation;
+      const next = RunRecordSchema.parse({
+        envelope: { ...selectNewRunIdentity(repositories, envelope), runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
+          retryOf: run.envelope.runId, enqueuedAt: now,
+          ...(restart ? { recovery: "restart-from-start" } : {}),
+        },
+        input: run.input, lifecycle: { state: "queued" }, claimGeneration: 0,
+        runNumber: repositories.runs.nextWorkflowRunNumber(run.envelope.workflow),
+        ...(run.sessionId === undefined ? {} : { sessionId: run.sessionId }),
+        ...(request.appVersion === undefined ? {} : { appVersion: request.appVersion }),
+        version: 1, createdAt: now, updatedAt: now,
+      });
+      this.dependencies.admitQueuedRun?.(next);
+      repositories.runs.enqueue(next);
+      if (delegation !== undefined) {
+        const retryRequest = DelegationRetryRequestSchema.parse({ commandId: lifecycleCommandId("delegation-retry", {
+          dependencyId: delegation.child.dependency.dependencyId, previousRunId: run.envelope.runId }),
+          sourceCommandId: delegation.source.commandId, invocationCommandId: delegation.group.invocation.commandId,
+          manifestId: delegation.group.manifest.manifestId, dependencyId: delegation.child.dependency.dependencyId,
+          expectedVersion: delegation.child.dependency.version, parentVersion: delegation.parent.version,
+          originalRunId: delegation.child.original.envelope.runId, originalAttempt: delegation.child.original.envelope.attempt,
+          previousRunId: run.envelope.runId, previousAttempt: run.envelope.attempt, resultDigest: delegation.terminal.result.resultDigest,
+          replacementRunId: next.envelope.runId, replacementAttempt: next.envelope.attempt,
+          planFingerprint: delegation.group.manifest.manifestFingerprint, policy: delegation.group.manifest.policy });
+        const retryJournal = this.inspectJournal(repositories, "delegation-retry", retryRequest, { kind: "version", expectedVersion: retryRequest.expectedVersion });
+        if (retryJournal.state !== "new") throw new Error("delegation-retry-replay-divergent");
+        repositories.dependencies.activateRetry(retryRequest, now);
+        this.recordJournal(repositories, retryJournal.command, journalRun(next));
+      }
+      this.recordJournal(repositories, journal.command, journalRun(next));
+      this.dependencies.publishQueued(next, publication);
+      return { state: "applied", run: next };
+    });
+    return outcome;
+  }
+
+  recover(input: unknown, descriptor: AnyWorkflowDescriptor, publication?: RunQueuedPublication): RunMutationOutcome | RunExistence {
+    const request = CanonicalRecoverRunRequestSchema.parse(input);
+    descriptorRuntimeNodes(descriptor);
+    const outcome = this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome | RunExistence => {
+      const journal = this.inspectJournal(repositories, "recover", request, {
+        kind: "version",
+        expectedVersion: request.expectedVersion,
+      });
+      if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
+      if (journal.state === "replay") return this.replayRun(journal.result);
+      const source = this.read(request.runId);
+      if (source.state === "deleted") return refused({ reason: "source-deleted" });
+      if (source.state === "absent") return source;
+      const { run } = source;
+      if (run.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: run.version });
+      if (repositories.runs.admission().state !== "open") return refused({ reason: "policy-refused" });
+      if (source.disposition !== "live" || run.lifecycle.state !== "terminal" || !["failed", "interrupted"].includes(run.lifecycle.outcome)) return refused({ reason: "invalid-state" });
+      if (repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return refused({ reason: "policy-refused" });
+      if (run.envelope.parent !== undefined && run.lifecycle.outcome === "interrupted")
+        throw new RunContinuationRefusedError("run-recovery-interrupted-child-terminal-proof-unavailable");
+      const delegation = run.envelope.parent === undefined ? undefined : prepareDelegationRetry(repositories, run, request);
+      if (delegation !== undefined && (request.continuationOwner === undefined
+        && repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId
+        || !runSettingsAvailable(repositories, run.envelope)
+        || request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint)) return refused({ reason: "runtime-stale" });
+      if (descriptor.id !== run.envelope.workflow || descriptor.version !== run.envelope.descriptorVersion
+        || descriptor.contractFingerprint !== run.envelope.contractFingerprint) {
+        return refused({ reason: "schema-mismatch", digest: run.envelope.contractFingerprint });
+      }
+      if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
+      if (request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint) return refused({ reason: "runtime-stale" });
+      const plan = planRunRecovery(repositories, descriptor, run);
+      const continuation = plan.continuation;
+      if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
+        workflow: run.envelope.workflow, itemId: run.envelope.itemId,
+      }).some((entry) => entry.lifecycle.state !== "terminal")) return refused({ reason: "policy-refused" });
+      const runId = RunIdSchema.parse(this.dependencies.ids.uuid());
+      if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
+      if (repositories.runs.get(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
+      const now = this.dependencies.clock.now().toISOString();
+      const envelope = nextAttemptEnvelope(run.envelope, repositories.runs.nextItemAttempt({
+        workflow: run.envelope.workflow, itemId: run.envelope.itemId,
+      }));
+      delete envelope.recovery;
+      delete envelope.sourceBound;
+      delete envelope.continuation;
       const next = RunRecordSchema.parse({
         envelope: { ...(delegation === undefined ? selectNewRunIdentity(repositories, envelope) : envelope), runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
           retryOf: run.envelope.runId, enqueuedAt: now, continuation,
-          ...(restart ? { recovery: "restart-from-start" } : {}),
         },
         input: run.input, lifecycle: { state: "queued" }, claimGeneration: 0,
         runNumber: repositories.runs.nextWorkflowRunNumber(run.envelope.workflow),
@@ -1104,10 +1180,10 @@ export class RunRecordService {
       for (const { group } of continuationDelegationGroups(repositories, parent.envelope)) {
         for (const member of group.children) {
           const child = member.child;
-          if (child.lifecycle.state !== "terminal" || child.lifecycle.outcome !== "failed") continue;
+          if (child.lifecycle.state !== "terminal" || !["failed", "interrupted"].includes(child.lifecycle.outcome)) continue;
           const descriptor = this.dependencies.resolveDescriptor?.(child.envelope.workflow);
           if (descriptor === undefined) throw new Error("delegation-continuation-descriptor-unavailable");
-          const replacement = requireLifecycleApplied(this.retry({
+          const outcome = this.recover({
             commandId: lifecycleCommandId("continuation-child-retry", { ownerRunId: parent.envelope.runId, previousRunId: child.envelope.runId }),
             sourceCommandId, runId: child.envelope.runId, expectedVersion: child.version,
             continuationOwner: { runId: parent.envelope.runId, version: parent.version, attempt: parent.envelope.attempt },
@@ -1115,7 +1191,9 @@ export class RunRecordService {
           }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(child), () => ({
             title: workflowPlanning(descriptor).title(child.input.parsed.value),
             subtitle: workflowPlanning(descriptor).subtitle(child.input.parsed.value),
-          })), actorId: "local-operator" }));
+          })), actorId: "local-operator" });
+          if (outcome.state === "refused") throw new RunContinuationRefusedError(`run-continuation-child-${outcome.refusal.reason}`);
+          const replacement = requireLifecycleApplied(outcome);
           replacements.push(replacement);
           replacements.push(...this.continueDelegations(replacement, sourceCommandId));
         }

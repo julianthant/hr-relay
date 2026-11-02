@@ -652,7 +652,8 @@ export function composeProfileRuntime(input: Readonly<{
       } else {
         if (entry.activity!.hasUnquiescedWork(profileId)) { delete entry.preparation; return; }
         await entry.context!.account.close();
-        await entry.inventory!.prepare();
+        if (closePurpose === "shutdown") await entry.inventory!.prepareShutdown();
+        else await entry.inventory!.prepare();
       }
       entry.preparation = { state: "ready" };
     })();

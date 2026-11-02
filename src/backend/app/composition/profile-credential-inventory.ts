@@ -5,7 +5,7 @@ import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../../stor
 import { createBrowserRoots, planStoppedBrowserRoots } from "../../storage/browser-roots.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { inventoryFileIdentity, enumerateProfileCredentialMembership, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
-import { assertRetainedProfileBrowserRoot, assertCredentialCopyResourcesClosed, retainedBrowserProfiles } from "../../storage/maintenance/profile-custody.js";
+import { assertRetainedProfileBrowserRoot, assertCredentialCopyResourcesClosed, assertShutdownResourcesClosed, retainedBrowserProfiles } from "../../storage/maintenance/profile-custody.js";
 import { migrationTableNames } from "../../storage/sqlite/migrations.js";
 import { readEmergencyFaults } from "../../logs/emergency-faults.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
@@ -180,8 +180,9 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
 
 
 export function composeProfileClosureInventory(input: Readonly<{ admission: RuntimeAdmission; database: AuthorityDatabase; hostFacts: HostConfigFacts; clock: Clock }>) {
-  const prepare = async (admission: RuntimeAdmission, custody: ReturnType<AuthorityDatabase["readProfileResourceCustody"]> | ReturnType<typeof AuthorityDatabase.readProfileMaintenanceInventory>) => {
-    assertCredentialCopyResourcesClosed(custody);
+  const prepare = async (admission: RuntimeAdmission, custody: ReturnType<AuthorityDatabase["readProfileResourceCustody"]> | ReturnType<typeof AuthorityDatabase.readProfileMaintenanceInventory>, purpose: "credential-copy" | "shutdown") => {
+    if (purpose === "shutdown") assertShutdownResourcesClosed(custody);
+    else assertCredentialCopyResourcesClosed(custody);
     const settings = "settingsAuthority" in custody ? custody.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
       : custody.settingsAuthority.record.saved?.settings ?? custody.settingsAuthority.record.initialization.settings.settings
       : readSettings(input.database.authority).settings;
@@ -205,17 +206,19 @@ export function composeProfileClosureInventory(input: Readonly<{ admission: Runt
     admission.assertReadable();
     enumerateProfileCredentialMembership(admission, custody, config.paths.browserProfileRoot, profileBrowserClosure);
   };
+  const prepareCurrent = async (purpose: "credential-copy" | "shutdown"): Promise<void> => {
+    input.admission.assertProfileRuntime();
+    const custody = input.database.readProfileResourceCustody();
+    await prepare(input.admission, custody, purpose);
+    input.admission.assertProfileRuntime();
+    if (canonicalJsonStringify(input.database.readProfileResourceCustody()) !== canonicalJsonStringify(custody)) throw new Error("profile-closure-source-changed");
+  };
   return Object.freeze({
-    async prepare(): Promise<void> {
-      input.admission.assertProfileRuntime();
-      const custody = input.database.readProfileResourceCustody();
-      await prepare(input.admission, custody);
-      input.admission.assertProfileRuntime();
-      if (canonicalJsonStringify(input.database.readProfileResourceCustody()) !== canonicalJsonStringify(custody)) throw new Error("profile-closure-source-changed");
-    },
+    prepare: () => prepareCurrent("credential-copy"),
+    prepareShutdown: () => prepareCurrent("shutdown"),
     async prepareStopped(admission: RuntimeAdmission): Promise<void> {
       admission.assertPendingLogoutSettlementDatabase(join(admission.stateRoot, "state.db"));
-      await prepare(admission, AuthorityDatabase.readProfileMaintenanceInventory(admission));
+      await prepare(admission, AuthorityDatabase.readProfileMaintenanceInventory(admission), "credential-copy");
       admission.assertPendingLogoutSettlementDatabase(join(admission.stateRoot, "state.db"));
     },
   });

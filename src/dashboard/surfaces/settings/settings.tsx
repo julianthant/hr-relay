@@ -8,7 +8,7 @@ import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,
 import { cn } from "../../lib/utils.js";
 import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import { plural } from "../shared/status/format.js";
-import type { EditableWorkbook } from "../spreadsheets/spreadsheet-editor-model.js";
+import type { EditableWorkbook } from "../../../rules/spreadsheets/workbook-io.js";
 import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
 import type { SettingsSaveListener,SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";

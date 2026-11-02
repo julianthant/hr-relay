@@ -1,9 +1,9 @@
-import { authenticateDelegationGroup, childTerminalSettlement, delegationCancellationAvailability, retainedDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
-import { DelegationRetryRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
+import { authenticateDelegationGroup, childTerminalSettlement, delegationCancellationAvailability, retainedDelegationManifests } from "./delegation-authority.js";
+import { DelegationRetryRequestSchema } from "./delegation-contracts.js";
 import { DelegationTerminalEvidenceSchema } from "../../../models/run/result.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { RunContinuationRefusedError, validateRunContinuation, readContinuationGate } from "./run-continuation.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "./authority-database.js";
 import type { RunEnvelope } from "../../../models/run/envelope.js";
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import type { TerminalDependencyEvidence } from "../../../models/run/result.js";
@@ -68,11 +68,11 @@ export class AuthenticatedRunContinuation {
         const issue = this.repositories.lifecycleJournal.findContinuationIssue(owner.envelope.runId, retry.continuationOwner?.version);
         if (owner.envelope.runId === source.envelope.runId && retry.continuationOwner?.version === 1
           && issue?.result.kind === "run" && issue.result.appliedVersion === 1
-          && (issue.request.operation === "create" || issue.request.operation === "retry")) {
+          && (issue.request.operation === "create" || issue.request.operation === "retry" || issue.request.operation === "recover")) {
           const replacement = this.repositories.runs.get(retry.replacementRunId);
           if (replacement === undefined) throw new RunContinuationRefusedError("run-continuation-original-child-authority-unavailable");
           run = replacement;
-        } else if (source.lifecycle.state !== "terminal" || source.lifecycle.outcome !== "failed"
+        } else if (source.lifecycle.state !== "terminal" || !["failed", "interrupted"].includes(source.lifecycle.outcome)
           || owner.envelope.runId === source.envelope.runId
           || !validateRunContinuation(this.repositories, owner.envelope).some(retained => retained.envelope.runId === source.envelope.runId && retained.version === source.version)) {
           throw new RunContinuationRefusedError("run-continuation-original-child-authority-unavailable");

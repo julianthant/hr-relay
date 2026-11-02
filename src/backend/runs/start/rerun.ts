@@ -1,15 +1,9 @@
-import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
-import { AuthenticatedRunContinuation } from "../../runtime/checkpoints/run-continuation-delegation.js";
-import { delegationEvidenceOutput } from "../../../models/run/result.js";
-import { readContinuationGate, validateRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
-import { captureRunContinuation, continuationEvidenceDigest } from "../../runtime/checkpoints/run-continuation.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { RerunPlanRefusalCode } from "../../../models/run/rerun.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import { projectTransactionOutcome } from "../../../models/workflow/graph.js";
-import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import type { StepOmissions } from "../../../models/workflow/step-omission.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
@@ -27,97 +21,6 @@ export class RerunRefusedError extends Error {
   }
 }
 
-export function validateCompletedTransactionContinuations(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor,
-  run: RunRecord, input: JsonValue = run.input.parsed.value): ReadonlySet<string> {
-  const continuation = captureRunContinuation(repositories, run);
-  const sources = new Map([run, ...validateRunContinuation(repositories, run.envelope)].map(source => [source.envelope.runId, source]));
-  const ownedIntents = [...sources.values()].flatMap(source => repositories.writeIntents.listByRun(source.envelope.runId));
-  const nodes = descriptorRuntimeNodes(descriptor);
-  const completed = new Set<string>();
-  const scopeFor = (source: RunRecord, dependsOn: readonly string[], value: JsonValue, historical = false): {
-    input: JsonValue; outputs: Record<string, JsonValue>; configuration: Readonly<Record<string, JsonValue>>;
-    protectedInputBindings: ReturnType<typeof retainedRunProtectedBindings>;
-  } => {
-    const outputs: Record<string, JsonValue> = {};
-    for (const dependency of dependsOn) {
-      const own = repositories.runCheckpoints.listByAttempt(source.envelope.workflow, source.envelope.itemId, dependency, source.envelope.attempt)
-        .filter(row => row.runId === source.envelope.runId).at(-1);
-      const checkpoint = own ?? (source.envelope.continuation === undefined ? undefined : readRunCheckpoint(repositories, source.envelope, dependency, true));
-      const node = nodes.find(candidate => candidate.id === dependency);
-      if (checkpoint !== undefined) {
-        const schema = node?.kind === "task" ? node.uses.output : node?.kind === "transaction" ? TransactionOutcomeSchema : undefined;
-        if (schema === undefined || checkpoint.output.schemaHash !== deriveSchemaHash(schema, "output") || !schema.safeParse(checkpoint.output.value).success) {
-          throw new RerunRefusedError("schema-mismatch", "Saved transaction dependency is incompatible.");
-        }
-        outputs[dependency] = node?.kind === "transaction" ? JsonValueSchema.parse(projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Transaction continuation")) : checkpoint.output.value;
-      } else {
-        if (node?.kind === "child-run") {
-          const child = AuthenticatedRunContinuation.authenticate(repositories, source.envelope).dependency(dependency, String(node.edgeId), historical);
-          if (child === undefined) throw new RerunRefusedError("invalid-value", "Saved transaction child dependency is unavailable.");
-          outputs[dependency] = JsonValueSchema.parse(delegationEvidenceOutput(child, node.target.result));
-          continue;
-        }
-        const gate = readContinuationGate(repositories, source.envelope, dependency);
-        if (gate === undefined && (node?.kind === "task" || node?.kind === "gate" && node.resolvedBy === "operator") && node.when !== undefined
-          && !evaluateNodeCondition(node.when, scopeFor(source, node.dependsOn, value, historical))) continue;
-        if (gate === undefined || node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output") || !node.result.safeParse(gate.result.value).success) {
-          throw new RerunRefusedError("invalid-value", "Saved transaction dependency is unavailable.");
-        }
-        outputs[dependency] = gate.result.value;
-      }
-    }
-    const configuration: Record<string, JsonValue> = {};
-    const keys = descriptor.operationDisplay?.capability === "complete" ? descriptor.operationDisplay.transforms
-      .flatMap(transform => transform.inputs.flatMap(source => source.value.kind === "configuration" ? [source.value.key] : [])) : [];
-    if (keys.length > 0) {
-      const snapshot = repositories.configSnapshots.get(source.envelope.configSnapshotId);
-      if (snapshot === undefined || snapshot.fingerprint !== source.envelope.configFingerprint
-        || sha256Hex(canonicalJsonStringify(snapshot.config)) !== snapshot.fingerprint) throw new RerunRefusedError("schema-mismatch", "Saved transaction configuration is unavailable.");
-      for (const key of keys) configuration[key] = field(snapshot.config, key);
-    }
-    return { input: value, outputs, configuration: Object.freeze(configuration), protectedInputBindings: retainedRunProtectedBindings(source) };
-  };
-  for (const node of nodes) {
-    if (node.kind !== "transaction") continue;
-    const reference = continuation.checkpoints.find(row => row.nodeId === node.id);
-    const committed = ownedIntents.filter(intent => intent.status === "committed" && intent.taskId === node.commit.uses.id
-        && sources.get(intent.runId)?.envelope.traceId + `/${node.id}/prepare` === intent.bindingProof.afterPrepareSpanPath);
-    if (reference === undefined) {
-      if (committed.length > 0) throw new RerunRefusedError("invalid-value", "Completed transaction checkpoint is unavailable.");
-      continue;
-    }
-    const checkpoint = repositories.runCheckpoints.get(run.envelope.workflow, run.envelope.itemId, node.id, reference.attempt, reference.claimGeneration);
-    const original = sources.get(reference.runId);
-    if (checkpoint === undefined || checkpoint.runId !== reference.runId || original === undefined || continuationEvidenceDigest(checkpoint) !== reference.digest) {
-      throw new RerunRefusedError("invalid-value", "Completed transaction checkpoint cannot be authenticated.");
-    }
-    if (checkpoint.descriptorVersion !== descriptor.version || checkpoint.contractFingerprint !== descriptor.contractFingerprint
-      || checkpoint.output.schemaHash !== deriveSchemaHash(TransactionOutcomeSchema, "output")) throw new RerunRefusedError("schema-mismatch", "Completed transaction contract changed.");
-    const parsed = TransactionOutcomeSchema.safeParse(checkpoint.output.value);
-    if (!parsed.success) throw new RerunRefusedError("schema-mismatch", "Completed transaction outcome is invalid.");
-    const outcome = parsed.data;
-    try { projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Transaction continuation"); }
-    catch { throw new RerunRefusedError("schema-mismatch", "Completed transaction proof or output schema changed."); }
-    const prior = scopeFor(original, node.dependsOn, original.input.parsed.value, true), current = scopeFor(run, node.dependsOn, input);
-    const mappings = (scope: typeof current) => ({ prepare: node.prepare.uses.input.parse(node.prepare.bind(scope)), commit: node.commit.uses.input.parse(node.commit.bind(scope)) });
-    const priorMappings = mappings(prior), currentMappings = mappings(current);
-    if (canonicalJsonStringify(priorMappings) !== canonicalJsonStringify(currentMappings)) throw new RerunRefusedError("invalid-value", "Completed transaction mapped input changed.");
-    const system = BrowserSystemIdSchema.parse(node.commit.uses.id.split("/")[0]);
-    const key = IdempotencyKeySchema.parse(Reflect.apply(node.commit.uses.writeSafety.idempotency.key, undefined, [currentMappings.commit]));
-    const siblings = repositories.writeIntents.listByBusinessKey(system, deriveIdempotencyKeyDigest(system, key));
-    if (committed.some(intent => intent.status === "committed" && intent.runId === reference.runId && intent.runAttempt === reference.attempt && intent.occurrence !== undefined)) {
-      throw new RerunRefusedError("invalid-state", "Predecessor repeat-occurrence transaction replay is unsupported.");
-    }
-    if (siblings.some(intent => intent.status !== "committed" && intent.status !== "observed-present")) throw new RerunRefusedError("invalid-state", "Transaction business key has unresolved writes.");
-    const durable = repositories.writeIntents.findByPermanentKey(system, key);
-    const proof = durable?.status === "committed" ? durable.completionProof : durable?.status === "observed-present" ? durable.observedProof : undefined;
-    if (durable?.taskId !== node.commit.uses.id || proof === undefined || canonicalJsonStringify(proof) !== canonicalJsonStringify(outcome.proof)) {
-      throw new RerunRefusedError("invalid-value", "Completed transaction lacks its exact natural-key settlement proof.");
-    }
-    completed.add(String(node.id));
-  }
-  return completed;
-}
 
 
 export function validateRerunSourcePlan(repositories: AuthorityRepositories, run: RunRecord): void {
@@ -169,12 +72,11 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   if (run.version !== source.expectedVersion) throw new RerunRefusedError("source-stale", "Rerun source revision changed; replan");
   if (run.envelope.workflow !== descriptor.id) throw new RerunRefusedError("schema-mismatch", "Rerun source workflow changed");
   const older = run.envelope.contractFingerprint !== descriptor.contractFingerprint || run.envelope.descriptorVersion !== descriptor.version;
-  if (older) throw new RerunRefusedError("schema-mismatch", "Completed steps require the original workflow contract.");
   // Use the same authority disposition predicate as RunRecordService.read.
-  if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed"
+  if (run.lifecycle.state !== "terminal" || !["done", "failed", "interrupted"].includes(run.lifecycle.outcome)
     || repositories.writeIntents.listAttemptingByItem({ workflowId: descriptor.id, itemId: run.envelope.itemId }).length > 0
     || repositories.writeIntents.listByRun(source.runId).some((intent) => intent.status === "parked")) {
-    throw new RerunRefusedError("invalid-state", "Rerun requires a failed source without uncertain writes");
+    throw new RerunRefusedError("invalid-state", "Rerun requires a successful, failed or interrupted source without uncertain writes");
   }
   if (older && repositories.writeIntents.listByRun(source.runId).some(intent => intent.status === "committed"
     && !descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction" && node.commit.uses.id === intent.taskId
@@ -196,22 +98,15 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
     || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success)) {
     throw new RerunRefusedError("schema-mismatch", "Rerun source canonical input is invalid");
   }
-  const retainedSources = new Map([run, ...validateRunContinuation(repositories, run.envelope)].map(source => [source.envelope.runId, source]));
-  const checkpoints = run.envelope.continuation === undefined
-    ? repositories.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId).filter(checkpoint => checkpoint.runId === run.envelope.runId)
-    : descriptorRuntimeNodes(descriptor).flatMap(node => {
-    const checkpoint = readRunCheckpoint(repositories, run.envelope, String(node.id), true);
-    return checkpoint === undefined ? [] : [checkpoint];
-  });
+  const checkpoints = repositories.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId)
+    .filter((checkpoint) => checkpoint.runId === source.runId);
   const latest = new Map<string, (typeof checkpoints)[number]>();
   for (const checkpoint of checkpoints) {
-    const checkpointSource = retainedSources.get(checkpoint.runId);
-    if (checkpointSource === undefined) throw new RerunRefusedError("schema-mismatch", "Rerun checkpoint source is unavailable");
     const node = descriptorRuntimeNodes(descriptor).find((candidate) => candidate.id === checkpoint.nodeId);
     const schema = node?.kind === "task" ? node.uses.output : node?.kind === "transaction" ? TransactionOutcomeSchema : undefined;
     if (checkpoint.workflowId !== descriptor.id || checkpoint.itemId !== run.envelope.itemId
-      || checkpoint.attempt > checkpointSource.envelope.attempt
-      || (checkpoint.claimGeneration !== undefined && checkpoint.claimGeneration > checkpointSource.claimGeneration)
+      || checkpoint.attempt > run.envelope.attempt
+      || (checkpoint.claimGeneration !== undefined && checkpoint.claimGeneration > run.claimGeneration)
       || checkpoint.descriptorVersion !== run.envelope.descriptorVersion || checkpoint.contractFingerprint !== run.envelope.contractFingerprint
       || (!older && (schema === undefined || checkpoint.output.schemaHash !== deriveSchemaHash(schema, "output")
         || !schema.safeParse(checkpoint.output.value).success))) {
@@ -230,12 +125,12 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
       latest.set(String(checkpoint.nodeId), checkpoint);
     }
   }
-  const gates = descriptorRuntimeNodes(descriptor).flatMap(node => { const gate = readContinuationGate(repositories, run.envelope, String(node.id)); return gate === undefined ? [] : [gate]; }).filter(gate => {
-    if (!retainedSources.has(gate.runId)) throw new RerunRefusedError("schema-mismatch", "Rerun gate evidence is invalid");
-    return !older || descriptorRuntimeNodes(descriptor).some(node => String(node.id) === String(gate.nodeId));
+  const gates = repositories.gateResults.listByRun(source.runId).filter(gate => {
+    if (gate.runId !== source.runId) throw new RerunRefusedError("schema-mismatch", "Rerun gate evidence is invalid");
+    return !older || descriptorRuntimeNodes(descriptor).some(node => String(node.id) === String(gate.gateId));
   });
   for (const gate of gates) {
-    const node = descriptorRuntimeNodes(descriptor).find((candidate) => String(candidate.id) === String(gate.nodeId));
+    const node = descriptorRuntimeNodes(descriptor).find((candidate) => String(candidate.id) === String(gate.gateId));
     if (!older && (node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output")
       || !node.result.safeParse(gate.result.value).success)) throw new RerunRefusedError("schema-mismatch", "Rerun gate evidence is invalid");
   }
@@ -259,11 +154,9 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   const selected = new Set(source.selectedStepKeys);
   const protectedBindings = retainedRunProtectedBindings(run);
   const nodes = new Set(descriptor.timeline.filter((step) => selected.has(step.key)).flatMap((step) => step.nodes.map((node) => String(node.id))));
-  const completedTransactions = validateCompletedTransactionContinuations(repositories, descriptor, run, entry?.input.value ?? run.input.parsed.value);
   const warnings: RepeatWarning[] = [];
   for (const node of descriptorRuntimeNodes(descriptor)) {
     if (node.kind !== "transaction" || !nodes.has(String(node.id))) continue;
-    if (completedTransactions.has(String(node.id))) continue;
     const outputs: Record<string, JsonValue> = {};
     for (const dependency of node.dependsOn) {
       const checkpoint = latest.get(String(dependency));
@@ -278,7 +171,7 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
         outputs[String(dependency)] = checkpoint.output.value;
       }
       else {
-        const gate = gates.find((candidate) => String(candidate.nodeId) === String(dependency));
+        const gate = gates.find((candidate) => String(candidate.gateId) === String(dependency));
         if (gate !== undefined) {
           const dependencyNode = descriptorRuntimeNodes(descriptor).find(candidate => String(candidate.id) === String(dependency));
           if (dependencyNode?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(dependencyNode.result, "output")

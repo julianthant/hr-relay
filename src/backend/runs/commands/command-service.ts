@@ -52,7 +52,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       }
 
       if (request.family === "start" || (request.family === "intake" && request.type === "enqueue-intake-manifest")
-        || (request.family === "run" && (request.type === "retry" || request.type === "restart"))) {
+        || (request.family === "run" && (request.type === "retry" || request.type === "restart" || request.type === "recover-run"))) {
         deps.projection.ingestFromTimeline();
         return result;
       }

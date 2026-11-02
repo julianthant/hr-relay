@@ -7,6 +7,7 @@ import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../.
 import { valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { isFreshOccurrenceProof } from "../gates/repeat-proof.js";
 import { readRunCheckpoint } from "../checkpoints/run-checkpoint-reader.js";
+import { transactionCheckpointProvenance } from "../../runs/provenance/task-provenance.js";
 import { decideDurableIntent } from "../policies/durable-intent.js";
 import { runMandatorySavedVerification, completeProtectedWrite } from "./mandatory-saved-verification.js";
 
@@ -55,7 +56,6 @@ import {
   resolveTaskImplFingerprint,
 } from "../../../workflow-kit/validation/build-manifest.js";
 import {
-  FactProvenanceSchema,
   RunCheckpointRecordSchema,
   type RunCheckpointRecord,
 } from "../../../models/workflow/checkpoint.js";
@@ -805,14 +805,7 @@ function buildTransactionCheckpoint(
 ): RunCheckpointRecord {
   const envelope = identity.run.envelope;
   const instant = IsoInstantSchema.parse(writtenAt);
-  const source = proofSource === "operator-attestation" ? "operator" : "live";
-  const provenance = ["disposition", "proofSource", "proof", "output"].map((path) =>
-    FactProvenanceSchema.parse({
-      path,
-      source,
-      observedAt: instant,
-      originalObservedAt: instant,
-    }));
+  const provenance = transactionCheckpointProvenance(outcome, instant);
   return RunCheckpointRecordSchema.parse({
     workflowId: identity.descriptor.id,
     itemId: envelope.itemId,
@@ -1187,8 +1180,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       descriptorVersion: context.descriptor.version,
       contractFingerprint: context.descriptor.contractFingerprint,
       implFingerprint: resolveImplFingerprint(commitContract.id),
-      provenance: ["disposition", "proofSource", "proof", "output"].map((path) =>
-        FactProvenanceSchema.parse({ path, source: "live", observedAt: now, originalObservedAt: now })),
+      provenance: transactionCheckpointProvenance(outcome, now),
       writtenAt: now,
     });
     deps.authority.withAuthorityTransaction((repositories) => {

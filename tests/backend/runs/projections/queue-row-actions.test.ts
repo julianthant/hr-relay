@@ -105,10 +105,10 @@ describe("queue-row action descriptors — the per-status set", () => {
     blocked: ["cancel", "rename"],
     "awaiting-approval": ["cancel", "rename"],
 
-    done: ["rename", "delete"],
+    done: ["rerun", "rename", "delete"],
     failed: ["rerun", "rename", "delete"],
     cancelled: ["rename", "delete"],
-    partial: ["rename", "delete"],
+    partial: ["rerun", "rename", "delete"],
   };
 
   it("serves exactly the declared set for every queue status", () => {
@@ -137,6 +137,7 @@ describe("queue-row action descriptors — the per-status set", () => {
       rename: ["menu"],
     });
     assert.deepEqual(placements("done"), {
+      rerun: ["footer", "menu", "data"],
       rename: ["menu"],
 
       delete: ["footer", "menu"],
@@ -340,4 +341,21 @@ describe("queue-row action descriptors — every served verb has a command behin
       );
     }
   });
+});
+
+it("offers explicit checkpoint recovery only from canonical failed/interrupted facts, alongside ordinary Rerun", () => {
+  for (const recoverySource of ["failed", "interrupted"] as const) {
+    const facts = { ...factsFor("failed"), recoverySource };
+    const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, facts);
+    assert.ok(actions.some(action => action.key === "rerun" && action.kind === "navigation"));
+    const recover = actions.find(action => action.key === "recover-run");
+    assert.ok(recover?.kind === "command");
+    assert.equal(recover.command, "recover-run");
+    assert.equal(recover.expectedVersion, facts.rowRevision);
+    assert.equal(recover.confirm?.confirmLabel, "Recover");
+    assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, { ...facts, parkedWrite: true }).some(action => action.key === "recover-run"), false);
+    assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, { ...facts, isChild: true }).some(action => action.key === "recover-run"), false);
+  }
+  assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("done")).some(action => action.key === "recover-run"), false);
+  assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("partial")).some(action => action.key === "recover-run"), false);
 });

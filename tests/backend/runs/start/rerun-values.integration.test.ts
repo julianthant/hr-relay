@@ -185,8 +185,9 @@ describe("source-bound Rerun value read", () => {
     assert.equal(result.snapshot.values[0].value, "10812345");
     assert.equal(snapshot(h, run), before);
   });
-  it("opens a fresh start after the source read node was removed", async () => {
+  it("plans and consumes ordinary Rerun after the source read node was removed", async () => {
     const h = await harness(); const source = await failed(h);
+    const historical = canonicalJsonStringify(h.database.authority.runCheckpoints.listByItem(h.descriptor.id, source.envelope.itemId));
     h.registerDescriptor(mappedReadDescriptor(undefined, { contractFingerprint: "b".repeat(64), nodeId: "current-read", stepKey: "current-reading" }));
     const removedGate = GateResultRecordSchema.parse({ runId: source.envelope.runId, nodeId: "removed-gate", gateId: "removed-gate",
       commandId: h.ids.uuid(), expectedVersion: source.version, resolvedBy: "local-operator", resolvedAt: h.clock.now().toISOString(),
@@ -195,20 +196,26 @@ describe("source-bound Rerun value read", () => {
     const response = readRerunValues({ ...rerunValuesDeps(h), database: { authority: repositories,
       withAuthorityReadSnapshot: h.database.withAuthorityReadSnapshot.bind(h.database) } }, request(source));
     assert.ok(response.state === "available", JSON.stringify(response));
-    assert.throws(() => previewRerunWarnings(repositories, h.descriptor, { ...request(source), intent: "rerun", selectedStepKeys: ["current-reading", "finish"] }),
-      error => error instanceof RerunRefusedError && error.code === "schema-mismatch");
+    assert.deepEqual(previewRerunWarnings(repositories, h.descriptor,
+      { ...request(source), intent: "rerun", selectedStepKeys: ["current-reading", "finish"] }).warnings, []);
     assert.deepEqual(response.snapshot.steps.map(step => step.key), ["current-reading", "finish"]);
     assert.deepEqual(response.snapshot.sourceInput, { state: "available", value: { eid: "10812345" } });
     assert.equal(response.snapshot.values[0]?.state, "unavailable");
     const selectedStepKeys = ["current-reading", "finish"];
-    assert.throws(() => h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: false, selectedStepKeys,
-      rerunSource: { ...request(source), intent: "rerun", selectedStepKeys } }), error => error instanceof RerunRefusedError && error.code === "schema-mismatch");
-    const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: false, selectedStepKeys });
-    const run = h.start(plan); assert.equal(run.envelope.continuation, undefined); assert.equal(run.envelope.sourceBound, undefined);
+    const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: false, selectedStepKeys,
+      rerunSource: { ...request(source), intent: "rerun", selectedStepKeys } });
+    const run = h.start(plan);
+    assert.equal(run.envelope.continuation, undefined);
+    assert.equal(run.envelope.sourceBound?.source.runId, source.envelope.runId);
+    assert.notEqual(run.envelope.runId, source.envelope.runId);
+    assert.equal(run.envelope.contractFingerprint, h.descriptor.contractFingerprint);
     assert.equal((await h.execute(run)).state, "done");
+    assert.equal(canonicalJsonStringify(h.database.authority.runCheckpoints.listByItem(h.descriptor.id, source.envelope.itemId)
+      .filter(row => row.runId === source.envelope.runId)), historical);
   });
   it("disregards an incompatible historical same-ID gate for fresh read-only work", async () => {
     const h = await harness(); const source = await failed(h);
+    const historical = canonicalJsonStringify(h.database.authority.runCheckpoints.listByItem(h.descriptor.id, source.envelope.itemId));
     const gate = GateResultRecordSchema.parse({ runId: source.envelope.runId, nodeId: "approval", gateId: "approval",
       commandId: h.ids.uuid(), expectedVersion: source.version, resolvedBy: "local-operator", resolvedAt: h.clock.now().toISOString(),
       checkpointFingerprint: "a".repeat(64), result: { schemaHash: "a".repeat(64), value: { oldApproval: "accepted" } } });
@@ -218,7 +225,17 @@ describe("source-bound Rerun value read", () => {
       withAuthorityReadSnapshot: h.database.withAuthorityReadSnapshot.bind(h.database) } }, request(source));
     assert.ok(response.state === "available", JSON.stringify(response));
     const sourceRef = { ...request(source), intent: "rerun" as const, selectedStepKeys: h.descriptor.timeline.map(step => step.key) };
-    assert.throws(() => previewRerunWarnings(repositories, h.descriptor, sourceRef), error => error instanceof RerunRefusedError && error.code === "schema-mismatch");
+    assert.deepEqual(previewRerunWarnings(repositories, h.descriptor, sourceRef).warnings, []);
+    const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345" }], dryRun: false,
+      selectedStepKeys: sourceRef.selectedStepKeys, rerunSource: sourceRef });
+    const run = h.start(plan);
+    assert.equal(run.envelope.continuation, undefined);
+    assert.equal(run.envelope.sourceBound?.source.runId, source.envelope.runId);
+    assert.notEqual(run.envelope.runId, source.envelope.runId);
+    assert.equal(run.envelope.contractFingerprint, h.descriptor.contractFingerprint);
+    assert.deepEqual(h.database.authority.gateResults.listByRun(run.envelope.runId), []);
+    assert.equal(canonicalJsonStringify(h.database.authority.runCheckpoints.listByItem(h.descriptor.id, source.envelope.itemId)
+      .filter(row => row.runId === source.envelope.runId)), historical);
     h.registerDescriptor(mappedReadDescriptor(undefined, { gate: true }));
     assert.deepEqual(readRerunValues({ ...rerunValuesDeps(h), database: { authority: repositories,
       withAuthorityReadSnapshot: h.database.withAuthorityReadSnapshot.bind(h.database) } }, request(source)),
@@ -278,11 +295,12 @@ describe("source-bound Rerun value read", () => {
     assert.equal(result.snapshot.values[0].reason, "target-invalid");
   });
 
-  it("refuses cross-contract continuation and starts fresh with current identity and no inherited authority", async () => {
+  it("allows ordinary Rerun across contracts and keeps fresh Start free of inherited authority", async () => {
     const h = await harness(); const source = await failed(h);
     const sourceCheckpoints = canonicalJsonStringify(h.database.authority.runCheckpoints.listByItem(h.descriptor.id, source.envelope.itemId));
     h.registerDescriptor(mappedReadDescriptor(undefined, { version: 2, contractFingerprint: "b".repeat(64) }));
-    assert.throws(() => h.proposal(source), error => error instanceof RerunRefusedError && error.code === "schema-mismatch");
+    const ordinary = h.proposal(source);
+    assert.equal(ordinary.rerun?.source.runId, source.envelope.runId);
     const plan = h.proposal();
     const run = h.start(plan);
     assert.equal(run.envelope.continuation, undefined); assert.equal(run.envelope.sourceBound, undefined);
@@ -362,7 +380,7 @@ describe("source-bound Rerun value read", () => {
     assert.equal(outcome.state, "parked-write"); const source = h.fresh(queued);
     if (older) h.registerDescriptor(launchDescriptor("reject-active", { version: 2, fingerprint: "b".repeat(64) }));
     assert.deepEqual(readRerunValues(rerunValuesDeps(h), request(source)), { state: "refused", code: "source-ineligible" });
-    assert.throws(() => h.proposal(source), error => error instanceof RerunRefusedError && error.code === (older ? "schema-mismatch" : "invalid-state"));
+    assert.throws(() => h.proposal(source), error => error instanceof RerunRefusedError && error.code === "invalid-state");
   });
   it("offers exact completed values and provenance without changing authority or minting plans", async () => {
     const h = await harness(); const run = await failed(h); const before = snapshot(h, run);
@@ -384,7 +402,11 @@ describe("source-bound Rerun value read", () => {
     const continued = h.start(h.proposal(run));
     assert.equal((await h.execute(continued)).state, "done");
     const retained = h.database.authority.runCheckpoints.listByItem(h.descriptor.id, run.envelope.itemId);
-    assert.deepEqual(retained.filter(row => row.nodeId === cp.nodeId), [cp], "completed read is reused without a new read checkpoint");
+    const reads = retained.filter(row => row.nodeId === cp.nodeId);
+    assert.equal(reads.length, 2, "ordinary Rerun executes the read under its new run identity");
+    assert.deepEqual(reads.find(row => row.runId === run.envelope.runId), cp);
+    assert.ok(reads.some(row => row.runId === continued.envelope.runId));
+    assert.equal(continued.envelope.continuation, undefined);
     assert.ok(retained.some(row => row.nodeId === "finish" && row.runId === continued.envelope.runId), "failed later work actually executes");
   });
   it("keeps source plan identity without carrying a worker choice", async () => {
@@ -464,19 +486,22 @@ describe("source-bound Rerun value read", () => {
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: h.clock.now().toISOString() } }));
     assert.deepEqual(readRerunValues(rerunValuesDeps(h), request(cancelled)), { state: "refused", code: "source-ineligible" });
   });
-  it("refuses genuine successful and interrupted sources even when completed evidence is retained", async () => {
+  it("offers ordinary Rerun for successful and interrupted sources with completed evidence", async () => {
     const h = await harness(); await failed(h);
     const queued = h.start(h.proposal()); assert.equal((await h.execute(queued)).state, "done");
     const done = h.fresh(queued);
     assert.ok(h.database.authority.runCheckpoints.listByItem(h.descriptor.id, done.envelope.itemId).length > 0);
-    assert.deepEqual(readRerunValues(rerunValuesDeps(h), request(done)), { state: "refused", code: "source-ineligible" });
+    assert.equal(readRerunValues(rerunValuesDeps(h), request(done)).state, "available");
+    assert.equal(h.proposal(done).rerun?.source.runId, done.envelope.runId);
     const next = h.start(h.proposal()), owner = testWorkerLifetime(h.database, h.descriptor.id, 1);
     const claimed = requireLifecycleApplied(h.lifecycle.claimNext({ commandId: h.ids.uuid(), workflow: h.descriptor.id, workerId: owner.workerId,
       workerLifetime: owner.workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) }));
     assert.equal(claimed.envelope.runId, next.envelope.runId);
     assert.equal(h.database.authority.runs.transition({ ...request(claimed), now: h.clock.now().toISOString(),
       claim: { workerId: owner.workerId, claimGeneration: claimed.claimGeneration }, lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() } }).state, "applied");
-    assert.deepEqual(readRerunValues(rerunValuesDeps(h), request(h.fresh(next))), { state: "refused", code: "source-ineligible" });
+    const interrupted = h.fresh(next);
+    assert.equal(readRerunValues(rerunValuesDeps(h), request(interrupted)).state, "available");
+    assert.equal(h.proposal(interrupted).rerun?.source.runId, interrupted.envelope.runId);
   });
   it("never borrows another run's checkpoint", async () => {
     const h = await harness(); const run = await failed(h); const cp = firstCheckpoint(h, run);
@@ -543,8 +568,15 @@ describe("source-bound Rerun value read", () => {
       contractFingerprint: h.descriptor.contractFingerprint, implFingerprint: "b".repeat(64), writtenAt: now,
       provenance: Object.keys(value).map((path) => ({ path, source: "live", observedAt: now, originalObservedAt: now })),
     }));
-    const failure = buildNodeFailureRecord({ run: claimed, failureId: h.ids.uuid(), nodeId: NodeIdSchema.parse("later"), error: new Error("fixture later read failed"), occurredAt: now });
-    const authorization = buildFailureTerminalAuthorization({ run: claimed, authorizedAt: now, consequence: { kind: "failed", failure } });
+    const later = descriptorRuntimeNodes(h.descriptor).find(node => node.id === "later"); assert.ok(later?.kind === "task");
+    let running = claimed;
+    for (const state of ["validating", "running"] as const) running = requireLifecycleApplied(h.lifecycle.workerTransition({
+      commandId: h.ids.uuid(), runId: running.envelope.runId, expectedVersion: running.version,
+      claim: { workerId, claimGeneration: running.claimGeneration }, lifecycle: { state, workerId, workerLifetime,
+        claimedAt: now, heartbeatAt: now, ...(state === "running" ? { currentNodeId: "later" } : {}) } }));
+    const failure = buildNodeFailureRecord({ run: running, failureId: h.ids.uuid(), nodeId: NodeIdSchema.parse("later"),
+      taskId: later.uses.id, error: new Error("fixture later read failed"), occurredAt: now });
+    const authorization = buildFailureTerminalAuthorization({ run: running, authorizedAt: now, consequence: { kind: "failed", failure } });
     const run = requireLifecycleApplied(h.lifecycle.terminalize({ commandId: h.ids.uuid(), kind: "failure", terminal: { authorization, failure } }, h.descriptor));
     const protectedRun = { ...run, input: { ...run.input, parsed: { ...run.input.parsed, protectedBindings: [{
       kind: "test-data-local" as const, inputPath: "documentNumber" as const,
@@ -599,21 +631,22 @@ describe("source-bound Rerun value read", () => {
     assert.deepEqual(readRerunValues({ ...deps, database }, request(run)), { state: "refused", code: "source-ineligible" });
   });
 
-  it("offers a failed source's completed transaction as attributed input and reuses it without new effects", async () => {
+  it("offers attributed completed transaction evidence and explicitly recovers it without new effects", async () => {
     const h = await harness(true, true);
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString())); const run = await failed(h);
     const result = readRerunValues(rerunValuesDeps(h), request(run)); assert.ok(result.state === "available");
     const value = result.snapshot.values[0]; assert.ok(value?.state === "available", JSON.stringify(value));
     assert.equal(value.value, "T123456"); assert.equal(value.fieldPath, "output.value.transactionId");
-    const selectedStepKeys = h.descriptor.timeline.map(({ key }) => key);
-    const plan = h.planner.plan({ workflowId: h.descriptor.id, submissions: [{ eid: "10812345", memo: value.value }], dryRun: false, selectedStepKeys,
-      rerunSource: { ...request(run), intent: "rerun", selectedStepKeys,
-        copiedFrom: [{ nodeId: value.nodeId, fieldPath: value.fieldPath, targetFieldPath: value.targetFieldPath }] } });
-    assert.deepEqual(plan.rerun?.warnings, []); assert.equal(plan.rerun?.acknowledgment, undefined);
     const effects = () => canonicalJsonStringify({ events: h.world.events.filter(event => !event.startsWith("read:")),
       intents: h.database.authority.writeIntents.listByRun(run.envelope.runId), checkpoints: h.database.authority.runCheckpoints.listByItem(h.descriptor.id, run.envelope.itemId).filter(row => row.nodeId === WRITE_FIXTURE_NODE_ID),
       confirmations: h.database.authority.timelineEvents.page({}).filter(row => row.payload.kind === "operation-confirmed") });
-    const before = effects(); const continued = h.start(plan);
+    const before = effects();
+    const recovered = h.kernel.execute({ commandId: h.ids.uuid(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+      source: "dashboard", family: "run", type: "recover-run", target: request(run) });
+    assert.equal(recovered.state, "applied"); assert.ok(recovered.state === "applied");
+    const target = recovered.affectedTargets[0]; assert.ok(target?.family === "run");
+    const continued = h.database.authority.runs.get(target.runId); assert.ok(continued);
+    assert.ok(continued.envelope.continuation); assert.equal(continued.envelope.sourceBound, undefined);
     assert.equal((await h.execute(continued)).state, "done");
     assert.deepEqual(h.database.authority.writeIntents.listByRun(continued.envelope.runId), []);
     assert.equal(effects(), before);
@@ -627,22 +660,32 @@ describe("source-bound Rerun value read", () => {
     assert.throws(() => readRerunValues({ ...deps, reader: { read: () => { throw busy; } } }, request(run)), (error) => error === busy);
   });
 
-  it("retains earlier same-run attempts and chooses the latest execution independently of repository order", async () => {
-    const h = await harness(); const source = await failed(h); const cp = firstCheckpoint(h, source);
-    // Projection controls retain the failure's matching attempt alongside the source row.
-    const run = RunRecordSchema.parse({ ...source, envelope: { ...source.envelope, attempt: 2 }, claimGeneration: 2 });
-    const reader = { read: () => ({ state: "present" as const, disposition: "live" as const, run }) };
-    const attemptDeps = (rows: readonly RunCheckpointRecord[]) => { const deps = checkpointsDeps(h, rows); return { ...deps, reader,
-      database: { ...deps.database, authority: { ...deps.database.authority, failures: { ...h.database.authority.failures,
-        listByRun: (id: string) => h.database.authority.failures.listByRun(id).map(failure => ({ ...failure, attempt: run.envelope.attempt })) } } } }; };
+  it("retains earlier same-run claims and chooses the latest execution independently of repository order", async () => {
+    let pause = () => {};
+    const h = await sourceBoundHarness(mappedReadDescriptor(), world => sourceBoundReadStores(world, 2, () => pause()),
+      undefined, undefined, profiles.create); disposers.push(h.dispose);
+    const source = h.start(h.proposal());
+    pause = () => {
+      pause = () => {};
+      const current = h.fresh(source);
+      requireLifecycleApplied(h.lifecycle.pause({ commandId: h.ids.uuid(), runId: current.envelope.runId, expectedVersion: current.version }));
+    };
+    assert.equal((await h.execute(source)).state, "abandoned");
+    const held = h.fresh(source); assert.equal(held.pause?.state, "paused");
+    const cp = firstCheckpoint(h, held);
+    h.clock.advanceWall(1);
+    const resumed = requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: h.ids.uuid(), runId: held.envelope.runId, expectedVersion: held.version }));
+    assert.equal((await h.execute(resumed)).state, "failed");
+    const run = h.fresh(resumed); assert.equal(run.claimGeneration, 2);
+    const attemptDeps = (rows: readonly RunCheckpointRecord[]) => checkpointsDeps(h, rows);
     const earlier = readRerunValues(attemptDeps([cp]), request(run)); assert.ok(earlier.state === "available");
-    assert.ok(earlier.snapshot.values[0]?.state === "available"); assert.equal(earlier.snapshot.values[0].checkpoint.attempt, 1);
-    const later = RunCheckpointRecordSchema.parse({ ...cp, attempt: 2, claimGeneration: 2,
+    assert.ok(earlier.snapshot.values[0]?.state === "available"); assert.equal(earlier.snapshot.values[0].checkpoint.claimGeneration, 1);
+    const later = RunCheckpointRecordSchema.parse({ ...cp, claimGeneration: 2,
       output: { ...cp.output, value: { eid: "10899999" } } });
     const newest = readRerunValues(attemptDeps([later, cp]), request(run)); assert.ok(newest.state === "available");
     assert.ok(newest.snapshot.values[0]?.state === "available"); assert.equal(newest.snapshot.values[0].value, "10899999");
     const interrupted = readRerunValues({ ...attemptDeps([cp]),
-      executions: () => [{ nodeId: "read", attempt: 2, startedAt: cp.writtenAt }] }, request(run));
+      executions: () => [{ nodeId: "read", attempt: run.envelope.attempt, startedAt: h.clock.now().toISOString() }] }, request(run));
     assert.ok(interrupted.state === "available"); assert.equal(interrupted.snapshot.steps[0]?.state, "unfinished");
   });
 

@@ -5,7 +5,7 @@ import { PublicRerunPlanSchema, SourceBoundRunSchema } from "../../../models/run
 import { RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema, CanonicalAcknowledgePauseRequestSchema, WorkerStandingRecoveryRequestSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema, CanonicalCreateRunRequestSchema, CanonicalClaimNextRequestSchema, CanonicalTransitionRequestSchema, CanonicalRenewClaimRequestSchema, CanonicalWorkerTransitionRequestSchema, CanonicalFailureTerminalizeRequestSchema, CanonicalSuccessTerminalizeRequestSchema, CanonicalCancellationTerminalizeRequestSchema, CanonicalRequeueRequestSchema, CanonicalRetrySourceRequestSchema, CanonicalDeleteRequestSchema, CanonicalPurgeRequestSchema } from "./run-store-contracts.js";
+import { ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema, CanonicalAcknowledgePauseRequestSchema, WorkerStandingRecoveryRequestSchema, WorkerVerificationAdmissionRequestSchema, WorkerVerificationRetirementRequestSchema, CanonicalWorkerAdmissionRequestSchema, CanonicalCreateRunRequestSchema, CanonicalClaimNextRequestSchema, CanonicalTransitionRequestSchema, CanonicalRenewClaimRequestSchema, CanonicalWorkerTransitionRequestSchema, CanonicalFailureTerminalizeRequestSchema, CanonicalSuccessTerminalizeRequestSchema, CanonicalCancellationTerminalizeRequestSchema, CanonicalRequeueRequestSchema, CanonicalRetrySourceRequestSchema, CanonicalRecoverRunRequestSchema, CanonicalDeleteRequestSchema, CanonicalPurgeRequestSchema } from "./run-store-contracts.js";
 
 const schemas = {
   "application-admission": ApplicationAdmissionRequestSchema,
@@ -20,13 +20,13 @@ const schemas = {
   "worker-admission":CanonicalWorkerAdmissionRequestSchema, create:CanonicalCreateRunRequestSchema.extend({sourceBound:PublicRerunPlanSchema.extend({confirmationCommandId:SourceBoundRunSchema.shape.confirmationCommandId}).optional()}),"claim-next":CanonicalClaimNextRequestSchema,transition:CanonicalTransitionRequestSchema,
   "renew-claim":CanonicalRenewClaimRequestSchema,"worker-transition":CanonicalWorkerTransitionRequestSchema,
   terminalize:z.union([CanonicalFailureTerminalizeRequestSchema,CanonicalSuccessTerminalizeRequestSchema,CanonicalCancellationTerminalizeRequestSchema]),
-  requeue:CanonicalRequeueRequestSchema,retry:CanonicalRetrySourceRequestSchema,restart:CanonicalRetrySourceRequestSchema,
+  recover:CanonicalRecoverRunRequestSchema,requeue:CanonicalRequeueRequestSchema,retry:CanonicalRetrySourceRequestSchema,restart:CanonicalRetrySourceRequestSchema,
   delete:CanonicalDeleteRequestSchema,purge:CanonicalPurgeRequestSchema,
 };
 export function validateNativeLifecycleRequest(input: unknown): void {
   const command = RunLifecycleCommandRecordSchema.parse(input);
   if (!Object.hasOwn(schemas,command.operation)) throw new Error("run-lifecycle-operation-unavailable");
-  const operation = z.enum(["application-admission","pause","resume","acknowledge-pause","delegation-invocation","delegation-admission","delegation-settlement","delegation-retry","create","claim-next","transition","recover-crash","renew-claim","worker-transition","worker-admission","worker-standing-recovery","worker-verification-admission","worker-verification-retirement","terminalize","requeue","retry","restart","delete","purge"]).parse(command.operation);
+  const operation = z.enum(["application-admission","pause","resume","acknowledge-pause","delegation-invocation","delegation-admission","delegation-settlement","delegation-retry","create","claim-next","transition","recover-crash","renew-claim","worker-transition","worker-admission","worker-standing-recovery","worker-verification-admission","worker-verification-retirement","terminalize","requeue","retry","restart","recover","delete","purge"]).parse(command.operation);
   const parsed = schemas[operation].parse(command.request);
   if (z.object({commandId:z.string()}).parse(parsed).commandId !== command.commandId
     || canonicalJsonStringify(parsed) !== canonicalJsonStringify(command.request)

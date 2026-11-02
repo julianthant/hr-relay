@@ -13,7 +13,7 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
-  RUN_CONTINUATION_REFUSED: catalogEntry("Saved completed steps could not be authenticated for this continuation. No saved result was reused; review the retained failure before starting work.", EmptyParametersSchema),
+  RUN_CONTINUATION_REFUSED: catalogEntry("Saved completed steps could not be authenticated for recovery. No saved result was reused; review the source run before starting work.", EmptyParametersSchema),
   APPLICATION_ADMISSION_REFUSED: catalogEntry("Relay could not secure idle update or shutdown admission. Work remains held; restart Relay after resolving the retained failure.", EmptyParametersSchema),
   UNEXPECTED_CONTACT_PAGE: catalogEntry("UCPath did not show the expected Emergency Contact page.", EmptyParametersSchema),
   CONTACT_IDENTITY_UNREADABLE: catalogEntry("UCPath did not display a readable employee ID and name for these contacts.", EmptyParametersSchema),
@@ -645,6 +645,10 @@ export const ERROR_CATALOG = Object.freeze({
     "An active intake uses the same file with different workbook provenance. Finish that intake before importing this workbook.",
     EmptyParametersSchema,
   ),
+  WORKBOOK_OPERATION_CONFLICT: catalogEntry("This workbook operation ID was already used with different input.", EmptyParametersSchema),
+  WORKBOOK_REVISION_UNAVAILABLE: catalogEntry("This saved workbook revision cannot be reconstructed from its retained evidence.", EmptyParametersSchema),
+  WORKBOOK_SYNC_UNAVAILABLE: catalogEntry("Authenticated SharePoint Sync is unavailable.", EmptyParametersSchema),
+  WORKBOOK_METADATA_UNSUPPORTED: catalogEntry("This workbook has formulas, Excel error cells or metadata Relay cannot preserve during master edits.", EmptyParametersSchema),
   WORKBOOK_INVALID: catalogEntry(
     "The workbook is malformed and cannot be saved.",
     EmptyParametersSchema,

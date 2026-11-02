@@ -1224,6 +1224,8 @@ export class RunQueueProjection {
 
       actions: queueRowActions(descriptor?.actions, {
         status,
+        ...(authority.lifecycle.state === "terminal" && (authority.lifecycle.outcome === "failed" || authority.lifecycle.outcome === "interrupted")
+          ? { recoverySource: authority.lifecycle.outcome } : {}),
         rowRevision: authority.version,
         dryRun: authority.envelope.dryRun,
         isChild: authority.envelope.parent !== undefined,

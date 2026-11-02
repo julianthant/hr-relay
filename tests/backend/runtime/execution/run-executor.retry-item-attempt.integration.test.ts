@@ -6,8 +6,6 @@ import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { validateRunContinuation } from "../../../../src/backend/runtime/checkpoints/run-continuation.js";
-import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
 import { taskSpanPath } from "../../../../src/backend/logs/span-emitter.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { executeClaimedRun,type RunExecutorDependencies } from "../../../../src/backend/runtime/execution/run-executor.js";
@@ -65,7 +63,7 @@ const retryFlow = flow(RetryInput)
     replay: "checkpoint",
     bind: ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }),
   })
-  // Fresh attempts execute this node; authenticated continuations retain its completed work.
+  // Native Retry re-executes browser-state nodes under its new item attempt.
   .step("live-probe", SearchPersonOrg, {
     dependsOn: ["searching"],
     replay: "always-rerun",
@@ -263,14 +261,12 @@ async function failThenRetry(h: Awaited<ReturnType<typeof harness>>): Promise<Re
   return { first, retried };
 }
 
-describe("Retry continuation and independent item attempts", () => {
-  it("walks failure through authenticated Retry to done while retaining completed work", async () => {
+describe("a retry re-executes an always-rerun node without colliding", () => {
+  it("walks fail → retry → terminal done, storing BOTH executions of the item", async () => {
     const h = await harness();
     const { first, retried } = await failThenRetry(h);
 
-    assert.notEqual(retried.envelope.runId, first.envelope.runId);
-    assert.ok(retried.envelope.continuation);
-    assert.deepEqual(validateRunContinuation(h.database.authority, retried.envelope), [first]);
+    assert.equal(retried.envelope.continuation, undefined);
     assert.equal(retried.envelope.retryOf, RUN_ID);
     assert.equal(first.envelope.attempt, 1);
     assert.equal(retried.envelope.attempt, 2, "a retry takes the ITEM's next attempt");
@@ -288,14 +284,14 @@ describe("Retry continuation and independent item attempts", () => {
     const outcome = await executeClaimedRun(h.deps, { ...second, signal: SIGNAL });
     assert.deepEqual(outcome, { state: "done", runId: retried.envelope.runId });
 
-    /* ── the original completed execution remains the sole durable row ─────────── */
+    /* ── both executions are durable, and they are DIFFERENT rows ─────────── */
     const executions = h.database.authority.runCheckpoints
       .listByItem(WORKFLOW_ID, itemId)
       .filter((record) => record.nodeId === "live-probe");
-    assert.equal(executions.length, 1, "the authenticated continuation reuses the completed always-rerun node");
+    assert.equal(executions.length, 2, "the always-rerun node ran once per run, and both rows are stored");
     assert.deepEqual(
       executions.map((record) => [record.attempt, record.claimGeneration, record.runId]),
-      [[1, 1, RUN_ID]],
+      [[1, 1, RUN_ID], [2, 1, retried.envelope.runId]],
     );
 
     assert.equal(
@@ -316,23 +312,20 @@ describe("Retry continuation and independent item attempts", () => {
       "a replayed ancestor opens no browser — that is the point of an item-scoped checkpoint",
     );
 
-    /* ── terminal evidence cites the retained original execution ────────────────────── */
+    /* ── terminal evidence cites the RETRY's execution ────────────────────── */
     const result = h.database.authority.runResults.get(retried.envelope.runId);
     assert.ok(result);
     const dependency = result.dependencies.find(({ nodeId }) => nodeId === "live-probe");
     assert.ok(dependency?.state === "resolved");
-    assert.deepEqual(dependency.checkpoint, { workflowId: WORKFLOW_ID, itemId,
-      attempt: 1, claimGeneration: 1, runId: first.envelope.runId });
+    assert.equal(dependency.checkpoint.attempt, 2);
+    assert.equal(dependency.checkpoint.runId, retried.envelope.runId);
 
     const latest = h.database.authority.runCheckpoints.latest(WORKFLOW_ID, itemId, "live-probe");
-    assert.equal(latest?.attempt, 1);
-    assert.equal(latest?.runId, first.envelope.runId);
-    const verified = h.database.authority.runCheckpoints.get(WORKFLOW_ID, itemId, "cross-verify", 2, 1);
-    assert.ok(verified);
-    assert.equal(verified.runId, retried.envelope.runId);
+    assert.equal(latest?.attempt, 2);
+    assert.equal(latest?.runId, retried.envelope.runId);
   });
 
-  it("records retained replay without a new probe span and executes failed work on the Retry trace", async () => {
+  it("makes the two runs' executions distinguishable in the span stream", async () => {
     const h = await harness();
     const { first, retried } = await failThenRetry(h);
     const second = claim(h.database, h.now());
@@ -345,21 +338,7 @@ describe("Retry continuation and independent item attempts", () => {
 
     assert.deepEqual(paths, [
       taskSpanPath(TraceIdSchema.parse(first.envelope.traceId), node, 1, 1),
-    ]);
-    const original = h.database.authority.runCheckpoints.get(WORKFLOW_ID, first.envelope.itemId, "live-probe", 1, 1);
-    assert.ok(original);
-    const replay = h.database.authority.timelineEvents.page({ runId: retried.envelope.runId })
-      .filter(event => event.payload.kind === "checkpoint-replayed" && event.payload.checkpoint.nodeId === "live-probe");
-    assert.equal(replay.length, 1);
-    assert.deepEqual(replay[0]?.scope, { kind: "run", runId: retried.envelope.runId });
-    assert.deepEqual(replay[0]?.payload, { kind: "checkpoint-replayed", runId: retried.envelope.runId,
-      workflow: WORKFLOW_ID, attempt: 2, claimGeneration: second.claim.claimGeneration,
-      checkpoint: timelineCheckpointReference(original) });
-    const verificationPaths = [...new Set(h.emitter.events()
-      .filter(event => event.spanPath.includes("/cross-verify#")).map(event => event.spanPath))];
-    assert.deepEqual(verificationPaths, [
-      taskSpanPath(first.envelope.traceId, NodeIdSchema.parse("cross-verify"), 1, 1),
-      taskSpanPath(retried.envelope.traceId, NodeIdSchema.parse("cross-verify"), 1, 1),
+      taskSpanPath(TraceIdSchema.parse(retried.envelope.traceId), node, 1, 1),
     ]);
     assert.notEqual(first.envelope.traceId, retried.envelope.traceId);
   });

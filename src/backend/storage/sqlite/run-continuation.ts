@@ -4,7 +4,7 @@ import type { RunEnvelope } from "../../../models/run/envelope.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "./authority-database.js";
 
 export class RunContinuationRefusedError extends Error {
   readonly code = "RUN_CONTINUATION_REFUSED";
@@ -45,7 +45,7 @@ export function validateRunContinuation(repositories: ContinuationRepositories, 
       || run.envelope.contractFingerprint !== envelope.contractFingerprint
       || run.envelope.configFingerprint !== envelope.configFingerprint
       || run.envelope.dryRun !== envelope.dryRun
-      || source.runId !== envelope.runId && (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed")) {
+      || source.runId !== envelope.runId && (run.lifecycle.state !== "terminal" || !["failed", "interrupted"].includes(run.lifecycle.outcome))) {
       throw new RunContinuationRefusedError("run-continuation-source-unavailable");
     }
     return run;

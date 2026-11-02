@@ -338,6 +338,14 @@ export const CanonicalRetrySourceRequestSchema = z.strictObject({
   appVersion: RunRecordSchema.shape.appVersion,
 });
 
+export const CanonicalRecoverRunRequestSchema = z.strictObject({
+  continuationOwner: ContinuationRetryOwnerSchema.optional(),
+  sourceCommandId: CommandIdSchema.optional(),
+  ...CanonicalVersionIdentityFields,
+  runtimeConfig: RuntimeConfigClaimTokenSchema,
+  appVersion: RunRecordSchema.shape.appVersion,
+});
+
 export const CanonicalDeleteRequestSchema = z.strictObject(CanonicalVersionIdentityFields);
 
 export const CanonicalPurgeRequestSchema = z.strictObject({

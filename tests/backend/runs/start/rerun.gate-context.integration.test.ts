@@ -10,6 +10,7 @@ import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-regis
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
+import { validateCompletedTransactionContinuations } from "../../../../src/backend/runs/start/recovery-plan.js";
 import { RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
 import { sourceBoundReadContract, sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
@@ -59,7 +60,7 @@ async function harness(descriptor: AnyWorkflowDescriptor, failOn: readonly numbe
 }
 type Harness = Awaited<ReturnType<typeof harness>>;
 function retry(h: Harness, source: ReturnType<Harness["fresh"]>) {
-  return requireLifecycleApplied(h.lifecycle.retry({ commandId: randomUUID(), runId: source.envelope.runId, expectedVersion: source.version,
+  return requireLifecycleApplied(h.lifecycle.recover({ commandId: randomUUID(), runId: source.envelope.runId, expectedVersion: source.version,
     runtimeConfig: selectRunRuntime(h.database.authority), appVersion: "0.1.0" }, h.descriptor, { title: "Continue after failure", actorId: "local-operator" }));
 }
 function transactionEffects(h: Harness) {
@@ -68,6 +69,14 @@ function transactionEffects(h: Harness) {
     intents: h.database.authority.writeIntents.listByBusinessKey("ucpath", WRITE_FIXTURE_KEY_DIGEST),
     checkpoints: h.database.authority.runCheckpoints.listByItem(h.descriptor.id, source.envelope.itemId).filter(row => row.nodeId === WRITE_FIXTURE_NODE_ID),
     confirmations: h.database.authority.timelineEvents.page({}).filter(row => row.payload.kind === "operation-confirmed") };
+}
+
+function operatorRecover(h: Harness, source: ReturnType<Harness["fresh"]>) {
+  const result = h.kernel.execute({ commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+    source: "dashboard", family: "run", type: "recover-run", target: { runId: source.envelope.runId, expectedVersion: source.version } });
+  assert.equal(result.state, "applied"); assert.ok(result.state === "applied");
+  const target = result.affectedTargets[0]; assert.ok(target?.family === "run");
+  const run = h.database.authority.runs.get(target.runId); assert.ok(run); return run;
 }
 
 for (const door of ["retry", "resume"] as const) it(`preserves a closed skipped gate for its completed optional consumer across ${door}`, async () => {
@@ -116,13 +125,13 @@ it("authenticates own fresh-read checkpoints after ordinary gate resolution with
   assert.equal(h.world.events.filter(event => event === "read:ordinary-gate").length, 2, "fresh read and final read execute once each");
 });
 
-for (const door of ["retry", "start"] as const) it(`${door} classifies a transaction's authenticated conditional-gate skip without inventing a result`, async () => {
+for (const door of ["recover", "operator-recover"] as const) it(`${door} classifies a transaction's authenticated conditional-gate skip without inventing a result`, async () => {
   const h = await harness(gateTransaction, [1]);
   h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
   let source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID, "supplied-eid"));
   assert.equal((await h.execute(source)).state, "failed"); source = h.fresh(source);
   const before = transactionEffects(h);
-  const next = door === "retry" ? retry(h, source) : h.start(h.proposal(source, undefined, false, WRITE_FIXTURE_EID, "supplied-eid"));
+  const next = door === "recover" ? retry(h, source) : operatorRecover(h, source);
   assert.equal((await h.execute(next)).state, "done");
   assert.deepEqual(transactionEffects(h), before);
 });
@@ -133,7 +142,7 @@ it("refuses missing gate authority when corrected input makes the conditional ga
   const source = h.start(h.proposal(undefined, undefined, false, WRITE_FIXTURE_EID, "supplied-eid"));
   assert.equal((await h.execute(source)).state, "failed");
   const before = transactionEffects(h);
-  assert.throws(() => h.proposal(h.fresh(source), undefined, false, WRITE_FIXTURE_EID, "needs-approval"),
+  assert.throws(() => validateCompletedTransactionContinuations(h.database.authority, h.descriptor, h.fresh(source), { eid: WRITE_FIXTURE_EID, memo: "needs-approval" }),
     error => error instanceof RerunRefusedError && error.code === "invalid-value" && /dependency is unavailable/u.test(error.message));
   assert.deepEqual(transactionEffects(h), before);
 });

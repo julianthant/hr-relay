@@ -56,8 +56,12 @@ for (const state of ["queued", "parked-gate"] as const) it(`acknowledges request
   const claim = runClaim(paused); assert.ok(claim);
   const lifecycle = state === "queued" ? { state, requeuedFrom: "recovery" as const }
     : { state, gateId: "approval", resumeAt: "approval", parkedAt: f.clock.now().toISOString() };
-  const released = requireLifecycleApplied(f.service.transition({ commandId: randomUUID(), runId: paused.envelope.runId,
-    expectedVersion: paused.version, claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, lifecycle }));
+  const request = { commandId: randomUUID(), runId: paused.envelope.runId,
+    expectedVersion: paused.version, claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration } };
+  const outcome = state === "queued" ? f.service.requeue({ ...request, cause: "recovery" })
+    : f.service.workerTransition({ ...request, lifecycle });
+  assert.ok(outcome.state === "applied" || outcome.state === "applied-already");
+  const released = requireLifecycleApplied(outcome);
   assert.equal(released.pause?.state, "paused");
   assert.deepEqual(released.lifecycle, lifecycle);
   assert.equal(runClaim(released), undefined);

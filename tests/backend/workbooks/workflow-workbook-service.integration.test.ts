@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { afterEach, expect, it } from "vitest";
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkflowWorkbookService } from "../../../src/backend/workbooks/workflow-workbook-service.js";
 import { WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { WorkflowWorkbookCommandSchema, type WorkflowWorkbookCommand } from "../../../src/models/processing/workbooks/read-result.js";
@@ -27,7 +27,7 @@ const table = i9CheckWorkbookTable([i9RetentionRow({ input: i9CheckInput, initia
 const command = (): WorkflowWorkbookCommand => WorkflowWorkbookCommandSchema.parse({ name: "I-9 results", table });
 function fixture() {
   const database = new DatabaseSync(":memory:"); databases.push(database);
-  for (const statement of WORKBOOK_LIBRARY_MIGRATION.statements) database.exec(statement);
+  for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements]) database.exec(statement);
   const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => {
     database.exec("BEGIN");
     try { const result = work(); database.exec("COMMIT"); return result.result; }
@@ -48,7 +48,7 @@ it("workbooks/publish — creates one library workbook per run and replays the s
   expect(concurrent[0]).toEqual(concurrent[1]);
   expect(saved(concurrent[0]).libraryId).not.toBe(first.libraryId);
   expect(f.repository.list()).toHaveLength(2);
-  expect(f.repository.history(first.libraryId)).toHaveLength(1);
+  expect(f.repository.history(first.libraryId)).toHaveLength(0);
   const workbook = f.repository.read(first.libraryId)?.workbook;
   expect(workbook?.sheets[0].rows[1].cells[1]).toEqual({ value: "000012345", numFmt: "@" });
   expect(JSON.stringify(workbook)).not.toContain("ssn");
@@ -61,7 +61,7 @@ it("recovers the original receipt after operator edits without changing the save
   expect(await f.service.publish(runId, command(), signal)).toEqual(first);
   expect(f.repository.read(first.libraryId)).toEqual(edited);
   await expect(f.service.publish(runId, { ...command(), name: "Changed replay" }, signal)).rejects.toMatchObject({ code: "WORKBOOK_VERSION_CONFLICT" });
-  expect(f.repository.history(first.libraryId)).toHaveLength(2);
+  expect(f.repository.history(first.libraryId)).toHaveLength(0);
 });
 it("refuses linked targets, imports and malformed rows before any library mutation", async () => {
   const f = fixture();
@@ -73,11 +73,11 @@ it("refuses linked targets, imports and malformed rows before any library mutati
   ]) await expect(f.service.publish(runId, invalid, signal)).rejects.toThrow();
   expect(f.repository.list()).toHaveLength(0);
 });
-it("does not publish cancelled work and rolls back a failed history publication", async () => {
+it("does not publish cancelled work and rolls back a failed immutable creation publication", async () => {
   const f = fixture();
   await expect(f.service.publish(runId, command(), AbortSignal.abort())).rejects.toThrow();
   expect(f.repository.list()).toHaveLength(0);
-  f.database.exec("CREATE TRIGGER injected_failure BEFORE INSERT ON workbook_library_history BEGIN SELECT RAISE(ABORT,'injected'); END");
+  f.database.exec("CREATE TRIGGER injected_failure BEFORE INSERT ON workbook_creations BEGIN SELECT RAISE(ABORT,'injected'); END");
   await expect(f.service.publish(runId, command(), signal)).rejects.toBeInstanceOf(WorkbookLibraryError);
   expect(f.repository.list()).toHaveLength(0);
 });

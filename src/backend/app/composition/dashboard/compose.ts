@@ -671,7 +671,7 @@ async function composeDashboardRuntimeStartup(
   const runtimePreflight = composeRuntimePreflight({ duo: createDuoCredentialStore(admission, clock), admission, credentials: context.credentials, database, clock, repoRoot, isolation: input.isolation,
     descriptors, descriptorSetHash: setHash, protectedSecrets, environment: env,
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
-  const lifecycle = new RunRecordService({ database, clock, ids,
+  const lifecycle = new RunRecordService({ database, clock, ids, resolveDescriptor: descriptors.resolve,
     admitQueuedRun: run => runtimePreflight.admission.assertReady(runtimePreflight.runScope(run.envelope)),
     publishQueued: (run, publication) => {
       if (publication === undefined) throw new Error("queued run is missing its publication context");

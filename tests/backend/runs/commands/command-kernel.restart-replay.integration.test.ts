@@ -150,18 +150,22 @@ function recoveredRun(harness: Harness, type: "retry" | "restart", target: { run
 }
 
 describe("command-kernel recovery choices", () => {
-  it.each(["failed", "cancelled"] as const)("recognizes Restart but refuses the %s source without creating an attempt", async outcome => {
+  it.each(["failed", "cancelled"] as const)("Restart mints the next attempt from %s with input, dryRun and omissions unchanged", async outcome => {
     const harness = await createHarness();
 
     const target = startTerminalRun(harness, { dryRun: false, omit: true }, outcome);
     const original = harness.database.authority.runs.get(target.runId);
     assert.ok(original !== undefined);
-    const before = harness.database.authority.runs.listByWorkflow(descriptor.id);
-    const result = harness.kernel.execute(runCommand("restart", target.runId, target.version));
-    assert.ok(result.state === "rejected"); assert.equal(result.code, "invalid-state");
-    assert.deepEqual(harness.database.authority.runs.listByWorkflow(descriptor.id), before);
-    assert.deepEqual(harness.database.authority.runs.get(target.runId), original);
-    if (outcome === "cancelled") assert.equal(harness.kernel.execute(runCommand("retry", target.runId, target.version)).state, "rejected");
+    const restarted = recoveredRun(harness, "restart", target);
+    assert.equal(restarted.envelope.continuation, undefined);
+    assert.equal(restarted.envelope.recovery, "restart-from-start");
+    assert.equal(restarted.envelope.retryOf, target.runId);
+    assert.equal(restarted.envelope.itemId, original.envelope.itemId);
+    assert.equal(restarted.envelope.attempt, original.envelope.attempt + 1);
+    assert.equal(restarted.envelope.dryRun, original.envelope.dryRun);
+    assert.deepEqual(restarted.envelope.stepOmissions, STEP_OMISSIONS);
+    assert.deepEqual(restarted.input, original.input);
+    assert.equal(Object.hasOwn(restarted.envelope, "startAt"), false, "a restart owns no explicit start node");
   });
 
   it.each([false, true])("Retry preserves failed-source input, omissions and dryRun=%s without a recovery marker", async dryRun => {
@@ -170,6 +174,7 @@ describe("command-kernel recovery choices", () => {
     const original = harness.database.authority.runs.get(target.runId); assert.ok(original);
     const resumed = recoveredRun(harness, "retry", target);
     assert.equal(Object.hasOwn(resumed.envelope, "recovery"), false);
+    assert.equal(resumed.envelope.continuation, undefined);
     assert.equal(resumed.envelope.retryOf, target.runId);
     assert.equal(resumed.envelope.attempt, 2);
     assert.equal(resumed.envelope.itemId, original.envelope.itemId);

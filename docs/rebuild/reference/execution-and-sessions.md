@@ -298,7 +298,9 @@ runtime admission. After clean resource closure, the held lifetime owns verified
 Confirmed application quit and whole-runtime shutdown first hold new-work admission, then request
 pause on every nonterminal run except parked UNKNOWN writes. Active callbacks, including an in-flight
 submit, settle before claim release and worker drainage. Queued, gate and delegation holds retain
-their exact state; logout keeps its separate cancellation behavior. Settings saves cannot advance
+their exact state. Shutdown closure proves stopped resources and unchanged browser and credential
+membership while retaining paused runs and their exact parked write intents; credential-copy and
+logout closure still require settled writes and terminal runs. Settings saves cannot advance
 the runtime generation while update or shutdown admission is held. Startup recovery classifies an
 interrupted read as failed with structured failure evidence; an unfinished submit remains parked
 UNKNOWN and is never automatically retried.
