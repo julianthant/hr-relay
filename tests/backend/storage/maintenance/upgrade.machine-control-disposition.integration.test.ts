@@ -167,15 +167,21 @@ function assertCanonicalCredentialConversion(f: Awaited<ReturnType<typeof priorF
 }
 
 it("converts only stopped machine-control format while keeping an incomplete historical profile held", async () => {
+  const started = performance.now();
   const f = await priorFormatFixture(), original = sourceBytes(f);
+  const created = performance.now();
+  console.info("stopped-control timing", { phase: "fixture", milliseconds: Math.round(created - started) });
   const controlBytes = readFileSync(f.controlPath), markerBytes = readFileSync(f.markerPath);
   let maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const plan = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+  const planned = performance.now();
+  console.info("stopped-control timing", { phase: "plan", milliseconds: Math.round(planned - created) });
   assert.deepEqual(plan, { state: "planned", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
   assert.equal(readFileSync(f.controlPath).equals(controlBytes), true); assert.equal(readFileSync(f.markerPath).equals(markerBytes), true);
   maintenance.release();
   maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+  console.info("stopped-control timing", { phase: "conversion", milliseconds: Math.round(performance.now() - planned) });
   assert.equal(upgraded.state, "upgraded"); assert.equal(upgraded.runtimeAccess, "onboarding-incomplete"); assert.equal(upgraded.profileCount, 1);
   assert.equal(typeof upgraded.receiptId, "string");
   const backup = join(f.workspace, ".tracker", "control", "profile-control-upgrades");

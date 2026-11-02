@@ -4,7 +4,7 @@ import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.j
 import { DuoEnrollmentScopeSchema } from "../../../models/config/duo-credential-store.js";
 import { createDecipheriv, createHash } from "node:crypto";
 import { join } from "node:path";
-import { readPrivateFile } from "./credential-safe-file.js";
+import { readPrivateFile, withOperationProof } from "./credential-safe-file.js";
 import { credentialKeyCustody, CredentialKeyCustodyError } from "./credential-key-custody.js";
 import { authenticateDocument, CredentialDocumentSchema, type CredentialDocument } from "./credential-store.js";
 import { ChatGptCredentialRecordSchema } from "./chatgpt-credential-repository.js";
@@ -266,23 +266,27 @@ export function prepareStoppedCredentialConversion(admission: RuntimeAdmission, 
   assess: (copies: StoppedCredentialCopyInspection) => Readonly<{ revalidate(): () => void; revalidateBeforeKeyIntent(): void }>): StoppedControlCredentialAttestation {
   const source = admission.readStoppedControlCredentialInventorySource(claim);
   try {
-    const pending = source.pendingPlan();
-    const captured = pending === undefined ? inspectStoppedCredentialSource(admission, claim) : inspectResumedCredentialSource(admission, claim, pending);
-    const inventory = assess(captured.copies);
-    inventory.revalidateBeforeKeyIntent(); inventory.revalidate()();
-    const plan = pending ?? prepareStoppedCanonicalCredentials(admission, claim, source.conversionOperationId, captured.records, captured.retired);
-    const proof = Object.freeze({ profileId: claim.profileId });
-    conversionInventories.set(proof, { claim, admission, plan, revalidate() {
-      source.revalidateSource(); inventory.revalidateBeforeKeyIntent(); inventory.revalidate()();
-      if (source.pendingPlan() !== undefined) inspectStoppedCanonicalConversion(admission, claim, plan);
-      else {
-        const current = inspectStoppedCredentialSource(admission, claim);
-        if (canonicalJsonStringify(current.records) !== canonicalJsonStringify(captured.records)
-          || canonicalJsonStringify(current.retired) !== canonicalJsonStringify(captured.retired)) throw new Error("profile-control-upgrade-credential-source-changed");
-      }
-      source.revalidateSource();
-    } });
-    return proof;
+    return withOperationProof(() => {
+      const pending = source.pendingPlan();
+      const captured = pending === undefined ? inspectStoppedCredentialSource(admission, claim) : inspectResumedCredentialSource(admission, claim, pending);
+      const inventory = assess(captured.copies);
+      inventory.revalidateBeforeKeyIntent(); inventory.revalidate()();
+      const plan = pending ?? prepareStoppedCanonicalCredentials(admission, claim, source.conversionOperationId, captured.records, captured.retired);
+      const proof = Object.freeze({ profileId: claim.profileId });
+      conversionInventories.set(proof, { claim, admission, plan, revalidate() {
+        withOperationProof(() => {
+          source.revalidateSource(); inventory.revalidateBeforeKeyIntent(); inventory.revalidate()();
+          if (source.pendingPlan() !== undefined) inspectStoppedCanonicalConversion(admission, claim, plan);
+          else {
+            const current = inspectStoppedCredentialSource(admission, claim);
+            if (canonicalJsonStringify(current.records) !== canonicalJsonStringify(captured.records)
+              || canonicalJsonStringify(current.retired) !== canonicalJsonStringify(captured.retired)) throw new Error("profile-control-upgrade-credential-source-changed");
+          }
+          source.revalidateSource();
+        });
+      } });
+      return proof;
+    });
   } catch (error) {
     if (hasUnprovedSourceClosure(error)) { admission.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission }); throw error; }
     if (error instanceof CredentialMaintenanceHold || error instanceof CredentialKeyCustodyError) throw error;
