@@ -158,6 +158,16 @@ describe("authority classification and command families", () => {
     assert.equal(RunDisplayNameSchema.safeParse("x".repeat(121)).success, false);
   });
 
+  it("requires exact runtime admission and explicit confirmation for application quit", () => {
+    const quit = CommandRequestSchema.parse(COMMAND_FIXTURES.find(fixture =>
+      (fixture as { type: string }).type === "pause-all-and-quit"));
+    assert.equal(quit.family, "application");
+    assert.equal(CommandRequestSchema.safeParse({ ...quit, target: { runtimeGeneration: 0 } }).success, false);
+    assert.equal(CommandRequestSchema.safeParse({ ...quit, target: {} }).success, false);
+    assert.equal(CommandRequestSchema.safeParse({ ...quit, payload: { confirmed: false, targets: [] } }).success, false);
+    assert.equal(CommandRequestSchema.safeParse({ ...quit, payload: { targets: [] } }).success, false);
+  });
+
   it("rejects malformed envelopes and untyped gate/notification arms", () => {
     const start = COMMAND_FIXTURES[0] as Record<string, unknown>;
     const gate = COMMAND_FIXTURES.find((fixture) => (fixture as { readonly family: string }).family === "gate") as Record<string, unknown>;

@@ -190,7 +190,7 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
     { owner: "withCanonicalRunCommandScope", id: "request.commandId", guards: [
       'canonicalJsonStringify(repositories.commands.get(request.commandId))!==canonicalJsonStringify(request)',
       'repositories.commandAudits.findByCommand(request.commandId)!==undefined',
-      'activeRunCommand!==undefined', 'request.family!=="run"', 'request.type!=="retry"&&request.type!=="cancel"', '"then"inresult',
+      'activeRunCommand!==undefined', '!(request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="cancel"))', '"then"inresult',
     ], calls: ["repositories.commands.assertIdentity(request,parentCommandId)"] },
   ],
   "src/backend/storage/sqlite/delegation-root-authority.ts": [
@@ -200,7 +200,7 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
   ],
   "src/backend/storage/sqlite/delegation-authority.ts": [
     { owner: "authenticateOperatorSource", id: "source.commandId", guards: ['audit.result.state!=="applied"', "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(source)", "source.requestedBy!==LOCAL_OPERATOR_ACTOR_ID"], calls: ["assertCanonicalRunCommandScope(repositories,source)"] },
-    { owner: "resolveDelegationRetry", id: "retry.sourceCommandId", guards: ['sourceAudit?.result.state!=="applied"', "canonicalJsonStringify(sourceAudit.request)!==canonicalJsonStringify(source)", "lifecycleRequest.sourceCommandId!==source.commandId"], calls: ["assertDelegationReplacement(repositories,original,child,next)"] },
+    { owner: "resolveDelegationRetry", id: "retry.sourceCommandId", guards: ['sourceAudit===undefined?continued===undefined:sourceAudit.result.state!=="applied"||canonicalJsonStringify(sourceAudit.request)!==canonicalJsonStringify(source)', "canonicalJsonStringify(sourceAudit.request)!==canonicalJsonStringify(source)", "lifecycleRequest.sourceCommandId!==source.commandId"], calls: ["assertDelegationReplacement(repositories,original,child,next)", "authenticateContinuationRetryOwner(repositories,child,retry.continuationOwner,retry.sourceCommandId)"] },
     { owner: "delegationCancellationAvailability", id: "source.commandId", guards: ['run?.lifecycle.state!=="terminal"', "repositories.commandAudits.findByCommand(source.commandId)===undefined"], calls: ["readDelegationCancellation(repositories,runId)"] },
     { owner: "readDelegationCancellation", id: "source.commandId", guards: ['authored?.result.state!=="applied"', "canonicalJsonStringify(authored.request)!==canonicalJsonStringify(source)", "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(retained)"], calls: ["authenticateCancellationSource(repositories,run,request.cancellationSource)"] },
   ],
@@ -260,7 +260,7 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
         refusal(node.thenStatement);
         if (refuses) {
           function condition(expression: ts.Node): void {
-            if (ts.isBinaryExpression(expression) || ts.isPrefixUnaryExpression(expression)) guards.add(compact(expression));
+            if (ts.isBinaryExpression(expression) || ts.isPrefixUnaryExpression(expression) || ts.isConditionalExpression(expression)) guards.add(compact(expression));
             ts.forEachChild(expression, condition);
           }
           condition(node.expression);
@@ -344,7 +344,7 @@ describe("finite native delegation audit read ownership", () => {
       function visit(node: ts.Node): void {
         if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
           && ts.isPropertyAccessExpression(node.expression.expression) && node.expression.expression.name.text === "commandAudits") calls.push(node);
-        if (ts.isBinaryExpression(node) || ts.isPrefixUnaryExpression(node)) expressions.push(node);
+        if (ts.isBinaryExpression(node) || ts.isPrefixUnaryExpression(node) || ts.isConditionalExpression(node)) expressions.push(node);
         ts.forEachChild(node, visit);
       }
       visit(parsed);
@@ -357,9 +357,11 @@ describe("finite native delegation audit read ownership", () => {
         mutants.push(mutate(call, "repositories.commandAudits.findByCommand"));
       }
       for (const spec of specs) {
-        const proof = expressions.find(expression => expression.getText(parsed).replace(/\s+/gu, "") === spec.guards[1]);
-        assert.ok(proof);
-        mutants.push(mutate(proof, "true"));
+        for (const guard of spec.guards) {
+          const proof = expressions.find(expression => expression.getText(parsed).replace(/\s+/gu, "") === guard);
+          assert.ok(proof, `missing refusal guard ${guard}`);
+          mutants.push(mutate(proof, "true"));
+        }
       }
       for (const mutant of mutants) {
         assert.notEqual(mutant, source);
@@ -441,6 +443,7 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
 /* ── the partition (ref dashboard-surfaces authority) ────────── */
 
 const EXPECTED_ACTIVE = {
+  application: ["pause-all", "pause-all-and-quit"],
   "assistant-model-preference": ["set-assistant-model-preference"],
   "failure-resolution": ["annotate-failure"],
   start: ["start-run"],
@@ -451,6 +454,7 @@ const EXPECTED_ACTIVE = {
     "resume-worker", "refresh-browser", "reopen-browser",
   ],
   run: [
+    "pause", "resume",
     "retry",
 
     "restart",
@@ -536,6 +540,7 @@ async function createHarness(wrap?: RepositoryWrap): Promise<GuardHarness> {
     authorityProfileId: ASSISTANT_PREFERENCE_PROFILE,
     authorityInstallationId: "33333333-3333-4333-8333-333333333333",
     workflowSources: { "fixture-graph": "served" },
+    applicationQuitAvailable: true,
     prepareAssistantModelPreference: async () => () => true,
     descriptors: {
       resolve: (workflowId) => workflowId === "fixture-graph" ? fixtureDescriptor : undefined,
@@ -782,7 +787,7 @@ describe("control-command-single-path", () => {
       const members = target.members;
       const memberVersions = Array.isArray(members) && members.length > 0 && members.every(member => member !== null && typeof member === "object" && "expectedVersion" in member);
       const carries = "expectedVersion" in target || "expectedRevision" in target
-        || "scope" in target || memberVersions;
+        || "scope" in target || memberVersions || request.family === "application" && "runtimeGeneration" in target;
       if (!carries) versionless.push(`${request.family}/${request.type}`);
     }
     assert.deepEqual(versionless, []);

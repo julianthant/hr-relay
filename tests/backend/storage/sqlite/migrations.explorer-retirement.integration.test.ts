@@ -89,8 +89,7 @@ it.each([9, 10, 11] as const)("keeps historical table vocabulary inside exact st
     const inspection = inspectNativeAuthority(database, version);
     assert.equal(inspection.tables.some(table => table.name === "explorer_overrides"), version < 10);
     assert.equal(AuthorityTableNameSchema.safeParse("explorer_overrides").success, false);
-    if (version < 11) assert.throws(() => inspectNormalAuthority(database), /normal-authority-schema-mismatch/u);
-    else assert.deepEqual(inspectNormalAuthority(database), inspection);
+    assert.throws(() => inspectNormalAuthority(database), /normal-authority-schema-mismatch/u);
   } finally { database.close(); }
 });
 

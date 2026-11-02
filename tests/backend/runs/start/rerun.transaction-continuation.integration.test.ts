@@ -36,7 +36,10 @@ const graph = transactionFlow()
     .step("finish", sourceBoundReadContract, { dependsOn: [WRITE_FIXTURE_NODE_ID], replay: "checkpoint", bind: ({ input }) => input })
     .build({ schema: WriteFixtureCommit.output, dependsOn: [WRITE_FIXTURE_NODE_ID], derive: ({ outputs }) => outputs[WRITE_FIXTURE_NODE_ID].output });
 const descriptor = defineWorkflowDescriptor({ ...metadata, flow: graph });
-const memoCommit = defineTaskContract({ ...WriteFixtureCommit, input: Input });
+const memoCommit = defineTaskContract({ id: WriteFixtureCommit.id, title: WriteFixtureCommit.title,
+  effect: WriteFixtureCommit.effect, input: Input, output: WriteFixtureCommit.output,
+  errorCodes: WriteFixtureCommit.errorCodes, subject: WriteFixtureCommit.subject,
+  scenarios: WriteFixtureCommit.scenarios, writeSafety: WriteFixtureCommit.writeSafety, example: WriteFixtureCommit.example });
 const commitMemoDescriptor = defineWorkflowDescriptor({ ...metadata, flow: flow(Input)
   .transaction(WRITE_FIXTURE_NODE_ID, { dependsOn: [], prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
     commit: { uses: memoCommit, bind: ({ input }) => ({ eid: input.eid, memo: input.memo }) },

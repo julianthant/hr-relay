@@ -77,6 +77,9 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "notification", type: "notification-unread-all", target: { actorId: "local-operator", members: [{ notificationId: UUID_3, expectedVersion: 1 }], matchingCount: 1 } },
   { ...BASE_COMMAND, family: "notification", type: "notification-snooze-all", target: { actorId: "local-operator", members: [{ notificationId: UUID_3, expectedVersion: 1 }], matchingCount: 1 } },
   { ...BASE_COMMAND, family: "notification", type: "notification-unsnooze-all", target: { actorId: "local-operator", members: [{ notificationId: UUID_3, expectedVersion: 1 }], matchingCount: 1 } },
+  ...["pause", "resume"].map(type => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
+  { ...BASE_COMMAND, family: "application", type: "pause-all", target: { runtimeGeneration: 1 }, payload: { targets: [RUN_TARGET] } },
+  { ...BASE_COMMAND, family: "application", type: "pause-all-and-quit", target: { runtimeGeneration: 1 }, payload: { confirmed: true, targets: [RUN_TARGET] } },
 ];
 
 export const SUBJECT_EVIDENCE = {

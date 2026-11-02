@@ -1954,6 +1954,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/failure-display.ts", state: "audited", reason: "Repository-authored failure title and observation are embedded in run detail and archived failure values." },
     { module: "src/models/dashboard/run-logs-subscription.ts", state: "audited", reason: "Composite loopback stream embeds the dashboard envelope and confirmed action events with exact run and transport identities." },
     { module: "src/models/dashboard/actions.ts", state: "audited", reason: "the action descriptor and its confirmation copy ride the queue row" },
+    { module: "src/models/dashboard/application-lifecycle.ts", state: "audited", reason: "the queue projection embeds only closed application/update states, runtime generation and opaque run/version targets; no free text or HR values" },
     { module: "src/models/dashboard/activity-population.ts", state: "audited", reason: "Loopback Analytics population, selected browse and CSV export retain captured run titles, operator-authored query text and nested report origins under exact snapshot identity." },
     { module: "src/models/dashboard/activity-volume.ts", state: "audited", reason: "the Activity report embeds validated host-zone boundaries calculated from selected dates" },
     { module: "src/models/dashboard/activity.ts", state: "audited", reason: "the activity report aggregates runs into counts and durations" },

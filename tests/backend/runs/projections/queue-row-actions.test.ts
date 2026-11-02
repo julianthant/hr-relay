@@ -105,10 +105,10 @@ describe("queue-row action descriptors — the per-status set", () => {
     blocked: ["cancel", "rename"],
     "awaiting-approval": ["cancel", "rename"],
 
-    done: ["rerun", "rename", "delete"],
+    done: ["rename", "delete"],
     failed: ["rerun", "rename", "delete"],
     cancelled: ["rename", "delete"],
-    partial: ["rerun", "rename", "delete"],
+    partial: ["rename", "delete"],
   };
 
   it("serves exactly the declared set for every queue status", () => {
@@ -137,9 +137,13 @@ describe("queue-row action descriptors — the per-status set", () => {
       rename: ["menu"],
     });
     assert.deepEqual(placements("done"), {
-      rerun: ["footer", "menu", "data"],
       rename: ["menu"],
 
+      delete: ["footer", "menu"],
+    });
+    assert.deepEqual(placements("failed"), {
+      rerun: ["footer", "menu", "data"],
+      rename: ["menu"],
       delete: ["footer", "menu"],
     });
     for (const status of QueueStatusSchema.options) {
