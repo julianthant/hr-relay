@@ -26,7 +26,14 @@ for (const state of ["projection-corrupt", "critical-fence-unreadable", "foreign
     database.close();
     const native = new DatabaseSync(f.path);
     try {
-      if (state === "foreign") native.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(randomUUID());
+      if (state === "foreign") {
+        const foreign = randomUUID(), trigger = native.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='database_states_binding_immutable'").get();
+        assert.ok(trigger && typeof trigger.sql === "string");
+        assert.throws(() => native.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(foreign), /profile-database-binding-immutable/u);
+        native.exec("DROP TRIGGER database_states_binding_immutable");
+        try { native.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(foreign); }
+        finally { native.exec(trigger.sql); }
+      }
       else if (state !== "recovery-refusal") native.exec(state === "projection-corrupt" ? "DROP TABLE run_search" : "DROP TABLE write_attempts");
     } finally { native.close(); }
     const corruptBytes = readFileSync(f.path);

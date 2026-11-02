@@ -557,7 +557,7 @@ async function offlineCanonicalPredecessor() {
   write(join(controlRoot, "installation.json"), { ...json(join(controlRoot, "installation.json")), workspace });
   for (const root of [stateRoot, artifactRoot]) write(join(root, ".runtime-owner.json"), { ...json(join(root, ".runtime-owner.json")), workspace });
   // Offline historical construction from closed generated data; the original seed stays unchanged.
-  write(target(seed.controlPath), { ...json(target(seed.controlPath)), schemaVersion: 5 });
+  write(target(seed.controlPath), { ...json(target(seed.controlPath)), schemaVersion: 5, completedRestores: [] });
   write(target(seed.markerPath), { schemaVersion: 6 });
   nativeFs.unlinkSync(join(machineRoot, "browser-roots.json"));
   const receiptPath = join(backupRoot, `${operationId}.receipt.json`);

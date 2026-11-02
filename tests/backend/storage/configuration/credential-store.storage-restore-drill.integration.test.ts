@@ -74,7 +74,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     const authority = Reflect.get(report as object, "authority") as Record<string, unknown>;
     assert.equal(authority["state"], "degraded");
     const cause = authority["cause"] as Record<string, unknown>;
-    assert.equal(cause["code"], "authority-corrupt");
+    assert.equal(cause["code"], "authority-schema-mismatch");
 
     assert.equal(
       readFileSync(paths.authorityPath).equals(before),
