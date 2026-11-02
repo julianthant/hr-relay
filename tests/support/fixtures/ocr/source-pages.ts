@@ -1,5 +1,5 @@
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
-import { ocrForm, type OcrPageKind } from "../../../../src/models/ocr/form-registry.js";
+import { ocrForm, fieldOnPageKind, type OcrFormType, type OcrPageKind } from "../../../../src/models/ocr/form-registry.js";
 import { admitOcrExtraction, type SubmittedExtraction } from "../../../../src/models/ocr/extraction.js";
 import { IsoInstantSchema, ItemIdSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -12,19 +12,22 @@ export const READ_AT = IsoInstantSchema.parse("2026-11-01T10:00:00.000Z");
 export const DOCUMENT = ArtifactRefSchema.parse({ id: "00000000-0000-4000-8000-000000000103",
   sha256: sha256Hex("synthetic contact document"), bytes: 200, mediaType: "application/pdf" });
 
-export function sourceFixture(pageCount = 2) {
+export function sourceFixture(pageCount = 2, formType: OcrFormType = "emergency-contact") {
   const manifest = buildOcrSourceManifest(DOCUMENT, { pageCount,
     pages: Array.from({ length: pageCount }, (_, index) => ({ sourcePage: index + 1,
       image: ArtifactRefSchema.parse({ id: `00000000-0000-4000-8000-${String(index + 200).padStart(12, "0")}`,
         sha256: sha256Hex(`synthetic contact page ${index + 1}`), bytes: 100, mediaType: "image/png" }) })) });
-  return { manifest, inputs: ocrPageInputs(manifest, READING_ID) };
+  return { manifest, inputs: ocrPageInputs(manifest, READING_ID, formType) };
 }
 
-export function submittedPage(input: OcrPageInput, name = "Example, Avery", pageKind: OcrPageKind = "emergency-contact"): SubmittedExtraction {
-  return { formType: "emergency-contact", source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "synthetic-test-model" },
+export function submittedPage(input: OcrPageInput, name = "Example, Avery", pageKind: OcrPageKind = ocrForm(input.formType).pageKinds[0]): SubmittedExtraction {
+  return { formType: input.formType, source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "synthetic-test-model" },
     readAt: READ_AT, sourceSha256: input.image.sha256, sourcePage: input.sourcePage, pageKind,
-    record: pageKind !== "emergency-contact" ? null : { answers: Object.fromEntries(ocrForm("emergency-contact").fields.map(field => {
-      const value = field.path === "employee.name" ? name : field.path === "contact.name" ? "Example, Robin"
+    record: !ocrForm(input.formType).pageKinds.includes(pageKind) ? null : { answers: Object.fromEntries(ocrForm(input.formType).fields.map(field => {
+      if (!fieldOnPageKind(field, pageKind)) return [field.path, { state: "absent", reason: "not-on-form" }];
+      const value = ["employee.name", "printedName"].includes(field.path) ? name
+        : field.path === "lastName" ? "Example" : field.path === "firstName" ? "Avery"
+        : ["employeeSigned", "officerSigned"].includes(field.path) ? "yes" : field.path === "contact.name" ? "Example, Robin"
         : field.path === "contact.relationship" ? "Spouse" : null;
       return [field.path, value === null ? { state: "absent", reason: "blank" } : { state: "read", raw: value, confidence: 0.9 }];
     })) } };

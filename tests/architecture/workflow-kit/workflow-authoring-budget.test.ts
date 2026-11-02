@@ -1,3 +1,4 @@
+import { UNREGISTERED_OCR_MODULES } from "../../support/fixtures/ocr/unregistered-workflows.js";
 import { createRetainedDashboardMockFixtures } from "../../support/helpers/retained-dashboard-mock-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -469,7 +470,7 @@ const PRE_CANONICAL_SCENARIOS: readonly PreCanonicalScenarioEntry[] = [];
 const ARTIFACT_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [];
 
 function auditedWorkflowSources(): readonly RegisteredWorkflowSource[] {
-  return [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES].map((module) => {
+  return [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES, ...UNREGISTERED_OCR_MODULES].map((module) => {
     const id = String(module.descriptor.id);
     return {
       id,
