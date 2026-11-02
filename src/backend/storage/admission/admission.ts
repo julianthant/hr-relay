@@ -564,6 +564,21 @@ export class RuntimeAdmission {
     this.#profileParent?.assertBrowserRegistryCustody();
     this.lifetime.assertSourceCustody();
   }
+  hasCurrentBrowserRegistry(): boolean {
+    requireRuntimeAdmission(this); this.assertReadable(); assertSourceClosuresProved(this.#sourceFailures);
+    switch (this.#scope) {
+      case "profile-layout": case "stopped-control-inventory": case "flat-backup":
+      case "synthetic": case "synthetic-verified-copy": case "synthetic-stopped-staged":
+        this.assertStorageRootsSafe(); return false;
+      case "profile-ready-upgrade":
+      case "installation": case "profile": case "profile-maintenance": case "profile-restore":
+      case "profile-initialization": case "profile-upgrade": case "profile-settlement":
+      case "profile-pending-logout-inventory": case "stopped-incomplete-profile-inventory":
+        break;
+      default: throw new Error("browser-registry-purpose-unavailable");
+    }
+    this.assertBrowserRegistryCustody(); this.captureBrowserRegistryContext(); return true;
+  }
   captureBrowserRegistryContext() {
     this.assertLive();
     let machine: RuntimeAdmission = this.#profileParent ?? this;
