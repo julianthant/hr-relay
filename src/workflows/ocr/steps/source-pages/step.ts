@@ -3,7 +3,7 @@ import { defineWorkflowRole } from "../../../../workflow-kit/validation/module-r
 import { ReadOcrSourcePages } from "../../../../models/workflows/ocr/read-source-pages.js";
 import { ocrWorkflow, OCR_SOURCE_PAGES_STEP } from "../../workflow.js";
 
-const sourceStep = ocrWorkflow.steps.find(([step]) => step === OCR_SOURCE_PAGES_STEP);
+const sourceStep = ocrWorkflow.steps.find(([step]) => step.key === OCR_SOURCE_PAGES_STEP.key);
 const source = sourceStep?.[1].find(entry => entry.id === "read-source-pages");
 if (sourceStep === undefined || source === undefined) throw new Error("OCR source-page proof requires its authored source group.");
 

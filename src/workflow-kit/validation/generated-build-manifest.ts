@@ -1139,7 +1139,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr-page-reading"
     },
     {
-      "fingerprint": "c8713dcb1e8d395c88f5ea7b6b2fd27ae73d7e36bee6189b59f61aba30d4d7d6",
+      "fingerprint": "2933edcebfb665c71b7aed38c7029355f8907a8c5ea482390cf9f7c92efe67af",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -1563,7 +1563,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/ocr/steps/source-pages/step.ts",
-          "sha256": "42770175389909e854103387731dc292c1fc8d303c961b49f4b7fbe4f4e38f3b"
+          "sha256": "93814657982e8b299c42542da302feba419c1fc405d247d476a4bc2477ded278"
         },
         {
           "path": "src/workflows/ocr/workflow.ts",
