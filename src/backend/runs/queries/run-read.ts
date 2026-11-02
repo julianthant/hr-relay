@@ -15,5 +15,5 @@ export function requireCanonicalRun(deps: RunDetailQueryDeps, runId: string): { 
 
 export const SectionNameSchema = z.enum([
   "logs", "receipt", "review", "people", "context-data", "context-evidence", "context-attempts", "failure", "captures",
-  "parked-write", "identity-gate",
+  "parked-write", "identity-gate", "workbook-writes",
 ]);

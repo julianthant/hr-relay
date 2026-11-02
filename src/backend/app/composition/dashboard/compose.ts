@@ -124,6 +124,7 @@ import { createDashboardCommandService } from "../../../runs/commands/command-se
 import { runQueuedSpanEvent } from "../../../runs/commands/run-queued-span.js";
 import { createRunWorkerCapacity } from "../../../runs/commands/run-worker-capacity.js";
 import { createStartPlanService } from "../../../runs/commands/start-plan-service.js";
+import { createRunWorkbookService } from "../../../runs/workbooks.js";
 import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { activeSettingsConfig,activeSettingsRuntimeIdentity,readBootSettings } from "../../../runtime/settings/settings-runtime.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
@@ -858,6 +859,7 @@ async function composeDashboardRuntimeStartup(
   });
   startupCleanups.push(() => applicationLifecycle.dispose());
   const kernel = createCommandKernel({
+    workbookRows: createRunWorkbookService({ database, clock }),
     applicationQuitAvailable: true,
     preflight: runtimePreflight.admission,
     assistantSurface: () => { if (assistantSurface === undefined) throw new Error("assistant-surface-unavailable"); return assistantSurface; },
@@ -920,6 +922,7 @@ async function composeDashboardRuntimeStartup(
   });
 
   const startPlans = createStartPlanService({
+    workbooks: { snapshot: value => workbookLibrary.snapshot(value) },
     preflight: runtimePreflight.admission,
     protectedSecrets,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }) },

@@ -1,9 +1,11 @@
 import { failureCodeFromTaskCode } from "../failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../rules/validation/sha256.js";
 import { StartPlanRequestSchema } from "./start-plan.js";
 import { ActionConfirmWireSchema } from "./actions.js";
 import { FailureCorrectionSchema } from "../workflow/failure-correction.js";
-import { ParkedWriteCheckTargetSchema, ParkedWriteCheckResultSchema } from "../../rules/commands/commands.js";
+import { ParkedWriteCheckTargetSchema, ParkedWriteCheckResultSchema, WorkbookRowChoiceTargetSchema } from "../../rules/commands/commands.js";
+import { WorkbookOperationReceiptSchema } from "./workbooks.js";
 import { UcpathFindingsDetailSchema } from "./ucpath-findings.js";
 import { FailureDisplaySchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
@@ -933,7 +935,40 @@ export const IdentityGateDetailWireSchema = z.strictObject({
 });
 export type IdentityGateDetailWire = z.infer<typeof IdentityGateDetailWireSchema>;
 
+export const RunWorkbookWritesWireSchema = z.strictObject({ runId: RunIdSchema, operations: z.array(z.strictObject({
+  receipt: WorkbookOperationReceiptSchema, native: NativeRunEventWireSchema,
+  resolution: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.enum(["not-required", "resolved"]) }),
+    z.strictObject({ state: z.literal("unavailable"), code: z.literal("WORKBOOK_ROW_CHOICE_UNAVAILABLE") }),
+    z.strictObject({ state: z.literal("available"), target: WorkbookRowChoiceTargetSchema, action: ActionDescriptorWireSchema,
+      candidates: z.array(z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1), label: z.string().min(1) })).min(1) }),
+  ]),
+})) }).superRefine((section, ctx) => {
+  const ids = new Set<string>();
+  for (const operation of section.operations) {
+    const { receipt, native, resolution } = operation;
+    const key = JSON.stringify([receipt.libraryId, receipt.operationId]);
+    if (ids.has(key) || native.runId !== section.runId || receipt.source.kind !== "run" || receipt.source.runId !== section.runId) {
+      ctx.addIssue({ code: "custom", message: "workbook writes must preserve exact run and operation membership" });
+    }
+    ids.add(key);
+    if ((resolution.state === "not-required") !== (receipt.state !== "resolve-required")) {
+      ctx.addIssue({ code: "custom", message: "workbook receipt and resolution states must agree" });
+    }
+    if (resolution.state === "available" && (receipt.state !== "resolve-required" || resolution.target.runId !== section.runId
+      || resolution.target.libraryId !== receipt.libraryId || resolution.target.operationId !== receipt.operationId
+      || resolution.target.receiptDigest !== sha256Hex(canonicalJsonStringify(receipt))
+      || resolution.action.kind !== "command" || resolution.action.command !== "resolve-workbook-row"
+      || resolution.action.workbookTarget === undefined
+      || canonicalJsonStringify(resolution.action.workbookTarget) !== canonicalJsonStringify(resolution.target))) {
+      ctx.addIssue({ code: "custom", message: "workbook row choice must target its retained receipt" });
+    }
+  }
+});
+export type RunWorkbookWritesWire = z.infer<typeof RunWorkbookWritesWireSchema>;
+
 export const RunDetailSectionResponseSchema = z.discriminatedUnion("section", [
+  z.strictObject({ section: z.literal("workbook-writes"), payload: RunWorkbookWritesWireSchema }),
   z.strictObject({ section: z.literal("logs"), payload: NotePageSchema }),
   z.strictObject({ section: z.literal("receipt"), payload: wireResourceSchema(ReceiptSectionSchema) }),
   z.strictObject({ section: z.literal("review"), payload: ReviewPageSchema }),

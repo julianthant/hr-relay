@@ -76,6 +76,7 @@ export const CommandActionSchema = z.enum([
   "delete",
   "recheck-write",
   "resolve-write-absent",
+  "resolve-workbook-row",
   "resolve-gate",
   "notification-read",
   "notification-unread",
@@ -289,7 +290,12 @@ export const ApplicationCommandRequestSchema = z.discriminatedUnion("type", [
     target: z.strictObject({ runtimeGeneration: PositiveIntSchema }), payload: z.strictObject({ confirmed: z.literal(true), targets: z.array(RunVersionTargetSchema) }) }),
 ]);
 
+export const WorkbookRowChoiceTargetSchema = RunVersionTargetSchema.extend({ libraryId: z.string().min(1), operationId: z.string().min(1),
+  receiptDigest: FingerprintSchema, workbookVersion: PositiveIntSchema });
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-workbook-row"),
+    target: WorkbookRowChoiceTargetSchema,
+    payload: z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1) }) }),
     /** Native Retry/Restart remain distinct from explicit checkpoint recovery. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "restart", "pause", "resume", "cancel", "bump"]), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("recover-run"), target: RunVersionTargetSchema }),
@@ -775,6 +781,7 @@ export const COMMAND_EFFECT_BY_ACTION = {
   delete: "destructive",
   "recheck-write": "external-submit",
   "resolve-write-absent": "external-submit",
+  "resolve-workbook-row": "local-write",
   "resolve-gate": "external-submit",
   "notification-read": "local-write",
   "notification-unread": "local-write",
@@ -819,6 +826,7 @@ export const COMMAND_ASSISTANT_METADATA = {
   delete: "Delete a terminal run",
   "recheck-write": "Check a parked write again",
   "resolve-write-absent": "Resolve a write with verified absence",
+  "resolve-workbook-row": "Choose a live row for a held workbook change",
   "resolve-gate": "Resolve an operator gate",
   "notification-read": "Mark a notification read",
   "notification-unread": "Mark a notification unread",
@@ -849,7 +857,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"],
   settings: ["apply-settings", "apply-protected-settings"],
-  run: ["retry", "recover-run", "pause", "resume", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"],
+  run: ["retry", "recover-run", "pause", "resume", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent", "resolve-workbook-row"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"],
 } as const satisfies Record<z.infer<typeof CommandFamilySchema>, readonly z.infer<typeof CommandActionSchema>[]>;
@@ -891,7 +899,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"] },
   { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
-  { family: "run", actions: ["retry", "recover-run", "pause", "resume", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"] },
+  { family: "run", actions: ["retry", "recover-run", "pause", "resume", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent", "resolve-workbook-row"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"] },
 ].map((entry) => ({

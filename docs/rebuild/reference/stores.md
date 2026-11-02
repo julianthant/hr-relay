@@ -228,7 +228,7 @@ _No tasks registered — this store is a declaration-only placeholder._
 
 | Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| `workbooks/read-result` | Save workflow workbook | read | read | — (sessionless) | `workbooks.library` | `name`, `table` | `state="saved"` + `operationId`, `libraryId`, `version` / `state="refused"` + `code`, `message` | ∞ | bound |
+| `workbooks/read-result` | Save workflow workbook | read | read | — (sessionless) | `workbooks.library` | [`name`, `table`] / [`kind`, `writeId`, `typeId`, `key`, `values`] | `state="saved"` + `operationId`, `libraryId`, `version` / `state="recorded"` + `operationId`, `libraryId`, `version`, `receiptState` / `state="refused"` + `code`, `message` | ∞ | bound |
 
 ### `workflow:i9-check`
 

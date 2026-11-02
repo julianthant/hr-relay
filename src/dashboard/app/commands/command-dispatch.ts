@@ -20,6 +20,8 @@ import {
   type IdentityGatePayload,
 } from "../../surfaces/run-detail/identity/identity-ceremony.js";
 import { renameDraftProblem } from "../../surfaces/run-detail/identity/rename-draft.js";
+import type { RunWorkbookWritesWire } from "../../../models/dashboard/run-detail.js";
+import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
 
 export type CommandAction = Extract<ActionDescriptorWire, { kind: "command" }>;
 
@@ -46,6 +48,8 @@ export interface CommandContext {
   readonly gate?: IdentityGatePayload | undefined;
   readonly parkedWrite?: ParkedWriteDetailWire | undefined;
   readonly transactionId?: string | undefined;
+  readonly workbookWrite?: RunWorkbookWritesWire["operations"][number];
+  readonly workbookAnswer?: Extract<CommandRequest, { type: "resolve-workbook-row" }>["payload"];
   /** What the operator answered in the ceremony dialog. It is OPTIONAL because
  * exactly one ceremony needs no answer — a `one-click` packet naming one */
   readonly gateAnswer?: IdentityGateAnswer | undefined;
@@ -141,6 +145,17 @@ export function composeCommandRequest(
     source: context.source,
   };
   switch (action.command) {
+    case "resolve-workbook-row": {
+      const choice = context.workbookWrite?.resolution;
+      const answer = context.workbookAnswer;
+      if (choice?.state !== "available" || answer === undefined || canonicalJsonStringify(choice.action) !== canonicalJsonStringify(action)
+        || action.workbookTarget?.runId !== target.runId || action.workbookTarget.expectedVersion !== target.expectedVersion
+        || !choice.candidates.some(candidate => candidate.sheetId === answer.sheetId && candidate.rowId === answer.rowId)) {
+        return { state: "refused", reason: "The workbook row choice changed. Reload before choosing." };
+      }
+      const parsed = CommandRequestSchema.safeParse({ ...envelope, family: "run", type: "resolve-workbook-row", target: action.workbookTarget, payload: answer });
+      return parsed.success ? { state: "ready", request: parsed.data } : { state: "refused", reason: "The workbook row choice is unavailable." };
+    }
     case "retry":
     case "restart":
       return { state: "refused", reason: "Open Rerun to review steps and values before starting a new run." };
@@ -229,6 +244,22 @@ export async function verifyShellCommandEffect(
   reply: CommandResult | BulkRunCommandOutcome,
 ): Promise<CommandReadbackVerification> {
   const mismatch = (evidence: unknown) => ({ state: "mismatch" as const, evidence });
+  if (request.family === "run" && request.type === "resolve-workbook-row") {
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1 || reply.affectedTargets[0]?.family !== "run"
+      || reply.affectedTargets[0].runId !== request.target.runId) return mismatch(reply);
+    const detail = await client.runDetail(request.target.runId);
+    if (detail.runId !== request.target.runId || detail.rowRevision.valueOf() < request.target.expectedVersion.valueOf()
+      || !detail.availableSections.includes("workbook-writes")) return mismatch(detail);
+    const section = await client.runSection(request.target.runId, "workbook-writes");
+    if (section.section !== "workbook-writes") return mismatch(section);
+    const original = section.payload.operations.find(operation => operation.receipt.libraryId === request.target.libraryId
+      && operation.receipt.operationId === request.target.operationId);
+    const resolution = section.payload.operations.find(operation => operation.receipt.libraryId === request.target.libraryId
+      && operation.receipt.operationId === deriveStableUuid("run-workbook-row-resolution", request.commandId));
+    return original?.resolution.state === "resolved" && resolution?.receipt.state === "applied"
+      && resolution.receipt.version === request.target.workbookVersion + 1
+      ? { state: "matched", evidence: section } : mismatch(section);
+  }
   if (request.family === "notification" && "members" in request.target) {
     if (!("affectedTargets" in reply) || reply.affectedTargets.length !== request.target.matchingCount) return mismatch(reply);
     const rows = await client.notificationSnapshot();

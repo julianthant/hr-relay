@@ -25,6 +25,7 @@ import { TargetNotFoundError } from "./refusals.js";
 export type { StartPlanWire } from "../../../models/dashboard/start-plan.js";
 
 export interface StartPlanServiceDeps {
+  readonly workbooks?: StartPlannerDeps["workbooks"];
   readonly preflight?: PreflightAdmission;
   readonly recovery?: RunRecoveryMode;
   readonly protectedSecrets?: ProtectedSecretSource;
@@ -132,6 +133,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
       let record = planStart(
         {
           authority: deps.authorityRead,
+          ...(deps.workbooks === undefined ? {} : { workbooks: deps.workbooks }),
           ...(deps.protectedSecrets === undefined ? {} : { protectedSecrets: deps.protectedSecrets }),
           clock: deps.clock,
           ids: deps.ids,
@@ -139,6 +141,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         },
         {
           descriptor,
+          ...(ingress.workbookReferences === undefined ? {} : { workbookReferences: ingress.workbookReferences }),
           ...(deps.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: deps.protectedSubmissionBindings }),
           ...(source === undefined ? {} : { retainedInputs: [source.input] }),
           submissions: (source?.submissions ?? ingress.submissions).map((submission) =>

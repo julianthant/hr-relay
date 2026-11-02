@@ -13,6 +13,7 @@ import { buildGateParkSection } from "./run-detail/gate-park.js";
 import { buildLogsSection } from "./run-detail/logs.js";
 import { buildReceiptFailureSection } from "./run-detail/receipts-failures.js";
 import type { RunNoteScanCache } from "./run-logs.js";
+import { buildRunWorkbookSection } from "../workbooks.js";
 
 export async function readRunSection(
   deps: RunDetailQueryDeps,
@@ -36,6 +37,12 @@ export function buildRunSection(
 ): RunDetailSectionResponse {
   const section = SectionNameSchema.parse(sectionInput);
   switch (section) {
+    case "workbook-writes": {
+      const run = requireTrustRun(deps.runReader, runId);
+      const canonical = deps.canonical;
+      if (run.input.workbookReferences === undefined || canonical === undefined) throw new SectionUnavailableError("Workbook reference authority is unavailable.");
+      return { section, payload: canonical.database.withAuthorityReadSnapshot(() => buildRunWorkbookSection(canonical.database.authority, run)) };
+    }
     case "context-data":
     case "context-attempts":
       return buildDataSection(deps, runId, section);

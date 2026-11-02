@@ -23,6 +23,7 @@ import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-mod
 import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
 import { fmtActionClock, fmtElapsed } from "../surfaces/shared/status/format.js";
 import { ucpathFoundPresentation, type UcpathFoundDecision, type UcpathFoundPresentation } from "../surfaces/run-detail/logs/ucpath-found-model.js";
+import { workbookRowChoiceId, workbookWriteLogActions, workbookWriteLogStep, workbookWriteMatchesReplay, type WorkbookWrite } from "../surfaces/run-detail/logs/workbook-write-model.js";
 
 class RunLogIdentityError extends Error {
   readonly code = "LOGS_IDENTITY_REFUSED";
@@ -99,10 +100,11 @@ export async function readRunLogs(client: RunReads, selection: LogSelection, sig
   if (missingPages.length > 0) unavailableEvidence.push("Confirmed actions unavailable on one or more pages");
   if (detail.captures === undefined) unavailableEvidence.push("Capture availability not supplied");
   else if (detail.captures.state === "error") unavailableEvidence.push("Captures unavailable");
-  const sections = await Promise.all(detail.availableSections.filter(name => ["captures", "identity-gate", "parked-write", "failure"].includes(name)
+  const sections = await Promise.all(detail.availableSections.filter(name => ["captures", "identity-gate", "parked-write", "failure", "workbook-writes"].includes(name)
     && (name !== "captures" || detail.captures?.state === "available"))
     .map(name => client.runSection(row.runId, name, undefined, signal)));
   for (const section of sections) {
+    if (section.section === "workbook-writes" && section.payload.runId !== row.runId) throw new RunLogIdentityError("RUN_WORKBOOK_IDENTITY_MISMATCH");
     if (section.section === "captures" && (detail.captures?.state !== "available"
       || detail.captures.artifactCount !== section.payload.artifacts.length)) throw new RunLogIdentityError("RUN_CAPTURE_CAPABILITY_MISMATCH");
     if (section.section === "identity-gate" && section.payload.state === "available"
@@ -190,6 +192,14 @@ function validateRunLogSnapshot(snapshot: RunLogSnapshot): void {
       || target.native?.order === undefined) throw new RunLogIdentityError("RUN_LOG_CONFIRMATION_TARGET_MISMATCH");
   }
   for (const section of snapshot.sections) {
+    if (section.section === "workbook-writes") {
+      for (const operation of section.payload.operations) {
+        const identity = native(operation.native);
+        if (eventIds.has(identity.eventId) || orders.has(identity.order)) throw new RunLogIdentityError("RUN_LOG_DECISION_IDENTITY_DUPLICATE");
+        eventIds.add(identity.eventId); orders.add(identity.order);
+      }
+      continue;
+    }
     const identity = section.section === "parked-write" ? native(section.payload.native)
       : (section.section === "failure" || section.section === "identity-gate") && section.payload.state === "available"
         ? native(section.payload.value.native) : undefined;
@@ -336,7 +346,9 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         : row.kind === "note" && row.note.operatorAction?.system !== undefined ? { system: row.note.operatorAction.system } : {}), entries }];
   });
   for (const section of sections) {
-    if (section.section === "parked-write") {
+    if (section.section === "workbook-writes") {
+      for (const operation of section.payload.operations) { order.set(operation.native.eventId, operation.native.order); steps.push(workbookWriteLogStep(operation)); }
+    } else if (section.section === "parked-write") {
       const write = section.payload;
       const checked = write.lastCheck;
       const message = checked === undefined ? write.parkedMessage
@@ -535,6 +547,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const detailGate = value.snapshot?.detail.gate;
   const parked = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "parked-write") : undefined;
   const failure = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "failure" && section.payload.state === "available") : undefined;
+  const workbookWrites = value.state === "loaded" ? value.snapshot?.sections.find(section => section.section === "workbook-writes") : undefined;
   const correctionCommand = useMemo(() => {
     if (binding === undefined) return undefined;
     let launches = correctionLaunches.get(binding.scope);
@@ -549,6 +562,15 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     && row.rowRevision.valueOf() === envelope.target.expectedVersion.valueOf(), [gate, detailGate, row.rowRevision]);
   const matchesDecision = useCallback((envelope: CommandRequest) => {
     if (envelope.family === "gate") return matchesGate(envelope);
+    if (envelope.family === "run" && envelope.type === "resolve-workbook-row") {
+      const operation = workbookWrites?.section === "workbook-writes" ? workbookWrites.payload.operations.find(operation => operation.resolution.state === "available"
+        && canonicalJsonStringify(operation.resolution.target) === canonicalJsonStringify(envelope.target)) : undefined;
+      const composed = operation?.resolution.state === "available" && operation.resolution.action.kind === "command"
+        ? composeCommandRequest(operation.resolution.action, { runId: row.runId, expectedVersion: row.rowRevision }, {
+          actorId: envelope.requestedBy, source: "run-detail", commandId: envelope.commandId, requestedAt: envelope.requestedAt,
+          workbookWrite: operation, workbookAnswer: envelope.payload }) : undefined;
+      return composed?.state === "ready" && canonicalJsonStringify(composed.request) === canonicalJsonStringify(envelope);
+    }
     if (failure?.section === "failure" && failure.payload.state === "available" && failure.payload.value.recovery !== undefined) {
       const served = failure.payload.value;
       if (envelope.family === "run" && envelope.type === "retry") return envelope.target.runId === row.runId
@@ -566,21 +588,27 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         commandId: envelope.commandId, requestedAt: envelope.requestedAt,
         ...(envelope.type === "recheck-write" ? { transactionId: envelope.payload.transactionId } : {}) }) : undefined;
     return composed?.state === "ready" && canonicalJsonStringify(composed.request) === canonicalJsonStringify(envelope);
-  }, [matchesGate, parked, failure, correctionCommand, row.runId, row.rowRevision]);
+  }, [matchesGate, parked, failure, correctionCommand, row.runId, row.rowRevision, workbookWrites]);
   const commandApplies = useCallback((attempt: NonNullable<typeof command>) => attempt.state === "pending" || attempt.state === "uncertain"
     || matchesDecision(attempt.envelope) || (attempt.state === "settled" && attempt.envelope.family === "run" && parked === undefined
       && row.rowRevision > attempt.envelope.target.expectedVersion) || (attempt.state === "settled" && attempt.envelope.family === "gate" && detailGate?.state === "resolved"
-      && detailGate.nodeId?.valueOf() === attempt.envelope.target.gateId.valueOf()), [matchesDecision, detailGate, row.rowRevision, parked]);
+      && detailGate.nodeId?.valueOf() === attempt.envelope.target.gateId.valueOf()) || (attempt.state === "settled"
+      && (sameHeldOccurrence(attempt.envelope, parked?.section === "parked-write" ? parked.payload : undefined)
+        || workbookWrites?.section === "workbook-writes" && workbookWrites.payload.operations.some(operation => operation.resolution.state === "resolved"
+          && workbookWriteMatchesReplay(operation, attempt.envelope)))), [matchesDecision, detailGate, row.rowRevision, parked, workbookWrites]);
   const currentDecisionMatches = useRef(matchesDecision);
   currentDecisionMatches.current = matchesDecision;
   const currentParkedWrite = useRef<ParkedWriteDetailWire | undefined>(undefined);
   currentParkedWrite.current = parked?.section === "parked-write" ? parked.payload : undefined;
+  const currentWorkbookWrites = useRef<readonly WorkbookWrite[]>([]);
+  currentWorkbookWrites.current = workbookWrites?.section === "workbook-writes" ? workbookWrites.payload.operations : [];
   const send = useCallback(async (envelope: CommandRequest, replay = false) => {
     if (!mounted.current || currentCommandOwner.current !== commandOwner || binding === undefined
       || binding.scope.client !== client || bindingRef.current?.scope !== binding.scope
       || envelope.requestedBy !== binding.scope.actorId) return;
     if (replay && envelope.family !== "gate" && !currentDecisionMatches.current(envelope)
-      && !sameHeldOccurrence(envelope, currentParkedWrite.current)) {
+      && !sameHeldOccurrence(envelope, currentParkedWrite.current)
+      && !currentWorkbookWrites.current.some(operation => workbookWriteMatchesReplay(operation, envelope))) {
       binding.feedback({ kind: "refused", commandId: envelope.commandId, reason: "not-attempted",
         feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})) });
       return;
@@ -596,7 +624,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         const currentBinding = bindingRef.current;
         if (currentBinding === undefined) return;
         currentBinding.feedback(outcome);
-        if (outcome.kind === "confirmed") currentBinding.authority.dayState.refresh();
+        if (outcome.kind === "confirmed" || outcome.kind === "refused" && envelope.type === "resolve-workbook-row") currentBinding.authority.dayState.refresh();
       } };
     if (envelope.family === "start" && launch !== undefined) {
       await launch.submit(envelope, binding, correctionCommand?.get(row.runId)?.plan, options.publish);
@@ -621,6 +649,24 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const preparingCorrection = useRef(false);
   const onDecision = useCallback((id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => {
     if (value.state !== "loaded" || value.snapshot === undefined || binding === undefined || (commandRef.current?.owner === commandOwner && commandRef.current.state !== "refused" && commandApplies(commandRef.current))) return;
+    const workbooks = value.snapshot.sections.find(section => section.section === "workbook-writes");
+    const operation = workbooks?.section === "workbook-writes" ? workbooks.payload.operations.find(operation => operation.native.eventId === id) : undefined;
+    if (operation !== undefined) {
+      const choice = operation.resolution;
+      const candidate = choice.state === "available" ? choice.candidates.find(candidate => workbookRowChoiceId(candidate) === answer.candidate) : undefined;
+      if (choice.state !== "available" || choice.action.kind !== "command" || candidate === undefined || confirm === undefined
+        || !workbookWriteLogActions(operation).some(candidate => candidate.id === action.id)) return;
+      const composed = composeCommandRequest(choice.action, { runId: row.runId, expectedVersion: row.rowRevision }, {
+        actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, workbookWrite: operation,
+        workbookAnswer: { sheetId: candidate.sheetId, rowId: candidate.rowId } });
+      if (composed.state !== "ready") return;
+      const envelope = CommandRequestSchema.parse(composed.request);
+      confirm({ action: choice.action, target: { runId: row.runId, expectedVersion: row.rowRevision }, subject: row.title,
+        traceId: String(row.traceId), workflowLabel: selection.workflowLabel, source: "run-detail", commandId: envelope.commandId,
+        requestedAt: envelope.requestedAt, triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : null },
+        () => dispatchIfDecisionCurrent.current(envelope));
+      return;
+    }
     const failed = value.snapshot.sections.find(section => section.section === "failure");
     if (failed?.section === "failure" && failed.payload.state === "available" && failed.payload.value.failureId === id && failed.payload.value.recovery !== undefined) {
       const served = failed.payload.value;
@@ -709,7 +755,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       || attempt.scope.authority !== binding.scope.authority || attempt.scope.dayRequest !== binding.scope.dayRequest) return false;
     if (request.family === "start") return correctionCommand?.get(row.runId)?.envelope.commandId === request.commandId;
     return (request.family === "gate" || (request.family === "worker-browser" && request.type === "check-parked-write")
-      || (request.family === "run" && ["recheck-write", "resolve-write-absent", "retry"].includes(request.type)))
+      || (request.family === "run" && ["recheck-write", "resolve-write-absent", "retry", "resolve-workbook-row"].includes(request.type)))
       && request.target.runId === row.runId;
   });
   const retained = newest !== undefined && !("targets" in newest.request) && (newest.request.family === "gate" || newest.request.family === "run" || newest.request.family === "start"

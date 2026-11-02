@@ -26,6 +26,7 @@ import type { WorkerBrowserSessionFactory } from "../../../runtime/workers/worke
 import type { WorkerRunResources } from "../../../runtime/workers/worker-loop.js";
 import { selectRunSettings } from "../../../runs/settings/run-settings.js";
 import { createWorkbookLibraryAdapter } from "../../../processing/providers/workbook-library-adapter.js";
+import { createRunWorkbookService } from "../../../runs/workbooks.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
@@ -43,6 +44,7 @@ export function createRunResourcesFactory(input:Readonly<{
 }>) {
  if(input.sessionFactory!==undefined&&input.createSessionFactory!==undefined)throw new Error("browser-session-factory-owner-conflict");
  const profiles=createBrowserProfileAuthority(input);
+ const runWorkbooks=createRunWorkbookService({database:input.database,clock:input.clock});
  const nominatim=input.nominatim;
  const compose=(config:Config)=>{
   input.assertBrowserRoot(config.paths.browserProfileRoot);
@@ -71,7 +73,8 @@ export function createRunResourcesFactory(input:Readonly<{
    const baseline=previous??compose(StoredConfigSchema.parse(snapshot.config));cache.set(snapshot.fingerprint,baseline);
    const key=`${run.envelope.runId}:${snapshot.fingerprint}`;
    const resources=runCache.get(key)??Object.freeze({...baseline,providers:{...baseline.providers,adapters:Object.freeze({...baseline.providers.adapters,
-    "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock}),
+    "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock,
+      references:{runId:run.envelope.runId,write:command=>runWorkbooks.write(run,command)}}),
    })}});
    runCache.set(key,resources);
    return input.preflight===undefined?resources:Object.freeze({...resources,sessionFactory:preflightSessionFactory(resources.sessionFactory,input.preflight,input.preflight.runScope(run.envelope))});

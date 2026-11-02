@@ -50,6 +50,20 @@ the parent declaration. The descriptor and its sealed planning and projections e
 validated facts; workbook selection and reference snapshots belong to run planning. All current
 definitions declare an empty array.
 
+Start planning takes explicit entry-scoped `workbookReferences` (type, optional library, keys and
+fields), requires exactly the workflow's declared types, and snapshots the selected or default
+workbook. Schema-bound references retain exact cell values, revision and every worksheet's identity
+in the confirmation fingerprint and native run input. Later master edits or default changes do not
+replace them. No workflow-specific key or field mapping is inferred.
+
+The `workbooks/read-result` task accepts `patch-reference` with a stable run-local write ID and
+explicit field/value entries. Runs derives its target from the captured reference and journals the
+receipt with native run evidence. A revision change or ambiguous/missing key requires a Logs row
+choice. `resolve-workbook-row` binds the original receipt, run version and current workbook revision;
+it rechecks the live key, row, original worksheet membership and cell ownership before applying only
+the retained operation's values. Operator-owned cells remain protected. Exact command replay uses
+the original operation receipt; it never invents replacement values or retries an HR write.
+
 `failureCorrections` binds a task node and failure code to one run input. Logs offers Check again
 and a text entry for that input only when the failed run has no uncertain writes. The correction
 preserves execution options and protected input bindings, retains source-run lineage, and reads

@@ -97,7 +97,8 @@ Paths in this table are relative to `src/backend/`.
 | `systems/sharepoint/driver/interpreter.ts` | Canonical workbook URLs, account authentication and GUID-pinned workbook reads through an owned command browser. The workbook composition injects its bounded browser transport. |
 | `systems/browser-shared/command-session.ts` | Command input, browser scope and callback contracts shared by runtime acquisition and workbook composition. The runtime retains native custody and private Duo cleanup handles. |
 | `processing/providers/sharepoint-browser-transport.ts` | Serializable same-origin Fetch streaming for SharePoint JSON proofs and workbook bytes, with exact response checks, byte bounds and reader cleanup. |
-| `workbooks/workflow-workbook-service.ts` | Creates one new table workbook per run through the admitted library repository. The `workbooks.library` provider is composed in `app/composition/worker/run-resources.ts`; the original saved record supplies replay proof. |
+| `workbooks/workflow-workbook-service.ts` | Creates a table workbook or patches a captured reference through the admitted library provider, composed in `app/composition/worker/run-resources.ts`. Original records and operation receipts supply replay proof. |
+| `runs/workbooks.ts` | Authenticates captured workbook references, run-bound patches, native receipt events, Logs row choices and live-revalidated resolution commands. |
 
 ### Dashboard and shared packages
 
@@ -141,7 +142,7 @@ folders use the same layout; their test-only composition inventory in
 audits without making either workflow available in production registries. Their retained proofs live
 at `ocr/steps/source-pages/step.ts` and `ocr-page/steps/read-page/step.ts` in the same unregistered inventory.
 
-`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Each UCPath call has a typed workflow-owned task call under `tasks/`; all three timeline groups have retained proofs under `steps/<key>/step.ts` using the same typed authors. Shared workbook publication lives outside this workflow; its task/command contract is `src/models/processing/workbooks/read-result.ts`. The shared task creates a new Spreadsheets-library workbook per run; linked writes and SharePoint imports are not exposed.
+`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Each UCPath call has a typed workflow-owned task call under `tasks/`; all three timeline groups have retained proofs under `steps/<key>/step.ts` using the same typed authors. Shared workbook publication lives outside this workflow; its task/command contract is `src/models/processing/workbooks/read-result.ts`. The shared task creates a new Spreadsheets-library workbook per run. Generic captured-reference writes require an explicit planning declaration; current workflows declare none.
 `src/workflows/i9-lookup/workflow.ts` is child-only, with no public delegating parent yet. It uses
 the I-9 system store, then retains its typed result through `tasks/read-result.ts` in the workflow
 store. Its one `lookup` timeline checkpoint groups both tasks. The registered harness at

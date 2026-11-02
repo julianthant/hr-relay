@@ -7,6 +7,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { WorkbookLibraryError, type WorkbookLibraryRepository } from "../../workbooks/workbook-library-service.js";
 import { decodeSavedWorkbook, encodeSavedWorkbook, SavedWorkbookSchema, type SavedWorkbook } from "../../../models/dashboard/workbooks.js";
+import { WorkbookOperationRecordSchema } from "../../../models/dashboard/workbooks.js";
 const serializeSavedWorkbook = (record: SavedWorkbook) => JSON.stringify(encodeSavedWorkbook(record));
 
 export const WORKBOOK_LIBRARY_MIGRATION = Object.freeze({
@@ -102,6 +103,16 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   };
   const receipt = (value: unknown) => stored(() => WorkbookOperationReceiptSchema.parse(JSON.parse(z.string().parse(value))));
   const queueRow = z.object({ sequence: z.number(), operation_id: z.string(), digest: z.string(), request_json: z.string(), receipt_json: z.string().nullable() });
+  const operationRecord = (id: string, value: unknown) => stored(() => {
+    const row = queueRow.parse(value), operation = WorkbookOperationSchema.parse(JSON.parse(row.request_json));
+    const settled = receipt(row.receipt_json);
+    if (operation.operationId !== row.operation_id || sha256Hex(canonicalJsonStringify(operation)) !== row.digest
+      || settled.libraryId !== id || settled.operationId !== operation.operationId || settled.sequence !== row.sequence
+      || settled.at !== operation.at || canonicalJsonStringify(settled.source) !== canonicalJsonStringify(operation.source)) {
+      throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+    }
+    return WorkbookOperationRecordSchema.parse({ libraryId: id, operation, receipt: settled });
+  });
   const enqueue = (id: string, value: unknown) => storage(() => deps.mutate(() => {
     required(id);
     const operation = WorkbookOperationSchema.parse(value), json = canonicalJsonStringify(JSON.parse(JSON.stringify(operation))), digest = sha256Hex(json);
@@ -110,6 +121,22 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       const row = queueRow.parse(existing);
       if (row.digest !== digest) throw new WorkbookLibraryError('WORKBOOK_OPERATION_CONFLICT');
       return { result: row.sequence, changes: 0 };
+    }
+    if (operation.change.kind === 'patch' && operation.change.resolves !== undefined) {
+      const binding = operation.change.resolves;
+      const raw = database.prepare('SELECT * FROM workbook_operations WHERE workbook_id=? AND operation_id=?').get(id, binding.operationId);
+      if (raw === undefined) throw new WorkbookLibraryError('WORKBOOK_OPERATION_CONFLICT');
+      const original = operationRecord(id, raw);
+      if (original.receipt.state !== 'resolve-required' || operation.source.kind !== 'run'
+        || original.operation.change.kind !== 'patch' && original.operation.change.kind !== 'add'
+        || canonicalJsonStringify(original.operation.source) !== canonicalJsonStringify(operation.source)
+        || original.operation.change.key !== operation.change.key
+        || canonicalJsonStringify(original.operation.change.values) !== canonicalJsonStringify(operation.change.values)
+        || sha256Hex(canonicalJsonStringify(original.receipt)) !== binding.receiptDigest
+        || operation.change.selection === undefined || operation.change.expectedVersion !== operation.change.selection.expectedVersion
+        || database.prepare("SELECT 1 FROM workbook_operations WHERE workbook_id=? AND json_extract(request_json,'$.change.resolves.operationId')=? AND json_extract(receipt_json,'$.state')='applied'").get(id, binding.operationId) !== undefined) {
+        throw new WorkbookLibraryError('WORKBOOK_OPERATION_CONFLICT');
+      }
     }
     const inserted = database.prepare('INSERT INTO workbook_operations(workbook_id,operation_id,digest,request_json) VALUES(?,?,?,?)').run(id, operation.operationId, digest, json);
     return { result: Number(inserted.lastInsertRowid), changes: 1 };
@@ -252,6 +279,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       if (metadata(id).typeId !== workbookType.id) throw new WorkbookLibraryError('WORKBOOK_INVALID');
       const workbook = encodeSavedWorkbook(record).workbook, keyField = workbookType.keyFieldId;
       return WorkbookReferenceSnapshotSchema.parse({ libraryId: id, version: record.version, type: workbookType,
+        worksheets: workbook.sheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name })),
         rows: request.keys.map(key => {
           const matches = workbookMatches(workbook, keyField, key);
           return { key, state: matches.length === 0 ? 'missing' : matches.length === 1 ? 'matched' : 'ambiguous',
@@ -265,6 +293,8 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     })),
     enqueue, drain, operation,
     journal: id => storage(() => deps.read(() => { required(id); return database.prepare('SELECT receipt_json FROM workbook_operations WHERE workbook_id=? AND receipt_json IS NOT NULL ORDER BY sequence').all(id).map(row => receipt(row.receipt_json)); })),
+    runOperations: runId => storage(() => deps.read(() => database.prepare("SELECT * FROM workbook_operations WHERE json_extract(request_json,'$.source.kind')='run' AND json_extract(request_json,'$.source.runId')=? ORDER BY sequence").all(runId)
+      .map(raw => { const row = z.object({ workbook_id: z.string() }).parse(raw); return operationRecord(row.workbook_id, raw); }))),
   };
   return Object.freeze(repository);
 }

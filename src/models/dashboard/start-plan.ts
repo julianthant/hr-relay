@@ -15,6 +15,7 @@ import { BrowserPresentationModeSchema, InstanceSelectionSchema, RunPrioritySche
 import { StartRefusalCodeSchema } from "../run/start-refusal.js";
 import { TimelineCategoryKeySchema } from "../workflow/presentation.js";
 import { StepOmissionsSchema } from "../workflow/step-omission.js";
+import { WorkbookRunReferenceSelectionSchema } from "./workbooks.js";
 
 /** The leaves both sides agree on verbatim. */
 const SHARED_REQUEST_LEAVES = {
@@ -29,6 +30,7 @@ const SHARED_REQUEST_LEAVES = {
   selectedStepKeys: z.array(z.string().min(1)).min(1).optional(),
     /* Typed facts for each omitted step; a request carrying omissions without an explicit `selectedStepKeys` is refused, because which steps run is the operator's statement. */
   stepOmissions: StepOmissionsSchema.optional(),
+  workbookReferences: z.array(WorkbookRunReferenceSelectionSchema).optional(),
 } as const;
 
 export const StartPlanRequestSchema = z.strictObject({
