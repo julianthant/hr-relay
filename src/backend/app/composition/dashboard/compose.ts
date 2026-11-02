@@ -1,7 +1,8 @@
 import { createApplicationLifecycle, type ApplicationUpdateHost } from "../../../runs/lifecycle/application-lifecycle.js";
+import { DeleteProfileAccountRequestSchema } from "../../../../models/profiles/public-profile.js";
+import { Hono, type Context } from "hono";
 import { readAutomaticRepairNotice } from "../../../storage/maintenance/automatic-repair-notice.js";
 import { backupRegisteredPeopleAtCleanShutdown } from "../storage-compose.js";
-import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
@@ -1128,7 +1129,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   let selection: Selection | undefined;
   let onboardingSelection: { sessionId: string; token: string; operationId: string; profileId: string } | undefined;
   let completedDraft: { operationId: string; sessionId: string } | undefined;
-  let pending: { sessionId: string; operationId: string; profileId: string; runtime: DashboardRuntime } | undefined;
+  let pending: { sessionId: string; operationId: string; profileId: string; runtime: DashboardRuntime; deleting: boolean } | undefined;
   let transitioning = false;
   const retainedFailures: unknown[] = [];
   const cookieName = "relay-profile-session";
@@ -1183,7 +1184,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       return c.json(profileRuntime.session.readOnboarding(onboardingSelection.token, onboardingSelection.operationId));
     }
     if (selection === undefined) return c.json(PublicProfileStateSchema.parse(pending !== undefined && cookieOf(c.req.raw) === pending.sessionId
-      ? { state: "cancelling", operationId: pending.operationId } : { state: "signed-out" }));
+      ? { state: "cancelling", operationId: pending.operationId } : { state: "signed-out", signUpRequired: machine.readProfileRegistry().profiles.length === 0 }));
     const active = current(c.req.raw);
     return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: active.profileId, epoch: active.epoch,
       duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.duoState }));
@@ -1191,6 +1192,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.use("/api/v1/profile/sign-in", operatorMutationIngressGuard);
   app.use("/api/v1/profile/sign-up", operatorMutationIngressGuard);
   app.use("/api/v1/profile/logout", operatorMutationIngressGuard);
+  app.use("/api/v1/profile/delete-account", operatorMutationIngressGuard);
   app.use("/api/v1/profile/onboarding/*", operatorMutationIngressGuard);
   const mountActive = async (result: ActiveProfileSession): Promise<PublicProfileState> => {
     const guarded = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
@@ -1300,7 +1302,8 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       return c.json(result);
     } finally { transitioning = false; }
   });
-  app.post("/api/v1/profile/logout", async c => {
+  const endSession = async (c: Context, deleting: boolean) => {
+    if (deleting) DeleteProfileAccountRequestSchema.parse(await c.req.json());
     const active = selection === undefined ? undefined : current(c.req.raw);
     if (active === undefined && (pending === undefined || cookieOf(c.req.raw) !== pending.sessionId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     if (transitioning) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
@@ -1310,21 +1313,24 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       if (active !== undefined) {
         const result = profileRuntime.session.logOut(active.token, { at: clock.now().toISOString() });
         if (result.state !== "cancelling" || result.operationId === undefined) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
-        pending = { sessionId: active.sessionId, operationId: result.operationId, profileId: active.profileId, runtime: active.runtime };
+        pending = { sessionId: active.sessionId, operationId: result.operationId, profileId: active.profileId, runtime: active.runtime, deleting };
         selection = undefined;
       }
       const operation = pending;
-      if (operation === undefined) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
+      if (operation === undefined || operation.deleting !== deleting) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
       await operation.runtime.detach();
       await profileRuntime.awaitClosurePreparation(operation.profileId);
       const result = profileRuntime.session.resumeLogout(operation.operationId);
       if (result.state !== "signed-out") return c.json(PublicProfileStateSchema.parse(result.state === "refused"
         ? { state: "refused", code: result.code } : { state: "cancelling", operationId: operation.operationId }));
+      if (operation.deleting) profileRuntime.session.deleteLoggedOutAccount(operation.operationId);
       pending = undefined;
       c.header("set-cookie", `${cookieName}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
-      return c.json(PublicProfileStateSchema.parse({ state: "signed-out" }));
+      return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: machine.readProfileRegistry().profiles.length === 0 }));
     } finally { transitioning = false; }
-  });
+  };
+  app.post("/api/v1/profile/logout", c => endSession(c, false));
+  app.post("/api/v1/profile/delete-account", c => endSession(c, true));
   if (bundle !== undefined) app.use("*", staticBundleHandler(bundle));
   app.notFound(c => c.json(PublicProfileStateSchema.parse({ state: "refused", code: "PROFILE_SESSION_STALE" }), 401));
   const listener = await (async () => {

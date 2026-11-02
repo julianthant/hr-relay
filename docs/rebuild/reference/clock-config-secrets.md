@@ -600,10 +600,30 @@ Automatic profile restore requires the exact workspace-bound `OfflineMaintenance
 
 Source snapshot removal, isolated binding/login-copy database close, authenticated source/control descriptors, stopped backup descriptors and actual restore/process-custody close paths are owned closure boundaries. Failed closure raises `AuthoritySourceClosureUnprovedError` from the pure `storage/source-closure.ts` and retains the exact failed resource privately for the failure lifetime. Validation failures remain ordinary when actual database and snapshot cleanup succeeds; an uncertain close never authorizes exclusive-admission release or automatic retry.
 
+### Account deletion
+
+The signed-out profile state reports `signUpRequired` for an empty installation. Sign-up creates a
+private draft and publishes the person only after both Duo methods and Finish are proved.
+
+The confirmed `POST /api/v1/profile/delete-account` command uses the normal logout drain and native
+settlement first. Only the completed exact-person logout can authorize deletion; ordinary logout
+continues to retain credentials. `maintenance/account-deletion.ts` owns the installation journal
+`account-deletion.json`, with exact file/directory membership, native key metadata, and prior/next
+registry, verifier and browser documents. Stopped custody and process closure precede erasure.
+Unresolved or parked writes refuse before erasure, preserving their UNKNOWN/no-retry evidence.
+The operation deletes the native key, the person's managed tree (including local backups, artifacts
+and browser profiles), and canonical machine credential files, then removes only that person's
+registry, verifier and browser rows. External exported files and remote Duo registrations are outside
+this local account operation. A retained installation-control upgrade backup for the person refuses
+deletion before effects; that shared verified archive is never silently edited or partially erased. An interrupted erasure blocks admission and resumes its captured
+prefix under the next startup lifetime. Changed or unknown members refuse; no deletion result is
+reported until the journal is removed. Settings General consumes the typed client command when its
+approved account surface is wired.
+
 ### Private onboarding custody
 
 Show setup browser opens one draft-owned full Chromium window on the Relay FastDuo extension's
-existing setup page. Open duo.ucsd.edu opens a separate tab in that same context, acquires the
+existing setup page. Open duo.ucpath.edu opens a separate tab in that same context, acquires the
 original protected Details only after verifying the exact UCSD SSO document and form controls,
 then submits that pinned POST form once. Reopening focuses the owned tab; failed initialization
 remains refused and never resubmits. Login does not prove either enrollment method or MFA completion.
@@ -619,10 +639,20 @@ enrollment, persisted credential, counter reservation or readiness proof.
 
 `profile-onboarding.ts` issues exact operation/generation/method attempts. Software FastDuo readiness
 requires native pending-key acknowledgement and ceremony plus either exact scoped operator CONFIRM
-or an observed exact-credential request; an unobserved portal acceptance remains false. Native Mac
-Touch ID separately requires a platform ceremony with software interception disabled, actual Duo
-portal acceptance and operator confirmation. Public method states display these receipts; they do not
+or an observed exact-credential request; an unobserved portal acceptance remains false. Touch ID separately requires a platform ceremony with software interception disabled, actual Duo
+portal acceptance and operator confirmation. A successful platform-availability probe on macOS selects native
+Touch ID when available; explicit absence or a non-macOS host selects Chromium's virtual internal authenticator before
+the ceremony. A failed probe or native ceremony never triggers an emulated retry. Virtual platform
+keys enter the same encrypted Duo custody and must be ready before Finish. The retained receipt and
+public method state identify `native-platform` or `chromium-platform`. Public method states display these receipts; they do not
 authorize publication. Each SIGN uses a distinct durable reservation nonce.
+
+Platform setup uses the broker-verified top-level Duo page. Same-origin child frames are not
+additional enrollment targets; ambiguous top-level pages refuse. Credential IDs remain canonical
+base64url in Duo custody and convert to standard base64 only at the Chromium protocol boundary.
+A completed Chromium platform receipt with a matching ready encrypted key survives the scoped
+retention hook, just like the software key. Actual provider failures still retain their error and
+block Finish through the existing custody checks.
 
 Draft Duo publication resumes only its authenticated prior/next intent, including stopped recovery.
 The native onboarding Finish intent owns verifier and registry publication together; verifier preparation does not publish an account. Fresh database, key, protected credential, verifier-pepper file identity/digest and method witnesses precede that intent. Exact prior/next prefixes recover together, while a changed source remains HOLD.
