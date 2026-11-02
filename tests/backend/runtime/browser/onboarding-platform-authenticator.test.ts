@@ -50,3 +50,15 @@ it("preserves a failed native availability probe instead of silently enabling em
   await assert.rejects(prepareOnboardingPlatformAuthenticator(f.context, f.page), value => value === error);
   assert.deepEqual(f.calls, []);
 });
+
+it("uses CDP base64 for lookup while retaining the broker's canonical base64url ID", async () => {
+  const f = fixture(false);
+  f.credential.credentialId = "+/8AAQ==";
+  const platform = await prepareOnboardingPlatformAuthenticator(f.context, f.page);
+  if (platform.mechanism !== "chromium-platform") throw new Error("virtual platform required");
+  const pending = await platform.credential("-_8AAQ", "duosecurity.com", "2026-11-02T12:00:00.000Z");
+  assert.deepEqual(f.calls.at(-1), { method: "WebAuthn.getCredential", input: {
+    authenticatorId: "synthetic-authenticator", credentialId: "+/8AAQ==",
+  } });
+  assert.equal(pending.credentialId, "-_8AAQ");
+});

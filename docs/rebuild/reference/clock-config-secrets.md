@@ -644,6 +644,13 @@ keys enter the same encrypted Duo custody and must be ready before Finish. The r
 public method state identify `native-platform` or `chromium-platform`. Public method states display these receipts; they do not
 authorize publication. Each SIGN uses a distinct durable reservation nonce.
 
+Platform setup uses the broker-verified top-level Duo page. Same-origin child frames are not
+additional enrollment targets; ambiguous top-level pages refuse. Credential IDs remain canonical
+base64url in Duo custody and convert to standard base64 only at the Chromium protocol boundary.
+A completed Chromium platform receipt with a matching ready encrypted key survives the scoped
+retention hook, just like the software key. Actual provider failures still retain their error and
+block Finish through the existing custody checks.
+
 Draft Duo publication resumes only its authenticated prior/next intent, including stopped recovery.
 The native onboarding Finish intent owns verifier and registry publication together; verifier preparation does not publish an account. Fresh database, key, protected credential, verifier-pepper file identity/digest and method witnesses precede that intent. Exact prior/next prefixes recover together, while a changed source remains HOLD.
 Finish recovery retains the exact Finish identity and immutable method receipts; it does not repeat

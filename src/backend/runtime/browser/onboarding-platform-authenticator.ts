@@ -17,9 +17,12 @@ export async function prepareOnboardingPlatformAuthenticator(context: BrowserCon
     protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true,
   } });
   return { mechanism: "chromium-platform", async credential(credentialId, rpId, createdAt) {
-    const result = await session.send("WebAuthn.getCredential", { authenticatorId, credentialId });
+    const bytes = Buffer.from(credentialId, "base64url");
+    if (bytes.length === 0 || bytes.toString("base64url") !== credentialId) throw new Error("onboarding-platform-credential-scope-changed");
+    const cdpCredentialId = bytes.toString("base64");
+    const result = await session.send("WebAuthn.getCredential", { authenticatorId, credentialId: cdpCredentialId });
     const credential = result.credential;
-    if (credential.credentialId !== credentialId || credential.rpId !== rpId) throw new Error("onboarding-platform-credential-scope-changed");
+    if (credential.credentialId !== cdpCredentialId || credential.rpId !== rpId) throw new Error("onboarding-platform-credential-scope-changed");
     const key = createPrivateKey({ key: Buffer.from(credential.privateKey, "base64"), format: "der", type: "pkcs8" });
     return { credentialId, privateKeyPkcs8: credential.privateKey,
       publicKeySpki: createPublicKey(key).export({ format: "der", type: "spki" }).toString("base64"),

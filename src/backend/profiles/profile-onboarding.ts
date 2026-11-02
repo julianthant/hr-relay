@@ -160,7 +160,8 @@ export function createProfileOnboarding(input: {
           const draft = requiredDraft(operation);
           if (draft.generation !== attempt.generation || !draft.attempts.some(entry => entry.attemptId === attempt.attemptId)) return unavailable();
           const receipt = draft.attempts.find(entry => entry.attemptId === attempt.attemptId);
-          if (attempt.method === "key" && receipt?.state === "complete" && completeIfProved(receipt).state === "complete"
+          if ((attempt.method === "key" || receipt?.ceremony?.mechanism === "chromium-platform")
+            && receipt?.state === "complete" && completeIfProved(receipt).state === "complete"
             && receipt.scope !== undefined && input.store(operation).readForScope(receipt.scope)
               .some(entry => entry.credentialId === receipt.ceremony?.credentialId && entry.state === "ready")) {
             return { operation, result: undefined };

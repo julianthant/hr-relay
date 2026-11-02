@@ -12,16 +12,20 @@ import { DuoCredentialRecordSchema } from "../../../src/models/config/duo-creden
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { syntheticOnboardingDuo } from "../../support/helpers/admission-fixture.js";
+import type { DraftDuoCapability } from "../../../src/backend/profiles/onboarding-duo.js";
 
-for (const retained of [true, false]) it(`requires ${retained ? "retained" : "missing"} virtual platform custody before finishing sign-up`, async () => {
+for (const custody of ["ready", "retained", "missing"] as const) it(`requires ${custody} virtual platform custody before finishing sign-up`, async () => {
+  const retained = custody !== "missing";
   const root = realpathSync(mkdtempSync(join(tmpdir(), "virtual-signup-"))), lifetime = await runtimeLifetimeLock();
   const machine = acquireEntrypointAdmission(root, "exclusive", lifetime), email = "fixture@ucsd.edu";
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   const synthetic = syntheticOnboardingDuo(() => email);
+  let virtualCapability: DraftDuoCapability | undefined;
   const session = createProfileSession({ machineRoot: machine.stateRoot, admission: machine, clock: systemClock,
     onboardingDuo: { ...synthetic, start(attempt, bind, failure) {
       return synthetic.start(attempt, async observed => {
         const capability = await bind(observed);
+        if (attempt.method === "touch") virtualCapability = capability;
         return { ...capability, async recordCeremony(proof) {
           if (attempt.method === "touch") {
             if (retained) {
@@ -50,6 +54,11 @@ for (const retained of [true, false]) it(`requires ${retained ? "retained" : "mi
     }
     const ready = session.readOnboarding(draft.token, draft.operationId);
     assert.equal(ready.step, "ready"); assert.equal(ready.methods.touch.platformAuthenticator, "chromium-platform");
+    if (custody === "retained") {
+      assert.ok(virtualCapability);
+      await virtualCapability.retainUnknown();
+      assert.equal(session.readOnboarding(draft.token, draft.operationId).methods.touch.state, "complete");
+    }
     const active = await session.completeOnboarding(draft.token, draft.operationId); assert.equal(active.state, "active");
     if (active.state !== "active") throw new Error("finished signup required");
     const owner = machine.admitProfile(active.profileId);

@@ -45,6 +45,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   const failures: Error[] = [];
   const reportFailure = async (error: Error): Promise<void> => { failures.push(error); };
   let current = true;
+  let sameOriginChildFrame = false;
   let observed: DraftDuoObservedContext | undefined;
   const worker = {
     url: () => "chrome-extension://owned-extension/src/relay-background.js",
@@ -72,7 +73,8 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   function makePage(initialUrl = "about:blank") {
     let pageClosed = false;
     let url = initialUrl;
-    return { frames: () => [{ url: () => url, evaluate: async () => true }], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => url,
+    const frame = { url: () => url, evaluate: async () => true };
+    return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : [frame], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => url,
       goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://")) { portalPages++; throw new Error("synthetic navigation failure"); } url = destination; },
       close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
   }
@@ -141,7 +143,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     else requests.push(request);
     return result;
   }
-  return { mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
+  return { sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
     loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, launches: () => launchCount, profile: () => profile,
     portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
     loseActiveStopAck: () => { lostActiveStopAck = true; }, blockPump: () => { blockedPump = true; },
@@ -448,11 +450,32 @@ describe("draft Duo provider", () => {
     try {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
       assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
-      const requestId = randomUUID();
-      assert.deepEqual(await w.send("native-created", { credentialId: "virtual-public-id", requestId }), { ok: true, value: { observed: true } });
+      const requestId = randomUUID(), credentialId = Buffer.from("virtual-public-id").toString("base64url");
+      assert.deepEqual(await w.send("native-created", { credentialId, requestId }), { ok: true, value: { observed: true } });
       assert.deepEqual(w.calls, ["persist", "chromium-platform"]);
-      await w.send("portal-accepted", { credentialId: "virtual-public-id", requestId });
+      await w.send("portal-accepted", { credentialId, requestId });
       assert.deepEqual(w.calls, ["persist", "chromium-platform", "portal-accepted"]);
+    } finally { await w.cleanup(); }
+  });
+
+  it("binds the verified top-level Duo page when it also contains same-origin child frames", async () => {
+    const w = world("touch");
+    w.sameOriginChildFrame();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
+      await w.send("native-created", { credentialId: "native-public-id", requestId: randomUUID() });
+      assert.deepEqual(w.calls, ["native-platform"]);
+    } finally { await w.cleanup(); }
+  });
+
+  it("refuses ambiguous top-level Duo pages before preparing an authenticator", async () => {
+    const w = world("touch");
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      w.addDuoPage();
+      assert.deepEqual(await w.send("bind", BIND), { ok: false });
+      assert.deepEqual(w.calls, []);
     } finally { await w.cleanup(); }
   });
 

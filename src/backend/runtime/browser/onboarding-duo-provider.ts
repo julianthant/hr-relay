@@ -442,9 +442,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
                 await observedCurrent(session);
                 if (attempt.method === "touch") {
                   const context = session.context;
-                  const frames = context?.pages().filter(page => !page.isClosed()).flatMap(page => page.frames()).filter(frame => new URL(frame.url()).origin === request.data.origin);
-                  if (!context || frames?.length !== 1 || !frames[0]) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-                  session.platform = await prepareOnboardingPlatformAuthenticator(context, frames[0], options.platform);
+                  const pages = context?.pages().filter(page => !page.isClosed() && new URL(page.url()).origin === request.data.origin);
+                  if (!context || pages?.length !== 1 || !pages[0]) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+                  session.platform = await prepareOnboardingPlatformAuthenticator(context, pages[0], options.platform);
                   await observedCurrent(session);
                 }
                 const capability = await bindObservedContext({ contextId: request.data.documentId, tabId: request.data.tabId, accountName: request.data.username,

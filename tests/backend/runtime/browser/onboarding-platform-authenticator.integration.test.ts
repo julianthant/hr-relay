@@ -20,11 +20,12 @@ it("completes an actual Chromium platform ceremony and retains the same private/
       } });
       if (!(credential instanceof PublicKeyCredential) || !(credential.response instanceof AuthenticatorAttestationResponse)) throw new Error("actual platform attestation required");
       const spki = credential.response.getPublicKey(); if (!spki) throw new Error("actual public key required");
-      return { id: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
+      return { id: credential.id,
         spki: btoa(String.fromCharCode(...new Uint8Array(spki))), attachment: credential.authenticatorAttachment };
     });
     assert.equal(result.attachment, "platform");
     const pending = await platform.credential(result.id, "duosecurity.com", "2026-11-02T12:00:00.000Z");
+    assert.equal(pending.credentialId, result.id);
     assert.equal(pending.publicKeySpki, result.spki); assert.equal(pending.isResidentCredential, true);
     assert.equal(createPublicKey(createPrivateKey({ key: Buffer.from(pending.privateKeyPkcs8, "base64"), type: "pkcs8", format: "der" }))
       .export({ type: "spki", format: "der" }).toString("base64"), result.spki);
