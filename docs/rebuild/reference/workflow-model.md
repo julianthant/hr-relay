@@ -36,7 +36,9 @@ projects prepare and commit child steps under one graph node.
 `identity.matchKey` declares the durable natural key. The start service derives the item identity
 from the workflow and match key. Changing a match key changes item identity; it is not a display
 edit. Descriptor `version` is a positive integer. `contractFingerprint` comes from the generated
-build manifest in `src/workflow-kit/validation/build-manifest.ts`; authors do not supply it to
+build manifest in `src/workflow-kit/validation/build-manifest.ts`; source hashing canonicalizes
+CRLF to LF before parsing and caching, so checkout line endings do not change fingerprints.
+Authors do not supply it to
 `defineWorkflow`.
 
 `failureCorrections` binds a task node and failure code to one run input. Logs offers Check again
