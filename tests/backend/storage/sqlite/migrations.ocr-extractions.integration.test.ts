@@ -83,6 +83,7 @@ it("upgrades populated OCR schema twelve to workbook masters without rewriting s
     for (const statement of master.statements) database.exec(statement);
     database.exec('UPDATE database_states SET schema_version=13; PRAGMA user_version=13; COMMIT');
     assert.equal(inspectNativeAuthority(database, 13).schemaVersion, 13);
+    assert.throws(() => inspectNormalAuthority(database), /normal-authority-schema-mismatch/u);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get()?.count, 42);
     assert.deepEqual(database.prepare('SELECT * FROM artifacts').all(), before);
     database.exec('BEGIN EXCLUSIVE');

@@ -1,3 +1,4 @@
+import { createApplicationLifecycle, type ApplicationUpdateHost } from "../../../runs/lifecycle/application-lifecycle.js";
 import { DeleteProfileAccountRequestSchema } from "../../../../models/profiles/public-profile.js";
 import { Hono, type Context } from "hono";
 import { readAutomaticRepairNotice } from "../../../storage/maintenance/automatic-repair-notice.js";
@@ -130,6 +131,7 @@ import { createDashboardApp } from "../../../transports/http/routes/api.js";
 import { createDashboardPreflightRunners } from "../../preflight/dashboard-runners.js";
 
 export interface DashboardRuntime {
+  readonly shutdownRequested?: Promise<void>;
   readonly assistantAuthorization?: ReturnType<typeof composeProfileAssistantAuthorization>;
   readonly port: number;
   readonly noteWriter: NoteTimelineWriter;
@@ -142,6 +144,8 @@ export const DashboardFrontendModeSchema = z.enum(["vite-dev", "built-bundle"]);
 export type DashboardFrontendMode = z.infer<typeof DashboardFrontendModeSchema>;
 
 export interface DashboardComposeInput {
+  readonly requestApplicationQuit?: () => void;
+  readonly updateHost?: ApplicationUpdateHost;
   readonly lifetimeLock: RuntimeLifetimeLock;
   readonly onboardingDuo?: ProfileOnboardingDuoProvider;
   readonly admission?: RuntimeAdmission;
@@ -667,7 +671,7 @@ async function composeDashboardRuntimeStartup(
   const runtimePreflight = composeRuntimePreflight({ duo: createDuoCredentialStore(admission, clock), admission, credentials: context.credentials, database, clock, repoRoot, isolation: input.isolation,
     descriptors, descriptorSetHash: setHash, protectedSecrets, environment: env,
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
-  const lifecycle = new RunRecordService({ database, clock, ids,
+  const lifecycle = new RunRecordService({ database, clock, ids, resolveDescriptor: descriptors.resolve,
     admitQueuedRun: run => runtimePreflight.admission.assertReady(runtimePreflight.runScope(run.envelope)),
     publishQueued: (run, publication) => {
       if (publication === undefined) throw new Error("queued run is missing its publication context");
@@ -842,7 +846,16 @@ async function composeDashboardRuntimeStartup(
 
   const workflowSources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredWorkflowSources);
 
+  let resolveQuit: () => void = () => undefined;
+  const shutdownRequested = new Promise<void>(resolve => { resolveQuit = resolve; });
+  const applicationLifecycle = createApplicationLifecycle({ database,
+    requestQuit: input.requestApplicationQuit ?? resolveQuit,
+    ...(input.updateHost === undefined ? {} : { updateHost: input.updateHost }),
+    onFailure: reportSupervisorFault,
+  });
+  startupCleanups.push(() => applicationLifecycle.dispose());
   const kernel = createCommandKernel({
+    applicationQuitAvailable: true,
     preflight: runtimePreflight.admission,
     assistantSurface: () => { if (assistantSurface === undefined) throw new Error("assistant-surface-unavailable"); return assistantSurface; },
     workflowSources,
@@ -892,6 +905,7 @@ async function composeDashboardRuntimeStartup(
 
 
   const commands = createDashboardCommandService({
+    quitAccepted: applicationLifecycle.quitAccepted,
     kernel,
     projection,
     startWorkerCapacity: createRunWorkerCapacity({ kernel, authority: database.authority,
@@ -1002,6 +1016,7 @@ async function composeDashboardRuntimeStartup(
         assertCurrent(); const result = work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk }); assertCurrent(); return result; }),
     },
     startPlans,
+    applicationLifecycle,
     intake,
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
@@ -1036,7 +1051,7 @@ async function composeDashboardRuntimeStartup(
   const detach = (): Promise<void> => {
     detaching ??= (async () => {
       const failures: unknown[] = [];
-      try { profile.runtime.beginClose(); }
+      try { profile.runtime.beginClose("shutdown"); }
       catch (error) { custody.failedClosures.push(error); failures.push(error); }
       const transportClosure = (async () => {
         try { await server.close(); transportClosed = true; } catch (error) { failures.push(error); }
@@ -1061,6 +1076,7 @@ async function composeDashboardRuntimeStartup(
   };
   return Object.freeze({
     assistantAuthorization,
+    shutdownRequested,
     port: server.port,
     notificationStatus: notificationObserver.status,
     noteWriter,
@@ -1069,14 +1085,16 @@ async function composeDashboardRuntimeStartup(
       const failures: unknown[] = [];
       try { await detach(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
-      try { await profile.runtime.close(); }
+      try { await profile.runtime.close("shutdown"); }
       catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
     },
   });
 }
 
 
-export async function composeDashboardApplication(input: DashboardComposeInput): Promise<Readonly<{ port: number; stop(): Promise<void> }>> {
+export async function composeDashboardApplication(input: DashboardComposeInput): Promise<Readonly<{ port: number; shutdownRequested: Promise<void>; stop(): Promise<void> }>> {
+  let resolveApplicationQuit: () => void = () => undefined;
+  const shutdownRequested = new Promise<void>(resolve => { resolveApplicationQuit = resolve; });
   input.lifetimeLock.assertHeld();
   if (requireRuntimeAdmission(input.admission).lifetime !== input.lifetimeLock) throw new Error("runtime-lifetime-admission-mismatch");
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
@@ -1188,7 +1206,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     guarded.onError((error, c) => { const failure = publicFailure(error); return c.json(failure.body, failure.status); });
     let selectedApp: ReturnType<typeof createDashboardApp> | undefined;
     guarded.all("*", c => { if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); return dispatchMountedRequest(selectedApp, c.req.raw); });
-    const runtime = await composeDashboardRuntime({ ...input, profile: { runtime: profileRuntime, token: result.token },
+    const runtime = await composeDashboardRuntime({ ...input, requestApplicationQuit: resolveApplicationQuit, profile: { runtime: profileRuntime, token: result.token },
       applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath } });
     selection = { sessionId: randomUUID(), token: result.token, profileId: result.profileId, epoch: result.epoch, runtime };
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
@@ -1324,11 +1342,11 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   })();
   registeredPort = listener.port;
   let stopping: Promise<void> | undefined;
-  return Object.freeze({ port: listener.port, stop(): Promise<void> {
+  return Object.freeze({ port: listener.port, shutdownRequested, stop(): Promise<void> {
     if (stopping !== undefined) return stopping;
     transitioning = true;
     const failures: unknown[] = [];
-    try { profileRuntime?.beginClose(); } catch (error) { failures.push(error); }
+    try { profileRuntime?.beginClose("shutdown"); } catch (error) { failures.push(error); }
     const transportClosure = listener.close();
     stopping = (async () => {
       try { await transportClosure; } catch (error) { failures.push(error); }
@@ -1339,7 +1357,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       }
       try { await profileRuntime?.session.closeOnboarding(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
-      try { await profileRuntime?.close(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      try { await profileRuntime?.close("shutdown"); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
       try { machine.release(); await backupRegisteredPeopleAtCleanShutdown(installation.workspace, input.lifetimeLock, clock); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
     })();
     return stopping;

@@ -27,6 +27,10 @@ import type { DashboardApp } from "./api-types.js";
 import type { ShellRouteDeps } from "./shell-types.js";
 
 export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): void {
+  app.get("/api/v1/application-lifecycle", c => {
+    if (deps.applicationLifecycle === undefined) throw new SectionUnavailableError("Application lifecycle is unavailable");
+    return c.json(deps.applicationLifecycle.snapshot());
+  });
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
 
   app.get("/api/v1/calendar", (c) => {

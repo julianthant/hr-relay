@@ -1,5 +1,7 @@
+import { sourceBoundHarness } from "../../support/fixtures/integration/source-bound-fixtures.js";
+import { failedSourceReadDescriptor, sourceBoundReadStores } from "../../support/fixtures/source-bound-read-fixtures.js";
 import { randomUUID } from "node:crypto";
-import { RunRecordService } from "../../../src/backend/runs/lifecycle/run-record-service.js";
+import { RunRecordService, lifecycleCommandId } from "../../../src/backend/runs/lifecycle/run-record-service.js";
 import { admitDirectWorker } from "../../../src/backend/storage/sqlite/worker-slots.js";
 import { seedSyntheticRuntimeConfig,singleAppliedRunId } from "../../support/fixtures/operator-command-fixtures.js";
 
@@ -190,7 +192,7 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
     { owner: "withCanonicalRunCommandScope", id: "request.commandId", guards: [
       'canonicalJsonStringify(repositories.commands.get(request.commandId))!==canonicalJsonStringify(request)',
       'repositories.commandAudits.findByCommand(request.commandId)!==undefined',
-      'activeRunCommand!==undefined', 'request.family!=="run"', 'request.type!=="retry"&&request.type!=="cancel"', '"then"inresult',
+      'activeRunCommand!==undefined', '!(request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="recover-run"||request.type==="cancel"))', '"then"inresult',
     ], calls: ["repositories.commands.assertIdentity(request,parentCommandId)"] },
   ],
   "src/backend/storage/sqlite/delegation-root-authority.ts": [
@@ -200,7 +202,7 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
   ],
   "src/backend/storage/sqlite/delegation-authority.ts": [
     { owner: "authenticateOperatorSource", id: "source.commandId", guards: ['audit.result.state!=="applied"', "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(source)", "source.requestedBy!==LOCAL_OPERATOR_ACTOR_ID"], calls: ["assertCanonicalRunCommandScope(repositories,source)"] },
-    { owner: "resolveDelegationRetry", id: "retry.sourceCommandId", guards: ['sourceAudit?.result.state!=="applied"', "canonicalJsonStringify(sourceAudit.request)!==canonicalJsonStringify(source)", "lifecycleRequest.sourceCommandId!==source.commandId"], calls: ["assertDelegationReplacement(repositories,original,child,next)"] },
+    { owner: "resolveDelegationRetry", id: "retry.sourceCommandId", guards: ['sourceAudit===undefined?continued===undefined:sourceAudit.result.state!=="applied"||canonicalJsonStringify(sourceAudit.request)!==canonicalJsonStringify(source)', "canonicalJsonStringify(sourceAudit.request)!==canonicalJsonStringify(source)", "lifecycleRequest.sourceCommandId!==source.commandId"], calls: ["assertDelegationReplacement(repositories,original,child,next)", "authenticateContinuationRetryOwner(repositories,child,retry.continuationOwner,retry.sourceCommandId)"] },
     { owner: "delegationCancellationAvailability", id: "source.commandId", guards: ['run?.lifecycle.state!=="terminal"', "repositories.commandAudits.findByCommand(source.commandId)===undefined"], calls: ["readDelegationCancellation(repositories,runId)"] },
     { owner: "readDelegationCancellation", id: "source.commandId", guards: ['authored?.result.state!=="applied"', "canonicalJsonStringify(authored.request)!==canonicalJsonStringify(source)", "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(retained)"], calls: ["authenticateCancellationSource(repositories,run,request.cancellationSource)"] },
   ],
@@ -260,7 +262,7 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
         refusal(node.thenStatement);
         if (refuses) {
           function condition(expression: ts.Node): void {
-            if (ts.isBinaryExpression(expression) || ts.isPrefixUnaryExpression(expression)) guards.add(compact(expression));
+            if (ts.isBinaryExpression(expression) || ts.isPrefixUnaryExpression(expression) || ts.isConditionalExpression(expression)) guards.add(compact(expression));
             ts.forEachChild(expression, condition);
           }
           condition(node.expression);
@@ -344,7 +346,7 @@ describe("finite native delegation audit read ownership", () => {
       function visit(node: ts.Node): void {
         if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
           && ts.isPropertyAccessExpression(node.expression.expression) && node.expression.expression.name.text === "commandAudits") calls.push(node);
-        if (ts.isBinaryExpression(node) || ts.isPrefixUnaryExpression(node)) expressions.push(node);
+        if (ts.isBinaryExpression(node) || ts.isPrefixUnaryExpression(node) || ts.isConditionalExpression(node)) expressions.push(node);
         ts.forEachChild(node, visit);
       }
       visit(parsed);
@@ -357,9 +359,11 @@ describe("finite native delegation audit read ownership", () => {
         mutants.push(mutate(call, "repositories.commandAudits.findByCommand"));
       }
       for (const spec of specs) {
-        const proof = expressions.find(expression => expression.getText(parsed).replace(/\s+/gu, "") === spec.guards[1]);
-        assert.ok(proof);
-        mutants.push(mutate(proof, "true"));
+        for (const guard of spec.guards) {
+          const proof = expressions.find(expression => expression.getText(parsed).replace(/\s+/gu, "") === guard);
+          assert.ok(proof, `missing refusal guard ${guard}`);
+          mutants.push(mutate(proof, "true"));
+        }
       }
       for (const mutant of mutants) {
         assert.notEqual(mutant, source);
@@ -441,6 +445,7 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
 /* ── the partition (ref dashboard-surfaces authority) ────────── */
 
 const EXPECTED_ACTIVE = {
+  application: ["pause-all", "pause-all-and-quit"],
   "assistant-model-preference": ["set-assistant-model-preference"],
   "failure-resolution": ["annotate-failure"],
   start: ["start-run"],
@@ -451,6 +456,7 @@ const EXPECTED_ACTIVE = {
     "resume-worker", "refresh-browser", "reopen-browser",
   ],
   run: [
+    "recover-run", "pause", "resume",
     "retry",
 
     "restart",
@@ -536,6 +542,7 @@ async function createHarness(wrap?: RepositoryWrap): Promise<GuardHarness> {
     authorityProfileId: ASSISTANT_PREFERENCE_PROFILE,
     authorityInstallationId: "33333333-3333-4333-8333-333333333333",
     workflowSources: { "fixture-graph": "served" },
+    applicationQuitAvailable: true,
     prepareAssistantModelPreference: async () => () => true,
     descriptors: {
       resolve: (workflowId) => workflowId === "fixture-graph" ? fixtureDescriptor : undefined,
@@ -782,7 +789,7 @@ describe("control-command-single-path", () => {
       const members = target.members;
       const memberVersions = Array.isArray(members) && members.length > 0 && members.every(member => member !== null && typeof member === "object" && "expectedVersion" in member);
       const carries = "expectedVersion" in target || "expectedRevision" in target
-        || "scope" in target || memberVersions;
+        || "scope" in target || memberVersions || request.family === "application" && "runtimeGeneration" in target;
       if (!carries) versionless.push(`${request.family}/${request.type}`);
     }
     assert.deepEqual(versionless, []);
@@ -823,6 +830,39 @@ describe("control-command-single-path", () => {
     assert.deepEqual([...new Set(seen)].sort(), [...registry].sort(), "the fixture corpus must cover every current family/action");
   });
 
+
+  it("journals explicit recovery of a genuine failed source through the canonical command arm", async () => {
+    const h = await sourceBoundHarness(failedSourceReadDescriptor, world => sourceBoundReadStores(world, [2]));
+    try {
+      const source = h.start(h.proposal());
+      assert.equal((await h.execute(source)).state, "failed");
+      const failed = h.fresh(source);
+      const originalCheckpoints = h.database.authority.runCheckpoints.listByItem(failed.envelope.workflow, failed.envelope.itemId);
+      assert.equal(originalCheckpoints.length, 1);
+      const request = CommandRequestSchema.parse({ commandId: nextCommandId(), requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator", source: "dashboard", family: "run", type: "recover-run",
+        target: { runId: failed.envelope.runId, expectedVersion: failed.version } });
+      const generation = h.database.getMeta().authorityGeneration;
+      const result = h.kernel.execute(request);
+      assert.equal(h.database.getMeta().authorityGeneration, generation + 1);
+      assert.ok(result.state === "applied");
+      assert.equal(result.affectedTargets.length, 2);
+      const target = result.affectedTargets[0]; assert.ok(target?.family === "run");
+      assert.deepEqual(result.affectedTargets[1], { family: "run", runId: failed.envelope.runId });
+      const recovered = h.database.authority.runs.get(target.runId); assert.ok(recovered);
+      assert.ok(recovered.envelope.continuation); assert.equal(recovered.envelope.retryOf, failed.envelope.runId);
+      const native = h.database.authority.lifecycleJournal.getCommand(lifecycleCommandId("operator-recover-run", request.commandId));
+      assert.ok(native && "kind" in native && native.kind === "run-lifecycle"); assert.equal(native.operation, "recover");
+      assert.deepEqual(h.database.authority.commands.get(request.commandId), request);
+      const audit = h.database.authority.commandAudits.findByCommand(request.commandId); assert.ok(audit);
+      assert.deepEqual(audit.request, request); assert.equal(audit.result.state, "applied");
+      assert.equal(h.kernel.execute(request).state, "already-applied");
+      assert.equal((await h.execute(recovered)).state, "done");
+      assert.deepEqual(h.fresh(failed), failed);
+      assert.deepEqual(h.database.authority.runCheckpoints.listByItem(failed.envelope.workflow, failed.envelope.itemId)
+        .filter(checkpoint => checkpoint.runId === failed.envelope.runId), originalCheckpoints);
+    } finally { await h.dispose(); }
+  });
 
   it("CASes every run verb against the caller's version — presentation included", async () => {
     const harness = await createHarness();

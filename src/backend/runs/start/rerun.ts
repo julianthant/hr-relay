@@ -22,6 +22,7 @@ export class RerunRefusedError extends Error {
 }
 
 
+
 export function validateRerunSourcePlan(repositories: AuthorityRepositories, run: RunRecord): void {
   if (run.sessionId === undefined) return;
   const session = repositories.runSessions.get(run.sessionId);

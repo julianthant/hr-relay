@@ -21,6 +21,8 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
     family: "assistant-model-preference", type: "set-assistant-model-preference", target: { profileId: UUID_1, epoch: 1, expectedRevision: 0 },
     payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } },
   ...COMMAND_FIXTURES,
+  { commandId: UUID_3, requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
+    family: "run", type: "recover-run", target: { runId: UUID_1, expectedVersion: 1 } },
   { commandId: UUID_3, requestedAt: NOW, requestedBy: "local-operator", source: "run-detail", family: "worker-browser", type: "check-parked-write",
     target: { workerId: "separations-worker-1", workflowId: "separations", expectedVersion: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 },
       membershipRevision: 1, processId: 42, startedAt: NOW, installationId: UUID_1, profileId: UUID_2, itemId: UUID_1,
@@ -106,7 +108,12 @@ describe("authority classification and command families", () => {
       "check-parked-write": "local-write",
       "apply-settings": "local-write",
       "apply-protected-settings": "destructive",
+      pause: "local-write",
+      resume: "external-submit",
+      "pause-all": "local-write",
+      "pause-all-and-quit": "destructive",
       retry: "external-submit",
+      "recover-run": "external-submit",
       restart: "external-submit",
       cancel: "destructive",
       bump: "local-write",
@@ -152,6 +159,16 @@ describe("authority classification and command families", () => {
     assert.equal(RunDisplayNameSchema.safeParse("e\u0301").success, false);
     assert.equal(RunDisplayNameSchema.safeParse(`valid\u0000name`).success, false);
     assert.equal(RunDisplayNameSchema.safeParse("x".repeat(121)).success, false);
+  });
+
+  it("requires exact runtime admission and explicit confirmation for application quit", () => {
+    const quit = CommandRequestSchema.parse(COMMAND_FIXTURES.find(fixture =>
+      (fixture as { type: string }).type === "pause-all-and-quit"));
+    assert.equal(quit.family, "application");
+    assert.equal(CommandRequestSchema.safeParse({ ...quit, target: { runtimeGeneration: 0 } }).success, false);
+    assert.equal(CommandRequestSchema.safeParse({ ...quit, target: {} }).success, false);
+    assert.equal(CommandRequestSchema.safeParse({ ...quit, payload: { confirmed: false, targets: [] } }).success, false);
+    assert.equal(CommandRequestSchema.safeParse({ ...quit, payload: { targets: [] } }).success, false);
   });
 
   it("rejects malformed envelopes and untyped gate/notification arms", () => {

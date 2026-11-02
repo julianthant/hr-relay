@@ -43,7 +43,7 @@ function commandAction(input: Record<string, unknown>): CommandAction {
 const CONTEXT = { actorId: "local-operator", source: "run-detail" } as const;
 
 describe("composeCommandRequest — the run family", () => {
-  for (const verb of ["retry", "cancel", "bump"] as const) {
+  for (const verb of ["retry", "recover-run", "cancel", "bump"] as const) {
     it(`composes a legal envelope for ${verb}`, () => {
       const composed = composeCommandRequest(
         commandAction({ command: verb }),
@@ -336,6 +336,7 @@ function factsFor(status: Status, over: Partial<QueueRowActionFacts> = {}): Queu
 describe("queue-row action descriptors — every served verb has a command behind it", () => {
   const served = QueueStatusSchema.options.flatMap((status) => [
     ...queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor(status)),
+    ...queueRowActions(STANDARD_WORKFLOW_ACTIONS, { ...factsFor(status), ...(status === "failed" ? { recoverySource: "failed" as const } : {}) }),
     ...queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor(status, { isChild: true, memberCount: 0 })),
     ...queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor(status, { memberCount: 3 })),
   ]);
@@ -478,4 +479,22 @@ it("checks cancellation effect and rejects an unrelated acknowledged run", async
   assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, command, { ...reply, affectedTargets: [...reply.affectedTargets, { family: "run", runId: other.runId }] })).state, "mismatch");
   cancelled = false;
   assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, command, reply)).state, "mismatch", "acknowledgment cannot replace effect readback");
+});
+
+it("verifies an explicit recovery's new item attempt without expecting the immutable source to change", async () => {
+  const { FIXTURE_DAY_WIRE } = await import("../../../support/fixtures/dashboard/fixture-queue.js");
+  const source = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.lineage.state === "root"); assert.ok(source);
+  const nextId = "99999999-9999-4999-8999-999999999999";
+  let correctItem = true;
+  const next = () => ({ ...source, runId: nextId, traceId: "pl-120001-9999", attempt: source.attempt + 1, rowRevision: 1,
+    itemId: correctItem ? source.itemId : "88888888-8888-4888-8888-888888888888", actions: [] });
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => Response.json({ ...FIXTURE_DAY_WIRE,
+    queueSurfaces: [...FIXTURE_DAY_WIRE.queueSurfaces, next()] }) });
+  const command = CommandRequestSchema.parse({ family: "run", type: "recover-run", commandId: "77777777-7777-4777-8777-777777777777", source: "queue",
+    requestedBy: "local-operator", requestedAt: "2026-08-03T12:00:00.000Z", target: { runId: source.runId, expectedVersion: source.rowRevision } });
+  const reply = CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
+    affectedTargets: [{ family: "run", runId: nextId }, { family: "run", runId: source.runId }] });
+  assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, command, reply)).state, "matched");
+  correctItem = false;
+  assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, command, reply)).state, "mismatch");
 });
