@@ -2,7 +2,7 @@ import { mockBrowserRootPort } from "../../../support/helpers/browser/browser-ro
 import { onboardingProfileDirectory } from "../../../../src/backend/storage/browser-roots.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync, realpathSync, unlinkSync, symlinkSync, linkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +12,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext } from "../../../../src/backend/profiles/onboarding-duo.js";
 
-function world(method: "key" | "touch" = "key") {
+function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "darwin") {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "relay-onboarding-provider-")));
   const browserRoot = join(directory, "browsers");
   const extensionDirectory = join(directory, "extension");
@@ -78,9 +78,17 @@ function world(method: "key" | "touch" = "key") {
   }
   let pages = [makePage()];
   const context = { serviceWorkers: () => [worker], pages: () => pages.filter(page => !page.isClosed()), on: (_event: string, callback: () => void) => { listeners.push(callback); },
+    newCDPSession: async () => ({ async send(name: string, input?: { credentialId: string }) {
+      if (name === "WebAuthn.enable") return {};
+      if (name === "WebAuthn.addVirtualAuthenticator") return { authenticatorId: "synthetic-platform" };
+      if (name === "WebAuthn.getCredential") return { credential: { credentialId: input?.credentialId, rpId: "duosecurity.com",
+        privateKey: generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
+        isResidentCredential: true } };
+      throw new Error("unexpected platform operation");
+    } }),
     newPage: async () => { const page = makePage(); pages.push(page); return page; },
     close: async () => { closed = true; if (!missingCloseEvent) for (const listener of listeners) listener(); if (!blockedPump) { waiter?.(null); waiter = undefined; } browserWaiter?.(null); browserWaiter = undefined; } } as unknown as BrowserContext;
-  const realProvider = createProfileOnboardingDuoProvider({ browserRoots: mockBrowserRootPort().browserRoots, browserRoot, extensionDirectory, clock, closeProofMs: 50,
+  const realProvider = createProfileOnboardingDuoProvider({ browserRoots: mockBrowserRootPort().browserRoots, browserRoot, extensionDirectory, clock, closeProofMs: 50, platform,
     launcher: { launch: async input => {
       if(input.nativeOnly===true){
         nativeProbes++;
@@ -432,6 +440,19 @@ describe("draft Duo provider", () => {
       assert.deepEqual(w.calls, ["native-platform"]);
       await w.send("portal-accepted", { credentialId: "native-public-id", requestId });
       assert.deepEqual(w.calls, ["native-platform", "portal-accepted"]);
+    } finally { await w.cleanup(); }
+  });
+
+  it("retains the virtual platform key before recording its ceremony on Windows", async () => {
+    const w = world("touch", "win32");
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
+      const requestId = randomUUID();
+      assert.deepEqual(await w.send("native-created", { credentialId: "virtual-public-id", requestId }), { ok: true, value: { observed: true } });
+      assert.deepEqual(w.calls, ["persist", "chromium-platform"]);
+      await w.send("portal-accepted", { credentialId: "virtual-public-id", requestId });
+      assert.deepEqual(w.calls, ["persist", "chromium-platform", "portal-accepted"]);
     } finally { await w.cleanup(); }
   });
 

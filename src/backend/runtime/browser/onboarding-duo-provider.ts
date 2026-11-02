@@ -50,6 +50,7 @@ export interface OnboardingDuoProviderOptions {
   readonly clock: Clock;
   readonly closeProofMs: number;
   readonly launcher?: PersistentContextLauncher;
+  readonly platform?: NodeJS.Platform;
 }
 
 
@@ -443,7 +444,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
                   const context = session.context;
                   const frames = context?.pages().filter(page => !page.isClosed()).flatMap(page => page.frames()).filter(frame => new URL(frame.url()).origin === request.data.origin);
                   if (!context || frames?.length !== 1 || !frames[0]) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-                  session.platform = await prepareOnboardingPlatformAuthenticator(context, frames[0]);
+                  session.platform = await prepareOnboardingPlatformAuthenticator(context, frames[0], options.platform);
                   await observedCurrent(session);
                 }
                 const capability = await bindObservedContext({ contextId: request.data.documentId, tabId: request.data.tabId, accountName: request.data.username,
