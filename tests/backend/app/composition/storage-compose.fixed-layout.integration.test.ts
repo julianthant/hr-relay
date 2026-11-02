@@ -1,4 +1,4 @@
-import { removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { removeEmptySchema16OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
@@ -82,6 +82,7 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 |
       const native = new DatabaseSync(profile.path);
       try {
         native.exec("BEGIN EXCLUSIVE");
+        removeEmptySchema16OcrReview(native);
         removeSchema15RunPause(native);
         if (sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(native);
         if (sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(native);
@@ -236,6 +237,7 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     const source = new DatabaseSync(profile.path);
     try {
       source.exec("BEGIN EXCLUSIVE");
+      removeEmptySchema16OcrReview(source);
       removeSchema15RunPause(source);
       removeEmptyExclusiveSessionLeaseFixture(source);
       restoreEmptyPreMasterWorkbookFixture(source);

@@ -1,4 +1,4 @@
-import { removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../../support/fixtures/storage/historical-run-schema.js";
+import { removeEmptySchema16OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../../support/fixtures/storage/historical-run-schema.js";
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../../support/fixtures/storage/pre-reading-artifact-retention.js";
 import assert from "node:assert/strict";
@@ -282,6 +282,7 @@ it("preserves a real UNKNOWN parked write, its fenced attempt and stopped worker
     const native = new DatabaseSync(path);
     try {
       native.exec("BEGIN EXCLUSIVE");
+      removeEmptySchema16OcrReview(native);
       removeSchema15RunPause(native);
       removeEmptyExclusiveSessionLeaseFixture(native);
       restoreEmptyPreMasterWorkbookFixture(native);
@@ -334,6 +335,7 @@ function historicalTen(path: string): void {
   const database = new DatabaseSync(path);
   try {
     database.exec("BEGIN EXCLUSIVE");
+    removeEmptySchema16OcrReview(database);
     removeSchema15RunPause(database);
     removeEmptyExclusiveSessionLeaseFixture(database);
     restoreEmptyPreMasterWorkbookFixture(database);
