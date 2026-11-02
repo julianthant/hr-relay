@@ -882,7 +882,7 @@ export class RuntimeAdmission {
       }
     } else if (repair) {
       assertProfileRestoreDatabaseBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
-      repairSchema = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11)]).parse(readProfileDatabaseBinding(join(root, "state.db")).schemaVersion);
+      repairSchema = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12)]).parse(readProfileDatabaseBinding(join(root, "state.db")).schemaVersion);
     }
     else if (!publication && claim.phase === "runtime") assertLiveProfileDatabaseBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });
     else if (!publication) assertCanonicalProfileBinding(join(root, "state.db"), { installationId: this.locator.installationId, profileId: claim.profileId });

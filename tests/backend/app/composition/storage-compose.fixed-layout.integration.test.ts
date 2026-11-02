@@ -130,7 +130,7 @@ it.each([[false, 11], [true, 11], [false, 10]] as const)("converts the stopped d
     const directory = join(profile.stateRoot, "backups", "authority");
     const manifests = readdirSync(directory).filter(name => name.endsWith(".manifest.json"))
       .map(name => StoppedAuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(directory, name), "utf8"))));
-    assert.deepEqual(manifests.map(manifest => manifest.schemaVersion).sort(), sourceVersion === 10 ? [10, 11] : [11]);
+    assert.deepEqual(manifests.map(manifest => manifest.schemaVersion).sort(), sourceVersion === 10 ? [10, 12] : [12]);
     for (const manifest of manifests) {
       assert.equal(manifest.installationId, f.before.binding.installationId); assert.equal(manifest.profileId, f.before.binding.profileId);
       assert.equal(manifest.verification.quickCheck, "ok"); assert.equal(manifest.verification.foreignKeyViolations, 0);

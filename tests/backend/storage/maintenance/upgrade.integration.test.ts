@@ -578,7 +578,7 @@ describe("stopped native upgrade admission",()=>{
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),current);
  });
- it.each([12,19,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
+ it.each([13,19,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
   const f=await liveFixture();initialize(f);const raw=new DatabaseSync(f.path);
   try{raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);}finally{raw.close();}
   const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),error=>error instanceof AuthoritySchemaVersionError && error.code==="authority-schema-mismatch");assert.deepEqual(storageTree(f.root),before);

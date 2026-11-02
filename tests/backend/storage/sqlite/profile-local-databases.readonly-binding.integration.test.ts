@@ -328,13 +328,13 @@ it("takes and disposes a fresh strict snapshot for every ordinary binding read",
   } finally { observer.mockRestore(); await f.close(); }
 });
 
-it.each([9, 10, 11, 12])("accepts only supported bound database version %s", async version => {
+it.each([9, 10, 11, 12, 13])("accepts only supported bound database version %s", async version => {
   const f = await createBoundProfileFixture();
   const expectedBinding = f.admission.profileBinding;
   try {
     const raw = new DatabaseSync(f.path);
     try { raw.exec(`PRAGMA user_version=${version}`); } finally { raw.close(); }
-    if (version === 12) assert.throws(() => readProfileDatabaseBinding(f.path), /profile-database-schema-mismatch/u);
+    if (version === 13) assert.throws(() => readProfileDatabaseBinding(f.path), /profile-database-schema-mismatch/u);
     else {
       const result = readProfileDatabaseBinding(f.path);
       assert.equal(result.schemaVersion, version);

@@ -35,7 +35,7 @@ for (const state of ["projection-corrupt", "critical-fence-unreadable", "foreign
         finally { native.exec(trigger.sql); }
       }
       else if (state === "future" || state === "unsupported") {
-        const version = state === "future" ? 12 : 7;
+        const version = state === "future" ? 13 : 7;
         native.exec(`BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=${version} WHERE id=1; PRAGMA user_version=${version}; COMMIT`);
       } else if (state !== "recovery-refusal") native.exec(state === "projection-corrupt" ? "DROP TABLE run_search" : "DROP TABLE write_attempts");
     } finally { native.close(); }
