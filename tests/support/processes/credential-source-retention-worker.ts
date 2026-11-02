@@ -370,7 +370,15 @@ try {
     if (failure instanceof Error) {
       if (names.has(failure.name)) causes.add(failure.name);
       if (failure.message === "runtime-control: profile-registry-observation-changed") causes.add("profile-registry-observation-changed");
-      if (/^Timeout [0-9]+ms exceeded/u.test(failure.message)) causes.add("native-launch-timeout");
+      if (/Timeout [0-9]+ms exceeded/u.test(failure.message)) causes.add("native-launch-timeout");
+      const nativeTiming: unknown = Reflect.get(failure, "relayNativeProbeTiming");
+      if (nativeTiming !== undefined) {
+        const timing = z.strictObject({ attempt: z.number().int().min(1).max(2), elapsedMs: z.number().int().safe().nonnegative(),
+          spawnObserved: z.boolean(), exitObserved: z.boolean() }).parse(nativeTiming);
+        causes.add(`native-probe-${timing.attempt}-launch-${timing.elapsedMs}ms`);
+        causes.add(timing.spawnObserved ? "native-spawn-observed" : "native-spawn-unreported");
+        causes.add(timing.exitObserved ? "native-exit-observed" : "native-exit-unreported");
+      }
       if ("code" in failure && ["EACCES", "EPERM", "ENOENT", "ETIMEDOUT", "EBUSY"].includes(String(failure.code))) causes.add(String(failure.code));
       pending.push(failure.cause);
     }

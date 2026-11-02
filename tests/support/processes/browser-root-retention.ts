@@ -57,7 +57,16 @@ export async function runBrowserRootRetentionCase(input: Readonly<{ scenario: st
       const row = document().roots[0]; assert.ok(row);
       if (launches++ === 0) assert.equal(row.launch.state, "launching");
       else assert.equal(row.native?.phase, "probing");
-      return DEFAULT_BROWSER_LAUNCHER.launch(launch);
+      const started = performance.now();
+      try { return await DEFAULT_BROWSER_LAUNCHER.launch(launch); }
+      catch (error) {
+        if (error instanceof Error) Object.defineProperty(error, "relayNativeProbeTiming", { value: {
+          attempt: launches, elapsedMs: Math.round(performance.now() - started),
+          spawnObserved: error.message.includes("<launched> pid="),
+          exitObserved: error.message.includes("<process did exit:"),
+        } });
+        throw error;
+      }
     } };
     const realOptions = createNativeBrowserProbe({ clock: systemClock, scheduler, closeProofMs: 5000, launchTimeoutMs: 5000, signal: new AbortController().signal, launcher });
     await roots.probe(owner, realOptions);
