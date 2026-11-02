@@ -22,8 +22,14 @@ function fixture(available: boolean | Error) {
 
 it("keeps an available platform authenticator native without attaching emulation", async () => {
   const f = fixture(true);
-  assert.deepEqual(await prepareOnboardingPlatformAuthenticator(f.context, f.page), { mechanism: "native-platform" });
+  assert.deepEqual(await prepareOnboardingPlatformAuthenticator(f.context, f.page, "darwin"), { mechanism: "native-platform" });
   assert.deepEqual(f.calls, []);
+});
+
+for (const host of ["win32", "linux"] as const) it(`uses virtual Touch ID on ${host} even when another platform authenticator is available`, async () => {
+  const f = fixture(true);
+  assert.equal((await prepareOnboardingPlatformAuthenticator(f.context, f.page, host)).mechanism, "chromium-platform");
+  assert.deepEqual(f.calls.map(call => call.method), ["attach", "WebAuthn.enable", "WebAuthn.addVirtualAuthenticator"]);
 });
 
 it("uses a Chromium internal authenticator only for explicit platform absence and retains its bound key", async () => {

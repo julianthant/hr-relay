@@ -637,8 +637,8 @@ enrollment, persisted credential, counter reservation or readiness proof.
 `profile-onboarding.ts` issues exact operation/generation/method attempts. Software FastDuo readiness
 requires native pending-key acknowledgement and ceremony plus either exact scoped operator CONFIRM
 or an observed exact-credential request; an unobserved portal acceptance remains false. Touch ID separately requires a platform ceremony with software interception disabled, actual Duo
-portal acceptance and operator confirmation. A successful platform-availability probe selects native
-Touch ID when available; explicit absence selects Chromium's virtual internal authenticator before
+portal acceptance and operator confirmation. A successful platform-availability probe on macOS selects native
+Touch ID when available; explicit absence or a non-macOS host selects Chromium's virtual internal authenticator before
 the ceremony. A failed probe or native ceremony never triggers an emulated retry. Virtual platform
 keys enter the same encrypted Duo custody and must be ready before Finish. The retained receipt and
 public method state identify `native-platform` or `chromium-platform`. Public method states display these receipts; they do not

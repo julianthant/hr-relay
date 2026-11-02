@@ -7,10 +7,10 @@ export type OnboardingPlatformAuthenticator =
   | Readonly<{ mechanism: "native-platform" }>
   | Readonly<{ mechanism: "chromium-platform"; credential(credentialId: string, rpId: string, createdAt: string): Promise<DraftDuoPendingCredential> }>;
 
-export async function prepareOnboardingPlatformAuthenticator(context: BrowserContext, page: Page | Frame): Promise<OnboardingPlatformAuthenticator> {
+export async function prepareOnboardingPlatformAuthenticator(context: BrowserContext, page: Page | Frame, platform: NodeJS.Platform = process.platform): Promise<OnboardingPlatformAuthenticator> {
   const available = z.boolean().parse(await page.evaluate(async () => typeof PublicKeyCredential === "function"
     && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()));
-  if (available) return { mechanism: "native-platform" };
+  if (platform === "darwin" && available) return { mechanism: "native-platform" };
   const session = await context.newCDPSession(page);
   await session.send("WebAuthn.enable");
   const { authenticatorId } = await session.send("WebAuthn.addVirtualAuthenticator", { options: {
