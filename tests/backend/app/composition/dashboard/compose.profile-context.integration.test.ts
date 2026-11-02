@@ -60,8 +60,8 @@ it("starts the actual dashboard from the same token-owned context and proves res
     assert.equal(context.database.getMeta().profileId, f.active.profileId);
     assert.equal(context.admission.stateRoot, f.stateRoot);
     const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(dashboard.port)}` });
-    assert.ok(client.assistantPermission);
-    assert.deepEqual(await client.assistantPermission(), { profileId: f.active.profileId, epoch: context.profileEpoch,
+    const readPermission = client.assistantPermission?.bind(client); assert.ok(readPermission);
+    assert.deepEqual(await readPermission(), { profileId: f.active.profileId, epoch: context.profileEpoch,
       mode: "every-action", state: "grant-required", policyRevision: 0,
       settingsRevision: context.settings.read().record.revision, settingsSchemaHash: SETTINGS_SCHEMA_HASH });
     assert.equal(context.database.authority.assistantAuthorization.grant(), undefined);

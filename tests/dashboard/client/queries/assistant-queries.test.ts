@@ -10,8 +10,8 @@ it("reads person-bound confirmation policy without dispatching a grant or action
   const client = createDashboardClient({ baseUrl: "http://relay.test", fetchImpl: async (url, init) => {
     calls.push({ url, ...(init === undefined ? {} : { init }) }); return Response.json(view);
   } });
-  assert.ok(client.assistantPermission);
-  assert.deepEqual(await client.assistantPermission(abort.signal), view);
+  const readPermission = client.assistantPermission?.bind(client); assert.ok(readPermission);
+  assert.deepEqual(await readPermission(abort.signal), view);
   assert.equal(calls.length, 1); assert.equal(calls[0]?.url, "http://relay.test/api/v1/assistant/permission");
   assert.equal(calls[0]?.init?.method ?? "GET", "GET"); assert.equal(calls[0]?.init?.signal, abort.signal);
   assert.equal(calls[0]?.init?.body, undefined);
@@ -25,7 +25,7 @@ it("refuses retired modes, inconsistent grant revisions and extra permission aut
     { ...view, epoch: -1 }, { ...view, settingsSchemaHash: "bad" }, { ...view, autoApprove: true }]) {
     let reads = 0;
     const client = createDashboardClient({ baseUrl: "http://relay.test", fetchImpl: async () => { reads++; return Response.json(invalid); } });
-    const read = client.assistantPermission; assert.ok(read);
+    const read = client.assistantPermission?.bind(client); assert.ok(read);
     await assert.rejects(() => read());
     assert.equal(reads, 1);
   }
