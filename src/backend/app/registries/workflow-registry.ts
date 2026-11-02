@@ -2,11 +2,7 @@ import { FingerprintSchema, type Fingerprint } from "../../../rules/identity/ids
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 
 import { readFileSync } from "node:fs";
-import {
-  compileWorkflow,
-  composeWorkflowModule,
-  type WorkflowModule,
-} from "../../../workflow-kit/workflow-definition.js";
+import type { WorkflowModule } from "../../../workflow-kit/workflow-definition.js";
 import { workflowProjections } from "../../../workflow-kit/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { PendingImplBindingsSchema } from "../../../workflow-kit/validation/impl-bindings.js";
@@ -21,9 +17,9 @@ import {
   workflowRoleRegistry,
 } from "../../../workflow-kit/validation/workflow-module-audit.js";
 import { taskStoreRegistry } from "./task-registry.js";
-import { personLookupWorkflow } from "../../../workflows/person-lookup/workflow.js";
-import { separationsWorkflow } from "../../../workflows/separations/workflow.js";
 import { createWorkflowDescriptorRegistry } from "../../../workflows/descriptor-registry.js";
+import { WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES } from "./generated-workflow-modules.js";
+export * from "./generated-workflow-modules.js";
 
 export function createWorkflowRegistry<PublicModule extends WorkflowModule>(
   publicEntries: readonly PublicModule[],
@@ -59,20 +55,7 @@ export function createWorkflowRegistry<PublicModule extends WorkflowModule>(
   });
 }
 
-export const personLookupModule = composeWorkflowModule(
-  compileWorkflow(personLookupWorkflow),
-  taskStoreRegistry.stores,
-);
-export const separationsModule = composeWorkflowModule(
-  compileWorkflow(separationsWorkflow),
-  taskStoreRegistry.stores,
-);
-const registry = createWorkflowRegistry([
-  personLookupModule,
-  separationsModule,
-], []);
-
-export const WORKFLOW_MODULES = registry.publicModules;
+const registry = createWorkflowRegistry(WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES);
 
 /** Resolve a public workflow, or refuse with its registered alternatives. */
 export const workflowModuleOf = registry.moduleOf;

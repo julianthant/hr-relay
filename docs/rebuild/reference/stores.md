@@ -205,6 +205,14 @@ _No tasks registered — this store is a declaration-only placeholder._
 |---|---|---|---|---|---|---|---|---|---|
 | `ocr/extract-form-page` | Reading form page | read | extract | — (sessionless) | `ocr.extract` | `formType`, `page`, `sourcePage` | `formType`, `source`, `readAt`, `sourceSha256`, `sourcePage`, `pageKind`, `record`, `pageFingerprint` | 4h | bound |
 
+### `roster`
+
+**Kind:** service store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 1 (1 read · 0 prepare · 0 commit)
+
+| Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| `roster/match-spreadsheet` | Matching against roster | read | match | — (sessionless) | — | `subjects`, `rosterFileRef`, `sheet`, `mapping`, `readAt` | `matches` | 24h | bound |
+
 ### `workflow:person-lookup`
 
 **Kind:** workflow mini-store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 2 (2 read · 0 prepare · 0 commit)
@@ -213,14 +221,6 @@ _No tasks registered — this store is a declaration-only placeholder._
 |---|---|---|---|---|---|---|---|---|---|
 | `workflow:person-lookup/read-resolved-identity` | Identity cross-check | read | read | — (sessionless) | — | `input`, `person`, `match`, `crm` | `shouldCheckCrm`, `ucpathFound`, `crmErrorCode`, `state`, `crmIdentity`, `unselectedCrmRecords`, `selected`, `crmRecord`, `candidateEids`, `recoveryEid`, `crmState`, `method` | ∞ | bound |
 | `workflow:person-lookup/read-active-status` | Read employment status | read | read | — (sessionless) | — | `input`, `identity`, `verifiedCrm`, `recovered`, `match` | `ucpathSelection`, `datesEid`, `state`, `reason`, `code`, `hdh`, `candidateEids`, `details` | ∞ | bound |
-
-### `roster`
-
-**Kind:** service store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 1 (1 read · 0 prepare · 0 commit)
-
-| Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
-|---|---|---|---|---|---|---|---|---|---|
-| `roster/match-spreadsheet` | Matching against roster | read | match | — (sessionless) | — | `subjects`, `rosterFileRef`, `sheet`, `mapping`, `readAt` | `matches` | 24h | bound |
 
 ### `workflow:separations`
 
