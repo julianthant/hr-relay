@@ -382,9 +382,9 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-The current schema is 12. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
+The current schema is 13. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
 
-The supported READY bound-profile upgrade sources are schemas 8, 9, 10 and 11. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
+The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11 and 12. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
 `src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 12` and
@@ -422,7 +422,7 @@ source or creating a backup.
 `credentials: "unchanged"`. It initializes absent current authority, verifies existing current authority,
 or upgrades schema 1, 2, 3, 4, 5 or 6 under stopped exclusive custody. The schema 1 path first adds the
 stream-head index. Schemas 1 and 2 then rebuild `worker_pools` with `desired_workers >= 0`.
-Migration 4 adds the workbook library and immutable version history, and protects imported artifacts’ workbook provenance.
+Migration 4 adds the workbook library and immutable version history, and protects imported artifacts’ workbook provenance. Migration 12 preserves existing OCR extraction content and artifact IDs in explicit `unbound-source` envelopes. New source-bound reading versions append under their canonical extraction IDs; ordinary readers accept only the current stored envelope.
 Migration 6 removes `workers` from retained start plans. Current readers reject that field; stopped
 upgrade validates the schema 5 choice before removing it.
 Under restore admission, the service rechecks the source fingerprint, creates a stopped-authority
@@ -433,7 +433,7 @@ The record's `backup_digest` matches the backup SHA-256. A failed migration roll
 changes. For pending diagnostic stages it reclaims through `diagnostic-maintenance` and verifies
 unchanged authority generation and content fingerprint. Supported registered person schemas also
 upgrade automatically before dashboard runtime admission.
-`upgradeReadyProfileStorage` separately handles an already READY, saved profile bound to supported schema 8, 9 or 10.
+`upgradeReadyProfileStorage` separately handles an already READY, saved profile bound to supported schema 8, 9, 10 or 11.
 It acquires the actual machine workspace's restore admission before privately issuing a stopped
 purpose from that same exclusive machine and registered runtime claim. Issuance verifies native
 source binding, anchored key/erasure-head evidence, fixed control and physical ancestry, and the
@@ -443,7 +443,7 @@ This purpose admits original-source inspection, its own verified authority backu
 upgrade from that exact source to the current schema only. It cannot initialize a profile, read credentials, open ordinary runtime storage,
 grant generic writes/exclusive authority, delegate nested copies, or admit an in-memory database.
 Its source fingerprint is privately bound before issuance and checked again inside the migration
-transaction with the actual verified backup. Readback binds the exact source version and current destination. Unrelated business rows, Settings, terminal assistant records and audits remain unchanged; only the declared editor records, retired automatic grants and pending automatic proposals are retired, alongside schema metadata and the appended upgrade record. Already-current READY
+transaction with the actual verified backup. Readback binds the exact source version and current destination. Unrelated business rows, Settings, terminal assistant records and audits remain unchanged; the declared editor records, retired automatic grants and pending automatic proposals are retired, existing OCR evidence receives its explicit source-binding envelope, and schema metadata plus the appended upgrade record advance. Already-current READY
 inspection never reclaims diagnostics. Unproved source closure or rollback retains restore custody
 and the original failures. `upgradeProfileAtStartup` uses this same engine before HTTP, account or
 ordinary profile composition. Launch order is self-repair, schema upgrade, then recovery on the current format.
@@ -462,7 +462,7 @@ A changed source fails with `source-changed: re-plan upgrade`. Startup completes
 
 Bootstrap holds the lifetime listener before the supported forward conversion. The finite source
 reader admits only the known default pair at generation zero. Existing stopped machine-control and
-flat-store conversion run through their current owners. Supported registered schemas 8–10 then receive
+flat-store conversion run through their current owners. Supported registered schemas 8–11 then receive
 the automatic backed-up W11a upgrade before current-only layout qualification. Registered ready/cancelling people and initialized pending sign-ups need a verified current SQL backup and genuine native closure before paths change.
 Current-only layout source admissions preserve unfinished durable work and ordinary output files and
 cannot authorize schema migration; manual upgrade and credential-copy admissions retain their strict
@@ -557,7 +557,7 @@ instead of reading the map directly.
 
 Dashboard startup inspects registered ready/cancelling people and initialized pending sign-ups under genuine exclusive installation and
 maintenance ownership before ordinary admission, HTTP or credential consumers. Supported SQLite
-schemas 8–10 receive a verified same-person backup and the stopped forward migration, followed by
+schemas 8–11 receive a verified same-person backup and the stopped forward migration, followed by
 current-schema health readback. Current stores are inspected without another backup. Missing,
 corrupt, foreign and future databases refuse with `STORAGE_PROFILE_UPGRADE_REFUSED`; they never
 initialize empty storage. Only a genuinely not-yet-created sign-up with its planned credential

@@ -4,7 +4,7 @@ import { ExclusiveSessionLeaseSchema, type ExclusiveSessionLease } from "../../.
 import { BrowserSessionIdSchema, FingerprintSchema, IsoInstantSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
-export const EXCLUSIVE_SESSION_LEASE_MIGRATION = Object.freeze({ version: 12, statements: Object.freeze([
+export const EXCLUSIVE_SESSION_LEASE_MIGRATION = Object.freeze({ version: 13, statements: Object.freeze([
   `CREATE TABLE exclusive_session_leases (
     id TEXT PRIMARY KEY, generation INTEGER NOT NULL CHECK(generation>0),
     worker_id TEXT NOT NULL REFERENCES worker_slots(id), worker_lease_generation INTEGER NOT NULL CHECK(worker_lease_generation>0),

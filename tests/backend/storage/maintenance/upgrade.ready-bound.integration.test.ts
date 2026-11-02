@@ -1,3 +1,5 @@
+import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
+import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { copyFileSync,existsSync,mkdirSync,readFileSync,readdirSync,renameSync,rmdirSync,writeFileSync } from "node:fs";
@@ -39,7 +41,7 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 const hostFacts = { primaryDisplay: null };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 = 8) {
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 = 8, extractionEvidence = false) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
@@ -101,6 +103,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
+    assert.equal(raw.prepare("SELECT COUNT(*) AS count FROM exclusive_session_leases").get()?.count, 0);
     raw.exec("DROP TABLE exclusive_session_leases");
     if (sourceVersion < 10) {
       const editorDdl = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE TABLE explorer_overrides \([\s\S]*?\n\) STRICT;/u)?.[0];
@@ -108,6 +111,14 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
       raw.exec(editorDdl);
     }
     if (sourceVersion < 9) raw.exec("DROP TABLE assistant_model_preference");
+    if (extractionEvidence) {
+      const extraction = donePage(sourceFixture(1).inputs[0]).output.extraction;
+      const id = `${extraction.sourceSha256}#${extraction.sourcePage}#${extraction.formType}`;
+      raw.prepare(`INSERT INTO artifacts (id,kind,version,form_type,source_sha256,source_page,page_kind,page_fingerprint,source_kind,payload_json,created_at)
+        VALUES (?,'extracted',1,?,?,?,?,?,?,?,?)`).run(id, extraction.formType, extraction.sourceSha256, extraction.sourcePage,
+        extraction.pageKind, extraction.pageFingerprint, extraction.source.kind, JSON.stringify(extraction), extraction.readAt);
+    }
+    if (sourceVersion < 12) restorePreReadingArtifactRetention(raw);
     raw.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(sourceVersion);
     raw.exec(`PRAGMA user_version=${sourceVersion}; COMMIT`);
     const prior = inspectNativeAuthority(raw, sourceVersion);
@@ -452,7 +463,7 @@ it("revokes READY custody on exact artifact-root ancestry substitution", async (
   }
 });
 
-it.each([9, 10, 11] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
+it.each([9, 10, 11, 12] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
   const f = await readyBoundEight("idle", sourceVersion);
   try {
     const before = rawEight(f.path);
@@ -467,5 +478,51 @@ it.each([9, 10, 11] as const)("upgrades supported schema %s to the current versi
     const fresh = f.machine.admitProfile(f.binding.profileId);
     try { assert.equal(fresh.profileMaintenanceSchemaVersion(), CURRENT_AUTHORITY_SCHEMA_VERSION); }
     finally { fresh.release(); }
+  } finally { await f.close(); }
+});
+
+
+it("backs up schema-11 extraction evidence before conversion and retains both source states after restart", async () => {
+  const f = await readyBoundEight("idle", 11, true);
+  try {
+    const extraction = donePage(sourceFixture(1).inputs[0]).output.extraction;
+    const id = `${extraction.sourceSha256}#${extraction.sourcePage}#${extraction.formType}`;
+    const before = rawEight(f.path).artifacts;
+    assert.equal(before?.length, 1);
+    await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock);
+    const restore = f.acquireRestore();
+    try {
+      const stopped = await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, restore, systemClock, hostFacts);
+      try {
+        const directory = join(f.stateRoot, "backups", "authority");
+        const manifests = readdirSync(directory).filter(name => name.endsWith(".manifest.json"));
+        assert.equal(manifests.length, 1);
+        const backup = verifyStoppedBackupManifestAtPath(stopped, join(directory, manifests[0]));
+        assert.equal(backup.manifest.schemaVersion, 11);
+        const raw = new DatabaseSync(backup.backupPath, { readOnly: true });
+        try { assert.deepEqual(raw.prepare("SELECT * FROM artifacts").all(), before); }
+        finally { raw.close(); }
+      } finally { stopped.release(); }
+    } finally { restore.release(); }
+    const admission = f.machine.admitProfile(f.claim);
+    try {
+      const credentials = createCredentialStore({ admission, stateRoot: f.stateRoot });
+      const database = AuthorityDatabase.open(admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
+        undefined, undefined, undefined, credentials);
+      try {
+        assert.deepEqual(database.authority.ocrExtractions.get(id), { binding: "unbound-source", extractionId: id, extraction });
+        const reading = donePage(sourceFixture(1).inputs[0]).output;
+        assert.equal(database.authority.ocrExtractions.insert(reading).state, "inserted");
+        assert.deepEqual(database.authority.ocrExtractions.findBySource(extraction.sourceSha256).map(record => record.binding).sort(),
+          ["source-bound", "unbound-source"]);
+      } finally { database.close(); }
+    } finally { admission.release(); }
+    const restarted = f.machine.admitProfile(f.claim);
+    try {
+      const database = AuthorityDatabase.open(restarted, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
+        undefined, undefined, undefined, createCredentialStore({ admission: restarted, stateRoot: f.stateRoot }));
+      try { assert.equal(database.authority.ocrExtractions.findBySource(extraction.sourceSha256).length, 2); }
+      finally { database.close(); }
+    } finally { restarted.release(); }
   } finally { await f.close(); }
 });

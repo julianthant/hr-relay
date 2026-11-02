@@ -67,11 +67,6 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "reason": "Invalid IANA zones fail the validation predicate; public callers reject with named errors without substituting a zone."
   },
   {
-    "path": "src/backend/storage/admission/installation.ts",
-    "sha256": "00508bb1304546b1557953e9ea3a572f8c1de8e941ce092c0df67253c186da9b",
-    "reason": "Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
-  },
-  {
     "path": "src/backend/runs/commands/ordinary-path-validator.ts",
     "sha256": "bc1af093e1d4b7c13aa70e24f1e26e313f600ce4df86ecf1eeae951d0c101910",
     "reason": "Only an explicitly allowed missing directory with ENOENT returns false; safe parent validation follows, and other errors throw named refusal."
@@ -110,11 +105,6 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "path": "src/backend/storage/sqlite/authority-boot.ts",
     "sha256": "a83c56f6def1c1caf87975733313b34dee23f91072c0064cb3030c875083495f",
     "reason": "A failed open or inspection returns degraded-read-only with mutations blocked; only successful close clears the database handle, and uncertain close preserves the handle and aggregate cause."
-  },
-  {
-    "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "6d9ab58ab98c3a7f42a14d44a990ab38af081670dee5a5af346239c2becb11d0",
-    "reason": "Failed constructor cleanup retains the actual native database and admission with both opening and close failures. Failed rollback retains database custody with the original failure; successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or named search refusal, never validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody releases; required native browser closure precedes cancellation. Bounded layout publication validates exact prestate or committed backup-bound state; failed rollback, native close or baseline-copy disposal propagates with its actual retained owners."
   },
   {
     "path": "src/backend/storage/sqlite/readonly-authority-snapshot.ts",

@@ -17,7 +17,7 @@ import { RunSessionRecordSchema } from "../../../models/run/session.js";
 import { DeletedRunRecordSchema } from "../../../models/run/deleted-run.js";
 import { WorkerPoolRecordSchema } from "../../../models/run/worker-pool.js";
 import { AuthorityUpgradeRecordSchema, type AuthorityTableName } from "../../../models/config/authority.js";
-import { AdmittedExtractionSchema } from "../../../models/ocr/extraction.js";
+import { StoredOcrExtractionSchema } from "../../../models/ocr/stored-extraction.js";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
 import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
@@ -74,7 +74,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   exclusive_session_leases: ExclusiveSessionLeaseSchema,
   notifications: NotificationRecordSchema,
   notification_states: NotificationHealthSchema,
-  artifacts: z.union([ImportedArtifactSchema, AdmittedExtractionSchema, GeneratedArtifactSchema]),
+  artifacts: z.union([ImportedArtifactSchema, StoredOcrExtractionSchema, GeneratedArtifactSchema]),
   timeline_events: TimelineEventRecordSchema,
   diagnostic_snapshots: DiagnosticBundleSchema,
   diagnostic_files: DiagnosticAttachmentStorageRecordSchema,

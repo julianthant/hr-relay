@@ -1,3 +1,4 @@
+import { restorePreReadingArtifactRetention } from "./pre-reading-artifact-retention.js";
 import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { createWorkbookLibraryRepository } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
@@ -31,7 +32,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../helpers/admission-fixture.js";
 
-export async function createHistoricalRegisteredProfileFixture(options: { sourceVersion: 8 | 9 | 10; workspace?: string; lifetime?: RuntimeLifetimeLock }) {
+export async function createHistoricalRegisteredProfileFixture(options: { sourceVersion: 8 | 9 | 10 | 11; workspace?: string; lifetime?: RuntimeLifetimeLock }) {
   assert.equal(Entry, FakeKeyringEntry, "historical fixture requires the actual fake keychain before backend imports");
   const lifetime = options.lifetime ?? await RuntimeLifetimeLock.acquire(0);
   const fixture = await createBoundProfileFixture({ pending: "onboarding", lifetime, ...(options.workspace === undefined ? {} : { workspace: options.workspace }) });
@@ -73,12 +74,15 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
   let failure: { error: unknown } | undefined;
   try {
     database.exec("PRAGMA foreign_keys=ON; BEGIN EXCLUSIVE");
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM exclusive_session_leases").get()?.count, 0);
+    database.exec("DROP TABLE exclusive_session_leases");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     if (options.sourceVersion < 10) {
       const editor = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE TABLE explorer_overrides \([\s\S]*?\n\) STRICT;/u)?.[0];
       assert.ok(editor); database.exec(editor);
     }
     if (options.sourceVersion < 9) database.exec("DROP TABLE assistant_model_preference");
+    restorePreReadingArtifactRetention(database);
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(options.sourceVersion);
     database.exec(`PRAGMA user_version=${options.sourceVersion}; COMMIT`);
     inspectOpenDatabase(database, options.sourceVersion);
