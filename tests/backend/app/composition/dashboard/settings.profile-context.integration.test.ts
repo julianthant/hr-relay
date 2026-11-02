@@ -90,7 +90,7 @@ it("binds browser roots and selected Settings resolution to the genuine ordinary
     assert.throws(() => context.resolveSettings({ ...saved, paths: { ...saved.paths, browserProfileRoot: custom } }), /fixed-person-browser-root-required/u);
     for (const rejected of [f.stateRoot, join(f.machine.stateRoot, "shared-browser"), join(f.stateRoot, "credentials", "browser")]) {
       assert.throws(() => assertProfileBrowserRoot(f.admission, rejected), ProfileBrowserRootRefusalError);
-      assert.throws(() => context.resolveSettings({ ...saved, paths: { ...saved.paths, browserProfileRoot: rejected } }), ProfileBrowserRootRefusalError);
+      assert.throws(() => context.resolveSettings({ ...saved, paths: { ...saved.paths, browserProfileRoot: rejected } }), /fixed-person-browser-root-required/u);
     }
     mkdirSync(join(f.stateRoot, "real-browser"), { mode: 0o700 });
     const linked = join(f.stateRoot, "linked-browser"); symlinkSync(join(f.stateRoot, "real-browser"), linked);

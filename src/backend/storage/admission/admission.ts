@@ -1135,7 +1135,7 @@ export class RuntimeAdmission {
   fixedLayoutBindings(targetWorkspace: string): FixedLayoutIntent["bindings"] {
     return fixedLayoutBindings(this.#exclusiveInstallationLease(), targetWorkspace);
   }
-  prepareFixedLayoutPublication(intent: FixedLayoutIntent, sources: readonly Readonly<{ admission: RuntimeAdmission; closure: StoppedBackupClosure }>[]): FixedLayoutPublication {
+  prepareFixedLayoutPublication(intent: FixedLayoutIntent, sources: readonly Readonly<{ admission: RuntimeAdmission; closure: StoppedBackupClosure }>[]): Promise<FixedLayoutPublication> {
     return prepareFixedLayoutPublication(this.#exclusiveInstallationLease(), this, this.maintenanceOperation(), intent, sources);
   }
 

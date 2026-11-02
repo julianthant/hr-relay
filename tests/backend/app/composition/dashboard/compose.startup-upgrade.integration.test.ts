@@ -419,9 +419,10 @@ it("upgrades a pending sign-up database before onboarding recovery without publi
   } finally { await runtime?.close(); machine?.release(); await f.close(); await lifetime.close(); }
 });
 
-for (const phase of ["prepared", "commit-intent", "done"] as const) it(
-  `converts pending logout ${phase} proof and resumes after interruption following the schema commit`, async () => {
-    const lifetime = await RuntimeLifetimeLock.acquire(0), f = await createBoundProfileFixture({ lifetime });
+for (const [phase, move] of [["prepared", false], ["commit-intent", false], ["done", false], ["done", true]] as const) it(
+  `converts pending logout ${phase} proof and resumes after interruption following the schema commit (fixed layout: ${move})`, async () => {
+    let lifetime = await RuntimeLifetimeLock.acquire(0);
+    const f = await createBoundProfileFixture({ lifetime });
     const profileId = f.admission.profileBinding.profileId;
     let source: AuthorityDatabase | undefined, sourceAdmission: RuntimeAdmission | undefined;
     const session = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine, clock: systemClock,
@@ -429,6 +430,8 @@ for (const phase of ["prepared", "commit-intent", "done"] as const) it(
         assert.ok(source); return { source: source.capturePendingLogoutSource(), intentFailed(error) { throw error; } };
       } });
     let machine: RuntimeAdmission | undefined;
+    let runtime: ReturnType<typeof composeProfileRuntime> | undefined;
+    const target = move ? realpathSync(mkdtempSync(join(tmpdir(), "startup-logout-layout-"))) : undefined;
     const convert = vi.spyOn(AuthorityDatabase, "convertStartupUpgradeLogout");
     try {
       const active = session.signIn({ ...login, at: new Date().toISOString() }); assert.ok(active.state === "active");
@@ -437,7 +440,7 @@ for (const phase of ["prepared", "commit-intent", "done"] as const) it(
         undefined, undefined, undefined, createCredentialStore({ admission: sourceAdmission, stateRoot: sourceAdmission.stateRoot }));
       const pending = session.logOut(active.token, { at: new Date().toISOString() }); assert.ok(pending.state === "cancelling" && pending.operationId);
       source.close(); historicalTen(f.path);
-      const operationPath = join(f.machine.stateRoot, "machine", "operations", `${pending.operationId}.json`);
+      let operationPath = join(f.machine.stateRoot, "machine", "operations", `${pending.operationId}.json`);
       const old = LogoutOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
       const fingerprint = withReadonlyAuthoritySnapshot(f.path, database => inspectOpenDatabase(database, 10).authorityContentFingerprint);
       const operation = LogoutOperationSchema.parse({ ...old, settlement: { phase, stoppedAt: old.at, processId: process.pid,
@@ -445,22 +448,36 @@ for (const phase of ["prepared", "commit-intent", "done"] as const) it(
         ...(phase === "prepared" ? {} : { after: phase === "done" ? fingerprint : "b".repeat(64) }), requests: [], workers: [] } });
       f.machine.publishProfileOperation(operation);
       session.close(); sourceAdmission.release(); await f.closeController();
+      await lifetime.close(); lifetime = await RuntimeLifetimeLock.acquire(0);
       convert.mockImplementationOnce(() => { throw new Error("interrupted-after-schema-commit"); });
       await assert.rejects(upgradeRegisteredPersonStores(f.workspace, lifetime, hostFacts), RegisteredPersonUpgradeRefusedError);
       assert.equal(readProfileDatabaseBinding(f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       assert.deepEqual(LogoutOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))), operation);
       convert.mockRestore();
-      await upgradeRegisteredPersonStores(f.workspace, lifetime, hostFacts);
+      let workspace = f.workspace, stateRoot = f.stateRoot, path = f.path;
+      if (target !== undefined) {
+        await prepareApplicationDataWorkspace(f.workspace, target, lifetime, hostFacts);
+        workspace = target; stateRoot = join(target, ".tracker", "data", "profiles", profileId); path = join(stateRoot, "state.db");
+        operationPath = join(target, ".tracker", "data", "machine", "operations", `${pending.operationId}.json`);
+        assert.equal(readFixedLayoutIntent(target)?.phase, "complete");
+      }
+      await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts);
       const next = LogoutOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
       const { settlement: previousSettlement, ...previousIdentity } = operation, { settlement, ...identity } = next;
       assert.deepEqual(identity, previousIdentity); assert.ok(previousSettlement && settlement);
-      const current = withReadonlyAuthoritySnapshot(f.path, database => inspectOpenDatabase(database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint);
+      const current = withReadonlyAuthoritySnapshot(path, database => inspectOpenDatabase(database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint);
       assert.deepEqual(settlement.requests, previousSettlement.requests); assert.deepEqual(settlement.workers, previousSettlement.workers);
       assert.equal(settlement.phase, phase === "done" ? "done" : "prepared");
       assert.equal(phase === "done" ? settlement.after : settlement.before, current);
-      assert.equal(readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json")).length, 1);
-      machine = acquireSharedRuntimeAdmission(f.workspace, lifetime);
+      assert.equal(readdirSync(join(stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json")).length, move ? 2 : 1);
+      machine = acquireSharedRuntimeAdmission(workspace, lifetime);
       assert.equal(machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.lifecycle, "cancelling");
-    } finally { convert.mockRestore(); source?.close(); sourceAdmission?.release(); session.close(); machine?.release(); await f.close(); await lifetime.close(); }
+      runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts });
+      assert.equal(runtime.session.resumeLogout(pending.operationId).state, "cancelling");
+      await runtime.awaitClosurePreparation(profileId);
+      assert.equal(runtime.session.resumeLogout(pending.operationId).state, "signed-out");
+      assert.equal(existsSync(operationPath), false);
+      assert.equal(machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.lifecycle, "ready");
+    } finally { convert.mockRestore(); await runtime?.close(); source?.close(); sourceAdmission?.release(); session.close(); machine?.release(); await f.close(); await lifetime.close(); if (target !== undefined) rmSync(target, { recursive: true, force: true }); }
   },
 );

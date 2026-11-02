@@ -15,7 +15,7 @@ import { emailKey,passwordMatches } from "../configuration/synthetic-verifier.js
 import { createProfileVerifiers,preparedProfileVerifierPepperWitness,verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { SourceRecordSchema,file as backupFile,hash as backupHash,profileAuthorityFileWitnesses,retainedStorageBackup } from "../maintenance/existing-data-backup-files.js";
 import { FlatStartCleanIntentSchema,assertFlatStartCleanCredentials,assertFlatStartCleanFiles,flatStartCleanPlan,readFlatStartCleanSource,type FlatStartCleanIntent } from "../maintenance/flat-start-clean.js";
-import { assertStoppedBackupClosure,type StoppedBackupClosure } from "../maintenance/profile-inventory.js";
+import type { StoppedBackupClosure } from "../maintenance/profile-inventory.js";
 import { fsyncPath,privatePathRejects,replacePrivateFile,writePrivateStage } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError,assertSourceClosuresProved,hasUnprovedSourceClosure,rememberUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { AuthorityDatabase,type StartupLogoutConversion } from "../sqlite/authority-database.js";
@@ -251,8 +251,9 @@ function issueFixedLayoutPublication(lifetime: RuntimeLifetimeLock, intent: Fixe
   return proof;
 }
 
-export function prepareFixedLayoutPublication(lease: InstallationLease, machine: RuntimeAdmission, operation: OfflineMaintenanceOperation,
-  input: FixedLayoutIntent, sources: readonly Readonly<{ admission: RuntimeAdmission; closure: StoppedBackupClosure }>[]): FixedLayoutPublication {
+export async function prepareFixedLayoutPublication(lease: InstallationLease, machine: RuntimeAdmission, operation: OfflineMaintenanceOperation,
+  input: FixedLayoutIntent, sources: readonly Readonly<{ admission: RuntimeAdmission; closure: StoppedBackupClosure }>[]): Promise<FixedLayoutPublication> {
+  const { assertStoppedBackupClosure } = await import("../maintenance/profile-inventory.js");
   assertInstallationLease(lease); lease.assertHeld(); lease.assertOfflineMaintenance(operation);
   requireRuntimeAdmission(machine).assertExclusive();
   if (!(lease.lifetime instanceof RuntimeLifetimeLock)) fail("fixed-layout-root-required");

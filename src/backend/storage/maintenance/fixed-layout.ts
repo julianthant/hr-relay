@@ -16,7 +16,6 @@ import { offlineMaintenanceWorkspace,type OfflineMaintenanceOperation } from "..
 import { noSymlinkAncestry,readPrivateFile,unpublishedDraftAbortMembership,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { fsyncPath,privatePathRejects,replacePrivateFile,writePrivateStage } from "../private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../source-closure.js";
-import { verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { file,hash,profileAuthorityFileWitnesses } from "./existing-data-backup-files.js";
 import { proveProfileRootsUnused } from "./process-closure.js";
@@ -345,6 +344,7 @@ export async function activateFixedLayoutProfiles(machine: RuntimeAdmission): Pr
     || intent.profiles.length !== profiles.length || profiles.some(profileId => !intent.profiles.some(plan => plan.profileId === profileId))) throw new Error("fixed-layout-profile-membership-mismatch");
   const { RuntimeAdmission } = await import("../admission/admission.js");
   const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+  const { verifyBackupManifestAtPath } = await import("../sqlite/backup-service.js");
   const completed = new Map<string, ReturnType<typeof profileAuthorityFileWitnesses>>();
   for (const plan of intent.profiles) {
     machine.assertOfflineMaintenance(operation); assertFixedLayoutConfiguring(intent);
