@@ -125,6 +125,7 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
 }
 
 export interface EntryValidationFailureInput {
+  readonly code?: "RUN_CONTINUATION_REFUSED";
   readonly run: unknown;
   readonly failureId: unknown;
   readonly problems: readonly string[];
@@ -137,7 +138,7 @@ export function buildEntryValidationFailureRecord(input: EntryValidationFailureI
   if (input.problems.length === 0) {
     throw new Error(`run ${run.envelope.runId} entry validation failure requires at least one named problem`);
   }
-  const code = ErrorCodeSchema.parse("RESUME_VALIDATION_FAILED");
+  const code = ErrorCodeSchema.parse(input.code === undefined ? "RESUME_VALIDATION_FAILED" : input.code);
   const summary = [
     `ResumeValidationError: ${run.envelope.workflow} run ${run.envelope.runId}`
     + `${run.envelope.startAt === undefined ? "" : `, start at "${run.envelope.startAt}"`}:`,

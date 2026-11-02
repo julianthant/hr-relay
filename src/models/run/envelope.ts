@@ -1,3 +1,4 @@
+import { RunContinuationSchema } from "./continuation.js";
 /** The `RunEnvelope` — kernel-owned state beside the workflow-constant input: `dryRun` lives here, requested is not resolved, and resume affordances are attempt-scoped. */
 import { SourceBoundRunSchema } from "./rerun.js";
 import { z } from "zod";
@@ -83,6 +84,7 @@ export const RunEnvelopeSchema = z.strictObject({
     /** Present only on a Restart-from-start attempt; carried unchanged through a requeue. */
   recovery: RunRecoveryModeSchema.optional(),
   sourceBound: SourceBoundRunSchema.optional(),
+  continuation: RunContinuationSchema.optional(),
   /** A resumable graph-node id, never an internal transaction arm (ref workflow-model ). */
   startAt: NodeIdSchema.optional(),
   injected: z.array(CheckpointPatchSchema).min(1).optional(),

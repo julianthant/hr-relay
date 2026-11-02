@@ -15,7 +15,7 @@ import { SectionUnavailableError } from "../../../../src/backend/runs/commands/r
 import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
 import { buildRunGate } from "../../../../src/backend/runs/queries/run-trust.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
-import { seedPersonLookupExitRun } from "../../../support/fixtures/receipt-run-fixtures.js";
+import { EXIT_TERMINAL_AT, seedPersonLookupExitRun } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { foldTrustGate, trustWorld } from "../../../support/helpers/backend/trust-authority-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
@@ -109,6 +109,7 @@ afterEach(_afterEachFixture0);
 
   it("serves a real derived receipt and Explain by run or trace without any span fold", async () => {
     const f = await fixture();
+    f.world.clock.setWall(new Date(EXIT_TERMINAL_AT));
     testWorkerPorts(f.database, f.world.clock, { path: f.profile.path, descriptor: personLookupDescriptor, poolIndex: 1 });
     const { run } = seedPersonLookupExitRun(f.database);
     assert.equal(f.world.projection.runFold(run.envelope.runId), undefined);

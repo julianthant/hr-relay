@@ -38,11 +38,11 @@ import { sourceBoundReadContract, sourceBoundReadStores } from "./source-bound-r
 import { WriteFixturePrepare, WriteFixtureCommit, buildWriteFixtureRegistry, absentProbeEvidence } from "./write-sequencer-fixtures.js";
 
 const Input = z.strictObject({ eid: EidSchema, memo: z.string().optional() });
-export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", current: { version?: number; fingerprint?: string; stepPrefix?: string; gateDependency?: boolean } = {}) {
+export function launchDescriptor(enqueue: EnqueuePolicy = "reject-active", current: { version?: number; fingerprint?: string; stepPrefix?: string; gateDependency?: boolean; readReplay?: "checkpoint" | "always-rerun" } = {}) {
   const prefix = current.stepPrefix ?? "";
   const readFlow = () => flow(Input)
-    .step("read", sourceBoundReadContract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => input })
-    .step("check", sourceBoundReadContract, { dependsOn: ["read"], replay: "checkpoint", bind: ({ input }) => input });
+    .step("read", sourceBoundReadContract, { dependsOn: [], replay: current.readReplay ?? "checkpoint", bind: ({ input }) => input })
+    .step("check", sourceBoundReadContract, { dependsOn: ["read"], replay: current.readReplay ?? "checkpoint", bind: ({ input }) => input });
   const graphWithGate = readFlow().gate("approval", { dependsOn: ["read"], label: "Approval", statusKey: "needsReview",
     resolvedBy: "operator", result: z.strictObject({ approved: z.boolean() }) })
     .transaction("submit-write", { dependsOn: ["read", "approval"],

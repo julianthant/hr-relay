@@ -160,7 +160,7 @@ describe("stopped native upgrade admission",()=>{
    const row=stored.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();assert.ok(row);
    const record=AuthorityUpgradeRecordSchema.parse(JSON.parse(String(row.payload_json)));assert.ok(record.phase==="settled");
    const migrations=SQLITE_MIGRATIONS.filter(migration=>migration.version>version);
-   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5,6,7,8,9,10,11,12,13,14]:[5,6,7,8,9,10,11,12,13,14]);
+   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5,6,7,8,9,10,11,12,13,14,15]:[5,6,7,8,9,10,11,12,13,14,15]);
    assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:version,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,
     sourceContentFingerprint:source.authorityContentFingerprint,statements:migrations.flatMap(migration=>migration.statements)})).digest("hex"));
   }finally{stored.close();}

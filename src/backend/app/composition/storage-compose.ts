@@ -382,14 +382,16 @@ function profileResourceCustodyBusy(before: ReturnType<AuthorityDatabase["readPr
 export function composeProfileActivity(input: Readonly<{
   admission: RuntimeAdmission; database: AuthorityDatabase; clock: Clock;
   supervisor: Pick<DashboardWorkerProcessSupervisor, "memberEvidence" | "drainOwnedChildren"> | { readonly state: "not-constructed" };
-  lifecycle: Pick<RunRecordService, "read" | "transition">;
+  lifecycle: Pick<RunRecordService, "read" | "transition" | "pause">;
 }>) {
   const profileId = input.admission.profileBinding.profileId;
+  let shutdown = false;
   let drain: { state: "pending"; completion: Promise<void> } | { state: "complete" } | { state: "failed"; error: unknown } | undefined;
   const observe = () => {
     input.admission.assertLive();
     const before = input.database.readProfileResourceCustody();
-    let busy = profileResourceCustodyBusy(before);
+    let busy = profileResourceCustodyBusy(shutdown ? { ...before, runs: before.runs.filter(run => run.pause?.state !== "paused" && run.lifecycle.state !== "parked-write"),
+      writeIntents: before.writeIntents.filter(intent => intent.status === "attempting" && !("runId" in intent && before.runs.some(run => run.envelope.runId === intent.runId && run.lifecycle.state === "parked-write"))) } : before);
     for (const slot of before.slots) {
       const lease = before.leases.find(value => value.workerId === slot.workerId);
       if (slot.retiredAt !== null) continue;
@@ -412,6 +414,39 @@ export function composeProfileActivity(input: Readonly<{
       if (requestedProfileId !== profileId) throw new Error("profile-resource-owner-mismatch");
       if (drain?.state === "failed") throw drain.error;
       return drain?.state === "pending" || observe();
+    },
+    requestShutdown(requestedProfileId: string): void {
+      if (requestedProfileId !== profileId) throw new Error("profile-resource-owner-mismatch");
+      if (drain !== undefined) return;
+      shutdown = true;
+      input.database.withAuthorityTransaction(repositories => {
+        if (repositories.runs.admission().state === "open") {
+          const runtime = repositories.runtimeConfig.get();
+          if (runtime === undefined) throw new Error("application-runtime-unavailable");
+          repositories.runs.holdAdmission({ commandId: randomUUID(), runtimeGeneration: runtime.generation, reason: "shutdown" });
+        }
+        for (const run of input.database.readProfileResourceCustody().runs) {
+          if (run.lifecycle.state === "terminal" || run.lifecycle.state === "parked-write") continue;
+          requireLifecycleApplied(input.lifecycle.pause({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version }));
+        }
+      });
+      const completion = (async () => {
+        for (;;) {
+          const facts = input.database.readProfileResourceCustody();
+          if (facts.writeIntents.some(intent => intent.status === "attempting" && !("runId" in intent && facts.runs.some(run => run.envelope.runId === intent.runId && run.lifecycle.state === "parked-write")))) {
+            await new Promise<void>(resolve => setTimeout(resolve, 50));
+            continue;
+          }
+          if (!facts.runs.some(run => runClaim(run) !== undefined)) break;
+          await new Promise<void>(resolve => setTimeout(resolve, 50));
+        }
+        if ("state" in input.supervisor) {
+          if (observe()) throw new Error("profile-resource-closure-unproved");
+        } else await input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
+          requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: "application-shutdown" });
+      })();
+      drain = { state: "pending", completion };
+      void completion.then(() => { drain = { state: "complete" }; }, error => { drain = { state: "failed", error }; });
     },
     requestCancellation(requestedProfileId: string): void {
       if (requestedProfileId !== profileId) throw new Error("profile-resource-owner-mismatch");
@@ -590,11 +625,13 @@ export function composeProfileRuntime(input: Readonly<{
       throw error;
     }
   };
+  let closePurpose: "logout" | "shutdown" = "logout";
   const prepareClosure = (profileId: string): void => {
     const entry = resources.get(profileId)?.ordinary;
     if (entry?.activity === undefined || entry.context === undefined || entry.inventory === undefined) throw new Error("profile-resource-custody-unavailable");
     if (entry.preparation !== undefined) return;
-    entry.activity.requestCancellation(profileId);
+    if (closePurpose === "shutdown" && entry.logout === undefined) entry.activity.requestShutdown(profileId);
+    else entry.activity.requestCancellation(profileId);
     const completion = (async () => {
       await entry.activity!.awaitCancellation();
       if (entry.logout !== undefined) {
@@ -615,7 +652,8 @@ export function composeProfileRuntime(input: Readonly<{
       } else {
         if (entry.activity!.hasUnquiescedWork(profileId)) { delete entry.preparation; return; }
         await entry.context!.account.close();
-        await entry.inventory!.prepare();
+        if (closePurpose === "shutdown") await entry.inventory!.prepareShutdown();
+        else await entry.inventory!.prepare();
       }
       entry.preparation = { state: "ready" };
     })();
@@ -742,7 +780,8 @@ export function composeProfileRuntime(input: Readonly<{
     entry.admission.assertProfileRuntime();
     selected.assertCurrent();
   };
-  const beginClose = (): void => {
+  const beginClose = (purpose: "logout" | "shutdown" = "logout"): void => {
+    closePurpose = purpose;
     let initializationFailure: { error: unknown } | undefined;
     for (const [profileId, entry] of resources) {
       const ordinary = entry.ordinary;
@@ -757,7 +796,8 @@ export function composeProfileRuntime(input: Readonly<{
         const ordinary = entry.ordinary;
         if (ordinary?.context === undefined || ordinary.state === "closed") continue;
         if (ordinary.activity === undefined) throw new Error("profile-resource-custody-unavailable");
-        ordinary.activity.requestCancellation(profileId);
+        if (purpose === "shutdown" && ordinary.logout === undefined) ordinary.activity.requestShutdown(profileId);
+        else ordinary.activity.requestCancellation(profileId);
       }
     } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
   };
@@ -819,8 +859,8 @@ export function composeProfileRuntime(input: Readonly<{
       if (entry?.preparation?.state === "failed") throw entry.preparation.error;
       if (entry?.preparation?.state !== "ready") throw new Error("profile-work-drain-unproved");
     },
-    async close(): Promise<void> {
-      beginClose();
+    async close(purpose: "logout" | "shutdown" = closePurpose): Promise<void> {
+      beginClose(purpose);
       for (const cold of coldLogouts.values()) { await cold.completion; if (cold.state === "failed") throw cold.error; }
       try { await session.closeOnboarding(); }
       catch (error) { throw new RuntimeCustodyUncertainError([error]); }

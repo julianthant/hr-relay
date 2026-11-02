@@ -26,6 +26,7 @@ import { systemClock, manualClock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { scaledMs } from "../../../support/time-scale.js";
+import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
 async function fixture() {
   const f = await createBoundProfileFixture();
@@ -87,6 +88,25 @@ it("observes actual empty canonical owners and awaits synthetic drain scheduling
     assert.ok(settle); settle();
     await completion;
     assert.equal(activity.hasUnquiescedWork(profileId), false);
+  } finally { settle?.(); await f.cleanup(); }
+});
+
+it("holds shutdown admission before awaiting children and rejects a late enqueue", async () => {
+  const f = await fixture();
+  let settle: (() => void) | undefined;
+  const completion = new Promise<void>(resolve => { settle = resolve; });
+  try {
+    const activity = composeProfileActivity({ ...f.input, supervisor: { ...f.input.supervisor, drainOwnedChildren: () => completion } });
+    const profileId = f.admission.profileBinding.profileId;
+    assert.equal(f.context.database.authority.runs.admission().state, "open");
+    activity.requestShutdown(profileId);
+    assert.equal(f.context.database.authority.runs.admission().state, "draining");
+    assert.throws(() => f.context.database.authority.runs.enqueue(QUEUED_RUN), /application-admission-draining/u);
+    assert.equal(activity.hasUnquiescedWork(profileId), true);
+    assert.ok(settle); settle();
+    await activity.awaitCancellation();
+    assert.equal(activity.hasUnquiescedWork(profileId), false);
+    assert.equal(f.context.database.authority.runs.admission().state, "draining");
   } finally { settle?.(); await f.cleanup(); }
 });
 

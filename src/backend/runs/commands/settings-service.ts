@@ -57,6 +57,8 @@ export function createSettingsApplicationExecutor(
       return outcome.state === "applied" ? undefined : outcome;
     },
     applyOrdinary(command: Extract<SettingsCommand, { type: "apply-settings" }>, repositories: AuthorityRepositories, current: SettingsFileRecord) {
+      if (repositories.runs.admission().state !== "open") return SettingsApplyRefusalSchema.parse({
+        state: "rejected", code: "not-editable", message: "Relay is holding work for update or shutdown." });
       const refusal = ordinaryRequestRefusal(command);
       if (refusal !== undefined) return refusal;
       if (current.revision !== command.target.expectedRevision) {

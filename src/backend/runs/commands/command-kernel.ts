@@ -1,3 +1,6 @@
+import { planRunRecovery } from "../start/recovery-plan.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { notificationMatchesCollection,type NotificationCollectionOperation,type NotificationRecord } from "../../../models/notifications/notifications.js";
 import { AssistantActionManifestSchema } from "../../../models/profiles/assistant-permissions.js";
 import { startSupersedeTargets } from "../../../models/run/start-supersede.js";
@@ -64,6 +67,7 @@ import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
 /* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
 
 const PHASE1_ACTIVE = {
+  application: ["pause-all", "pause-all-and-quit"],
   'assistant-model-preference': ['set-assistant-model-preference'],
   "failure-resolution": ["annotate-failure"],
   "workflow-batch": ["set-batch-grouping"],
@@ -81,6 +85,9 @@ const PHASE1_ACTIVE = {
     "reopen-browser",
   ],
   run: [
+    "recover-run",
+    "pause",
+    "resume",
     "retry",
 
     "restart",
@@ -152,7 +159,7 @@ export interface WorkflowDescriptorResolver {
 
 
 type RunCommand = Extract<CommandRequest, { family: "run" }>;
-type RunBasicCommand = Extract<RunCommand, { type: "retry" | "restart" | "cancel" | "bump" }>;
+type RunBasicCommand = Extract<RunCommand, { type: "retry" | "restart" | "cancel" | "bump" | "pause" | "resume" | "recover-run" }>;
 
 type RunRecoveryCommand = RunBasicCommand;
 type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
@@ -268,6 +275,7 @@ export interface RunConfigIdentity {
 
 export interface CommandKernelDependencies {
   readonly preflight?: PreflightAdmission;
+  readonly applicationQuitAvailable?: boolean;
   readonly authority: CommandAuthority;
   readonly lifecycle: RunRecordService;
   readonly clock: Clock;
@@ -589,6 +597,39 @@ function executeStartRun(
   );
 }
 
+
+function executeRecover(
+  dependencies: CommandKernelDependencies, repositories: AuthorityRepositories,
+  request: RunBasicCommand & { type: "recover-run" },
+): CommandApplication {
+  const current = requireRun(repositories, request, request.target.runId);
+  const descriptor = resolveDescriptorOrReject(dependencies, request, current.envelope.workflow);
+  const planning = workflowPlanning(descriptor);
+  const publication = { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({
+    title: planning.title(current.input.parsed.value), subtitle: planning.subtitle(current.input.parsed.value),
+  })), actorId: request.requestedBy };
+  let record: RunRecord;
+  let children: readonly RunRecord[];
+  try {
+    planRunRecovery(repositories, descriptor, current, request.commandId);
+    record = lifecycleRun(request, dependencies.lifecycle.recover({
+      commandId: lifecycleCommandId("operator-recover-run", request.commandId),
+      runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
+      runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
+      sourceCommandId: request.commandId,
+    }, descriptor, publication));
+    children = dependencies.lifecycle.continueDelegations(record, request.commandId);
+  } catch (error) {
+    if (error instanceof RerunRefusedError || error instanceof RunContinuationRefusedError)
+      reject(request, "RUN_CONTINUATION_REFUSED", ERROR_CATALOG.RUN_CONTINUATION_REFUSED.text);
+    throw error;
+  }
+  return applied(request, [runTarget(record.envelope.runId), runTarget(current.envelope.runId),
+    ...children.map(child => runTarget(child.envelope.runId))], [
+    { target: runTarget(record.envelope.runId), before: 0, after: record.version },
+    ...children.map(child => ({ target: runTarget(child.envelope.runId), before: 0, after: child.version })),
+  ]);
+}
 
 function executeRetry(
   dependencies: CommandKernelDependencies,
@@ -2365,7 +2406,35 @@ function dispatchActive(
       const target = { family: "workflow-batch", batchId: batch.sessionId };
       return applied(request, [target], [{ target, before: batch.version, after: updated.version }]);
     }
+    case "application": {
+      if (request.type === "pause-all-and-quit" && dependencies.applicationQuitAvailable !== true) reject(request, "capability-unavailable", "Application quit host is unavailable.");
+      if (request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", "Application commands require the dashboard operator.");
+      if (repositories.runtimeConfig.get()?.generation !== request.target.runtimeGeneration) reject(request, "runtime-stale", "Application runtime changed.");
+      const active: RunRecord[] = [];
+      const pageSize = 1000;
+      for (let offset = 0; ; offset += pageSize) {
+        const page = repositories.runs.listPage({ offset, limit: pageSize });
+        active.push(...page.filter(run => run.lifecycle.state !== "terminal"));
+        if (page.length < pageSize) break;
+      }
+      if (new Set(request.payload.targets.map(target => target.runId)).size !== request.payload.targets.length
+        || active.length !== request.payload.targets.length
+        || active.some(run => !request.payload.targets.some(target => target.runId === run.envelope.runId && target.expectedVersion === run.version))) {
+        reject(request, "policy-refused", "Active run membership changed; reload before pausing all.");
+      }
+      const changes: VersionChange[] = [];
+      for (const run of active) {
+        if (run.lifecycle.state === "parked-write") continue;
+        const next = lifecycleRun(request, dependencies.lifecycle.pause({
+          commandId: lifecycleCommandId("application-pause", { commandId: request.commandId, runId: run.envelope.runId }),
+          runId: run.envelope.runId, expectedVersion: run.version,
+        }));
+        changes.push({ target: runTarget(run.envelope.runId), before: run.version, after: next.version });
+      }
+      return applied(request, [{ family: "application", runtimeGeneration: request.target.runtimeGeneration }], changes);
+    }
     case "start":
+      if (repositories.runs.admission().state !== "open") reject(request, "policy-refused", "Relay is pausing work to quit.");
       repositories.runtimeConfig.requireSettingsCurrent();
       return executeStartRun(dependencies, repositories, request, now);
     case "worker-browser":
@@ -2377,6 +2446,18 @@ function dispatchActive(
       return executeResolveGate(dependencies, repositories, request, now);
     case "run": {
       switch (request.type) {
+        case "pause":
+        case "resume": {
+          const current = requireRun(repositories, request, request.target.runId);
+          const next = lifecycleRun(request, dependencies.lifecycle[request.type === "pause" ? "pause" : "resumePaused"]({
+            commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
+            ...request.target,
+          }));
+          return applied(request, [runTarget(next.envelope.runId)], [{ target: runTarget(next.envelope.runId), before: current.version, after: next.version }]);
+        }
+        case "recover-run":
+          repositories.runtimeConfig.requireSettingsCurrent();
+          return executeRecover(dependencies, repositories, request);
         case "retry":
         case "restart":
           repositories.runtimeConfig.requireSettingsCurrent();
@@ -2395,6 +2476,7 @@ function dispatchActive(
       return executeNotification(repositories, request, now);
     case "intake":
       if (request.type === "enqueue-intake-manifest") {
+        if (repositories.runs.admission().state !== "open") reject(request, "policy-refused", "Relay is pausing work to quit.");
         repositories.runtimeConfig.requireSettingsCurrent();
       }
       return executeIntake(dependencies, repositories, request, now);
@@ -2572,7 +2654,7 @@ export function executeSettingsCommand(
 
 export function createCommandKernel(dependencies: CommandKernelDependencies): CommandKernel {
   const availability = () => commandAssistantAvailability((family, action) => {
-    if (family === "assistant-model-preference") return false;
+    if (family === "assistant-model-preference" || family === "application" || family === "run" && action === "recover-run") return false;
     if (DEFERRED_ARM_KEYS.has(`${family}/${action}`)) return false;
     if (family === "settings") return dependencies.settings !== undefined;
     if (family === "failure-resolution") return dependencies.failureResolution?.capability().state === "available";
@@ -2640,7 +2722,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             return replay(dependencies, repositories, request, now);
           }
           const auditId = dependencies.ids.uuid();
-          const application = request.family === "run" && (request.type === "retry" || request.type === "cancel")
+          const application = request.family === "start" || request.family === "run" && (request.type === "retry" || request.type === "recover-run" || request.type === "cancel")
             ? withCanonicalRunCommandScope(repositories, request,
               () => dispatchActive(dependencies, repositories, request, now, auditId), parentCommandId)
             : dispatchActive(dependencies, repositories, request, now, auditId);

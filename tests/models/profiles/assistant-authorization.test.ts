@@ -1,3 +1,4 @@
+import { COMMAND_FIXTURES } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -17,4 +18,10 @@ it("retains only admitted safe canonical values, rejecting freeform and permissi
   assert.equal(AssistantStoredCommandSchema.safeParse(permission).success, false);
   assert.equal(CommandRequestSchema.safeParse({ ...ordinary, payload: { ...ordinary.payload, assistantPermission: permission.payload.assistantPermission } }).success, false);
   assert.equal(CommandRequestSchema.safeParse({ ...permission, payload: { ...permission.payload, assistantPermission: undefined } }).success, false);
+});
+
+it("registers checkpoint recovery as an operator command and refuses it as retained assistant authority", () => {
+  const request = COMMAND_FIXTURES.map(command => CommandRequestSchema.parse(command)).find(command => command.family === "run" && command.type === "recover-run");
+  assert.ok(request);
+  assert.equal(AssistantStoredCommandSchema.safeParse(request).success, false);
 });

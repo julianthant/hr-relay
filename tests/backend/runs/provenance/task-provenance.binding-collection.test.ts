@@ -338,7 +338,7 @@ describe("task provenance collector", () => {
     assert.ok(identityGate?.kind === "gate");
     const gateResult = {
       runId: RUN_ID,
-      gateId: "identity-approval", nodeId: "approval",
+      gateId: "identity-approval", nodeId: "identity-approval",
       commandId: "cccccccc-0001-4000-8000-000100000000",
       expectedVersion: 3,
       resolvedBy: "local-operator",
@@ -403,7 +403,7 @@ describe("task provenance collector", () => {
       },
       clock: manualClock(new Date(NOW)),
       onRecord: recordBatch,
-    }), /received undeclared upstream gate result not-declared/);
+    }), /invalid condition gate not-declared/);
   });
 
 
@@ -475,7 +475,7 @@ describe("task provenance collector", () => {
 
     const gateResult = {
       runId: RUN_ID,
-      gateId: "identity-approval", nodeId: "approval",
+      gateId: "identity-approval", nodeId: "identity-approval",
       commandId: "cccccccc-0001-4000-8000-000100000000",
       expectedVersion: 3,
       resolvedBy: "local-operator",
