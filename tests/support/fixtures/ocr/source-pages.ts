@@ -40,7 +40,9 @@ export function admittedPage(input: OcrPageInput, name?: string, pageKind?: OcrP
 }
 
 export function donePage(input: OcrPageInput, name?: string, pageKind?: OcrPageKind) {
-  return OcrPageOutcomeSchema.parse({ state: "done",
+  const outcome = OcrPageOutcomeSchema.parse({ state: "done",
     runId: `00000000-0000-4000-8000-${String(input.sourcePage + 300).padStart(12, "0")}`,
     itemId: ocrExtractionItemId(input), output: bindOcrPageReading(input, admittedPage(input, name, pageKind)) });
+  if (outcome.state !== "done") throw new Error("OCR completed-page fixture has no output");
+  return outcome;
 }
