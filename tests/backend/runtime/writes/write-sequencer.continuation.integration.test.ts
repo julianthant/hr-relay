@@ -5,13 +5,15 @@ import { RunRecordService, requireLifecycleApplied } from "../../../../src/backe
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { readRunCheckpoint } from "../../../../src/backend/runtime/checkpoints/run-checkpoint-reader.js";
 import { captureRunContinuation, continuationEvidenceDigest } from "../../../../src/backend/runtime/checkpoints/run-continuation.js";
+import { buildNodeFailureRecord } from "../../../../src/backend/runtime/execution/run-failure.js";
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
+import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
+import { RunRecordSchema, runClaim, type RunRecord } from "../../../../src/models/run/record.js";
 import { SourceBoundRunSchema, repeatOccurrenceKey, repeatEvidenceDigest } from "../../../../src/models/run/rerun.js";
 import { RunCheckpointRecordSchema, type RunCheckpointRecord } from "../../../../src/models/workflow/checkpoint.js";
 import { deriveItemId } from "../../../../src/rules/identity/identifiers.js";
-import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { FingerprintSchema, NodeIdSchema } from "../../../../src/rules/identity/ids.js";
 import { TransactionOutcomeSchema, WriteIntentRecordSchema, deriveWriteAuthorityReason, deriveIdempotencyKeyDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/write-sequencer-world.js";
 import { recordingLogger } from "../../../support/helpers/phase1f-executor-harness.js";
@@ -19,7 +21,7 @@ import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtu
 import { testRunLifecycle, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { absentProbeEvidence, buildWriteFixtureRegistry, WRITE_FIXTURE_EID, WRITE_FIXTURE_IMPL_FINGERPRINT,
   WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_WORKFLOW_ID, WriteFixtureCommit,
-  writeFixtureQueuedRun } from "../../../support/fixtures/write-sequencer-fixtures.js";
+  writeFixtureDescriptor, writeFixtureQueuedRun } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
 const { harness, claimRunning, contextFor, cleanup } = createWriteSequencerTestWorld();
 afterEach(cleanup);
@@ -32,12 +34,27 @@ function fresh(h: Harness, run: RunRecord): RunRecord {
 
 function failAfterTransaction(h: Harness, run: RunRecord) {
   const current = fresh(h, run);
-  const failed = h.database.authority.runs.transition({ runId: current.envelope.runId, expectedVersion: current.version,
-    claim: { workerId: testWorkerLifetime(h.database, WRITE_FIXTURE_WORKFLOW_ID, 1).workerId,
-      claimGeneration: current.claimGeneration }, now: h.clock.now().toISOString(),
-    lifecycle: { state: "terminal", outcome: "failed", endedAt: h.clock.now().toISOString() } });
+  const heldClaim = runClaim(current); assert.ok(heldClaim);
+  const claim = { workerId: heldClaim.workerId, claimGeneration: heldClaim.claimGeneration };
+  const before = effects(h);
+  const checkpoint = readRunCheckpoint(h.database.authority, current.envelope, WRITE_FIXTURE_NODE_ID);
+  assert.ok(checkpoint);
+  assert.equal(TransactionOutcomeSchema.parse(checkpoint.output.value).disposition, "committed");
+  assert.equal(current.lifecycle.state, "running");
+  assert.ok(current.lifecycle.state === "running" && current.lifecycle.currentNodeId === WRITE_FIXTURE_NODE_ID);
+  const now = h.clock.now().toISOString();
+  const failure = FailureRecordSchema.parse({ ...buildNodeFailureRecord({ run: current, failureId: randomUUID(),
+    nodeId: NodeIdSchema.parse(WRITE_FIXTURE_NODE_ID), taskId: WriteFixtureCommit.id,
+    error: new Error("Synthetic failure after the settled transaction"), occurredAt: now }), writeState: "committed" });
+  const failed = h.database.terminalizeFailure(writeFixtureDescriptor, { failure,
+    authorization: { kind: "failed", runId: current.envelope.runId, workflowId: current.envelope.workflow,
+      attempt: current.envelope.attempt, descriptorVersion: current.envelope.descriptorVersion,
+      contractFingerprint: current.envelope.contractFingerprint, expectedVersion: current.version,
+      claim, authorizedAt: now, failureId: failure.failureId } });
   assert.equal(failed.state, "applied");
-  return fresh(h, current);
+  assert.deepEqual(h.database.authority.failures.get(failure.failureId), failure);
+  assert.deepEqual(effects(h), before);
+  return failed.run;
 }
 
 function effects(h: Harness) {
