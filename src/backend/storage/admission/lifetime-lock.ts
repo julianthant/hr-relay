@@ -106,12 +106,14 @@ export class RuntimeLifetimeLock {
   readonly #port: number;
   readonly #children = new Set<ChildProcess>();
   #exclusiveAdmission = false;
-  #exclusiveOperation: { operation: OfflineMaintenanceOperation; completion: Promise<void> } | undefined;
+  #exclusiveOperation: { operation: OfflineMaintenanceOperation; changed: Promise<void>; notifyChange(): void } | undefined;
   #workspace: string | undefined;
   #startup: "initializing" | "ready" | "failed" | undefined;
   private constructor(server: Server, port: number) { this.#server = server; this.#port = port; }
   get port(): number { return this.#port; }
-  retainSourceClosure(error: unknown): void { rememberUnprovedSourceClosure(this.#sourceFailures, error); }
+  retainSourceClosure(error: unknown): void {
+    if (rememberUnprovedSourceClosure(this.#sourceFailures, error)) this.#exclusiveOperation?.notifyChange();
+  }
 
   static async acquire(this: void, port: number): Promise<RuntimeLifetimeLock> {
     z.number().int().nonnegative().max(65535).parse(port);
@@ -180,6 +182,7 @@ export class RuntimeLifetimeLock {
 
   assertAdmissionOperation(operation: OfflineMaintenanceOperation | undefined, workspace: string): void {
     this.assertHeld();
+    assertSourceClosuresProved(this.#sourceFailures);
     if (this.#closing !== undefined) throw new Error("runtime-lifetime-closing");
     if (this.#exclusiveOperation !== undefined) {
       if (operation === undefined || this.#exclusiveOperation.operation !== operation) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-unissued");
@@ -208,13 +211,13 @@ export class RuntimeLifetimeLock {
     this.assertExclusiveWorkspaceTarget(workspace);
     if (this.#exclusiveOperation !== undefined) throw new OfflineMaintenanceOperationUnavailableError("offline-maintenance-busy");
     let finish: () => void = () => { throw new Error("offline-maintenance-completion-unissued"); };
-    const completion = new Promise<void>(resolve => { finish = resolve; });
+    const changed = new Promise<void>(resolve => { finish = resolve; });
     const operation = new StoppedMaintenance(maintenanceToken, this, workspace, () => {
       this.assertOfflineMaintenance(operation, workspace);
       this.#exclusiveOperation = undefined;
       finish();
     });
-    this.#exclusiveOperation = { operation, completion };
+    this.#exclusiveOperation = { operation, changed, notifyChange: finish };
     return operation;
   }
 
@@ -255,7 +258,7 @@ export class RuntimeLifetimeLock {
   close(): Promise<void> {
     try { assertSourceClosuresProved(this.#sourceFailures); } catch (error) { return Promise.reject(error instanceof Error ? error : new Error("runtime source closure unproved", { cause: error })); }
     return this.#closing ??= (async () => {
-      if (this.#exclusiveOperation !== undefined) await this.#exclusiveOperation.completion;
+      if (this.#exclusiveOperation !== undefined) await this.#exclusiveOperation.changed;
       assertSourceClosuresProved(this.#sourceFailures);
       await this.awaitOwnedChildrenClosed();
       assertSourceClosuresProved(this.#sourceFailures);
