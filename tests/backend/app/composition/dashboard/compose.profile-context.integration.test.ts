@@ -17,6 +17,8 @@ import * as streams from "../../../../../src/backend/transports/http/subscriptio
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
+import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
+import { SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/settings.js";
 
 vi.mock("node:fs/promises", async importOriginal => ({ ...await importOriginal<typeof import("node:fs/promises")>() }));
 
@@ -57,6 +59,12 @@ it("starts the actual dashboard from the same token-owned context and proves res
     const context = f.runtime.selectedContext(f.active.token);
     assert.equal(context.database.getMeta().profileId, f.active.profileId);
     assert.equal(context.admission.stateRoot, f.stateRoot);
+    const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(dashboard.port)}` });
+    assert.ok(client.assistantPermission);
+    assert.deepEqual(await client.assistantPermission(), { profileId: f.active.profileId, epoch: context.profileEpoch,
+      mode: "every-action", state: "grant-required", policyRevision: 0,
+      settingsRevision: context.settings.read().record.revision, settingsSchemaHash: SETTINGS_SCHEMA_HASH });
+    assert.equal(context.database.authority.assistantAuthorization.grant(), undefined);
     assert.throws(() => f.runtime.bindSupervisor(f.active.token, { memberEvidence: () => undefined, drainOwnedChildren: async () => undefined }), /owner-mismatch/u);
     await dashboard.stop(); dashboard = undefined;
     assert.throws(() => context.database.getMeta(), /closed/u);

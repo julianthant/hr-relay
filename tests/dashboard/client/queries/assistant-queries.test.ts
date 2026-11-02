@@ -1,7 +1,35 @@
-import { AssistantModelPreferenceViewSchema, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from '../../../../src/models/dashboard/assistant.js';
+import { AssistantModelPreferenceViewSchema, AssistantPermissionViewSchema, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from '../../../../src/models/dashboard/assistant.js';
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
+
+it("reads person-bound confirmation policy without dispatching a grant or action", async () => {
+  const view = AssistantPermissionViewSchema.parse({ profileId: crypto.randomUUID(), epoch: 4, mode: "every-action",
+    state: "granted", policyRevision: 2, settingsRevision: 7, settingsSchemaHash: "a".repeat(64) });
+  const abort = new AbortController(), calls: { url: string; init?: RequestInit }[] = [];
+  const client = createDashboardClient({ baseUrl: "http://relay.test", fetchImpl: async (url, init) => {
+    calls.push({ url, ...(init === undefined ? {} : { init }) }); return Response.json(view);
+  } });
+  assert.ok(client.assistantPermission);
+  assert.deepEqual(await client.assistantPermission(abort.signal), view);
+  assert.equal(calls.length, 1); assert.equal(calls[0]?.url, "http://relay.test/api/v1/assistant/permission");
+  assert.equal(calls[0]?.init?.method ?? "GET", "GET"); assert.equal(calls[0]?.init?.signal, abort.signal);
+  assert.equal(calls[0]?.init?.body, undefined);
+});
+
+it("refuses retired modes, inconsistent grant revisions and extra permission authority", async () => {
+  const view = { profileId: crypto.randomUUID(), epoch: 4, mode: "every-action", state: "granted",
+    policyRevision: 2, settingsRevision: 7, settingsSchemaHash: "a".repeat(64) };
+  for (const invalid of [{ ...view, mode: "without-asking" }, { ...view, mode: "before-submits" },
+    { ...view, state: "grant-required" }, { ...view, policyRevision: 0 }, { ...view, settingsRevision: 0 },
+    { ...view, epoch: -1 }, { ...view, settingsSchemaHash: "bad" }, { ...view, autoApprove: true }]) {
+    let reads = 0;
+    const client = createDashboardClient({ baseUrl: "http://relay.test", fetchImpl: async () => { reads++; return Response.json(invalid); } });
+    const read = client.assistantPermission; assert.ok(read);
+    await assert.rejects(() => read());
+    assert.equal(reads, 1);
+  }
+});
 
 it("uses the existing authenticated transport for exact opaque action decisions without command or model authority", async () => {
   const calls: { url: string; init: RequestInit | undefined }[] = [];
