@@ -9,6 +9,7 @@ export const I9IdentitySchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("found"), eid: EidSchema, name: z.string().min(1) }),
   z.strictObject({ status: z.literal("not-found"), candidateCount: z.number().int().nonnegative() }),
   z.strictObject({ status: z.literal("ambiguous"), candidateCount: z.number().int().positive(),
+    candidateEids: z.array(EidSchema).min(1),
     reason: z.enum(["multiple-matches", "missing-hire-date", "multiple-hire-date-matches"]) }),
 ]);
 export type I9Identity = z.output<typeof I9IdentitySchema>;

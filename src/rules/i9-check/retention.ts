@@ -7,7 +7,7 @@ import { parseUsOrIsoDate } from "../../models/fields/cell-coercion.js";
 export function i9MatchOutcome(match?: z.output<typeof SearchPersonMatchOutputSchema>): I9Identity {
   const hits = [...new Map(match?.confirmed.map(hit => [hit.emplId, hit]) ?? []).values()];
   if (hits.length === 0) return { status: "not-found", candidateCount: 0 };
-  if (hits.length > 1) return { status: "ambiguous", candidateCount: hits.length, reason: "multiple-matches" };
+  if (hits.length > 1) return { status: "ambiguous", candidateCount: hits.length, candidateEids: hits.map(hit => hit.emplId), reason: "multiple-matches" };
   const hit = hits[0];
   if (hit === undefined) throw new Error("I-9 match identity is missing");
   return { status: "found", eid: hit.emplId, name: hit.name };
@@ -16,11 +16,13 @@ export function i9MatchOutcome(match?: z.output<typeof SearchPersonMatchOutputSc
 function lookupIdentity({ input, initial, search }: z.output<typeof ReadRetentionRow.input>): I9Identity {
   if (initial.status === "found") return initial;
   if (search === undefined) throw new Error("I-9 name search observation is missing");
-  const candidateCount = new Set(search.results.map(candidate => candidate.emplId)).size;
-  if (candidateCount === 0) return { status: "not-found", candidateCount: 0 };
+  const candidates = initial.status === "ambiguous" ? search.results.filter(candidate => initial.candidateEids.includes(candidate.emplId)) : search.results;
+  const candidateEids = [...new Set(candidates.map(candidate => candidate.emplId))];
+  const candidateCount = candidateEids.length;
+  if (candidateCount === 0) return initial.status === "ambiguous" ? initial : { status: "not-found", candidateCount: 0 };
   const hireDate = input.person.hireDate;
-  if (hireDate === undefined) return { status: "ambiguous", candidateCount, reason: "missing-hire-date" };
-  const matched = search.results.filter(candidate => {
+  if (hireDate === undefined) return { status: "ambiguous", candidateCount, candidateEids, reason: "missing-hire-date" };
+  const matched = candidates.filter(candidate => {
     const raw = candidate.startDate.trim() === "" ? candidate.effectiveDate : candidate.startDate;
     if (raw.trim() === "") return false;
     const date = parseUsOrIsoDate(raw, `${input.asOf}T00:00:00.000Z`);
@@ -28,8 +30,8 @@ function lookupIdentity({ input, initial, search }: z.output<typeof ReadRetentio
     return Math.abs(Date.parse(date) - Date.parse(hireDate)) <= 7 * 86400000;
   });
   const hits = [...new Map(matched.map(candidate => [candidate.emplId, candidate])).values()];
-  if (hits.length === 0) return { status: "not-found", candidateCount };
-  if (hits.length > 1) return { status: "ambiguous", candidateCount: hits.length, reason: "multiple-hire-date-matches" };
+  if (hits.length === 0) return initial.status === "ambiguous" ? initial : { status: "not-found", candidateCount };
+  if (hits.length > 1) return { status: "ambiguous", candidateCount: hits.length, candidateEids: hits.map(hit => hit.emplId), reason: "multiple-hire-date-matches" };
   const hit = hits[0];
   if (hit === undefined) throw new Error("I-9 hire-date identity is missing");
   return { status: "found", eid: hit.emplId, name: hit.name };
@@ -60,7 +62,7 @@ export function i9RetentionRow(args: z.output<typeof ReadRetentionRow.input>): z
   const roster = rosterEvidence(input, identity);
   const row: I9CheckRow = {
     recordId: input.recordId, employeeName: input.person.name, ppsEid: roster.ppsEid,
-    ucpathEmplId: identity.status === "found" ? identity.eid : "", hireDate: input.person.hireDate ?? "",
+    ucpathEmplId: identity.status === "found" ? identity.eid : "", hireDate: input.person.hireDate === undefined ? "" : input.person.hireDate,
     separationDate: roster.separationDate ?? "", foundInUcpath: identity.status === "found" ? "Yes" : identity.status === "ambiguous" ? "Ambiguous in UCPath" : "Not found in UCPath",
     action: "", reviewerName: input.reviewerName, notes: "",
   };

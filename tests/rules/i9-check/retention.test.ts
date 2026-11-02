@@ -23,6 +23,13 @@ describe("I-9 identity and retention", () => {
     expect(i9RetentionRow({ input, initial: absent, search: i9Search() })).toMatchObject({ identity: { status: "ambiguous", reason: "missing-hire-date" }, row: { action: "", ucpathEmplId: "" } });
     expect(i9RetentionRow({ input: i9CheckInput, initial: absent, search: i9Search([i9Candidate, { ...i9Candidate, emplId: "10000002" }]) }).identity.status).toBe("ambiguous");
   });
+  it("never turns confirmed identifier ambiguity into Shred or accepts an unrelated name hit", () => {
+    const initial = i9MatchOutcome({ hits: [], confirmed: [i9Candidate, { ...i9Candidate, emplId: EidSchema.parse("10000002") }], dropped: [] });
+    for (const search of [i9Search([]), i9Search([{ ...i9Candidate, startDate: "01/01/2000" }]), i9Search([{ ...i9Candidate, emplId: "10000003" }])]) {
+      expect(i9RetentionRow({ input: i9CheckInput, initial, search })).toMatchObject({ identity: { status: "ambiguous" }, row: { action: "", ucpathEmplId: "" } });
+    }
+    expect(i9RetentionRow({ input: i9CheckInput, initial, search: i9Search() }).identity).toMatchObject({ status: "found", eid: "10000001" });
+  });
   it("counts every appointment before deduplication and allows the verified blank Last Hire case", () => {
     const candidates = [{ ...i9Candidate, startDate: "01/01/2000" }, i9Candidate];
     expect(i9RetentionRow({ input: i9CheckInput, initial: absent, search: i9Search(candidates) }).identity.status).toBe("found");
