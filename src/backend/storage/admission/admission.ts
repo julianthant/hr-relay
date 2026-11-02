@@ -850,6 +850,12 @@ export class RuntimeAdmission {
     access.verify("runtime");
     return this.#admitProfile(access, operation);
   }
+  admitStoppedProfileBackup(profileId: string, operation: OfflineMaintenanceOperation): RuntimeAdmission {
+    this.assertExclusive(); this.assertOfflineMaintenance(operation);
+    const access = this.#captureProfileAccess(profileId);
+    if (access.phase !== "runtime") throw new Error("profile-onboarding-incomplete");
+    return this.#admitProfile(access, operation, false, "backup");
+  }
   admitProfileSettlement(operationId: string): RuntimeAdmission {
     return this.#admitProfile(this.#captureSettlementAccess(operationId));
   }
@@ -857,17 +863,18 @@ export class RuntimeAdmission {
     this.assertExclusive(); this.assertOfflineMaintenance(operation);
     const registry = this.readProfileRegistry();
     if (!registry.profiles.some(row => row.profileId === profileId && row.lifecycle === "ready" && row.credentialState === "saved")) throw new Error("profile-repair-registration-required");
-    return this.#admitProfile(this.#captureProfileAccess(profileId), operation, false, true);
+    return this.#admitProfile(this.#captureProfileAccess(profileId), operation, false, "repair");
   }
   assertStoppedStartupRecoveryDatabase(path: string): void {
     if (this.#scope !== "profile-maintenance" || this.#repairSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
       || path !== join(this.#stateRoot, "state.db")) throw new Error("startup-recovery-admission-required");
     this.assertStoppedProfile(this.maintenanceOperation());
   }
-  #admitProfile(claim: ProfileAccess, maintenance?: OfflineMaintenanceOperation, publication = false, repair = false): RuntimeAdmission {
+  #admitProfile(claim: ProfileAccess, maintenance?: OfflineMaintenanceOperation, publication = false, stoppedPurpose?: "repair" | "backup"): RuntimeAdmission {
+    const repair = stoppedPurpose === "repair";
     this.assertWritable();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
-    if (maintenance !== undefined) { this.assertOfflineMaintenance(maintenance); claim.verify(repair ? "issue" : "runtime"); }
+    if (maintenance !== undefined) { this.assertOfflineMaintenance(maintenance); claim.verify(stoppedPurpose === undefined ? "runtime" : "issue"); }
     else claim.verify(publication ? "custody" : "issue");
     const root = join(this.#stateRoot, "profiles", claim.profileId);
     let repairSchema: 8 | 9 | 10 | 11 | 12 | undefined;
@@ -898,7 +905,7 @@ export class RuntimeAdmission {
         this.#exclusiveInstallationLease().assertProfileRestoreHeld(restoreCustody.input, restoreCustody.restore);
         return;
       }
-      if (maintenance !== undefined) claim.verify(repair ? "issue" : "runtime");
+      if (maintenance !== undefined) claim.verify(stoppedPurpose === undefined ? "runtime" : "issue");
       const proof = outermostOperationProof();
       const verified = proof?.slots.get(PROFILE_CUSTODY_PROOF);
       if (verified instanceof WeakSet && verified.has(claim)) return;
@@ -932,7 +939,7 @@ export class RuntimeAdmission {
       },
       assertProfileRuntime: publication => {
         if (restoreCustody !== undefined || restoreSettled) throw new Error("profile-restore-runtime-refused");
-        claim.verify(repair ? "issue" : "runtime", publication);
+        claim.verify(stoppedPurpose === undefined ? "runtime" : "issue", publication);
       },
       assertPendingLogoutCustody: operationId => {
         this.assertLive();

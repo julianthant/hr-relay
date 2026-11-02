@@ -54,6 +54,7 @@ it("serves only the genuine token-owned profile and refuses its later missing ca
     const response = await fetch(`http://127.0.0.1:${String(dashboard.port)}/api/v1/settings/storage-relocation`);
     assert.equal(response.status, 404);
     await dashboard.stop(); dashboard = undefined; dashboardStopped = true;
+    profile.machine.assertLive(); profile.machine.release();
     const credentialPath = join(profile.stateRoot, "credentials", "protected.json"), credentialBytes = readFileSync(credentialPath);
     rmSync(authorityPath);
     const fresh = acquireEntrypointAdmission(workspace, "exclusive", profile.lifetime); restarted = fresh;
