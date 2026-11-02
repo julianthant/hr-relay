@@ -16,6 +16,7 @@ import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/p
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { seedRegisteredSignupBrowser } from "../../../support/helpers/browser/browser-roots.js";
+import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
@@ -215,6 +216,25 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
   const credentials = fixedLayoutEntries(join(profile.stateRoot, "credentials"));
   const target = realpathSync(mkdtempSync(join(tmpdir(), "fixed-layout-pending-signup-")));
   let machine: RuntimeAdmission | undefined, runtime: ReturnType<typeof composeProfileRuntime> | undefined;
+  let observedLayoutOwner = false;
+  const layout = vi.spyOn(RuntimeAdmission.prototype, "forStoppedProfileLayout").mockImplementation(async function(this: RuntimeAdmission, ...args: Parameters<RuntimeAdmission["forStoppedProfileLayout"]>): Promise<RuntimeAdmission> {
+    layout.mockRestore();
+    const admission = await this.forStoppedProfileLayout(...args);
+    try {
+      assert.equal(admission.hasCurrentBrowserRegistry(), true);
+      const binding = admission.captureBrowserRegistryContext();
+      const row = createBrowserRoots(admission).inventory().roots.find(value => value.owner.kind === "signup" && value.owner.operationId === operation.operationId);
+      assert.ok(row); assert.equal(row.profileId, operation.profileId);
+      assert.equal(row.launch.state, "closed"); assert.equal(row.native, undefined);
+      assert.equal(existsSync(join(binding.machineRoot, row.directory)), true);
+      observedLayoutOwner = true;
+      return admission;
+    } catch (error) {
+      try { admission.release(); }
+      catch (closeError) { throw new AggregateError([error, closeError], "fixture-layout-owner-close-unproved", { cause: closeError }); }
+      throw error;
+    }
+  });
   try {
     seedRegisteredSignupBrowser(profile.machine, operation);
     await profile.closeController();
@@ -228,6 +248,7 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     }
     finally { source.close(); }
     await prepareApplicationDataWorkspace(profile.workspace, target, lifetime, hostFacts);
+    assert.equal(observedLayoutOwner, true);
     await upgradeRegisteredPersonStores(target, lifetime, hostFacts);
     const stateRoot = join(target, ".tracker", "data", "profiles", operation.profileId);
     assert.deepEqual(fixedLayoutEntries(join(stateRoot, "credentials")), credentials);
@@ -245,5 +266,5 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
       email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
     assert.equal(resumed.state, "onboarding");
     assert.notEqual("profileId" in resumed ? resumed.profileId : undefined, operation.profileId);
-  } finally { await runtime?.close(); machine?.release(); await profile.close(); await lifetime.close(); rmSync(target, { recursive: true, force: true }); }
+  } finally { layout.mockRestore(); await runtime?.close(); machine?.release(); await profile.close(); await lifetime.close(); rmSync(target, { recursive: true, force: true }); }
 });

@@ -85,7 +85,7 @@ it("observes actual empty canonical owners and awaits synthetic drain scheduling
     activity.requestCancellation(profileId);
     assert.equal(activity.hasUnquiescedWork(profileId), true);
     assert.ok(settle); settle();
-    await completion;
+    await activity.awaitCancellation();
     assert.equal(activity.hasUnquiescedWork(profileId), false);
   } finally { settle?.(); await f.cleanup(); }
 });
@@ -451,4 +451,32 @@ it("authenticates canonical verification pending and exact retired provenance th
     assert.throws(() => f.context.database.readProfileResourceCustody(), /worker-verification-retirement-unproved/u);
     closedReservationRefuses(f, /worker-verification-retirement-unproved/u);
   } finally { await f.cleanup(); }
+});
+
+it("keeps logical command custody after worker acknowledgement until the complete owned drain settles", async () => {
+  const f = await fixture();
+  let workerAck = () => {}, finishCommand = () => {};
+  const workerCompletion = new Promise<void>(resolve => { workerAck = resolve; });
+  const commandCompletion = new Promise<void>(resolve => { finishCommand = resolve; });
+  const profileId = f.admission.profileBinding.profileId;
+  let commandBusy = true, commandCancelled = false;
+  try {
+    const generation = f.context.database.getMeta().authorityGeneration, before = byteSnapshot(f.workspace);
+    const command = {
+      hasUnquiescedWork(id: string) { assert.equal(id, profileId); return commandBusy; },
+      requestCancellation(id: string) { assert.equal(id, profileId); commandCancelled = true; },
+      awaitCancellation: () => commandCompletion,
+    };
+    const activity = composeProfileActivity({ ...f.input, commandActivities: new Set([command]),
+      supervisor: { ...f.input.supervisor, drainOwnedChildren: () => workerCompletion } });
+    assert.equal(activity.hasUnquiescedWork(profileId), true);
+    activity.requestCancellation(profileId); assert.equal(commandCancelled, true);
+    workerAck(); await workerCompletion;
+    assert.equal(activity.hasUnquiescedWork(profileId), true);
+    assert.deepEqual(reservationReaders(f), []);
+    commandBusy = false; finishCommand(); await activity.awaitCancellation();
+    assert.equal(activity.hasUnquiescedWork(profileId), false);
+    assert.equal(f.context.database.getMeta().authorityGeneration, generation);
+    assert.equal(isDeepStrictEqual(byteSnapshot(f.workspace), before), true);
+  } finally { workerAck(); finishCommand(); await f.cleanup(); }
 });

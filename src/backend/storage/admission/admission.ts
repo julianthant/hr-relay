@@ -571,8 +571,6 @@ export class RuntimeAdmission {
       case "synthetic": case "synthetic-verified-copy": case "synthetic-stopped-staged":
         this.assertStorageRootsSafe(); return false;
       case "profile-ready-upgrade":
-        if (this.#readyUpgrade?.purpose === "layout") { this.assertStorageRootsSafe(); return false; }
-        break;
       case "installation": case "profile": case "profile-maintenance": case "profile-restore":
       case "profile-initialization": case "profile-upgrade": case "profile-settlement":
       case "profile-pending-logout-inventory": case "stopped-incomplete-profile-inventory":
