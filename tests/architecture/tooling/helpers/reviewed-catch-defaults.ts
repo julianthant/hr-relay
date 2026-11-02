@@ -113,7 +113,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "5f8992b6015f6ed5dfbb95513bb930b2287de5d3dc5a2915940a44a1a165f1cb",
+    "sha256": "530431ee659f44acc10e62af6388caaa2a3473dcc13611936e94a830ca90925d",
     "reason": "Failed constructor cleanup retains the actual native database and admission with both opening and close failures. Failed rollback retains database custody with the original failure; successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or named search refusal, never validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody releases; required native browser closure precedes cancellation. Bounded layout publication validates exact prestate or committed backup-bound state; failed rollback, native close or baseline-copy disposal propagates with its actual retained owners."
   },
   {
