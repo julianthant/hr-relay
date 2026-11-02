@@ -316,7 +316,7 @@ describe("served parked-write Logs decisions", () => {
     const target = { ...write.check.target, controlBasis: { ...write.check.target.controlBasis, controlRevision: 2 } };
     fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, check: { state: "available", target },
       actions: write.actions.map(action => action.kind === "command" && action.command === "check-parked-write" ? { ...action, checkTarget: target } : action) }));
-    await h.render(selected); await act(async () => confirmations[0]());
+    await h.render(selectionAt(3)); await act(async () => confirmations[0]());
     assert.equal(sent.length, 0); assert.equal(h.outcomes.at(-1)?.kind, "refused");
   });
 
@@ -354,7 +354,7 @@ describe("served parked-write Logs decisions", () => {
     fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, generation: 2,
       check: { state: "available", target: checkTarget }, actions: write.actions.map(action => action.kind === "command"
       ? { ...action, writeTarget: { ...action.writeTarget, intentGeneration: 2 }, ...(action.checkTarget === undefined ? {} : { checkTarget }) } : action) }));
-    await h.render(selected); await act(async () => confirmations[0]());
+    await h.render(selectionAt(3)); await act(async () => confirmations[0]());
     assert.equal(sent.length, 0); assert.equal(h.outcomes.at(-1)?.kind, "refused");
   });
 
