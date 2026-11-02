@@ -1,6 +1,7 @@
 import { defineTask } from "../../../workflow-kit/task.js";
 import { OnboardingMatchHireSubject } from "../../../models/workflows/onboarding/match-hire-subject.js";
 import { matchHireSubject } from "../../../rules/onboarding/match-hire-subject.js";
+import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 
 export const matchHireSubjectTask = defineTask(OnboardingMatchHireSubject, {
   sessions: [],
@@ -12,7 +13,7 @@ export const matchHireSubjectTask = defineTask(OnboardingMatchHireSubject, {
     try { output = matchHireSubject(input); } catch (cause) {
       return ctx.fail("ONBOARDING_MATCH_INVALID", "UCPath duplicate search returned inconsistent identity evidence.", { cause });
     }
-    ctx.recordData(Object.entries(output).map(([field, value]) => ({ direction: "read" as const, field, value })));
+    ctx.recordData(Object.entries<JsonValue>(output).map(([field, value]) => ({ direction: "read" as const, field, value })));
     return output;
   },
 });

@@ -10,7 +10,7 @@ import { CrmReadOnboardingDates } from "../../../src/models/systems/crm/read-onb
 import { readHireDataTask } from "../../../src/backend/systems/crm/tasks/read-hire-data.js";
 import { readHirePlanTask } from "../../../src/workflows/onboarding/tasks/read-hire-plan.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
-import { onboardingWorkflow, ONBOARDING_STEPS } from "../../../src/workflows/onboarding/workflow.js";
+import { onboardingWorkflow, ONBOARDING_STEPS, i9LookupInput, i9LookupItemId } from "../../../src/workflows/onboarding/workflow.js";
 import { registration } from "../../../src/workflows/onboarding/index.js";
 import { ONBOARDING_INPUT_EXAMPLE } from "../../../src/models/workflows/onboarding/input.js";
 import { OnboardingReadHirePlan } from "../../../src/models/workflows/onboarding/read-hire-plan.js";
@@ -18,8 +18,7 @@ import { OnboardingReadI9ProfilePlan, OnboardingI9OutcomeSchema } from "../../..
 import { OnboardingReadI9Lookup } from "../../../src/models/workflows/onboarding/i9-profile.js";
 import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding/result.js";
 import { I9LookupInputSchema, I9SignerOutputSchema } from "../../../src/models/systems/i9/read-section2-signer.js";
-import { i9LookupInput, i9LookupItemId } from "../../../src/workflows/onboarding/tasks/lookup-i9.js";
-import { readI9LookupTask } from "../../../src/workflows/onboarding/tasks/read-i9-profile.js";
+import { readI9LookupTask } from "../../../src/workflows/onboarding/tasks/read-i9-lookup.js";
 import { TaskRefusal, createSeparationTaskFixtures } from "../../support/helpers/separation-task-fixtures.js";
 import { UNREGISTERED_ONBOARDING_MODULES } from "../../support/fixtures/onboarding/unregistered-workflows.js";
 import { DataPointSchema } from "../../../src/rules/workflow/task-provenance.js";

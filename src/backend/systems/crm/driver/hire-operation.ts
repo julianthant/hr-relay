@@ -173,7 +173,7 @@ export async function readCrmHireDataOnPage(assertCurrent: () => void, page: Pag
   const identity = await readIdentity(assertCurrent, page, selected.recordId);
   if (JSON.stringify(identity) !== JSON.stringify(prior.identity)) throw new Error("CRM hire record changed during selection");
   await open(assertCurrent, page, SHEET_PATH, selected.recordId);
-  const entries = [];
+  const entries: [string, string][] = [];
   for (const [key, label] of Object.entries(FIELD_LABELS)) entries.push([key, await field(assertCurrent, page, label)]);
   const result = CrmHireDataSchema.parse({
     recordId: selected.recordId, recordUrl: selected.recordUrl, requestedEmail,

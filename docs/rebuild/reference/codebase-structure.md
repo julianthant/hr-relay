@@ -123,7 +123,8 @@ at `ocr/steps/source-pages/step.ts` and `ocr-page/steps/read-page/step.ts` in th
 
 `src/workflows/onboarding/` is unregistered while its write and spreadsheet capabilities are pending.
 Its `index.ts` declares the store and four retained step proofs: CRM data, UCPath duplicate search,
-delegated I-9 search, and the I-9 profile-creation plan. Typed system-task calls live in `tasks/`;
+delegated I-9 search, and the I-9 profile-creation plan. Typed system-task calls and one implementation
+per task ID live in `tasks/`; the parent workflow owns the I-9 child input and item-ID bindings;
 pure validation and profile decisions live in `src/rules/onboarding/`. Tests compose the definition
 and proofs through `tests/support/fixtures/onboarding/unregistered-workflows.ts`. Legal/lived names
 arrive through the declared run-start roster snapshot input. I-9 profile creation and UCPath hire

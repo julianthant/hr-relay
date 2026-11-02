@@ -1,6 +1,7 @@
 import { UNREGISTERED_OCR_MODULES, UNREGISTERED_OCR_STORES } from "../../support/fixtures/ocr/unregistered-workflows.js";
 import { UNREGISTERED_ONBOARDING_MODULES } from "../../support/fixtures/onboarding/unregistered-workflows.js";
 import { onboardingStore } from "../../../src/workflows/onboarding/task-registry.js";
+import type { RegisteredTaskStore } from "../../../src/workflow-kit/task-registry.js";
 
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -404,9 +405,10 @@ describe("descriptor coverage", () => {
       assert.equal(entry.fingerprint, descriptor.contractFingerprint);
       assert.ok(entry.sources.length > 1, "a fingerprint over one file is not a closure");
     }
+    const stores: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores, ...UNREGISTERED_OCR_STORES, onboardingStore];
     assert.deepEqual(
       regenerated.tasks.map(({ id }) => String(id)).sort(),
-      [...taskStoreRegistry.stores, ...UNREGISTERED_OCR_STORES, onboardingStore]
+      stores
         .flatMap((store) => Object.values(store.tasks).map((task) => String(task.contract.id)))
         .sort(),
       "every bound task must have exactly one implementation fingerprint",

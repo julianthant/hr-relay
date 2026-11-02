@@ -1,15 +1,28 @@
+import type { z } from "zod";
 import { defineStepEntries, defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../workflow-kit/workflow.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
 import { OnboardingInput, OnboardingCanonicalInput } from "../../models/workflows/onboarding/input.js";
-import { OnboardingReadHirePlan } from "../../models/workflows/onboarding/read-hire-plan.js";
+import { OnboardingReadHirePlan, type HirePlanSchema } from "../../models/workflows/onboarding/read-hire-plan.js";
 import { OnboardingMatchHireSubject } from "../../models/workflows/onboarding/match-hire-subject.js";
 import { OnboardingReadI9Lookup, OnboardingReadI9ProfilePlan } from "../../models/workflows/onboarding/i9-profile.js";
 import { OnboardingResultSchema } from "../../models/workflows/onboarding/result.js";
 import { readCrmDataTask, crmDataInput } from "./tasks/read-crm-data.js";
 import { searchPersonMatchTask, personMatchInput } from "./tasks/search-person-match.js";
-import { onboardingI9Target, i9LookupInput, i9LookupItemId } from "./tasks/lookup-i9.js";
+import { I9LookupInputSchema, I9SignerOutputSchema } from "../../models/systems/i9/read-section2-signer.js";
+import { ItemIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
+import { deriveItemId } from "../../rules/identity/logical-item.js";
+import { i9LookupWorkflow } from "../i9-lookup/workflow.js";
+
+const onboardingI9Target = Object.freeze({ id: WorkflowIdSchema.parse(i9LookupWorkflow.id), input: I9LookupInputSchema, result: I9SignerOutputSchema });
+export function i9LookupInput(plan: z.output<typeof HirePlanSchema>): z.input<typeof I9LookupInputSchema> {
+  return { firstName: plan.employee.firstName, lastName: plan.employee.lastName,
+    ...(plan.employee.ssn === null ? {} : { ssn: plan.employee.ssn }) };
+}
+export function i9LookupItemId(input: z.output<typeof I9LookupInputSchema>) {
+  return ItemIdSchema.parse(deriveItemId(i9LookupWorkflow.id, i9LookupWorkflow.identity.matchKey(input)));
+}
 
 export const CRM_DATA_STEP = defineWorkflowStep({ key: "crm-data", label: "Read and validate hire data" });
 export const UCPATH_SEARCH_STEP = defineWorkflowStep({ key: "ucpath-search", label: "Check UCPath duplicates" });

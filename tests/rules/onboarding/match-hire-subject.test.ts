@@ -34,6 +34,7 @@ describe("onboarding duplicate identity", () => {
       { hits: [], confirmed: [person], dropped: [] },
       { hits: [person], confirmed: [], dropped: [] },
       { hits: [person], confirmed: [other], dropped: [] },
+      { hits: [person], confirmed: [{ ...person, name: "Different, Person" }], dropped: [] },
       { hits: [person, person], confirmed: [person], dropped: [] },
       { hits: [person], confirmed: [person], dropped: [{ ...person, reason: "not confirmed" }] },
     ]) assert.throws(() => matchHireSubject({ ...base, match }));

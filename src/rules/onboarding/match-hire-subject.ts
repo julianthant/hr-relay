@@ -10,10 +10,11 @@ export function matchHireSubject(input: z.output<typeof OnboardingMatchHireSubje
     if (mode === "rehire") throw new Error("Concurrent hire requires an existing UCPath person");
     return { state: "new-hire", candidateEids: [] };
   }
-  const keys = match.hits.map(hit => `${hit.emplId}|${normalizedName(hit.name)}`);
   if (new Set(match.hits.map(hit => hit.emplId)).size !== match.hits.length) throw new Error("UCPath Search/Match returned duplicate person IDs");
   for (const observation of [...match.confirmed, ...match.dropped]) {
-    if (!keys.includes(`${observation.emplId}|${normalizedName(observation.name)}`)) throw new Error("UCPath confirmation names a person outside its search hits");
+    if (!match.hits.some(hit => hit.emplId === observation.emplId && normalizedName(hit.name) === normalizedName(observation.name))) {
+      throw new Error("UCPath confirmation names a person outside its search hits");
+    }
   }
   const decisions = [...match.confirmed, ...match.dropped].map(hit => hit.emplId);
   if (new Set(decisions).size !== decisions.length || decisions.length !== match.hits.length) {
