@@ -18,14 +18,15 @@ Statuses: `done`, `now`, `next`, `later`. One line per key implementation.
 
 Complete these in order.
 
-- [now] Portable storage core — one database and settings per person, simpler safety checks on Mac, backup and same-person restore, with no folder relocation.
+- [now] Portable storage core — one database and settings per person, simpler safety checks on Mac, automatic backups when the app quits (the last three are kept) and automatic self-repair after a crash or corruption, with no manual backup or restore and no folder relocation.
 - [next] Sign-up and accounts — require Touch ID and a Duo security key, both added in Duo's device management at duo.ucpath.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Logout keeps credentials. Put Delete account in Settings > General. An empty machine says to sign up first. Back up the old store, then start clean.
 - [now] Workflow logins — use fast-duo for every workflow login and remove duo-autopilot before the dry runs.
-- [next] Runs — add Pause and Resume, "Pause all and quit" and reruns of failed items only. A crash parks items caught mid-submit as unknown.
+- [next] Runs — add Pause and Resume and reruns of failed items only. Quitting asks first and pauses every run at its last completed step; a submit already in progress finishes first. After a crash or force-quit, interrupted runs show as failed with a rerun from the last completed step, and items caught mid-submit are parked as unknown. Resume and reruns reuse the saved results of completed steps. App updates install when the app quits or is idle, never under running work.
 - [next] Write safety — take screenshots at every browser step and before and after submit. Dry runs fill the whole workflow with sample values where needed, without submitting. UCPath shows transaction-list findings for the operator to decide. Kuali keeps its reload check.
 - [next] OCR and Emergency Contact on the new core — review OCR, save corrections as revisions and feed approved snapshots into Emergency Contact.
-- [now] Dashboard cleanups — make Explorer read-only, have the assistant always ask before acting and propose workflow starts, save appearance preferences per person and put Backup/Restore in Settings.
-- [next] Operator preview — complete the full test pass and verify a backup before preview.
+- [now] Dashboard cleanups — make Explorer read-only, have the assistant always ask before acting and propose workflow starts, and save appearance preferences per person.
+- [now] New workflows — CRM Document Download, I-9 Check, I-9 Lookup, SharePoint Download and Onboarding, built in parallel; OnBase Emergency Contact after the storage core. Live sign-off follows the operator preview.
+- [next] Operator preview — complete the full test pass and verify automatic backup and self-repair before preview.
 - [next] Workflow sign-off — Person Lookup live read and sign-off, then Separations dry run and sign-off, then OCR to Emergency Contact dry run and sign-off, then real runs.
 
 ## After the dashboard is ready
@@ -33,6 +34,6 @@ Complete these in order.
 - [later] Shared-laptop access — add a login screen and profile menu.
 - [later] Windows support — portable storage and required Windows checks.
 - [later] Desktop app — package for Mac and Windows with updates.
-- [later] Remaining workflows, one at a time — Oath Signature, Oath Upload, OnBase Emergency Contact, I-9 Check, I-9 Lookup, Onboarding, Work-Study, Kronos Pay Rule, CRM Document Download, SharePoint Download, Old Kronos Reports and Background Check.
+- [later] Remaining workflows, one at a time — Oath Signature, Oath Upload, Work-Study, Kronos Pay Rule, Old Kronos Reports and Background Check.
 - [later] Parked work — re-judge schema baseline, one UI library and bundled backend against the new core.
 - [later] Release and cutover — release staging to main and replace the old app.
