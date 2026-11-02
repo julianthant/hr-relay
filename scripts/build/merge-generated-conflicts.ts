@@ -11,11 +11,10 @@ function git(root: string, ...args: string[]): string {
 }
 
 function regenerate(root: string): void {
-  const { GH_TOKEN: _ghToken, GITHUB_TOKEN: _githubToken, ...env } = process.env;
-  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  execFileSync(npm, ["ci"], { cwd: root, env, stdio: "inherit" });
+  const npm = ["-u", "GH_TOKEN", "-u", "GITHUB_TOKEN", "npm"];
+  execFileSync("env", [...npm, "ci"], { cwd: root, stdio: "inherit" });
   for (const output of GENERATED_OUTPUTS) {
-    execFileSync(npm, ["run", output.script], { cwd: root, env, stdio: "inherit" });
+    execFileSync("env", [...npm, "run", output.script], { cwd: root, stdio: "inherit" });
   }
 }
 
@@ -61,8 +60,7 @@ function pullRequest(repo: string, number: string): z.infer<typeof PullRequest> 
   return PullRequest.parse(JSON.parse(bytes));
 }
 
-function updatePullRequest(number: string, expectedHead: string): boolean {
-  const repo = z.string().regex(/^[\w.-]+\/[\w.-]+$/u).parse(process.env.GH_REPO);
+function updatePullRequest(number: string, expectedHead: string, repo: string): boolean {
   const eligible = (pr: z.infer<typeof PullRequest>) => pr.state === "open" && !pr.draft && pr.base.ref === "staging"
     && pr.user.login === "julianthant" && pr.head.repo.full_name === repo && pr.head.sha === expectedHead;
   const pr = pullRequest(repo, number);
@@ -92,5 +90,6 @@ function updatePullRequest(number: string, expectedHead: string): boolean {
 if (isDirectExecution(import.meta.url)) {
   const number = z.string().regex(/^\d+$/u).parse(process.argv[2]);
   const expectedHead = z.string().regex(/^[a-f0-9]{40}$/u).parse(process.argv[3]);
-  if (!updatePullRequest(number, expectedHead)) process.exitCode = 1;
+  const repo = z.string().regex(/^[\w.-]+\/[\w.-]+$/u).parse(process.argv[4]);
+  if (!updatePullRequest(number, expectedHead, repo)) process.exitCode = 1;
 }
