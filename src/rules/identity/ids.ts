@@ -153,12 +153,13 @@ export const BrowserSystemIdSchema = z.enum([
   "old-kronos",
   "sharepoint",
 ]);
-export const ServiceSystemIdSchema = z.enum(["extraction", "normalization", "ocr", "roster"]);
+export const ServiceSystemIdSchema = z.enum(["extraction", "normalization", "ocr", "roster", "workbooks"]);
 export const SystemIdSchema = z.union([BrowserSystemIdSchema, ServiceSystemIdSchema]);
 export const ProviderCapabilityIdSchema = z.enum([
   "ocr.extract",
   "geocode.census",
   "geocode.nominatim",
+  "workbooks.library",
 ]);
 
 export const TaskStoreIdSchema = z.union([
@@ -166,7 +167,7 @@ export const TaskStoreIdSchema = z.union([
   z.templateLiteral(["workflow:", WorkflowIdSchema]),
 ]);
 export const TaskIdSchema = brandedText<"TaskId">(
-  /^(?:(?:ucpath|crm|onbase|kuali|servicenow|i9|new-kronos|old-kronos|sharepoint|extraction|normalization|ocr|roster)|workflow:[a-z0-9]+(?:-[a-z0-9]+)*)\/[a-z0-9]+(?:-[a-z0-9]+)*$/,
+  /^(?:(?:ucpath|crm|onbase|kuali|servicenow|i9|new-kronos|old-kronos|sharepoint|extraction|normalization|ocr|roster|workbooks)|workflow:[a-z0-9]+(?:-[a-z0-9]+)*)\/[a-z0-9]+(?:-[a-z0-9]+)*$/,
   "task id must be <registered-store>/<kebab-case-operation>",
 );
 

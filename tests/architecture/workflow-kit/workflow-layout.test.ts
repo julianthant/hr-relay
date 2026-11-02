@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, it } from "vitest";
 
-import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { auditWorkflowModuleRoles, type WorkflowRoleView } from "../../../src/workflow-kit/validation/workflow-module-audit.js";
 import { defineWorkflowRole, type WorkflowModuleRole } from "../../../src/workflow-kit/validation/module-role.js";
@@ -15,8 +15,7 @@ import { declaredWorkflowId } from "../../../scripts/build/workflow-build-manife
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 
 const WORKFLOWS_ROOT = "src/workflows";
-/** The one file §1.2.2 rule 1 allows to sit beside the workflow folders. */
-const TOP_LEVEL_FILES = new Set(["descriptor-registry.ts"]);
+const TOP_LEVEL_FILES = new Set(["descriptor-registry.ts", "generated-descriptors.ts"]);
 
 
 export interface WorkflowLayoutModule {
@@ -106,6 +105,7 @@ export function auditWorkflowLayout(
     for (const name of childrenOf(tree.files, folder)) {
       if (name === (module.role.kind === "chunk-harness" ? "step.ts" : "workflow.ts")) continue;
       if (module.role.kind !== "chunk-harness" && name === "task-registry.ts") continue;
+      if (module.role.kind !== "chunk-harness" && name === "index.ts") continue;
       violations.push(
         `workflow ${module.id} authors ${folder}/${name} beside ${entryPath}; a workflow folder holds exactly its `
         + `one ${module.role.kind === "chunk-harness" ? "step.ts" : "workflow.ts"}`,
@@ -224,8 +224,11 @@ const FIXTURE_MODULE = "export const module = { role: \"fixture\" };\n";
 function cleanFixtureFiles(): Record<string, string> {
   return {
     "src/workflows/descriptor-registry.ts": "export const REGISTRY = [];\n",
+    "src/workflows/generated-descriptors.ts": "export const WORKFLOW_DESCRIPTORS = [];\n",
     "src/workflows/solo/workflow.ts": fixtureWorkflow("solo"),
+    "src/workflows/solo/index.ts": "export const registration = {};\n",
     "src/workflows/combo/workflow.ts": fixtureWorkflow("combo"),
+    "src/workflows/combo/index.ts": "export const registration = {};\n",
     "src/workflows/combo/steps/step-one/step.ts": fixtureWorkflow("combo-harness"),
   };
 }
@@ -287,6 +290,7 @@ const FIXTURES: readonly LayoutFixture[] = [
     arm: "a",
     files: withFiles((files) => {
       delete files["src/workflows/solo/workflow.ts"];
+      delete files["src/workflows/solo/index.ts"];
     }),
     modules: cleanFixtureModules(),
     expected: /workflow solo \(role standalone\) is addressed to src\/workflows\/solo\/, which does not exist/,
@@ -397,7 +401,7 @@ function writeFixtureTree(files: Record<string, string>): string {
 }
 
 function registeredLayoutModules(): readonly WorkflowLayoutModule[] {
-  return [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES, ...UNREGISTERED_OCR_MODULES].map((module) => ({
+  return [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES, ...UNREGISTERED_OCR_MODULES].map((module) => ({
     id: String(module.descriptor.id),
     role: module.role,
     timelineDeclared: module.descriptor.timelineDeclared,
@@ -468,7 +472,7 @@ describe("workflow-layout — the src/workflows/ tree IS the rail and the timeli
   }
 
   it("arm (c): the registry's role audit is wired over the real modules and refuses a shared step", () => {
-    assert.deepEqual(auditWorkflowModuleRoles([...WORKFLOW_MODULES, ...STEP_PROOF_MODULES]), []);
+    assert.deepEqual(auditWorkflowModuleRoles([...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES]), []);
 
     const composition = WORKFLOW_MODULES.find(({ role }) => role.kind === "composition");
     const harnesses = STEP_PROOF_MODULES.filter(({ role }) => role.kind === "chunk-harness");

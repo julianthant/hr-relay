@@ -17,6 +17,16 @@ describe("workflow definition compiler", () => {
 
 
 describe("manifest task owners", () => {
+  it("hashes workflow-owned system task calls through the workflow without inventing task implementations", () => {
+    const manifest = computeBuildManifest(resolve("."));
+    expect(manifest.tasks.some(task => task.id === "ucpath/search-person-match")).toBe(true);
+    expect(manifest.tasks.some(task => task.id === "workflow:i9-check/search-person-match")).toBe(false);
+    const workflow = manifest.workflows.find(workflow => workflow.id === "i9-check");
+    expect(workflow?.sources.map(source => source.path)).toEqual(expect.arrayContaining([
+      "src/workflows/i9-check/tasks/search-person-match.ts", "src/workflows/i9-check/tasks/search-person-org.ts",
+    ]));
+  });
+
   it("requires the current registry even when a retired registration exists", () => {
     const root = mkdtempSync(join(tmpdir(), "relay-manifest-owner-"));
     try {

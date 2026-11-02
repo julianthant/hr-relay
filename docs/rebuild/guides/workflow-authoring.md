@@ -17,6 +17,10 @@ Workflow-owned task implementations live in `tasks/` with `task-registry.ts`; on
 composition loads them. A chunk harness lives at
 `src/workflows/<composition>/steps/<step>/step.ts`.
 
+Every workflow has `tasks/` and `steps/`. Steps group tasks into the checkpoints on the run
+timeline; hovering a checkpoint shows its tasks. Reused system operations stay in their system
+store, and a thin workflow-owned task retains their typed result through declared dependencies.
+
 `src/workflow-kit/workflow-definition.ts` owns `defineWorkflow` (validation), `compileWorkflow`
 (descriptor, graph, timeline, contracts, namespaces, display and manifest fingerprint), and
 `composeWorkflowModule` (exact implementation bindings).
@@ -37,7 +41,7 @@ effect, input and output. `src/backend/app/registries/task-registry.ts` composes
 
 | Need | Change |
 | --- | --- |
-| Existing operation with the same contract | Import that exact contract into `workflow.ts`. |
+| Existing operation with the same contract | Add a typed call to that exact contract in the workflow’s `tasks/` folder and group it in its timeline step. |
 | Existing typed option | Bind the option from the workflow input. |
 | New variant of the same browser operation and output meaning | Extend the shared contract and implementation with the typed option; update its consumers and tests. |
 | Pure workflow-specific calculation | Use or add a task in `workflow:<id>`. |
@@ -46,7 +50,7 @@ effect, input and output. `src/backend/app/registries/task-registry.ts` composes
 | New generic dashboard interaction | Change the shared capability under its own approved scope. |
 
 Reuse follows the operation and output contract. Bind or fold the useful facts from a page-read
-task instead of adding another scrape for one field.
+task instead of adding another scrape for one field. A workflow-owned system-task call uses `defineStepEntries(step).task(...)` and a typed input binder; the system store keeps the driver implementation, session policy, screenshots and provenance. Such calls are fingerprinted through the workflow source closure, not registered again as mini-store implementations. Pure calculation tasks use `defineTask` and the workflow mini-store.
 
 ## 3 · Files and registration
 
@@ -56,24 +60,43 @@ backend task implementations, browser drivers, Playwright or credential access i
 
 For a new operator workflow:
 
-1. Create `src/workflows/<id>/workflow.ts` with one `defineWorkflow` call.
-2. In `src/backend/app/registries/workflow-registry.ts`, import the definition, export the module
-   through `composeWorkflowModule(compileWorkflow(definition), taskStoreRegistry.stores)`, and add
-   it to `WORKFLOW_MODULES`.
-3. In `src/workflows/descriptor-registry.ts`, import the same definition and add
-   `compileWorkflow(definition).descriptor` to `WORKFLOW_DESCRIPTORS` in the same order.
-   `tests/workflows/descriptor-registry.test.ts` checks tuple equality and descriptor identity.
-4. Run `npm run build:manifest`, then `npm run build:manifest:check`. The generator discovers the
-   definition sources; do not hand-edit
-   `src/workflow-kit/validation/generated-build-manifest.ts`.
-5. Register any new workflow-owned store through `src/backend/app/registries/task-registry.ts`,
-   then regenerate and check the store catalog.
-6. Record copied source provenance, acceptance evidence and unfinished checks in the brief's
+1. Create `src/workflows/<id>/workflow.ts` with one `defineWorkflow` call, workflow-owned `tasks/`
+   and `task-registry.ts`, and retained harnesses under `steps/<step>/step.ts`.
+2. Create `index.ts` in that folder. Import the real definition, store and harness values, then
+   export `registration = deepFreeze({ ... } as const)` using `deepFreeze` from
+   `src/rules/validation/immutability.ts`. Follow Person Lookup or Separations:
+
+   ```ts
+   export const registration = deepFreeze({
+     definition: exampleWorkflow,
+     exposure: { kind: "public", order: 2 },
+     store: exampleStore,
+     proofs: [{ definition: exampleReadWorkflow, order: 9 }],
+   } as const);
+   ```
+
+   Import definitions from `./workflow.js`, the store from `./task-registry.js`, and each harness
+   from `./steps/<step>/step.js`. Definition export names end in `Workflow`; generated module
+   exports replace that suffix with `Module`. List every retained harness exactly once.
+   Public picker orders and registered proof orders are nonnegative integers, unique across indexes.
+   Use `{ kind: "child-only" }` for a workflow admitted only through declared delegation edges,
+   or `{ kind: "unregistered" }` to keep its module, store and proofs out of production registries.
+3. Run `npm run build:manifest` and `npm run stores:catalog`. The manifest command first runs
+   `build:registries`, which derives the backend module/store/proof lists and a separate browser-safe
+   descriptor tuple. Existing registry imports remain the public entrypoints; do not edit generated lists.
+4. Run `npm run build:manifest:check` and `npm run stores:catalog:check`. Registry freshness is part
+   of the manifest check. `build:registries` and `build:registries:check` also run independently.
+5. Record copied source provenance, acceptance evidence and unfinished checks in the brief's
    evidence folder.
 
-Register harnesses separately through `STEP_PROOF_MODULES` in
-`src/backend/app/registries/step-proof-modules.ts`. They do not enter the operator tuple or picker.
+Harnesses declared in `index.ts` enter the generated `STEP_PROOF_MODULES` list.
+They do not enter the operator tuple or picker.
 A group without a harness needs no step folder.
+
+Declare delegated-only workflows with child-only exposure in their `index.ts`. Generation places
+them in `CHILD_ONLY_WORKFLOW_MODULES`, outside the public tuples. Give them no start surface.
+The registry resolves a child only for a parent that declares its delegation edge. A child may
+remain registered without a parent; I-9 Lookup uses this shape.
 
 Registration refuses missing or duplicate stores and a store that binds a different contract
 object. Import the real contract value; an equivalent schema or copied declaration does not satisfy

@@ -15,7 +15,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `docs/roadmap/roadmap.md` | Roadmap content. |
 | `docs/roadmap/index.html` | Generated roadmap site. |
 | `fast-duo/` | Shared software authenticator, isolated signup runtime, and backend-signed workflow login runtime. |
-| `scripts/build/` | Workflow manifest generation and checks. |
+| `scripts/build/` | Workflow registry and manifest generation and checks. |
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. |
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
@@ -25,7 +25,9 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `src/` | Application source. |
 | `tests/` | Tests, fixtures, helpers, and process entrypoints. |
 
-`npm run build:manifest` generates `src/workflow-kit/validation/generated-build-manifest.ts`.
+`npm run build:registries` reads workflow indexes and generates `src/workflows/generated-descriptors.ts`
+and `src/backend/app/registries/generated-{workflow-modules,workflow-stores,step-proof-modules}.ts`.
+`npm run build:manifest` runs that generator, then generates `src/workflow-kit/validation/generated-build-manifest.ts`.
 `npm run stores:catalog` generates the catalog section in `docs/rebuild/reference/stores.md`.
 `npm run roadmap` generates the roadmap site. Each command has a corresponding `:check` command.
 `npm run web:build` produces the dashboard bundle in `dist/`.
@@ -45,7 +47,7 @@ src/
 ├── rules/{commands,identity,intake,kronos,matching,normalization,notifications,
 │          preflight,redaction,runs,separations,sessions,time,validation,workflow,write-safety}/
 ├── workflow-kit/validation/
-├── workflows/{person-lookup,separations}/
+├── workflows/{i9-lookup,person-lookup,separations}/
 └── cli.ts
 ```
 
@@ -73,13 +75,14 @@ Paths in this table are relative to `src/backend/`.
 | `storage/configuration/` | Settings and canonical private credential persistence. `canonical-credential-store.ts` owns the three encrypted protected-settings, Duo and ChatGPT records, the external key/generation/counter/retirement head, and durable create/erase operations. `credential-store.ts`, `duo-credential-store.ts` and `chatgpt-credential-repository.ts` expose the purpose-specific records; `duo-signing.ts` owns public assertion validation and Node cryptography. `credential-conversion.ts` verifies supported stopped predecessor credentials and their independent credential-free SQLite backup before conversion. `credential-key-custody.ts` owns OS keychain entries and non-secret key metadata. `credential-safe-file.ts` supplies private file reads, exact mutex custody and operation proofs. |
 | `storage/events/` | Native timeline writers, readers, and emitters. |
 | `storage/sqlite/` | Database authority, repositories, migrations, process locks, backup inspection, recovery status, and deletion custody. `database-identity.ts` owns the application-ID and immutable installation/person binding digest. `timeline-repository.ts` owns ordered event persistence. `worker-slots.ts` authenticates reservation and retirement lineage for both live custody and isolated maintenance snapshots; `worker-control.ts` owns their authenticated control reads. `readonly-authority-snapshot.ts` owns isolated source snapshots. `offline-restore.ts` owns automatic same-person backup selection and interrupted replacement replay. `restore-write-fences.ts` refuses evidence loss; `same-person-restore-candidate.ts` binds immutable identity and runtime roots. `maintenance/automatic-restore-files.ts` binds retained files and exact recovery membership. The pure `storage/source-closure.ts` owns `AuthoritySourceClosureUnprovedError` and private failed-resource retention without authority or resource accessors. |
-| `systems/` | Browser-system sessions, drivers, semantic UI registries, and tasks. CRM, Kuali, New Kronos, and UCPath have driver implementations. I-9, Old Kronos, OnBase, ServiceNow, and SharePoint have session declarations and empty task stores with `unwired` drivers. |
+| `systems/` | Browser-system sessions, drivers, UI registries, and tasks. CRM, I-9, Kuali, New Kronos, and UCPath have driver implementations. Old Kronos, OnBase, ServiceNow, and SharePoint have session declarations and empty task stores with `unwired` drivers. I-9 owns name-based employee search and Section 2 summary reads; its UCOP login uses the shared UCSD SSO and backend Fast Duo path. |
 | `systems/browser-shared/` | Shared sign-in, authenticated application, action-note, and semantic UI effect behavior. |
 | `systems/kronos-shared/` | Shared timecard models. |
 | `systems/ui-task-links.ts` | Explorer task attribution from system registries. |
 | `transports/cli/` | CLI dispatch and command handling. |
 | `transports/http/` | Dashboard HTTP routes, request schemas, and SSE subscriptions. |
 | `workbooks/` | Saved workbook library: validated workbook records, versions and history over its SQLite repository. |
+| `workbooks/workflow-workbook-service.ts` | Creates one new table workbook per run through the admitted library repository. The `workbooks.library` provider is composed in `app/composition/worker/run-resources.ts`; the original saved record supplies replay proof. |
 
 ### Dashboard and shared packages
 
@@ -109,12 +112,25 @@ Paths in this table are relative to `src/backend/`.
 ### Workflow ownership and imports
 
 `src/workflows/person-lookup/` and `src/workflows/separations/` each contain `workflow.ts`,
-`task-registry.ts`, and `tasks/`. The workflow definition is browser-safe. The registry loads
-backend task implementations. The unregistered `src/workflows/ocr/` and `src/workflows/ocr-page/`
+`task-registry.ts`, `index.ts`, and `tasks/`. The workflow definition is browser-safe. The index declares
+registration, importing the definition, backend task store and retained proofs. The generated descriptor
+tuple imports definitions directly, keeping those backend imports out of the dashboard.
+The unregistered `src/workflows/ocr/` and `src/workflows/ocr-page/`
 folders use the same layout; their test-only composition inventory in
 `tests/support/fixtures/ocr/unregistered-workflows.ts` supports compiler, layout, bundle and manifest
 audits without making either workflow available in production registries. Their retained proofs live
 at `ocr/steps/source-pages/step.ts` and `ocr-page/steps/read-page/step.ts` in the same unregistered inventory.
+
+`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Each UCPath call has a typed workflow-owned task call under `tasks/`; all three timeline groups have retained proofs under `steps/<key>/step.ts` using the same typed authors. Shared workbook publication lives outside this workflow; its task/command contract is `src/models/processing/workbooks/read-result.ts`. The shared task creates a new Spreadsheets-library workbook per run; linked writes and SharePoint imports are not exposed.
+`src/workflows/i9-lookup/workflow.ts` is child-only, with no public delegating parent yet. It uses
+the I-9 system store, then retains its typed result through `tasks/read-result.ts` in the workflow
+store. Its one `lookup` timeline checkpoint groups both tasks. The registered harness at
+`steps/lookup/step.ts` reuses that exact group. Results contain `signerName`, `i9Status`, and record
+IDs when a summary was read.
+Its `index.ts` declares child-only exposure, the store and the retained proof. The generated
+`CHILD_ONLY_WORKFLOW_MODULES` admits it separately from the public workflow tuple. A caller must
+declare its delegation edge to resolve a child.
+
 
 Person Lookup has four chunk harnesses at `src/workflows/person-lookup/steps/<step>/step.ts`:
 `searching`, `cross-verify`, `active-status`, and `crm-dates`.
