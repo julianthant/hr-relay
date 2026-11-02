@@ -117,9 +117,11 @@ describe("public repository privacy check", () => {
   it("requires both an approved synthetic token and a synthetic location", () => {
     const knownSynthetic = ["1000", "0001"].join("");
     assert.deepEqual(inspectTrackedFile("tests/new.test.ts", text(knownSynthetic)), []);
-    assert.deepEqual(inspectTrackedFile("src/models/systems/crm/read-onboarding-dates.ts", text(knownSynthetic)), []);
+    for (const path of ["src/models/systems/crm/read-onboarding-dates.ts", "src/models/systems/ucpath/contact-tasks.ts"]) {
+      assert.deepEqual(inspectTrackedFile(path, text(knownSynthetic)), []);
+    }
     assert.deepEqual(inspectTrackedFile("new-note.md", text(knownSynthetic)), [{ path: "new-note.md", rule: "eid" }]);
-    for (const path of ["tests/new.test.ts", "src/models/systems/crm/read-onboarding-dates.ts", "tests/support/fixtures/documents/synthetic-sample.pdf"]) {
+    for (const path of ["tests/new.test.ts", "src/models/systems/crm/read-onboarding-dates.ts", "src/models/systems/ucpath/contact-tasks.ts", "tests/support/fixtures/documents/synthetic-sample.pdf"]) {
       assert.ok(inspectTrackedFile(path, text(`${unknownEid} ${unknownSsn}`)).some(({ rule }) => rule === "eid"));
       assert.ok(inspectTrackedFile(path, text(`${unknownEid} ${unknownSsn}`)).some(({ rule }) => rule === "ssn"));
     }
@@ -127,7 +129,7 @@ describe("public repository privacy check", () => {
 
   it("never lets synthetic allowances bypass credential detection", () => {
     const credential = ["ghp_", "a".repeat(36)].join("");
-    for (const path of ["tests/new.test.ts", ".env.example", "src/models/systems/crm/read-onboarding-dates.ts"]) {
+    for (const path of ["tests/new.test.ts", ".env.example", "src/models/systems/crm/read-onboarding-dates.ts", "src/models/systems/ucpath/contact-tasks.ts"]) {
       assert.deepEqual(inspectTrackedFile(path, text(credential)), [
         { path, rule: "credential-value" },
         ...(path === ".env.example" ? [{ path, rule: "environment-file" }] : []),
