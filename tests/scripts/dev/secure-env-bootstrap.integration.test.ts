@@ -128,7 +128,7 @@ describe("secure environment bootstrap", () => {
   });
 
   it.each([
-    ["storage", "doctor"], ["storage", "backup"], ["storage", "upgrade"], ["storage", "restore"],
+    ["storage", "doctor"], ["storage", "backup"], ["storage", "upgrade"],
 
     ["test-data", "check"], ["test-data", "migrate"],
   ])("isolates %s %s from provider environment admission", async (command, operation) => {

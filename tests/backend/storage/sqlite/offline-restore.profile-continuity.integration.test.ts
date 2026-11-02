@@ -288,7 +288,7 @@ describe("profile restore continuity", () => {
       const control = z.object({ schemaVersion: z.literal(7) }).parse(JSON.parse(readFileSync(join(f.workspace, ".tracker", "control", "profile-registry.json"), "utf8")));
       assert.equal("completedRestores" in control, false);
       for (const copy of copies) assert.deepEqual(readFileSync(copy.path), copy.bytes);
-      const notice = z.object({ profileId: z.uuid(), backupTime: z.iso.datetime() }).parse(JSON.parse(readFileSync(join(f.workspace, ".tracker", "control", "automatic-repair.json"), "utf8")));
+      const notice = z.object({ profileId: z.uuid(), backupTime: z.iso.datetime() }).parse(JSON.parse(readFileSync(join(f.workspace, ".tracker", "control", `automatic-repair-${f.profileId}.json`), "utf8")));
       assert.equal(notice.profileId, f.profileId);
     } catch (error) { primary = { error }; }
     finally { await closeCustodyFixture(() => f.close(), primary); }
@@ -554,7 +554,7 @@ describe("profile restore continuity", () => {
       finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
       assert.equal(interrupted, true);
       const pending = z.object({ restore: z.object({ operationId: z.uuid() }) }).parse(JSON.parse(readFileSync(journalPath, "utf8")));
-      const noticePath = join(f.workspace, ".tracker", "control", "automatic-repair.json"), notice = readFileSync(noticePath);
+      const noticePath = join(f.workspace, ".tracker", "control", `automatic-repair-${f.profileId}.json`), notice = readFileSync(noticePath);
       const database = readFileSync(f.path); f.machine.release();
       operation = f.lifetime.beginOfflineMaintenance(f.workspace);
       recovery = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, pending.restore.operationId, operation);

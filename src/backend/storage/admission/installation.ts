@@ -2075,7 +2075,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         atomicJson(continuityPath, nextContinuity);
         sameRestoreFile(parsed.authorityPath, parsed.staged);
         assertRestoreSuspect(parsed);
-        atomicJson(join(control, "automatic-repair.json"), {
+        atomicJson(join(control, `automatic-repair-${parsed.profile.binding.profileId}.json`), {
           schemaVersion: 1, installationId: locator.installationId, profileId: parsed.profile.binding.profileId,
           operationId: parsed.operationId, backupTime: parsed.backupTime, restoredAt: parsed.restoredAt,
           authorityGeneration: parsed.authorityGeneration, manifestFileName: basename(parsed.manifestPath) });
