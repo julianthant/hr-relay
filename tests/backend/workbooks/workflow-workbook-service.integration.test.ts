@@ -17,7 +17,6 @@ import { createTaskProvenanceCollector } from "../../../src/backend/runs/provena
 import { compileFixtureWorkflow } from "../../support/fixtures/workflow-definition-fixtures.js";
 import { createSearchWorkflowDefinitionFixtures } from "../../support/helpers/search-workflow-definition-fixtures.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
-import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 
 const databases: DatabaseSync[] = [];
 afterEach(() => { for (const database of databases.splice(0)) database.close(); });
