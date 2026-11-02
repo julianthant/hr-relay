@@ -6,8 +6,8 @@ import { z } from "zod";
 import type { DuoCeremonyGate, DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { Config } from "../../../models/config/schema.js";
-import type { DuoCeremonyLeaseRecord } from "../../../rules/sessions/duo-ceremony-lease.js";
-import { BrowserSystemIdSchema, FingerprintSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
+import { DuoCeremonyLeaseHolderSchema, type DuoCeremonyLeaseHolder, type DuoCeremonyLeaseRecord } from "../../../rules/sessions/duo-ceremony-lease.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import type { BrowserSystemId, Fingerprint, WorkerId } from "../../../rules/identity/ids.js";
 import { DuoTerminalRefusalError } from "../../systems/browser-shared/login-contract.js";
 import type { DuoCeremonyLeaseRepository } from "../../storage/sqlite/authority-database.js";
@@ -16,13 +16,13 @@ import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-schedule
 /** §10.4 — another worker holds the ceremony for this credential, and the budget is spent. */
 export class DuoCeremonyLeaseHeldError extends Error {
   readonly system: BrowserSystemId;
-  readonly holder: Readonly<{ workerId: WorkerId; system: BrowserSystemId; generation: number; expiresAt: string }>;
+  readonly holder: DuoCeremonyLeaseHolder & Readonly<{ generation: number; expiresAt: string }>;
 
   constructor(system: BrowserSystemId, holder: DuoCeremonyLeaseRecord, budgetMs: number) {
     super(
-      `${system} login refused: another worker holds the Duo ceremony for this credential — `
-      + `worker ${holder.holder.workerId} (${holder.holder.system}), generation ${String(holder.generation)}, `
-      + `until ${holder.expiresAt}. This worker waited its whole budget (${String(budgetMs)}ms = the remaining `
+      `${system} login refused: another login owner holds the Duo ceremony for this credential — `
+      + `${holder.holder.workerId === undefined ? `command ${holder.holder.commandId}` : `worker ${holder.holder.workerId}`} (${holder.holder.system}), generation ${String(holder.generation)}, `
+      + `until ${holder.expiresAt}. This login waited its whole budget (${String(budgetMs)}ms = the remaining `
       + "timeouts.sessionAcquireMs envelope minus timeouts.duoCeremonyLeaseGraceMs) and refuses BEFORE its "
       + "envelope fires; it is not retried here. One credential admits one Duo ceremony at a time "
       + "(ref execution-and-sessions §10) — a second one in the same second is the cloned-key signal that burns a profile.",
@@ -30,8 +30,7 @@ export class DuoCeremonyLeaseHeldError extends Error {
     this.name = "DuoCeremonyLeaseHeldError";
     this.system = system;
     this.holder = Object.freeze({
-      workerId: holder.holder.workerId,
-      system: holder.holder.system,
+      ...holder.holder,
       generation: holder.generation,
       expiresAt: holder.expiresAt,
     });
@@ -42,7 +41,7 @@ export class DuoCeremonyLeaseHeldError extends Error {
 export class DuoCeremonyLeaseExpiredError extends Error {
   constructor(system: BrowserSystemId, token: DuoCeremonyLeaseToken) {
     super(
-      `${system} login abandoned: this worker's Duo ceremony lease (generation ${String(token.generation)}) `
+      `${system} login abandoned: this holder's Duo ceremony lease (generation ${String(token.generation)}) `
       + `expired at ${token.expiresAt} before the content verifier returned, so a waiter may now hold the `
       + "credential at the next generation. The ceremony is cancelled and the session is poison-closed rather "
       + "than presenting an assertion under a superseded lease (ref execution-and-sessions §10.3).",
@@ -77,9 +76,7 @@ export interface DuoCeremonyGateHandle extends DuoCeremonyGate {
 }
 
 export interface DuoCeremonyGateFactory {
-  openGate(input: Readonly<{
-    workerId: WorkerId;
-    system: BrowserSystemId;
+  openGate(input: DuoCeremonyLeaseHolder & Readonly<{
     /** The monotonic instant this acquisition's `sessionAcquireMs` envelope fires. */
     envelopeDeadlineMonotonicMs: number;
     /** The acquisition's abort channel: how a TTL expiry cancels an in-flight ceremony. */
@@ -127,19 +124,18 @@ export function createDuoCeremonyGateFactory(input: Readonly<{
       ttlMs,
       graceMs: parsed.graceMs,
       pollIntervalMs: parsed.pollIntervalMs,
-      workerId: WorkerIdSchema.parse(gateInput.workerId),
-      system: BrowserSystemIdSchema.parse(gateInput.system),
+      ...DuoCeremonyLeaseHolderSchema.parse({ workerId: gateInput.workerId, commandId: gateInput.commandId, system: gateInput.system }),
       envelopeDeadlineMonotonicMs: gateInput.envelopeDeadlineMonotonicMs,
       cancelCeremony: gateInput.cancelCeremony,
       signal: gateInput.signal,
       correlationId: randomUUID(),
-      onDebug: event => input.onDebug?.(gateInput.workerId, event),
+      onDebug: event => { if (gateInput.workerId !== undefined) input.onDebug?.(gateInput.workerId, event); },
     }),
   };
   return Object.freeze(factory);
 }
 
-interface GateOptions {
+type GateOptions = DuoCeremonyLeaseHolder & {
   readonly correlationId: string;
   readonly onDebug: (event: Pick<DebugEvent, "phase" | "correlationId"> & Partial<Pick<DebugEvent, "code" | "durationMs" | "pinned">>) => void;
   readonly leases: DuoCeremonyLeaseRepository;
@@ -149,8 +145,6 @@ interface GateOptions {
   readonly ttlMs: number;
   readonly graceMs: number;
   readonly pollIntervalMs: number;
-  readonly workerId: WorkerId;
-  readonly system: BrowserSystemId;
   readonly envelopeDeadlineMonotonicMs: number;
   readonly cancelCeremony: (reason: Error) => void;
   readonly signal: AbortSignal;
@@ -248,8 +242,8 @@ class Gate implements DuoCeremonyGateHandle {
     if (outcome.state === "superseded") {
       throw new Error(
         `${system} Duo ceremony lease generation ${String(hold.token.generation)} was superseded by `
-        + `generation ${String(outcome.current.generation)} (worker ${outcome.current.holder.workerId}, `
-        + `${outcome.current.holder.system}) while this worker still held it; the ceremonies may have overlapped `
+        + `generation ${String(outcome.current.generation)} (${outcome.current.holder.workerId === undefined ? `command ${outcome.current.holder.commandId}` : `worker ${outcome.current.holder.workerId}`}, `
+        + `${outcome.current.holder.system}) while this holder still held it; the ceremonies may have overlapped `
         + "(ref execution-and-sessions §10.3)",
       );
     }
@@ -257,14 +251,14 @@ class Gate implements DuoCeremonyGateHandle {
   }
 
   async #acquire(): Promise<Hold> {
-    const { leases, clock, credentialKey, ttlMs, graceMs, pollIntervalMs, workerId, system, signal } = this.#options;
+    const { leases, clock, credentialKey, ttlMs, graceMs, pollIntervalMs, workerId, commandId, system, signal } = this.#options;
     const budgetDeadline = this.#options.envelopeDeadlineMonotonicMs - graceMs;
     const started = clock.monotonicMs();
     for (;;) {
       if (signal.aborted) throw abortReason(signal, system);
       const now = clock.monotonicMs();
       const outcome = leases.acquire({
-        credentialKey, workerId, system, now: clock.now().toISOString(), ttlMs,
+        credentialKey, workerId, commandId, system, now: clock.now().toISOString(), ttlMs,
       });
       if (outcome.state === "acquired") {
         this.#options.onDebug({ phase: "acquired", correlationId: this.#options.correlationId });

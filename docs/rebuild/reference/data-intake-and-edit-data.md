@@ -323,8 +323,24 @@ cell values, time and sequence; reusing an operation ID with different input ref
 Workbook-scoped HTTP commands retain the operator loopback/JSON guards. Operator source identity
 and time are server-owned. Manual Sync downloads/parses before admission, rechecks the expected
 revision, and reconciles owned fields by unique keys. It preserves Relay fills and operator edits to
-those fields, including cell metadata. Without an authenticated SharePoint download port Sync returns
-`WORKBOOK_SYNC_UNAVAILABLE`. Workflow start snapshot retention, run-bound writer composition and
+those fields, including cell metadata. Production Sync uses the selected profile's command browser,
+the shared credential-scoped Duo ceremony lease and SharePoint's current-user proof. The command
+captures active settings and protected revision, cancels on profile closure and retains uncertain
+native or authentication custody. The browser closes with proof before import and master settlement;
+the logical command remains active through the final CAS. A replayed receipt performs no download.
+
+Sync accepts a clean direct `.xlsx` or `.csv` file URL on the configured exact SharePoint tenant.
+Opaque sharing links, Office viewer URLs, arbitrary query strings and foreign tenants refuse before
+protected access or browser launch with `SHAREPOINT_LINK_UNSUPPORTED`. Missing links return
+`WORKBOOK_SYNC_LINK_REQUIRED`. SharePoint REST resolves the canonical path to a file UUID, then
+downloads that file through the owned authenticated browser context with same-origin credentials,
+no redirects and a 20 MiB streaming bound. Current-user identity and absent sign-in controls must
+both be proved; URL, HTTP status or a session cookie alone cannot authorize Sync. Downloaded bytes,
+credentials, user identity and link queries never enter diagnostics. See Microsoft's
+[file REST API](https://learn.microsoft.com/en-us/sharepoint/dev/sp-add-ins/working-with-folders-and-files-with-rest)
+and [sharing-link limitation](https://learn.microsoft.com/en-us/sharepoint/dev/spfx/shorter-share-link-format).
+
+Workflow start snapshot retention, run-bound writer composition and
 Logs row-resolution dispatch remain integrations owned by Runs; this library API does not dispatch them.
 
 `rules/spreadsheets/workbook-io.ts` owns library XLSX/CSV import/export, using browser-safe

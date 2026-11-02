@@ -1,3 +1,4 @@
+import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
 import { encodeEditableWorkbook, type SavedWorkbook, type WorkbookOperation } from "../../../src/models/dashboard/workbooks.js";
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { createAuthorityAccountingTestWorld } from "../../support/helpers/backend/authority-accounting-world.js";
@@ -78,7 +79,7 @@ afterEach(async () => {
 afterAll(() => profiles.close());
   type AccountingDatabase = Parameters<MutationCase['mutate']>[0];
   const accountingWorkbooks = new WeakMap<AccountingDatabase, SavedWorkbook>();
-  const createAccountingWorkbook = (database: AccountingDatabase) => createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK })
+  const createAccountingWorkbook = (database: AccountingDatabase) => createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock: CLOCK })
     .create({ name: "Accounting.xlsx", themes: [], hasFormulas: false,
       sheets: [{ id: "sheet", name: "Rows", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "synthetic" }] }] }] });
   const prepareAccountingWorkbook = (database: AccountingDatabase) => { accountingWorkbooks.set(database, createAccountingWorkbook(database)); };
