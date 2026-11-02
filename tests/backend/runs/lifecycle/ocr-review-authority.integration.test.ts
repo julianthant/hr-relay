@@ -146,5 +146,9 @@ it("refuses native overwrite, replacement and deletion of source, review and app
       assert.throws(() => raw.exec(`DELETE FROM ${table}`), /ocr-evidence-retained/u);
       assert.throws(() => raw.exec(`INSERT OR REPLACE INTO ${table} SELECT * FROM ${table}`), /ocr-evidence-replace-refused/u);
     }
+    assert.throws(() => raw.exec(`INSERT OR REPLACE INTO ocr_review_revisions
+      SELECT id||':foreign',run_id,revision,command_id,payload_json,created_at FROM ocr_review_revisions WHERE revision=1`), /ocr-evidence-replace-refused/u);
+    assert.throws(() => raw.exec(`INSERT OR REPLACE INTO ocr_review_revisions
+      SELECT id||':foreign',run_id,revision+10,command_id,payload_json,created_at FROM ocr_review_revisions WHERE command_id IS NOT NULL`), /ocr-evidence-replace-refused/u);
   } finally { raw.close(); }
 });

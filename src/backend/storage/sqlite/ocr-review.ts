@@ -17,7 +17,8 @@ export const OCR_REVIEW_MIGRATION = Object.freeze({ version: 16, statements: Obj
   ...["ocr_source_uploads", "ocr_review_revisions", "ocr_approved_snapshots"].flatMap(table => [
     `CREATE TRIGGER ${table}_immutable BEFORE UPDATE ON ${table} BEGIN SELECT RAISE(ABORT,'ocr-evidence-immutable'); END`,
     `CREATE TRIGGER ${table}_retained BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT,'ocr-evidence-retained'); END`,
-    `CREATE TRIGGER ${table}_no_replace BEFORE INSERT ON ${table} WHEN EXISTS(SELECT 1 FROM ${table} WHERE id=NEW.id)
+    `CREATE TRIGGER ${table}_no_replace BEFORE INSERT ON ${table} WHEN EXISTS(SELECT 1 FROM ${table} WHERE id=NEW.id${table === "ocr_review_revisions"
+      ? " OR (run_id=NEW.run_id AND revision=NEW.revision) OR (command_id IS NOT NULL AND command_id=NEW.command_id)" : ""})
       BEGIN SELECT RAISE(ABORT,'ocr-evidence-replace-refused'); END`,
   ]),
 ]) });
