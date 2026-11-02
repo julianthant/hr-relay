@@ -1,3 +1,4 @@
+import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { readXlsx } from "@shbernal/ts-xlsx";
 import { composeIntake } from "../../../../src/backend/app/composition/dashboard/intake.js";
@@ -723,7 +724,7 @@ describe("2.6.1-2 retained intake evidence", () => {
 describe("saved workbook intake bridge", () => {
   it("retains immutable workbook provenance, all sheets and data, joins only exact sources, and refuses stale versions", async () => {
     const h = await surface();
-    const library = createWorkbookLibraryService({ repository: h.database.authority.workbooks, clock: h.clock });
+    const library = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: h.database.authority.workbooks, clock: h.clock });
     const first = library.create({ name: "Roster.xlsx", themes: [], hasFormulas: false, sheets: [
       { id: "roster", name: "Roster", width: 2, hidden: [], headerRow: 1, sourceHeaderRow: 7,
         columnBindings: [{ id: "eid", sourceColumn: 4, sourceHeader: "Original EID", fieldId: "eid", basis: "manual" }, { id: "date", sourceColumn: null, sourceHeader: "Added date", fieldId: "roster.notes", basis: "manual" }],
@@ -759,7 +760,7 @@ describe("saved workbook intake bridge", () => {
     const ordinary = await surface();
     const raw = await ordinary.intake.upload({ workflow: INTAKE_FIXTURE_WORKFLOW_ID, fileName: "Raw.xlsx", mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes });
     if (raw.state === "refused") throw new Error(raw.message);
-    const ordinaryLibrary = createWorkbookLibraryService({ repository: ordinary.database.authority.workbooks, clock: ordinary.clock });
+    const ordinaryLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: ordinary.database.authority.workbooks, clock: ordinary.clock });
     const other = ordinaryLibrary.create({ ...first.workbook, libraryId: undefined });
     const ordinaryGeneration = ordinary.database.getMeta().authorityGeneration;
     await assert.rejects(createWorkbookIntakeBridge(ordinaryLibrary, ordinary.intake)(other.libraryId, request), { code: "WORKBOOK_INTAKE_SOURCE_CONFLICT" });
@@ -768,7 +769,7 @@ describe("saved workbook intake bridge", () => {
     h.database.close();
     const reopened = AuthorityDatabase.open({ path: join(h.root, "state.db"), busyTimeoutMs: 250, migrationOwner: "bridge-restart" }, h.clock);
     try {
-      const restartedLibrary = createWorkbookLibraryService({ repository: reopened.authority.workbooks, clock: h.clock });
+      const restartedLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: reopened.authority.workbooks, clock: h.clock });
       const restartedIntake = composeIntake({ database: reopened, artifacts: h.artifacts, parser: createIntakeParser({ artifacts: h.artifacts }),
         projections: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureProjection : undefined },
         descriptors: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureDescriptor : undefined }, clock: h.clock, ids: sequentialIdFactory("f") });

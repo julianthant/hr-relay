@@ -1,3 +1,4 @@
+import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,7 +28,7 @@ it("adds workbook storage to the baseline without changing existing schema or re
       try { const result = work(); database.exec("COMMIT"); return result; }
       catch (error) { database.exec("ROLLBACK"); throw error; }
     };
-    const service = () => createWorkbookLibraryService({
+    const service = () => createWorkbookLibraryService({ sync: unexpectedWorkbookSync,
       clock: manualClock(new Date("2026-10-12T00:00:00.000Z")),
       repository: createWorkbookLibraryRepository({ database, mutate: work => transaction(() => work().result), read: transaction }),
     });

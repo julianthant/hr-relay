@@ -140,6 +140,16 @@ while waiting for its retry time.
 
 ## 4. Browser ownership and reuse
 
+Manual workbook Sync uses `runtime/browser/command-browser.ts` with a genuine profile-bound command
+capability and the fixed `<browserProfileRoot>/commands/sharepoint` slot. Its owner is a command UUID
+and request digest, never a worker or onboarding identity. The one browser-root registry records its
+launch and native closure, and ordinary/stopped profile inventories retain its exact membership.
+`storage-compose.ts` registers command activity beside worker activity so logout and shutdown cancel
+and drain both before releasing storage. A command retains activity through import and final CAS,
+even after its browser has closed. Unproved native or authentication closure retains the actual
+owners and blocks reuse and clean profile closure. Command and worker Duo ceremonies share the
+same credential-keyed durable lease; a command holder has a command UUID and no worker FK.
+
 `WorkerSessionManager.withDriver` serializes callback leases per worker and system. Acquisition
 requires a bound run fingerprint and refuses during teardown.
 
@@ -604,7 +614,7 @@ refuses release. There are no geocode election, endpoint or PID files.
 
 `storage/browser-roots.ts` owns the private `machine/browser-roots.json` registry outside person
 SQLite. Reads and publications share the registry mutex, so readers inspect only settled publications.
-Its strict bounded document records actual worker or signup ownership and launch generations.
+Its strict bounded document records actual worker, signup or command ownership and launch generations.
 Each launch and native acquisition records intent before Chromium starts. A fresh full-Chromium
 probe must acquire and close the exact profile before reuse or removal; saved closed/observed states
 do not authorize effects. One row remains excluded through native closure, the awaited effect and
