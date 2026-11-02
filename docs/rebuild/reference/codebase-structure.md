@@ -94,11 +94,13 @@ Paths in this table are relative to `src/backend/`.
 | `src/dashboard/assets/` and `src/dashboard/public/` | Bundled assets and static public files. The Logs preview lives under `public/logs-preview/`. |
 | `src/models/` | Browser-safe schemas, contracts, and API shapes. System and workflow task contracts live under `systems/` and `workflows/`; canonical fields live under `fields/`. `failures/error-catalog.ts` owns task-code normalization for durable failures and their served recovery declarations. |
 | `src/models/dashboard/activity-population.ts` | Canonical Analytics population, selected browse, export and AP1 snapshot schemas. `activity-selection.ts` owns the nested AS1 report selection used by summary and XLSX exports. |
+| `src/models/workflows/person-lookup/result.ts` | Person Lookup terminal result schema shared by its definition, retained CRM proof and OCR outcome fold. |
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. |
 | `src/models/workflow/dry-run.ts` | Browser-safe preview stage accounting, typed sample provenance and reserved sample detection. |
 | `src/models/workflow/build-manifest.ts` | Pure build-manifest path, schemas, types and parser shared by generation and runtime validation. `workflow-kit/validation/build-manifest.ts` owns the eagerly validated checked-in manifest and fingerprint resolvers. |
 | `src/models/events/` | Timeline, confirmed action, declared step result, and confirmation-proof schemas. |
 | `src/models/trust/` | Failure, diagnostic, receipt, and scenario schemas. |
+| `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |
 | `src/rules/` | Pure decisions and validation, including identity, clocks, normalization, ledger derivation, redaction, and write safety. |
 | `src/workflow-kit/` | Root-level TypeScript modules for task and workflow declaration, flow construction, compilation, sessions, providers, artifacts, and capabilities. |
 | `src/workflow-kit/workflow-definition.ts` | `defineWorkflow` and `compileWorkflow`. |
@@ -108,7 +110,11 @@ Paths in this table are relative to `src/backend/`.
 
 `src/workflows/person-lookup/` and `src/workflows/separations/` each contain `workflow.ts`,
 `task-registry.ts`, and `tasks/`. The workflow definition is browser-safe. The registry loads
-backend task implementations.
+backend task implementations. The unregistered `src/workflows/ocr/` and `src/workflows/ocr-page/`
+folders use the same layout; their test-only composition inventory in
+`tests/support/fixtures/ocr/unregistered-workflows.ts` supports compiler, layout, bundle and manifest
+audits without making either workflow available in production registries. Their retained proofs live
+at `ocr/steps/source-pages/step.ts` and `ocr-page/steps/read-page/step.ts` in the same unregistered inventory.
 
 Person Lookup has four chunk harnesses at `src/workflows/person-lookup/steps/<step>/step.ts`:
 `searching`, `cross-verify`, `active-status`, and `crm-dates`.
