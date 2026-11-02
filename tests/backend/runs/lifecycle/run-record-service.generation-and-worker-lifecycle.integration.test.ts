@@ -69,7 +69,15 @@ describe("canonical run-record service", () => {
       contractFingerprint: personLookupDescriptor.contractFingerprint,
     }));
     if (sourceResult.state !== "applied") throw new Error("coverage create refused");
-    const source = sourceResult.run;
+    let source = sourceResult.run;
+    const paused = measure("pause", 1, () => service.pause({ commandId: commandId(), runId: source.envelope.runId, expectedVersion: source.version }));
+    if (paused.state !== "applied") throw new Error("coverage pause refused");
+    const resumed = measure("resumePaused", 1, () => service.resumePaused({ commandId: commandId(), runId: source.envelope.runId, expectedVersion: paused.run.version }));
+    if (resumed.state !== "applied") throw new Error("coverage resume refused");
+    source = resumed.run;
+    assert.deepEqual(measure("continueDelegations", 0, () => service.continueDelegations(source, commandId())), []);
+    assert.deepEqual(measure("acknowledgePause", 0, () => service.acknowledgePause({ commandId: commandId(), runId: source.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 } })), { state: "refused", refusal: { reason: "invalid-state" } });
     assert.deepEqual(measure("withRunTreeSnapshot", 0, () => service.withRunTreeSnapshot([source.envelope.runId], runs => runs.map(run => run.envelope.runId))), [source.envelope.runId]);
     measure("read", 0, () => service.read(source.envelope.runId));
     measure("list", 0, () => service.list({ disposition: "live", limit: 10 }));
@@ -78,26 +86,16 @@ describe("canonical run-record service", () => {
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
     }));
     if (terminal.state !== "applied") throw new Error("coverage transition refused");
-    const retry = measure("retry", 1, () => service.retry({
+    const retry = measure("retry", 0, () => service.retry({
       commandId: commandId(), runId: source.envelope.runId,
       expectedVersion: terminal.run.version, runtimeConfig,
     }, personLookupDescriptor));
-    if (retry.state !== "applied") throw new Error("coverage retry refused");
-    const settledRetry = service.transition({
-      commandId: commandId(), runId: retry.run.envelope.runId, expectedVersion: retry.run.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
-    });
-    if (settledRetry.state !== "applied") throw new Error("coverage retry setup refused");
-    const restart = measure("restart", 1, () => service.restart({
+    assert.deepEqual(retry, { state: "refused", refusal: { reason: "invalid-state" } });
+    const restart = measure("restart", 0, () => service.restart({
       commandId: commandId(), runId: source.envelope.runId,
       expectedVersion: terminal.run.version, runtimeConfig,
     }, personLookupDescriptor));
-    if (restart.state !== "applied") throw new Error("coverage restart refused");
-    const settledRestart = service.transition({
-      commandId: commandId(), runId: restart.run.envelope.runId, expectedVersion: restart.run.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
-    });
-    if (settledRestart.state !== "applied") throw new Error("coverage restart setup refused");
+    assert.deepEqual(restart, { state: "refused", refusal: { reason: "invalid-state" } });
 
     const workerRun = created(service, {
       ...request,
@@ -229,7 +227,7 @@ describe("worker lifecycle service capability", () => {
   it("separates command authority and stable nested identities", async () => {
     const { service } = await fixture();
     assert.deepEqual(Object.keys(workerRunLifecyclePort(service)).sort(),
-      ["admitDelegation", "assertCurrentExecution", "claimNext", "renewClaim", "requeue", "terminalize", "workerTransition"].sort());
+      ["acknowledgePause", "admitDelegation", "assertCurrentExecution", "claimNext", "renewClaim", "requeue", "terminalize", "workerTransition"].sort());
     assert.deepEqual(Object.keys(runContinuationPort(service)), ["transition"]);
     assert.equal(lifecycleCommandId("worker", UUID_1), lifecycleCommandId("worker", UUID_1));
     assert.notEqual(lifecycleCommandId("worker", UUID_1), lifecycleCommandId("continuation", UUID_1));
@@ -444,7 +442,7 @@ it("competing connections cannot accept conflicting failure settlements", async 
 
 
 describe("current settings selection",()=>{
-  for(const operation of ["retry","restart"] as const)it(`${operation} selects active settings and preserves source and journal replay`,async ()=>{
+  for(const operation of ["retry","restart"] as const)it(`${operation} refuses a cancelled source and preserves its selected settings`,async ()=>{
     const f=await settingsFixture();
     try{
       const source=f.create(),terminal=requireLifecycleApplied(f.service.transition({commandId:UUID_5,
@@ -453,16 +451,15 @@ describe("current settings selection",()=>{
       const selected=f.database.authority.runtimeConfig.get();assert.ok(selected);
       const request={commandId:"83000000-0000-4000-8000-000000000091",runId:terminal.envelope.runId,
         expectedVersion:terminal.version,runtimeConfig:selectRunRuntime(f.database.authority)};
-      const next=requireLifecycleApplied(f.service[operation](request,personLookupDescriptor));
-      assert.equal(next.envelope.configSnapshotId,selected.configSnapshotId);
-      assert.equal(next.envelope.configFingerprint,selected.configFingerprint);
-      assert.notEqual(next.envelope.configSnapshotId,terminal.envelope.configSnapshotId);
-      assert.deepEqual(next.input,terminal.input);
+      const generation=f.database.getMeta().authorityGeneration;
+      assert.deepEqual(f.service[operation](request,personLookupDescriptor),{state:"refused",refusal:{reason:"invalid-state"}});
+      assert.equal(f.database.getMeta().authorityGeneration,generation);
+      assert.notEqual(selected.configSnapshotId,terminal.envelope.configSnapshotId);
       assert.deepEqual(f.database.authority.runs.get(terminal.envelope.runId),terminal);
       assert.equal(f.save({"timeouts.taskMs":{clear:true}}).state,"applied");
-      const generation=f.database.getMeta().authorityGeneration;
-      assert.deepEqual(requireLifecycleApplied(f.service[operation](request,personLookupDescriptor)),next);
-      assert.equal(f.database.getMeta().authorityGeneration,generation);
+      const afterSave=f.database.getMeta().authorityGeneration;
+      assert.deepEqual(f.service[operation](request,personLookupDescriptor),{state:"refused",refusal:{reason:"invalid-state"}});
+      assert.equal(f.database.getMeta().authorityGeneration,afterSave);
     }finally{await f.close();}
   });
 });
