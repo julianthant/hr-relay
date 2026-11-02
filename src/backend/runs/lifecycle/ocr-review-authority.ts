@@ -81,10 +81,11 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
   authenticateOcrOperator(repositories, reader, existence.run);
   const latest = repositories.ocrReviews.latest(runId);
   if (latest === undefined) return undefined;
+  if (latest.sourceRunId !== runId) throw new OcrReviewRefusedError();
   let previous: OcrReviewRevision | undefined;
   for (let revision = 1; revision <= latest.revision; revision++) {
     const record = repositories.ocrReviews.revision(runId, revision);
-    if (record === undefined) throw new OcrReviewRefusedError();
+    if (record === undefined || record.sourceRunId !== runId || record.revision !== revision) throw new OcrReviewRefusedError();
     if (record.origin.kind === "checkpoint") {
       const checkpoint = repositories.runCheckpoints.listByAttempt(existence.run.envelope.workflow,
         existence.run.envelope.itemId, "read-result", existence.run.envelope.attempt)
@@ -99,7 +100,8 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
     } else {
       const request = repositories.commands.get(record.origin.commandId);
       const audit = repositories.commandAudits.findByCommand(record.origin.commandId);
-      if (previous === undefined || request?.family !== "ocr-review" || audit?.result.state !== "applied"
+      if (previous === undefined || request?.family !== "ocr-review" || request.commandId !== record.origin.commandId || request.requestedBy !== "local-operator"
+        || request.source !== "dashboard" || audit?.result.state !== "applied" || audit.result.commandId !== request.commandId
         || !same(audit.request, request) || !same(reviseOcrReview(previous, request, record.createdAt), record)
         || !audit.versionChanges.some(change => change.target.family === "ocr-review" && change.target.runId === runId
           && change.before === revision - 1 && change.after === revision)) throw new OcrReviewRefusedError();
@@ -128,11 +130,12 @@ export function readOcrSnapshotsAuthority(repositories: AuthorityRepositories, r
     const gate = repositories.gateResults.listByRun(snapshot.sourceRunId).find(result => "commandId" in result && result.commandId === snapshot.snapshotId);
     const reference = { snapshotId: snapshot.snapshotId, sourceRunId: snapshot.sourceRunId,
       revision: snapshot.revision, digest: ocrSnapshotDigest(snapshot) };
-    if (revision === undefined || snapshot.reviewDigest !== ocrReviewDigest(revision)
+    if (snapshot.sourceRunId !== review.run.envelope.runId || revision === undefined || snapshot.reviewDigest !== ocrReviewDigest(revision)
+      || !snapshot.selectedRecordIds.every(id => revision.records.some(record => record.recordId === id))
       || !same(snapshot.records, snapshot.selectedRecordIds.map(id => revision.records.find(record => record.recordId === id)))
-      || command?.family !== "gate" || command.target.runId !== snapshot.sourceRunId || String(command.target.gateId) !== "approve-records"
+      || command?.family !== "gate" || command.commandId !== snapshot.snapshotId || command.target.runId !== snapshot.sourceRunId || String(command.target.gateId) !== "approve-records"
       || command.requestedBy !== "local-operator" || command.source !== "dashboard"
-      || audit?.result.state !== "applied" || !same(audit.request, command)
+      || audit?.result.state !== "applied" || audit.result.commandId !== command.commandId || !same(audit.request, command)
       || command.payload.ocrApproval?.expectedRevision !== snapshot.revision
       || command.payload.ocrApproval.reviewDigest !== snapshot.reviewDigest
       || !same(command.payload.ocrApproval.selectedRecordIds, snapshot.selectedRecordIds)

@@ -13,12 +13,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "ee0a30cc47c94ec77b90095a709c70c61685c45009cfd531fbfd26d35316ee34",
+    "sha256": "adb6bfa58116553d28d69aaa03b3b8f6bfb8a5f0f8d007b6cd86c0926abc2b8e",
     "reason": "Startup producer closure failures retain dependent native database and admission custody. Selected-context open failure rethrows typed custody uncertainty. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and stop promises, whose callers await failures before storage release. An unavailable authority generation remains explicitly unavailable; backup presence is assessed separately. Automatic upgrade runs before composition in storage-compose.ts and has no HTTP response handoff. Confirmed account deletion shares the exact session logout drain; deletion errors propagate with pending identity retained and never report signed-out success."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "7f7d5590371746ee61b229c68339a8237ce0671c71a9691ee68d222b0d16f6c0",
+    "sha256": "d1a8d5268c2ee91684f4a3226edd806a3ea4792dc4addedc35258eeda3c0e347",
     "reason": "The bound native open validates authority in one SQLite snapshot before protected values are read. Failed opening cleanup retains the actual native database, issued admission and both original/close errors as custody uncertainty. Other open failures close the actual database before admission release and aggregate cleanup errors. Runtime cleanup releases admission only after proven database and browser closure. An uncertain launch reports launch-uncertain with custody held and leaves the lease unchanged. Maintenance failure stops rescheduling and signals the worker stop controller; composition surfaces the failure. Actual root or inherited lifetime custody remains held through shutdown."
   },
   {

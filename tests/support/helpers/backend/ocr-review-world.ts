@@ -7,7 +7,9 @@ import { createOcrSourceService } from "../../../../src/backend/runs/commands/oc
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createServerVerifiedArtifactReader } from "../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { OcrInputSchema } from "../../../../src/models/workflows/ocr/input.js";
-import { OcrResultSchema } from "../../../../src/models/workflows/ocr/result.js";
+import { OcrApprovalReferenceSchema, OcrResultSchema } from "../../../../src/models/workflows/ocr/result.js";
+import { OcrApprovedSnapshotSchema, ocrReviewDigest, ocrSnapshotDigest } from "../../../../src/models/ocr/review.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { buildOcrSourceManifest, ocrPageInputs } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { ExtractPdfPages, type ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
@@ -73,7 +75,21 @@ export function createOcrReviewWorld() {
           family: "ocr-review" as const, type, target: { runId: run.envelope.runId, expectedRevision },
           payload: type === "correct-ocr-record" ? { recordId: record.recordId, fields: corrected, assertedEid: "10800000" } : { recordId: record.recordId } };
       };
-      return { harness, database, path, clock, admission, artifacts, artifactReader, sources, canonical, run, result,
+      const approval = (selectedRecordIds?: readonly string[]) => {
+        const review = database.authority.ocrReviews.latest(run.envelope.runId); assert.ok(review);
+        const current = database.authority.runs.get(run.envelope.runId); assert.ok(current);
+        const commandId = randomUUID();
+        const snapshot = OcrApprovedSnapshotSchema.parse({ snapshotId: commandId, sourceRunId: current.envelope.runId,
+          revision: review.revision, reviewDigest: ocrReviewDigest(review), selectedRecordIds: selectedRecordIds ?? review.records.map(record => record.recordId),
+          records: selectedRecordIds === undefined ? review.records : selectedRecordIds.map(id => review.records.find(record => record.recordId === id)),
+          approvedBy: "local-operator", approvedAt: clock.now().toISOString() });
+        return { commandId, requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
+          family: "gate", type: "resolve-gate", target: { runId: current.envelope.runId, gateId: "approve-records", expectedVersion: current.version },
+          payload: { result: { schemaHash: deriveSchemaHash(OcrApprovalReferenceSchema, "output"), value: {
+            snapshotId: commandId, sourceRunId: current.envelope.runId, revision: review.revision, digest: ocrSnapshotDigest(snapshot),
+          } }, ocrApproval: { expectedRevision: review.revision, reviewDigest: ocrReviewDigest(review), selectedRecordIds: snapshot.selectedRecordIds } } };
+      };
+      return { harness, database, path, clock, admission, artifacts, artifactReader, sources, canonical, run, result, approval,
         reading, corrected, pageBytes, command, root, resolve, readResult: () => {
           const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
             "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);

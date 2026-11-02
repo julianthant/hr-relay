@@ -2,7 +2,7 @@ import { OcrSourceUploadSchema } from "../../../models/ocr/review.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
-import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
+import type { AuthorityDatabase, AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import type { ServerVerifiedArtifactReader, VerifiedByteLease } from "../../storage/artifacts/server-verified-artifact-reader.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { readOcrReviewAuthority, readOcrSnapshotsAuthority } from "../lifecycle/ocr-review-authority.js";
@@ -14,6 +14,22 @@ export const OCR_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
 export class OcrSourceRefusedError extends Error {
   readonly code = "OCR_SOURCE_REFUSED";
   constructor() { super("OCR_SOURCE_REFUSED"); this.name = "OcrSourceRefusedError"; }
+}
+function readOcrCommandResult(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, runId: string, commandId: string) {
+  const review = readOcrReviewAuthority(repositories, reader, runId);
+  if (review === undefined) throw new OcrSourceRefusedError();
+  const command = repositories.commands.get(CommandIdSchema.parse(commandId));
+  if (command === undefined || command.commandId !== commandId || (command.family !== "ocr-review" && command.family !== "gate")
+    || command.target.runId !== runId || command.requestedBy !== "local-operator" || command.source !== "dashboard") return { state: "unavailable" as const };
+  const audit = repositories.commandAudits.findByCommand(commandId);
+  if (audit === undefined) return { state: "unavailable" as const };
+  if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command) || audit.result.state !== "applied"
+    || audit.result.commandId !== command.commandId) throw new OcrSourceRefusedError();
+  if (command.family === "ocr-review") {
+    const revision = repositories.ocrReviews.revision(runId, command.target.expectedRevision + 1);
+    if (revision?.origin.kind !== "command" || revision.origin.commandId !== commandId) throw new OcrSourceRefusedError();
+  } else if (!readOcrSnapshotsAuthority(repositories, review).some(snapshot => snapshot.snapshotId === commandId)) throw new OcrSourceRefusedError();
+  return OcrCommandResultWireSchema.parse({ state: "recorded", request: command, result: audit.result });
 }
 export function createOcrSourceService(input: Readonly<{
   database: AuthorityDatabase; reader: Pick<RunRecordService, "read">; clock: Clock;
@@ -32,19 +48,7 @@ export function createOcrSourceService(input: Readonly<{
     commandResult(runId: string, commandId: string) {
       return input.database.withAuthorityReadSnapshot(() => {
         input.assertCurrent();
-        const review = readOcrReviewAuthority(input.database.authority, input.reader, runId);
-        if (review === undefined) throw new OcrSourceRefusedError();
-        const command = input.database.authority.commands.get(CommandIdSchema.parse(commandId));
-        if (command === undefined || (command.family !== "ocr-review" && command.family !== "gate")
-          || command.target.runId !== runId || command.requestedBy !== "local-operator" || command.source !== "dashboard") return OcrCommandResultWireSchema.parse({ state: "unavailable" });
-        const audit = input.database.authority.commandAudits.findByCommand(commandId);
-        if (audit === undefined) return OcrCommandResultWireSchema.parse({ state: "unavailable" });
-        if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command) || audit.result.state !== "applied") throw new OcrSourceRefusedError();
-        if (command.family === "ocr-review") {
-          const revision = input.database.authority.ocrReviews.revision(runId, command.target.expectedRevision + 1);
-          if (revision?.origin.kind !== "command" || revision.origin.commandId !== commandId) throw new OcrSourceRefusedError();
-        } else if (!readOcrSnapshotsAuthority(input.database.authority, review).some(snapshot => snapshot.snapshotId === commandId)) throw new OcrSourceRefusedError();
-        return OcrCommandResultWireSchema.parse({ state: "recorded", request: command, result: audit.result });
+        return readOcrCommandResult(input.database.authority, input.reader, runId, commandId);
       });
     },
     async upload(request: Readonly<{ actorId: string; fileName: string; mediaType: string; bytes: Uint8Array }>) {

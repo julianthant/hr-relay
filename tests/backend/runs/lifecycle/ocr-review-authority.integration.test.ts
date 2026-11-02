@@ -4,29 +4,23 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { assertOcrRecoverySnapshotCurrent, requireCurrentOcrSnapshot, readOcrReviewAuthority, readOcrSnapshotsAuthority } from "../../../../src/backend/runs/lifecycle/ocr-review-authority.js";
-import { OcrApprovedSnapshotSchema, ocrReviewDigest, ocrSnapshotDigest } from "../../../../src/models/ocr/review.js";
-import { OcrApprovalReferenceSchema, OcrWorkflowResultSchema } from "../../../../src/models/workflows/ocr/result.js";
-import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { OcrApprovedSnapshotSchema, ocrReviewDigest } from "../../../../src/models/ocr/review.js";
+import { OcrWorkflowResultSchema } from "../../../../src/models/workflows/ocr/result.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { CommandAuditRecordSchema, CommandRequestSchema, RunLifecycleCommandAuditRecordSchema } from "../../../../src/rules/commands/commands.js";
+import { OcrReviewRevisionSchema } from "../../../../src/models/ocr/review.js";
+import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
+import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { replaceOcrAuditRead, replaceOcrCommandRead } from "../../../support/helpers/backend/ocr-proof-reads.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
 type Fixture = Awaited<ReturnType<typeof world.fixture>>;
 function approval(f: Fixture, selectedRecordIds?: readonly string[]) {
-  const review = f.database.authority.ocrReviews.latest(f.run.envelope.runId); assert.ok(review);
-  const run = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(run);
-  const commandId = randomUUID();
-  const snapshot = OcrApprovedSnapshotSchema.parse({ snapshotId: commandId, sourceRunId: run.envelope.runId,
-    revision: review.revision, reviewDigest: ocrReviewDigest(review), selectedRecordIds: selectedRecordIds ?? review.records.map(record => record.recordId),
-    records: selectedRecordIds === undefined ? review.records : selectedRecordIds.map(id => review.records.find(record => record.recordId === id)),
-    approvedBy: "local-operator", approvedAt: f.clock.now().toISOString() });
-  return { commandId, requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
-    family: "gate", type: "resolve-gate", target: { runId: run.envelope.runId, gateId: "approve-records", expectedVersion: run.version },
-    payload: { result: { schemaHash: deriveSchemaHash(OcrApprovalReferenceSchema, "output"), value: {
-      snapshotId: commandId, sourceRunId: run.envelope.runId, revision: review.revision, digest: ocrSnapshotDigest(snapshot),
-    } }, ocrApproval: { expectedRevision: review.revision, reviewDigest: ocrReviewDigest(review), selectedRecordIds: snapshot.selectedRecordIds } } };
+  return f.approval(selectedRecordIds);
 }
 
 it("appends journal-bound corrections, discards and restores with revision CAS and exact command replay", async () => {
@@ -151,4 +145,113 @@ it("refuses native overwrite, replacement and deletion of source, review and app
     assert.throws(() => raw.exec(`INSERT OR REPLACE INTO ocr_review_revisions
       SELECT id||':foreign',run_id,revision+10,command_id,payload_json,created_at FROM ocr_review_revisions WHERE command_id IS NOT NULL`), /ocr-evidence-replace-refused/u);
   } finally { raw.close(); }
+});
+
+it("refuses foreign, missing and altered revision command, audit, run and lifecycle proof without changing authority", async () => {
+  const f = await world.fixture({ record: true });
+  const correction = f.command("correct-ocr-record", 1);
+  assert.equal(f.canonical.kernel.execute(correction).state, "applied");
+  const repositories = f.database.authority, runId = f.run.envelope.runId;
+  const current = readOcrReviewAuthority(repositories, f.canonical.lifecycle, runId); assert.ok(current);
+  const command = repositories.commands.get(correction.commandId); assert.ok(command?.family === "ocr-review");
+  const audit = repositories.commandAudits.findByCommand(correction.commandId); assert.ok(audit?.result.state === "applied");
+  const journalId = lifecycleCommandId("operator-ocr-review", command.commandId);
+  const settled = repositories.lifecycleJournal.findAuditByCommand(journalId);
+  assert.ok(settled !== undefined && "kind" in settled && settled.kind === "run-lifecycle" && settled.result.kind === "run");
+  const appliedVersion = settled.result.appliedVersion;
+  const foreignRun = randomUUID();
+  const foreignRevision = OcrReviewRevisionSchema.parse({ ...current.revision, sourceRunId: foreignRun, id: `${foreignRun}#2` });
+  const variants: ReadonlyArray<readonly [string, AuthorityRepositories]> = [
+    ["missing command", replaceOcrCommandRead(repositories, command.commandId, undefined)],
+    ...([
+      ["foreign command", { ...command, commandId: randomUUID() }],
+      ["foreign actor", { ...command, requestedBy: "foreign-operator" }],
+      ["foreign source", { ...command, source: "run-detail" }],
+      ["foreign run", { ...command, target: { ...command.target, runId: foreignRun } }],
+      ["altered revision", { ...command, target: { ...command.target, expectedRevision: 2 } }],
+    ] satisfies ReadonlyArray<readonly [string, unknown]>).map(([name, candidate]) => [name, replaceOcrCommandRead(repositories, command.commandId, CommandRequestSchema.parse(candidate))] as const),
+    ["missing audit", replaceOcrAuditRead(repositories, command.commandId, undefined)],
+    ...([
+      ["divergent audit", { ...audit, request: { ...command, requestedBy: "foreign-operator" } }],
+      ["foreign audit result", { ...audit, result: { ...audit.result, commandId: randomUUID() } }],
+      ["unapplied audit", { ...audit, result: { state: "rejected", commandId: command.commandId, code: "invalid-state", message: "Synthetic refusal" } }],
+      ["missing revision advance", { ...audit, versionChanges: audit.versionChanges.filter(change => change.target.family !== "ocr-review") }],
+      ["missing run advance", { ...audit, versionChanges: audit.versionChanges.filter(change => change.target.family !== "run") }],
+    ] satisfies ReadonlyArray<readonly [string, unknown]>).map(([name, candidate]) => [name, replaceOcrAuditRead(repositories, command.commandId, CommandAuditRecordSchema.parse(candidate))] as const),
+    ["foreign current run", { ...repositories, ocrReviews: { ...repositories.ocrReviews, latest: () => foreignRevision } }],
+    ["missing revision", { ...repositories, ocrReviews: { ...repositories.ocrReviews,
+      revision: (id, revision) => revision === 2 ? undefined : repositories.ocrReviews.revision(id, revision) } }],
+    ["foreign revision run", { ...repositories, ocrReviews: { ...repositories.ocrReviews,
+      revision: (id, revision) => revision === 2 ? foreignRevision : repositories.ocrReviews.revision(id, revision) } }],
+    ["missing lifecycle command", { ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal,
+      getCommand: id => id === journalId ? undefined : repositories.lifecycleJournal.getCommand(id) } }],
+    ["missing lifecycle audit", { ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal,
+      findAuditByCommand: id => id === journalId ? undefined : repositories.lifecycleJournal.findAuditByCommand(id) } }],
+    ["altered lifecycle version", { ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal,
+      findAuditByCommand: id => id === journalId ? RunLifecycleCommandAuditRecordSchema.parse({ ...settled,
+        result: { ...settled.result, appliedVersion: appliedVersion + 1 } }) : repositories.lifecycleJournal.findAuditByCommand(id) } }],
+  ];
+  const generation = f.database.getMeta().authorityGeneration;
+  for (const [name, altered] of variants) assert.throws(() => readOcrReviewAuthority(altered, f.canonical.lifecycle, runId), /OCR_REVIEW_REFUSED/u, name);
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  assert.deepEqual(readOcrReviewAuthority(repositories, f.canonical.lifecycle, runId), current);
+});
+
+it("refuses foreign, missing and altered snapshot, approval, gate and lifecycle proof without changing authority", async () => {
+  const f = await world.fixture({ record: true, release: true });
+  assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
+  const request = approval(f);
+  assert.equal(f.canonical.kernel.execute(request).state, "applied");
+  const repositories = f.database.authority, runId = f.run.envelope.runId;
+  const review = readOcrReviewAuthority(repositories, f.canonical.lifecycle, runId); assert.ok(review);
+  const saved = readOcrSnapshotsAuthority(repositories, review); assert.equal(saved.length, 1);
+  const snapshot = saved[0]; assert.ok(snapshot);
+  const command = repositories.commands.get(request.commandId); assert.ok(command?.family === "gate");
+  const audit = repositories.commandAudits.findByCommand(request.commandId); assert.ok(audit?.result.state === "applied");
+  const journalId = lifecycleCommandId("operator-gate", command.commandId);
+  const settled = repositories.lifecycleJournal.findAuditByCommand(journalId);
+  assert.ok(settled !== undefined && "kind" in settled && settled.kind === "run-lifecycle" && settled.result.kind === "run");
+  const appliedVersion = settled.result.appliedVersion;
+  const foreign = randomUUID();
+  const first = snapshot.records[0]; assert.ok(first);
+  const foreignRecordId = `${"f".repeat(64)}#emergency-contact#99`;
+  const variants: ReadonlyArray<readonly [string, AuthorityRepositories]> = [
+    ["missing command", replaceOcrCommandRead(repositories, command.commandId, undefined)],
+    ...([
+      ["foreign command", { ...command, commandId: foreign }],
+      ["foreign actor", { ...command, requestedBy: "foreign-operator" }],
+      ["foreign source", { ...command, source: "run-detail" }],
+      ["foreign run", { ...command, target: { ...command.target, runId: foreign } }],
+      ["foreign gate", { ...command, target: { ...command.target, gateId: "foreign-gate" } }],
+      ["missing selection", { ...command, payload: { result: command.payload.result } }],
+    ] satisfies ReadonlyArray<readonly [string, unknown]>).map(([name, candidate]) => [name, replaceOcrCommandRead(repositories, command.commandId, CommandRequestSchema.parse(candidate))] as const),
+    ["missing audit", replaceOcrAuditRead(repositories, command.commandId, undefined)],
+    ...([
+      ["divergent audit", { ...audit, request: { ...command, requestedBy: "foreign-operator" } }],
+      ["foreign audit result", { ...audit, result: { ...audit.result, commandId: foreign } }],
+      ["unapplied audit", { ...audit, result: { state: "rejected", commandId: command.commandId, code: "invalid-state", message: "Synthetic refusal" } }],
+    ] satisfies ReadonlyArray<readonly [string, unknown]>).map(([name, candidate]) => [name, replaceOcrAuditRead(repositories, command.commandId, CommandAuditRecordSchema.parse(candidate))] as const),
+    ["missing revision", { ...repositories, ocrReviews: { ...repositories.ocrReviews, revision: () => undefined } }],
+    ...([
+      ["foreign snapshot run", { ...snapshot, sourceRunId: foreign }],
+      ["altered review digest", { ...snapshot, reviewDigest: "f".repeat(64) }],
+      ["foreign selected member", { ...snapshot, selectedRecordIds: [foreignRecordId], records: [{ ...first, recordId: foreignRecordId }] }],
+    ] satisfies ReadonlyArray<readonly [string, unknown]>).map(([name, candidate]) => [name, { ...repositories, ocrReviews: { ...repositories.ocrReviews,
+      snapshots: () => [OcrApprovedSnapshotSchema.parse(candidate)] } }] as const),
+    ["missing gate", { ...repositories, gateResults: { ...repositories.gateResults, listByRun: () => [] } }],
+    ["foreign gate actor", { ...repositories, gateResults: { ...repositories.gateResults,
+      listByRun: id => repositories.gateResults.listByRun(id).map(gate => "commandId" in gate
+        ? { ...gate, resolvedBy: ActorIdSchema.parse("foreign-operator") } : gate) } }],
+    ["missing lifecycle command", { ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal,
+      getCommand: id => id === journalId ? undefined : repositories.lifecycleJournal.getCommand(id) } }],
+    ["missing lifecycle audit", { ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal,
+      findAuditByCommand: id => id === journalId ? undefined : repositories.lifecycleJournal.findAuditByCommand(id) } }],
+    ["altered lifecycle version", { ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal,
+      findAuditByCommand: id => id === journalId ? RunLifecycleCommandAuditRecordSchema.parse({ ...settled,
+        result: { ...settled.result, appliedVersion: appliedVersion + 1 } }) : repositories.lifecycleJournal.findAuditByCommand(id) } }],
+  ];
+  const generation = f.database.getMeta().authorityGeneration;
+  for (const [name, altered] of variants) assert.throws(() => readOcrSnapshotsAuthority(altered, review), /OCR_REVIEW_REFUSED/u, name);
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  assert.deepEqual(readOcrSnapshotsAuthority(repositories, review), saved);
 });
