@@ -29,6 +29,7 @@ export const PERSON_LOOKUP_NODE_PURPOSES = [
 
 export const personLookupWorkflow = defineWorkflow({
   id: "person-lookup",
+  requiredWorkbookTypeIds: [],
   version: 3,
   code: "pl",
   label: "Person Lookup",

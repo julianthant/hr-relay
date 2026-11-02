@@ -9,6 +9,9 @@ import { ProtectedSubjectDisplayRefusedError } from "../../../runs/start/protect
 import { RerunRefusedError } from "../../../runs/start/rerun.js";
 import { ProfileBrowserRootRefusalError } from "../../../storage/admission/admission-identity.js";
 import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
+import { SharePointDownloadError } from "../../../systems/sharepoint/driver/interpreter.js";
+import { browserLoginFailure } from "../../../systems/browser-shared/login-contract.js";
+import { CommandBrowserError, CommandBrowserClosureError } from "../../../runtime/browser/command-browser.js";
 
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";
@@ -32,11 +35,18 @@ export function failureStatus(
     return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };
   }
   const message = errorText(error);
+  if (error instanceof CommandBrowserError || error instanceof CommandBrowserClosureError) return {
+    status: error.code === "COMMAND_BROWSER_CLOSURE_UNPROVED" ? 500 : 409,
+    body: wireError(error.code, ERROR_CATALOG[error.code].text, false),
+  };
   if (error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof DashboardReadFailedError) return { status: 500, body: wireError("DASHBOARD_READ_FAILED", ERROR_CATALOG.DASHBOARD_READ_FAILED.text, false) };
   if (error instanceof ActivitySnapshotError) return { status: 409, body: wireError(error.code, message, false) };
   if (error instanceof ActivityPopulationError) return { status: error.code === "ACTIVITY_POPULATION_RANGE_INVALID" || error.code === "ACTIVITY_POPULATION_BROWSE_INVALID" ? 400 : error.code === "ACTIVITY_POPULATION_SOURCE_MISMATCH" ? 500 : 409, body: wireError(error.code, message, false) };
-  if (error instanceof WorkbookLibraryError) return { status: error.code === "WORKBOOK_NOT_FOUND" || error.code === "WORKBOOK_REVISION_UNAVAILABLE" ? 404 : error.code === "WORKBOOK_INVALID" ? 400 : error.code === "WORKBOOK_OPERATION_CONFLICT" || error.code === "WORKBOOK_VERSION_CONFLICT" || error.code === "WORKBOOK_INTAKE_SOURCE_CONFLICT" || error.code === "WORKBOOK_METADATA_UNSUPPORTED" ? 409 : 500, body: wireError(error.code, message, false) };
+  if (error instanceof WorkbookLibraryError) return { status: error.code === "WORKBOOK_NOT_FOUND" || error.code === "WORKBOOK_REVISION_UNAVAILABLE" ? 404 : error.code === "WORKBOOK_INVALID" ? 400 : error.code === "WORKBOOK_OPERATION_CONFLICT" || error.code === "WORKBOOK_VERSION_CONFLICT" || error.code === "WORKBOOK_INTAKE_SOURCE_CONFLICT" || error.code === "WORKBOOK_METADATA_UNSUPPORTED" || error.code === "WORKBOOK_SYNC_LINK_REQUIRED" || error.code === "WORKBOOK_SYNC_CONTEXT_CHANGED" || error.code === "WORKBOOK_SYNC_IMPORT_FAILED" ? 409 : 500, body: wireError(error.code, message, false) };
+  if (error instanceof SharePointDownloadError) return { status: error.code === "SHAREPOINT_LINK_UNSUPPORTED" ? 400 : 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
+  const loginFailure = browserLoginFailure(error);
+  if (loginFailure?.system === "sharepoint") return { status: 409, body: wireError(loginFailure.code, ERROR_CATALOG[loginFailure.code].text, false) };
   if (error instanceof ProtectedSubjectDisplayRefusedError) return { status: 409, body: wireError(error.code, message, false) };
   if (error instanceof PreflightAdmissionRefusal) return { status: 409, body: wireError(`PREFLIGHT_${error.reason.toUpperCase().replaceAll("-", "_")}`, message, false) };
   if (error instanceof TargetNotFoundError) {

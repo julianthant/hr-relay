@@ -235,6 +235,8 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 
 | `processes/profile-onboarding-abort-worker.ts` | Owned-controller canonical abort crash-prefix cases in `backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts` |
 
+| `processes/command-custody-worker.ts` | Isolated command browser launch/close and stale Duo-release custody proofs, launched only by `backend/runtime/browser/command-browser.integration.test.ts` |
+
 ## File fixtures
 
 - `fixtures/documents/synthetic-sample.pdf`

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../support/helpers/registered-workflows.js";
 
@@ -7,6 +8,7 @@ import { FingerprintSchema } from "../../src/rules/identity/ids.js";
 import { manualClock } from "../../src/rules/time/clock.js";
 import {
 assertDuoCeremonyLeaseToken,
+type DuoCeremonyLeaseToken,
 isDuoCeremonyLeaseToken,
 } from "../../src/workflow-kit/duo-ceremony-lease.js";
 import { openBoundDatabaseFixture } from "../support/helpers/admission-fixture.js";
@@ -178,4 +180,47 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     );
     database.close();
   });
+});
+
+it("shares the real credential row across honest command and worker holders", async () => {
+  const database = await openDatabase(), commandId = randomUUID();
+  const unsettled = new Set<DuoCeremonyLeaseToken>();
+  const acquire = (input: Parameters<typeof database.authority.duoCeremonyLeases.acquire>[0]) => {
+    const outcome = database.authority.duoCeremonyLeases.acquire(input);
+    if (outcome.state === "acquired") unsettled.add(outcome.token);
+    return outcome;
+  };
+  const release = (token: DuoCeremonyLeaseToken, now: string) => {
+    const outcome = database.authority.duoCeremonyLeases.release({ token, now }); unsettled.delete(token); return outcome;
+  };
+  try {
+    const command = acquire({ credentialKey: CREDENTIAL, commandId, system: "sharepoint", now: at(0), ttlMs: TTL_MS });
+    assert.equal(command.state, "acquired"); if (command.state !== "acquired") throw new Error("command lease missing");
+    assert.deepEqual(command.token.holder, { commandId, system: "sharepoint" });
+    assertDuoCeremonyLeaseToken(command.token, { system: "sharepoint" });
+    assert.deepEqual(database.authority.duoCeremonyLeases.get(CREDENTIAL)?.holder, command.token.holder);
+    const workerBlocked = acquire({ credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(1), ttlMs: TTL_MS });
+    assert.equal(workerBlocked.state, "held");
+    assert.equal(release(command.token, at(2)).state, "released");
+    const worker = acquire({ credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(3), ttlMs: TTL_MS });
+    assert.equal(worker.state, "acquired"); if (worker.state !== "acquired") throw new Error("worker lease missing");
+    assert.equal(worker.token.generation, command.token.generation + 1);
+    const commandBlocked = acquire({ credentialKey: CREDENTIAL, commandId: randomUUID(), system: "sharepoint", now: at(4), ttlMs: TTL_MS });
+    assert.equal(commandBlocked.state, "held");
+    assert.throws(() => acquire({ credentialKey: CREDENTIAL, commandId, workerId: "person-lookup-worker-1", system: "sharepoint", now: at(5), ttlMs: TTL_MS }));
+    assert.throws(() => acquire({ credentialKey: CREDENTIAL, commandId, system: "ucpath", now: at(5), ttlMs: TTL_MS }));
+    assert.throws(() => release(command.token, at(6)), /already retired; a lease is released exactly once/u);
+    assert.equal(release(worker.token, at(7)).state, "released");
+    const expired = acquire({ credentialKey: CREDENTIAL, commandId: randomUUID(), system: "sharepoint", now: at(8), ttlMs: TTL_MS });
+    assert.equal(expired.state, "acquired"); if (expired.state !== "acquired") throw new Error("expiring command lease missing");
+    const takeover = acquire({ credentialKey: CREDENTIAL, workerId: "person-lookup-worker-2", system: "ucpath", now: at(TTL_MS + 9), ttlMs: TTL_MS });
+    assert.equal(takeover.state, "acquired"); if (takeover.state !== "acquired") throw new Error("worker takeover missing");
+    assert.equal(takeover.token.generation, expired.token.generation + 1);
+    assert.deepEqual(takeover.tookOver, { generation: expired.token.generation, holder: expired.token.holder });
+    assert.equal(release(expired.token, at(TTL_MS + 10)).state, "superseded");
+    assert.equal(release(takeover.token, at(TTL_MS + 11)).state, "released");
+  } finally {
+    for (const token of unsettled) release(token, at(TTL_MS + 20));
+    database.close();
+  }
 });

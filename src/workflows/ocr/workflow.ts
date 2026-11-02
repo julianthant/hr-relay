@@ -6,6 +6,7 @@ import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { ocrSourcePagesDefinition } from "./steps/source-pages/step.js";
 export const ocrWorkflow = defineWorkflow({
   id: "ocr",
+  requiredWorkbookTypeIds: [],
   version: 1,
   code: "oc",
   label: "OCR",

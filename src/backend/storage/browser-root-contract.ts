@@ -10,7 +10,8 @@ const RelativePath = z.string().min(1).max(4096).refine(value => !isAbsolute(val
 const WorkerOwner = z.strictObject({ kind: z.literal("worker"), workerId: WorkerIdSchema, workflowId: WorkflowIdSchema,
   ordinal: Generation, membershipRevision: Generation, leaseGeneration: Generation });
 const SignupOwner = z.strictObject({ kind: z.literal("signup"), operationId: z.uuid(), accountId: z.uuid(), providerGeneration: Generation });
-export const BrowserRootOwnerSchema = z.discriminatedUnion("kind", [WorkerOwner, SignupOwner]);
+const CommandOwner = z.strictObject({ kind: z.literal('command'), commandId: z.uuid(), requestDigest: Digest, system: z.literal('sharepoint') });
+export const BrowserRootOwnerSchema = z.discriminatedUnion("kind", [WorkerOwner, SignupOwner, CommandOwner]);
 const Launch = z.strictObject({ launchId: z.uuid(), generation: Generation,
   state: z.enum(["launching", "open", "closing", "closed", "unknown"]) });
 const NativeAction = z.strictObject({ operationId: z.uuid(), launchId: z.uuid(), generation: Generation,
@@ -23,7 +24,8 @@ export const BrowserRootSchema = z.strictObject({ profileId: z.uuid(), profileRo
     && row.directory.startsWith(`${row.profileRoot}/w${row.owner.ordinal}/`)
     && BrowserSystemIdSchema.safeParse(row.directory.slice(`${row.profileRoot}/w${row.owner.ordinal}/`.length)).success
     && row.owner.workerId === `${row.owner.workflowId}-worker-${row.owner.ordinal}`
-    : row.profileRoot === "browsers/onboarding" && row.directory === `${row.profileRoot}/onboarding-${row.owner.operationId}-${row.profileId}-${row.owner.accountId}-g${row.owner.providerGeneration}`;
+    : row.owner.kind === 'signup' ? row.profileRoot === "browsers/onboarding" && row.directory === `${row.profileRoot}/onboarding-${row.owner.operationId}-${row.profileId}-${row.owner.accountId}-g${row.owner.providerGeneration}`
+    : row.profileRoot.startsWith(prefix) && row.directory === `${row.profileRoot}/commands/sharepoint`;
   if (!valid) {
     context.addIssue({ code: "custom", message: "browser root escapes its person" });
   }
