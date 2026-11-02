@@ -296,6 +296,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     if (protectedApplied.state === "applied") assert.equal(protectedApplied.revision, protectedRevision + 1);
 
     await runtime.stop();
+    profile.dashboardInput.admission.assertLive();
     await profile.restart();
     runtime = await composeDashboardRuntime({ lifetimeLock: profile.lifetime,
       ...profile.dashboardInput,
