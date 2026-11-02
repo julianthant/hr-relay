@@ -5,9 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { composeWorkerRuntime } from "../../../../src/backend/app/composition/worker-compose.js";
-import { RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
+import { runCredentialSourceRetentionCase } from "../../../support/helpers/credential-source-retention.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { AuthorityBootStore } from "../../../../src/backend/storage/sqlite/authority-boot.js";
@@ -217,51 +215,7 @@ afterEach(_afterEachFixture0);
     }finally{read.close();}
   });
   it("retains the issued admission and native owner when opening validation and close fail before credentials or a browser",async()=>{
-    const f=await fixture();effects.credentials=0;
-    const raw=new DatabaseSync(f.path);
-    try{raw.exec("CREATE TABLE unowned_authority(id TEXT)");}finally{raw.close();}
-    const before=fs.readFileSync(f.path);
-    let issued:RuntimeAdmission|undefined;
-    const open=AuthorityDatabase.open.bind(AuthorityDatabase);
-    vi.spyOn(AuthorityDatabase,"open").mockImplementation((admission,...args)=>{
-      issued=admission;return open(admission,...args);
-    });
-    const injected=new Error("injected-native-opening-close-refusal");
-    const owner:{native?:DatabaseSync}={};
-    const close:unknown=Object.getOwnPropertyDescriptor(DatabaseSync.prototype,"close")?.value;
-    if(typeof close!=="function")throw new Error("actual native close required");
-    vi.spyOn(DatabaseSync.prototype,"close").mockImplementation(function(this:DatabaseSync){
-      if(this.location()===f.path){owner.native=this;throw injected;}
-      Reflect.apply(close,this,[]);
-    });
-    try{
-      let failure:unknown;
-      try{await composeWorkerRuntime({lifetimeLock:f.lifetime,admission:f.machine,isolation:rebuildRuntimeIsolation,args:["person-lookup","--pool-index","1","--drain"],
-        repoRoot:f.root,clock:f.clock,env:{},sessionFactory:{probeProfile:async()=>undefined,open:async()=>{effects.browsers+=1;throw new Error("unrequested browser effect");}}});
-      }catch(error){failure=error;}
-      expect(failure).toBeInstanceOf(RuntimeCustodyUncertainError);
-      if(!(failure instanceof RuntimeCustodyUncertainError))throw new Error("inspection custody missing");
-      expect(failure.errors).toHaveLength(1);
-      const closure: unknown = failure.errors[0];
-      expect(closure).toBe(failure.cause);
-      expect(closure).toBeInstanceOf(AuthoritySourceClosureUnprovedError);
-      if(!(closure instanceof AuthoritySourceClosureUnprovedError))throw new Error("inspection closure missing");
-      expect(closure.errors).toHaveLength(2);
-      const causes:readonly unknown[]=closure.errors;
-      expect(causes[0]).toBeInstanceOf(Error);
-      if(!(causes[0] instanceof Error))throw new Error("opening validation cause missing");
-      expect(causes[0].message).toMatch(/authority-native-schema-shape-mismatch/u);
-      expect(closure.cause).toBe(causes[0]);expect(causes[1]).toBe(injected);
-      expect(effects).toEqual({credentials:0,browsers:0});
-      if(issued===undefined)throw new Error("issued admission missing");
-      expect(owner.native).toBeDefined();
-      expect(owner.native?.prepare("SELECT 1 AS value").get()?.value).toBe(1);
-      issued.assertLive();f.machine.assertLive();f.lifetime.assertHeld();
-      expect(fs.readFileSync(f.path)).toEqual(before);
-    }finally{vi.restoreAllMocks();syncBuiltinESMExports();owner.native?.close();issued?.release();}
-    const read=new DatabaseSync(f.path,{readOnly:true});try {
-      expect(read.prepare("SELECT * FROM worker_slots").all()).toEqual([]);expect(read.prepare("SELECT * FROM worker_leases").all()).toEqual([]);
-    }finally{read.close();}
+    await runCredentialSourceRetentionCase("worker-native-open");
   });
   it("admits an unchanged genuine saved revision with its exact ordinary command and audit",async()=>{
     const f=await fixture(),saved=applySettings(f);

@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import assert from "node:assert/strict";
 import type { RuntimeAdmission as RuntimeAdmissionType } from "../../../src/backend/storage/admission/admission.js";
 import fs from "node:fs";
@@ -12,11 +13,11 @@ if (actualEntry !== FakeKeyringEntry || process.env.RELAY_TEST_KEYCHAIN === unde
 if (!process.connected || process.send === undefined) throw new Error("retention-worker-ipc-required");
 const { z } = await import("zod");
 const [port, workspace, profileId, scenario, crashNonce] = z.tuple([z.coerce.number().int().positive().max(65535), z.string().min(1), z.uuid(),
-  z.enum(["writer-close", "duo-read-first", "duo-read-second", "stopped-head-close", "protected-source", "chatgpt-source", "account-projection", "stopped-control-snapshot-disposal", "setup-protected-close", "authenticated-upgrade-key-close", "authenticated-upgrade-service-inspection", "authenticated-upgrade-binding-consume", "authenticated-upgrade-unproved-close", "authenticated-upgrade-closed-publication-refusal", "protected-crash-before", "protected-crash-after", "logout-prepared", "logout-commit-intent", "logout-after-commit", "logout-done", "logout-ready", "logout-unlink", "logout-writer-close", "logout-third-image", "logout-resume", "logout-unknown-copy", "logout-live-process", "logout-browser-root", "logout-key-replacement", "logout-snapshot-disposal", "logout-process-observation", "logout-seed", "logout-seed-unknown", "logout-unknown", "logout-browser-busy", "logout-browser-unproved", "logout-process-root-copy", "logout-exited-process", "logout-exit-only"]), z.uuid().optional()]).parse(process.argv.slice(2));
-const { WorkerRuntimeLifetimeLock } = await import("../../../src/backend/storage/admission/lifetime-lock.js");
+  z.enum(["readonly-native-close", "worker-native-open", "writer-close", "duo-read-first", "duo-read-second", "stopped-head-close", "protected-source", "chatgpt-source", "account-projection", "stopped-control-snapshot-disposal", "setup-protected-close", "authenticated-upgrade-key-close", "authenticated-upgrade-service-inspection", "authenticated-upgrade-binding-consume", "authenticated-upgrade-unproved-close", "authenticated-upgrade-closed-publication-refusal", "protected-crash-before", "protected-crash-after", "logout-prepared", "logout-commit-intent", "logout-after-commit", "logout-done", "logout-ready", "logout-unlink", "logout-writer-close", "logout-third-image", "logout-resume", "logout-unknown-copy", "logout-live-process", "logout-browser-root", "logout-key-replacement", "logout-snapshot-disposal", "logout-process-observation", "logout-seed", "logout-seed-unknown", "logout-unknown", "logout-browser-busy", "logout-browser-unproved", "logout-process-root-copy", "logout-exited-process", "logout-exit-only"]), z.uuid().optional()]).parse(process.argv.slice(2));
+const { WorkerRuntimeLifetimeLock, isOfflineMaintenanceOperationActive } = await import("../../../src/backend/storage/admission/lifetime-lock.js");
 const { acquireSharedRuntimeAdmission, RuntimeAdmission } = await import("../../../src/backend/storage/admission/admission.js");
 const { createCanonicalCredentials, captureStoppedCanonicalCredentialHead } = await import("../../../src/backend/storage/configuration/canonical-credential-store.js");
-const { hasUnprovedSourceClosure, retainAuthoritySourceClosure } = await import("../../../src/backend/storage/source-closure.js");
+const { hasUnprovedSourceClosure, retainAuthoritySourceClosure, AuthoritySourceClosureUnprovedError } = await import("../../../src/backend/storage/source-closure.js");
 const { createCredentialStore, CredentialStoreCommitUncertainError } = await import("../../../src/backend/storage/configuration/credential-store.js");
 const { createChatGptCredentialRepository, ChatGptCredentialError } = await import("../../../src/backend/storage/configuration/chatgpt-credential-repository.js");
 const { createChatGptAccountService } = await import("../../../src/backend/accounts/chatgpt-account-service.js");
@@ -27,10 +28,12 @@ if (scenario.startsWith("logout-")) {
   try { await runLogout(); }
   catch (error) {
     const name = error instanceof Error && ["AssertionError", "TypeError", "RangeError", "SyntaxError"].includes(error.name) ? error.name : "Error";
-    const locations = error instanceof Error ? (error.stack ?? "").split("\n").flatMap(line => {
+    const cause = error instanceof Error && error.cause instanceof Error ? error.cause
+      : error instanceof Error && "actual" in error && error.actual instanceof Error ? error.actual : error;
+    const locations = [error, cause].flatMap(failure => failure instanceof Error ? (failure.stack ?? "").split("\n") : []).flatMap(line => {
       const match = /(?:^|\/)((?:tests|src)\/[A-Za-z0-9_./-]+\.(?:[cm]?js|tsx?):[1-9]\d*:[1-9]\d*)\)?$/u.exec(line.replaceAll("\\", "/").trim());
       return match?.[1] === undefined ? [] : [match[1]];
-    }).slice(0, 8) : [];
+    }).slice(0, 8);
     process.send({ scenario, assertionsComplete: false, failure: { name, locations } });
   }
   await new Promise<never>(() => { setInterval(() => {}, 1000); });
@@ -54,7 +57,7 @@ function caught(work: () => unknown): unknown {
   try { work(); } catch (error) { return error; }
   assert.fail("expected retained source failure");
 }
-async function assertRetained(admission: RuntimeAdmissionType, machine: RuntimeAdmissionType, owner: { assertHeld(): void; close(): Promise<void>; assertRuntimeAvailable(): void }, failure: unknown, source: unknown) {
+async function assertRetained(admission: RuntimeAdmissionType, machine: RuntimeAdmissionType, owner: { assertHeld(): void; close(): Promise<void>; assertRuntimeAvailable(): void }, failure: unknown, source: unknown, stateRoot: string) {
   assert.equal(hasUnprovedSourceClosure(failure), true);
   for (let attempt = 0; attempt < 2; attempt++) {
     assert.equal(hasUnprovedSourceClosure(caught(() => admission.release())), true);
@@ -62,7 +65,7 @@ async function assertRetained(admission: RuntimeAdmissionType, machine: RuntimeA
     await assert.rejects(owner.close(), error => hasUnprovedSourceClosure(error) && contains(error, source));
   }
   owner.assertHeld(); assert.throws(() => owner.assertRuntimeAvailable(), error => hasUnprovedSourceClosure(error));
-  assert.equal(fs.existsSync(admission.stateRoot), true);
+  assert.equal(fs.existsSync(stateRoot), true);
 }
 async function runCurrent() {
   const machine = acquireSharedRuntimeAdmission(workspace, lifetime), admission = machine.admitProfile(profileId);
@@ -83,6 +86,34 @@ async function runCurrent() {
     store.apply(input);
     assert.fail("publication crash boundary did not terminate the child");
   }
+  if (scenario === "readonly-native-close") {
+    const { DatabaseSync } = await import("node:sqlite");
+    const { withAuthorityDatabaseReadOnly } = await import("../../../src/backend/storage/sqlite/readonly-authority-snapshot.js");
+    const stateRoot = admission.stateRoot, path = join(stateRoot, "state.db"), before = fs.readFileSync(path);
+    const primary = new Error("read-callback-refused"), cleanup = new Error("native-copy-close-refused");
+    const close = Object.getOwnPropertyDescriptors(DatabaseSync.prototype).close.value;
+    assert.ok(close);
+    const owner: { database?: InstanceType<typeof DatabaseSync> } = {};
+    let directory: string | undefined, closes = 0, failure: unknown;
+    DatabaseSync.prototype.close = function (this: InstanceType<typeof DatabaseSync>) {
+      const location = this.location(); assert.ok(location); assert.equal(location.endsWith(`${sep}authority.sqlite`), true);
+      directory = dirname(location); owner.database = this; closes++; throw cleanup;
+    };
+    syncBuiltinESMExports();
+    try { withAuthorityDatabaseReadOnly(admission, path, () => { throw primary; }); }
+    catch (error) { failure = error; }
+    finally { DatabaseSync.prototype.close = close; syncBuiltinESMExports(); }
+    assert.ok(failure instanceof AuthoritySourceClosureUnprovedError);
+    assert.deepEqual(failure.errors, [primary, cleanup]); assert.equal(failure.cause, primary);
+    const database = owner.database;
+    assert.equal(closes, 1); assert.ok(database); assert.ok(directory);
+    assert.equal(database.prepare("SELECT 1 AS live").get()?.live, 1);
+    assert.equal(fs.lstatSync(directory).isDirectory(), true); assert.deepEqual(fs.readFileSync(path), before);
+    await assertRetained(admission, machine, lifetime, failure, cleanup, stateRoot);
+    assert.equal(database.prepare("SELECT 1 AS live").get()?.live, 1);
+    assert.equal(fs.existsSync(directory), true); assert.deepEqual(fs.readFileSync(path), before);
+    process.send?.({ ownedSnapshot: directory }); return;
+  }
   if (scenario === "protected-source" || scenario === "chatgpt-source") {
     const source = retainAuthoritySourceClosure([new Error("synthetic private source closure")], {});
     if (scenario === "protected-source") {
@@ -92,7 +123,7 @@ async function runCurrent() {
         expectedRevision: before.revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: clock.now().toISOString(), entries: {} });
       const error = caught(() => store.apply(input)); assert.ok(error instanceof CredentialStoreCommitUncertainError); assert.ok(contains(error, source));
       assert.equal(frameRevision(path), before.revision + 1);
-      await assertRetained(admission, machine, lifetime, error, source);
+      await assertRetained(admission, machine, lifetime, error, source, admission.stateRoot);
     } else {
       const repository = createChatGptCredentialRepository({ admission, stateRoot: admission.stateRoot, afterRename() { throw source; } });
       let error: unknown;
@@ -101,7 +132,7 @@ async function runCurrent() {
       assert.ok(error instanceof ChatGptCredentialError); assert.equal(error.code, "CHATGPT_CREDENTIAL_UNCERTAIN");
       assert.equal(error.message.includes("synthetic private"), false); assert.ok(contains(error, source));
       assert.equal(frameRevision(join(admission.stateRoot, "credentials", "chatgpt-account.json")), 1);
-      await assertRetained(admission, machine, lifetime, error, source);
+      await assertRetained(admission, machine, lifetime, error, source, admission.stateRoot);
     }
     return;
   }
@@ -133,15 +164,71 @@ async function runCurrent() {
     failure = caught(() => owner.replaceRecord("protected", current.revision, current.value));
     assert.ok(failure instanceof Error && "code" in failure); assert.equal(failure.code, "CREDENTIAL_UNCERTAIN");
     assert.equal(frameRevision(path), current.revision + 1);
-  } else failure = caught(() => owner.readRecord("duo"));
+  } else {
+    if (scenario === "duo-read-second") owner.readRecord("duo");
+    failure = caught(() => owner.readRecord("duo"));
+  }
   fs.closeSync = close; fs.renameSync = rename; syncBuiltinESMExports();
   assert.ok(descriptor !== undefined); assert.ok(contains(failure, source));
   const target = fs.lstatSync(targetPath); assert.equal(stat(descriptor).ino, target.ino); assert.equal(stat(descriptor).dev, target.dev);
   if (scenario === "writer-close") { assert.equal(target.nlink, 1); assert.notDeepEqual(fs.readFileSync(path), before); }
   else assert.deepEqual(fs.readFileSync(targetPath), before);
-  await assertRetained(admission, machine, lifetime, failure, source);
+  await assertRetained(admission, machine, lifetime, failure, source, admission.stateRoot);
   assert.equal(stat(descriptor).ino, target.ino);
 }
+async function runWorkerNativeOpening() {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { createBoundProfileFixture, boundProfileCredentials } = await import("../helpers/admission-fixture.js");
+  const { composeWorkerRuntime } = await import("../../../src/backend/app/composition/worker-compose.js");
+  const { composeSelectedProfileStorage, RuntimeCustodyUncertainError } = await import("../../../src/backend/app/composition/storage-compose.js");
+  const { AuthorityDatabase } = await import("../../../src/backend/storage/sqlite/authority-database.js");
+  const { AuthoritySourceClosureUnprovedError } = await import("../../../src/backend/storage/source-closure.js");
+  const { rebuildRuntimeIsolation } = await import("../../../src/backend/app/config/runtime-isolation.js");
+  const root = join(workspace, `.worker-native-open-${z.uuid().parse(crashNonce)}`);
+  const f = await createBoundProfileFixture({ workspace: root });
+  fs.copyFileSync("package.json", join(root, "package.json"));
+  const initialized = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
+    credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
+  await initialized.account.close(); initialized.database.close();
+  const raw = new DatabaseSync(f.path);
+  try { raw.exec("CREATE TABLE unowned_authority(id TEXT)"); } finally { raw.close(); }
+  const before = fs.readFileSync(f.path), source = new Error("synthetic native opening close refusal");
+  const open = AuthorityDatabase.open.bind(AuthorityDatabase), nativeClose = Object.getOwnPropertyDescriptors(DatabaseSync.prototype).close.value, fileOpen = fs.openSync;
+  assert.ok(nativeClose);
+  const owner: { native?: InstanceType<typeof DatabaseSync> } = {};
+  let issued: RuntimeAdmissionType | undefined, credentialReads = 0, browsers = 0;
+  AuthorityDatabase.open = (admission, ...args) => { issued = admission; return open(admission, ...args); };
+  DatabaseSync.prototype.close = function (this: InstanceType<typeof DatabaseSync>) {
+    if (this.location() === f.path) { owner.native = this; throw source; }
+    return nativeClose.call(this);
+  };
+  fs.openSync = (...args) => { if (String(args[0]) === join(f.stateRoot, "credentials", "protected.json")) credentialReads++; return fileOpen(...args); };
+  syncBuiltinESMExports();
+  let failure: unknown;
+  try {
+    try { await composeWorkerRuntime({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation,
+      args: ["person-lookup", "--pool-index", "1", "--drain"], repoRoot: root, clock, env: {},
+      sessionFactory: { probeProfile: async () => undefined, open: async () => { browsers++; throw new Error("unrequested browser effect"); } } }); }
+    catch (error) { failure = error; }
+  } finally { AuthorityDatabase.open = open; DatabaseSync.prototype.close = nativeClose; fs.openSync = fileOpen; syncBuiltinESMExports(); }
+  assert.ok(failure instanceof RuntimeCustodyUncertainError); assert.equal(failure.errors.length, 1);
+  const closure: unknown = failure.errors[0];
+  assert.ok(closure instanceof AuthoritySourceClosureUnprovedError); assert.equal(failure.cause, closure);
+  const causes: readonly unknown[] = closure.errors;
+  assert.equal(causes.length, 2); assert.ok(causes[0] instanceof Error);
+  assert.match(causes[0].message, /authority-native-schema-shape-mismatch/u);
+  assert.equal(closure.cause, causes[0]); assert.equal(causes[1], source);
+  const native = owner.native;
+  assert.equal(credentialReads, 0); assert.equal(browsers, 0); assert.ok(native); assert.ok(issued);
+  assert.equal(native.prepare("SELECT 1 AS value").get()?.value, 1);
+  assert.deepEqual(fs.readFileSync(f.path), before);
+  assert.deepEqual(native.prepare("SELECT * FROM worker_slots").all(), []);
+  assert.deepEqual(native.prepare("SELECT * FROM worker_leases").all(), []);
+  issued.assertLive();
+  await assertRetained(issued, f.machine, f.lifetime, failure, source, f.stateRoot);
+  assert.equal(native.prepare("SELECT 1 AS value").get()?.value, 1);
+}
+
 async function runStoppedHead() {
   const { createBoundProfileFixture } = await import("../helpers/admission-fixture.js");
   const ownedWorkspace = join(workspace, "retention-stopped-head"); fs.mkdirSync(ownedWorkspace, { mode: 0o700 });
@@ -155,9 +242,9 @@ async function runStoppedHead() {
   const failure = caught(() => captureStoppedCanonicalCredentialHead(stopped, operation));
   fs.closeSync = close; syncBuiltinESMExports();
   assert.ok(descriptor !== undefined); assert.equal(stat(descriptor).ino, target.ino);
-  operation.assertHeld(); assert.throws(() => f.machine.beginOfflineMaintenance());
+  assert.throws(() => operation.assertHeld(), error => contains(error, source)); assert.throws(() => f.machine.beginOfflineMaintenance());
   assert.deepEqual(fs.readFileSync(path), before);
-  await assertRetained(stopped, f.machine, f.lifetime, failure, source);
+  await assertRetained(stopped, f.machine, f.lifetime, failure, source, f.stateRoot);
   assert.equal(stat(descriptor).dev, target.dev); assert.equal(stat(descriptor).ino, target.ino);
 }
 async function runStoppedSnapshot() {
@@ -181,7 +268,8 @@ async function runStoppedSnapshot() {
   const failure = caught(() => releaseStoppedMachineControlUpgrade(control, restore, true));
   assert.equal(hasUnprovedSourceClosure(failure), true); assert.ok(contains(failure, source)); assert.ok(snapshotDirectory);
   const snapshotPath = join(snapshotDirectory, "authority.sqlite"), snapshotBytes = fs.readFileSync(snapshotPath), snapshotIdentity = fs.lstatSync(snapshotPath);
-  restore.assertHeld(); f.lifetime.assertHeld();
+  assert.equal(isOfflineMaintenanceOperationActive(restore), true);
+  assert.throws(() => restore.assertHeld(), error => contains(error, source)); f.lifetime.assertHeld();
   assert.throws(() => maintenance.beginOfflineMaintenance()); assert.throws(() => RuntimeAdmission.acquireMachine(f.workspace, "shared", f.lifetime));
   const repeated = caught(() => releaseStoppedMachineControlUpgrade(control, restore, true));
   assert.equal(hasUnprovedSourceClosure(repeated), true); assert.ok(contains(repeated, source));
@@ -257,12 +345,13 @@ try {
   if (scenario.startsWith("authenticated-upgrade-")) {
     const { runAuthenticatedUpgradeRetentionCase } = await import("./authenticated-upgrade-retention-cases.js");
     await runAuthenticatedUpgradeRetentionCase({ scenario, workspace, nonce: z.uuid().parse(crashNonce) });
-  } else if (scenario === "setup-protected-close") await runSetupProtectedClose();
+  } else if (scenario === "worker-native-open") await runWorkerNativeOpening();
+  else if (scenario === "setup-protected-close") await runSetupProtectedClose();
   else if (scenario === "stopped-head-close") await runStoppedHead();
   else if (scenario === "stopped-control-snapshot-disposal") await runStoppedSnapshot();
   else await runCurrent();
   lifetime.assertHeld();
-  process.send({ scenario, assertionsComplete: true, ...(scenario === "setup-protected-close" || scenario.startsWith("authenticated-upgrade-") ? { nonce: z.uuid().parse(crashNonce) } : {}) });
+  process.send({ scenario, assertionsComplete: true, ...(scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("authenticated-upgrade-") ? { nonce: z.uuid().parse(crashNonce) } : {}) });
 } catch (error) {
   const name = error instanceof Error && ["AssertionError", "TypeError", "RangeError", "SyntaxError"].includes(error.name) ? error.name : "Error";
   const locations = error instanceof Error ? (error.stack ?? "").split("\n").slice(1).flatMap(line => {
@@ -278,6 +367,7 @@ async function runLogout(): Promise<void> {
   const { DatabaseSync } = await import("node:sqlite");
   const { RuntimeLifetimeLock } = await import("../../../src/backend/storage/admission/lifetime-lock.js");
   const { acquireEntrypointAdmission } = await import("../../../src/backend/storage/admission/bootstrap-admission.js");
+  const { OldBuildRuntimeArtifactsError } = await import("../../../src/backend/storage/admission/process-root.js");
   const { composeProfileRuntime, composeSelectedProfileStorage } = await import("../../../src/backend/app/composition/storage-compose.js");
   const { AuthorityDatabase } = await import("../../../src/backend/storage/sqlite/authority-database.js");
   const { LogoutOperationSchema, LogoutSettlementSchema } = await import("../../../src/models/profiles/profile.js");
@@ -384,8 +474,7 @@ async function runLogout(): Promise<void> {
       const rename = fs.renameSync;
       fs.renameSync = (from, to) => {
         rename(from, to);
-        if (String(to) !== join(operations, `${operation.operationId}.json`)
-          || !new Error().stack?.includes("publishStoppedLogoutSettlement")) return;
+        if (String(to) !== join(operations, `${operation.operationId}.json`)) return;
         const next = readOperation();
         assert.equal(next.operationId, operation.operationId); assert.equal(next.profileId, operation.profileId);
         assert.equal(next.sessionGeneration, operation.sessionGeneration); assert.deepEqual(next.source, operation.source); assert.equal(next.at, operation.at);
@@ -443,7 +532,7 @@ async function runLogout(): Promise<void> {
     assert.equal(fresh.state, "active"); if (fresh.state !== "active") throw new Error("completed logout readback sign-in refused");
     assert.equal(fresh.profileId, profileId); assert.equal(fresh.epoch, source.epoch + 2);
     const admission = machine.admitProfile(fresh.profileId);
-    const database = AuthorityDatabase.open(admission, { path, openMode: "storage-doctor-read-only-no-migrate" }, wall,
+    const database = AuthorityDatabase.open(admission, { path, openMode: "storage-doctor-read-only-no-migrate", busyTimeoutMs: 250, migrationOwner: "logout-readback" }, wall,
       undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: admission.stateRoot }));
     try {
       const command = RunLifecycleCommandRecordSchema.parse(database.authority.lifecycleJournal.getCommand(request.commandId));
@@ -483,7 +572,7 @@ async function runLogout(): Promise<void> {
         assert.deepEqual(native.prepare("SELECT id FROM command_audits WHERE command_id=? ORDER BY id").all(request.commandId).map(row => row.id), [request.commandId]);
         assert.deepEqual(native.prepare("SELECT id FROM run_failures WHERE run_id=? ORDER BY id").all(source.runId).map(row => row.id), [failureId]);
         assert.deepEqual(native.prepare("SELECT run_id FROM run_results WHERE run_id=?").all(source.runId).map(row => row.run_id), [source.runId]);
-        assert.deepEqual(native.prepare("SELECT id FROM timeline_events WHERE run_id=? AND json_extract(payload_json,'$.kind')='span' AND json_extract(payload_json,'$.event.t')='span.ended' ORDER BY id").all(source.runId).map(row => row.id), [eventId]);
+        assert.deepEqual(native.prepare("SELECT id FROM timeline_events WHERE run_id=? AND json_extract(payload_json,'$.payload.kind')='span' AND json_extract(payload_json,'$.payload.event.t')='span.ended' ORDER BY id").all(source.runId).map(row => row.id), [eventId]);
       });
     } finally { database.close(); admission.release(); }
     process.send?.({ scenario, assertionsComplete: true }); return;
@@ -507,7 +596,7 @@ async function runLogout(): Promise<void> {
     assert.equal(operation.operationId, originalOperation.operationId); assert.equal(operation.profileId, profileId);
     assert.equal(operation.sessionGeneration, originalOperation.sessionGeneration); assert.deepEqual(operation.source, originalOperation.source);
     assert.equal(operation.at, originalOperation.at);
-    if (operation.settlement === undefined || !new Error().stack?.includes("publishStoppedLogoutSettlement")) return;
+    if (operation.settlement === undefined) return;
     assert.equal(operation.phase, "cancelling"); currentPhase = operation.settlement.phase;
     if (cold) {
       assert.equal(operation.settlement.requests.length, 1); assert.equal(operation.settlement.workers.length, 1);
@@ -554,30 +643,41 @@ async function runLogout(): Promise<void> {
     }
   };
   syncBuiltinESMExports();
-  if (cold) {
-    const authorized = runtime.session.authorizeLogoutContinuation(fields);
-    assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("cold fault verifier refused");
-    assert.equal(authorized.resume().state, "cancelling");
-  } else {
-    assert.ok(active?.state === "active" && context !== undefined);
-    assert.equal(runtime.session.logOut(active.token, { at: fields.at }).state, "cancelling");
-    assert.throws(() => context.protectedSecrets.read()); assert.throws(() => runtime.selectedContext(active.token));
-  }
+  const startLogout = () => {
+    if (cold) {
+      const authorized = runtime.session.authorizeLogoutContinuation(fields);
+      assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("cold fault verifier refused");
+      assert.equal(authorized.resume().state, "cancelling");
+    } else {
+      assert.ok(active?.state === "active" && context !== undefined);
+      assert.equal(runtime.session.logOut(active.token, { at: fields.at }).state, "cancelling");
+      assert.throws(() => context.protectedSecrets.read()); assert.throws(() => runtime.selectedContext(active.token));
+    }
+  };
   if (scenario === "logout-browser-busy" || scenario === "logout-browser-unproved") {
     const { profileBrowserClosure, BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } = await import("../../../src/backend/runtime/browser/native-profile-probe.js");
     const refusal = scenario === "logout-browser-busy" ? new BrowserProfileStillClosingError(new Error("synthetic native busy"))
       : new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
     let probes = 0;
-    profileBrowserClosure.probeClosed = async () => { probes++; throw refusal; };
+    profileBrowserClosure.probeClosed = async profiles => {
+      probes++; assert.deepEqual(profiles, []);
+      throw refusal;
+    };
+    startLogout();
     await assert.rejects(runtime.awaitClosurePreparation(profileId), error => hasUnprovedSourceClosure(error) && contains(error, refusal));
-    assert.equal(probes, 1); assert.equal(readOperation().settlement, undefined);
+    assert.equal(probes, 1);
+    const operation = readOperation(); assert.equal(operation.settlement, undefined);
+    assert.equal("commandId" in operation, false); assert.equal("writeId" in operation, false); assert.equal("expectedRevision" in operation, false);
+    assert.throws(() => runtime.session.resumeLogout(operation.operationId), error => hasUnprovedSourceClosure(error) && contains(error, refusal));
+    assert.equal(fs.existsSync(join(root, "machine", "erasures", `${profileId}.json`)), false);
+    assert.throws(() => runtime.session.close(), error => hasUnprovedSourceClosure(error) && contains(error, refusal));
     assert.equal(retainedRegistry().profiles.find(row => row.profileId === profileId)?.lifecycle, "cancelling");
     await assert.rejects(runtime.close()); await assert.rejects(controller.close()); controller.assertHeld();
     assert.throws(() => machine.release(), error => hasUnprovedSourceClosure(error));
     process.send?.({ scenario, assertionsComplete: true }); return;
   }
-  if (scenario === "logout-process-root-copy") fs.writeFileSync(join(workspace, rebuildRuntimeIsolation.processLockRoot, "unexpected-copy"), "synthetic", { mode: 0o600 });
-  if (scenario === "logout-exited-process") {
+  let liveProcess: { child: ChildProcess; closed: Promise<unknown>; diagnostics: { stderrBytes: number } } | undefined;
+  if (scenario === "logout-exited-process" || scenario === "logout-live-process" || scenario === "logout-process-observation") {
     const { fork } = await import("node:child_process");
     const { once } = await import("node:events");
     const { testProcessImport } = await import("../compiled-process.js");
@@ -587,28 +687,35 @@ async function runLogout(): Promise<void> {
     const child = fork(import.meta.filename, [String(port), workspace, profileId, "logout-exit-only", nonce], {
       execArgv: ["--import", testProcessImport()], env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "ignore", "pipe", "ipc"] });
     const closed = once(child, "close");
-    let stderrBytes = 0;
-    child.stderr?.on("data", (bytes: Buffer) => { stderrBytes += bytes.length; if (stderrBytes > 65_536) child.kill("SIGKILL"); });
+    const diagnostics = { stderrBytes: 0 };
+    child.stderr?.on("data", (bytes: Buffer) => { diagnostics.stderrBytes += bytes.length; if (diagnostics.stderrBytes > 65_536) child.kill("SIGKILL"); });
     try {
       const ready = await Promise.race([once(child, "message", { signal: AbortSignal.timeout(scaledMs(15_000)) }), closed.then(() => { throw new Error("logout nested child closed before birth proof"); })]);
       assert.deepEqual(ready[0], { scenario: "logout-exit-only", assertionsComplete: true }); assert.ok(child.pid);
       acquireRuntimeProcessLock({ processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot), name: "workers", pid: child.pid,
         admission: { kind: "unbound-worker", authorityPath: path } }, wall);
-      assert.equal(child.kill("SIGTERM"), true); assert.deepEqual(await closed, [null, "SIGTERM"]);
+      if (scenario === "logout-exited-process") { assert.equal(child.kill("SIGTERM"), true); assert.deepEqual(await closed, [null, "SIGTERM"]); }
+      else liveProcess = { child, closed, diagnostics };
     } finally {
-      if (child.exitCode === null && child.signalCode === null) assert.equal(child.kill("SIGKILL"), true);
-      await closed; assert.equal(child.connected, false); assert.equal(stderrBytes, 0);
+      if (liveProcess === undefined) {
+        if (child.exitCode === null && child.signalCode === null) assert.equal(child.kill("SIGKILL"), true);
+        await closed; assert.equal(child.connected, false); assert.equal(diagnostics.stderrBytes, 0);
+      }
     }
   }
+  await using _nestedProcessClosure = { async [Symbol.asyncDispose]() {
+    if (liveProcess === undefined) return;
+    if (liveProcess.child.exitCode === null && liveProcess.child.signalCode === null) assert.equal(liveProcess.child.kill("SIGTERM"), true);
+    await liveProcess.closed; assert.equal(liveProcess.child.connected, false); assert.equal(liveProcess.diagnostics.stderrBytes, 0);
+  } };
+  let observationRefused = false;
+  if (scenario !== "logout-snapshot-disposal") startLogout();
+  if (scenario === "logout-process-root-copy") fs.writeFileSync(join(workspace, rebuildRuntimeIsolation.processLockRoot, "unexpected-copy"), "synthetic", { mode: 0o600 });
   if (scenario === "logout-unknown-copy") fs.writeFileSync(join(root, "profiles", profileId, "unexpected-copy"), "synthetic", { mode: 0o600 });
-  if (scenario === "logout-live-process" || scenario === "logout-process-observation") {
-    const { acquireRuntimeProcessLock } = await import("../../../src/backend/storage/sqlite/runtime-process-locks.js");
-    acquireRuntimeProcessLock({ processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot), name: "workers", pid: process.pid,
-      admission: { kind: "unbound-worker", authorityPath: path } }, wall);
-  }
   if (scenario === "logout-process-observation") {
     const kill = process.kill.bind(process);
-    process.kill = (pid, signal) => { if (pid === process.pid && signal === 0) throw new Error("synthetic OS process observation unavailable"); return kill(pid, signal); };
+    const observed = liveProcess?.child.pid; assert.ok(observed);
+    process.kill = (pid, signal) => { if (pid === observed && signal === 0) { observationRefused = true; throw new Error("synthetic OS process observation unavailable"); } return kill(pid, signal); };
   }
   if (scenario === "logout-snapshot-disposal") {
     const open = fs.openSync, remove = fs.rmSync;
@@ -643,6 +750,7 @@ async function runLogout(): Promise<void> {
       remove(target, options);
     };
     syncBuiltinESMExports();
+    startLogout();
     await assert.rejects(runtime.awaitClosurePreparation(profileId), error => hasUnprovedSourceClosure(error) && contains(error, injected));
     assert.ok(snapshot && source && identity && bytes); assert.equal(source, join(snapshot, "authority.sqlite"));
     assert.equal(nativeInspection, true); assert.equal(nativeClosed, true); assert.equal(disposals, 1);
@@ -650,7 +758,7 @@ async function runLogout(): Promise<void> {
       await assert.rejects(runtime.close(), error => hasUnprovedSourceClosure(error) && contains(error, injected));
       assert.throws(() => machine.release(), error => hasUnprovedSourceClosure(error) && contains(error, injected));
       assert.throws(() => machine.beginOfflineMaintenance(), error => hasUnprovedSourceClosure(error) && contains(error, injected));
-      assert.throws(() => RuntimeAdmission.acquireMachine(workspace, "shared", controller), error => hasUnprovedSourceClosure(error) && contains(error, injected));
+        assert.throws(() => RuntimeAdmission.acquireMachine(workspace, "shared", controller), error => hasUnprovedSourceClosure(error) && contains(error, injected));
       await assert.rejects(controller.close(), error => hasUnprovedSourceClosure(error) && contains(error, injected)); controller.assertHeld();
       const { RuntimeAlreadyRunningError } = await import("../../../src/backend/storage/admission/lifetime-lock.js");
       await assert.rejects(async () => { const successor = await RuntimeLifetimeLock.acquire(controller.port); retainedSetupOwners.add(successor); }, RuntimeAlreadyRunningError);
@@ -665,14 +773,28 @@ async function runLogout(): Promise<void> {
   if (scenario === "logout-key-replacement") {
     const key = join(root, "machine", "credential-keys", `${profileId}.json`);
     fs.renameSync(key, `${key}.retained`); fs.copyFileSync(`${key}.retained`, key);
+    const head = z.looseObject({ generation: z.number().int().positive() }).parse(JSON.parse(fs.readFileSync(key, "utf8")));
+    fs.writeFileSync(key, JSON.stringify({ ...head, generation: head.generation + 1 }), { mode: 0o600 });
   }
   if (["logout-unknown-copy", "logout-live-process", "logout-browser-root", "logout-key-replacement", "logout-process-observation", "logout-process-root-copy", "logout-exited-process"].includes(scenario)) {
-    await assert.rejects(runtime.awaitClosurePreparation(profileId), error => hasUnprovedSourceClosure(error));
+    const oldBuild = ["logout-live-process", "logout-process-observation", "logout-process-root-copy", "logout-exited-process"].includes(scenario);
+    await assert.rejects(runtime.awaitClosurePreparation(profileId), error => hasUnprovedSourceClosure(error)
+      && (!oldBuild || error instanceof AuthoritySourceClosureUnprovedError && error.cause instanceof OldBuildRuntimeArtifactsError));
     assert.equal(retainedRegistry().profiles.find(row => row.profileId === profileId)?.lifecycle, "cancelling");
     assert.equal(fs.existsSync(operationPath()), true); controller.assertHeld();
     assert.throws(() => machine.release(), error => hasUnprovedSourceClosure(error));
     await assert.rejects(runtime.close(), error => hasUnprovedSourceClosure(error));
     await assert.rejects(controller.close(), error => hasUnprovedSourceClosure(error)); controller.assertHeld();
+    if (scenario === "logout-process-observation") assert.equal(observationRefused, false);
+    if (scenario === "logout-key-replacement") {
+      const key = join(root, "machine", "credential-keys", `${profileId}.json`);
+      fs.renameSync(`${key}.retained`, key);
+      assert.throws(() => machine.release(), error => hasUnprovedSourceClosure(error));
+    }
+    if (liveProcess !== undefined) {
+      assert.equal(liveProcess.child.kill("SIGTERM"), true); assert.deepEqual(await liveProcess.closed, [null, "SIGTERM"]);
+      assert.equal(liveProcess.child.connected, false); assert.equal(liveProcess.diagnostics.stderrBytes, 0);
+    }
     process.send?.({ scenario, assertionsComplete: true }); return;
   }
   if (scenario === "logout-writer-close") {

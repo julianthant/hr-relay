@@ -87,6 +87,7 @@ export function registerBoundFixtureWorker(input: FixtureWorker & Readonly<{ pat
   if (entry?.admission !== admission || input.database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())) {
     throw new Error("fixture-worker-database-owner-mismatch");
   }
+  fixturePaths.set(input.database, input.path);
   if ([...entry.workers].some(worker => worker.workerId === input.workerId)) throw new Error("fixture-worker-owner-already-retained");
   const worker = Object.freeze({ database: input.database, workerId: input.workerId, generation: input.generation,
     processId: input.processId, clock: input.clock });

@@ -1,5 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
-import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
+import { runCredentialSourceRetentionCase } from "../../../support/helpers/credential-source-retention.js";
 import assert from "node:assert/strict";
 import { copyFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import * as artifactWriters from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -90,48 +89,5 @@ for (const failure of ["none", "artifact", "artifact-and-close"] as const) it(`o
 });
 
 it("retains the actual native opening owner and both failures when invalid authority cannot close", async () => {
-  const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
-  copyFileSync("package.json", join(f.workspace, "package.json"));
-  const initialized = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
-    credentials: boundProfileCredentials(f.admission), clock, hostFacts: { primaryDisplay: null } });
-  await initialized.account.close(); initialized.database.close();
-  const raw = new DatabaseSync(f.path);
-  try { raw.exec("CREATE TABLE unowned_authority(id TEXT)"); } finally { raw.close(); }
-  const closeFailure = new Error("synthetic native opening close failure");
-  const owner: { native?: DatabaseSync } = {};
-  let issued: RuntimeAdmission | undefined;
-  const createStore = credentialStores.createCredentialStore;
-  vi.spyOn(credentialStores, "createCredentialStore").mockImplementation(options => {
-    issued = options.admission; return createStore(options);
-  });
-  const close: unknown = Object.getOwnPropertyDescriptor(DatabaseSync.prototype, "close")?.value;
-  assert.ok(typeof close === "function", "actual native close implementation required");
-  vi.spyOn(DatabaseSync.prototype, "close").mockImplementation(function (this: DatabaseSync) {
-    if (this.location() === f.path) { owner.native = this; throw closeFailure; }
-    Reflect.apply(close, this, []);
-  });
-  try {
-    await assert.rejects(composeWorkerRuntime({ lifetimeLock: f.lifetime, admission: f.machine,
-      repoRoot: f.workspace, isolation: rebuildRuntimeIsolation,
-      args: ["person-lookup", "--pool-index", "1", "--drain"], clock, env: {},
-      preflightRunnerFactory: healthyRuntimePreflightRunners, duoCeremony: await fixtureDuoCeremonyGates(clock),
-      sessionFactory: happySessionHarness().factory, stopSignal: new AbortController().signal, write: () => undefined,
-    }), error => {
-      assert.ok(error instanceof RuntimeCustodyUncertainError);
-      const source = error.errors.find(value => value instanceof AuthoritySourceClosureUnprovedError);
-      assert.ok(source instanceof AuthoritySourceClosureUnprovedError);
-      const causes: readonly unknown[] = source.errors;
-      assert.equal(causes.length, 2);
-      assert.ok(causes[0] instanceof Error);
-      assert.match(causes[0].message, /authority-native-schema-shape-mismatch/u);
-      assert.equal(causes[1], closeFailure);
-      return true;
-    });
-    assert.ok(owner.native); assert.ok(issued);
-    assert.equal(owner.native.prepare("SELECT 1 AS value").get()?.value, 1);
-    issued.assertLive(); f.lifetime.assertHeld();
-  } finally {
-    vi.restoreAllMocks();
-    owner.native?.close(); issued?.release(); await f.close();
-  }
+  await runCredentialSourceRetentionCase("worker-native-open");
 });

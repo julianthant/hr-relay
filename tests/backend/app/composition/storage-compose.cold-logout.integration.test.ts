@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import fs, { existsSync, readFileSync, readdirSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
-import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
@@ -25,7 +25,7 @@ async function fixture(phase: "admitted" | "cancelling" | "incomplete" = "cancel
   const credentials = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot });
   assert.equal(credentials.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), writeId: randomUUID(),
     commandFingerprint: "a".repeat(64), expectedRevision: credentials.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-    updatedAt: fields.at, entries: { ucpathUserId: { set: "synthetic-user" }, ucpathPassword: { set: "synthetic-password" } } })).state, "applied");
+    updatedAt: fields.at, entries: { ucpathUserId: { set: fields.email }, ucpathPassword: { set: fields.password } } })).state, "applied");
   await createChatGptCredentialRepository({ admission: f.admission, stateRoot: f.stateRoot }).withLock(async tx => tx.replace(ChatGptCredentialRecordSchema.parse({
     schemaVersion: 1, revision: 1, hostId: `urn:uuid:${randomUUID()}`, clientId: "oaiapp_synthetic",
     registration: { subject: "synthetic", name: "Synthetic Operator", email: "synthetic@example.edu" },
@@ -44,23 +44,28 @@ async function fixture(phase: "admitted" | "cancelling" | "incomplete" = "cancel
   const active = session.signIn(fields);
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("fixture activation refused");
   const owner = f.machine.admitProfile(active.profileId);
-  const database = AuthorityDatabase.open(owner, { path: f.path, openMode: "read-write" }, clock, undefined, undefined, undefined,
+  const database = AuthorityDatabase.open(owner, { path: f.path, openMode: "read-write", migrationOwner: "cold-logout", busyTimeoutMs: 250 }, clock, undefined, undefined, undefined,
     createCredentialStore({ admission: owner, stateRoot: owner.stateRoot }));
   const binding = database.getMeta(), source = database.capturePendingLogoutSource();
   const paths = [join(f.stateRoot, "credentials", "protected.json"), join(f.stateRoot, "credentials", "chatgpt-account.json"),
     join(f.machine.stateRoot, "machine", "duo-credentials", `${active.profileId}.json`),
     join(f.machine.stateRoot, "machine", "credential-keys", `${active.profileId}.json`)];
   const retained = paths.map(path => ({ path, bytes: readFileSync(path) }));
-  const interruption = new Error("synthetic logout intent interruption"), publish = Object.getOwnPropertyDescriptors(RuntimeAdmission.prototype).publishProfileOperation.value;
-  assert.ok(publish);
-  const fault = phase === "admitted" ? vi.spyOn(RuntimeAdmission.prototype, "publishProfileOperation").mockImplementation(function (this: RuntimeAdmission, operation) {
-    publish.call(this, operation);
-    if (this === f.machine && typeof operation !== "string" && operation.kind === "logout") throw interruption;
+  const interruption = new Error("synthetic logout intent interruption"), unlink = fs.unlinkSync;
+  const fault = phase === "admitted" ? vi.spyOn(fs, "unlinkSync").mockImplementation(target => {
+    unlink(target);
+    if (String(target) !== join(f.workspace, ".tracker", "control", "profile-publication.json")) return;
+    const directory = join(f.machine.stateRoot, "machine", "operations"), names = readdirSync(directory).filter(name => name.endsWith(".json"));
+    assert.equal(names.length, 1); assert.ok(names[0]);
+    const operation = LogoutOperationSchema.parse(JSON.parse(readFileSync(join(directory, names[0]), "utf8")));
+    assert.equal(operation.profileId, active.profileId); assert.equal(operation.phase, "admitted");
+    throw interruption;
   }) : undefined;
+  syncBuiltinESMExports();
   try {
     if (phase === "admitted") assert.throws(() => session.logOut(active.token, { at: fields.at }), error => error === interruption);
     else assert.equal(session.logOut(active.token, { at: fields.at }).state, "cancelling");
-  } finally { fault?.mockRestore(); }
+  } finally { fault?.mockRestore(); syncBuiltinESMExports(); }
   const pending = session.logoutOperations()[0]; assert.ok(pending);
   const operationPath = join(f.machine.stateRoot, "machine", "operations", `${pending.operationId}.json`);
   const readOperation = () => LogoutOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));

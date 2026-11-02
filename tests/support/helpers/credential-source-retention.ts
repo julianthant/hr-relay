@@ -16,14 +16,14 @@ import { createBoundProfileFixture } from "./admission-fixture.js";
 import { credentialKeychainTestEnvironment } from "./credential-keychain-fake.js";
 import { scaledMs } from "../time-scale.js";
 
-export type CredentialSourceRetentionCase = "writer-close" | "duo-read-first" | "duo-read-second" | "stopped-head-close"
+export type CredentialSourceRetentionCase = "readonly-native-close" | "worker-native-open" | "writer-close" | "duo-read-first" | "duo-read-second" | "stopped-head-close"
   | "protected-source" | "chatgpt-source" | "account-projection" | "stopped-control-snapshot-disposal" | "setup-protected-close" | "authenticated-upgrade-key-close" | "authenticated-upgrade-service-inspection"
   | "authenticated-upgrade-binding-consume" | "authenticated-upgrade-unproved-close" | "authenticated-upgrade-closed-publication-refusal";
 const retainedChildren = new Set<object>();
 
 export async function runCredentialSourceRetentionCase(scenario: CredentialSourceRetentionCase): Promise<void> {
   const profile = await createBoundProfileFixture({ sharedMachine: true });
-  const setupNonce = scenario === "setup-protected-close" || scenario.startsWith("authenticated-upgrade-") ? randomUUID() : undefined;
+  const setupNonce = scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("authenticated-upgrade-") ? randomUUID() : undefined;
   const setupWorkspace = setupNonce === undefined ? undefined : join(profile.workspace, `.${scenario}-${setupNonce}`);
   if (setupWorkspace !== undefined) mkdirSync(setupWorkspace, { mode: 0o700 });
   const child = fork(fileURLToPath(new URL("../../support/processes/credential-source-retention-worker.ts", import.meta.url)),
@@ -150,10 +150,10 @@ export type LogoutSettlementCase = "prepared" | "commit-intent" | "after-commit"
 
 export async function runLogoutSettlementCase(boundary: LogoutSettlementCase): Promise<void> {
   const profile = await createBoundProfileFixture({ sharedMachine: true });
-  const profileId = profile.admission.profileBinding.profileId, port = profile.lifetime.port;
+  const profileId = profile.admission.profileBinding.profileId, port = profile.lifetime.port, machineRoot = profile.machine.stateRoot;
   const retained = [join(profile.stateRoot, "credentials", "protected.json"), join(profile.stateRoot, "credentials", "chatgpt-account.json"),
-    join(profile.machine.stateRoot, "machine", "duo-credentials", `${profileId}.json`),
-    join(profile.machine.stateRoot, "machine", "credential-keys", `${profileId}.json`)].map(path => ({ path, bytes: readFileSync(path) }));
+    join(machineRoot, "machine", "duo-credentials", `${profileId}.json`),
+    join(machineRoot, "machine", "credential-keys", `${profileId}.json`)].map(path => ({ path, bytes: readFileSync(path) }));
   await profile.closeController();
   const nonce = randomUUID(), marker = join(profile.workspace, `.logout-publication-${nonce}.json`);
   const owned = { profile, boundary }; retainedChildren.add(owned);
@@ -204,7 +204,7 @@ export async function runLogoutSettlementCase(boundary: LogoutSettlementCase): P
   }
   try {
     const poison = ["writer-close", "unknown-copy", "live-process", "browser-root", "key-replacement", "snapshot-disposal", "process-observation", "browser-busy", "browser-unproved", "process-root-copy", "exited-process"].includes(boundary);
-    const prefix = !poison;
+    const prefix = !poison || boundary === "key-replacement";
     let sourceOperationId: string | undefined;
     if (prefix) {
       const sourcePid = await stage(boundary === "unknown" ? "logout-seed-unknown" : "logout-seed", true);
@@ -213,7 +213,7 @@ export async function runLogoutSettlementCase(boundary: LogoutSettlementCase): P
       assert.equal(source.nonce, nonce); assert.equal(source.processId, sourcePid); sourceOperationId = source.operationId;
     }
     const faultPid = await stage(`logout-${boundary}`, !poison && boundary !== "unknown");
-    assert.equal(existsSync(join(profile.machine.stateRoot, "machine", "erasures", `${profileId}.json`)), false);
+    assert.equal(existsSync(join(machineRoot, "machine", "erasures", `${profileId}.json`)), false);
     for (const item of retained) assert.deepEqual(readFileSync(item.path), item.bytes);
     if (!poison && boundary !== "unknown") {
       const receipt = z.strictObject({ nonce: z.uuid(), scenario: z.literal(`logout-${boundary}`), operationId: z.uuid(), profileId: z.uuid(), phase: z.literal(boundary === "third-image" ? "commit-intent" : boundary), settlement: LogoutSettlementSchema })
