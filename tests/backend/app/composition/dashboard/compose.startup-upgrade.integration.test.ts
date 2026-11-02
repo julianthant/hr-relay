@@ -84,7 +84,7 @@ it.each([8, 9, 10] as const)("automatically upgrades registered schema %s before
     assert.equal(starts, 0); assert.equal(readProfileDatabaseBinding(profile.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     const after = rows(profile.path, sourceVersion);
     for (const [table, previous] of Object.entries(before)) {
-      if (table === "database_states") assert.deepEqual(after[table], previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, previous.length), previous);
       else assert.deepEqual(after[table], previous);
     }
@@ -271,7 +271,7 @@ it("preserves a real UNKNOWN parked write, its fenced attempt and stopped worker
     await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts);
     const after = rows(path, 10);
     for (const [table, previous] of Object.entries(before)) {
-      if (table === "database_states") assert.deepEqual(after[table], previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, previous.length), previous);
       else assert.deepEqual(after[table], previous);
     }
