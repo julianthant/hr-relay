@@ -322,7 +322,8 @@ export function sessionFactoryHarness(
           async close(closeInput: Readonly<{ reason: BrowserSessionCloseReason }>): Promise<BrowserSessionCloseProof> {
             closeReasons.push(closeInput.reason);
             trace.push({ kind: "close", system: input.system, sessionId, reason: closeInput.reason });
-            return { sessionId, system: input.system, pagesClosed: true, contextClosed: true };
+            return { sessionId, system: input.system, pagesClosed: true, contextClosed: true,
+              ...(input.exclusive ? { exclusiveLeaseReleased: true } : {}) };
           },
         };
       },

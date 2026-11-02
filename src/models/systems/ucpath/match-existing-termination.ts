@@ -21,7 +21,6 @@ export const UcpathMatchExistingTermination = defineTaskContract({
   errorCodes: ["ucpath-unavailable", "unexpected-page-state", "subject-mismatch"],
   subject: {
     kind: "person",
-    // Verify the displayed name; the EID merely echoes this run's filter.
     expected: { fromInput: ContractFieldPathSchema.parse("expectedName"), identity: "name" },
     observe: ObservationIdSchema.parse(UCPATH_SS_SMART_HR_DISPLAYED_NAME),
     match: "normalized-exact-name",

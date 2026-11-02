@@ -13,6 +13,7 @@ import { i9LookupWorkflow } from "../../src/workflows/i9-lookup/workflow.js";
 import { ocrPageWorkflow } from "../../src/workflows/ocr-page/workflow.js";
 import { ocrWorkflow } from "../../src/workflows/ocr/workflow.js";
 import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
+import { onbaseWorkflow } from "../../src/workflows/onbase/workflow.js";
 import { separationsWorkflow } from "../../src/workflows/separations/workflow.js";
 import { fixtureBuildManifest } from "../support/fixtures/workflow-definition-fixtures.js";
 
@@ -45,7 +46,7 @@ const manifest = fixtureBuildManifest([base.id, "workbook-requirements-proof"]);
 const fingerprint = manifest.workflows.find(entry => entry.id === base.id)!.fingerprint;
 const descriptorSpec = { ...base, flow: fixtureFlow, contractFingerprint: fingerprint };
 const currentDefinitions: readonly AnyWorkflowDefinition[] = [
-  personLookupWorkflow, separationsWorkflow, i9CheckWorkflow, i9LookupWorkflow, ocrWorkflow, ocrPageWorkflow,
+  personLookupWorkflow, separationsWorkflow, i9CheckWorkflow, i9LookupWorkflow, ocrWorkflow, ocrPageWorkflow, onbaseWorkflow,
 ];
 
 describe("direct workbook type requirements", () => {

@@ -2,7 +2,7 @@ import type { FrameLocator, Locator, Page } from "playwright";
 import type { ElementId, PageStateId } from "../../../../rules/identity/ids.js";
 import { PageStateProofSchema } from "../../../../models/ui/driver.js";
 import type { PageStateProof } from "../../../../models/ui/driver.js";
-import { UCPATH_UI_REGISTRY } from "./ui-registry.js";
+import { UCPATH_PENDING_FINDINGS_RECIPES, UCPATH_UI_REGISTRY } from "./ui-registry.js";
 
 export type UcpathElementDefinition = (typeof UCPATH_UI_REGISTRY.elements)[number];
 
@@ -112,5 +112,34 @@ export async function waitForUcpathElementStates(
     assertCurrent();
     await waitForUcpathState(assertCurrent, page, stateId);
   }
+  assertCurrent();
+}
+
+export function ucpathFindingElementById(id: ElementId) {
+  const element = UCPATH_PENDING_FINDINGS_RECIPES.elements.find(candidate => candidate.id === id);
+  if (element === undefined) throw new Error(`UCPath pending findings have no element ${id}`);
+  return element;
+}
+
+export function resolveUcpathFindingElement(page: Page, id: ElementId): Locator {
+  const recipe = ucpathFindingElementById(id).locator;
+  if (recipe.kind === "css") return page.locator(recipe.selector);
+  if (recipe.kind === "role") return page.getByRole(recipe.role, { name: recipe.name, exact: recipe.exact });
+  if (recipe.kind === "text-pattern") return page.getByText(new RegExp(recipe.pattern, "u"), { exact: true });
+  throw new Error(`${id} requires an indexed findings recipe`);
+}
+
+export function resolveUcpathFindingIndexedElement(page: Page, id: ElementId, index: number): Locator {
+  if (!Number.isSafeInteger(index) || index < 0) throw new Error(`${id} requires a non-negative safe row index`);
+  const recipe = ucpathFindingElementById(id).locator;
+  if (recipe.kind !== "indexed-css") throw new Error(`${id} is not an indexed findings element`);
+  return page.locator(`${recipe.selectorPrefix}${String(index)}${recipe.selectorSuffix}`);
+}
+
+export async function waitForUcpathFindingState(assertCurrent: () => void, page: Page, id: PageStateId): Promise<void> {
+  const state = UCPATH_PENDING_FINDINGS_RECIPES.states.find(candidate => candidate.id === id);
+  if (state === undefined) throw new Error(`UCPath pending findings have no state ${id}`);
+  assertCurrent();
+  await resolveUcpathFindingElement(page, state.element).waitFor({ state: "visible", timeout: state.timeoutMs });
   assertCurrent();
 }

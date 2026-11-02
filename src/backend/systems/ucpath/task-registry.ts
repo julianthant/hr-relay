@@ -13,6 +13,7 @@ import { searchPersonOrgTask } from "./tasks/search-person-org.js";
 import { verifyPendingTerminationsClearedTask } from "./tasks/verify-pending-terminations-cleared.js";
 import { verifyTerminationTask } from "./tasks/verify-termination.js";
 import { readPendingTerminationSetTask } from "./tasks/read-pending-termination-set.js";
+import { readTransactionFindingsTask } from "./tasks/read-transaction-findings.js";
 import { verifyTerminationFilingPresentTask } from "./tasks/verify-termination-filing-present.js";
 
 
@@ -30,6 +31,7 @@ export const ucpathStore = defineBrowserStore(
     verifyTermination: verifyTerminationTask,
     verifyTerminationFilingPresent: verifyTerminationFilingPresentTask,
     readPendingTerminationSet: readPendingTerminationSetTask,
+    readTransactionFindings: readTransactionFindingsTask,
     probePendingTerminations: matchPendingTerminationsTask,
     preparePendingTerminationSweep: stagePendingTerminationSweepTask,
     clearPendingTerminations: deletePendingTerminationsTask,

@@ -18,6 +18,8 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 
 | Module | Concept |
 | --- | --- |
+| `helpers/exclusive-session-leases.ts` | deferred isolated SQLite authority for exclusive browser-session lease tests |
+| `helpers/browser/fake-onbase-page.ts` | synthetic OnBase import/retrieval page with exact filters and saved-PDF evidence |
 | `fixtures/child-execution-build-manifest.ts` | build manifest for the owned child execution process fixture |
 | `fixtures/child-execution-workflows.ts` | canonical child workflow definitions for lifecycle and crash tests |
 | `fixtures/child-execution-write-workflow.ts` | child write workflow with durable attempting and UNKNOWN controls |
@@ -101,6 +103,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/backend/trust-authority-fixture.ts` | trust authority fixture |
 | `helpers/browser/fake-login-page.ts` | fake login page |
 | `helpers/canonical-run-reader.ts` | canonical run reader |
+| `helpers/ucpath-findings-page.ts` | synthetic Smart HR list/detail navigation, identity, pagination and refusal evidence shared by findings and lifecycle checks |
 | `helpers/assistant-coupled-server.ts` | served synthetic assistant browser proof and owned cleanup |
 | `helpers/assistant-coupled-world.ts` | coupled assistant account transport, canonical authority and pure planner fixtures |
 | `helpers/chatgpt-account-fixtures.ts` | synthetic ChatGPT account fixtures |

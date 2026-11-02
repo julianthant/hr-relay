@@ -35,6 +35,12 @@ describe("Person Lookup task implementations", () => {
 
         "ocr/extract-form-page",
 
+        "onbase/match-import",
+        "onbase/read-source-page",
+        "onbase/stage-import",
+        "onbase/upload-import",
+        "onbase/verify-import",
+
         "roster/match-spreadsheet",
 
         "ucpath/create-termination",
@@ -43,6 +49,7 @@ describe("Person Lookup task implementations", () => {
         "ucpath/match-pending-terminations",
         "ucpath/read-job-summary",
         "ucpath/read-pending-termination-set",
+        "ucpath/read-transaction-findings",
         "ucpath/search-person-match",
         "ucpath/search-person-org",
         "ucpath/stage-pending-termination-sweep",

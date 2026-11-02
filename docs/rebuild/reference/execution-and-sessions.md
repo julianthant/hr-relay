@@ -44,8 +44,11 @@ boundaries; `browser-session:reset` leaves the browser span open.
 
 `BROWSER_SYSTEM_BINDINGS` in `src/backend/runtime/browser/system-bindings.ts` binds `ucpath`,
 `crm`, `kuali`, and `new-kronos` to drivers, login recipes, and authenticated-application verifiers.
-The factory refuses an absent binding before browser launch. It also refuses an identity-exclusive
-session because the concrete OnBase lease is absent.
+The factory refuses an absent binding before browser launch. OnBase additionally acquires the
+durable identity-session lease for its configured application directory and normalized account.
+The identity is stored as a hash. A held lease has no expiry or worker-death takeover; waiters are
+bounded and cancellation-aware. Exact generation/session release follows proved page/context
+closure. Uncertain launch or closure retains the lease, and worker close proof requires its release.
 
 ### 2.1 Gates and parks
 
@@ -755,6 +758,6 @@ continue to retain custody.
 ## Not built yet
 
 - Wiring-base work connects the approved dashboard controls and session views to served worker and browser authority through the shared client.
-- OnBase needs a concrete driver, verified login recipe, and identity-exclusive session lease whose release follows proven browser closure.
+- OnBase's concrete driver and login binding require live operator acceptance; fixture retrieval semantics do not establish live selector validity.
 - Unbound browser systems need their driver and verified login binding before a workflow can use them.
 - A workflow that declares `session:"fresh"` needs its node-ordering proof in addition to the manager's close-before-open tests.
