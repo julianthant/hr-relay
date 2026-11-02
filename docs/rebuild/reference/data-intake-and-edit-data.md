@@ -139,7 +139,8 @@ evidence and match proposals, and explicit unresolved identity work. Source bind
 support all three canonical forms. The unregistered definitions in
 `src/workflows/ocr/` and `src/workflows/ocr-page/` compose full-document rendering, subscription or
 manual page readings, all-settled page accounting and deduplicated Person Lookup children. Identity
-outcomes remain separate from the original review seed; neither grants approval. Before registration,
+outcomes remain separate from the original review seed in a derived result checkpoint; neither grants
+approval. Before registration,
 intake must bind `sourceRunId` to the actual run and manual assertions to the authenticated operator.
 The definitions and mini-stores are audited through a test-only inventory; neither public nor child
 production registries contain them. No reading versions or review revisions are persisted here.

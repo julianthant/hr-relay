@@ -1,24 +1,21 @@
-import { z } from "zod";
 import { defineWorkflowStep } from "../../workflow-kit/workflow.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { defineCanonicalInput } from "../../models/workflow/canonical-input.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
 import { WorkflowIdSchema } from "../../rules/identity/ids.js";
-import { childRunOutcomeSchema } from "../../models/workflow/graph.js";
 import { OcrInputSchema, OCR_INPUT_EXAMPLE } from "../../models/workflows/ocr/input.js";
 import { OcrPageWorkflowInputSchema } from "../../models/workflows/ocr-page/input.js";
 import { OcrPageReadingSchema } from "../../models/workflows/ocr/page-accounting.js";
-import { OcrReviewSeedSchema } from "../../models/workflows/ocr/review-seed.js";
-import { OcrLookupRequestSchema, ocrLookupRequests, bindOcrLookupOutcomes } from "../../models/workflows/ocr/lookup.js";
+import { ocrLookupRequests } from "../../models/workflows/ocr/lookup.js";
 import { ExtractPdfPages } from "../../models/processing/extraction/extract-pdf-pages.js";
 import { ReadOcrSourcePages } from "../../models/workflows/ocr/read-source-pages.js";
 import { ReadOcrReviewSeed } from "../../models/workflows/ocr/read-review-seed.js";
 import { PersonLookupInput } from "../../models/workflows/person-lookup/input.js";
-import { PersonLookupResultSchema } from "../person-lookup/workflow.js";
+import { PersonLookupResultSchema } from "../../models/workflows/person-lookup/result.js";
+import { OcrResultSchema } from "../../models/workflows/ocr/result.js";
+import { ReadOcrResult } from "../../models/workflows/ocr/read-result.js";
 
-export const OcrResultSchema = z.strictObject({ review: OcrReviewSeedSchema,
-  identities: z.array(OcrLookupRequestSchema.extend({ outcome: childRunOutcomeSchema(PersonLookupResultSchema) })) });
 
 const childPolicy = Object.freeze({ onChildFailed: "allow-partial", cascadeCancel: "cascade",
   afterChildRetry: "resume-parent", visibility: "inline" } as const);
@@ -53,12 +50,13 @@ export const ocrWorkflow = defineWorkflow({
       bind: ({ outputs }) => ocrLookupRequests(outputs["build-review"]).map(request => request.input),
       deriveChildItemId: (_input, context) => context.canonicalItemId,
     });
+    const completed = task({ id: "read-result", contract: ReadOcrResult, replay: "checkpoint" }, [review, identities],
+      ({ outputs }) => ({ review: outputs["build-review"], outcomes: [...outputs["lookup-identities"]] }));
     return { steps: [
       [OCR_SOURCE_PAGES_STEP, [rendered, source]],
       [{ key: "page-readings", label: "Read document pages", system: "local" }, [pages]],
       [{ key: "review-records", label: "Group records for review", system: "local" }, [review]],
-      [{ key: "identity-lookups", label: "Look up proposed identities", system: "ucpath" }, [identities]],
-    ], result: result(OcrResultSchema, [review, identities], ({ outputs }) => ({ review: outputs["build-review"],
-      identities: bindOcrLookupOutcomes(outputs["build-review"], outputs["lookup-identities"]) })) };
+      [{ key: "identity-lookups", label: "Look up proposed identities", system: "ucpath" }, [identities, completed]],
+    ], result: result(OcrResultSchema, [completed], ({ outputs }) => outputs["read-result"]) };
   },
 });

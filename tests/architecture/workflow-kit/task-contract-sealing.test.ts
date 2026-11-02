@@ -248,6 +248,7 @@ describe("task contract sealing architecture", () => {
       "src/models/task/task-contract.ts",
       "src/models/workflows/ocr-page/read-manual-reading.ts",
       "src/models/workflows/ocr-page/read-page-reading.ts",
+      "src/models/workflows/ocr/read-result.ts",
       "src/models/workflows/ocr/read-review-seed.ts",
       "src/models/workflows/ocr/read-source-pages.ts",
       "src/models/workflows/person-lookup/read-active-status.ts",

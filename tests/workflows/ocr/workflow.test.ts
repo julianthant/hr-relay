@@ -5,9 +5,12 @@ import { compileWorkflow, workflowExplorerDeclaration } from "../../../src/workf
 import { descriptorRuntimeNodes, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
 import { workflowModuleOf, childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
-import { ocrWorkflow, OcrResultSchema } from "../../../src/workflows/ocr/workflow.js";
+import { ocrWorkflow } from "../../../src/workflows/ocr/workflow.js";
 import { OcrPageWorkflowInputSchema } from "../../../src/models/workflows/ocr-page/input.js";
 import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
+import { OcrResultSchema } from "../../../src/models/workflows/ocr/result.js";
+import { ReadOcrResult } from "../../../src/models/workflows/ocr/read-result.js";
+import { readOcrResultTask } from "../../../src/workflows/ocr/tasks/read-result.js";
 import { OcrInputSchema } from "../../../src/models/workflows/ocr/input.js";
 import { ReadOcrSourcePages } from "../../../src/models/workflows/ocr/read-source-pages.js";
 import { ReadOcrReviewSeed } from "../../../src/models/workflows/ocr/read-review-seed.js";
@@ -26,10 +29,11 @@ const nodes = descriptorRuntimeNodes(descriptor);
 const prepareCandidate = nodes.find(node => node.id === "read-source-pages");
 const childrenCandidate = nodes.find(node => node.id === "read-pages");
 const reviewCandidate = nodes.find(node => node.id === "build-review");
+const resultCandidate = nodes.find(node => node.id === "read-result");
 const lookupCandidate = nodes.find(node => node.id === "lookup-identities");
 assert.ok(prepareCandidate?.kind === "task" && childrenCandidate?.kind === "child-run" && childrenCandidate.cardinality === "many"
-  && reviewCandidate?.kind === "task" && lookupCandidate?.kind === "child-run" && lookupCandidate.cardinality === "many");
-const prepare = prepareCandidate, children = childrenCandidate, reviewNode = reviewCandidate, lookup = lookupCandidate;
+  && reviewCandidate?.kind === "task" && lookupCandidate?.kind === "child-run" && lookupCandidate.cardinality === "many" && resultCandidate?.kind === "task");
+const prepare = prepareCandidate, children = childrenCandidate, reviewNode = reviewCandidate, lookup = lookupCandidate, completed = resultCandidate;
 
 function requestFixture(pageCount = 3) {
   const source = sourceFixture(pageCount);
@@ -54,6 +58,11 @@ async function reviewFixture(pageCount = 3) {
   return { ...fixture, source, review, outcomes };
 }
 
+async function finishFixture(scope: Parameters<typeof completed.bind>[0]) {
+  return OcrResultSchema.parse(await readOcrResultTask.impl.run({
+    input: ReadOcrResult.input.parse(completed.bind(scope)), ctx: ocrTaskContext().ctx }));
+}
+
 describe("unregistered OCR document graph", () => {
   it("compiles complete exact stores and generated timelines without production registration", () => {
     assert.deepEqual(UNREGISTERED_OCR_MODULES.map(module => String(module.descriptor.id)), ["ocr", "ocr-page", "ocr-source-pages", "ocr-page-reading"]);
@@ -61,6 +70,7 @@ describe("unregistered OCR document graph", () => {
     assert.equal(children.join, "all-settled");
     assert.equal(children.policy.cascadeCancel, "cascade");
     assert.equal(lookup.join, "all-settled");
+    assert.deepEqual(workflowTerminalResultExecution(descriptor).dependsOn, ["read-result"]);
     assert.deepEqual(descriptor.timeline.map(step => step.key), ["source-pages", "page-readings", "review-records", "identity-lookups"]);
     assert.ok(workflowExplorerDeclaration(ocrWorkflow));
     for (const id of ["ocr", "ocr-page"]) {
@@ -84,18 +94,20 @@ describe("unregistered OCR document graph", () => {
     assert.equal(lookup.deriveChildItemId(input, { canonicalItemId: itemId }), itemId);
     const outcome = { state: "failed", itemId, runId: "00000000-0000-4000-8000-000000000801", failureId: "00000000-0000-4000-8000-000000000777" };
     const scope = { input: request, outputs: { "build-review": review, "lookup-identities": [outcome] } };
-    const result = OcrResultSchema.parse(workflowTerminalResultExecution(descriptor).derive(scope));
+    const result = await finishFixture(scope);
+    assert.deepEqual(OcrResultSchema.parse(workflowTerminalResultExecution(descriptor).derive({ input: request,
+      outputs: { "read-result": result } })), result);
     assert.deepEqual(result.identities[0].recordIds, review.records.map(record => record.recordId));
     assert.deepEqual(result.identities[0].outcome, outcome);
-    const successful = OcrResultSchema.parse(workflowTerminalResultExecution(descriptor).derive({ ...scope,
+    const successful = await finishFixture({ ...scope,
       outputs: { ...scope.outputs, "lookup-identities": [{ state: "done", itemId, runId: outcome.runId,
-        output: { activeStatus: ReadActiveStatus.example, crmDates: { state: "not-requested" } } }] } }));
+        output: { activeStatus: ReadActiveStatus.example, crmDates: { state: "not-requested" } } }] } });
     assert.equal(successful.identities[0].outcome.state, "done");
     assert.equal(successful.review.records.every(record => record.issues.includes("identity-unverified")), true);
     assert.equal(result.review.records.every(record => record.issues.includes("identity-unverified")), true);
-    assert.throws(() => workflowTerminalResultExecution(descriptor).derive({ ...scope, outputs: { ...scope.outputs, "lookup-identities": [] } }), /every requested identity/);
-    assert.throws(() => workflowTerminalResultExecution(descriptor).derive({ ...scope, outputs: { ...scope.outputs,
-      "lookup-identities": [{ ...outcome, itemId: READING_ID }] } }), /requested identity in order/);
+    await assert.rejects(finishFixture({ ...scope, outputs: { ...scope.outputs, "lookup-identities": [] } }), /do not match/);
+    await assert.rejects(finishFixture({ ...scope, outputs: { ...scope.outputs,
+      "lookup-identities": [{ ...outcome, itemId: READING_ID }] } }), /do not match/);
   });
 
   it("requires complete manual page assertions and refuses partial render windows or outcomes", async () => {
@@ -125,8 +137,7 @@ describe("unregistered OCR document graph", () => {
       manifest: source.manifest, readingId: READING_ID, formType: "emergency-contact", outcomes: [failed] }, ctx: ocrTaskContext().ctx }));
     assert.deepEqual(review.pages, [{ sourcePage: 1, disposition: "failed" }]);
     assert.deepEqual(lookup.bind({ input: request, outputs: { "build-review": review } }), []);
-    const result = OcrResultSchema.parse(workflowTerminalResultExecution(descriptor).derive({ input: request,
-      outputs: { "build-review": review, "lookup-identities": [] } }));
+    const result = await finishFixture({ input: request, outputs: { "build-review": review, "lookup-identities": [] } });
     assert.deepEqual(result.identities, []);
   });
 });
