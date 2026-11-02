@@ -44,7 +44,7 @@ export async function runStartupUpgradeRetentionCase(input: { scenario: string; 
   const publicationFault = input.scenario === "startup-upgrade-closed-publication-refusal";
   const injected = new Error(`native-${input.scenario}`), primary = new Error("source-publication-refused");
   let phase: "service-inspection" | "binding-inspection" | undefined, keyFaultArmed = false;
-  let originalClosure: unknown;
+  let originalClosure: unknown, lifetimeClosure: unknown;
   let descriptor: number | undefined, closeAttempts = 0, disposalAttempts = 0, acquisitions = 0, starts = 0, closes = 0;
   let exclusive: RuntimeAdmission | undefined, operation: OfflineMaintenanceOperation | undefined;
   let snapshotDirectory: string | undefined, snapshotIdentity: fs.Stats | undefined, snapshotBytes: Buffer | undefined;
@@ -61,7 +61,10 @@ export async function runStartupUpgradeRetentionCase(input: { scenario: string; 
   const retainedAdmissions = new Set<RuntimeAdmission>();
   const retain = Object.getOwnPropertyDescriptors(RuntimeLifetimeLock.prototype).retainSourceClosure.value; assert.ok(retain);
   RuntimeLifetimeLock.prototype.retainSourceClosure = function (this: RuntimeLifetimeLock, error) {
-    if (this === lifetime && chain(error).has(injected)) originalClosure ??= error;
+    if (this === lifetime && chain(error).has(injected)) {
+      lifetimeClosure ??= error;
+      originalClosure ??= [...chain(error)].find(value => value instanceof AuthoritySourceClosureUnprovedError && value.cause === injected);
+    }
     retain.call(this, error);
   };
   const inspect = Object.getOwnPropertyDescriptors(AuthorityDatabase).inspectStoppedUpgrade.value; assert.ok(inspect);
@@ -156,6 +159,8 @@ export async function runStartupUpgradeRetentionCase(input: { scenario: string; 
   if (keyFault) {
     assert.ok(originalClosure instanceof AuthoritySourceClosureUnprovedError);
     assert.deepEqual(originalClosure.errors, [injected]); assert.equal(originalClosure.cause, injected);
+    assert.ok(lifetimeClosure instanceof AuthoritySourceClosureUnprovedError);
+    assert.equal(chain(lifetimeClosure).has(originalClosure), true); assert.equal(chain(failure).has(lifetimeClosure), true);
     assert.equal(chain(failure).has(originalClosure), true);
   }
   const exact = [...chain(failure)].find(value => value instanceof AuthoritySourceClosureUnprovedError && value.cause === injected);
