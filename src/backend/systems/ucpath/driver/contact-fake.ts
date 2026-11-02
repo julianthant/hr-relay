@@ -1,6 +1,26 @@
 import { UcpathContactPageSnapshotSchema } from "../../../../models/ui/ucpath-emergency-contact.js";
 import type { UcpathContactPageSnapshot } from "../../../../models/ui/ucpath-emergency-contact.js";
 import type { UcpathContactPagePort } from "./contact-operation.js";
+import { contactEffect, decideContactAddition, readContactSetWithPort, stageContactAdditionWithPort } from "./contact-operation.js";
+import { UcpathContactRefusedError } from "../../../../models/systems/ucpath/emergency-contacts.js";
+import type { UcpathEmergencyContactDriver } from "../../../../models/ui/ucpath-emergency-contact.js";
+
+export function deterministicContactOperations(port?: UcpathContactPagePort): UcpathEmergencyContactDriver {
+  function requirePort(): UcpathContactPagePort {
+    if (port === undefined) throw new Error("UCPath fixture requires explicit contact page observations");
+    return port;
+  }
+  return {
+    readEmergencyContacts: async (subject) => readContactSetWithPort(requirePort(), subject),
+    async stageEmergencyContact(input, before) {
+      const decision = decideContactAddition(before, contactEffect(input));
+      if (before.observation !== "persisted" || before.emplId !== input.emplId || decision.state !== "add") {
+        throw new UcpathContactRefusedError("contact-plan-refused");
+      }
+      return stageContactAdditionWithPort(requirePort(), input, decision);
+    },
+  };
+}
 
 export function createDeterministicUcpathContactPage(options: Readonly<{
   initial: UcpathContactPageSnapshot;

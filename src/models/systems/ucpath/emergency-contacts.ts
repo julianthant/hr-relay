@@ -96,17 +96,18 @@ export const UcpathContactDecisionSchema = z.discriminatedUnion("state", [
 ]);
 export type UcpathContactDecision = z.infer<typeof UcpathContactDecisionSchema>;
 
-export const UcpathContactRefusalCodeSchema = z.enum([
+export const UCPATH_CONTACT_REFUSAL_CODES = [
   "unexpected-contact-page", "contact-identity-unreadable", "contact-subject-mismatch",
   "contact-name-mismatch", "contact-set-incomplete", "unreadable-contact-row",
   "relationship-unmapped", "address-choice-unresolved", "contact-set-changed",
   "contact-plan-refused", "blank-row-unavailable", "contact-name-lost", "staged-effect-mismatch",
-]);
+] as const;
+export const UcpathContactRefusalCodeSchema = z.enum(UCPATH_CONTACT_REFUSAL_CODES);
 export type UcpathContactRefusalCode = z.infer<typeof UcpathContactRefusalCodeSchema>;
 
 export class UcpathContactRefusedError extends Error {
-  constructor(readonly code: UcpathContactRefusalCode) {
-    super(code);
+  constructor(readonly code: UcpathContactRefusalCode, options?: ErrorOptions) {
+    super(code, options);
     this.name = "UcpathContactRefusedError";
   }
 }

@@ -234,6 +234,7 @@ describe("task contract sealing architecture", () => {
       "src/models/systems/kuali/verify-separation-finalization.ts",
       "src/models/systems/new-kronos/read-separation-timecard.ts",
       "src/models/systems/new-kronos/search-employee.ts",
+      "src/models/systems/ucpath/contact-tasks.ts",
       "src/models/systems/ucpath/create-termination.ts",
       "src/models/systems/ucpath/delete-pending-terminations.ts",
       "src/models/systems/ucpath/match-existing-termination.ts",
