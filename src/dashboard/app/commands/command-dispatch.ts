@@ -2,6 +2,7 @@ import type { ParkedWriteDetailWire } from "../../../models/dashboard/run-detail
 import { CommandRequestSchema } from "../../../rules/commands/commands.js";
 import type { DashboardClient } from "../../client/index.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { CommandRequest, CommandResult, BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
 import type { DashboardDayWire, QueueSurfaceWire } from "../../../models/dashboard/projection.js";
 import type { CommandReadbackVerification } from "./command-executor.js";
@@ -256,7 +257,8 @@ export async function verifyShellCommandEffect(
       && operation.receipt.operationId === request.target.operationId);
     const resolution = section.payload.operations.find(operation => operation.receipt.libraryId === request.target.libraryId
       && operation.receipt.operationId === deriveStableUuid("run-workbook-row-resolution", request.commandId));
-    return original?.resolution.state === "resolved" && resolution?.receipt.state === "applied"
+    return original?.resolution.state === "resolved" && sha256Hex(canonicalJsonStringify(original.receipt)) === request.target.receiptDigest
+      && resolution?.receipt.state === "applied"
       && resolution.receipt.version === request.target.workbookVersion + 1
       ? { state: "matched", evidence: section } : mismatch(section);
   }

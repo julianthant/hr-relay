@@ -48,6 +48,7 @@ it("confirms readback only after both the original choice and exact command-deri
     sequence: 2, state: "applied" as const, reason: undefined, version: 3 }, resolution: { state: "not-required" as const } };
   const resolved = { ...operation, resolution: { state: "resolved" as const } };
   for (const [operations, expected] of [[[operation], "mismatch"], [[resolved], "mismatch"], [[resolved, applied], "matched"],
+    [[{ ...resolved, receipt: { ...resolved.receipt, version: 9 } }, applied], "mismatch"],
     [[resolved, { ...applied, receipt: { ...applied.receipt, version: 4 } }], "mismatch"]] as const) {
     const client = { runDetail: async () => ({ runId: UUID_1, rowRevision: 4, availableSections: ["workbook-writes"] }),
       runSection: async () => ({ section: "workbook-writes", payload: { runId: UUID_1, operations } }) } as unknown as DashboardClient;
