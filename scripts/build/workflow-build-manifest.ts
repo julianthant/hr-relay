@@ -250,7 +250,10 @@ export function computeBuildManifest(repoRoot: string): BuildManifest {
     zod: installedVersion(repoRoot, "zod"),
   };
   const workflows = descriptorEntries(repoRoot).map(({ id, entry }) => {
-    const sources = collectSourceClosure(repoRoot, entry);
+    const entries = posix(entry).endsWith("/step.ts")
+      ? [entry, resolve(entry, "../../..", "workflow.ts")]
+      : [entry];
+    const sources = collectSourceClosures(repoRoot, entries);
     return {
       id: WorkflowIdSchema.parse(id),
       fingerprint: FingerprintSchema.parse(fingerprintSourceSet(toolchain, id, sources)),
