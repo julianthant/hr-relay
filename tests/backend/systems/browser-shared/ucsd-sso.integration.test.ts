@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, it } from "vitest";
-import { submitOnboardingSsoCredentials } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
+import { submitPinnedUcsdSsoCredentials } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
 
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const form = (action = SSO) => `<form action="${action}" method="post"><input id="ssousername" name="username"><input id="ssopassword" type="password" name="password"><button name="_eventId_proceed">Sign in</button></form>`;
@@ -27,7 +27,7 @@ it("submits the exact UCSD form once and refuses wrong origin, action, fields an
   const assertCurrent = () => { if (!current) throw new Error("synthetic-revoked"); };
   try {
     await page.goto(SSO);
-    await submitOnboardingSsoCredentials(page, acquire, assertCurrent, 1000);
+    await submitPinnedUcsdSsoCredentials(page, acquire, assertCurrent, 1000, "/tritON/profile/SAML2/Redirect/SSO");
     assert.equal(await page.locator("body").textContent(), "Awaiting native MFA");
     assert.equal(acquisitions, 1); assert.equal(submissions, 1);
     for (const [url, body] of [
@@ -46,11 +46,11 @@ it("submits the exact UCSD form once and refuses wrong origin, action, fields an
       [SSO, '<form><input id="ssousername"></form><form><input id="ssopassword" type="password"></form>'],
     ]) {
       assert.ok(url && body); html = body; await page.goto(url);
-      await assert.rejects(submitOnboardingSsoCredentials(page, acquire, assertCurrent, 1000));
+      await assert.rejects(submitPinnedUcsdSsoCredentials(page, acquire, assertCurrent, 1000, "/tritON/profile/SAML2/Redirect/SSO"));
       assert.equal(acquisitions, 1);
     }
     html = form(); await page.goto(SSO); current = false;
-    await assert.rejects(submitOnboardingSsoCredentials(page, acquire, assertCurrent, 1000));
+    await assert.rejects(submitPinnedUcsdSsoCredentials(page, acquire, assertCurrent, 1000, "/tritON/profile/SAML2/Redirect/SSO"));
     assert.equal(acquisitions, 1); assert.equal(submissions, 1);
   } finally { await context.close(); }
 });
@@ -64,12 +64,12 @@ it("refuses replacement, navigation and generation changes during acquisition an
   try {
     for (const change of ["replacement", "navigation", "generation"] as const) {
       current = true; await page.goto(SSO);
-      await assert.rejects(submitOnboardingSsoCredentials(page, async () => {
+      await assert.rejects(submitPinnedUcsdSsoCredentials(page, async () => {
         if (change === "replacement") await page.locator("form").evaluate(element => { element.replaceWith(element.cloneNode(true)); });
         else if (change === "navigation") await page.goto("https://elsewhere.invalid/");
         else current = false;
         return { userId: "synthetic-user", password: "synthetic-password" };
-      }, assertCurrent, 1000));
+      }, assertCurrent, 1000, "/tritON/profile/SAML2/Redirect/SSO"));
       assert.equal(await page.locator("#ssousername").inputValue(), "");
       assert.equal(await page.locator("#ssopassword").inputValue(), "");
     }
@@ -78,7 +78,7 @@ it("refuses replacement, navigation and generation changes during acquisition an
       if (!(element instanceof HTMLInputElement) || !element.form) throw new Error("fixture form missing");
       const form = element.form; element.addEventListener("input", () => { form.action = "https://elsewhere.invalid/"; });
     });
-    await assert.rejects(submitOnboardingSsoCredentials(page, async () => ({ userId: "synthetic-user", password: "synthetic-password" }), assertCurrent, 1000));
+    await assert.rejects(submitPinnedUcsdSsoCredentials(page, async () => ({ userId: "synthetic-user", password: "synthetic-password" }), assertCurrent, 1000, "/tritON/profile/SAML2/Redirect/SSO"));
     assert.equal(await page.locator("#ssopassword").inputValue(), "");
   } finally { await context.close(); }
 });

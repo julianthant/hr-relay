@@ -1,3 +1,4 @@
+import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { MAXIMAL_FAILURE } from "../../support/fixtures/advisory-prompt-fixtures.js";
 
@@ -432,7 +433,7 @@ describe("redaction surface scan — the declaration audit", () => {
     assert.deepEqual(decodeEditableWorkbook(encodeEditableWorkbook(workbook)), workbook);
     const incoming = { ...workbook, libraryId: canary };
     assert.equal(WorkbookCreateRequestSchema.parse({ workbook: encodeEditableWorkbook(incoming) }).workbook.libraryId, canary);
-    const service = createWorkbookLibraryService({ repository: (await openDatabase()).authority.workbooks, clock: manualClock(new Date(NOW)) });
+    const service = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: (await openDatabase()).authority.workbooks, clock: manualClock(new Date(NOW)) });
     assert.throws(() => service.create(incoming), { code: "WORKBOOK_INVALID" });
     const created = service.create(workbook);
     assert.notEqual(created.libraryId, canary);

@@ -1,3 +1,4 @@
+import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
 import { z } from 'zod';
 import JSZip from 'jszip';
 import { Readable } from 'node:stream';
@@ -33,7 +34,7 @@ function fixture() {
   };
   const repository = createWorkbookLibraryRepository({ database, mutate: work => transaction(() => work().result), read: transaction });
   const clock = manualClock(new Date("2026-10-12T12:00:00.000Z"));
-  return { database, clock, service: createWorkbookLibraryService({ repository, clock }) };
+  return { database, clock, service: createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository, clock }) };
 }
 function workbook(): EditableWorkbook {
   return {

@@ -17,11 +17,11 @@ type RetainedSourceOwners = Readonly<{
   processLock?: object;
   operationProof?: object;
 }>;
-const retainedSourceClosures = new WeakMap<AuthoritySourceClosureUnprovedError, RetainedSourceOwners>();
+const retainedSourceClosures = new WeakMap<AuthoritySourceClosureUnprovedError, readonly RetainedSourceOwners[]>();
 
 export function retainAuthoritySourceClosure(errors: readonly unknown[], owners: RetainedSourceOwners): AuthoritySourceClosureUnprovedError {
   const failure = new AuthoritySourceClosureUnprovedError(errors);
-  retainedSourceClosures.set(failure, owners);
+  retainedSourceClosures.set(failure, [owners]);
   return failure;
 }
 
@@ -56,5 +56,7 @@ export function assertSourceClosuresProved(failures: ReadonlySet<unknown>): void
 }
 
 export function retainUnprovedSourceOwners(error: unknown, owners: RetainedSourceOwners): void {
-  for (const closure of sourceClosures(error)) retainedSourceClosures.set(closure, { ...retainedSourceClosures.get(closure), ...owners });
+  for (const closure of sourceClosures(error)) {
+    retainedSourceClosures.set(closure, [...(retainedSourceClosures.get(closure) ?? []), owners]);
+  }
 }
