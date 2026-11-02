@@ -101,7 +101,8 @@ async function fixture(rows: number, workflowId: string = descriptor.id) {
     code: "unknown", message: "Synthetic unknown write", now: NOW,
     authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "synthetic") });
   assert.ok(intent.status === "parked");
-  const parked = authority.runs.transition({ runId: owner.envelope.runId, expectedVersion: owner.version, claim, now: NOW,
+  const parked = authority.runs.transition({ runId: owner.envelope.runId, expectedVersion: owner.version,
+    claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, now: NOW,
     lifecycle: { state: "parked-write", writeIntentId: UUID_8, intentGeneration: 1, parkedAt: NOW, code: "unknown", message: "Synthetic unknown write" } });
   assert.equal(parked.state, "applied");
   const run = authority.runs.get(owner.envelope.runId); assert.ok(run);
