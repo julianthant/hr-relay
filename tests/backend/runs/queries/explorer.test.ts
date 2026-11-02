@@ -11,6 +11,7 @@ import {
   type ExplorerModuleView,
 } from "../../../../src/backend/runs/queries/explorer.js";
 import {
+  ExplorerContractFieldWireSchema,
   ExplorerWorkflowWireSchema,
   WorkflowExplorerWireSchema,
   type ExplorerProvenanceWire,
@@ -58,6 +59,16 @@ function separationsExplorerEntry() {
 }
 
 describe("compiled Explorer declaration binding", () => {
+  it("preserves the empty-string literals in registered I-9 contracts", () => {
+    const task = allTasks().find(task => task.taskId === "workflow:onboarding/read-i9-lookup");
+    assert.ok(task);
+    const signer = task.fields.find(field => field.side === "output" && field.path === "result.signerName");
+    assert.ok(signer);
+    assert.deepEqual(signer.options, [""]);
+    assert.equal(ExplorerContractFieldWireSchema.safeParse({ ...signer, options: [] }).success, false);
+    assert.equal(ExplorerContractFieldWireSchema.safeParse({ ...signer, options: [null] }).success, false);
+  });
+
   it("refuses a different definition beside the descriptor and names a descriptor without one", () => {
     const deps = explorerQueryDeps(CLOCK, HASH);
     const first = deps.modules[0];
