@@ -1,6 +1,6 @@
 import { LogoutOperationSchema, type LogoutOperation } from "../../../models/profiles/profile.js";
 import { readPrivateFile } from "../../storage/configuration/credential-safe-file.js";
-import { reconcileExitedWorker } from "../../runs/lifecycle/startup-crash-recovery.js";
+import { reconcileExitedWorker, reconcileStoppedLogout } from "../../runs/lifecycle/startup-crash-recovery.js";
 import { runClaim } from "../../../models/run/record.js";
 import { prepareStoppedBackupClosure, StorageBackupClosureUnprovedError, type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
 import { isOfflineMaintenanceOperationActive, OfflineMaintenanceOperationUnavailableError, type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
@@ -233,6 +233,8 @@ export function composeSelectedProfileStorage(input: Readonly<{
   }
 }
 
+const pendingLogoutServices = Object.freeze({ browserClosure: profileBrowserClosure, recover: reconcileStoppedLogout });
+
 export function composeProfileRuntime(input: Readonly<{
   admission: RuntimeAdmission; hostFacts: HostConfigFacts; clock: Clock;
   credentialHooks?: CredentialStoreHooks;
@@ -304,7 +306,7 @@ export function composeProfileRuntime(input: Readonly<{
         await lifetime.awaitOwnedChildrenClosed();
         await entry.context!.account.close();
         const operation = pendingLogout(profileId, entry);
-        const stopped = await entry.context!.database.settlePendingLogout(machine, operation, [...entry.logout.exits.values()]);
+        const stopped = await entry.context!.database.settlePendingLogout(machine, operation, [...entry.logout.exits.values()], pendingLogoutServices);
         entry.logout.stopped = stopped;
         entry.logout.busy = profileResourceCustodyBusy(stopped.facts);
         if (!entry.logout.busy) {
@@ -346,7 +348,7 @@ export function composeProfileRuntime(input: Readonly<{
       if (file === undefined) throw new Error("profile-logout-cold-operation-missing");
       const operation = LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
       machine.assertColdPendingLogout(operation);
-      const stopped = await AuthorityDatabase.resumePendingLogout(machine, operation, input.clock);
+      const stopped = await AuthorityDatabase.resumePendingLogout(machine, operation, pendingLogoutServices, input.clock);
       job.busy = profileResourceCustodyBusy(stopped.facts);
       if (!job.busy) {
         await stopped.complete();

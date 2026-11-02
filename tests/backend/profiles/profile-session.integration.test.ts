@@ -1,3 +1,5 @@
+import { reconcileStoppedLogout } from "../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { profileBrowserClosure } from "../../../src/backend/runtime/browser/native-profile-probe.js";
 import { createCanonicalCredentials } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { testProcessImport } from "../../support/compiled-process.js";
@@ -72,7 +74,7 @@ function createProfileSession(input: Omit<Parameters<typeof realCreateProfileSes
     if (input.activity?.hasUnquiescedWork(operation.profileId)) return;
     const database = databases.get(operation.profileId);
     if (database === undefined) throw new Error("fixture logout native source missing");
-    const stopped = await database.settlePendingLogout(admission, operation, []);
+    const stopped = await database.settlePendingLogout(admission, operation, [], { browserClosure: profileBrowserClosure, recover: reconcileStoppedLogout });
     await stopped.complete();
     completed.set(operationId, { profileId: operation.profileId, epoch: operation.sessionGeneration + 1 });
     stopped.dispose();

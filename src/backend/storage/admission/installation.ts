@@ -1,3 +1,4 @@
+import { lstatMaybe, assertNoSymlinkComponents, assertNoOldBuildRuntimeArtifacts } from "./process-root.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { emailKey, passwordMatches } from "../configuration/synthetic-verifier.js";
 import type { RuntimeAdmission } from "./admission.js";
@@ -6,8 +7,7 @@ import { inspectAuthorityBackupReadOnly, openAuthorityBackupSourceReadOnly } fro
 import { CredentialMaintenanceHold, captureCanonicalCredentialStartupLocks, publishStoppedCanonicalCredentials, CanonicalCredentialConversionPlanSchema, type CanonicalCredentialConversionPlan, CanonicalCredentialRestoreSnapshotSchema, CanonicalCredentialHeadSchema, CanonicalCredentialPublicationSourceSchema } from "../configuration/canonical-credential-store.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
 import { replacePrivateFile, privatePathRejects, writePrivateStage, fsyncPath } from "../private-path.js";
-import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { assertOfflineMaintenanceOperation, OfflineMaintenanceOperationUnavailableError, offlineMaintenanceWorkspace, isOfflineMaintenanceOperationActive, type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
+import { assertOfflineMaintenanceOperation, OfflineMaintenanceOperationUnavailableError, isOfflineMaintenanceOperationActive, type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
 import { ProfileStorageRelocationUnsupportedError, requireRuntimeAdmission } from "./admission-identity.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
 import { createProfileVerifiers, preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
@@ -23,7 +23,7 @@ import {
   closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
   readdirSync, realpathSync, renameSync, rmSync, rmdirSync, unlinkSync, writeFileSync,
 } from "node:fs";
-import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { readProcessCustodyFile } from "../sqlite/runtime-process-locks.js";
@@ -420,26 +420,6 @@ function verifyManagedEntries(journal: RelocationJournal, evidence: VerifiedRelo
   }
 }
 function fixedLockRoot(workspace: string): string { return resolve(workspace, rebuildRuntimeIsolation.processLockRoot); }
-export class OldBuildRuntimeArtifactsError extends Error {
-  readonly code = "RUNTIME_OLD_BUILD_ARTIFACTS";
-  constructor() { super(ERROR_CATALOG.RUNTIME_OLD_BUILD_ARTIFACTS.text); this.name = "OldBuildRuntimeArtifactsError"; }
-}
-
-export function assertNoOldBuildRuntimeArtifacts(workspace: string): void {
-  const root = fixedLockRoot(workspace), info = lstatMaybe(root);
-  if (info === undefined) return;
-  assertNoSymlinkComponents(root);
-  privateDirectory(root);
-  if (readdirSync(root).length !== 0) throw new OldBuildRuntimeArtifactsError();
-}
-
-export function assertOfflineMaintenanceForProcessRoot(operation: OfflineMaintenanceOperation, processLockRoot: string): void {
-  const workspace = offlineMaintenanceWorkspace(operation);
-  if (processLockRoot !== fixedLockRoot(workspace)) fail("offline-maintenance-workspace-mismatch");
-  assertOfflineMaintenanceOperation(operation, workspace);
-  assertNoOldBuildRuntimeArtifacts(workspace);
-}
-
 function assertRestoreHeld(workspace: string, operation: OfflineMaintenanceOperation | undefined): void {
   if (operation === undefined) fail("offline-maintenance-unissued");
   assertOfflineMaintenanceOperation(operation, workspace);
@@ -475,13 +455,6 @@ function privateDirectory(path: string): void {
 function dataDirectory(path: string): void {
   const stat = lstatSync(path);
   if (!stat.isDirectory() || privatePathRejects(path, stat, "owner-write-only")) fail(`unsafe data root ${path}`);
-}
-function lstatMaybe(path: string): ReturnType<typeof lstatSync> | undefined {
-  try { return lstatSync(path); }
-  catch (error) {
-    if (typeof error === "object" && error !== null && Reflect.get(error, "code") === "ENOENT") return undefined;
-    throw error;
-  }
 }
 function privateFile(path: string): void {
   const stat = lstatSync(path);
@@ -527,22 +500,6 @@ function atomicJson(path: string, value: unknown, parentKind: "control" | "data"
     throw cleanupFailure.error;
   }
   if (primary !== undefined) throw primary.error;
-}
-function assertNoSymlinkComponents(path: string): void {
-  const proof = outermostOperationProof();
-  const existing = proof?.slots.get("symlink-free");
-  const proven = existing instanceof Set ? existing as Set<string> : new Set<string>();
-  if (proof !== undefined && existing !== proven) proof.slots.set("symlink-free", proven);
-  if (proven.has(path)) return;
-  let component = parse(path).root;
-  const checked: string[] = [];
-  for (const part of relative(component, path).split(/[\\/]/u)) {
-    component = join(component, part);
-    checked.push(component);
-    if (proven.has(component)) continue;
-    if (lstatMaybe(component)?.isSymbolicLink()) fail(`symlink in root path ${component}`);
-  }
-  for (const item of checked) proven.add(item);
 }
 function preflightRoot(path: string): void {
   assertNoSymlinkComponents(path);

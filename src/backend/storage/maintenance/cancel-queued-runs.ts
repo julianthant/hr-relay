@@ -1,5 +1,6 @@
 import { assertOfflineMaintenanceOperation, type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../admission/lifetime-lock.js";
-import { assertNoOldBuildRuntimeArtifacts, acquireInstallation, inspectFlatOfflineRunMaintenance, type InstallationLease } from "../admission/installation.js";
+import { acquireInstallation, inspectFlatOfflineRunMaintenance, type InstallationLease } from "../admission/installation.js";
+import { assertNoOldBuildRuntimeArtifacts } from "../admission/process-root.js";
 import type { ProfileBrowserClosure } from "./profile-inventory.js";
 import { createHash } from "node:crypto";
 import { lstatSync, realpathSync } from "node:fs";

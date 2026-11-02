@@ -1,6 +1,6 @@
 import { privatePathRejects } from "../private-path.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { assertOfflineMaintenanceForProcessRoot } from "../admission/installation.js";
+import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { BrowserSystemIdSchema, type BrowserSystemId } from "../../../rules/identity/ids.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";

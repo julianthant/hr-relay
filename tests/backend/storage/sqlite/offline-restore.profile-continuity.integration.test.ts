@@ -1,3 +1,4 @@
+import { reconcileStoppedLogout } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
@@ -60,12 +61,13 @@ async function world(clock: Clock = systemClock) {
   const newSession = () => createProfileSession({ admission: fixture.machine, machineRoot: fixture.machine.stateRoot,
     activity: { hasUnquiescedWork: () => false },
     prepareLogout(id, owner) {
-      const database = AuthorityDatabase.open(owner, { path: fixture.path, busyTimeoutMs: 250 }, clock, undefined, undefined, undefined,
+      const database = AuthorityDatabase.open(owner, { path: fixture.path, busyTimeoutMs: 250, migrationOwner: "restore-continuity-logout" }, clock, undefined, undefined, undefined,
         createCredentialStore({ admission: owner, stateRoot: owner.stateRoot }));
       sources.set(id, database);
       return { source: database.capturePendingLogoutSource(), intentFailed(error): never { throw error; } };
     },
     closeStorage(id) { sources.get(id)?.close(); },
+    prepareLogoutContinuation(operation) { assert.equal(operation.profileId, profileId); },
     completedLogout: id => completed.get(id),
   });
   const logout = async (token: string) => {
@@ -74,7 +76,7 @@ async function world(clock: Clock = systemClock) {
     if (result.state !== "cancelling") throw new Error("fixture logout did not produce its actual operation");
     const operation = LogoutOperationSchema.parse(JSON.parse(readFileSync(join(fixture.machine.stateRoot, "machine", "operations", `${result.operationId}.json`), "utf8")));
     const database = sources.get(profileId); assert.ok(database);
-    const stopped = await database.settlePendingLogout(fixture.machine, operation, []);
+    const stopped = await database.settlePendingLogout(fixture.machine, operation, [], { browserClosure: profileBrowserClosure, recover: reconcileStoppedLogout });
     await stopped.complete();
     completed.set(operation.operationId, { profileId, epoch: operation.sessionGeneration + 1 });
     stopped.dispose();
@@ -711,6 +713,7 @@ describe("profile restore continuity", () => {
         import { OfflineAuthorityRestoreService } from './src/backend/storage/sqlite/offline-restore.ts';
         import { profileBrowserClosure } from './src/backend/runtime/browser/native-profile-probe.ts';
         import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
+        import { reconcileStoppedLogout } from './src/backend/runs/lifecycle/startup-crash-recovery.ts';
                 import { acquireRuntimeProcessLock, observeRuntimeLockSnapshot } from "./src/backend/storage/sqlite/runtime-process-locks.ts";
         const port=${String(port)},workspace=${JSON.stringify(f.workspace)},profileId=${JSON.stringify(f.profileId)},manifestPath=${JSON.stringify(manifestPath)};
         const ready=${JSON.stringify(ready)},release=${JSON.stringify(release)},processLockRoot=${JSON.stringify(f.processLockRoot)};
@@ -718,14 +721,14 @@ describe("profile restore continuity", () => {
       const barrier = `writeFileSync(ready,'ready',{mode:0o600});const deadline=Date.now()+10000;while(!existsSync(release)){if(Date.now()>deadline)throw new Error('barrier-timeout');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);}`;
       const logout = `const lifetime=await RuntimeLifetimeLock.acquire(port);const machine=acquireEntrypointAdmission(workspace,'exclusive',lifetime);let source,session;try {
         session=createProfileSession({admission:machine,machineRoot:machine.stateRoot,activity:{hasUnquiescedWork:()=>false},
-          prepareLogout(id,owner){source=AuthorityDatabase.open(owner,{path:join(owner.stateRoot,'state.db'),busyTimeoutMs:250});return {source:source.capturePendingLogoutSource(),intentFailed(error){throw error;}};},
-          closeStorage(){source?.close();}});
+          prepareLogout(id,owner){source=AuthorityDatabase.open(owner,{path:join(owner.stateRoot,'state.db'),busyTimeoutMs:250,migrationOwner:'restore-continuity-child-logout'});return {source:source.capturePendingLogoutSource(),intentFailed(error){throw error;}};},
+          closeStorage(){source?.close();},prepareLogoutContinuation(operation){if(operation.profileId!==profileId)throw new Error('logout-profile-changed');}});
         const active=session.signIn({email:'fixture@ucsd.edu',password:'disposable-fixture-password',at:'2026-10-21T12:00:00.000Z'});
         if(active.state!=='active')throw new Error('activation-refused');
         const result=session.logOut(active.token,{at:'2026-10-21T12:01:00.000Z'});if(result.state!=='cancelling'||!source)throw new Error('logout-not-cancelling');
         ${barrier}
         const operation=LogoutOperationSchema.parse(JSON.parse(readFileSync(join(machine.stateRoot,'machine','operations',result.operationId+'.json'),'utf8')));
-        const stopped=await source.settlePendingLogout(machine,operation,[]);await stopped.complete();stopped.dispose();
+        const stopped=await source.settlePendingLogout(machine,operation,[],{browserClosure:profileBrowserClosure,recover:reconcileStoppedLogout});await stopped.complete();stopped.dispose();
       }finally{await session?.closeOnboarding();session?.close();source?.close();machine.release();await lifetime.close();}process.stdout.write('OWNER_DONE');`;
       const restore = `const lifetime=await RuntimeLifetimeLock.acquire(port);const machine=acquireEntrypointAdmission(workspace,'exclusive',lifetime);try {
         const child=machine.admitProfile(profileId);const root=child.stateRoot,path=join(root,'state.db');
