@@ -113,7 +113,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
-    "sha256": "9a9b37c80e10109d608cf9178d6dd241d0988bdd158380fa8de363f2ae27301d",
+    "sha256": "5f8992b6015f6ed5dfbb95513bb930b2287de5d3dc5a2915940a44a1a165f1cb",
     "reason": "Failed constructor cleanup retains the actual native database and admission with both opening and close failures. Failed rollback retains database custody with the original failure; successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or named search refusal, never validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody releases; required native browser closure precedes cancellation. Bounded layout publication validates exact prestate or committed backup-bound state; failed rollback, native close or baseline-copy disposal propagates with its actual retained owners."
   },
   {
@@ -158,7 +158,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/configuration/canonical-credential-store.ts",
-    "sha256": "bce4622ce328516e39fddf038cfc12241da2055ed7818c68252d4d6acb1ce077",
+    "sha256": "e762dc144659ff467c0ced30b831d14950d566fa8bb09588f23555f4558f44bf",
     "reason": "The catch revokes the asynchronous ChatGPT lease by clearing its active flag, retains any unproved source and exact process lock, and rethrows the settled body error or translates the failure to a named credential refusal. It never substitutes a credential record or successful result. Other catches preserve explicit busy, unavailable, pending or uncertain failures and retain source owners before rethrowing."
   },
   {

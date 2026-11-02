@@ -29,7 +29,7 @@ import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
 import { assertCanonicalProfileBinding,assertLiveProfileDatabaseBinding,assertProfileRestoreDatabaseBinding,readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
 import { registerRuntimeAdmission,requireRuntimeAdmission } from "./admission-identity.js";
-import { acquireInstallation,acquireStoppedProfileControlUpgrade,assertInstallationLease,assertStoppedMachineMaintenance,fixedLayoutBindings,prepareFixedLayoutPublication,PROFILE_CUSTODY_PROOF,readProfilePublicationRegistry,requireStoppedControlProfileInventory,type AuthorityRestoreInput,type AuthorityRestoreVerifier,type ExclusiveInstallationLease,type ExistingAuthorityEvidence,type FixedLayoutPublication,type FreshInitializationWitness,type InstallationLease,type ProfilePublicationRead,type ProfileRestoreContext,type RuntimeLocator,type RuntimePair,type StoppedControlProfileInventory,type StoppedProfileControlUpgradeAdmission } from "./installation.js";
+import { acquireInstallation,acquireStoppedProfileControlUpgrade,assertInstallationLease,assertStoppedMachineMaintenance,AuthorityRestoreInputSchema,fixedLayoutBindings,prepareFixedLayoutPublication,PROFILE_CUSTODY_PROOF,readProfilePublicationRegistry,requireStoppedControlProfileInventory,type AuthorityRestoreInput,type AuthorityRestoreVerifier,type ExclusiveInstallationLease,type ExistingAuthorityEvidence,type FixedLayoutPublication,type FreshInitializationWitness,type InstallationLease,type ProfilePublicationRead,type ProfileRestoreContext,type RuntimeLocator,type RuntimePair,type StoppedControlProfileInventory,type StoppedProfileControlUpgradeAdmission } from "./installation.js";
 import { RuntimeLifetimeLock,WorkerRuntimeLifetimeLock,type OfflineMaintenanceOperation } from "./lifetime-lock.js";
 import { assertOfflineMaintenanceForProcessRoot } from "./process-root.js";
 
@@ -859,6 +859,11 @@ export class RuntimeAdmission {
     if (!registry.profiles.some(row => row.profileId === profileId && row.lifecycle === "ready" && row.credentialState === "saved")) throw new Error("profile-repair-registration-required");
     return this.#admitProfile(this.#captureProfileAccess(profileId), operation, false, true);
   }
+  assertStoppedStartupRecoveryDatabase(path: string): void {
+    if (this.#scope !== "profile-maintenance" || this.#repairSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+      || path !== join(this.#stateRoot, "state.db")) throw new Error("startup-recovery-admission-required");
+    this.assertStoppedProfile(this.maintenanceOperation());
+  }
   #admitProfile(claim: ProfileAccess, maintenance?: OfflineMaintenanceOperation, publication = false, repair = false): RuntimeAdmission {
     this.assertWritable();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
@@ -1198,6 +1203,7 @@ export class RuntimeAdmission {
     this.assertExclusive();
     if (this.#authority.beginAuthorityRestore === undefined) throw new Error("profile-restore-authority-required");
     this.#authority.beginAuthorityRestore(input, restore);
+    this.#automaticRestore = deepFreeze(AuthorityRestoreInputSchema.parse(input));
   }
   settleAuthorityRestore(input: AuthorityRestoreInput, verify: AuthorityRestoreVerifier,
     restore: OfflineMaintenanceOperation): void {

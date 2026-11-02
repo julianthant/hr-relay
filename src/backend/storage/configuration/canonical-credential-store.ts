@@ -486,6 +486,14 @@ export function captureStoppedCanonicalCredentialHead(admission: RuntimeAdmissio
     if (head.installationId !== paths.binding.installationId || head.profileId !== paths.binding.profileId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     assertCurrent(); const key = authenticateHead(head);
     inspectCanonicalNamespace(paths, head, key, new Map(), assertCurrent, ancestry); assertCurrent();
+    for (const kind of kinds) {
+      const record = readPrivateFile(paths.records[kind], { label: "protected.json", maxBytes });
+      if (record === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      open(head, key, kind, record.bytes); assertCurrent();
+    }
+    const after = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
+    if (after === undefined || !after.bytes.equals(file.bytes) || after.identity.device !== file.identity.device
+      || after.identity.inode !== file.identity.inode) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     return deepFreeze(CanonicalCredentialRestoreSnapshotSchema.parse({ binding: paths.binding, generation: head.generation, keyId: head.key.keyId,
       digest: digest(file.bytes), counters: head.counters, retired: head.retired }));
   } catch (error) {
@@ -528,10 +536,11 @@ export function captureStoppedIncompleteCredentials(admissionInput: RuntimeAdmis
   }
 }
 
-export function readStoppedProtectedRecord(admissionInput: RuntimeAdmission, purpose: "logout" | "layout"): CanonicalCredentialRecord {
+export function readStoppedProtectedRecord(admissionInput: RuntimeAdmission, purpose: "logout" | "layout" | "startup-recovery"): CanonicalCredentialRecord {
   const admission = requireRuntimeAdmission(admissionInput), path = join(admission.stateRoot, "state.db");
   const current = () => {
     if (purpose === "layout") admission.assertFixedLayoutDatabase(path);
+    else if (purpose === "startup-recovery") admission.assertStoppedStartupRecoveryDatabase(path);
     else admission.assertPendingLogoutSettlementDatabase(path);
   };
   current();

@@ -7,10 +7,12 @@ import { it, vi } from "vitest";
 import { AutomaticPersonRepairRefusedError, initializeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import { StartupCrashRecoveryRefusedError } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
-for (const state of ["projection-corrupt", "critical-fence-unreadable", "foreign"] as const) it(`automatically repairs only provable same-person startup authority: ${state}`, async () => {
+for (const state of ["projection-corrupt", "critical-fence-unreadable", "foreign", "recovery-refusal"] as const) it(`automatically repairs only provable same-person startup authority: ${state}`, async () => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
   const profileId = f.admission.profileBinding.profileId, registryPath = join(f.machine.stateRoot, "machine", "profiles.json");
   const registry = f.machine.readProfileRegistry(), protectedPath = join(f.stateRoot, "credentials", "protected.json"), protectedBytes = readFileSync(protectedPath);
@@ -25,12 +27,23 @@ for (const state of ["projection-corrupt", "critical-fence-unreadable", "foreign
     const native = new DatabaseSync(f.path);
     try {
       if (state === "foreign") native.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(randomUUID());
-      else native.exec(state === "projection-corrupt" ? "DROP TABLE run_search" : "DROP TABLE write_attempts");
+      else if (state !== "recovery-refusal") native.exec(state === "projection-corrupt" ? "DROP TABLE run_search" : "DROP TABLE write_attempts");
     } finally { native.close(); }
     const corruptBytes = readFileSync(f.path);
     writeFileSync(join(directory, "invalid-newer.manifest.json"), "invalid manifest", { mode: 0o600 });
     f.admission.release(); f.machine.release(); clock.advanceWall(1000);
-    if (state !== "projection-corrupt") {
+    if (state === "recovery-refusal") {
+      const recovery = vi.spyOn(AuthorityDatabase, "openStoppedStartupRecovery").mockImplementationOnce(() => { throw new Error("injected-recovery-admission-refusal"); });
+      const repair = vi.spyOn(OfflineAuthorityRestoreService.prototype, "restoreNewest");
+      try {
+        await assert.rejects(initializeRegisteredPersonStores(f.workspace, f.lifetime, { primaryDisplay: null }, clock),
+          error => error instanceof StartupCrashRecoveryRefusedError && error.cause instanceof Error && error.cause.message === "injected-recovery-admission-refusal");
+        assert.equal(repair.mock.calls.length, 0);
+        assert.deepEqual(readFileSync(f.path), corruptBytes);
+        assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
+        assert.equal(existsSync(join(f.stateRoot, "backups", "suspects")), false);
+      } finally { recovery.mockRestore(); repair.mockRestore(); }
+    } else if (state !== "projection-corrupt") {
       await assert.rejects(initializeRegisteredPersonStores(f.workspace, f.lifetime, { primaryDisplay: null }, clock), AutomaticPersonRepairRefusedError);
       assert.deepEqual(readFileSync(f.path), corruptBytes);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);

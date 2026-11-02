@@ -64,6 +64,7 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 =
     const protectedCommandId = z.looseObject({ record: z.looseObject({ lastApplied: z.looseObject({ commandId: z.uuid() }) }) })
       .parse(readAuthenticatedCredentialFixture(profile.machine.stateRoot, binding.profileId)).record.lastApplied.commandId;
     assert.throws(() => stoppedProfileOwnsCredentialCommand(profile.admission, "layout", protectedCommandId), /fixed-layout-admission-required/u);
+    assert.throws(() => stoppedProfileOwnsCredentialCommand(profile.admission, "startup-recovery", protectedCommandId), /startup-recovery-admission-required/u);
     const before = { binding, protectedCommandId, meta: database.getMeta(), registry: profile.machine.readProfileRegistry(), snapshots: database.readProfileResourceCustody().configSnapshots,
       settings: readSettings(database.authority), config: currentSnapshot.config };
     database.close();

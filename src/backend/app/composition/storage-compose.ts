@@ -10,7 +10,7 @@ import { ProfileSessionRefusedError } from "../../profiles/profile-errors.js";
 import { createProfileSession } from "../../profiles/profile-session.js";
 import type { CommandKernel } from "../../runs/commands/command-kernel.js";
 import { requireLifecycleApplied,RunRecordService } from "../../runs/lifecycle/run-record-service.js";
-import { reconcileExitedWorker,reconcileStoppedLogout,reconcileStoppedStartupCrash } from "../../runs/lifecycle/startup-crash-recovery.js";
+import { reconcileExitedWorker,reconcileStoppedLogout,reconcileStoppedStartupCrash,StartupCrashRecoveryRefusedError } from "../../runs/lifecycle/startup-crash-recovery.js";
 import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
 import { activeSettingsConfig,activeSettingsRuntimeIdentity,readBootSettings } from "../../runtime/settings/settings-runtime.js";
 import { isOfflineMaintenanceOperationActive,OfflineMaintenanceOperationUnavailableError,offlineMaintenanceWorkspace,RuntimeLifetimeLock,type OfflineMaintenanceOperation } from "../../storage/admission/lifetime-lock.js";
@@ -139,7 +139,7 @@ async function recoverRegisteredPersonCrash(workspace: string, lifetime: Runtime
     } catch (error) { primary = { error }; }
     if (primary !== undefined && hasUnprovedSourceClosure(primary.error)) throw retainAuthoritySourceClosure([primary.error], { admission, ...(database === undefined ? {} : { database }) });
     try { database?.close(); } catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { admission, ...(database === undefined ? {} : { database }) }); }
-    if (primary !== undefined) throw primary.error;
+    if (primary !== undefined) throw primary.error instanceof StartupCrashRecoveryRefusedError ? primary.error : new StartupCrashRecoveryRefusedError(primary.error);
   });
 }
 
@@ -179,7 +179,11 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
       : machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready").map(row => row.profileId));
     for (const profileId of registered) {
       try { await withStoppedMachineStorage(workspace, lifetime, async machine => AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId)); }
-      catch (error) { if (hasUnprovedSourceClosure(error)) throw error; await repairRegisteredPerson(workspace, lifetime, profileId, clock); }
+      catch (error) {
+        if (hasUnprovedSourceClosure(error)) throw error;
+        try { await repairRegisteredPerson(workspace, lifetime, profileId, clock); }
+        catch (repair) { throw new AggregateError([error, repair], "startup-inspection-and-repair-failed", { cause: error }); }
+      }
     }
     await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts, clock);
     return registered;
@@ -191,21 +195,8 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
 
 export async function initializeRegisteredPersonStores(workspace: string, lifetime: RuntimeLifetimeLock,
   hostFacts: HostConfigFacts, clock: Clock = systemClock): Promise<void> {
-  try {
-    const registered = await prepareRegisteredPersonStores(workspace, lifetime, hostFacts, clock);
-    for (const profileId of registered) {
-      try { await recoverRegisteredPersonCrash(workspace, lifetime, profileId, clock); }
-      catch (error) {
-        if (hasUnprovedSourceClosure(error)) throw error;
-        await repairRegisteredPerson(workspace, lifetime, profileId, clock);
-        await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts, clock);
-        await recoverRegisteredPersonCrash(workspace, lifetime, profileId, clock);
-      }
-    }
-  } catch (error) {
-    if (error instanceof RegisteredPersonUpgradeRefusedError) throw error;
-    throw new AutomaticPersonRepairRefusedError(error);
-  }
+  const registered = await prepareRegisteredPersonStores(workspace, lifetime, hostFacts, clock);
+  for (const profileId of registered) await recoverRegisteredPersonCrash(workspace, lifetime, profileId, clock);
 }
 
 export class AutomaticPersonRepairRefusedError extends Error {

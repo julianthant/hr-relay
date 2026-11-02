@@ -1800,7 +1800,7 @@ export class AuthorityDatabase implements Disposable {
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
-    this.#admitMutation = purpose === "stopped-startup-recovery" ? () => this.#admission.assertStoppedProfile(this.#admission.maintenanceOperation())
+    this.#admitMutation = purpose === "stopped-startup-recovery" ? () => this.#admission.assertStoppedStartupRecoveryDatabase(options.path)
       : purpose === "stopped-layout-target" ? () => this.#admission.assertFixedLayoutDatabase(options.path)
       : purpose === "stopped-layout-source" ? () => { throw new Error("fixed-layout-source-read-only-required"); }
       : purpose === "ordinary" ? () => this.#admission.assertWritable()
@@ -1809,7 +1809,7 @@ export class AuthorityDatabase implements Disposable {
       : purpose === "stopped-span-root-repair" ? () => this.#admission.assertStoppedProfile(this.#admission.maintenanceOperation())
       : purpose === "stopped-logout-settlement" ? () => { this.#admission.assertPendingLogoutSettlementDatabase(options.path); }
       : () => { throw new Error("profile-logout-inspection-read-only-required"); };
-    if (purpose === "stopped-startup-recovery") this.#admission.assertStoppedProfile(this.#admission.maintenanceOperation());
+    if (purpose === "stopped-startup-recovery") this.#admission.assertStoppedStartupRecoveryDatabase(options.path);
     else if (purpose === "stopped-layout-source") {
       if (options.openMode === "read-write") throw new Error("fixed-layout-source-read-only-required");
       this.#admission.assertReadOnlyAuthorityDatabase(options.path);
@@ -1885,6 +1885,7 @@ export class AuthorityDatabase implements Disposable {
       readAppSettings(this.#database);
       this.#database.exec("COMMIT");
       this.#credentialCommandIds = commandId => {
+        if (purpose === "stopped-startup-recovery") return stoppedProfileOwnsCredentialCommand(this.#admission, "startup-recovery", commandId);
         if (purpose === "stopped-logout-settlement" || purpose === "stopped-layout-target") return stoppedProfileOwnsCredentialCommand(this.#admission, purpose === "stopped-layout-target" ? "layout" : "logout", commandId);
         if (credentials === undefined) throw new CredentialContextRequiredError();
         assertCredentialStoreOwner(credentials, this.#admission);
@@ -2137,7 +2138,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   static openStoppedStartupRecovery(admission: RuntimeAdmission, clock: Clock): AuthorityDatabase {
-    admission.assertStoppedProfile(admission.maintenanceOperation());
+    admission.assertStoppedStartupRecoveryDatabase(join(admission.stateRoot, "state.db"));
     return new AuthorityDatabase(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250,
       migrationOwner: "startup-crash-recovery" }, clock, undefined, undefined, undefined, undefined, "stopped-startup-recovery");
   }

@@ -269,7 +269,6 @@ function unreadableRestoreSqlite(error: unknown): boolean {
 }
 
 function restoreBrowserCensus(admission: RuntimeAdmission, scope: "browser-roots" | "profile-root") {
-  if (process.platform !== "darwin") throw new ProfileRestoreBrowserCustodyUnprovedError();
   const binding = admission.captureBrowserRegistryContext();
   const rows = createBrowserRoots(admission).inventory().roots.filter(row => row.profileId === binding.profileId);
   const roots = [...new Set([join(admission.stateRoot, "browsers"), ...rows.map(row => join(binding.machineRoot, row.profileRoot))])];
@@ -343,6 +342,7 @@ async function probeUnreadableRestoreBrowsersClosed(admission: RuntimeAdmission,
   };
   try {
     assertHeld();
+    if (process.platform !== "darwin") throw new ProfileRestoreBrowserCustodyUnprovedError();
     const census = restoreBrowserCensus(admission, scope);
     await browserClosure.probeClosed(census.profiles, { launchTimeoutMs: 5_000, closeProofMs: 3_000 }, clock, new AbortController().signal, admission);
     assertHeld();

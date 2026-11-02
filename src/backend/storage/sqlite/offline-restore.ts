@@ -245,6 +245,7 @@ export class OfflineAuthorityRestoreService {
     const admission = this.#runtimeAdmission.forStoppedMaintenance(operation);
     let primary: { error: unknown } | undefined, report: OfflineRestoreReport | undefined;
     try {
+      admission.captureProfileRestore(operation);
       const directory = join(admission.stateRoot, "backups", "authority"); admission.assertStateRoot(directory);
       const originalFences = withReadonlyAuthoritySnapshot(this.#authorityPath, readRestoreWriteFences);
       const rejected: unknown[] = [], candidates: Array<{ path: string; createdAt: string }> = [];

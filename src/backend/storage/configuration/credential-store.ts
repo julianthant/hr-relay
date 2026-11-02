@@ -19,7 +19,7 @@ import { CanonicalCredentialError, createCanonicalCredentials, readStoppedProtec
 const MAX_PRIVATE_REQUEST_BYTES = 64_000;
 const MAX_CREDENTIAL_DOCUMENT_BYTES = 16 * 1024 * 1024;
 
-export function stoppedProfileOwnsCredentialCommand(admission: RuntimeAdmission, purpose: "logout" | "layout", commandId: string): boolean {
+export function stoppedProfileOwnsCredentialCommand(admission: RuntimeAdmission, purpose: "logout" | "layout" | "startup-recovery", commandId: string): boolean {
   const id = z.uuid().parse(commandId), frame = readStoppedProtectedRecord(admission, purpose), document = authenticateDocument(frame.value);
   if (frame.revision !== document.record.revision) throw new Error("credential store protected.json disagrees with its authenticated revision");
   return document.history.some(({ receipt }) => receipt.commandId === id);
