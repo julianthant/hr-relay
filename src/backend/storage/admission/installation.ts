@@ -1431,6 +1431,11 @@ function profileRegistryStatWitness(control: string, locator: RuntimeLocator, pa
     const stat = lstatSync(path, { bigint: true, throwIfNoEntry: false });
     // Peer mutex turnover changes control membership without changing registry evidence.
     if (stat !== undefined && path === control) return [stat.dev, stat.ino, stat.mode, stat.uid].join(":");
+    if (stat !== undefined && path === join(locator.stateRoot, "machine")) {
+      const members = readdirSync(path).filter(name => name !== ".browser-roots.lock"
+        && !/^\.browser-roots\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp$/u.test(name)).sort();
+      return [stat.dev, stat.ino, stat.mode, stat.uid, JSON.stringify(members)].join(":");
+    }
     return stat === undefined ? "absent" : [stat.dev, stat.ino, stat.mode, stat.uid, stat.nlink, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
   }).join("|");
 }
