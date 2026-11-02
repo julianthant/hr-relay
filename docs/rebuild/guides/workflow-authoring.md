@@ -75,6 +75,11 @@ Register harnesses separately through `STEP_PROOF_MODULES` in
 `src/backend/app/registries/step-proof-modules.ts`. They do not enter the operator tuple or picker.
 A group without a harness needs no step folder.
 
+Register delegated-only workflows in `CHILD_ONLY_WORKFLOW_MODULES` in the backend workflow
+registry. Keep them out of the public module and descriptor tuples and give them no start surface.
+The registry resolves a child only for a parent that declares its delegation edge. A child may
+remain registered without a parent; I-9 Lookup uses this shape.
+
 Registration refuses missing or duplicate stores and a store that binds a different contract
 object. Import the real contract value; an equivalent schema or copied declaration does not satisfy
 `composeWorkflowModule`. `auditImplBindings` in the workflow registry checks

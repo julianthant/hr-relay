@@ -45,7 +45,7 @@ src/
 ├── rules/{commands,identity,intake,kronos,matching,normalization,notifications,
 │          preflight,redaction,runs,separations,sessions,time,validation,workflow,write-safety}/
 ├── workflow-kit/validation/
-├── workflows/{person-lookup,separations}/
+├── workflows/{i9-lookup,person-lookup,separations}/
 └── cli.ts
 ```
 
@@ -73,7 +73,7 @@ Paths in this table are relative to `src/backend/`.
 | `storage/configuration/` | Settings and canonical private credential persistence. `canonical-credential-store.ts` owns the three encrypted protected-settings, Duo and ChatGPT records, the external key/generation/counter/retirement head, and durable create/erase operations. `credential-store.ts`, `duo-credential-store.ts` and `chatgpt-credential-repository.ts` expose the purpose-specific records; `duo-signing.ts` owns public assertion validation and Node cryptography. `credential-conversion.ts` verifies supported stopped predecessor credentials and their independent credential-free SQLite backup before conversion. `credential-key-custody.ts` owns OS keychain entries and non-secret key metadata. `credential-safe-file.ts` supplies private file reads, exact mutex custody and operation proofs. |
 | `storage/events/` | Native timeline writers, readers, and emitters. |
 | `storage/sqlite/` | Database authority, repositories, migrations, process locks, backup inspection, recovery status, and deletion custody. `database-identity.ts` owns the application-ID and immutable installation/person binding digest. `timeline-repository.ts` owns ordered event persistence. `worker-slots.ts` authenticates reservation and retirement lineage for both live custody and isolated maintenance snapshots; `worker-control.ts` owns their authenticated control reads. `readonly-authority-snapshot.ts` owns isolated source snapshots. The pure `storage/source-closure.ts` owns `AuthoritySourceClosureUnprovedError` and private failed-resource retention without authority or resource accessors. |
-| `systems/` | Browser-system sessions, drivers, semantic UI registries, and tasks. CRM, Kuali, New Kronos, and UCPath have driver implementations. I-9, Old Kronos, OnBase, ServiceNow, and SharePoint have session declarations and empty task stores with `unwired` drivers. |
+| `systems/` | Browser-system sessions, drivers, UI registries, and tasks. CRM, I-9, Kuali, New Kronos, and UCPath have driver implementations. Old Kronos, OnBase, ServiceNow, and SharePoint have session declarations and empty task stores with `unwired` drivers. I-9 owns name-based employee search and Section 2 summary reads; its UCOP login uses the shared UCSD SSO and backend Fast Duo path. |
 | `systems/browser-shared/` | Shared sign-in, authenticated application, action-note, and semantic UI effect behavior. |
 | `systems/kronos-shared/` | Shared timecard models. |
 | `systems/ui-task-links.ts` | Explorer task attribution from system registries. |
@@ -109,6 +109,11 @@ Paths in this table are relative to `src/backend/`.
 `src/workflows/person-lookup/` and `src/workflows/separations/` each contain `workflow.ts`,
 `task-registry.ts`, and `tasks/`. The workflow definition is browser-safe. The registry loads
 backend task implementations.
+
+`src/workflows/i9-lookup/workflow.ts` is child-only, with no public delegating parent yet. It uses
+the I-9 system store and returns `signerName`, `i9Status`, and record IDs when a summary was read.
+`CHILD_ONLY_WORKFLOW_MODULES` in the backend workflow registry admits these modules separately
+from the public workflow tuple. A caller must declare its delegation edge to resolve a child.
 
 Person Lookup has four chunk harnesses at `src/workflows/person-lookup/steps/<step>/step.ts`:
 `searching`, `cross-verify`, `active-status`, and `crm-dates`.

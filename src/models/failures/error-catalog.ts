@@ -264,6 +264,14 @@ export const ERROR_CATALOG = Object.freeze({
     "I-9 sign-in failed.",
     EmptyParametersSchema,
   ),
+  I9_LOOKUP_FAILED: catalogEntry(
+    "The I-9 record could not be read or verified. Review the page state before retrying.",
+    EmptyParametersSchema,
+  ),
+  I9_LOOKUP_AMBIGUOUS: catalogEntry(
+    "I-9 search did not identify one exact-name employee profile. Resolve the identity before continuing.",
+    EmptyParametersSchema,
+  ),
   NEW_KRONOS_SIGN_IN_FAILED: catalogEntry(
     "New Kronos sign-in failed.",
     EmptyParametersSchema,

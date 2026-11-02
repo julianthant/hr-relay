@@ -23,6 +23,7 @@ import {
 import { taskStoreRegistry } from "./task-registry.js";
 import { personLookupWorkflow } from "../../../workflows/person-lookup/workflow.js";
 import { separationsWorkflow } from "../../../workflows/separations/workflow.js";
+import { i9LookupWorkflow } from "../../../workflows/i9-lookup/workflow.js";
 import { createWorkflowDescriptorRegistry } from "../../../workflows/descriptor-registry.js";
 
 export function createWorkflowRegistry<PublicModule extends WorkflowModule>(
@@ -67,10 +68,15 @@ export const separationsModule = composeWorkflowModule(
   compileWorkflow(separationsWorkflow),
   taskStoreRegistry.stores,
 );
+export const i9LookupModule = composeWorkflowModule(
+  compileWorkflow(i9LookupWorkflow),
+  taskStoreRegistry.stores,
+);
+export const CHILD_ONLY_WORKFLOW_MODULES = Object.freeze([i9LookupModule]);
 const registry = createWorkflowRegistry([
   personLookupModule,
   separationsModule,
-], []);
+], CHILD_ONLY_WORKFLOW_MODULES);
 
 export const WORKFLOW_MODULES = registry.publicModules;
 
@@ -112,16 +118,17 @@ export const WORKFLOW_IDS_BY_CODE = workflowCodeRegistry(DESCRIPTORS);
 
 
 export function auditImplBindings(bindings: PendingImplBindings): readonly string[] {
+  const allModules = [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES];
   const violations: string[] = [
-    ...auditWorkflowModuleBindings(WORKFLOW_MODULES),
-    ...auditWorkflowModuleRoles(WORKFLOW_MODULES),
-    ...auditWorkflowCodes(DESCRIPTORS),
+    ...auditWorkflowModuleBindings(allModules),
+    ...auditWorkflowModuleRoles(allModules),
+    ...auditWorkflowCodes(allModules.map(module => module.descriptor)),
   ];
   const bound = new Set(boundTaskIds());
   const pending = new Map(bindings.tasks.map((entry) => [String(entry.taskId), entry]));
   const used = new Set<string>();
 
-  for (const descriptor of DESCRIPTORS) {
+  for (const { descriptor } of allModules) {
     for (const contract of workflowProjections(descriptor).contracts) {
       const id = String(contract.id);
       used.add(id);
