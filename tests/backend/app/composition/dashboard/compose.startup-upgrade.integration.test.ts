@@ -1,3 +1,4 @@
+import { restorePreReadingArtifactRetention } from "../../../../support/fixtures/storage/pre-reading-artifact-retention.js";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { copyFileSync,existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,renameSync,rmSync,writeFileSync } from "node:fs";
@@ -79,7 +80,7 @@ function rows(path: string, version: number) {
     .map(table => [table, database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
 }
 
-it.each([8, 9, 10] as const)("automatically upgrades registered schema %s before the first HTTP listener or sign-in", async sourceVersion => {
+it.each([8, 9, 10, 11] as const)("automatically upgrades registered schema %s before the first HTTP listener or sign-in", async sourceVersion => {
   const profile = await createHistoricalRegisteredProfileFixture({ sourceVersion });
   const machineRoot = join(profile.workspace, ".tracker", "data"), protectedPath = join(profile.stateRoot, "credentials", "protected.json");
   const keyPath = join(machineRoot, "machine", "credential-keys", `${profile.binding.profileId}.json`);
@@ -276,7 +277,11 @@ it("preserves a real UNKNOWN parked write, its fenced attempt and stopped worker
     const path = join(f.root, "state.db"), protectedPath = join(f.root, "credentials", "protected.json"), protectedBefore = digest(protectedPath);
     await f.closeController();
     const native = new DatabaseSync(path);
-    try { native.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT"); }
+    try {
+      native.exec("BEGIN EXCLUSIVE");
+      restorePreReadingArtifactRetention(native);
+      native.exec("UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT");
+    }
     finally { native.close(); }
     const before = rows(path, 10);
     assert.ok((before.write_intents?.length ?? 0) > 0); assert.ok((before.write_attempts?.length ?? 0) > 0);
@@ -320,7 +325,11 @@ it.each(["missing", "corrupt", "future", "foreign"] as const)("stops established
 
 function historicalTen(path: string): void {
   const database = new DatabaseSync(path);
-  try { database.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT"); }
+  try {
+    database.exec("BEGIN EXCLUSIVE");
+    restorePreReadingArtifactRetention(database);
+    database.exec("UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT");
+  }
   finally { database.close(); }
 }
 

@@ -8,6 +8,7 @@ import { AutomaticPersonRepairRefusedError, initializeRegisteredPersonStores } f
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { StartupCrashRecoveryRefusedError } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
@@ -35,7 +36,7 @@ for (const state of ["projection-corrupt", "critical-fence-unreadable", "foreign
         finally { native.exec(trigger.sql); }
       }
       else if (state === "future" || state === "unsupported") {
-        const version = state === "future" ? 12 : 7;
+        const version = state === "future" ? CURRENT_AUTHORITY_SCHEMA_VERSION + 1 : 7;
         native.exec(`BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=${version} WHERE id=1; PRAGMA user_version=${version}; COMMIT`);
       } else if (state !== "recovery-refusal") native.exec(state === "projection-corrupt" ? "DROP TABLE run_search" : "DROP TABLE write_attempts");
     } finally { native.close(); }
