@@ -39,7 +39,6 @@ type Extraction = ReturnType<typeof buildExtraction>;
 type Subject = ReturnType<typeof resolveSubject>;
 type Jobs = ReturnType<typeof readJobs>;
 type Timecard = ReturnType<typeof buildTimecard>;
-type Identity = ReturnType<typeof buildIdentity>;
 
 export const IDENTITY_CHECK_STEP = defineWorkflowStep({
   key: "identity-check",

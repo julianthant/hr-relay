@@ -64,7 +64,6 @@ type Extraction = ReturnType<typeof buildExtraction>;
 type Jobs = ReturnType<typeof readJobs>;
 type Timecard = ReturnType<typeof buildTimecard>;
 type Identity = ReturnType<typeof buildIdentity>;
-type Termination = ReturnType<typeof buildTermination>;
 
 export const UCPATH_TRANSACTION_STEP = defineWorkflowStep({
   key: "ucpath-transaction",

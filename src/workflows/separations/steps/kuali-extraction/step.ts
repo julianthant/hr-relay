@@ -19,9 +19,7 @@ import type { StepProofSpec, WorkflowAuthor } from "../../../../workflow-kit/wor
 import { defineStep, defineStepEntries } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep, requireFact } from "../../../../workflow-kit/workflow.js";
 import type { SeparationsInput } from "../../workflow.js";
-import type { buildTermination } from "../ucpath-transaction/step.js";
 type Author = WorkflowAuthor<typeof SeparationsInput>;
-type Termination = ReturnType<typeof buildTermination>;
 
 export const KUALI_EXTRACTION_STEP = defineWorkflowStep({
   key: "kuali-extraction",

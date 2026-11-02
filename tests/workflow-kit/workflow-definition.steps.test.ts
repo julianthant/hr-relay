@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { compileWorkflow, defineStepProof } from "../../src/workflow-kit/workflow-definition.js";
-import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
 import { personLookupSearchingDefinition } from "../../src/workflows/person-lookup/steps/searching/step.js";
+import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
+import { SeparationsIdentityCheckCanonicalInput, separationsIdentityCheckDefinition } from "../../src/workflows/separations/steps/identity-check/step.js";
 import { separationsWorkflow } from "../../src/workflows/separations/workflow.js";
-import { separationsIdentityCheckDefinition, SeparationsIdentityCheckCanonicalInput } from "../../src/workflows/separations/steps/identity-check/step.js";
 
 describe("step proof derivation", () => {
   it("inherits the parent's input and presentation while retaining the step graph and result", () => {
@@ -18,8 +18,9 @@ describe("step proof derivation", () => {
       .toEqual([["searching", ["searching", "matching", "search-identity"]]]);
     expect(definition.result.references.map(entry => entry.id)).toEqual(["search-identity"]);
     expect(definition.nodePurposes?.map(purpose => purpose.nodeId)).toEqual(["searching", "matching", "search-identity"]);
-    expect(compileWorkflow(definition).contracts).toEqual(compileWorkflow(personLookupWorkflow).contracts
-      .filter(contract => definition.steps.flatMap(([, entries]) => entries.flatMap(entry => entry.contracts)).includes(contract)));
+    expect(compileWorkflow(definition).contracts.map(contract => contract.id)).toEqual([
+      "ucpath/search-person-org", "ucpath/search-person-match", "workflow:person-lookup/read-resolved-identity",
+    ]);
   });
 
   it("keeps specialized ingress and authority dependencies instead of substituting parent input", () => {

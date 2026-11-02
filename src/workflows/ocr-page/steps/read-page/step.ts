@@ -38,9 +38,9 @@ export const ocrPageReadingDefinition = defineStep({
   group: OCR_PAGE_STEP, build: buildStep,
   proof: {
     id: "ocr-page-reading", order: 1,
-    build: (parent: WorkflowDefinition<typeof OcrPageWorkflowInputSchema>) => ({
+    build: (parent: WorkflowDefinition<typeof OcrPageWorkflowInputSchema, typeof OcrPageReadingSchema>) => ({
       ...inheritStepProof(parent), code: "og", label: "OCR page reading", summary: "Proves subscription readings and operator assertions for one original page.",
-      steps: buildStep,
+      steps: () => ({ steps: parent.steps, result: parent.result }),
     }),
   },
 });

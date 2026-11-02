@@ -1,3 +1,4 @@
+// The read-only proof covers the login recipe and timecard passage.
 import { z } from "zod";
 import { CANONICAL_FIELDS } from "../../../../models/fields/registry.js";
 import {
@@ -34,7 +35,6 @@ import type { buildExtraction } from "../kuali-extraction/step.js";
 type Author = WorkflowAuthor<typeof SeparationsInput>;
 type Extraction = ReturnType<typeof buildExtraction>;
 type Subject = ReturnType<typeof resolveSubject>;
-type Timecard = ReturnType<typeof buildTimecard>;
 
 export const KRONOS_TIMECARD_STEP = defineWorkflowStep({
   key: "kronos-timecard",

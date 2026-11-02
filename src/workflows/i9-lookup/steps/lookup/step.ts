@@ -37,9 +37,9 @@ export const i9LookupStepDefinition = defineStep({
   group: I9_LOOKUP_STEP, build: buildStep,
   proof: {
     id: "i9-lookup-lookup", order: 9,
-    build: (parent: WorkflowDefinition<typeof I9LookupInputSchema>) => ({
+    build: (parent: WorkflowDefinition<typeof I9LookupInputSchema, typeof I9SignerOutputSchema>) => ({
       ...inheritStepProof(parent), code: "ilk", label: I9_LOOKUP_STEP.label, summary: "Proves the I-9 signer task and its workflow result in one lookup checkpoint.", details: parent.details,
-      steps: buildStep,
+      steps: () => ({ steps: parent.steps, result: parent.result }),
     }),
   },
 });
