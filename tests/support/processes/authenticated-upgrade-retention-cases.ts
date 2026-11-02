@@ -6,7 +6,7 @@ import { Server } from "node:http";
 import { syncBuiltinESMExports } from "node:module";
 import { dirname, join, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { RuntimeLifetimeLock, RuntimeAlreadyRunningError, type OfflineMaintenanceOperation } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { RuntimeLifetimeLock, RuntimeAlreadyRunningError, type OfflineMaintenanceOperation, isOfflineMaintenanceOperationActive } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { RuntimeAdmission, acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure } from "../../../src/backend/storage/source-closure.js";
@@ -40,20 +40,20 @@ export async function runAuthenticatedUpgradeRetentionCase(input: { scenario: st
   const workspace = fs.realpathSync(join(input.workspace, `.${input.scenario}-${input.nonce}`));
   const lifetime = await RuntimeLifetimeLock.acquire(0);
   const profile = await createHistoricalRegisteredProfileFixture({ sourceVersion: 8, workspace, lifetime });
-  const machine = acquireSharedRuntimeAdmission(workspace, lifetime);
+  const machine = acquireSharedRuntimeAdmission(workspace, lifetime), machineRoot = machine.stateRoot;
   const held = { profile, lifetime, machine }; retained.add(held);
   const keyFault = input.scenario === "authenticated-upgrade-key-close";
   const bindingFault = input.scenario === "authenticated-upgrade-binding-consume";
   const unprovedClose = input.scenario === "authenticated-upgrade-unproved-close";
   const publicationFault = input.scenario === "authenticated-upgrade-closed-publication-refusal";
   const injected = new Error(`native-${input.scenario}`), primary = new Error("source-publication-refused");
-  let phase: "service-inspection" | undefined;
+  let phase: "service-inspection" | undefined, keyFaultArmed = false;
   let originalClosure: unknown;
   let descriptor: number | undefined, closeAttempts = 0, disposalAttempts = 0, acquisitions = 0, starts = 0, closes = 0;
   let exclusive: RuntimeAdmission | undefined, operation: OfflineMaintenanceOperation | undefined;
   let snapshotDirectory: string | undefined, snapshotIdentity: fs.Stats | undefined, snapshotBytes: Buffer | undefined;
   let native: { database: DatabaseSync } | undefined, nativeClosed = false;
-  const keyPath = join(machine.stateRoot, "machine", "credential-keys", `${profile.binding.profileId}.json`);
+  const keyPath = join(machineRoot, "machine", "credential-keys", `${profile.binding.profileId}.json`);
   const keyIdentity = fs.lstatSync(keyPath), keyBytes = fs.readFileSync(keyPath);
   const close = fs.closeSync, remove = fs.rmSync;
   const fromLease = Object.getOwnPropertyDescriptors(RuntimeAdmission).fromInstallationLease.value; assert.ok(fromLease);
@@ -107,14 +107,14 @@ export async function runAuthenticatedUpgradeRetentionCase(input: { scenario: st
     return databaseClose.call(this);
   };
   fs.closeSync = fd => {
-    if (keyFault && descriptor === undefined && new Error().stack?.includes("captureCanonicalCredentialUpgradeSource")) {
+    if (keyFault && keyFaultArmed && descriptor === undefined) {
       const opened = fs.fstatSync(fd);
       if (opened.dev === keyIdentity.dev && opened.ino === keyIdentity.ino) { descriptor = fd; closeAttempts++; throw injected; }
     }
     close(fd);
   };
   fs.rmSync = (path, options) => {
-    const selected = bindingFault ? new Error().stack?.includes("consumeAuthenticatedProfileUpgrade") === true : phase === "service-inspection";
+    const selected = bindingFault ? exclusive !== undefined && operation === undefined : phase === "service-inspection";
     if (!keyFault && !unprovedClose && selected && String(path).includes(`${sep}relay-readonly-authority-`)
       && (snapshotDirectory === undefined || snapshotDirectory === String(path))) {
       snapshotDirectory = String(path);
@@ -130,11 +130,12 @@ export async function runAuthenticatedUpgradeRetentionCase(input: { scenario: st
   retained.add(application);
   const before = tree(profile.stateRoot), databaseBefore = fs.readFileSync(profile.path);
   const canonicalSources = () => ["credential-keys", "credential-operations", "duo-credentials"].map(name => {
-    const path = join(machine.stateRoot, "machine", name); return [name, fs.existsSync(path) ? tree(path) : null];
+    const path = join(machineRoot, "machine", name); return [name, fs.existsSync(path) ? tree(path) : null];
   });
   const canonicalBefore = canonicalSources();
   const controlPath = join(workspace, ".tracker", "control", "profile-registry.json"), controlBefore = fs.readFileSync(controlPath);
-  const registryPath = join(machine.stateRoot, "machine", "profiles.json"), registryBefore = fs.readFileSync(registryPath);
+  const registryPath = join(machineRoot, "machine", "profiles.json"), registryBefore = fs.readFileSync(registryPath);
+  keyFaultArmed = true;
   const response = await fetch(`http://127.0.0.1:${application.port}/api/v1/profile/sign-in`, { method: "POST", headers: {
     "content-type": "application/json", origin: `http://127.0.0.1:${application.port}`,
   }, body: JSON.stringify({ email: "fixture@ucsd.edu", password: "disposable-fixture-password" }) });
@@ -153,7 +154,7 @@ export async function runAuthenticatedUpgradeRetentionCase(input: { scenario: st
     assert.ok(failure.cause instanceof AuthoritySourceClosureUnprovedError);
     assert.ok(exclusive); exclusive.assertExclusive(); assert.equal(acquisitions, 1);
     if (bindingFault) assert.equal(operation, undefined);
-    else { assert.ok(operation); operation.assertHeld(); }
+    else { assert.ok(operation); const held = operation; assert.equal(isOfflineMaintenanceOperationActive(held), true); assert.throws(() => held.assertHeld(), error => hasUnprovedSourceClosure(error) && chain(error).has(injected)); }
     const stopped = application.stop(); assert.equal(application.stop(), stopped); await assert.rejects(stopped, error => error === failure);
   }
   assert.equal(hasUnprovedSourceClosure(failure), true); assert.equal(chain(failure).has(injected), true);
@@ -200,7 +201,7 @@ export async function runAuthenticatedUpgradeRetentionCase(input: { scenario: st
     await assert.rejects(application.stop(), error => error === failure);
     if (keyFault) await assert.rejects(lifetime.close(), error => hasUnprovedSourceClosure(error) && chain(error).has(injected));
     lifetime.assertHeld();
-    if (operation !== undefined) operation.assertHeld();
+    if (operation !== undefined) { const held = operation; assert.equal(isOfflineMaintenanceOperationActive(held), true); assert.throws(() => held.assertHeld(), error => hasUnprovedSourceClosure(error) && chain(error).has(injected)); }
     if (exclusive !== undefined) exclusive.assertExclusive();
     await assert.rejects(async () => {
       const successor = await RuntimeLifetimeLock.acquire(lifetime.port); retained.add(successor);

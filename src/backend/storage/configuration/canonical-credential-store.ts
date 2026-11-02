@@ -562,6 +562,33 @@ export function captureStoppedIncompleteCredentials(admissionInput: RuntimeAdmis
   }
 }
 
+export function readStoppedLogoutProtectedRecord(admissionInput: RuntimeAdmission): CanonicalCredentialRecord {
+  const admission = requireRuntimeAdmission(admissionInput), path = join(admission.stateRoot, "state.db");
+  const current = () => { admission.assertPendingLogoutSettlementDatabase(path); };
+  current();
+  const paths = canonicalPaths(admission);
+  try {
+    if (readPrivateFile(paths.operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
+    const source = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
+    if (source === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    const head = ActiveHead.parse(parse(source.bytes));
+    if (head.installationId !== paths.binding.installationId || head.profileId !== paths.binding.profileId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    const key = authenticateHead(head);
+    inspectCanonicalNamespace(paths, head, key, new Map(), current);
+    current();
+    const file = readPrivateFile(paths.records.protected, { label: "protected.json", maxBytes });
+    if (file === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    const record = open(head, key, "protected", file.bytes);
+    const after = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
+    if (record === undefined || after === undefined || !after.bytes.equals(source.bytes)
+      || after.identity.device !== source.identity.device || after.identity.inode !== source.identity.inode) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    current(); return record;
+  } catch (error) {
+    if (hasUnprovedSourceClosure(error)) { admission.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission }); }
+    throw error;
+  }
+}
+
 export const CanonicalCredentialConversionPlanSchema = z.strictObject({ operation: CreateOperation, digest: Digest });
 export type CanonicalCredentialConversionPlan = Readonly<z.infer<typeof CanonicalCredentialConversionPlanSchema>>;
 

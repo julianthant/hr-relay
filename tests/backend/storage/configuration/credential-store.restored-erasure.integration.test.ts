@@ -118,7 +118,7 @@ for (const copy of ["none", "encrypted-stage", "missing-owner", "membership-muta
       const current = createCanonicalCredentials(f.admission);
       assert.throws(() => current.reserveDuoCounter(credential.credentialId, reservationId), { code: "CREDENTIAL_CONFLICT" }); unchanged(canonicalBefore);
       const next = current.reserveDuoCounter(credential.credentialId, randomUUID());
-      assert.equal(next.count, reserved.count + 1); assert.equal(next.revision, reserved.revision + 2);
+      assert.equal(next.count, reserved.count + 1); assert.equal(next.revision, reserved.revision + 1);
       for (const source of canonicalBefore.slice(1)) assert.deepEqual(readFileSync(source.path), source.bytes);
       assert.equal(entry.getPassword() === key, true);
       })();

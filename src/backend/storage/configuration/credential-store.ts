@@ -14,10 +14,17 @@ import { encodePrivate, privateEqual as privateEqualBounded } from "../../../rul
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
-import { CanonicalCredentialError, createCanonicalCredentials, type CanonicalCredentialRecord } from "./canonical-credential-store.js";
+import { CanonicalCredentialError, createCanonicalCredentials, readStoppedLogoutProtectedRecord, type CanonicalCredentialRecord } from "./canonical-credential-store.js";
 
 const MAX_PRIVATE_REQUEST_BYTES = 64_000;
 const MAX_CREDENTIAL_DOCUMENT_BYTES = 16 * 1024 * 1024;
+
+export function stoppedLogoutOwnsCredentialCommand(admission: RuntimeAdmission, commandId: string): boolean {
+  const id = z.uuid().parse(commandId), frame = readStoppedLogoutProtectedRecord(admission), document = authenticateDocument(frame.value);
+  if (frame.revision !== document.record.revision) throw new Error("credential store protected.json disagrees with its authenticated revision");
+  return document.history.some(({ receipt }) => receipt.commandId === id);
+}
+
 const ProtectedSettingsApplyPreflightSchema = ProtectedSettingsApplyInputSchema
   .omit({ entries: true })
   .extend({ entries: z.unknown() });

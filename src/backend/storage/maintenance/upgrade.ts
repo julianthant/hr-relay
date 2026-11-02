@@ -1,4 +1,4 @@
-import { assertOfflineMaintenanceForProcessRoot } from "../admission/installation.js";
+import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../source-closure.js";
 import { existsSync } from "node:fs";

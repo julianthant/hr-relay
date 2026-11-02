@@ -1,5 +1,7 @@
+import { z } from "zod";
+import { canonicalJsonStringify } from "../../../../../src/rules/validation/canonical-json.js";
+import { SignUpOperationSchema } from "../../../../../src/models/profiles/profile.js";
 import { assertRuntimeLifetimeHeld, runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
-import { CanonicalCredentialError, CredentialMaintenanceHold } from "../../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import * as profileSessionOwner from "../../../../../src/backend/profiles/profile-session.js";
 import * as notificationOwner from "../../../../../src/backend/app/composition/dashboard/notifications.js";
 import * as notificationHealthOwner from "../../../../../src/backend/app/composition/dashboard/notification-health.js";
@@ -447,17 +449,24 @@ it("surfaces an actual restart failure after exclusive readback without claiming
 
 it("preserves an existing canonical applying operation and refuses ready prior upgrade authority", async () => {
   const f = await priorEight();
-  const session = createProfileSession({ admission: f.machine, machineRoot: f.machine.stateRoot });
-  const operation = f.profile.signupOperation;
-  f.machine.publishProfileOperation(operation);
-  const path = join(f.machine.stateRoot, "machine", "operations", `${operation.operationId}.json`), before = readFileSync(path);
+  const { onboarding: _onboarding, ...source } = f.profile.signupOperation, operation = SignUpOperationSchema.parse(source);
+  const path = join(f.machine.stateRoot, "machine", "operations", `${operation.operationId}.json`);
+  const controlPath = join(f.profile.workspace, ".tracker", "control", "profile-registry.json"), controlBefore = readFileSync(controlPath);
+  const control = z.looseObject({ operations: z.array(z.unknown()) }).parse(JSON.parse(controlBefore.toString("utf8")));
+  assert.deepEqual(control.operations, []);
+  f.machine.release();
+  writeFileSync(path, JSON.stringify(operation), { mode: 0o600, flag: "wx" });
+  writeFileSync(controlPath, JSON.stringify({ ...control, operations: [{ operationId: operation.operationId,
+    digest: createHash("sha256").update(canonicalJsonStringify(operation)).digest("hex") }] }));
+  const before = readFileSync(path), machine = acquireSharedRuntimeAdmission(f.profile.workspace, f.profile.lifetime);
+  const session = createProfileSession({ admission: machine, machineRoot: machine.stateRoot });
   let proved = false;
   try {
     assert.throws(() => session.signIn({ ...login, at: systemClock.now().toISOString() }), error => error instanceof ProfileUpgradeSourceRefusalError && error.code === "PROFILE_UPGRADE_UNAVAILABLE");
     assert.deepEqual(readFileSync(path), before);
     assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
     proved = true;
-  } finally { if (proved) { f.machine.publishProfileOperation(operation.operationId); session.close(); f.machine.release(); await f.profile.close(); } }
+  } finally { if (proved) { session.close(); machine.release(); unlinkSync(path); writeFileSync(controlPath, controlBefore); await f.profile.close(); } }
 });
 
 it("rejects a genuine foreign installation after authentication without granting either profile admission", async () => {
@@ -521,7 +530,7 @@ it("refuses replacement of the exact encrypted v4 source across admission turnov
     owner = acquireExclusiveRuntimeAdmission(f.profile.workspace, f.profile.lifetime);
     renameSync(path, retained); copyFileSync(retained, path); replaced = true;
     const exclusive = owner;
-    assert.throws(() => consumeAuthenticatedProfileUpgrade(result.upgrade, exclusive), error => error instanceof CanonicalCredentialError && error.code === "CREDENTIAL_UNAVAILABLE");
+    assert.throws(() => consumeAuthenticatedProfileUpgrade(result.upgrade, exclusive), { message: "runtime-control: profile-upgrade-handoff-authority-changed" });
     assert.equal(digest(path), before); assert.equal(digest(retained), before);
     assert.equal(readProfileDatabaseBinding(f.profile.path).schemaVersion, 8);
     proved = true;
@@ -577,9 +586,8 @@ for (const control of ["head-replaced", "operation-injected"] as const) it(`reta
         }
       };
     }
-    assert.throws(() => consumeAuthenticatedProfileUpgrade(result.upgrade, owner), error => control === "head-replaced"
-      ? error instanceof CanonicalCredentialError && error.code === "CREDENTIAL_UNAVAILABLE"
-      : error instanceof CredentialMaintenanceHold && error.code === "CREDENTIAL_OPERATION_PENDING");
+    assert.throws(() => consumeAuthenticatedProfileUpgrade(result.upgrade, owner), { message: control === "head-replaced"
+      ? "runtime-control: profile-upgrade-handoff-authority-changed" : "runtime-control: profile-stopped-upgrade-credential-operation-pending" });
     assert.equal(digest(f.profile.path), before);
     assert.deepEqual(readFileSync(headPath), headBefore); assert.deepEqual(readFileSync(protectedPath), protectedBefore);
     assert.equal(existsSync(join(f.profile.stateRoot, "backups", "authority")), false);
@@ -629,8 +637,7 @@ for (const control of ["verifier", "key", "source"] as const) it(`releases the a
     assert.equal(failure.errors.length, 1);
     assert.equal(failure.cause, failure.errors[0]);
     assert.ok(failure.cause instanceof Error);
-    if (control === "key") { assert.ok(failure.cause instanceof CanonicalCredentialError); assert.equal(failure.cause.code, "CREDENTIAL_UNAVAILABLE"); }
-    else assert.equal(failure.cause.message, control === "verifier" ? "runtime-control: profile-upgrade-handoff-authority-changed" : "profile-upgrade-handoff-source-changed");
+    assert.equal(failure.cause.message, control === "source" ? "profile-upgrade-handoff-source-changed" : "runtime-control: profile-upgrade-handoff-authority-changed");
     const acquired = exclusive; assert.ok(acquired); assert.throws(() => acquired.assertLive(), { message: "runtime-admission: missing or released admission" });
     await assert.rejects(application.stop(), error => error === failure);
     assert.equal(acquisitions, 1); assert.equal(starts, 1);
