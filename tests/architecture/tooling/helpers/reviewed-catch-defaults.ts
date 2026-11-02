@@ -33,7 +33,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/sqlite/storage-doctor.ts",
-    "sha256": "93fa18a195ee12df71f1818635325a6d4d87a86b579a25042efbf4f3d34e8da9",
+    "sha256": "e4bc9e5587b66baa868418061467cff27910111aa55d25e082fc8ad85896ef43",
     "reason": "ENOENT alone denotes no backup directory; failed authority, credential, recovery or backup inspection publishes explicit unavailable, degraded or invalid health, and failed logical backup identity verification makes restore unavailable."
   },
   {
