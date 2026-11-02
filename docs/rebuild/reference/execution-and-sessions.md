@@ -295,6 +295,19 @@ Closing the supervisor cancels its timers and returns any remaining live-child e
 structured fault sink. The dashboard closes its database before releasing its process lock and
 runtime admission. After clean resource closure, the held lifetime owns verified person backups and last-three shutdown retention before it can release the listener. Failed closure or backup verification prevents a successful shutdown.
 
+Confirmed application quit and whole-runtime shutdown first hold new-work admission, then request
+pause on every nonterminal run except parked UNKNOWN writes. Active callbacks, including an in-flight
+submit, settle before claim release and worker drainage. Queued, gate and delegation holds retain
+their exact state; logout keeps its separate cancellation behavior. Settings saves cannot advance
+the runtime generation while update or shutdown admission is held. Startup recovery classifies an
+interrupted read as failed with structured failure evidence; an unfinished submit remains parked
+UNKNOWN and is never automatically retried.
+
+The application lifecycle query reports `installer-unavailable` without an update host and defers
+updates while run, worker, browser, write, Duo, control or artifact owners remain. The tested idle
+installation primitive holds admission before awaiting an injected host and retains the hold on
+failure. There is no production idle/quit installer dispatch or native installer integration.
+
 `src/backend/storage/sqlite/runtime-process-locks.ts` owns acquisition-specific process records
 and OS process-birth checks. Database closure precedes their release.
 

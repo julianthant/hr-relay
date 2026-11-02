@@ -367,8 +367,9 @@ A gate result or ordinary Rerun cannot substitute for write resolution.
 ### 5.3 Replay policy
 
 Every read entry explicitly declares `replay: "checkpoint"` or `"always-rerun"`.
-The executor validates and replays checkpoint ancestors. It executes `always-rerun` ancestors
-again and stores each execution with its claim generation. Replay restores values, never browser
+The executor validates and replays checkpoint ancestors. Ordinary execution runs `always-rerun`
+ancestors again; an authenticated Pause/Resume or failed-run continuation reuses their completed
+checkpoints after the same schema, fingerprint, provenance and freshness checks. Replay restores values, never browser
 page state. Transactions recover through permanent write authority, not a read replay flag.
 
 ### 5.4 Entry validation
@@ -394,18 +395,30 @@ older observed input fresh.
 
 ### 5.6 Recovery and Rerun
 
-Internal checkpoint recovery retains canonical input and item identity. A retry takes the item's
-next authority-allocated attempt and replays validated ancestors. `recovery: "restart-from-start"`
-executes reads and computations again. Committed write authority remains protected in either case.
-An unfinished or unknown submit enters write recovery before another submit is considered.
+`RunRecord.pause` is an orthogonal scheduling hold. Queued work pauses immediately. Claimed work
+records a request and finishes its current callback before acknowledging the hold. A claim release
+into queued delegation or a gate park acknowledges the hold atomically and preserves that park.
+Resume clears only an acknowledged hold; paused work cannot be claimed. A run-level pause affects
+that exact run, including a parent; it does not implicitly cascade to children. Pause-all validates
+and pauses the complete current nonterminal membership, including children. UNKNOWN parks remain
+write-recovery authority and are never made resumable by these commands.
+
+Retry and dashboard Rerun accept failed sources only. Restart is refused. Retry takes the item's
+next authority-allocated attempt; Resume keeps the current attempt. Both retain completed results
+through exact server-issued continuation coordinates. Each source pins run, version, attempt and a
+digest of input and immutable execution identity. Queue priority is excluded from that digest and
+keeps its separate command authority. Retained source bytes, issuance, checkpoints and gate evidence
+are revalidated before reuse; missing evidence fails closed. A changed runtime fingerprint refuses
+Retry. Authenticated delegated replacements retain their original invocation and configuration
+snapshot even after startup activates an equivalent current snapshot.
 
 Dashboard Run and Rerun retain the selected mode, protected-input identity, and authority-allocated
 attempt. Verification checks bind checkpoints and screenshots to that persisted attempt; a
 rehearsal declaration cannot change recovery or authorize another submit.
 
 `src/backend/runs/start/rerun.ts` and `rerun-values.ts` own dashboard Rerun prefill and warning
-planning. An eligible source with an earlier descriptor version or contract fingerprint can open the
-existing form without an extra notice when its retained data and warning evidence pass current checks.
+planning. Source reads may expose compatible older values, but plan creation refuses a changed
+descriptor version or contract fingerprint because completed-step reuse requires the original contract.
 The form keeps current input defaults and offers a source value only when the current descriptor's
 value mapping, canonical input, and omission schemas accept it. For typed input, the full source value
 is restored only when the current input and canonical-input schemas accept it unchanged. If that parse
@@ -421,15 +434,13 @@ the existing preselection based on source outcome and step completion, then appl
 rules. Incompatible retained transaction-warning evidence still refuses Rerun.
 
 Rerun reads source checkpoints and gate results to build value offers and validate copied coordinates.
-Warning planning reads compatible transaction evidence and write intents to detect repeat submissions.
-It validates any gate result needed to build a selected transaction warning against the current gate
-schema. Unrelated older gate results do not block Rerun. The new run inherits no source checkpoint,
-gate decision, or write authority. A selected previously committed transaction retains the warning
-and required acknowledgment described in [write safety](write-safety.md). An UNKNOWN, attempting, or
-parked write refuses Rerun. Confirmation of a warning is not final plan consumption.
+Accepted continuation retains exact completed task, gate and child-result evidence. A correction that
+changes a completed task's mapped input refuses reuse. Current planning and Retry refuse retained
+transaction checkpoints: cross-run transaction replay has no admitted write-sequencer implementation.
+UNKNOWN, attempting and parked writes refuse Rerun; saved results never authorize another submit.
 
-Dashboard Rerun does not call `retrySource`. The separate Retry and Restart commands retain their
-existing descriptor checks and recovery rules.
+Dashboard Rerun consumes its canonical source-bound plan; Retry uses the lifecycle service. Both
+doors enforce failed-only sources and retain exact continuation lineage.
 
 `src/backend/runtime/checkpoints/checkpoint-patch.ts` applies declared field patches and reparses
 the complete producing output. The envelope carries corrections with time and reason.
@@ -445,8 +456,9 @@ separate immutable observations.
 
 `src/backend/storage/sqlite/authority-database.ts` owns the checkpoint repository and its latest
 and exact reads. `src/backend/runtime/checkpoints/run-checkpoint-reader.ts` restricts source-bound
-and fresh restart reads to this run's own attempt rows; ordinary recovery uses the item's latest
-row. `loadCheckpoint` returns `{ found: true, ... }` or `{ found: false, reason }`, validating
+and fresh restart reads to this run's own attempt rows. Authenticated continuation prefers its own
+rows and then reads only its exact retained source coordinates; ordinary recovery uses the item's
+latest row. `loadCheckpoint` returns `{ found: true, ... }` or `{ found: false, reason }`, validating
 version, fingerprints, schema hash, and payload. A mismatch refuses rather than selecting a
 plausible output with an equal schema. `src/backend/storage/sqlite/migrations.ts` makes checkpoint
 updates and replacement inserts illegal and permits deletion only with the owning deleted-run

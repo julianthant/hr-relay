@@ -5,6 +5,14 @@ configuration, Settings, inbox and cross-date search with local workflow produce
 route can exist without being mounted by the product. The tables below describe both the present
 producer and the requirements for replacing it.
 
+Run and item Pause/Resume, exact-membership Pause all, and confirmed Pause all and quit use the
+canonical typed command facade. The application lifecycle query supplies runtime generation,
+current target versions and update availability. Application pause commands refresh every affected
+run in the served projection before quit notification. Queue producers retain the orthogonal pause
+state and available pause command; this wiring adds no new visual controls. Retry and Rerun accept
+failed sources only, and recognized Restart requests are refused. Host updater installation has no
+production dispatch; its absence remains explicit in the lifecycle query.
+
 ## Client facade and boundaries
 
 `src/dashboard/client/index.ts` assembles `DashboardClient` from `queries.ts`, `commands.ts`, and

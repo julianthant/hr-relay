@@ -289,7 +289,7 @@ export const ApplicationCommandRequestSchema = z.discriminatedUnion("type", [
 ]);
 
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
-  /** `retry` is Resume from checkpoints and `restart` is Restart from start: both mint the item's next attempt. */
+    /** Retry continues a failed item; Restart is recognized and refused by lifecycle policy. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "restart", "pause", "resume", "cancel", "bump"]), target: RunVersionTargetSchema }),
   /** Delete means delete: a terminal queue run and every row it owns leave authority. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("delete"), target: RunVersionTargetSchema }),
