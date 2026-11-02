@@ -127,6 +127,7 @@ const SINGULAR_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
 
 const TEST_ONLY_ENVIRONMENT_KEYS = [
   "PARITY_UPDATE", "TZ", "NODE_OPTIONS", "RELAY_TEST_KEYCHAIN", "RELAY_TEST_TIME_SCALE", "RELAY_TEST_PROCESS_IMPORT",
+  "RELAY_TEST_HOST",
   "TMPDIR", "TMP", "TEMP", "KEEP_TEST_TMP",
 ] as const;
 
@@ -152,13 +153,14 @@ export const RETIRED_ENVIRONMENT_KEYS = deepFreeze(
   [...MIGRATED_SETTINGS_ENVIRONMENT_KEYS],
 );
 
-const DOCUMENTED_ENVIRONMENT_KEYS: ReadonlySet<string> = new Set();
+const DOCUMENTED_ENVIRONMENT_KEYS: ReadonlySet<string> = new Set(["RELAY_TEST_HOST"]);
 
 const TEST_ONLY_ENVIRONMENT_OWNERS = {
   NODE_OPTIONS: ["playwright.parity.config.ts", "tests/support/duo-ceremony-setup.ts", "tests/support/helpers/credential-keychain-fake.ts"],
   RELAY_TEST_KEYCHAIN: ["tests/support/helpers/credential-keychain-fake.ts"],
   RELAY_TEST_TIME_SCALE: ["tests/support/time-scale.ts"],
   RELAY_TEST_PROCESS_IMPORT: ["tests/support/compiled-process.ts", "tests/support/compiled-process-setup.ts"],
+  RELAY_TEST_HOST: ["scripts/test/pc.ts"],
   PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
   TMPDIR: [
     "tests/support/private-temp-setup.ts",
@@ -231,6 +233,7 @@ export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilyS
 
 export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([
   { key: "NODE_OPTIONS", paths: ["playwright.parity.config.ts"] },
+  { key: "RELAY_TEST_HOST", paths: ["scripts/test/pc.ts"] },
 ]));
 
 interface ComputedReaderInput {
