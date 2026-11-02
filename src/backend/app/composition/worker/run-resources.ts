@@ -26,6 +26,8 @@ import type { WorkerBrowserSessionFactory } from "../../../runtime/workers/worke
 import type { WorkerRunResources } from "../../../runtime/workers/worker-loop.js";
 import { selectRunSettings } from "../../../runs/settings/run-settings.js";
 import { createWorkbookLibraryAdapter } from "../../../processing/providers/workbook-library-adapter.js";
+import { createOcrCheckpointPublication, admitOcrRunResources, OcrPublicationRefusedError } from "../../../runs/lifecycle/ocr-checkpoint-publication.js";
+import type { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
@@ -34,6 +36,7 @@ export function createRunResourcesFactory(input:Readonly<{
  ocr:NonNullable<NonNullable<WorkerRunResources["providers"]>["adapters"]["ocr.extract"]>;
  authority:AuthorityRepositories;artifacts:ContentAddressedArtifactWriter;clock:Clock;ids:IdFactory;
  admission:RuntimeAdmission;database:AuthorityDatabase;
+ runReader?:Pick<RunRecordService,"read">;
  isolation:RuntimeIsolation;protectedSecrets:Pick<CredentialStore,"read">;scheduler:MonotonicDeadlineScheduler;
  environment:Readonly<Record<string,string|undefined>>;sessionFactory?:WorkerBrowserSessionFactory;duoCeremony?:DuoCeremonyGateFactory;
  assertProfileOwner:(workerId:WorkerId)=>void;
@@ -63,16 +66,21 @@ export function createRunResourcesFactory(input:Readonly<{
   baseline:compose,
   stop:()=>nominatim.stop(),
   forRun(run:RunRecord):WorkerRunResources {
+   if(["ocr","ocr-page"].includes(run.envelope.workflow)) {
+    if(input.runReader===undefined)throw new OcrPublicationRefusedError();
+    input.database.withAuthorityReadSnapshot(()=>admitOcrRunResources(input.authority,input.runReader!,run));
+   }
    if (Object.values(run.envelope.resolvedInstance ?? {}).some(instance => instance === "test")) throw new Error("run-resources-retired-test-instance");
    const snapshot=ConfigSnapshotRecordSchema.parse(selectRunSettings(input.authority,run.envelope));
    input.assertBrowserRoot(snapshot.config.paths.browserProfileRoot);
    if(sha256Hex(canonicalJsonStringify(snapshot.config))!==snapshot.fingerprint)throw new Error("run-resources-retained-snapshot-unavailable");
    const previous=cache.get(snapshot.fingerprint);
    const baseline=previous??compose(StoredConfigSchema.parse(snapshot.config));cache.set(snapshot.fingerprint,baseline);
-   const key=`${run.envelope.runId}:${snapshot.fingerprint}`;
+   const key=`${run.envelope.runId}:${run.claimGeneration}:${snapshot.fingerprint}`;
    const resources=runCache.get(key)??Object.freeze({...baseline,providers:{...baseline.providers,adapters:Object.freeze({...baseline.providers.adapters,
     "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock}),
-   })}});
+   })},...(input.runReader===undefined?{}:{publishCheckpoint:createOcrCheckpointPublication(input.runReader,run)})});
+   if(["ocr","ocr-page"].includes(run.envelope.workflow)&&resources.publishCheckpoint===undefined)throw new OcrPublicationRefusedError();
    runCache.set(key,resources);
    return input.preflight===undefined?resources:Object.freeze({...resources,sessionFactory:preflightSessionFactory(resources.sessionFactory,input.preflight,input.preflight.runScope(run.envelope))});
   },

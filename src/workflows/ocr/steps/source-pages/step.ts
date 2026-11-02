@@ -6,7 +6,7 @@ import { OcrPageReadingSchema } from "../../../../models/workflows/ocr/page-acco
 import { ReadOcrResult } from "../../../../models/workflows/ocr/read-result.js";
 import { ReadOcrReviewSeed } from "../../../../models/workflows/ocr/read-review-seed.js";
 import { ReadOcrSourcePages } from "../../../../models/workflows/ocr/read-source-pages.js";
-import { OcrResultSchema } from "../../../../models/workflows/ocr/result.js";
+import { OcrApprovalReferenceSchema, OcrWorkflowResultSchema } from "../../../../models/workflows/ocr/result.js";
 import { PersonLookupInput } from "../../../../models/workflows/person-lookup/input.js";
 import { PersonLookupResultSchema } from "../../../../models/workflows/person-lookup/result.js";
 import { WorkflowIdSchema } from "../../../../rules/identity/ids.js";
@@ -28,7 +28,7 @@ export function buildSourcePages({ task, result }: WorkflowAuthor<typeof OcrInpu
   };
 }
 export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
-  const { task, delegate, result } = author;
+  const { task, delegate, gate, result } = author;
   const sourcePages = buildSourcePages(author);
   const { source } = sourcePages;
   const pages = delegate({
@@ -41,7 +41,7 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
   });
   const review = task({ id: "build-review", contract: ReadOcrReviewSeed, replay: "checkpoint" }, [source, pages],
     ({ input, outputs }) => ({
-      sourceRunId: input.sourceRunId, roster: input.roster, formType: input.formType,
+      ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }), roster: input.roster, formType: input.formType,
       manifest: outputs["read-source-pages"].manifest, readingId: input.readingId, outcomes: [...outputs["read-pages"]]
     }));
   const identities = delegate({
@@ -54,13 +54,18 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
   });
   const completed = task({ id: "read-result", contract: ReadOcrResult, replay: "checkpoint" }, [review, identities],
     ({ outputs }) => ({ review: outputs["build-review"], outcomes: [...outputs["lookup-identities"]] }));
+  const approval = gate({ id: "approve-records", label: "Approve selected records", resolvedBy: "operator",
+    result: OcrApprovalReferenceSchema, when: { kind: "equals", of: { from: "input", path: "approval" }, value: "release" } }, [completed]);
   return {
     steps: [
       ...sourcePages.steps,
       [{ key: "page-readings", label: "Read document pages", system: "local" }, [pages]],
       [{ key: "review-records", label: "Group records for review", system: "local" }, [review]],
       [{ key: "identity-lookups", label: "Look up proposed identities", system: "ucpath" }, [identities, completed]],
-    ] as const, result: result(OcrResultSchema, [completed], ({ outputs }) => outputs["read-result"])
+      [{ key: "approval", label: "Approve selected records", system: "local" }, [approval]],
+    ] as const, result: result(OcrWorkflowResultSchema, [completed, approval], ({ outputs }) => ({
+      ...outputs["read-result"], approvedSnapshot: outputs["approve-records"] ?? null,
+    }))
   };
 }
 export const ocrSourcePagesDefinition = defineStep({

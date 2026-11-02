@@ -5,7 +5,7 @@ import { OcrPageWorkflowInputSchema, OCR_PAGE_EXAMPLE } from "./input.js";
 
 export const ReadManualOcrReading = defineTaskContract({
   id: taskId("workflow:ocr-page/read-manual-reading"), title: "Read operator assertion", effect: "read",
-  input: OcrPageWorkflowInputSchema, output: OcrPageReadingSchema, errorCodes: ["INCONSISTENT_INPUTS"],
+  input: OcrPageWorkflowInputSchema, output: OcrPageReadingSchema, errorCodes: ["INCONSISTENT_INPUTS", "OCR_PUBLICATION_REFUSED"],
   subject: { kind: "none", reason: "reads an operator assertion without observing or verifying the asserted person" },
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "live" }, scenarios: [],
   example: bindManualOcrPageReading(OCR_PAGE_EXAMPLE.page, "example-operator", { formType: "emergency-contact",

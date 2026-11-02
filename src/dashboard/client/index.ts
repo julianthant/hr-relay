@@ -9,11 +9,15 @@ import {
   type DashboardDaySubscription,
   type DashboardDaySubscriptionDeps,
 } from "./subscriptions/subscription.js";
-import { WIRE_ERROR_BODY } from "./errors.js";
+import { WIRE_ERROR_BODY, DashboardClientError } from "./errors.js";
 import { createDashboardTransport, type FetchLike } from "./transport.js";
+import { OcrSourceUploadSchema } from "../../models/ocr/review.js";
+import { RunIdSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
+import { OcrCommandResultWireSchema } from "../../models/dashboard/run-detail.js";
+import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
 
 export type { ApplicationLifecycle } from "../../models/dashboard/application-lifecycle.js";
-export { DashboardClientError } from "./errors.js";
+export { DashboardClientError };
 export { applyDashboardDayPatch } from "./queries/day-state.js";
 export type { SubscriptionState } from "./subscriptions/subscription.js";
 export type { StartPlanResponse } from "./commands.js";
@@ -27,6 +31,9 @@ export type {
 } from "../../models/dashboard/search.js";
 
 export interface DashboardClient extends DashboardQueries, DashboardCommands {
+  uploadOcrSource(request: Readonly<{ fileName: string; bytes: Uint8Array }>, signal?: AbortSignal): Promise<ReturnType<typeof OcrSourceUploadSchema.parse>>;
+  ocrSourcePageUrl(runId: string, revision: number, sourcePage: number): string;
+  ocrCommandResult(runId: string, commandId: string, signal?: AbortSignal): Promise<ReturnType<typeof OcrCommandResultWireSchema.parse>>;
   readProfileSession(): Promise<PublicProfileState>;
   signInProfile(request: ProfileLoginRequest): Promise<PublicProfileState>;
   signUpProfile(request: ProfileSignUpRequest): Promise<PublicProfileState>;
@@ -53,6 +60,25 @@ export function createDashboardClient(input: Readonly<{
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
   const client: DashboardClient = Object.freeze<DashboardClient>({
+    async ocrCommandResult(runId, commandId, signal) {
+      const result = OcrCommandResultWireSchema.parse(await transport.requestJson(`/api/v1/runs/${encodeURIComponent(RunIdSchema.parse(runId))}/ocr/commands/${encodeURIComponent(commandId)}`,
+        signal === undefined ? undefined : { signal }));
+      if (result.state === "recorded" && (result.request.commandId !== commandId || result.request.target.runId !== runId)) throw new DashboardClientError({ kind: "schema", code: "OCR_REVIEW_REFUSED", message: ERROR_CATALOG.OCR_REVIEW_REFUSED.text });
+      return result;
+    },
+    async uploadOcrSource(request, signal) {
+      const source = OcrSourceUploadSchema.parse(await transport.requestJson(`/api/v1/ocr/files?filename=${encodeURIComponent(request.fileName)}`, {
+        method: "POST", headers: { "content-type": "application/pdf" }, body: new Uint8Array(request.bytes).buffer,
+        ...(signal === undefined ? {} : { signal }),
+      }));
+      const hash = await crypto.subtle.digest("SHA-256", new Uint8Array(request.bytes).buffer);
+      const digest = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, "0")).join("");
+      if (source.artifact.bytes !== request.bytes.byteLength || source.artifact.sha256 !== digest) throw new DashboardClientError({ kind: "schema", code: "OCR_SOURCE_REFUSED", message: ERROR_CATALOG.OCR_SOURCE_REFUSED.text });
+      return source;
+    },
+    ocrSourcePageUrl(runId, revision, sourcePage) {
+      return transport.resolveUrl(`/api/v1/runs/${encodeURIComponent(RunIdSchema.parse(runId))}/ocr/pages/${PositiveIntSchema.parse(sourcePage)}?revision=${PositiveIntSchema.parse(revision)}`);
+    },
     async readProfileSession() {
       return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/state")).body);
     },

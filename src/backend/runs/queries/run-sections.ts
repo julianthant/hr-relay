@@ -13,6 +13,7 @@ import { buildGateParkSection } from "./run-detail/gate-park.js";
 import { buildLogsSection } from "./run-detail/logs.js";
 import { buildReceiptFailureSection } from "./run-detail/receipts-failures.js";
 import type { RunNoteScanCache } from "./run-logs.js";
+import { buildOcrReviewSection } from "./ocr-review.js";
 
 export async function readRunSection(
   deps: RunDetailQueryDeps,
@@ -48,7 +49,6 @@ export function buildRunSection(
     case "identity-gate":
       return buildGateParkSection(deps, runId, section);
     case "captures":
-    case "review":
     case "people":
     case "context-evidence": {
       const authority = requireTrustRun(deps.runReader, runId);
@@ -57,5 +57,6 @@ export function buildRunSection(
         `section ${section} is not available for run ${runId}; served sections are ${served.join(", ")}`,
       );
     }
+    case "review": return buildOcrReviewSection(deps, runId);
   }
 }

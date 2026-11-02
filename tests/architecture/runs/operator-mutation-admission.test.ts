@@ -27,6 +27,7 @@ const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
   "/api/v1/workbooks/:libraryId/save": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/:libraryId/intake": { guard: "operatorMutationIngressGuard" },
   "/api/v1/intake/files": { guard: "operatorOpaqueIngressGuard" },
+  "/api/v1/ocr/files": { guard: "operatorOpaqueIngressGuard" },
   "/api/v1/commands": { guard: "operatorMutationIngressGuard" },
   "/api/v1/commands/bulk": { guard: "operatorMutationIngressGuard" },
   "/api/v1/settings/chatgpt-account/sign-in": { guard: "operatorMutationIngressGuard" },

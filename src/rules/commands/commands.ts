@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { OcrReviewRecordSchema } from "../../models/ocr/review.js";
 import { AssistantModelPreferenceSchema } from "../../models/dashboard/assistant.js";
 import { NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
 import { StoredAssistantPermissionModeSchema } from "../../models/profiles/assistant-permission-mode.js";
@@ -27,6 +28,7 @@ export class CommandIdentityConflictError extends Error {
 }
 
 export const CommandFamilySchema = z.enum([
+  "ocr-review",
   "application",
   "assistant-model-preference",
   "failure-resolution",
@@ -41,6 +43,7 @@ export const CommandFamilySchema = z.enum([
 ]);
 
 export const CommandActionSchema = z.enum([
+  "correct-ocr-record", "discard-ocr-record", "restore-ocr-record",
   "pause-all",
   "pause-all-and-quit",
   "check-parked-write",
@@ -307,8 +310,19 @@ export const GateCommandRequestSchema = z.strictObject({
   family: z.literal("gate"),
   type: z.literal("resolve-gate"),
   target: z.strictObject({ runId: RunIdSchema, gateId: GateIdSchema, expectedVersion: PositiveIntSchema }),
-  payload: z.strictObject({ result: SchemaBoundCanonicalValueSchema }),
+  payload: z.strictObject({ result: SchemaBoundCanonicalValueSchema,
+    ocrApproval: z.strictObject({ expectedRevision: PositiveIntSchema, reviewDigest: FingerprintSchema,
+      selectedRecordIds: z.array(z.string().min(1)).min(1) }).optional() }),
 });
+
+export const OcrReviewCommandRequestSchema = z.discriminatedUnion("type", [
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("ocr-review"), type: z.literal("correct-ocr-record"),
+    target: z.strictObject({ runId: RunIdSchema, expectedRevision: PositiveIntSchema }),
+    payload: OcrReviewRecordSchema.omit({ discarded: true }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("ocr-review"), type: z.enum(["discard-ocr-record", "restore-ocr-record"]),
+    target: z.strictObject({ runId: RunIdSchema, expectedRevision: PositiveIntSchema }),
+    payload: z.strictObject({ recordId: OcrReviewRecordSchema.shape.recordId }) }),
+]);
 
 export const NotificationCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("notification"), type: z.enum(["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"]), target: z.strictObject({ notificationId: NotificationIdSchema, actorId: ActorIdSchema, expectedVersion: PositiveIntSchema }) }),
@@ -329,6 +343,7 @@ export const FailureResolutionCommandSchema = z.strictObject({ ...CommandEnvelop
   target: FailureResolutionTargetSchema, payload: FailureResolutionActionSchema });
 export type FailureResolutionCommand = z.infer<typeof FailureResolutionCommandSchema>;
 export const CommandRequestSchema = z.union([
+  OcrReviewCommandRequestSchema,
   ApplicationCommandRequestSchema,
   AssistantModelPreferenceCommandRequestSchema,
   FailureResolutionCommandSchema,
@@ -345,6 +360,7 @@ export const CommandRequestSchema = z.union([
 ]);
 
 export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
+  z.strictObject({ family: z.literal("ocr-review"), runId: RunIdSchema }),
   z.strictObject({ family: z.literal("application"), runtimeGeneration: PositiveIntSchema }),
   z.strictObject({ family: z.literal("assistant-model-preference"), profileId: z.uuid(), revision: PositiveIntSchema }),
   z.strictObject({family:z.literal("failure-resolution"), runId:RunIdSchema, failureId:FailureResolutionTargetSchema.shape.failureId}),
@@ -367,6 +383,7 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
 ]);
 
 export const CommandRejectionCodeSchema = z.enum([
+  "OCR_REVIEW_REFUSED",
   "RUN_CONTINUATION_REFUSED",
   "invalid-state",
   "target-not-found",
@@ -740,6 +757,7 @@ export function commandEffectIsWeaker(stated: CommandEffectClass, actual: Comman
 }
 
 export const COMMAND_EFFECT_BY_ACTION = {
+  "correct-ocr-record": "local-write", "discard-ocr-record": "local-write", "restore-ocr-record": "local-write",
   "pause-all": "local-write",
   "pause-all-and-quit": "destructive",
   "check-parked-write": "local-write",
@@ -784,6 +802,7 @@ export const COMMAND_EFFECT_BY_ACTION = {
 } as const satisfies Record<z.infer<typeof CommandActionSchema>, CommandEffectClass>;
 
 export const COMMAND_ASSISTANT_METADATA = {
+  "correct-ocr-record": "Correct a retained OCR review record", "discard-ocr-record": "Discard an OCR review record", "restore-ocr-record": "Restore a discarded OCR review record",
   "pause-all": "Pause current work",
   "pause-all-and-quit": "Pause current work and quit after explicit confirmation",
   "check-parked-write": "Read target state while keeping an uncertain write held",
@@ -841,6 +860,7 @@ export const CommandFamilySpecSchema = z.strictObject({
 });
 
 const COMMAND_ACTIONS_BY_FAMILY = {
+  "ocr-review": ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record"],
   application: ["pause-all", "pause-all-and-quit"],
   "assistant-model-preference": ["set-assistant-model-preference"],
   "failure-resolution": ["annotate-failure"],
@@ -883,6 +903,7 @@ export const CommandFamilyRegistrySchema = z.array(CommandFamilySpecSchema).supe
 });
 
 export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.parse([
+  { family: "ocr-review", actions: ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record"] },
   { family: "application", actions: ["pause-all", "pause-all-and-quit"] },
   { family: "assistant-model-preference", actions: ["set-assistant-model-preference"] },
   { family: "failure-resolution", actions: ["annotate-failure"] },

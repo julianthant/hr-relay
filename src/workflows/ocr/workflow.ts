@@ -18,7 +18,7 @@ export const ocrWorkflow = defineWorkflow({
   surface: { shape: "single" },
   enqueue: "reject-active",
   actions: STANDARD_WORKFLOW_ACTIONS,
-  capabilities: { review: false, editData: false },
+  capabilities: { review: true, editData: false },
   verdicts: [],
   details: [],
   surfaces: {},

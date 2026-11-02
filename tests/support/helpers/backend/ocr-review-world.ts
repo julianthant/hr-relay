@@ -1,0 +1,84 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
+import { SERVER_REGISTRY } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { createOcrCheckpointPublication } from "../../../../src/backend/runs/lifecycle/ocr-checkpoint-publication.js";
+import { createOcrSourceService } from "../../../../src/backend/runs/commands/ocr-source-service.js";
+import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createServerVerifiedArtifactReader } from "../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
+import { OcrInputSchema } from "../../../../src/models/workflows/ocr/input.js";
+import { OcrResultSchema } from "../../../../src/models/workflows/ocr/result.js";
+import { bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/page-accounting.js";
+import { buildOcrSourceManifest, ocrPageInputs } from "../../../../src/models/workflows/ocr/source-manifest.js";
+import { ExtractPdfPages, type ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
+import { defineTask } from "../../../../src/workflow-kit/task.js";
+import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
+import { UNREGISTERED_OCR_MODULES, UNREGISTERED_OCR_STORES } from "../../fixtures/ocr/unregistered-workflows.js";
+import { submittedPage, READING_ID } from "../../fixtures/ocr/source-pages.js";
+import { canonicalChildExecution } from "./canonical-child-execution.js";
+import { createRunExecutorTestWorld } from "./run-executor-world.js";
+import { boundProfileAdmission } from "../synthetic-database-admission.js";
+import type { z } from "zod";
+
+export function createOcrReviewWorld() {
+  const world = createRunExecutorTestWorld();
+  return {
+    cleanup: world.cleanup,
+    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number }> = {}) {
+      const actorId = options.actorId ?? "local-operator";
+      let rendered: z.output<typeof ExtractPdfPagesOutputSchema> | undefined;
+      const render = defineTask(ExtractPdfPages, { sessions: [], async run({ ctx }) {
+        assert.ok(rendered);
+        ctx.recordData([{ direction: "read", field: "pageCount", value: rendered.pageCount }]);
+        return rendered;
+      } });
+      const entries = [...taskStoreRegistry.stores.filter(store => store.namespace !== "extraction"),
+        defineServiceStore("extraction", { render }), ...UNREGISTERED_OCR_STORES];
+      const tasks = entries.flatMap(store => Object.values(store.tasks));
+      const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
+        tasks: tasks.map(task => ({ id: task.contract.id, effect: task.contract.effect })) });
+      const root = UNREGISTERED_OCR_MODULES.find(module => module.descriptor.id === "ocr"); assert.ok(root);
+      const harness = await world.executorHarness({ descriptor: root.descriptor, stores });
+      const { database, path, clock } = harness.authority;
+      const admission = boundProfileAdmission(path);
+      const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
+      const artifactReader = createServerVerifiedArtifactReader({ admission }); await artifactReader.ready;
+      const resolve = (id: string) => (UNREGISTERED_OCR_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
+      const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve, createOcrCheckpointPublication);
+      const sources = createOcrSourceService({ database, reader: canonical.lifecycle, clock, artifacts, artifactReader,
+        assertCurrent: () => admission.assertProfileRuntime() });
+      const upload = await sources.upload({ actorId: "local-operator", fileName: "source.pdf", mediaType: "application/pdf",
+        bytes: new TextEncoder().encode("%PDF-1.7\nSynthetic renderer fixture\n%%EOF") });
+      const pageBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGvwAAAAASUVORK5CYII=", "base64");
+      const image = await artifacts.put(pageBytes, { mediaType: "image/png" });
+      rendered = { pageCount: options.pageCount ?? 1, pages: Array.from({ length: options.pageCount ?? 1 }, (_, index) => ({ sourcePage: index + 1, image })) };
+      const manifest = buildOcrSourceManifest(upload.artifact, rendered);
+      const readings = ocrPageInputs(manifest, READING_ID).map(page => {
+        const original = submittedPage(page, "Example, Avery", options.record === true ? "emergency-contact" : "blank");
+        const valid = { ...original, source: { kind: "operator" as const, actorId } };
+        return { reading: bindManualOcrPageReading(page, actorId, { ...valid,
+          record: valid.record === null ? null : { answers: { ...valid.record.answers, "employee.name": { state: "absent", reason: "blank" } } } }),
+          corrected: bindManualOcrPageReading(page, actorId, valid).extraction.record };
+      });
+      const first = readings[0]; assert.ok(first);
+      const { reading, corrected } = first;
+      const run = canonical.start(root.descriptor, OcrInputSchema.parse({ document: upload.artifact, readingId: READING_ID,
+        formType: "emergency-contact", roster: null, approval: options.release === true ? "release" : "review-only",
+        reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } }), { dryRun: false });
+      const result = await canonical.execute(run, new AbortController().signal);
+      const command = (type: "correct-ocr-record" | "discard-ocr-record" | "restore-ocr-record", expectedRevision: number, recordIndex = 0) => {
+        const review = database.authority.ocrReviews.latest(run.envelope.runId); assert.ok(review);
+        const record = review.records[recordIndex]; assert.ok(record && corrected);
+        return { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
+          family: "ocr-review" as const, type, target: { runId: run.envelope.runId, expectedRevision },
+          payload: type === "correct-ocr-record" ? { recordId: record.recordId, fields: corrected, assertedEid: "10800000" } : { recordId: record.recordId } };
+      };
+      return { harness, database, path, clock, admission, artifacts, artifactReader, sources, canonical, run, result,
+        reading, corrected, pageBytes, command, root, resolve, readResult: () => {
+          const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
+            "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);
+          return OcrResultSchema.parse(checkpoint.output.value);
+        } };
+    },
+  };
+}
