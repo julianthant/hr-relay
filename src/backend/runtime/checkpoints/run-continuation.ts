@@ -23,7 +23,7 @@ export function continuationEvidenceDigest(value: unknown) {
 }
 
 function sourceIdentityDigest(run: RunRecord) {
-  const { continuation: _continuation, ...envelope } = run.envelope;
+  const { continuation: _continuation, priority: _priority, ...envelope } = run.envelope;
   return continuationEvidenceDigest({ envelope, input: run.input });
 }
 

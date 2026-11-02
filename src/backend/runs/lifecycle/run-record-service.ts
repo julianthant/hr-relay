@@ -1036,7 +1036,9 @@ export class RunRecordService {
       if (repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return refused({ reason: "policy-refused" });
       if (run.envelope.parent !== undefined && restart) return refused({ reason: "policy-refused" });
       const delegation = run.envelope.parent === undefined ? undefined : prepareDelegationRetry(repositories, run, request);
-      if (delegation !== undefined && (repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId
+      if (delegation !== undefined && (request.continuationOwner === undefined
+        && repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId
+        || !runSettingsAvailable(repositories, run.envelope)
         || request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint)) return refused({ reason: "runtime-stale" });
       if (descriptor.id !== run.envelope.workflow || descriptor.version !== run.envelope.descriptorVersion
         || descriptor.contractFingerprint !== run.envelope.contractFingerprint) {
@@ -1060,7 +1062,7 @@ export class RunRecordService {
       delete envelope.recovery;
       delete envelope.sourceBound;
       const next = RunRecordSchema.parse({
-        envelope: { ...selectNewRunIdentity(repositories, envelope), runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
+        envelope: { ...(delegation === undefined ? selectNewRunIdentity(repositories, envelope) : envelope), runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
           retryOf: run.envelope.runId, enqueuedAt: now, continuation,
           ...(restart ? { recovery: "restart-from-start" } : {}),
         },

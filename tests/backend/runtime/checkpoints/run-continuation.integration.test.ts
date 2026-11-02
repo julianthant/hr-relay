@@ -82,6 +82,11 @@ it("refreshes exact issuance through repeated pause and resume on the same run",
   for (let index = 0; index < 3; index += 1) {
     current = requireLifecycleApplied(h.lifecycle.pause({ commandId: h.ids.uuid(), runId: current.envelope.runId, expectedVersion: current.version }));
     current = requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: h.ids.uuid(), runId: current.envelope.runId, expectedVersion: current.version }));
+    const bumped = h.database.authority.runs.bumpPriority({ runId: current.envelope.runId, expectedVersion: current.version,
+      now: h.clock.now().toISOString() });
+    assert.equal(bumped.state, "applied");
+    if (bumped.state !== "applied") throw new Error("fixture bump refused");
+    current = bumped.run;
     assert.equal(current.envelope.continuation?.sources.length, 1);
     assert.equal(validateRunContinuation(h.database.authority, current.envelope)[0]?.envelope.runId, current.envelope.runId);
   }
