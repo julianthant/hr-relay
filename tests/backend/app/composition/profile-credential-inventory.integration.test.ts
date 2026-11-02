@@ -4,6 +4,8 @@ import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/mai
 import { type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
+import { BrowserRootsSchema } from "../../../../src/backend/storage/browser-root-contract.js";
+import { seedRegisteredBrowserProfiles } from "../../../support/helpers/browser/browser-roots.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { withSmokeWorker } from "../../../../scripts/verify/browser-login.js";
 import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
@@ -50,6 +52,37 @@ async function fixture(f?: Awaited<ReturnType<typeof createBoundProfileFixture>>
     async cleanup() { await context.account.close(); context.database.close(); await f.close(); },
   };
 }
+
+for (const state of ["earlier", "current", "future", "unknown"] as const)
+  it(`ordinary drain preserves browser roots with ${state} session evidence without native acquisition`, async () => {
+    const f = await fixture();
+    const path = join(f.machine.stateRoot, "machine", "browser-roots.json");
+    let original: Buffer | undefined;
+    const launch = vi.spyOn(DEFAULT_BROWSER_LAUNCHER, "launch").mockImplementation(async () => { throw new Error("ordinary drain must not acquire a browser"); });
+    try {
+      const seeded = await seedRegisteredBrowserProfiles(f, f.clock, ["crm"]);
+      original = readFileSync(path);
+      const document = BrowserRootsSchema.parse(JSON.parse(original.toString("utf8")));
+      const row = document.roots[0]; assert.ok(row); assert.equal(document.roots.length, 1);
+      const generation = f.admission.captureBrowserRegistryContext().sessionGeneration;
+      assert.ok(generation > 0);
+      row.sessionGeneration = state === "earlier" ? generation - 1 : state === "future" ? generation + 1 : generation;
+      if (state === "unknown") row.launch.state = "unknown";
+      writeFileSync(path, JSON.stringify(BrowserRootsSchema.parse(document)), { mode: 0o600 });
+      const before = readFileSync(path), directory = seeded.paths[0]; assert.ok(directory);
+      const identity = lstatSync(directory);
+      if (state === "earlier" || state === "current") await f.inventory.prepare();
+      else await assert.rejects(f.inventory.prepare(), { message: "profile-closure-browser-custody-unproved" });
+      assert.deepEqual(readFileSync(path), before);
+      const after = lstatSync(directory);
+      assert.equal(after.dev, identity.dev); assert.equal(after.ino, identity.ino);
+      assert.equal(launch.mock.calls.length, 0);
+    } finally {
+      launch.mockRestore();
+      if (original !== undefined) writeFileSync(path, original, { mode: 0o600 });
+      await f.cleanup();
+    }
+  });
 
 function nativeKey(f: Awaited<ReturnType<typeof fixture>>) {
   const head = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")));

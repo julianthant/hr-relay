@@ -597,7 +597,9 @@ Unsupported credential envelopes refuse before preparation publishes its receipt
 its preparing receipt before probing, then captures credential copies and verifies its SQLite backup
 before publishing browser registry, control and marker. Current control requires the external registry;
 ordinary startup does not reconstruct it. An ordinary profile drain checks actual resource and registry
-closure without minting native-unused permission. Flat native6 maintenance keeps its finite stopped
+closure without minting native-unused permission. Closed roots retain their original session generation
+across browserless Stop and a later sign-in; a drain refuses future-generation or unproved roots.
+Physical retirement requires fresh native custody before scoped removal. Flat native6 maintenance keeps its finite stopped
 owner and OS census. Busy profiles refuse with `BROWSER_PROFILE_STILL_CLOSING`; unproved native
 closure refuses with `BROWSER_CLOSURE_UNPROVED` and retains the actual owner and root lifetime.
 Stopped current-profile backup refuses any registered root whose launch is not closed or whose

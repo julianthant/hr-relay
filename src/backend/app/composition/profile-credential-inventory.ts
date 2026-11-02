@@ -198,7 +198,7 @@ export function composeProfileClosureInventory(input: Readonly<{ admission: Runt
         });
       const rows = document.roots.filter(row => row.profileId === binding.profileId);
       if (rows.length !== retained.length || rows.some(row => row.launch.state !== "closed" || row.native !== undefined
-        || row.sessionGeneration !== binding.sessionGeneration || !retained.some(profile => profile.profileDirectory === join(binding.machineRoot, row.directory)))) throw new Error("profile-closure-browser-custody-unproved");
+        || row.sessionGeneration > binding.sessionGeneration || !retained.some(profile => profile.profileDirectory === join(binding.machineRoot, row.directory)))) throw new Error("profile-closure-browser-custody-unproved");
       admission.assertProfileRuntime();
     } else await probeRetainedBrowsersClosed({ browserClosure: profileBrowserClosure, admission, custody, config,
       clock: input.clock, signal: new AbortController().signal });

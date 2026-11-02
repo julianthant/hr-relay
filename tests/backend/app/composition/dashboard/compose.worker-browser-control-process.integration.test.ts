@@ -30,6 +30,7 @@ import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-execu
 import { FIXTURE_DUO_CREDENTIAL_KEY } from "../../../../support/helpers/duo-ceremony-fixtures.js";
 import { scaledMs } from "../../../../support/time-scale.js";
 import { createBrowserRoots } from "../../../../../src/backend/storage/browser-roots.js";
+import { BrowserRootsSchema } from "../../../../../src/backend/storage/browser-root-contract.js";
 
 const worker = (index: number) => `person-lookup-worker-${String(index)}`;
 function groupPids(group: number): number[] {
@@ -259,10 +260,13 @@ it("real ingress, two real workers and Chromium: read-only claims, exact control
       assert.equal(groupPids(child.pid).length, 0);
     }
     const stoppedChildren = children.length;
+    const rootsBeforeSignIn = BrowserRootsSchema.parse(JSON.parse(readFileSync(join(root,rebuildRuntimeIsolation.stateRoot,"machine","browser-roots.json"),"utf8"))).roots;
+    assert.ok(rootsBeforeSignIn.every(row => row.launch.state === "closed" && row.native === undefined));
     phase = 'closed-children';
     const secondBoot = await boot(); runtime=secondBoot.dashboard; machine=secondBoot.machine;
     assert.equal(children.length,stoppedChildren,"dashboard boot must not spawn standing workers");
     assert.ok(profile); assert.ok(token);
+    assert.deepEqual(createBrowserRoots(profile.selectedContext(token).admission).inventory().roots,rootsBeforeSignIn);
     assert.notEqual(token, oldToken);
     const freshProfile = profile;
     assert.throws(() => freshProfile.assertCurrent(oldToken), (error: unknown) => error instanceof ProfileSessionRefusedError && error.code === "PROFILE_SESSION_STALE");
@@ -284,6 +288,13 @@ it("real ingress, two real workers and Chromium: read-only claims, exact control
     assert.equal(target(1).controlBasis.leaseGeneration,2);
     assert.equal((await post("pause-worker",oldGeneration)).result.state,"conflict");
     const member = db.authority.workerSlots.get(worker(1)); assert.ok(member);
+    assert.ok(profile); assert.ok(token);
+    const retainedBeforeStop = createBrowserRoots(profile.selectedContext(token).admission).inventory().roots
+      .filter(row => row.owner.kind === "worker" && row.owner.workerId === worker(1));
+    assert.equal(retainedBeforeStop.length, 2);
+    assert.ok(retainedBeforeStop.every(row => row.launch.state === "closed" && row.native === undefined
+      && row.owner.kind === "worker" && row.owner.leaseGeneration === 1));
+    const retainedEntries = readdirSync(join(stateRoot,"browsers","w1")).sort();
     const stop = await post("stop-worker",{...target(1),membershipRevision:member.membershipRevision});
     assert.equal(stop.result.state,"pending");
     phase = 'standing-recovery';
@@ -301,10 +312,9 @@ it("real ingress, two real workers and Chromium: read-only claims, exact control
     assert.equal(existsSync(join(root,`browser-${String(replacementChild.pid)}.jsonl`)),false,"browserless recovery and Stop must not acquire or authenticate");
     assert.ok(profile); assert.ok(token);
     const selected = profile.selectedContext(token);
-    assert.deepEqual(createBrowserRoots(selected.admission).inventory().roots.filter(row => row.owner.kind === "worker" && row.owner.workerId === worker(1)),[]);
+    assert.deepEqual(createBrowserRoots(selected.admission).inventory().roots.filter(row => row.owner.kind === "worker" && row.owner.workerId === worker(1)),retainedBeforeStop);
     const retiredDirectory = join(stateRoot,"browsers","w1");
-    if (existsSync(retiredDirectory)) { assert.deepEqual(readdirSync(retiredDirectory),[]); rmdirSync(retiredDirectory); }
-    assert.equal(existsSync(retiredDirectory),false);
+    assert.deepEqual(readdirSync(retiredDirectory).sort(),retainedEntries);
     const removal = await post("remove-worker",{...target(1),workflowId:"person-lookup",membershipRevision:member.membershipRevision,
       expectedVersion:db.authority.workerPools.get("person-lookup")?.version});
     assert.equal(removal.result.state,"pending");
@@ -317,6 +327,9 @@ it("real ingress, two real workers and Chromium: read-only claims, exact control
       "removed replacement process did not finish admission cleanup", diagnostics);
     assert.deepEqual(JSON.parse(readFileSync(join(root,`cleanup-${String(replacementChild.pid)}.json`),"utf8")),{openContexts:0,failures:0});
     assert.equal(groupPids(resetLease.processId).length,0);
+    assert.deepEqual(createBrowserRoots(selected.admission).inventory().roots.filter(row => row.owner.kind === "worker" && row.owner.workerId === worker(1)),[]);
+    if (existsSync(retiredDirectory)) { assert.deepEqual(readdirSync(retiredDirectory),[]); rmdirSync(retiredDirectory); }
+    assert.equal(existsSync(retiredDirectory),false);
     const resize = (await post("plan-worker-count",{workflowId:"person-lookup",expectedVersion:db.authority.workerPools.get("person-lookup")?.version},{desiredWorkers:1})).result;
     assert.equal(resize.state,"applied");
     assert.equal(db.authority.workerPools.get("person-lookup")?.desiredWorkers, 1);
