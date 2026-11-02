@@ -45,3 +45,20 @@ it("requests running pause and accepts only the real kebab-case worker claim at 
   assert.equal(runClaim(acknowledged), undefined);
   assert.deepEqual(requireLifecycleApplied(f.service.acknowledgePause(request)), acknowledged);
 });
+
+for (const state of ["queued", "parked-gate"] as const) it(`acknowledges requested pause atomically when active work releases to ${state}`, async () => {
+  const f = await world.fixture();
+  const running = world.runningRun(f.service, f.request, f.runtimeConfig);
+  const paused = requireLifecycleApplied(f.service.pause({ commandId: randomUUID(), runId: running.envelope.runId, expectedVersion: running.version }));
+  const claim = runClaim(paused); assert.ok(claim);
+  const lifecycle = state === "queued" ? { state, requeuedFrom: "recovery" as const }
+    : { state, gateId: "approval", resumeAt: "approval", parkedAt: f.clock.now().toISOString() };
+  const released = requireLifecycleApplied(f.service.transition({ commandId: randomUUID(), runId: paused.envelope.runId,
+    expectedVersion: paused.version, claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, lifecycle }));
+  assert.equal(released.pause?.state, "paused");
+  assert.deepEqual(released.lifecycle, lifecycle);
+  assert.equal(runClaim(released), undefined);
+  const resumed = requireLifecycleApplied(f.service.resumePaused({ commandId: randomUUID(), runId: released.envelope.runId, expectedVersion: released.version }));
+  assert.equal(resumed.pause, undefined);
+  assert.deepEqual(resumed.lifecycle, lifecycle);
+});

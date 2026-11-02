@@ -90,5 +90,8 @@ export function transitionRunRecord(current: RunRecord, candidate: RunRecord, no
     && canonicalJsonStringify(current.lifecycle.workerLifetime ?? null) !== canonicalJsonStringify(candidate.lifecycle.workerLifetime ?? null)) throw new Error("run-claim-lifetime-immutable");
   const violation = runTransitionViolation(current.lifecycle, candidate.lifecycle);
   if (violation !== undefined) throw new Error(`run ${current.envelope.runId}: ${violation}`);
-  return RunRecordSchema.parse({ ...candidate, version: current.version + 1, updatedAt: now });
+  const pause = current.pause?.state === "requested" && runClaim(current) !== undefined && runClaim(candidate) === undefined
+    && (candidate.lifecycle.state === "queued" || candidate.lifecycle.state === "parked-gate")
+    ? { ...current.pause, state: "paused" as const, pausedAt: now } : candidate.pause;
+  return RunRecordSchema.parse({ ...candidate, pause, version: current.version + 1, updatedAt: now });
 }
