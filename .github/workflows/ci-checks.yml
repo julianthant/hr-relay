@@ -250,6 +250,33 @@ jobs:
           esac
           sudo mdutil -i off "$vol"
           printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
+      - name: Verify full Chromium installation before timed native proofs
+        if: matrix.suite == 'native' && needs.changes.outputs.integration == 'true'
+        timeout-minutes: 1
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { once } from 'node:events';
+          import { chromium } from 'playwright';
+          const started = performance.now();
+          const server = await chromium.launchServer({ channel: 'chromium', headless: true });
+          const exited = once(server.process(), 'close');
+          let startupMs;
+          try {
+            const browser = await chromium.connect(server.wsEndpoint());
+            const context = await browser.newContext();
+            await context.newPage();
+            startupMs = Math.round(performance.now() - started);
+            await context.close();
+            await browser.close();
+          } finally {
+            await server.close();
+            const [code, signal] = await exited;
+            assert.equal(code, 0);
+            assert.equal(signal, null);
+          }
+          console.log(JSON.stringify({ event: 'chromium-installation-verified', startupMs }));
+          NODE
       - name: Check native browser process proofs without competing files
         if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.integration == 'true' }}
         env:
