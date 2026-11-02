@@ -104,7 +104,10 @@ for (const binding of ["unbound-source", "source-bound"] as const) {
       assert.equal(existsSync(join(w.profile.admission.artifactRoot, `${unrelated.attachments[0]?.digest}.artifact`)), false);
       assert.deepEqual(w.database.authority.ocrExtractions.get(stored.extractionId), stored);
       const stream = await artifacts.open(image), chunks: Uint8Array[] = [];
-      for await (const chunk of stream) chunks.push(chunk);
+      for await (const chunk of stream) {
+        assert.ok(chunk instanceof Uint8Array);
+        chunks.push(chunk);
+      }
       assert.deepEqual(Buffer.concat(chunks), sourceBytes);
     } finally { await w.dispose(); }
   });
