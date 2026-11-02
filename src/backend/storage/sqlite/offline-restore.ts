@@ -1,44 +1,29 @@
-import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
-import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySourceClosure } from "../source-closure.js";
-import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
-import { probeRestoreProfileBrowsersClosed, type ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
-import { assertProfileRestoreDatabaseBinding } from "./profile-local-databases.js";
-import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
+import { createHash,randomUUID } from "node:crypto";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { AuthorityRestoreInput } from "../admission/installation.js";
+import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
+import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
+import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
+import { probeRestoreProfileBrowsersClosed,type ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
+import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
+import { assertProfileRestoreDatabaseBinding } from "./profile-local-databases.js";
 import { requireSupportedRecoverySchema } from "./recovery-admission.js";
-import { validateStorageRelocationRestoreCandidate } from "./relocation-restore-candidate.js";
-import { createHash, randomUUID } from "node:crypto";
-import {
-  chmodSync,
-  closeSync,
-  copyFileSync,
-  existsSync,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-} from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+
+import { chmodSync,closeSync,copyFileSync,existsSync,fsyncSync,mkdirSync,openSync,readFileSync,renameSync,rmSync,statSync } from "node:fs";
+import { basename,dirname,join,resolve } from "node:path";
 import { z } from "zod";
-import { type Clock, systemClock } from "../../../rules/time/clock.js";
-import { inspectAuthorityBackupReadOnly } from "./backup-inspection.js";
-import { AuthorityDatabase } from "./authority-database.js";
-import { type RuntimeAdmission } from "../admission/admission.js";
+
+import { systemClock,type Clock } from "../../../rules/time/clock.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+
+import { AuthorityDatabase } from "./authority-database.js";
+import { inspectAuthorityBackupReadOnly } from "./backup-inspection.js";
+import { verifyBackupBytesAtPath,verifyBackupManifestAtPath } from "./backup-service.js";
 import { isCurrentAuthoritySchemaVersion } from "./migrations.js";
-import {
-  verifyBackupBytesAtPath,
-  verifyBackupManifestAtPath,
-} from "./backup-service.js";
-import {
-  OfflineRestoreReportSchema,
-  OfflineRestoreRequestSchema,
-  type OfflineRestoreReport,
-} from "./recovery-contracts.js";
+
+import { OfflineRestoreReportSchema,OfflineRestoreRequestSchema,type OfflineRestoreReport } from "./recovery-contracts.js";
+import { validateSamePersonRestoreCandidate } from "./same-person-restore-candidate.js";
 
 export const OfflineRestoreOptionsSchema = z.strictObject({
   authorityPath: z.string().min(1),
@@ -285,7 +270,7 @@ export class OfflineAuthorityRestoreService {
     const verified = await verifyBackupManifestAtPath(admission,request.manifestPath);
     requireSupportedRecoverySchema(verified.manifest.schemaVersion);
     if (verified.manifest.installationId !== profile.binding.installationId || verified.manifest.profileId !== profile.binding.profileId) throw new Error("profile-restore-backup-binding-mismatch");
-    validateStorageRelocationRestoreCandidate({ admission: admission,
+    validateSamePersonRestoreCandidate({ admission: admission,
       activeAuthorityPath: this.#authorityPath, verifiedBackup: verified });
     let authorityState: OfflineRestoreAuthorityState = "unchanged";
     let restoreReport: OfflineRestoreReport | undefined;
@@ -567,7 +552,7 @@ export async function settleInterruptedAuthorityRestore(input: Readonly<{
     || verified.manifest.authorityContentFingerprint !== binding.authorityContentFingerprint) {
     throw new Error("restore-recovery-backup-authority-binding-mismatch");
   }
-  validateStorageRelocationRestoreCandidate({ admission, activeAuthorityPath: binding.authorityPath, verifiedBackup: verified });
+  validateSamePersonRestoreCandidate({ admission, activeAuthorityPath: binding.authorityPath, verifiedBackup: verified });
   admission.settleAuthorityRestore(binding, input.outcome, () => {
     const actual = inspectAuthorityBackupReadOnly(admission, binding.authorityPath, verified.manifest.schemaVersion);
     return { authorityGeneration: actual.authorityGeneration, authorityContentFingerprint: actual.authorityContentFingerprint };

@@ -1,49 +1,44 @@
-import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
-import { withOperationProof } from "../configuration/credential-safe-file.js";
-import { inspectRestoreEligibility, inspectStorageRecovery } from "./storage-recovery-status.js";
-import { verifyBackupLocationEvidence } from "./backup-location-evidence.js";
-import { validateStorageRelocationRestoreCandidate } from "./relocation-restore-candidate.js";
-import { requireDatabaseSourcePath } from "./recovery-admission.js";
-import { TimelineRecordError } from "./timeline-repository.js";
-import type { CredentialStore } from "../../../models/config/credential-store.js";
-import { observeCredentialPresence } from "../configuration/credential-store.js";
-import { ProtectedSettingsInspectionSchema } from "./recovery-contracts.js";
 import { createHash } from "node:crypto";
 import {
-  existsSync,
-  lstatSync,
-  readdirSync,
-  statSync,
-  type Stats,
+existsSync,
+lstatSync,
+readdirSync,
+statSync,
+type Stats,
 } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { constants as systemConstants } from "node:os";
+import { basename,dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
 import { z } from "zod";
+import type { CredentialStore } from "../../../models/config/credential-store.js";
+import {
+type RunQueuedWire,
+type SpanEventWire,
+} from "../../../models/events/types.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
-import {
-  type RunQueuedWire,
-  type SpanEventWire,
-} from "../../../models/events/types.js";
-import { AuthorityDatabase } from "./authority-database.js";
-import { inspectAuthorityUpgradeStatus } from "./upgrade-status.js";
-import { type RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { withOperationProof } from "../configuration/credential-safe-file.js";
+import { observeCredentialPresence } from "../configuration/credential-store.js";
+import { hasUnprovedSourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { storageHealthCauseFromError } from "./authority-boot.js";
+import { AuthorityDatabase } from "./authority-database.js";
+import { verifyBackupLocationEvidence } from "./backup-location-evidence.js";
 import { parseBackupManifestFile } from "./backup-service.js";
+import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import {
-  BackupHealthSchema,
-  RestoreCandidateSchema,
-  SpanAuthorityReconciliationSchema,
-  SpanAuthorityRunRootSchema,
-  StorageDoctorReportSchema,
-  StorageHealthCauseSchema,
-  type AuthorityCopyInspection,
-  type RestoreCandidate,
-  type SpanAuthorityRunRoot,
-  type SpanAuthorityReadSnapshot,
-  type StorageDoctorReport,
+BackupHealthSchema,ProtectedSettingsInspectionSchema,RestoreCandidateSchema,
+SpanAuthorityReconciliationSchema,
+SpanAuthorityRunRootSchema,
+StorageDoctorReportSchema,
+StorageHealthCauseSchema,
+type AuthorityCopyInspection,
+type RestoreCandidate,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot,type StorageDoctorReport
 } from "./recovery-contracts.js";
+import { validateSamePersonRestoreCandidate } from "./same-person-restore-candidate.js";
+import { inspectRestoreEligibility,inspectStorageRecovery } from "./storage-recovery-status.js";
+import { TimelineRecordError } from "./timeline-repository.js";
+import { inspectAuthorityUpgradeStatus } from "./upgrade-status.js";
 
 export const StorageDoctorOptionsSchema = z.strictObject({
   stateRootTrustAnchor: z.string().min(1),
@@ -778,10 +773,10 @@ async function inspectCandidates(
         backupSha256: verified.manifest.sha256, stateRoot, authorityAvailable: authorityInspection !== undefined });
       if (restoreEligibility.state === "eligible") {
         try {
-          validateStorageRelocationRestoreCandidate({ admission, activeAuthorityPath: join(stateRoot, "state.db"),
+          validateSamePersonRestoreCandidate({ admission, activeAuthorityPath: join(stateRoot, "state.db"),
             verifiedBackup: verified });
         } catch {
-          restoreEligibility = { state: "unavailable", reason: "Backup does not prove the active relocation history." };
+          restoreEligibility = { state: "unavailable", reason: "Backup does not prove the current person and installation." };
         }
       }
       candidates.push({

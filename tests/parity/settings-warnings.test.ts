@@ -43,7 +43,7 @@ async function attach(page: Page, info: TestInfo, name: string) {
 }
 for (const entry of [
   { section: "general", path: "**/api/v1/settings/chatgpt-account", title: "ChatGPT account unavailable", group: "ChatGPT account" },
-  { section: "paths", path: "**/api/v1/settings/storage-relocation", title: "App-data locations couldn’t be read.", group: "App data" },
+  { section: "paths", path: "**/api/v1/settings/editable", title: "App-data locations couldn’t be read.", group: "App data" },
   { section: "routes", path: "editable", title: "Onboarding roster URL unavailable", group: "SharePoint" },
 ]) test(`Settings warning slot and spacing for ${entry.section}`, { annotation: [{ type: "required-a11y-evidence", description: `settings-warning-${entry.section}.a11y.yml` }] }, async ({ page }, info) => {
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });

@@ -20,7 +20,7 @@ Installation admission owns the active storage roots. None of these authorities 
 | Credential access | `src/models/config/secrets.ts` |
 | Private credential persistence | `src/backend/storage/configuration/credential-store.ts` |
 | Shared credential file safety | `src/backend/storage/configuration/credential-safe-file.ts` |
-| Installation identity, locator, ownership witnesses, and relocation journal | `src/backend/storage/admission/installation.ts` |
+| Installation identity, current locator, ownership witnesses, and forward layout journal | `src/backend/storage/admission/installation.ts` |
 | Lifetime and path-specific storage capability | `src/backend/storage/admission/admission.ts` |
 | Entrypoint admission and secure bootstrap | `src/backend/storage/admission/bootstrap-admission.ts`, `src/backend/app/bootstrap/secure-env-bootstrap.ts` |
 
@@ -49,7 +49,7 @@ machine-wide monotonic basis across processes.
 `capturedInstantClock(instant, elapsed = systemClock)` validates an ISO instant and fixes its wall
 readings to that instant. Each `now()` returns a fresh `Date`; elapsed readings still use the supplied
 monotonic clock. Invalid input throws `RangeError` with `captured-instant-clock: invalid ISO instant`.
-The relocation activation adapter uses this clock to reproduce its durable activation checkpoint.
+The fixed-layout activation transaction uses its recorded instant when completing or replaying publication.
 
 `manualClock(at, initialMonotonicMs = 0)` returns a `TestClock` with independent `advanceWall`,
 `advanceMonotonic`, and `setWall` controls. The `clock-single-source` architecture guard confines
@@ -245,23 +245,23 @@ supplies the default browser root `<stateRoot>/browsers`. A saved browser root c
 
 | Path | Default |
 | --- | --- |
-| `paths.reportsDir` | Absolute `data/reports` |
-| `paths.downloadsDir` | Absolute `data/downloads` |
-| `paths.onboardingDocsDir` | Absolute `data/onboarding` |
-| `paths.i9CheckTrackerPath` | Absolute `data/reports/i9-check-tracker.xlsx` |
+| `paths.reportsDir` | `<stateRoot>/files/reports` |
+| `paths.downloadsDir` | `<stateRoot>/files/downloads` |
+| `paths.onboardingDocsDir` | `<stateRoot>/files/onboarding` |
+| `paths.i9CheckTrackerPath` | `<stateRoot>/files/reports/i9-check-tracker.xlsx` |
 | `paths.stateRoot` | Admitted installation root, initially `.tracker/data` |
 | `paths.artifactRoot` | Admitted installation root, initially `.tracker/data/artifacts` |
 | `paths.browserProfileRoot` | Admitted `<stateRoot>/browsers`, or the isolation default `.tracker/data/browsers` without an admitted pair |
 | `paths.duoCredential` | Retained deployment fact in accepted configuration snapshots; no credential reader or picker |
 | `paths.duoExtensionDir` | Absolute `fast-duo` source folder with `workflow-manifest.json` |
 
-The first four paths, browser root and extension path are ordinary settings. State and artifact roots use relocation authority. `paths.duoCredential` remains in the strict serialized configuration and catalog because accepted snapshots and their fingerprints retain that deployment fact. New edits refuse as a retired input; it grants no file access, picker or authentication authority. Removing the persisted field requires the complete snapshot forward conversion.
+The first four paths and extension path are ordinary settings. State, evidence, and browser roots are fixed. `paths.browserProfileRoot` remains in serialized settings and accepted command history; new edits refuse, and the resolver requires the admitted person root. `paths.duoCredential` remains in the strict serialized configuration and catalog because accepted snapshots and their fingerprints retain that deployment fact. New edits refuse as a retired input; it grants no file access, picker or authentication authority. Removing the persisted field requires the complete snapshot forward conversion.
 
-`ordinary-path-validator.ts` validates changed effective paths. Browser targets require a canonical absolute path, safe ancestry and ownership, no protected-root overlap, and an absent or empty target. The canonical default may reuse its existing safe directory. The extension requires an owned unpacked MV3 directory and manifest. `OrdinaryPathValidationError` becomes `invalid-value` before snapshot activation.
+`ordinary-path-validator.ts` validates the owned unpacked MV3 extension directory and manifest. The native picker accepts ordinary folders, tracker files, and the extension directory; state, evidence, and browser roots are absent from its request schema. `OrdinaryPathValidationError` becomes `invalid-value` before snapshot activation.
 
 `POST /api/v1/settings/path-picker` accepts `NativePathPickerRequestSchema` and returns a selected
 absolute path, cancellation, or explicit unavailable result. The native picker owns dialog bounds
-and field typing. A selection does not save settings or relocate data. The route returns
+and field typing. A selection does not save settings or move app data. The route returns
 `NATIVE_PATH_HINT_INVALID` for an invalid hint. Missing picker composition reports `dialog-failed`;
 an occupied picker reports `busy`.
 
@@ -301,13 +301,13 @@ Duo records hold pending/ready enrolled P256 material and exact browser scope. B
 
 Protected payload schema-4 authenticates current record, value-free history, retired identities and the latest exact request. Entries remain `{valueId,value,updatedAt}`. Only the latest apply/erase request retains plaintext inside ciphertext; history contains marked operations and receipts. Current reads never run old-format migration. Apply checks expectedRevision, schema hash and command/write identity; latest exact replay succeeds, divergent/reused identities refuse, and clear removes the entry while advancing revision. Retired history remains deny-only and cannot revive a value. Documents are bounded to 16 MiB and private requests to 64,000 bytes. Settings apply commits independently before the value-free SQLite audit; failed audit cannot roll back the private commit. Protected values never enter configuration fingerprints or snapshots. The local Settings editor deliberately serves authenticated protected values; unavailable authority is unknown, never an empty default.
 
-Registry document 3 binds immutable installation ID and safe revision. Control 5 binds logical registry digest/revision/epoch, operation membership and completed-restore custody; marker 6 selects the current tuple. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
+Registry document 3 binds immutable installation ID and safe revision. Control 6 binds logical registry digest/revision/epoch, operation membership and completed-restore custody; marker 7 selects the current tuple and external browser-root registry. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
 
-SQLite precommit proofs cover registry/verifier/control evidence, registry operations and relocation receipts. Independent credential head and record publications retain their own authenticated writer checks and do not invalidate those registry proofs.
+SQLite precommit proofs cover registry/verifier/control evidence, registry operations. Fixed-layout claims separately bind their exact external journal. Independent credential head and record publications retain their own authenticated writer checks and do not invalidate those registry proofs.
 
 `storage upgrade --machine-control` uses the existing stopped three-file forward protocol. Supported settled prior tuples and bound SQL schemas 8–11 require genuine source inspection and durable verified credential-free SQL backup before canonical key/frame/control publication. One receipt records exact tuple backups, encrypted credential plans, source fingerprints and the verified SQL archive. Publication resumes only exact recorded source-or-published prefixes. Old credentials/key plaintext are not copied into the new archive. Old runtime readers are deleted. Unknown software Duo counter history or unsupported pending journals produce a named HOLD before mutation; no clock seed, inferred absence, key adoption or silent retirement is allowed. Completed historical artifacts remain exact preserved inventory.
 
-Offline restore replaces SQLite only. It preserves current canonical head/key/generation/floors and credentials, and retains existing source/stage/suspect/completed-restore, settings and UNKNOWN-write proofs. Same-machine native key absence refuses. Profile relocation without a genuine supported binding refuses before maintenance effects; status and historical inspection remain read-only.
+Offline restore replaces SQLite only. It preserves current canonical head/key/generation/floors and credentials, and retains existing source/stage/suspect/completed-restore, settings and UNKNOWN-write proofs. Same-machine native key absence refuses. Same-person restore candidate checks bind immutable IDs, current paths, and verified manifest facts before replacement.
 
 ### Environment and private test inputs
 
@@ -332,18 +332,17 @@ Application settings, credentials, and environment files are not test-input fall
 
 ## Installation roots, boot, and maintenance
 
-`config/runtime-isolation.json` and `rebuildRuntimeIsolation` pin the default state root
-`.tracker/data`, artifact root `.tracker/data/artifacts`, backend port `3938`, lifetime lock port `3939`, frontend port `5174`,
-process-lock root `.tracker/data/locks`, browser root `.tracker/data/browsers`, and browser session
-namespace `hrauto-rebuild`. The default paths are checkout-relative.
-The installation locator becomes the active authority for the state and artifact pair;
-process locks remain at the fixed checkout location. A root pair must be canonical and absolute,
-and the artifact root cannot contain the state root.
+`applicationDataWorkspace()` uses the OS user's home directory and fixes the macOS workspace at
+`~/Library/Application Support/Relay`, independently of cwd and `HOME`. Source and bundled entrypoints
+use that workspace; repository paths select code and assets. Explicit private test workspaces remain
+separate from operator data. `rebuildRuntimeIsolation` defines the inner `.tracker/data` state root,
+its `artifacts`, `browsers`, and `locks` directories, backend port `3938`, lifetime lock port `3939`,
+frontend port `5174`, and browser session namespace `hrauto-rebuild`.
 
-`installation.ts` stores checkout control under `.tracker/control` with `installation.json`,
-`locator.json`, journals, and relocation receipts. Root ownership uses
-`.runtime-owner.json`; `.runtime-source-fence.json` is a negative witness. An established missing or
-malformed locator refuses. Source markers and retained data never select a fallback installation.
+`installation.ts` stores control under `.tracker/control`. Current `locator.json` schema 3 contains
+installation ID and generation zero; paths are derived from the admitted workspace. Ownership uses
+`.runtime-owner.json`, and `.runtime-source-fence.json` prevents reusing a departed source.
+Established missing, foreign, or malformed authority refuses without an empty replacement.
 `RuntimeAdmission` is the single storage-capability facade. Its private profile access capture binds a
 registered profile's setup or ready state and current session generation. `admitProfile(profileId)`
 issues setup or runtime access, `admitProfileSettlement(operationId)` binds the matching durable logout
@@ -453,35 +452,35 @@ credential-copy paths continue to require retired durable work.
 A changed source fails with `source-changed: re-plan upgrade`. Recovery, backups, and restores remain
 explicit operations in their storage owners; ordinary shutdown does not create a backup.
 
-### Storage relocation
+### Fixed application-data startup
 
-`storage-relocation/plan-storage-relocation` and `storage-relocation/cancel-storage-relocation`
-record immutable desired intent in `commands` and `command_audits`.
-`storage-relocation-plans.ts` authenticates revisions, write IDs, request and destination digests,
-installation UUID, complete source pair, and locator generation. A plan does not switch roots.
-Missing query composition reports `STORAGE_RELOCATION_UNAVAILABLE`.
+Bootstrap holds the lifetime listener before the supported forward conversion. The finite source
+reader admits only the known default pair at generation zero. Existing stopped machine-control and
+flat-store conversion run through their current owners. Supported registered schemas 8–10 then receive
+the automatic backed-up W11a upgrade before current-only layout qualification. Every registered READY person needs a
+verified current SQL backup and genuine native closure before paths change. Current-only layout source admissions preserve ordinary output files unchanged and cannot authorize schema migration; manual upgrade and credential-copy admissions retain their strict copy refusal. Layout requires retired
+durable work; the automatic SQL upgrade preserves queued and unresolved work without moving paths. Pending operations,
+unsupported source layouts, unknown members, unsafe links, and conflicting installations refuse.
 
-`storage relocate --plan <command-id>`, `storage relocate --resume <operation-id>`, and
-`storage relocate --status [--json]` are the offline engine's closed command forms.
-`src/backend/app/composition/storage/relocate.ts` and `installation.ts` implement preparation,
-staging, source fences, retained source entries, locator switch, activation, settlement, and recovery.
-Incomplete work reports `StorageRelocationIncompleteError` and the exact resume command.
-A pending journal blocks normal installation admission.
+`maintenance/fixed-layout.ts` owns strict journal schemas, tree membership, exact binding-prefix
+classification, and bounded person activation claims. The external `.tracker/fixed-layout.json`
+records source/target/install identities, file and directory identities, four binding rewrites, and
+verified per-person backup/configuration plans. Installation atomically moves the data directory,
+publishes the permanent source fence, moves control, then replaces only the recorded bindings.
+The lifetime owner consumes an issued installation publication proof and transfers the same held
+listener after source admissions and operations close. It never releases and reacquires the port.
 
-The engine binds one plan, operation, exact verified backup, authority identity, generation, and
-inventory. Its activation checkpoint captures the intended native snapshots, ordinary settings
-revision and fingerprint, and exact destination configuration snapshot. Recovery reuses that intent
-and its captured instant; it does not select a newer backup or probe a new host config.
-Credential bytes compare privately without secret-derived journal fingerprints.
-The durable completion receipt precedes clearing the transient journal.
+Configuring startup issues only exact-person layout admissions. One SQLite transaction publishes the
+planned active configuration, rewrites retained current browser-session paths, and records any saved
+browser-root/default-output changes through ordinary command, audit, and settings repositories.
+External output choices stay unchanged, while output paths inside the moved tree rebind to the same relative folders. Effective defaults become explicit settings; other history,
+credentials, keys, counters, unresolved writes, and snapshots remain preserved. Publication is checked
+against the verified pre-move backup. A failed or interrupted publication resumes from its exact
+recorded state on the next startup; normal admission waits for completion. Completed layout evidence
+does not compare later mutable person data with the migration snapshot.
 
-Managed source data remains in operation-bound retained locations. Directory-path tombstones or a
-`state.db` tombstone prevent reuse. A fixed process-lock subtree can require a witness shell at the
-former root; that shell is not an active state root. Exact prior witnesses and receipts remain
-bound across later relocations. Unknown entries, unsafe links, unsupported nested witness layouts,
-and divergent evidence refuse. Restore candidate validation in `relocation-restore-candidate.ts`
-checks current receipt-compatible relocation history and destination snapshot identities before
-replacement. Copied older-location backup evidence is not a current recovery candidate.
+There are no relocation commands, HTTP routes, client methods, assistant actions, or Settings plans.
+`same-person-restore-candidate.ts` retains restore identity and manifest checks.
 
 `storage recover-restore` owns interrupted restore settlement under the lifetime listener.
 
@@ -490,7 +489,6 @@ replacement. Copied older-location backup evidence is not a current recovery can
 `GET /api/v1/settings/facts` serves compatibility facts and workflow capabilities.
 `GET /api/v1/settings/editable` serves catalog rows, saved, effective, active, and default ordinary
 values, provenance, host facts, deployment paths, and independent protected-store readback.
-`GET /api/v1/settings/storage-relocation` serves authenticated relocation intent.
 The browser consumes these projections and does not read SQLite or reconstruct settings authority.
 The current-year annual date editor serves only `annualDates.FY<year>.jobEndDate`, selected through
 the injected clock, without an invented default or clear action.
@@ -530,7 +528,7 @@ instead of reading the map directly.
 
 ## Not built yet
 
-- The Settings dashboard connection to these saved settings, credentials, relocation, and readiness authorities is pending in the wiring base.
+- The Settings dashboard connection to these saved settings, credentials, fixed paths, and readiness authorities is pending in the wiring base.
 - ChatGPT OAuth and Responses OCR are wired to the selected dashboard diagnostic and worker provider registry. Actual subscription/model support and workflow cutover still require their live checks and operator sign-off; provider keys are not supported.
 - Profile encryption keys use the OS credential store; encrypted credential records remain independent private local files.
 
@@ -567,7 +565,7 @@ revision and canonical retirement command. Remove-worker retirement requires
 plan-excess retirement requires `retiredAt == proof.checkedAt`. Pending or UNKNOWN commands and
 verification or recovery holds continue to block closure.
 
-Offline profile restore requires the exact workspace-bound `OfflineMaintenanceOperation` issued by the genuine root lifetime. Recovery can issue that operation before admission and passes the same object into the exclusive installation lease. Each explicit command consumes it once and retains it through validation, source IO, and owned closure. Copies, foreign roots, expired operations, and replay refuse before effects. Runtime lock artifacts from an older build produce `RUNTIME_OLD_BUILD_ARTIFACTS` without interpretation or deletion. Restore binds canonical profile SQLite, verified backup physical origin, current control, and the authenticated canonical credential head. Replacement invalidates selected sessions idempotently through the existing restore journal. Its saved prior registry document must match captured logical control, and its saved successor must be exactly one revision and session epoch forward with selection cleared before any replay writes. Recovery acknowledges the exact observed outcome without repeating replacement. Current credentials and machine evidence remain outside the SQLite payload. Whole-machine rollback without an independent retained witness and profile restore after unsupported whole-machine relocation refuse before staging.
+Offline profile restore requires the exact workspace-bound `OfflineMaintenanceOperation` issued by the genuine root lifetime. Recovery can issue that operation before admission and passes the same object into the exclusive installation lease. Each explicit command consumes it once and retains it through validation, source IO, and owned closure. Copies, foreign roots, expired operations, and replay refuse before effects. Runtime lock artifacts from an older build produce `RUNTIME_OLD_BUILD_ARTIFACTS` without interpretation or deletion. Restore binds canonical profile SQLite, verified backup physical origin, current control, and the authenticated canonical credential head. Replacement invalidates selected sessions idempotently through the existing restore journal. Its saved prior registry document must match captured logical control, and its saved successor must be exactly one revision and session epoch forward with selection cleared before any replay writes. Recovery acknowledges the exact observed outcome without repeating replacement. Current credentials and machine evidence remain outside the SQLite payload. Whole-machine rollback without an independent retained witness refuse before staging.
 
 Source snapshot removal, isolated binding/login-copy database close, authenticated source/control descriptors, stopped backup descriptors and actual restore/process-custody close paths are owned closure boundaries. Failed closure raises `AuthoritySourceClosureUnprovedError` from the pure `storage/source-closure.ts` and retains the exact failed resource privately for the failure lifetime. Validation failures remain ordinary when actual database and snapshot cleanup succeeds; an uncertain close never authorizes exclusive-admission release or automatic retry.
 

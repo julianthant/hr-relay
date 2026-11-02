@@ -1,12 +1,12 @@
+import {
+NativePathPickerRequestSchema,NativePathPickerResponseSchema,
+type NativePathPickerRequest,type NativePathPickerResponse
+} from "../../../models/dashboard/native-path-picker.js";
 import { EditableSettingsWireSchema,type EditableSettingsWire } from "../../../models/dashboard/settings-editor.js";
 import { SettingsFactsWireSchema,type SettingsFactsWire } from "../../../models/dashboard/settings.js";
-import { DashboardClientError } from "../errors.js";
-import { parseOrThrow } from "./query-parse.js";
+import { DashboardClientError,httpError,schemaError } from "../errors.js";
 import type { DashboardTransport } from "../transport.js";
-import { StorageRelocationPlanViewSchema, type StorageRelocationPlanView } from "../../../rules/commands/commands.js";
-import { NativePathPickerRequestSchema, NativePathPickerResponseSchema,
-  type NativePathPickerRequest, type NativePathPickerResponse } from "../../../models/dashboard/native-path-picker.js";
-import { httpError, schemaError } from "../errors.js";
+import { parseOrThrow } from "./query-parse.js";
 
 
 export interface SettingsQueries {
@@ -16,7 +16,6 @@ export interface SettingsQueries {
 
   /** The closed server-owned editable leaves with current revision and provenance. */
   editableSettings(): Promise<EditableSettingsWire>;
-  storageRelocationPlans(): Promise<StorageRelocationPlanView>;
   pickSettingsPath(request: NativePathPickerRequest): Promise<NativePathPickerResponse>;
 }
 
@@ -33,13 +32,6 @@ export function createSettingsQueries(transport: DashboardTransport): SettingsQu
     async editableSettings(): Promise<EditableSettingsWire> {
       try { return EditableSettingsWireSchema.parse(await transport.requestJson("/api/v1/settings/editable")); }
       catch { throw new DashboardClientError({ kind: "schema", code: "SETTINGS_READ_UNAVAILABLE", message: "GET /api/v1/settings/editable: settings could not be read or verified" }); }
-    },
-    async storageRelocationPlans(): Promise<StorageRelocationPlanView> {
-      try { return StorageRelocationPlanViewSchema.parse(await transport.requestJson("/api/v1/settings/storage-relocation")); }
-      catch (error) {
-        if (error instanceof DashboardClientError && error.kind === "http") throw error;
-        throw new DashboardClientError({ kind: "schema", code: "STORAGE_RELOCATION_READ_UNAVAILABLE", message: "GET /api/v1/settings/storage-relocation: plan view could not be verified", cause: error });
-      }
     },
     async pickSettingsPath(request: NativePathPickerRequest): Promise<NativePathPickerResponse> {
       const parsedRequest = NativePathPickerRequestSchema.parse(request);

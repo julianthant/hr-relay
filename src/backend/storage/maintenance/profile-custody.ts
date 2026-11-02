@@ -26,7 +26,7 @@ export function retainedBrowserProfiles(root: string, custody: BrowserProfileCus
     if (slot === undefined) throw new Error("profile-inventory-browser-membership-unavailable");
     const verification = custody.verificationProfiles.find(value => value.workerId === slot.workerId);
     const selectedRoots = verification === undefined
-      ? [...new Set(custody.configSnapshots.filter(snapshot => snapshot.fingerprint === browser.configFingerprint).map(snapshot => snapshot.config.paths.browserProfileRoot))]
+      ? custody.configSnapshots.some(snapshot => snapshot.fingerprint === browser.configFingerprint) ? [join(root, "browsers")] : []
       : [join(root, "scratch", "live-smoke", verification.profileRunId, "browsers")];
     const profileRoot = selectedRoots[0];
     if (profileRoot !== undefined && verification === undefined) assertBrowserRoot(root, profileRoot);

@@ -82,16 +82,15 @@ it("recovers the original unknown Settings envelope after the editor unmounts", 
   assert.deepEqual(h.commands, [original, original]); assert.equal(h.controller().save.state, "applied");
 });
 
-for (const family of ["ordinary", "protected", "relocation"] as const) {
+for (const family of ["ordinary", "protected"] as const) {
   it(`recovers ${family} after same-day scope refresh while its reply is pending`, async () => {
     const h = await setup();
     let settle: ((value: unknown) => void) | undefined;
     h.ports.execute = () => new Promise<unknown>(resolve => { settle = resolve; });
-    const control = () => family === "ordinary" ? h.controller() : family === "protected" ? h.controller().protectedEditor : h.controller().relocationEditor;
+    const control = () => family === "ordinary" ? h.controller() : h.controller().protectedEditor;
     await settingsAction(() => {
       if (family === "ordinary") h.controller().update("actor.label", "retained");
       else if (family === "protected") h.controller().protectedEditor.update("ucpathUserId", "retained");
-      else h.controller().relocationEditor.update("artifactRoot", "/tmp/retained-artifacts");
     });
     await settingsAction(() => control().submit());
     assert.equal(control().save.state, "saving"); const original = structuredClone(h.commands[0]);

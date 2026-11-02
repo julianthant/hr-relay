@@ -1,66 +1,65 @@
-import { AssistantModelPreferenceCommandRequestSchema } from "../../../rules/commands/commands.js";
-import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
-import { notificationMatchesCollection, type NotificationRecord, type NotificationCollectionOperation } from "../../../models/notifications/notifications.js";
-import { assistantKnowledgeArtifact, ASSISTANT_INPUT_PROJECTION_VERSION } from "../../assistant/context.js";
-import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { notificationMatchesCollection,type NotificationCollectionOperation,type NotificationRecord } from "../../../models/notifications/notifications.js";
 import { AssistantActionManifestSchema } from "../../../models/profiles/assistant-permissions.js";
-import { admitWorkerLifecycle, admitWorkerReset } from "../../storage/sqlite/worker-control.js";
-import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
-import { admitProtectedInput, protectedSubjectDisplay } from "../start/protected-input.js";
-import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
-import { requireWorkerPoolRoster, admitWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
-import { WorkerRetirementProofSchema, type WorkerPoolRosterAdmission } from "../../../models/run/worker-slot.js";
-import { PreflightAdmissionRefusal, type PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
-import { workflowPreflightScope } from "../start/preflight-scope.js";
 import { startSupersedeTargets } from "../../../models/run/start-supersede.js";
-import { WorkerControlRefusal, workerControlScope, WorkerEffectAcknowledgementSchema, type WorkerControlRecord, type WorkerEffectAcknowledgement } from "../../../models/run/worker-control.js";
-import { CommandRefusal } from "./command-refusal.js";
-import type { StorageRelocationPlanReader } from "../../storage/maintenance/storage-relocation-plans.js";
-import type { CommandApplication } from "./command-application.js";
-export type { CommandApplication } from "./command-application.js";
-import { executeFailureResolution, failureResolutionCapability } from "../lifecycle/failure-resolution.js";
-import { selectRunRuntime, selectNewRunIdentity, reviewedRunSettingsCurrent } from "../settings/run-settings.js";
+import { WorkerControlRefusal,workerControlScope,WorkerEffectAcknowledgementSchema,type WorkerControlRecord,type WorkerEffectAcknowledgement } from "../../../models/run/worker-control.js";
+import { WorkerRetirementProofSchema,type WorkerPoolRosterAdmission } from "../../../models/run/worker-slot.js";
+import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
+import { AssistantModelPreferenceCommandRequestSchema } from "../../../rules/commands/commands.js";
+import { PreflightAdmissionRefusal,type PreflightAdmission } from "../../../rules/preflight/preflight-admission.js";
 import { localDatePart } from "../../../rules/time/clock.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { ASSISTANT_INPUT_PROJECTION_VERSION,assistantKnowledgeArtifact } from "../../assistant/context.js";
+import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
+import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
+import { admitWorkerLifecycle,admitWorkerReset } from "../../storage/sqlite/worker-control.js";
+import { admitWorkerPoolRoster,requireWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
+import { executeFailureResolution,failureResolutionCapability } from "../lifecycle/failure-resolution.js";
+import { reviewedRunSettingsCurrent,selectNewRunIdentity,selectRunRuntime } from "../settings/run-settings.js";
+import { workflowPreflightScope } from "../start/preflight-scope.js";
+import { admitProtectedInput,protectedSubjectDisplay } from "../start/protected-input.js";
+import type { CommandApplication } from "./command-application.js";
+import { CommandRefusal } from "./command-refusal.js";
+export type { CommandApplication } from "./command-application.js";
 
-import { lifecycleCommandId, type RunMutationOutcome, type RunRecordService } from "../lifecycle/run-record-service.js";
-import type { RunExistence, RunRecordRefusal } from "../../../models/config/authority.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { descriptorRuntimeNodes, workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { activeRunsForItem, fanOutQueuedRuns, requireApplied, runTarget, type TargetReference, type VersionChange } from "../lifecycle/run-fan-out.js";
-import { buildRerunPlan, RerunRefusedError } from "../start/rerun.js";
-import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
-import type { Clock } from "../../../rules/time/clock.js";
-import { LiveWorkerResetRequestSchema, commandAssistantAvailability, COMMAND_FAMILY_REGISTRY, CommandIdentityConflictError, CommandRequestSchema, CommandResultSchema, StorageRelocationCommandRequestSchema, deriveSettingsCommandFingerprint, markSettingsCommand, type CommandRequest, type CommandResult } from "../../../rules/commands/commands.js";
-import { deriveItemId, deriveStableUuid, type IdFactory } from "../../../rules/identity/identifiers.js";
-import { deriveGateResultCheckpointFingerprint as deriveGateFingerprint } from "../../../models/workflow/gates.js";
-import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
+import type { RunExistence,RunRecordRefusal } from "../../../models/config/authority.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsReadbackSchema,type ProtectedSettingsReadback } from "../../../models/config/protected-settings.js";
 import { EditableSettingsOverrideSchema } from "../../../models/config/schema.js";
-import { SettingsApplyRefusalSchema, type SettingsFileRecord } from "../../../models/config/settings.js";
-import { readSettings } from "../../runtime/settings/settings-runtime.js";
-import { IntakeParseSchema, resolveInspectSelection, type IntakeLayout } from "../../../models/intake/parse.js";
-import type { IntakePlanManifest } from "../../../models/intake/manifest.js";
-import { intakeReviewBinding, resolveIntakeComparison } from "../../../models/intake/review.js";
-import { deriveIntakeEnqueuePlan } from "../../../models/intake/enqueue.js";
-import { confirmBinding } from "../../../models/intake/mapping.js";
-import type { IntakeProjection } from "../../../models/intake/projection.js";
-import { validateIntakeRows } from "../../../models/intake/validate.js";
-import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { isTerminalRunState, RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
-import { isLiveWorker } from "../../../models/run/worker.js";
-import { workerPoolVersion } from "../../../models/run/worker-pool.js";
-import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { checkpointLookupKey, resolveFreshnessBound, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
-import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
-import { findGateDecision } from "../../../models/trust/gate-decisions.js";
-import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
+import { SettingsApplyRefusalSchema,type SettingsFileRecord } from "../../../models/config/settings.js";
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
+import { deriveIntakeEnqueuePlan } from "../../../models/intake/enqueue.js";
+import type { IntakePlanManifest } from "../../../models/intake/manifest.js";
+import { confirmBinding } from "../../../models/intake/mapping.js";
+import { IntakeParseSchema,resolveInspectSelection,type IntakeLayout } from "../../../models/intake/parse.js";
+import type { IntakeProjection } from "../../../models/intake/projection.js";
+import { intakeReviewBinding,resolveIntakeComparison } from "../../../models/intake/review.js";
+import { validateIntakeRows } from "../../../models/intake/validate.js";
+import { isTerminalRunState,RunRecordSchema,type RunRecord } from "../../../models/run/record.js";
+import { workerPoolVersion } from "../../../models/run/worker-pool.js";
+import { isLiveWorker } from "../../../models/run/worker.js";
+import { findGateDecision } from "../../../models/trust/gate-decisions.js";
+import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { checkpointLookupKey,resolveFreshnessBound,type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import { deriveGateResultCheckpointFingerprint as deriveGateFingerprint } from "../../../models/workflow/gates.js";
+import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
+import { COMMAND_FAMILY_REGISTRY,commandAssistantAvailability,CommandIdentityConflictError,CommandRequestSchema,CommandResultSchema,deriveSettingsCommandFingerprint,LiveWorkerResetRequestSchema,markSettingsCommand,type CommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
+import { deriveItemId,deriveStableUuid,type IdFactory } from "../../../rules/identity/identifiers.js";
+import { FingerprintSchema,IsoInstantSchema,ItemIdSchema,WorkerIdSchema } from "../../../rules/identity/ids.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { canonicalJsonStringify,JsonValueSchema,type JsonValue } from "../../../rules/validation/canonical-json.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
+import { WriteIntentRecordSchema,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
+import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
+import { BUILD_MANIFEST,resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
+import { descriptorRuntimeNodes,workflowPlanning,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
-import { WriteIntentRecordSchema, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
+import { readSettings } from "../../runtime/settings/settings-runtime.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../start/plan.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsReadbackSchema, type ProtectedSettingsReadback } from "../../../models/config/protected-settings.js";
+import { activeRunsForItem,fanOutQueuedRuns,requireApplied,runTarget,type TargetReference,type VersionChange } from "../lifecycle/run-fan-out.js";
+import { lifecycleCommandId,type RunMutationOutcome,type RunRecordService } from "../lifecycle/run-record-service.js";
+import { dryRunRefusalMessage,resolveInstances,supportsDryRun } from "../start/plan.js";
+import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
 
 /* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
 
@@ -105,14 +104,12 @@ const PHASE1_ACTIVE = {
     "enqueue-intake-manifest",
   ],
   settings: ["apply-settings", "apply-protected-settings"],
-  "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
 
 } as const;
 
 const PHASE1_DEFERRED = {
   intake: [],
   settings: [],
-  "storage-relocation": [],
   run: [],
   notification: [],
 } as const;
@@ -291,7 +288,6 @@ export interface CommandKernelDependencies {
   readonly assistantSurface?: () => readonly Readonly<{ method: string; path: string }>[];
   readonly workflowSources?: Readonly<Record<string, "mock" | "served">>;
   readonly assistantRevalidate?: (command: CommandRequest) => void;
-  readonly storageRelocationPlans?: StorageRelocationPlanReader;
   readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution;capability:typeof failureResolutionCapability}>;
 
 
@@ -2496,48 +2492,6 @@ function replay(
   });
 }
 
-/** Plan intent is journaled here; runtime activation is a separate offline operation. */
-export function executeStorageRelocationCommand(
-  dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "storageRelocationPlans">,
-  input: unknown,
-): CommandResult {
-  const plans = dependencies.storageRelocationPlans;
-  if (plans === undefined) throw new Error("storage-relocation-plan: producer unavailable");
-  const request = StorageRelocationCommandRequestSchema.parse(input);
-  plans.validate(request);
-  return dependencies.authority.withAuthorityTransaction((repositories) => {
-    const current = plans.project(repositories);
-    repositories.commands.assertIdentity(request);
-    const existing = repositories.commands.get(request.commandId);
-    if (existing !== undefined) {
-      if (canonicalJsonStringify(existing) !== canonicalJsonStringify(request)) throw new CommandIdentityConflictError();
-      const audit = repositories.commandAudits.findByCommand(request.commandId);
-      if (audit === undefined || audit.result.state !== "applied") throw new Error("storage-relocation-plan: replay has no settled audit");
-      return audit.result;
-    }
-    if (repositories.commands.listStorageRelocationCommands().some((previous) => previous.payload.writeId === request.payload.writeId)) {
-      throw new Error("storage-relocation-plan: write id reused");
-    }
-    if (request.target.expectedRevision !== current.revision) return CommandResultSchema.parse({
-      state: "conflict", commandId: request.commandId, currentVersion: current.revision,
-      message: "storage relocation plan revision changed; reread before saving",
-    });
-    if (request.type === "cancel-storage-relocation"
-      && (current.pending === null || current.pending.commandId !== request.payload.cancelledPlanCommandId
-        || current.pending.desiredDigest !== request.payload.cancelledPlanDigest)) {
-      throw new Error("storage-relocation-plan: cancel does not match current plan");
-    }
-    const nextRevision = current.revision + 1;
-    const target = { family: "storage-relocation", revision: nextRevision };
-    const result = CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [target] });
-    const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
-    repositories.commands.insert(request);
-    repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request, result, completedAt: now,
-      versionChanges: [{ target, before: current.revision, after: nextRevision }], affectedDependencyIds: [] });
-    return result;
-  });
-}
-
 /** The same settings command path is used by the BFF and stopped migration. */
 export function executeSettingsCommand(
   dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "settings" | "authorityProfileId">,
@@ -2621,7 +2575,6 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
     if (family === "assistant-model-preference") return false;
     if (DEFERRED_ARM_KEYS.has(`${family}/${action}`)) return false;
     if (family === "settings") return dependencies.settings !== undefined;
-    if (family === "storage-relocation") return dependencies.storageRelocationPlans !== undefined;
     if (family === "failure-resolution") return dependencies.failureResolution?.capability().state === "available";
     if (family === "start" || family === "intake") return dependencies.workflowSources !== undefined
       && Object.entries(dependencies.workflowSources).some(([id, source]) => source === "served" && dependencies.descriptors.resolve(id) !== undefined
@@ -2658,13 +2611,6 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       });
       if (parentCommandId !== undefined && request.family !== "run") throw new Error("command-group children must be run commands");
       if (request.family === "settings") return executeSettingsCommand(dependencies, request);
-      if (request.family === "storage-relocation") {
-        if (dependencies.storageRelocationPlans === undefined) return CommandResultSchema.parse({
-          state: "rejected", commandId: request.commandId, code: "capability-unavailable",
-          message: "storage relocation plan reader is unavailable",
-        });
-        return executeStorageRelocationCommand(dependencies, request);
-      }
       if (DEFERRED_ARM_KEYS.has(`${request.family}/${request.type}`)) {
         // Computed purely: no journal row, no audit row, no generation advance.
         return CommandResultSchema.parse({

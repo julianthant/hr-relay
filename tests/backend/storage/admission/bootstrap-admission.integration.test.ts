@@ -1,36 +1,34 @@
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
-import { testProcessImport } from "../../../support/compiled-process.js";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
-import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
-import { withOfflineMaintenance, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
-import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { once } from "node:events";
-import { z } from "zod";
-import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
-import nativeFirstBootFs from "node:fs";
-import { syncBuiltinESMExports } from "node:module";
-import { retainAuthoritySourceClosure as retainFirstBootSourceClosure } from "../../../../src/backend/storage/source-closure.js";
-import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
-import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { default as assert } from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync as readdirSync_m1, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { spawn,type ChildProcess } from "node:child_process";
+import { once } from "node:events";
+import nativeFirstBootFs,{ copyFileSync,existsSync,mkdtempSync,readFileSync,readdirSync as readdirSync_m1,realpathSync,rmSync,writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
-import { it, vi } from "vitest";
+import { it,vi } from "vitest";
+import { z } from "zod";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
-import { composeStorageCommand, composeProfileRuntime, runOfflineAuthorityRestoreRecovery } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime,composeStorageCommand,runOfflineAuthorityRestoreRecovery } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { backupStoppedAuthority } from "../../../../src/backend/storage/maintenance/upgrade.js";
+import { retainAuthoritySourceClosure as retainFirstBootSourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
-import { runtimeFixture } from "../../../support/fixtures/preflight/runtime-fixture.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
+import { testProcessImport } from "../../../support/compiled-process.js";
+import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
+import { runtimeFixture } from "../../../support/fixtures/preflight/runtime-fixture.js";
+import { boundProfileCredentials,createBoundProfileFixture,withOfflineMaintenance } from "../../../support/helpers/admission-fixture.js";
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { scaledMs } from "../../../support/time-scale.js";
 
 {
@@ -54,9 +52,7 @@ it("serves only the genuine token-owned profile and refuses its later missing ca
       isolation: rebuildRuntimeIsolation, repoRoot: workspace, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0,
       preflightRunnerFactory: healthyRuntimePreflightRunners });
     const response = await fetch(`http://127.0.0.1:${String(dashboard.port)}/api/v1/settings/storage-relocation`);
-    assert.equal(response.status, 409);
-    assert.deepEqual(await response.json(), { state: "error", code: "PROFILE_STORAGE_RELOCATION_UNSUPPORTED",
-      message: ERROR_CATALOG.PROFILE_STORAGE_RELOCATION_UNSUPPORTED.text, retryable: false });
+    assert.equal(response.status, 404);
     await dashboard.stop(); dashboard = undefined; dashboardStopped = true;
     const credentialPath = join(profile.stateRoot, "credentials", "protected.json"), credentialBytes = readFileSync(credentialPath);
     rmSync(authorityPath);

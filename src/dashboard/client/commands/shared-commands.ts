@@ -1,16 +1,16 @@
+import { createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
+import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import {
 BulkRunCommandRequestSchema,
 BulkRunCommandResponseSchema,
 CommandRequestSchema,
 CommandResultSchema,
 commandNoChangeResultMatches,
-type BulkRunCommandResponse,
 type BulkRunCommandRequest,
+type BulkRunCommandResponse,
 type CommandRequest,
 type CommandResult
 } from "../../../rules/commands/commands.js";
-import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../models/failures/error-catalog.js";
 import { DashboardClientError } from "../errors.js";
 import { parseOrThrow } from "../queries/query-parse.js";
 import type { DashboardTransport } from "../transport.js";
@@ -49,7 +49,6 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
           || (target.family === "worker-pool" && target.workflowId === command.target.workflowId);
         return target.family === "worker-browser" && target.workerId === (command.type === "spawn-worker" ? command.payload.workerId : command.target.workerId);
       case "settings": return target.family === (command.type === "apply-settings" ? "settings" : "protected-settings");
-      case "storage-relocation": return target.family === "storage-relocation";
       case "notification": return target.family === "notification" && ("members" in command.target ? command.target.members.some(member => member.notificationId === target.notificationId) : target.notificationId === command.target.notificationId);
       case "workflow-batch": return target.family === "workflow-batch" && target.batchId === command.target.batchId;
       case "failure-resolution": return target.family === "failure-resolution" && target.runId === command.target.runId && target.failureId === command.target.failureId;

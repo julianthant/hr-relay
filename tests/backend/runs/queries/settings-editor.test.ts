@@ -50,7 +50,8 @@ describe("complete Settings catalog projection", () => {
     const document = fixtureSettingsDocument({ annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026", kronosDefaultEndDate: "6/30/2027" } } }, 2);
     assert.equal(document.catalog.length, 64);
     const leaves = document.sections.flatMap(section => section.leaves);
-    assert.equal(leaves.length, 52);
+    assert.equal(leaves.length, 51);
+    assert.equal(leaves.some(leaf => leaf.path === "paths.browserProfileRoot"), false);
     assert.equal(leaves.some(leaf => leaf.path === "paths.duoCredential"), false);
     assert.equal(document.currentFiscalYear, 2027);
     const annual = document.sections.flatMap(section => section.leaves).filter(leaf => leaf.path.startsWith("annualDates."));

@@ -349,8 +349,7 @@ unknown and cannot be automatically retried. Changing the selection invalidates 
 Settings is a full-height takeover with its own navigation rail, search, guarded Back to dashboard,
 and body content. The rail remains available while served fields load/fail. Search targets the exact
 field/disclosure, supports keyboard traversal, and announces missing targets. Section scroll positions
-are retained within the mounted page. Unsaved drafts and uncertain relocation attempts participate
-in exit and unload guards.
+are retained within the mounted page. Unsaved and uncertain settings drafts participate in exit and unload guards.
 
 | Group | Section IDs and displayed pages |
 | --- | --- |
@@ -404,8 +403,7 @@ after toast expiry. Blur never retries a failed/uncertain attempt. Text fields k
 while unsaved date/folder choices revert within their field.
 
 Paths retains native pickers for ordinary document, download, and report folders. Runtime state
-and evidence roots are read-only; no relocation action is offered. Recorded pending plans are
-explicitly unapplied. Performance and Routes retain their existing metadata/authority, and missing
+and evidence roots are read-only; no location-changing action is offered. Performance and Routes retain their existing metadata/authority, and missing
 served values remain unavailable.
 
 ### Preflight and storage
@@ -644,12 +642,10 @@ outcomes retain their confirmation row.
 
 ### Fixed app-data and maintenance presentation
 
-Paths shows runtime state and evidence roots read-only; there is no folder relocation picker,
-plan action, or shell-command copy control. Copy buttons copy the displayed paths. Existing pending plans are explicitly unapplied.
-Folders groups the existing document, download, and report pickers. Backup and restore sits below App data. Backup and Restore have unavailable, pending,
-verified-backup, blocked, and confirmation presentations. Restore never implies credentials roll
-back or unresolved writes disappear. The `fixed-backup` fixture has no file effects. Maintenance
-authority, stopped restore, and verified backup selection are wired separately.
+Paths shows runtime state and evidence roots read-only. Copy buttons copy the displayed paths.
+Folders groups the document, download, and report pickers. Backup and Restore controls and the
+backup picker are absent. The `fixed-backup` fixture demonstrates fixed paths, folder read failures,
+clipboard failures, and ordinary folder controls without file effects.
 
 ### Two-method Duo sign-up presentation
 

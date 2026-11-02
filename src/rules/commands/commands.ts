@@ -1,20 +1,20 @@
+import { z } from "zod";
 import { AssistantModelPreferenceSchema } from "../../models/dashboard/assistant.js";
 import { NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
 import { StoredAssistantPermissionModeSchema } from "../../models/profiles/assistant-permission-mode.js";
 import { RunDisplayNameSchema } from "../../models/run/display-name.js";
-export { RunDisplayNameSchema } from "../../models/run/display-name.js";
 import { WorkerSlotRecordSchema } from "../../models/run/worker-slot.js";
-import { WriteIntentRecordSchema } from "../write-safety/write-safety.js";
 import { WorkerControlBasisSchema } from "../../models/run/worker.js";
-import { FailureResolutionTargetSchema, FailureResolutionActionSchema } from "../../models/trust/failure-resolution.js";
-import { z } from "zod";
+import { FailureResolutionActionSchema,FailureResolutionTargetSchema } from "../../models/trust/failure-resolution.js";
+import { WriteIntentRecordSchema } from "../write-safety/write-safety.js";
+export { RunDisplayNameSchema } from "../../models/run/display-name.js";
 
-import { JsonValueSchema, canonicalJsonStringify } from "../validation/canonical-json.js";
-import { SettingsLeafOperationSchema, SettingsPatchSchema } from "../../models/config/settings.js";
-import { MarkedProtectedSettingsPatchSchema, ProtectedSettingsPatchSchema, ProtectedSettingsReadbackSchema, markProtectedSettingsPatch } from "../../models/config/protected-settings.js";
-import { deepFreeze } from "../validation/immutability.js";
-import { ActorIdSchema, BrowserSessionIdSchema, CommandAuditIdSchema, CommandIdSchema, DependencyIdSchema, FingerprintSchema, GateIdSchema, IntakeSessionIdSchema, IntakeManifestIdSchema, IntakeTargetFieldIdSchema, IsoInstantSchema, ItemIdSchema, NodeIdSchema, TraceIdSchema, LOCAL_OPERATOR_ACTOR_ID, NotificationIdSchema, NonNegativeIntSchema, PositiveIntSchema, RunIdSchema, RunSessionIdSchema, SourceColumnIdSchema, SourceSurfaceIdSchema, StartPlanIdSchema, TaskIdSchema, WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, WriteAttemptIdSchema } from "../identity/ids.js";
+import { MarkedProtectedSettingsPatchSchema,ProtectedSettingsPatchSchema,ProtectedSettingsReadbackSchema,markProtectedSettingsPatch } from "../../models/config/protected-settings.js";
+import { SettingsLeafOperationSchema,SettingsPatchSchema } from "../../models/config/settings.js";
 import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
+import { ActorIdSchema,BrowserSessionIdSchema,CommandAuditIdSchema,CommandIdSchema,DependencyIdSchema,FingerprintSchema,GateIdSchema,IntakeManifestIdSchema,IntakeSessionIdSchema,IntakeTargetFieldIdSchema,IsoInstantSchema,ItemIdSchema,LOCAL_OPERATOR_ACTOR_ID,NodeIdSchema,NonNegativeIntSchema,NotificationIdSchema,PositiveIntSchema,RunIdSchema,RunSessionIdSchema,SourceColumnIdSchema,SourceSurfaceIdSchema,StartPlanIdSchema,TaskIdSchema,TraceIdSchema,WorkerIdSchema,WorkflowIdSchema,WriteAttemptIdSchema,WriteIntentIdSchema } from "../identity/ids.js";
+import { JsonValueSchema,canonicalJsonStringify } from "../validation/canonical-json.js";
+import { deepFreeze } from "../validation/immutability.js";
 import { sha256Hex } from "../validation/sha256.js";
 
 /** A durable command identity cannot be reused by another command or authority. */
@@ -33,7 +33,6 @@ export const CommandFamilySchema = z.enum([
   "intake",
   "worker-browser",
   "settings",
-  "storage-relocation",
   "run",
   "gate",
   "notification",
@@ -62,8 +61,6 @@ export const CommandActionSchema = z.enum([
   "reopen-browser",
   "apply-settings",
   "apply-protected-settings",
-  "plan-storage-relocation",
-  "cancel-storage-relocation",
   "retry",
   "restart",
   "cancel",
@@ -222,78 +219,6 @@ export const SettingsCommandRequestSchema = z.strictObject({
   }),
 });
 
-export const StorageRelocationPairSchema = z.strictObject({
-  stateRoot: z.string().min(1),
-  artifactRoot: z.string().min(1),
-});
-const StorageRelocationTargetSchema = z.strictObject({
-  installationId: z.uuid(),
-  sourceGeneration: NonNegativeIntSchema,
-  sourcePair: StorageRelocationPairSchema,
-  expectedRevision: NonNegativeIntSchema,
-});
-const StorageRelocationPlanFields = {
-  ...CommandEnvelopeFields,
-  family: z.literal("storage-relocation"),
-  type: z.literal("plan-storage-relocation"),
-  target: StorageRelocationTargetSchema,
-  payload: z.strictObject({
-    writeId: z.uuid(),
-    desiredPair: StorageRelocationPairSchema,
-    desiredDigest: FingerprintSchema,
-    requestFingerprint: FingerprintSchema,
-  }),
-};
-const StorageRelocationCancelFields = {
-  ...CommandEnvelopeFields,
-  family: z.literal("storage-relocation"),
-  type: z.literal("cancel-storage-relocation"),
-  target: StorageRelocationTargetSchema,
-  payload: z.strictObject({
-    writeId: z.uuid(),
-    cancelledPlanCommandId: CommandIdSchema,
-    cancelledPlanDigest: FingerprintSchema,
-    requestFingerprint: FingerprintSchema,
-  }),
-};
-export const StorageRelocationCommandRequestSchema = z.discriminatedUnion("type", [
-  z.strictObject(StorageRelocationPlanFields),
-  z.strictObject(StorageRelocationCancelFields),
-]);
-export type StorageRelocationCommandRequest = z.infer<typeof StorageRelocationCommandRequestSchema>;
-export const StorageRelocationPlanViewSchema = z.strictObject({
-  revision: NonNegativeIntSchema,
-  installationId: z.uuid(),
-  sourceGeneration: NonNegativeIntSchema,
-  sourcePair: StorageRelocationPairSchema,
-  pending: z.strictObject({
-    commandId: CommandIdSchema,
-    writeId: z.uuid(),
-    desiredPair: StorageRelocationPairSchema,
-    desiredDigest: FingerprintSchema,
-    requestFingerprint: FingerprintSchema,
-  }).nullable(),
-});
-export type StorageRelocationPlanView = z.infer<typeof StorageRelocationPlanViewSchema>;
-
-export function storageRelocationDesiredDigest(
-  target: StorageRelocationCommandRequest["target"],
-  desiredPair: z.infer<typeof StorageRelocationPairSchema>,
-): string {
-  return sha256Hex(`hrauto:storage-relocation-desired:v1\0${canonicalJsonStringify({
-    installationId: target.installationId,
-    sourceGeneration: target.sourceGeneration,
-    sourcePair: target.sourcePair,
-    desiredPair,
-  })}`);
-}
-
-export function storageRelocationRequestFingerprint(request: StorageRelocationCommandRequest): string {
-  const { requestFingerprint: _fingerprint, ...payload } = request.payload;
-  const { requestedAt: _requestedAt, requestedBy: _requestedBy, source: _source, ...intent } = request;
-  return sha256Hex(`hrauto:storage-relocation-command:v1\0${canonicalJsonStringify({ ...intent, payload })}`);
-}
-
 export const ProtectedSettingsCommandRequestSchema = z.strictObject({
   ...CommandEnvelopeFields,
   family: z.literal("settings"),
@@ -396,7 +321,6 @@ export const CommandRequestSchema = z.union([
   IntakeCommandRequestSchema,
   WorkerBrowserCommandRequestSchema,
   SettingsCommandRequestSchema,
-  StorageRelocationCommandRequestSchema,
   ProtectedSettingsCommandRequestSchema,
   MarkedProtectedSettingsCommandRequestSchema,
   RunCommandRequestSchema,
@@ -419,7 +343,6 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   /** The per-workflow pool row `plan-worker-count` advanced. */
   z.strictObject({ family: z.literal("worker-pool"), workflowId: WorkflowIdSchema }),
   z.strictObject({ family: z.literal("settings"), revision: PositiveIntSchema }),
-  z.strictObject({ family: z.literal("storage-relocation"), revision: PositiveIntSchema }),
   z.strictObject({ family: z.literal("protected-settings"), revision: PositiveIntSchema }),
   z.strictObject({ family: z.literal("run"), runId: RunIdSchema }),
   z.strictObject({ family: z.literal("gate"), runId: RunIdSchema, gateId: GateIdSchema }),
@@ -814,8 +737,6 @@ export const COMMAND_EFFECT_BY_ACTION = {
   "reopen-browser": "local-write",
   "apply-settings": "local-write",
   "apply-protected-settings": "destructive",
-  "plan-storage-relocation": "local-write",
-  "cancel-storage-relocation": "local-write",
   retry: "external-submit",
   restart: "external-submit",
   cancel: "destructive",
@@ -855,8 +776,6 @@ export const COMMAND_ASSISTANT_METADATA = {
   "reopen-browser": "Reopen an owned browser",
   "apply-settings": "Save ordinary settings",
   "apply-protected-settings": "Save protected settings through operator entry",
-  "plan-storage-relocation": "Plan storage relocation",
-  "cancel-storage-relocation": "Cancel storage relocation",
   retry: "Resume an eligible run",
   restart: "Restart an eligible run",
   cancel: "Cancel an eligible run",
@@ -894,7 +813,6 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"],
   settings: ["apply-settings", "apply-protected-settings"],
-  "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
   run: ["retry", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"],
@@ -936,7 +854,6 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"] },
   { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
-  { family: "storage-relocation", actions: ["plan-storage-relocation", "cancel-storage-relocation"] },
   { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"] },

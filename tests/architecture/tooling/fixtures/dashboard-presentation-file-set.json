@@ -74,7 +74,7 @@
   "src/dashboard/surfaces/settings/general/chatgpt-account.tsx",
   "src/dashboard/surfaces/settings/general/hub-preferences.tsx",
   "src/dashboard/surfaces/settings/general/settings-path-picker.tsx",
-  "src/dashboard/surfaces/settings/general/settings-relocation.tsx",
+  "src/dashboard/surfaces/settings/general/settings-storage.tsx",
   "src/dashboard/surfaces/settings/general/ui-settings-records-general-paths.tsx",
   "src/dashboard/surfaces/settings/general/ui-settings-records-performance.tsx",
   "src/dashboard/surfaces/settings/hub-settings.css",

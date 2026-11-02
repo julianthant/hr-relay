@@ -1,7 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { createHash,randomUUID } from "node:crypto";
-import { closeSync,constants,existsSync,fsyncSync,lstatSync,openSync,statSync,unlinkSync } from "node:fs";
-import { basename,dirname,join } from "node:path";
+import { existsSync,lstatSync,statSync } from "node:fs";
+import { basename,dirname,join,relative,sep } from "node:path";
 import { DatabaseSync,backup as sqliteBackup } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
@@ -37,32 +37,20 @@ import { WorkerPoolRecordSchema,workerPoolVersion,type WorkerPoolRecord } from "
 import { WorkerSlotRecordSchema,workerPoolMember,type WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import { CanonicalCrashRecoveryRequestSchema,LIVE_WORKER_STATES,RunClaimTokenSchema,WorkerControlBasisSchema,WorkerLeaseRecordSchema,isLiveWorker,type WorkerLeaseRecord } from "../../../models/run/worker.js";
 import { DiagnosticAttachmentSchema,DiagnosticBundleSchema,type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
-import { DryRunScenarioResultSchema,type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
-import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
-import { RunEvidenceReceiptSchema,type RunEvidenceReceipt } from "../../../models/trust/evidence.js";
-import { FailureRecordSchema,type FailureRecord } from "../../../models/trust/failure.js";
-import { RunCheckpointRecordSchema,checkpointLookupKey,checkpointRecordKey,type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
-import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
 import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { deriveBulkChildCommand,deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
-import { AuthorityCommandAuditRecordSchema,AuthorityCommandRecordSchema,BulkParentCommandRecordSchema,BulkRunCommandAcceptanceRecordSchema,CommandAuditRecordSchema,CommandIdentityConflictError,CommandRequestSchema,RunLifecycleCommandAuditRecordSchema,RunLifecycleCommandRecordSchema,StorageRelocationCommandRequestSchema,StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
+import { AuthorityCommandAuditRecordSchema,AuthorityCommandRecordSchema,BulkParentCommandRecordSchema,BulkRunCommandAcceptanceRecordSchema,CommandAuditRecordSchema,CommandIdentityConflictError,CommandRequestSchema,RunLifecycleCommandAuditRecordSchema,RunLifecycleCommandRecordSchema,StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/identifiers.js";
-import { ActorIdSchema,ArtifactIdSchema,BrowserSystemIdSchema,CommandAuditIdSchema,CommandIdSchema,DiagnosticBundleIdSchema,FailureFingerprintSchema,FingerprintSchema,IsoInstantSchema,ItemIdSchema,LOCAL_OPERATOR_ACTOR_ID,RunIdSchema,RunSessionIdSchema,TraceIdSchema,WorkerIdSchema,WorkflowIdSchema,WriteIntentIdSchema } from "../../../rules/identity/ids.js";
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
-import { DuoCeremonyLeaseAcquireRequestSchema,DuoCeremonyLeaseRecordSchema,DuoCeremonyLeaseReleaseOutcomeSchema,DuoCeremonyLeaseTakeoverSchema,isDuoCeremonyLeaseLive,type DuoCeremonyLeaseAcquireRequest,type DuoCeremonyLeaseRecord,type DuoCeremonyLeaseReleaseOutcome } from "../../../rules/sessions/duo-ceremony-lease.js";
-import { capturedInstantClock,localDatePart,systemClock,type Clock } from "../../../rules/time/clock.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { capturedInstantClock } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { DelegationManifestSchema,DependencyRecordSchema,delegationJoinDisposition,type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
 import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-provenance.js";
 import { authenticateAuditedParkedWriteResolution,authenticateParkedWriteRecheck,authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
-import { IdempotencyKeySchema,WriteAttemptRecordSchema,WriteIntentRecordSchema,type WriteAttemptRecord,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
-import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeaseToken,type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
-import { assertWorkflowRunResultAuthorization,descriptorRuntimeNodes,workflowProjections,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { type RuntimeAdmission } from "../admission/admission.js";
-import { type InstallationLease,type VerifiedRelocationActivationIntent } from "../admission/installation.js";
+import { type InstallationLease } from "../admission/installation.js";
 import { RuntimeLifetimeLock,offlineMaintenanceWorkspace,type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { inspectArtifactDeletionFile,pendingDiagnosticArtifacts,reclaimDiagnosticStages,removeArtifactDeletionFile } from "../artifacts/content-addressed-artifact-writer.js";
@@ -70,43 +58,59 @@ import { clearOperationProofSlots,outermostOperationProof,revalidateOperationPro
 import { assertCredentialStoreOwner,stoppedLogoutOwnsCredentialCommand } from "../configuration/credential-store.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
-import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-custody.js";
+import { fixedLayoutOutputPaths,fixedLayoutSettingsUpdate,type FixedLayoutActivation } from "../maintenance/fixed-layout.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { privatePathRejects } from "../private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
-import type { VerifiedBackup } from "./backup-service.js";
 import { NativeCommandAuditSchema,commandFromRow,insertNativeCommand,settleNativeCommand } from "./command-record-row.js";
 import { authoritySourceDatabaseIdentity,type AuthorityBackupExpectedSource } from "./database-identity.js";
-import { assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationReadiness,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
-import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { deletedRunFromRow } from "./deleted-run-row.js";
 import { extractedArtifactFromRow } from "./extracted-artifact-row.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
 import { createGeneratedArtifactRepository,generatedArtifactFromRow } from "./generated-artifacts.js";
 import { createImportedArtifactRepositories,importedArtifactFromRow } from "./imported-artifacts.js";
-import { AUTHORITY_APPLICATION_ID,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
 import { isNativeOrdinaryTable,nativeOrdinaryRecordFromRow,type NativeOrdinaryTable } from "./native-record-row.js";
 import { containsDeletionArtifactReference,executeNativeRunDeletion,prepareNativeRunDeletion } from "./native-run-deletion.js";
 import { createNotificationMetadataRepositories,validateNotificationMetadata } from "./notification-publications.js";
 import { createReadonlyAuthoritySnapshot,withAuthorityDatabaseReadOnly,withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
-import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { runRecordColumns,runRecordFromRow,transitionRunRecord,updateRunRecord } from "./run-record-row.js";
 import { createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { CanonicalClaimNextRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerControlRequestSchema,WorkerLifecycleRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,WorkerStandingRecoveryRequestSchema,WorkerStartOutcomeSchema,WorkerStartRequestSchema,WorkerUpdateOutcomeSchema,WorkerVerificationAdmissionRequestSchema,WorkerVerificationRetirementRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type WorkerStartOutcome,type WorkerUpdateOutcome } from "./run-store-contracts.js";
 import { createRunSummaries } from "./run-summaries.js";
-import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings } from "./settings-storage.js";
-import { DiagnosticAttachmentStorageRecordSchema,type ArtifactOutboxStorageRecord,type ArtifactSinkHeadRecord,type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
 import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } from "./timeline-repository.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { selectTransactions } from "./transaction-selection.js";
 import { createWorkbookLibraryRepository,validateWorkbookLibrary } from "./workbook-library-repository.js";
 import { assertWorkerResetParkedWrite,authenticateWorkerControlClosure,authenticateWorkerSupervisorEffect,consumeWorkerControlClosure,consumeWorkerSupervisorEffect,createWorkerControlRepository,readWorkerControl,validateWorkerControls,workerBrowserFromRow,workerControlFromRow,type WorkerControlClosure,type WorkerControlRepository,type WorkerSupervisorEffect } from "./worker-control.js";
 import { admitWorkerVerification,createWorkerSlotRepository,readWorkerReservationCustody,readWorkerVerificationProfiles,requireWorkerPoolRoster,retireWorkerVerification,workerSlotFromRow } from "./worker-slots.js";
+
+import { DryRunScenarioResultSchema,type DryRunScenarioResult } from "../../../models/trust/dry-run-scenario-result.js";
+import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
+import { RunEvidenceReceiptSchema,type RunEvidenceReceipt } from "../../../models/trust/evidence.js";
+import { FailureRecordSchema,type FailureRecord } from "../../../models/trust/failure.js";
+import { RunCheckpointRecordSchema,checkpointLookupKey,checkpointRecordKey,type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
+import { ActorIdSchema,ArtifactIdSchema,BrowserSystemIdSchema,CommandAuditIdSchema,CommandIdSchema,DiagnosticBundleIdSchema,FailureFingerprintSchema,FingerprintSchema,IsoInstantSchema,ItemIdSchema,LOCAL_OPERATOR_ACTOR_ID,RunIdSchema,RunSessionIdSchema,TraceIdSchema,WorkerIdSchema,WorkflowIdSchema,WriteIntentIdSchema } from "../../../rules/identity/ids.js";
+import { DuoCeremonyLeaseAcquireRequestSchema,DuoCeremonyLeaseRecordSchema,DuoCeremonyLeaseReleaseOutcomeSchema,DuoCeremonyLeaseTakeoverSchema,isDuoCeremonyLeaseLive,type DuoCeremonyLeaseAcquireRequest,type DuoCeremonyLeaseRecord,type DuoCeremonyLeaseReleaseOutcome } from "../../../rules/sessions/duo-ceremony-lease.js";
+import { localDatePart,systemClock,type Clock } from "../../../rules/time/clock.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { IdempotencyKeySchema,WriteAttemptRecordSchema,WriteIntentRecordSchema,type WriteAttemptRecord,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
+import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeaseToken,type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
+import { assertWorkflowRunResultAuthorization,descriptorRuntimeNodes,workflowProjections,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-custody.js";
+import type { VerifiedBackup } from "./backup-service.js";
+import { assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationReadiness,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
+import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
+import { AUTHORITY_APPLICATION_ID,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
+import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
+import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
+import { DiagnosticAttachmentStorageRecordSchema,type ArtifactOutboxStorageRecord,type ArtifactSinkHeadRecord,type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
+
 import { AtomicWriteCommitInputSchema,AtomicWriteCommitReportSchema,PermanentWriteResolutionSchema,ResolvedParkedWriteAbsenceInputSchema,ResolvedParkedWriteCommitInputSchema,WriteFenceInputSchema,WriteFenceRecordsSchema,WriteIntentParkRequestSchema,WriteIntentRetrySettlementRequestSchema,WriteRecheckParkRequestSchema,WriteRecheckRequestSchema,WriteRefenceInputSchema,type AtomicWriteCommitReport,type AtomicWriteCommitStorageStep,type PermanentWriteResolution } from "./write-commit-contracts.js";
 
 
@@ -184,7 +188,6 @@ type CommandRepository = Readonly<{
   get(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
   getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
   findProtectedSettingsCommandIdByWriteId(input: unknown): string | undefined;
-  listStorageRelocationCommands(): readonly z.infer<typeof StorageRelocationCommandRequestSchema>[];
   listRunBumpCommands(runId: string): readonly z.infer<typeof CommandRequestSchema>[];
 }>;
 type CommandAuditRepository = Readonly<{
@@ -595,7 +598,7 @@ const MaxAttemptRowSchema = z.strictObject({ attempt: z.number().int().positive(
 const MaxRunNumberRowSchema = z.strictObject({ run_number: z.number().int().positive().nullable() });
 const PageCountRowSchema = z.strictObject({ page_count: z.number().int().positive() });
 const QuickCheckRowSchema = z.strictObject({ quick_check: z.literal("ok") });
-const AuthorityRecordFingerprintRowSchema = z.strictObject({ id: z.string(), payload_json: z.string() });
+
 export type RunSearchAuthorityPage = ReturnType<ReturnType<typeof createRunSearchIndex>["search"]>;
 
 
@@ -1139,20 +1142,39 @@ function authorityContentFingerprint(database: DatabaseSync): string {
   return hash.digest("hex");
 }
 
-function relocationUnchangedAuthorityFingerprint(database: DatabaseSync): string {
+const AuthorityRecordFingerprintRowSchema = z.strictObject({ id: z.string(), payload_json: z.string() });
+
+function fixedLayoutUnchangedAuthorityFingerprint(database: DatabaseSync, intent: FixedLayoutActivation, source = false): string {
+  const initialization = intent.settingsUpdate;
   const excluded = new Set(["database_states", "settings", "settings_snapshots", "run_search"]);
   const present = new Set(inspectionTableNames(database));
   const hash = createHash("sha256");
   for (const table of AuthorityTableNameSchema.options.filter((name) => present.has(name) && !excluded.has(name))) {
     hash.update(canonicalJsonStringify(table));
     for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
-      hash.update(canonicalJsonStringify(z.record(z.string(), z.unknown()).parse(row)));
+      const record = z.record(z.string(), z.unknown()).parse(row);
+      if (initialization !== undefined && (table === "commands" && record.id === initialization.commandId
+        || table === "command_audits" && record.id === initialization.auditId)) continue;
+      if (table === "browser_sessions") {
+        const browser = workerBrowserFromRow(record);
+        if (browser.health !== "closed") throw new Error("fixed-layout-browser-not-closed");
+        if (source) record.payload_json = canonicalJsonStringify(fixedLayoutBrowser(browser, intent));
+      }
+      hash.update(canonicalJsonStringify(record));
     }
   }
   return hash.digest("hex");
 }
 
-function relocationChangedAuthorityTables(before: DatabaseSync, after: DatabaseSync): readonly string[] {
+function fixedLayoutBrowser(browser: ReturnType<typeof workerBrowserFromRow>, intent: FixedLayoutActivation) {
+  if (browser.profileDirectory === undefined) return browser;
+  const suffix = relative(intent.sourceRoot, browser.profileDirectory);
+  if (!suffix.startsWith(`browsers${sep}`) && !suffix.startsWith(`scratch${sep}live-smoke${sep}`)) throw new Error("fixed-layout-browser-path-unsupported");
+  if (suffix.split(sep).some(part => part === ".." || part === "." || part === "")) throw new Error("fixed-layout-browser-path-invalid");
+  return { ...browser, profileDirectory: join(dirname(intent.authorityPath), suffix) };
+}
+
+function fixedLayoutChangedAuthorityTables(before: DatabaseSync, after: DatabaseSync): readonly string[] {
   const excluded = new Set(["database_states", "settings", "settings_snapshots", "run_search"]);
   const beforeNames = new Set(inspectionTableNames(before));
   const afterNames = new Set(inspectionTableNames(after));
@@ -1170,7 +1192,7 @@ function relocationChangedAuthorityTables(before: DatabaseSync, after: DatabaseS
   });
 }
 
-function assertRelocationPublications(before: DatabaseSync, after: DatabaseSync, sourceGeneration: number, activatedAt: string): void {
+function assertFixedLayoutPublications(before: DatabaseSync, after: DatabaseSync, sourceGeneration: number, activatedAt: string): void {
   const schema = z.strictObject({ id: z.literal(1), schema_version: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
     authority_generation: z.number().int().nonnegative(), updated_at: z.string(),
     search_generation: z.number().int().nonnegative().nullable(), search_state: z.enum(["unbuilt", "ready", "invalid"]),
@@ -1181,55 +1203,32 @@ function assertRelocationPublications(before: DatabaseSync, after: DatabaseSync,
   const expected = { ...prior, authority_generation: sourceGeneration + 1, updated_at: activatedAt,
     search_generation: ready ? sourceGeneration + 1 : null, search_state: ready ? "ready" : "invalid" };
   if (prior.authority_generation !== sourceGeneration || canonicalJsonStringify(current) !== canonicalJsonStringify(expected)) {
-    throw new Error("storage-relocation: search publication differs from activation transaction");
+    throw new Error("fixed-layout: search publication differs from activation transaction");
   }
 }
 
-function assertNoRelocationCopyCompanions(path: string): void {
-  if (lstatSync(`${path}-wal`, { throwIfNoEntry: false }) !== undefined
-    || lstatSync(`${path}-shm`, { throwIfNoEntry: false }) !== undefined) {
-    throw new Error("storage-relocation: stage authority copy has preexisting companion");
-  }
-}
-
-function removeRelocationCopyInspectionCompanions(path: string): void {
-  for (const candidate of [`${path}-wal`, `${path}-shm`]) {
-    const info = lstatSync(candidate, { throwIfNoEntry: false });
-    if (info !== undefined && (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1
-      || privatePathRejects(candidate, info, "group-write")
-      || (candidate.endsWith("-wal") && info.size !== 0))) {
-      throw new Error("storage-relocation: stage authority inspection created unsafe companion");
-    }
-  }
-  for (const candidate of [`${path}-wal`, `${path}-shm`]) {
-    if (lstatSync(candidate, { throwIfNoEntry: false }) !== undefined) unlinkSync(candidate);
-  }
-  const fd = openSync(dirname(path), constants.O_RDONLY | constants.O_NOFOLLOW);
-  try { fsyncSync(fd); } finally { closeSync(fd); }
-}
-
-const RelocationSettingsSnapshotRowSchema = AuthorityRecordFingerprintRowSchema.extend({
+const FixedLayoutSettingsSnapshotRowSchema = AuthorityRecordFingerprintRowSchema.extend({
   revision: z.number().int().positive(), fingerprint: FingerprintSchema, captured_at: IsoInstantSchema,
 });
 
-function relocationSettingsSnapshots(database: DatabaseSync): readonly string[] {
+function fixedLayoutSettingsSnapshots(database: DatabaseSync): readonly string[] {
   return database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all().map((raw) => {
-    const row = RelocationSettingsSnapshotRowSchema.parse(raw);
+    const row = FixedLayoutSettingsSnapshotRowSchema.parse(raw);
     const record = ConfigSnapshotRecordSchema.parse(JSON.parse(row.payload_json));
     if (record.configSnapshotId !== row.id || record.capturedAt !== row.captured_at
       || record.revision !== row.revision || record.fingerprint !== row.fingerprint) {
-      throw new Error("storage-relocation: snapshot row metadata changed");
+      throw new Error("fixed-layout: snapshot row metadata changed");
     }
     return canonicalJsonStringify(row);
   });
 }
 
-function relocationAppSettings(database: DatabaseSync) {
+function fixedLayoutAppSettings(database: DatabaseSync) {
   const rows = database.prepare("SELECT * FROM settings ORDER BY id").all()
     .map((raw) => AuthorityRecordFingerprintRowSchema.extend({ revision: z.number().int().positive(),
       snapshot_id: z.string(), command_id: z.string(), audit_id: z.string(), updated_at: z.string() }).parse(raw));
   if (rows.length > 1 || rows.some((row) => row.id !== "current")) {
-    throw new Error("storage-relocation: app settings membership changed");
+    throw new Error("fixed-layout: app settings membership changed");
   }
   const row = rows[0];
   if (row === undefined) return null;
@@ -1241,7 +1240,7 @@ function relocationAppSettings(database: DatabaseSync) {
     || row.command_id !== (value.saved?.commandId ?? value.initialization.commandId)
     || row.audit_id !== (value.saved?.auditId ?? value.initialization.auditId)
     || row.updated_at !== (value.saved?.committedAt ?? value.active?.activatedAt ?? value.initialization.initializedAt)) {
-    throw new Error("storage-relocation: app settings row metadata changed");
+    throw new Error("fixed-layout: app settings row metadata changed");
   }
   return value;
 }
@@ -1773,17 +1772,23 @@ export class AuthorityDatabase implements Disposable {
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
     credentials?: CredentialStore,
-    purpose: "ordinary" | "profile-initialization" | "stopped-restore-projection" | "stopped-span-root-repair" | "stopped-logout-settlement" | "stopped-logout-inspection" = "ordinary",
+    purpose: "stopped-layout-source" | "stopped-layout-target" | "ordinary" | "profile-initialization" | "stopped-restore-projection" | "stopped-span-root-repair" | "stopped-logout-settlement" | "stopped-logout-inspection" = "ordinary",
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
-    this.#admitMutation = purpose === "ordinary" ? () => this.#admission.assertWritable()
+    this.#admitMutation = purpose === "stopped-layout-target" ? () => this.#admission.assertFixedLayoutDatabase(options.path)
+      : purpose === "stopped-layout-source" ? () => { throw new Error("fixed-layout-source-read-only-required"); }
+      : purpose === "ordinary" ? () => this.#admission.assertWritable()
       : purpose === "profile-initialization" ? () => this.#admission.assertProfileInitialization()
       : purpose === "stopped-restore-projection" ? () => this.#admission.assertStoppedRestoreProjection(options.path)
       : purpose === "stopped-span-root-repair" ? () => this.#admission.assertStoppedProfile(this.#admission.maintenanceOperation())
       : purpose === "stopped-logout-settlement" ? () => { this.#admission.assertPendingLogoutSettlementDatabase(options.path); }
       : () => { throw new Error("profile-logout-inspection-read-only-required"); };
-    if (purpose === "stopped-logout-inspection") {
+    if (purpose === "stopped-layout-source") {
+      if (options.openMode === "read-write") throw new Error("fixed-layout-source-read-only-required");
+      this.#admission.assertReadOnlyAuthorityDatabase(options.path);
+    } else if (purpose === "stopped-layout-target") this.#admission.assertFixedLayoutDatabase(options.path);
+    else if (purpose === "stopped-logout-inspection") {
       if (options.openMode === "read-write") throw new Error("profile-logout-inspection-read-only-required");
       this.#admission.assertPendingLogoutInspectionDatabase(options.path);
     } else if (purpose === "stopped-logout-settlement") {
@@ -2092,6 +2097,58 @@ export class AuthorityDatabase implements Disposable {
       assertHeld();
       return { settings: settings === undefined ? initialSettingsFileRecord().settings : settings.saved?.settings ?? settings.initialization.settings.settings };
     });
+  }
+
+  static openFixedLayoutSource(machine: RuntimeAdmission, admission: RuntimeAdmission, clock: Clock): AuthorityDatabase {
+    admission.assertReadyStoppedProfileLayoutOwner(machine);
+    return new AuthorityDatabase(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250,
+      migrationOwner: "fixed-layout-source", openMode: "storage-doctor-read-only-no-migrate" }, clock,
+      undefined, undefined, undefined, undefined, "stopped-layout-source");
+  }
+
+  static publishFixedLayoutActivation(admission: RuntimeAdmission): Readonly<{ state: "activated" | "already-activated"; configSnapshotId: string }> {
+    const intent = admission.fixedLayoutActivation(), path = join(admission.stateRoot, "state.db");
+    const clock = capturedInstantClock(intent.snapshot.capturedAt);
+    admission.assertFixedLayoutDatabase(path);
+    const database = new AuthorityDatabase(admission, { path, busyTimeoutMs: 250, migrationOwner: "fixed-layout-target" }, clock,
+      undefined, undefined, undefined, undefined, "stopped-layout-target");
+    let primary: { error: unknown } | undefined;
+    let result: Readonly<{ state: "activated" | "already-activated"; configSnapshotId: string }> | undefined;
+    try {
+      const backupPath = join(admission.stateRoot, "backups", "authority", intent.backupFileName);
+      const prior = database.classifyFixedLayoutActivation(intent, backupPath);
+      if (prior === "prestate") {
+        database.withAuthorityTransaction(repositories => {
+          admission.assertFixedLayoutDatabase(path);
+          {
+            const app = fixedLayoutAppSettings(database.#database);
+            if (app === null) throw new Error("fixed-layout-settings-missing");
+            const update = intent.settingsUpdate === undefined ? undefined : fixedLayoutSettingsUpdate(intent, app.saved?.settings ?? app.initialization.settings.settings);
+            if (update !== undefined) repositories.commands.insert(update.request);
+            repositories.configSnapshots.insert(intent.snapshot);
+            repositories.runtimeConfig.activate({ settingsRevision: intent.snapshot.revision, settingsFingerprint: update?.current.settingsFingerprint ?? intent.settingsFingerprint,
+              configSnapshotId: intent.snapshot.configSnapshotId, configFingerprint: intent.snapshot.fingerprint, activatedAt: intent.snapshot.capturedAt });
+            if (update !== undefined) {
+              repositories.commandAudits.insert(update.audit);
+              repositories.settingsCurrent.advance(update.current);
+            }
+          }
+          for (const raw of database.#database.prepare("SELECT * FROM browser_sessions ORDER BY id").all()) {
+            const browser = workerBrowserFromRow(raw);
+            if (browser.health !== "closed") throw new Error("fixed-layout-browser-not-closed");
+            database.#database.prepare("UPDATE browser_sessions SET payload_json=? WHERE id=?")
+              .run(canonicalJsonStringify(fixedLayoutBrowser(browser, intent)), z.object({ id: z.string() }).parse(raw).id);
+          }
+        });
+      }
+      if (database.classifyFixedLayoutActivation(intent, backupPath) !== "committed") throw new Error("fixed-layout-activation-unproved");
+      result = { state: prior === "prestate" ? "activated" : "already-activated", configSnapshotId: intent.snapshot.configSnapshotId };
+    } catch (error) { primary = { error }; }
+    try { database.close(); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { database, admission }); }
+    if (primary !== undefined) throw primary.error;
+    if (result === undefined) throw new Error("fixed-layout-activation-result-missing");
+    return result;
   }
 
   static openStoppedRestoreProjection(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock): AuthorityDatabase {
@@ -2712,76 +2769,62 @@ export class AuthorityDatabase implements Disposable {
     return Object.freeze({ purged: Object.freeze(purged), retainedBytes });
   }
 
-  classifyRelocationActivation(intent: VerifiedRelocationActivationIntent, verifiedStageBackupPath = intent.stageAuthority.backupPath): "prestate" | "committed" {
+  private classifyFixedLayoutActivation(intent: FixedLayoutActivation, verifiedBackupPath: string): "prestate" | "committed" {
     this.#assertOpen();
-    this.#admission.assertExclusive();
-    if (this.#path !== intent.nativeDestinationPath
-      || this.#path !== join(intent.destination.stateRoot, "state.db")) {
-      throw new Error("storage-relocation: activation authority path mismatch");
-    }
-    const copyAdmission = this.#admission.verifiedReadOnlyCopy(verifiedStageBackupPath,
-      intent.stageAuthority.backupSha256);
+    this.#admission.assertFixedLayoutDatabase(this.#path);
+    if (this.#path !== intent.authorityPath || this.#path !== join(this.#admission.stateRoot, "state.db")
+      || verifiedBackupPath !== join(this.#admission.stateRoot, "backups", "authority", intent.backupFileName)) throw new Error("fixed-layout-activation-path-mismatch");
+    const copy = this.#admission.verifiedReadOnlyCopy(verifiedBackupPath, intent.backupSha256);
+    let retain = false;
     try {
-      copyAdmission.assertReadOnlyAuthorityDatabase(verifiedStageBackupPath);
-      assertNoRelocationCopyCompanions(verifiedStageBackupPath);
-      const baseline = new DatabaseSync(verifiedStageBackupPath, { readOnly: true,
-        enableForeignKeyConstraints: true, enableDoubleQuotedStringLiterals: false, allowExtension: false,
-        timeout: 5000, defensive: true });
-      try {
+      return withAuthorityDatabaseReadOnly(copy, verifiedBackupPath, baseline => {
         inspectOpenDatabase(baseline, false);
         return this.#withReadSnapshot(() => {
-        const before = readMetaRow(baseline);
-        const after = readMetaRow(this.#database);
-        if (before.schema_version !== CURRENT_AUTHORITY_SCHEMA_VERSION
-          || after.schema_version !== CURRENT_AUTHORITY_SCHEMA_VERSION
-          || before.authority_generation !== intent.preAuthorityGeneration
-          || authorityContentFingerprint(baseline) !== intent.preAuthorityContentFingerprint) {
-          throw new Error("storage-relocation: activation native baseline changed");
-        }
-        const baselineApp = relocationAppSettings(baseline);
-        const baselineSettings = baselineApp?.saved ?? initialSettingsFileRecord();
-        if (baselineSettings.revision !== intent.settingsRevision
-          || baselineSettings.settingsFingerprint !== intent.settingsFingerprint) {
-          throw new Error("storage-relocation: activation settings identity changed");
-        }
-        if (canonicalJsonStringify(baselineApp?.active ?? null) !== canonicalJsonStringify(intent.priorActive)) {
-          throw new Error("storage-relocation: activation prior runtime mismatch");
-        }
-        if (authorityContentFingerprint(this.#database) === authorityContentFingerprint(baseline)) return "prestate";
-        assertRelocationPublications(baseline, this.#database, before.authority_generation, intent.snapshot.capturedAt);
-        if (relocationUnchangedAuthorityFingerprint(this.#database)
-          !== relocationUnchangedAuthorityFingerprint(baseline)) {
-          throw new Error(`storage-relocation: unrelated authority rows changed during activation: ${relocationChangedAuthorityTables(baseline, this.#database).join(",")}`);
-        }
-        const snapshots = relocationSettingsSnapshots(this.#database);
-        const priorSnapshots = relocationSettingsSnapshots(baseline);
-        const added = snapshots.filter((row) =>
-          RelocationSettingsSnapshotRowSchema.parse(JSON.parse(row)).id === intent.snapshot.configSnapshotId);
-        if (added.length !== 1 || snapshots.length !== priorSnapshots.length + 1
-          || canonicalJsonStringify(snapshots.filter((row) => !added.includes(row))) !== canonicalJsonStringify(priorSnapshots)) {
-          throw new Error("storage-relocation: activation snapshot history changed");
-        }
-        const addedRow = added[0];
-        if (addedRow === undefined) throw new Error("storage-relocation: activation snapshot missing");
-        const addedRecord = RelocationSettingsSnapshotRowSchema.parse(JSON.parse(addedRow));
-        if (canonicalJsonStringify(ConfigSnapshotRecordSchema.parse(JSON.parse(addedRecord.payload_json)))
-          !== canonicalJsonStringify(intent.snapshot)) throw new Error("storage-relocation: activation snapshot differs from intent");
-        const app = relocationAppSettings(this.#database);
-        const expectedActive = { generation: (intent.priorActive?.generation ?? 0) + 1,
-          settingsRevision: intent.settingsRevision, settingsFingerprint: intent.settingsFingerprint,
-          configSnapshotId: intent.snapshot.configSnapshotId, configFingerprint: intent.snapshot.fingerprint,
-          activatedAt: intent.snapshot.capturedAt };
-        if (app === null || canonicalJsonStringify(app.saved) !== canonicalJsonStringify(baselineApp?.saved ?? null)
-          || canonicalJsonStringify(app.active) !== canonicalJsonStringify(expectedActive)
-          || after.authority_generation !== before.authority_generation + 1
-          || after.updated_at !== intent.snapshot.capturedAt
-) {
-          throw new Error("storage-relocation: activation state differs from intent");
-        }
-        return "committed";
+          const before = readMetaRow(baseline), after = readMetaRow(this.#database);
+          if (before.schema_version !== CURRENT_AUTHORITY_SCHEMA_VERSION || after.schema_version !== CURRENT_AUTHORITY_SCHEMA_VERSION
+            || before.authority_generation !== intent.preAuthorityGeneration
+            || authorityContentFingerprint(baseline) !== intent.preAuthorityContentFingerprint) throw new Error("fixed-layout-activation-baseline-changed");
+          const baselineApp = fixedLayoutAppSettings(baseline), baselineSettings = baselineApp?.saved ?? initialSettingsFileRecord();
+          if (baselineSettings.revision !== intent.settingsRevision || baselineSettings.settingsFingerprint !== intent.settingsFingerprint
+            || canonicalJsonStringify(baselineApp?.active ?? null) !== canonicalJsonStringify(intent.priorActive)) throw new Error("fixed-layout-activation-settings-changed");
+          const priorSnapshotRow = baseline.prepare("SELECT payload_json FROM settings_snapshots WHERE id=?").get(intent.priorActive.configSnapshotId);
+          const priorSnapshot = ConfigSnapshotRecordSchema.parse(JSON.parse(z.strictObject({ payload_json: z.string() }).parse(priorSnapshotRow).payload_json));
+          if (priorSnapshot.fingerprint !== intent.priorActive.configFingerprint || priorSnapshot.config.paths.stateRoot !== intent.sourceRoot
+            || priorSnapshot.config.paths.artifactRoot !== join(intent.sourceRoot, "artifacts")) throw new Error("fixed-layout-source-snapshot-mismatch");
+          const outputPaths = fixedLayoutOutputPaths(baselineSettings.settings, priorSnapshot.config.paths, intent.sourceRoot, dirname(intent.authorityPath));
+          if (canonicalJsonStringify(intent.settingsUpdate?.outputPaths ?? {}) !== canonicalJsonStringify(outputPaths)
+            || baselineSettings.settings.paths?.browserProfileRoot !== intent.settingsUpdate?.previousBrowserRoot) throw new Error("fixed-layout-output-defaults-changed");
+          if (authorityContentFingerprint(this.#database) === authorityContentFingerprint(baseline)) return "prestate";
+          assertFixedLayoutPublications(baseline, this.#database, before.authority_generation, intent.snapshot.capturedAt);
+          if (fixedLayoutUnchangedAuthorityFingerprint(this.#database, intent) !== fixedLayoutUnchangedAuthorityFingerprint(baseline, intent, true)) {
+            throw new Error(`fixed-layout-unrelated-authority-changed: ${fixedLayoutChangedAuthorityTables(baseline, this.#database).join(",")}`);
+          }
+          const snapshots = fixedLayoutSettingsSnapshots(this.#database), prior = fixedLayoutSettingsSnapshots(baseline);
+          const added = snapshots.filter(row => FixedLayoutSettingsSnapshotRowSchema.parse(JSON.parse(row)).id === intent.snapshot.configSnapshotId);
+          if (added.length !== 1 || snapshots.length !== prior.length + 1
+            || canonicalJsonStringify(snapshots.filter(row => !added.includes(row))) !== canonicalJsonStringify(prior)) throw new Error("fixed-layout-snapshot-history-changed");
+          const addedRow = added[0];
+          if (addedRow === undefined || canonicalJsonStringify(ConfigSnapshotRecordSchema.parse(JSON.parse(FixedLayoutSettingsSnapshotRowSchema.parse(JSON.parse(addedRow)).payload_json)))
+            !== canonicalJsonStringify(intent.snapshot)) throw new Error("fixed-layout-snapshot-mismatch");
+          const app = fixedLayoutAppSettings(this.#database);
+          const update = intent.settingsUpdate === undefined ? undefined : fixedLayoutSettingsUpdate(intent, baselineSettings.settings);
+          if (update !== undefined && (canonicalJsonStringify(this.#readRecord("commands", update.request.commandId, CommandRequestSchema)) !== canonicalJsonStringify(update.request)
+            || canonicalJsonStringify(this.#readRecord("command_audits", update.audit.auditId, CommandAuditRecordSchema)) !== canonicalJsonStringify(update.audit))) throw new Error("fixed-layout-settings-journal-changed");
+          const expected = { generation: (intent.priorActive?.generation ?? 0) + 1, settingsRevision: intent.snapshot.revision,
+            settingsFingerprint: update?.current.settingsFingerprint ?? intent.settingsFingerprint, configSnapshotId: intent.snapshot.configSnapshotId,
+            configFingerprint: intent.snapshot.fingerprint, activatedAt: intent.snapshot.capturedAt };
+          if (app === null || canonicalJsonStringify(app.saved) !== canonicalJsonStringify(update?.current ?? baselineApp?.saved ?? null)
+            || canonicalJsonStringify(app.initialization) !== canonicalJsonStringify(baselineApp?.initialization)
+            || canonicalJsonStringify(app.active) !== canonicalJsonStringify(expected)
+            || after.authority_generation !== before.authority_generation + 1 || after.updated_at !== intent.snapshot.capturedAt) throw new Error("fixed-layout-activation-state-mismatch");
+          return "committed";
         });
-      } finally { baseline.close(); removeRelocationCopyInspectionCompanions(verifiedStageBackupPath); }
-    } finally { copyAdmission.release(); }
+      });
+    } catch (error) {
+      retain = hasUnprovedSourceClosure(error);
+      if (retain) throw retainAuthoritySourceClosure([error], { admission: copy });
+      throw error;
+    } finally { if (!retain) copy.release(); }
   }
 
   inspectSchema(): z.infer<typeof AuthoritySchemaInspectionSchema> {
@@ -4586,9 +4629,6 @@ export class AuthorityDatabase implements Disposable {
             ? undefined
             : CommandIdSchema.parse(RecordKeyRowSchema.parse(row).id);
         },
-        listStorageRelocationCommands: () => this.#database.prepare(`
-          SELECT * FROM commands WHERE family = 'storage-relocation' ORDER BY rowid
-        `).all().map(row => StorageRelocationCommandRequestSchema.parse(commandFromRow(row))),
         parentId: (commandId: string) => {
           const row = this.#database.prepare("SELECT parent_id AS parent_id FROM commands WHERE id = ?").get(commandId);
           return row === undefined ? undefined : z.strictObject({ parent_id: z.string().nullable() }).parse(row).parent_id;
