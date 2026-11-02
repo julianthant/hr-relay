@@ -1,6 +1,8 @@
 import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { z } from "zod";
+import { FingerprintSchema } from "../../rules/identity/ids.js";
+import { AssistantPermissionModeSchema } from "../profiles/assistant-permission-mode.js";
 
 const ReferenceSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/u);
 export const AssistantSubjectSchema = z.strictObject({
@@ -23,6 +25,15 @@ export const AssistantModelPreferenceViewSchema = z.strictObject({
   preference: AssistantModelPreferenceSchema,
 });
 export type AssistantModelPreferenceView = z.infer<typeof AssistantModelPreferenceViewSchema>;
+const AssistantPermissionIdentitySchema = z.strictObject({
+  profileId: z.uuid(), epoch: z.number().int().nonnegative(), mode: AssistantPermissionModeSchema,
+  settingsRevision: z.number().int().positive(), settingsSchemaHash: FingerprintSchema,
+});
+export const AssistantPermissionViewSchema = z.discriminatedUnion("state", [
+  AssistantPermissionIdentitySchema.extend({ state: z.literal("grant-required"), policyRevision: z.literal(0) }),
+  AssistantPermissionIdentitySchema.extend({ state: z.literal("granted"), policyRevision: z.number().int().positive() }),
+]);
+export type AssistantPermissionView = z.infer<typeof AssistantPermissionViewSchema>;
 export const AssistantModelPreferenceRecordSchema = z.strictObject({
   format: z.literal(1), id: z.literal("current"), profileId: z.uuid(), revision: z.number().int().positive(),
   preference: AssistantModelPreferenceSchema, commandId: z.uuid(), auditId: z.uuid(), updatedAt: z.iso.datetime(),
