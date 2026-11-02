@@ -2003,14 +2003,14 @@ export class AuthorityDatabase implements Disposable {
         || lease.locator.installationId !== installation.installationId) throw new Error("queued-run-cancellation-installation-changed");
     };
     assertHeld(); requireDatabaseSourcePath(path);
+    const initial = await AuthorityDatabase.readFlatQueuedRunCancellation(path);
+    if (initial.digest !== expectedDigest) throw new Error("queued-run-cancellation-capture-changed");
+    await probeFlatBrowserInventoryClosed(lease, restore, stateRoot, clock, browserClosure);
+    assertHeld();
     const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, allowExtension: false, timeout: 5000 });
     let runIds: string[] | undefined;
     let failure: { error: unknown } | undefined;
     try {
-      const initial=flatQueuedRunCancellationInventory(database,assertCredentialCopyResourcesClosed);
-      if(initial.digest!==expectedDigest)throw new Error("queued-run-cancellation-capture-changed");
-      await probeFlatBrowserInventoryClosed(lease,restore,stateRoot,clock,browserClosure);
-      assertHeld();
       database.exec("BEGIN IMMEDIATE");
       try {
         const inventory = flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed);
