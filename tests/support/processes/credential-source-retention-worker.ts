@@ -354,7 +354,8 @@ try {
   else if (scenario === "stopped-control-snapshot-disposal") await runStoppedSnapshot();
   else await runCurrent();
   lifetime.assertHeld();
-  process.send({ scenario, assertionsComplete: true, ...(scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("authenticated-upgrade-") || scenario.startsWith("browser-root-") ? { nonce: z.uuid().parse(crashNonce) } : {}) });
+  process.send({ scenario, assertionsComplete: true, ...(scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("authenticated-upgrade-") || scenario.startsWith("browser-root-") ? { nonce: z.uuid().parse(crashNonce) } : {}),
+    ...(scenario === "browser-root-unknown-seed" ? { keychain: FakeKeyringEntry.snapshot() } : {}) });
 } catch (error) {
   const name = error instanceof Error && ["AssertionError", "TypeError", "RangeError", "SyntaxError"].includes(error.name) ? error.name : "Error";
   const locations = error instanceof Error ? (error.stack ?? "").split("\n").slice(1).flatMap(line => {
