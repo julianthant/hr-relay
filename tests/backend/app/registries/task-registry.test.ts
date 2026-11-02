@@ -9,6 +9,7 @@ describe("Person Lookup task implementations", () => {
         .flatMap((store) => Object.values(store.tasks).map((task) => String(task.contract.id)))
         .sort(),
       [
+        "crm/read-hire-data",
         "crm/read-onboarding-dates",
         "crm/read-onboarding-record",
         "crm/read-onboarding-results",

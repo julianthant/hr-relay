@@ -6,6 +6,7 @@ describe("CRM onboarding selector-backed driver", () => {
   it("keeps the task-facing driver boundary strict and operation-shaped", () => {
     const valid = {
       system: "crm",
+      readHireData: async () => ({ state: "unused" }),
       searchOnboardingRecords: async () => [],
       verifyOnboardingRecord: async () => ({ state: "unused" }),
       readOnboardingRecord: async () => ({ state: "unused" }),
@@ -14,5 +15,6 @@ describe("CRM onboarding selector-backed driver", () => {
     assert.equal(CrmOnboardingDriverSchema.safeParse(valid).success, true);
     assert.equal(CrmOnboardingDriverSchema.safeParse({ ...valid, page: {} }).success, false);
     assert.equal(CrmOnboardingDriverSchema.safeParse({ ...valid, readOnboardingRecord: "raw" }).success, false);
+    assert.equal(CrmOnboardingDriverSchema.safeParse({ ...valid, readHireData: "raw" }).success, false);
   });
 });
