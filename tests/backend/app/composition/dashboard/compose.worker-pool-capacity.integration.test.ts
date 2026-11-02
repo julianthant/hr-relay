@@ -21,9 +21,10 @@ import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from "../../../../../
 import { StartPlanWireSchema } from "../../../../../src/models/dashboard/start-plan.js";
 import { WorkerControlRefusal } from "../../../../../src/models/run/worker-control.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
-import { copyFileSync } from "node:fs";
+import { copyFileSync,readFileSync,readdirSync } from "node:fs";
 import { join } from "node:path";
-import { RuntimeCustodyUncertainError } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { AutomaticShutdownBackupError,RuntimeCustodyUncertainError } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { OldBuildRuntimeArtifactsError } from "../../../../../src/backend/storage/admission/process-root.js";
 import { composeDashboardApplication } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { type WorkerRuntimeContext } from "../../../../../src/backend/runs/commands/command-kernel.js";
@@ -526,7 +527,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
 
   afterEach(cleanup);
 
-  it("does not reserve recovery or launch a stopped standing worker at dashboard boot", async () => {
+  it("does not launch stopped standing workers at boot and preserves their old lock evidence on shutdown refusal", async () => {
     const profile = await createBoundProfileFixture({ sharedMachine: true }), repoRoot = profile.workspace;
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(join(process.cwd(), name), join(repoRoot, name));
     cleanups.push(async () => await profile.close());
@@ -640,7 +641,18 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
       assert.equal(children.length, 0);
     } finally {
       recovery.mockRestore();
-      if (runtime !== undefined) { const stopping = runtime.stop(); for (const child of children) child.emitExit(0, null); await stopping; }
+      if (runtime !== undefined) {
+        const directory = join(processLockRoot, "workers");
+        const evidence = () => readdirSync(directory).sort().map(name => [name, readFileSync(join(directory, name))] as const);
+        const before = evidence(); assert.ok(before.length > 0);
+        const stopping = runtime.stop(); for (const child of children) child.emitExit(0, null);
+        await assert.rejects(stopping, error => {
+          assert.ok(error instanceof RuntimeCustodyUncertainError);
+          const backup: unknown = error.errors[0]; assert.ok(backup instanceof AutomaticShutdownBackupError);
+          assert.ok(backup.cause instanceof OldBuildRuntimeArtifactsError); return true;
+        });
+        assert.deepEqual(evidence(), before); profile.lifetime.assertHeld();
+      }
     }
   });
 
