@@ -9,6 +9,7 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import { projectTransactionOutcome } from "../../../models/workflow/graph.js";
+import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import type { StepOmissions } from "../../../models/workflow/step-omission.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
@@ -33,7 +34,10 @@ export function validateCompletedTransactionContinuations(repositories: Authorit
   const ownedIntents = [...sources.values()].flatMap(source => repositories.writeIntents.listByRun(source.envelope.runId));
   const nodes = descriptorRuntimeNodes(descriptor);
   const completed = new Set<string>();
-  const scopeFor = (source: RunRecord, dependsOn: readonly string[], value: JsonValue, historical = false) => {
+  const scopeFor = (source: RunRecord, dependsOn: readonly string[], value: JsonValue, historical = false): {
+    input: JsonValue; outputs: Record<string, JsonValue>; configuration: Readonly<Record<string, JsonValue>>;
+    protectedInputBindings: ReturnType<typeof retainedRunProtectedBindings>;
+  } => {
     const outputs: Record<string, JsonValue> = {};
     for (const dependency of dependsOn) {
       const own = repositories.runCheckpoints.listByAttempt(source.envelope.workflow, source.envelope.itemId, dependency, source.envelope.attempt)
@@ -54,6 +58,8 @@ export function validateCompletedTransactionContinuations(repositories: Authorit
           continue;
         }
         const gate = readContinuationGate(repositories, source.envelope, dependency);
+        if (gate === undefined && (node?.kind === "task" || node?.kind === "gate" && node.resolvedBy === "operator") && node.when !== undefined
+          && !evaluateNodeCondition(node.when, scopeFor(source, node.dependsOn, value, historical))) continue;
         if (gate === undefined || node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output") || !node.result.safeParse(gate.result.value).success) {
           throw new RerunRefusedError("invalid-value", "Saved transaction dependency is unavailable.");
         }

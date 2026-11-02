@@ -449,6 +449,11 @@ refuse Rerun; saved results never authorize another submit.
 
 Completed tasks whose dependencies include a transaction wait for its authenticated semantic output
 before replay comparison, correction and hydration. Their current branch and condition still apply.
+An authenticated closed not-run dependency remains absent for optional consumer bindings; it is
+not missing context. Original conditional skips are re-evaluated from the source's declared
+condition and authenticated dependency scope. An absent required gate result still refuses.
+Exact own checkpoints use the current native owner even when ordinary gate resolution requeues a
+continuation without adding a Pause/Resume self-reference; foreign checkpoints require retained lineage.
 Reusing a transaction does not publish a new submit confirmation or mark the publisher unhealthy;
 new-submit publication requires settlement evidence from the current execution.
 

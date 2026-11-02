@@ -680,7 +680,7 @@ export async function executeClaimedRun(
       : deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, envelope));
     if (envelope.continuation !== undefined && continuationAuthority === undefined) throw new RunContinuationRefusedError("run-continuation-authority-unavailable");
     const sourceScopeFor = (sourceRunId: string, dependsOn: readonly NodeId[]): RuntimeScope => {
-      const source = continuationSources.find(row => row.envelope.runId === sourceRunId);
+      const source = sourceRunId === runId ? getRun() : continuationSources.find(row => row.envelope.runId === sourceRunId);
       if (source === undefined) throw new RunContinuationRefusedError("run-continuation-input-source-unavailable");
       const values: Record<string, JsonValue> = {};
       for (const dependency of dependsOn) {
@@ -699,8 +699,11 @@ export async function executeClaimedRun(
           if (dependencyNode?.kind === "child-run") {
             const child = deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, source.envelope)
               .dependency(String(dependency), String(dependencyNode.edgeId), true));
-            if (child !== undefined) values[String(dependency)] = JsonValueSchema.parse(delegationEvidenceOutput(child, dependencyNode.target.result));
+            if (child !== undefined) { values[String(dependency)] = JsonValueSchema.parse(delegationEvidenceOutput(child, dependencyNode.target.result)); continue; }
           }
+          if ((dependencyNode?.kind === "task" || dependencyNode?.kind === "gate" && dependencyNode.resolvedBy === "operator") && dependencyNode.when !== undefined
+            && !evaluateNodeCondition(dependencyNode.when, sourceScopeFor(sourceRunId, dependencyNode.dependsOn))) continue;
+          throw new RunContinuationRefusedError("run-continuation-input-context-unavailable");
         }
       }
       return { input: source.input.parsed.value, outputs: values, configuration: Object.freeze(configurationValues),
@@ -1528,7 +1531,7 @@ export async function executeClaimedRun(
           if (node.when !== undefined && !evaluateNodeCondition(node.when, scope)) {
             skippedReasons.set(String(node.id), "condition-false"); continue;
           }
-          if (node.dependsOn.some(dependency => !Object.hasOwn(scope.outputs, String(dependency)))) {
+          if (node.dependsOn.some(dependency => !Object.hasOwn(scope.outputs, String(dependency)) && !skippedReasons.has(String(dependency)))) {
             throw new RunContinuationRefusedError("run-continuation-task-context-unavailable");
           }
           if (envelope.continuation !== undefined

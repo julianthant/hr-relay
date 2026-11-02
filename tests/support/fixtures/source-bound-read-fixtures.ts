@@ -25,12 +25,13 @@ export const sourceBoundReadDescriptor = defineWorkflowDescriptor({ id: "source-
   flow: flow(Input).step("read", sourceBoundReadContract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => input })
     .build({ schema: Output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
 });
-export function sourceBoundReadStores(world: WriteFixtureWorld, failOnCall?: number | readonly number[]) {
+export function sourceBoundReadStores(world: WriteFixtureWorld, failOnCall?: number | readonly number[], onRead?: () => void) {
   let calls = 0;
   const task = defineTask(sourceBoundReadContract, { sessions: [], async run({ input, ctx }) {
     calls += 1;
     if (typeof failOnCall === "number" ? calls === failOnCall : failOnCall?.includes(calls)) throw new Error("fixture downstream failure");
     ctx.recordData({ direction: "read", field: "eid", value: input.eid });
+    onRead?.();
     world.events.push(`read:${input.memo ?? "absent"}`); return { eid: input.eid };
   } });
   return defineTaskStoreRegistry([defineServiceStore("ocr", { read: task })], {
