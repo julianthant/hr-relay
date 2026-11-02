@@ -292,7 +292,7 @@ observers, and awaits `drainOwnedChildren`. The supervisor uses the ordinary gra
 escalation policy, then observes owned child exits. Failure to observe exit is a shutdown failure.
 Closing the supervisor cancels its timers and returns any remaining live-child evidence for the
 structured fault sink. The dashboard closes its database before releasing its process lock and
-runtime admission. Shutdown does not create a backup.
+runtime admission. After clean resource closure, the held lifetime owns verified person backups and last-three shutdown retention before it can release the listener. Failed closure or backup verification prevents a successful shutdown.
 
 `src/backend/storage/sqlite/runtime-process-locks.ts` owns acquisition-specific process records
 and OS process-birth checks. Database closure precedes their release.

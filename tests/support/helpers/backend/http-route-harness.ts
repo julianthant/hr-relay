@@ -386,7 +386,7 @@ export async function harness(options: {
       projection,
       authorityMeta: () => database.getMeta(),
       // The harness runs no backup lane; "missing" is its true state.
-      backupSummary: () => "missing",
+      automaticRepair: () => ({ state: "none" as const }), backupSummary: () => "missing",
       preflightReport: () => preflight.report,
     },
     preflight: preflight.authority,
