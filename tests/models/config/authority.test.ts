@@ -30,12 +30,13 @@ it("accepts the fresh pause-capable authority baseline and refuses unsupported v
     upgradeId: "fresh",
     phase: "baseline",
     fromSchemaVersion: 0,
-    toSchemaVersion: 12,
+    toSchemaVersion: 13,
     by: LOCAL_OPERATOR_ACTOR_ID,
     recordedAt: "2026-11-02T00:00:00.000Z",
   };
   assert.deepEqual(AuthorityUpgradeRecordSchema.parse(baseline), baseline);
-  for (const toSchemaVersion of [0, 13, 12.5]) {
+  assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 12 }).success, true);
+  for (const toSchemaVersion of [0, 14, 13.5]) {
     assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion }).success, false);
   }
   assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, fromSchemaVersion: 11 }).success, false);
