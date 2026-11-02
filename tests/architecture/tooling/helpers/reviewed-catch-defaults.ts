@@ -68,7 +68,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-      "sha256": "13b65eb38ece827c68d93052b4c73a01adb96dabb99b60129e156b8f6d39345d",
+      "sha256": "682f93cefc78e53619237242d86c6d891a1e83903eeed2c32e67297e854075a1",
     "reason": "Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
   },
   {

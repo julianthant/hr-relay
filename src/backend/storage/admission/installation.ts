@@ -1149,6 +1149,7 @@ function readMachineRegistry(control: string, locator: RuntimeLocator, recoverPu
       return document;
     }
     if (intent.kind === "onboarding-finish") assertOnboardingFinishPublicationDocument(locator, intent);
+    if (intent.kind === "incomplete-profile-draft") prepareIncompleteProfileDraft(control, locator, intent);
     if (intent.kind === "draft-abort") {
       const operation = intent.capture.operation;
       if (document.activeProfileId !== null || document.revision !== intent.prior.revision || document.sessionGeneration !== intent.prior.generation
@@ -1658,7 +1659,10 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
     if (document.installationId !== locator.installationId || continuity.installationId !== locator.installationId) fail("profile-registry-installation-mismatch");
     if (lstatMaybe(join(control, "profile-publication.json"))) {
       const file = readPrivateFile(join(control, "profile-publication.json"), { label: "lock", maxBytes: 1_048_576 });
-      if (file === undefined || !ProfilePublicationSchema.safeParse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes))).success) fail("profile-control-upgrade-pending-conversion-unsupported");
+      if (file === undefined) fail("profile-control-upgrade-pending-conversion-unsupported");
+      const intent = ProfilePublicationSchema.safeParse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+      if (!intent.success) fail("profile-control-upgrade-pending-conversion-unsupported");
+      if (intent.data.kind === "incomplete-profile-draft") prepareIncompleteProfileDraft(control, locator, intent.data);
     }
     if (lstatMaybe(join(control, "journal.json"))) {
       const file = readPrivateFile(join(control, "journal.json"), { label: "lock", maxBytes: 1_048_576 });
