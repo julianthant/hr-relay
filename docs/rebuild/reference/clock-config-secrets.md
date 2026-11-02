@@ -604,19 +604,32 @@ before profile runtime composition. It does not become a profile and none of its
 are carried into sign-up. Runtime admission retains flat detection only for this migration and the
 stopped backup command.
 
-Startup first erases the flat `credentials/` directory, including protected, ChatGPT and Duo files,
-so the new backup contains none of those credentials. It then uses the stopped flat native6 raw-byte archive writer. The verified backup, source record and copies live outside
-the removed state under `.tracker/control/storage-backups/<installationId>/`. Backup or verification
-failure stops startup with `PROFILE_FLAT_STORE_MIGRATION_FAILED`; all non-credential source data
-remains in place. Unsupported paths, active or UNKNOWN resource custody, corrupt or changed data
-remain refusals. An existing backup containing credentials cannot authorize the migration.
+Startup proves native browser and OS process closure before archiving or erasing anything. The
+stopped raw-byte archive excludes recognized credential, browser/auth and runtime containers;
+those sources remain intact until the archive and its exact source membership verify. Backup or
+verification failure stops startup with `PROFILE_FLAT_STORE_MIGRATION_FAILED` and preserves all
+source data, including credentials. The archive lives outside the removed state at
+`.tracker/control/storage-backups/<installationId>/`. Its historical rows stay opaque and are never
+adopted into a new person.
 
-Only after verification does a durable `flat-start-clean.json` intent authorize removal. Every
-remaining source file must match the source record's captured digest, size and mode.
-Restart verifies the same backup and resumes that deletion prefix, then initializes an empty
-profile registry. Installation markers, artifact-root identity and fixed process locks stay in
-place. The backup remains verified and retained after removal; sign-up creates a fresh private
-profile using the ordinary onboarding path.
+The finite start-clean reader accepts the known plaintext native6 credential layout. Encrypted,
+key-bearing or unknown layouts refuse before browser preparation or erasure; no native key account
+is inferred from old HR data. Registered-person credential/key erasure stays with its canonical owner.
+
+After verification, schema2 `flat-start-clean.json` binds the archive operation, source digest and
+membership, planned private verifier-pepper digest, recorded probe timing and deletion cursor.
+Each unlink or empty-directory removal first records the one pending member. Recovery accepts only
+that member's exact present/absent outcomes: prior members must be absent and later members must
+remain unchanged. New files, changed evidence or a substituted archive refuse. Fresh native and OS
+closure precede recovery, even after the old database is gone; the saved operation supplies timing
+and the physical census uses the remaining exact membership. An uncertain resource close retains
+its actual admission and lifetime.
+
+Empty registry publication reuses the exact prepared pepper and verifies every existing publication
+prefix. The completed registry digest remains in `flat-start-clean-complete.json`; normal bootstrap
+then uses current registry readers and sign-up creates a fresh private profile. Installation markers,
+artifact-root identity and the empty fixed process-lock directory stay in place. Ordinary document
+and report roots outside the erased state are preserved.
 
 `npm run cli -- storage backup [--json]` still backs up a selected READY profile through its
 registered child, or a stopped native6 flat source through its finite backup admission. The command
