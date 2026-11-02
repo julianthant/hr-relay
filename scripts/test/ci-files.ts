@@ -49,14 +49,19 @@ export const SERIAL_FILES: readonly string[] = [
   "tests/backend/runtime/workers/worker-supervisor.integration.test.ts",
 ];
 
+// The padded-receipt upgrade exceeds its budget beside other storage fixtures.
+export const SERIAL_STORAGE_FILES: readonly string[] = [
+  "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
+];
+
 export type CiProject = "unit" | "integration" | "architecture";
-export type CiRunner = "ubuntu" | "macos" | "serial";
+export type CiRunner = "ubuntu" | "macos" | "serial" | "storage";
 export type CiDurations = Readonly<Record<string, number>>;
 
 const DURATIONS_PATH = "scripts/test/ci-durations.json";
 const ciDurationsSchema = z.record(z.string().startsWith("tests/"), z.number().nonnegative());
 const projectOf = (file: string): CiProject => file.endsWith(".integration.test.ts") ? "integration" : "unit";
-const isSerial = (file: string) => SERIAL_FILES.includes(file);
+const isSingleWorker = (file: string) => SERIAL_FILES.includes(file) || SERIAL_STORAGE_FILES.includes(file);
 
 // Greedy longest-first packing: each file goes to the job with the least measured work so far.
 export function balance(files: readonly string[], jobs: number, weight: (file: string) => number): string[][] {
@@ -78,8 +83,10 @@ export function selectCiFiles(listed: readonly string[], project: CiProject, run
   const seconds = (file: string) => Math.max(0.1, durations[file] ?? known[Math.floor(known.length / 2)] ?? 1);
   if (runner === "ubuntu") return balance(listed.filter(file => !macos.includes(file)), jobs, seconds)[job - 1] ?? [];
   // Serial proofs run alone; other files share two workers, so they count half their time.
-  const bin = balance(macos, jobs, file => isSerial(file) ? seconds(file) : seconds(file) / 2)[job - 1] ?? [];
-  return bin.filter(file => projectOf(file) === project && isSerial(file) === (runner === "serial"));
+  const bin = balance(macos, jobs, file => isSingleWorker(file) ? seconds(file) : seconds(file) / 2)[job - 1] ?? [];
+  const selected = runner === "serial" ? SERIAL_FILES : runner === "storage" ? SERIAL_STORAGE_FILES
+    : MACOS_FILES.filter(file => !SERIAL_STORAGE_FILES.includes(file));
+  return bin.filter(file => projectOf(file) === project && selected.includes(file));
 }
 
 const vitestReportSchema = z.object({ testResults: z.array(z.object({

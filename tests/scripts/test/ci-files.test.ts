@@ -4,19 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { balance, durationsFromReports, MACOS_FILES, SERIAL_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
+import { balance, durationsFromReports, MACOS_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
 
 const portable = ["a", "b", "c", "d", "e"].map(name => `tests/backend/${name}.integration.test.ts`);
 const integration = [...portable, ...MACOS_FILES, ...SERIAL_FILES].filter(file => file.endsWith(".integration.test.ts"));
 const unit = ["tests/models/portable.test.ts", "tests/backend/storage/sqlite/backup-service.test.ts"];
 const durations = { [portable[0] ?? ""]: 50, [SERIAL_FILES[0] ?? ""]: 200 };
 
-const run = (listed: readonly string[], project: "unit" | "integration", runner: "ubuntu" | "macos" | "serial", jobs: number) =>
+const run = (listed: readonly string[], project: "unit" | "integration", runner: "ubuntu" | "macos" | "serial" | "storage", jobs: number) =>
   Array.from({ length: jobs }, (_, i) => selectCiFiles(listed, project, runner, i + 1, jobs, durations)).flat();
 
 describe("CI file selection", () => {
   it("gives each file to exactly one job", () => {
-    const integrationRuns = [...run(integration, "integration", "ubuntu", 3), ...run(integration, "integration", "macos", 5), ...run(integration, "integration", "serial", 5)];
+    const integrationRuns = [...run(integration, "integration", "ubuntu", 3), ...run(integration, "integration", "macos", 5), ...run(integration, "integration", "serial", 5), ...run(integration, "integration", "storage", 5)];
     expect(integrationRuns.sort()).toEqual([...integration].sort());
     expect(run(integration, "integration", "ubuntu", 3).sort()).toEqual(portable);
     expect([...run(unit, "unit", "ubuntu", 2), ...run(unit, "unit", "macos", 5)].sort()).toEqual([...unit].sort());
@@ -30,6 +30,14 @@ describe("CI file selection", () => {
 
   it("refuses a pinned file Vitest no longer lists", () => {
     expect(() => selectCiFiles(portable, "integration", "ubuntu", 1, 1, durations)).toThrow(/does not list/u);
+  });
+
+  it("runs padded-receipt upgrades separately from native proofs and parallel storage files", () => {
+    expect(SERIAL_STORAGE_FILES.every(file => MACOS_FILES.includes(file))).toBe(true);
+    expect(run(integration, "integration", "storage", 5)).toEqual([...SERIAL_STORAGE_FILES]);
+    for (const runner of ["macos", "serial"] as const) {
+      expect(run(integration, "integration", runner, 5).some(file => SERIAL_STORAGE_FILES.includes(file))).toBe(false);
+    }
   });
 
   it("reads file durations from Vitest JSON reports", () => {

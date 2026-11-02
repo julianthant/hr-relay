@@ -267,6 +267,11 @@ jobs:
           status=$?
           kill "$sampler"
           exit "$status"
+      - name: Storage upgrade files without competing files
+        if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.integration == 'true' }}
+        env:
+          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: scripts/test/ci-run.sh integration storage "$SLICE" --maxWorkers=1 --no-file-parallelism
       - name: macOS-only unit files
         if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.unit == 'true' }}
         env:

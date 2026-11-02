@@ -101,15 +101,17 @@ CLI exclusions do not reach these named projects. Selection refuses when a named
 listed. Files are packed longest first onto the least-loaded job using
 the preceding successful run's `ci-timings` artifact, seeded by `scripts/test/ci-durations.json`
 when none is retained; unmeasured files count as the positive median, or one second.
-Zero-rounded measurements still receive positive work. Serial proofs count their
-full time because they run alone; other macOS files count half because two workers share them.
+Zero-rounded measurements still receive positive work. Native proofs and `SERIAL_STORAGE_FILES`
+count their full time and run in separate single-worker invocations. The padded-receipt upgrade
+fixture is in the storage group because competing files pushed it beyond its existing budget.
+Other macOS files count half because two workers share them.
 
 | Job | Runner | Jobs | Contents |
 | --- | --- | --- | --- |
 | unit | Ubuntu | 2 (3 without integration) | unit files except `MACOS_FILES` |
 | architecture | Ubuntu | 2 | architecture files |
 | integration | Ubuntu | 14 | integration files except `MACOS_FILES` and `SERIAL_FILES` |
-| native | macOS | 5 (2 when parity runs) | its `SERIAL_FILES` alone, then its macOS unit and integration files |
+| native | macOS | 5 (2 when parity runs) | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then macOS unit and other integration files |
 | parity | macOS | 3 shards | Desktop parity, release pull requests only |
 
 With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The runner-free FIFO

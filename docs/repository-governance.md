@@ -39,7 +39,9 @@ for screens the PR did not intentionally change; anything that needs those gets 
 session runs, red PRs wait; nothing red merges. The operator watches only `needs-human`.
 
 CI takes Node from `package.json` engines and caches npm. Tests run on Ubuntu except the
-macOS-only storage and native browser proofs and Desktop parity. A full staging run uses two
+macOS-only storage and native browser proofs and Desktop parity. Native proofs and the
+padded-receipt storage upgrade run in separate single-worker invocations, preserving their
+existing deadlines under duration-based assignment. A full staging run uses two
 Ubuntu unit shards, two architecture shards and fourteen integration shards, plus static and
 privacy, within twenty Ubuntu runners. Native files use all five macOS runners; when parity is
 selected, three macOS runners run parity and two run native files. The release runner starts after

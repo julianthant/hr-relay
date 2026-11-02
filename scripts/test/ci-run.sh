@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs this CI job's share of a Vitest project and records file durations for scripts/test/ci-durations.json.
-# Usage: ci-run.sh <unit|integration|architecture> <ubuntu|macos|serial> <job>/<jobs> [vitest args...]
+# Usage: ci-run.sh <unit|integration|architecture> <ubuntu|macos|serial|storage> <job>/<jobs> [vitest args...]
 set -euo pipefail
 project=$1 runner=$2 slice=$3
 shift 3
