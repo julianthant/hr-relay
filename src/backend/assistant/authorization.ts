@@ -8,6 +8,8 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
 import type { CommandKernel } from "../runs/commands/command-kernel.js";
 import type { Clock } from "../../rules/time/clock.js";
+import { AssistantPermissionViewSchema } from "../../models/dashboard/assistant.js";
+import { readSettings } from "../runtime/settings/settings-runtime.js";
 
 export class AssistantAuthorizationError extends Error {
   constructor(reason: string, readonly code: AssistantRefusalCode = "ASSISTANT_BINDING_STALE") {
@@ -65,6 +67,20 @@ export function createAssistantAuthorization(ports: Ports) {
     }
   };
   return Object.freeze({
+    permission() {
+      return ports.database.withAuthorityReadSnapshot(() => {
+        const current = ports.current(), grant = repository.grant();
+        if (grant !== undefined && (grant.profileId !== current.profileId || grant.policy.mode !== "every-action")) {
+          throw new AssistantAuthorizationError("assistant-permission-authority-invalid", "ASSISTANT_AUTHORITY_INVALID");
+        }
+        const settings = readSettings(ports.database.authority);
+        const view = AssistantPermissionViewSchema.parse({ ...current, mode: "every-action",
+          state: grant === undefined ? "grant-required" : "granted", policyRevision: grant?.policy.revision ?? 0,
+          settingsRevision: settings.revision, settingsSchemaHash: settings.settingsSchemaHash });
+        if (!same(current, ports.current())) throw new AssistantAuthorizationError("assistant-permission-owner-changed");
+        return view;
+      });
+    },
     createChat(): Chat {
       return ports.database.withAuthorityTransaction(() => {
         const current = ports.current(), createdAt = now(), chatId = randomUUID();

@@ -33,6 +33,13 @@ selected `profileId`, `epoch`, `revision` and canonical preference. The response
 missing, corrupt or refused authority returns a coded unavailable response rather than a browser
 default. The authenticated selected-profile composition owns the view.
 
+`GET /api/v1/assistant/permission` uses the same typed client and selected-person authorization.
+Its strict view binds the person, session epoch, policy revision, and current Settings revision/schema.
+It distinguishes `grant-required` from `granted` and exposes only `every-action`. The read creates
+no grant or action, uses `no-store`, and refuses revoked, changed or invalid authority. Permission
+grants still require the existing explicit operator Settings command; workflow proposals still
+require their separate confirmation. The served Settings permission control is not yet bound to this read.
+
 The composer recognizes the canonical setup command constants from `models/dashboard/assistant.ts`.
 A model read uses that served view. A model set goes through the existing `CommandExecutor` and
 `executeCommand` protocol, with `requestedBy` bound to `LOCAL_OPERATOR_ACTOR_ID`,
