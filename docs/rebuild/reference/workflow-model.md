@@ -447,6 +447,22 @@ submit, intent, transaction checkpoint or confirmation publication. A correction
 completed task or transaction's mapped input refuses reuse. UNKNOWN, attempting and parked writes
 refuse Rerun; saved results never authorize another submit.
 
+Completed tasks whose dependencies include a transaction wait for its authenticated semantic output
+before replay comparison, correction and hydration. Their current branch and condition still apply.
+Reusing a transaction does not publish a new submit confirmation or mark the publisher unhealthy;
+new-submit publication requires settlement evidence from the current execution.
+
+Child-dependent transaction mappings use native authenticated delegation evidence. The original
+scope retains member order, result schemas and sealed terminal results. Retry journals can prove
+replacements issued to a continuation at creation, before its first claim, or replacements issued
+after an exact retained source failed. The former belong to that continuation's original scope;
+the latter are rewound when reconstructing the failed source. Original and current prepare and
+commit mappings must agree, so an all-settled member may change only when the mapped fields do not.
+Join-none dependencies keep their immutable manifest reference. Failed-parent terminal results
+currently carry no dependency receipt: earlier or in-flight replacement histories without enough
+native authority refuse with `RUN_CONTINUATION_REFUSED`, including own-run Resume. Effective
+members never substitute for an unprovable original scope.
+
 Dashboard Rerun consumes its canonical source-bound plan; Retry uses the lifecycle service. Both
 doors enforce failed-only sources and retain exact continuation lineage.
 

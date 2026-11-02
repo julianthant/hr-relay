@@ -316,7 +316,7 @@ function taskIndexOf(stores: TaskStoreRegistry): ReadonlyMap<string, AnyTask> {
 
 type PlanEntry =
   | Readonly<{ mode: "execute" }>
-  | Readonly<{ mode: "replay"; record: RunCheckpointRecord }>
+  | Readonly<{ mode: "replay"; record: RunCheckpointRecord; deferred?: true; patches?: readonly CheckpointPatch[] }>
   | Readonly<{ mode: "skipped-condition" }>
 
   | Readonly<{ mode: "asserted"; replay?: RunCheckpointRecord }>
@@ -697,7 +697,8 @@ export async function executeClaimedRun(
         else {
           const dependencyNode = nodes.find(node => node.id === dependency);
           if (dependencyNode?.kind === "child-run") {
-            const child = continuationAuthority?.delegation(String(dependency), String(dependencyNode.edgeId));
+            const child = deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, source.envelope)
+              .dependency(String(dependency), String(dependencyNode.edgeId), true));
             if (child !== undefined) values[String(dependency)] = JsonValueSchema.parse(delegationEvidenceOutput(child, dependencyNode.target.result));
           }
         }
@@ -758,7 +759,8 @@ export async function executeClaimedRun(
         let conditionKnown = true;
         for (const dependency of node.dependsOn) {
           const dependencyEntry = plan.get(String(dependency));
-          if (dependencyEntry === undefined || dependencyEntry.mode === "execute" || dependencyEntry.mode === "asserted") {
+          if (dependencyEntry === undefined || dependencyEntry.mode === "execute" || dependencyEntry.mode === "asserted"
+            || !Object.hasOwn(outputs, String(dependency))) {
             conditionKnown = false;
           }
         }
@@ -807,7 +809,8 @@ export async function executeClaimedRun(
         }
         if (load.found) {
           const record = requireStoredCheckpoint(stored, String(node.id));
-          if (envelope.continuation !== undefined && record.runId !== runId) {
+          const deferred = node.dependsOn.some(dependency => !Object.hasOwn(outputs, String(dependency)));
+          if (!deferred && envelope.continuation !== undefined) {
             const original = node.uses.input.parse(node.bind(sourceScopeFor(record.runId, node.dependsOn)));
             const continued = node.uses.input.parse(node.bind(scopeFor(node.dependsOn)));
             if (canonicalJsonStringify(original) !== canonicalJsonStringify(continued)) {
@@ -817,7 +820,7 @@ export async function executeClaimedRun(
           }
           const nodePatches = injectedByNode.get(String(node.id));
           let effective = record;
-          if (nodePatches !== undefined) {
+          if (nodePatches !== undefined && !deferred) {
             injectedByNode.delete(String(node.id));
             try {
               const patched = applyCheckpointPatches({
@@ -839,7 +842,10 @@ export async function executeClaimedRun(
               continue;
             }
           }
-          plan.set(String(node.id), { mode: "replay", record: effective });
+          if (deferred && nodePatches !== undefined) injectedByNode.delete(String(node.id));
+          plan.set(String(node.id), { mode: "replay", record: effective, ...(deferred ? { deferred: true,
+            ...(nodePatches === undefined ? {} : { patches: nodePatches }) } : {}) });
+          if (deferred) continue;
           outputs[String(node.id)] = JsonValueSchema.parse(effective.output.value);
           checkpointRecords.set(String(node.id), effective);
           hydrateActionSources(effective);
@@ -1512,9 +1518,47 @@ export async function executeClaimedRun(
       if (envelope.dryRun) dryRunSteps.set(String(node.id), { nodeId: node.id, state: "exercised" });
       checkCancellation();
       if (input.signal.aborted) throw abortReason(`run ${runId} execution was aborted`);
-      const entry = plan.get(String(node.id));
+      let entry = plan.get(String(node.id));
       if (entry === undefined) throw new Error(`node "${node.id}" has no execution plan entry`);
       if (entry.mode === "replay") {
+        if (entry.deferred) {
+          if (node.kind !== "task") throw new RunContinuationRefusedError("run-continuation-deferred-task-required");
+          if (excludedByBranch(node)) { skippedReasons.set(String(node.id), "branch-not-selected"); continue; }
+          const scope = scopeFor(node.dependsOn);
+          if (node.when !== undefined && !evaluateNodeCondition(node.when, scope)) {
+            skippedReasons.set(String(node.id), "condition-false"); continue;
+          }
+          if (node.dependsOn.some(dependency => !Object.hasOwn(scope.outputs, String(dependency)))) {
+            throw new RunContinuationRefusedError("run-continuation-task-context-unavailable");
+          }
+          if (envelope.continuation !== undefined
+            && canonicalJsonStringify(node.uses.input.parse(node.bind(sourceScopeFor(entry.record.runId, node.dependsOn))))
+              !== canonicalJsonStringify(node.uses.input.parse(node.bind(scope)))) {
+            throw new RunContinuationRefusedError("run-continuation-task-input-mismatch");
+          }
+          const freshness = auditCheckpointFreshness({ workflowId: descriptor.id, runId, startAt: startAt ?? node.id, nodes,
+            replayed: [{ nodeId: node.id, taskId: node.uses.id, freshness: node.uses.freshness, provenance: entry.record.provenance }],
+            scheduled: nodes.filter(candidate => plan.get(String(candidate.id))?.mode === "execute"
+              && !(candidate.kind === "transaction" && envelope.continuation?.checkpoints.some(row => row.nodeId === candidate.id))).map(candidate => candidate.id),
+            now: clock.now(), attempt: envelope.attempt, ...(envelope.freshnessOverride === undefined ? {} : { overrides: envelope.freshnessOverride }) });
+          if (freshness.length > 0) return await terminalizeAsFailure(buildEntryValidationFailureRecord({ run: getRun(), failureId: deps.ids.uuid(),
+            problems: freshness, occurredAt: instant() }));
+          if (entry.patches !== undefined) {
+            let patched: ReturnType<typeof applyCheckpointPatches>;
+            try {
+              patched = applyCheckpointPatches({ replayed: entry.record, patches: entry.patches, outputSchema: node.uses.output,
+                attempt: envelope.attempt, claimGeneration: claim.claimGeneration, runId, writtenAt: instant() });
+            } catch (error) {
+              return await terminalizeAsFailure(buildEntryValidationFailureRecord({ run: getRun(), failureId: deps.ids.uuid(),
+                problems: [`injected correction for node "${node.id}" was refused: ${error instanceof Error ? error.message : String(error)}`], occurredAt: instant() }));
+            }
+            deps.authority.authority.runCheckpoints.insert(patched.record);
+            entry = { mode: "replay", record: patched.record };
+          }
+          outputs[String(node.id)] = entry.record.output.value;
+          checkpointRecords.set(String(node.id), entry.record);
+          hydrateActionSources(entry.record);
+        }
         recordCheckpointReplay(String(node.id), entry.record);
         if (node.kind === "task") {
           const owed = await resumePendingProjections(node, entry.record);
@@ -1783,10 +1827,11 @@ export async function executeClaimedRun(
               + "refusing to skip a write node",
             ));
           }
+          const transactionCheckpointBefore = envelope.dryRun ? undefined : readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
           const transactionScope = scopeFor(node.dependsOn);
           if (!envelope.dryRun && envelope.continuation !== undefined) {
             const checkpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
-            if (checkpoint !== undefined && checkpoint.runId !== envelope.runId) {
+            if (checkpoint !== undefined) {
               const originalScope = sourceScopeFor(checkpoint.runId, node.dependsOn);
               const mappings = (scope: RuntimeScope) => ({ prepare: node.prepare.uses.input.parse(node.prepare.bind(scope)),
                 commit: node.commit.uses.input.parse(node.commit.bind(scope)) });
@@ -1974,6 +2019,8 @@ export async function executeClaimedRun(
             }
             checkpointRecords.set(String(node.id), record);
             if (storedOutcome.disposition === "committed" && storedOutcome.proofSource === "normal-output"
+              && (durableCommitProof !== undefined || savedEffectProof !== undefined || committedGestures.length > 0 || savedVerifications.length > 0
+                || transactionCheckpointBefore === undefined && record.runId === runId && record.claimGeneration === claim.claimGeneration)
               && deps.confirmedActionPublisher !== undefined && operationDisplaySnapshot !== undefined) {
               const system = taskIndex.get(node.commit.uses.id)?.driver?.system;
               if (system === undefined) throw new Error("confirmed-submit-registered-driver-missing");

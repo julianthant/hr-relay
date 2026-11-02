@@ -1,4 +1,6 @@
 import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
+import { AuthenticatedRunContinuation } from "../../runtime/checkpoints/run-continuation-delegation.js";
+import { delegationEvidenceOutput } from "../../../models/run/result.js";
 import { readContinuationGate, validateRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
 import { captureRunContinuation, continuationEvidenceDigest } from "../../runtime/checkpoints/run-continuation.js";
 import type { RunRecord } from "../../../models/run/record.js";
@@ -31,7 +33,7 @@ export function validateCompletedTransactionContinuations(repositories: Authorit
   const ownedIntents = [...sources.values()].flatMap(source => repositories.writeIntents.listByRun(source.envelope.runId));
   const nodes = descriptorRuntimeNodes(descriptor);
   const completed = new Set<string>();
-  const scopeFor = (source: RunRecord, dependsOn: readonly string[], value: JsonValue) => {
+  const scopeFor = (source: RunRecord, dependsOn: readonly string[], value: JsonValue, historical = false) => {
     const outputs: Record<string, JsonValue> = {};
     for (const dependency of dependsOn) {
       const own = repositories.runCheckpoints.listByAttempt(source.envelope.workflow, source.envelope.itemId, dependency, source.envelope.attempt)
@@ -45,6 +47,12 @@ export function validateCompletedTransactionContinuations(repositories: Authorit
         }
         outputs[dependency] = node?.kind === "transaction" ? JsonValueSchema.parse(projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Transaction continuation")) : checkpoint.output.value;
       } else {
+        if (node?.kind === "child-run") {
+          const child = AuthenticatedRunContinuation.authenticate(repositories, source.envelope).dependency(dependency, String(node.edgeId), historical);
+          if (child === undefined) throw new RerunRefusedError("invalid-value", "Saved transaction child dependency is unavailable.");
+          outputs[dependency] = JsonValueSchema.parse(delegationEvidenceOutput(child, node.target.result));
+          continue;
+        }
         const gate = readContinuationGate(repositories, source.envelope, dependency);
         if (gate === undefined || node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output") || !node.result.safeParse(gate.result.value).success) {
           throw new RerunRefusedError("invalid-value", "Saved transaction dependency is unavailable.");
@@ -84,7 +92,7 @@ export function validateCompletedTransactionContinuations(repositories: Authorit
     const outcome = parsed.data;
     try { projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Transaction continuation"); }
     catch { throw new RerunRefusedError("schema-mismatch", "Completed transaction proof or output schema changed."); }
-    const prior = scopeFor(original, node.dependsOn, original.input.parsed.value), current = scopeFor(run, node.dependsOn, input);
+    const prior = scopeFor(original, node.dependsOn, original.input.parsed.value, true), current = scopeFor(run, node.dependsOn, input);
     const mappings = (scope: typeof current) => ({ prepare: node.prepare.uses.input.parse(node.prepare.bind(scope)), commit: node.commit.uses.input.parse(node.commit.bind(scope)) });
     const priorMappings = mappings(prior), currentMappings = mappings(current);
     if (canonicalJsonStringify(priorMappings) !== canonicalJsonStringify(currentMappings)) throw new RerunRefusedError("invalid-value", "Completed transaction mapped input changed.");

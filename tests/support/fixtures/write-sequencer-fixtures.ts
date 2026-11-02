@@ -339,7 +339,9 @@ export interface WriteFixtureRegistry {
   readonly world: WriteFixtureWorld;
 }
 
-export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRegistry {
+export function buildWriteFixtureRegistry(world: WriteFixtureWorld, commitContract: Omit<typeof WriteFixtureCommit, "input"> & {
+  readonly input: z.ZodType<{ eid: z.output<typeof EidSchema>; memo?: string | undefined }>;
+} = WriteFixtureCommit): TaskStoreRegistry {
   const probe = defineTask(writeFixtureDriverDeclaration, WriteFixtureProbe, {
     sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
     async run({ input, ctx }) {
@@ -377,7 +379,7 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRe
       return staged;
     },
   });
-  const commit = defineTask(writeFixtureDriverDeclaration, WriteFixtureCommit, {
+  const commit = defineTask(writeFixtureDriverDeclaration, commitContract, {
     sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
     async run({ ctx }) {
       if (world.commitThrows !== undefined) throw world.commitThrows;
