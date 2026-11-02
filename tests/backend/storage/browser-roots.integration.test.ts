@@ -1,9 +1,12 @@
 import { createNativeBrowserProbe } from "../../../src/backend/runtime/browser/native-browser.js";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { it } from "vitest";
+import { testProcessImport } from "../../support/compiled-process.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { createBrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions, onboardingProfileDirectory, admitCommandBrowser, commandProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
 import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
@@ -110,6 +113,45 @@ it("refuses missing, corrupt, nonprivate and unknown-stage registry sources with
     finally { writeFileSync(w.path, original, { mode: 0o600 }); }
     assert.equal(Object.isFrozen(w.roots.inventory().roots), true);
   } finally { await w.close(); }
+});
+
+it("serializes registry reads with another process's staged publication", async () => {
+  const w = await fixture();
+  const directory = join(w.f.machine.stateRoot, "machine"), proceed = join(w.f.workspace, "publish-registry");
+  const before = w.roots.inventory(), next = { ...before, revision: before.revision + 1 };
+  const stage = join(directory, `.browser-roots.${randomUUID()}.tmp`);
+  const child = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", `
+    import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+    import { withPrivateFileLock } from ${JSON.stringify(new URL("../../../src/backend/storage/configuration/credential-safe-file.js", import.meta.url).href)};
+    import { replacePrivateFile } from ${JSON.stringify(new URL("../../../src/backend/storage/private-path.js", import.meta.url).href)};
+    const [directory, path, stage, proceed] = process.argv.slice(1);
+    withPrivateFileLock(directory, '.browser-roots.lock', () => {
+      const before = JSON.parse(readFileSync(path, 'utf8'));
+      writeFileSync(stage, JSON.stringify({ ...before, revision: before.revision + 1 }), { mode: 0o600 });
+      process.send('staged');
+      const wait = new Int32Array(new SharedArrayBuffer(4));
+      while (!existsSync(proceed)) Atomics.wait(wait, 0, 0, 5);
+      Atomics.wait(wait, 0, 0, 250);
+      replacePrivateFile(stage, path);
+    });
+    process.disconnect();
+  `, directory, w.path, stage, proceed], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
+  const closed = once(child, "close");
+  let output = "";
+  child.stderr?.on("data", chunk => { output += String(chunk); });
+  try {
+    const staged = await Promise.race([once(child, "message"), closed.then(() => { throw new Error(`registry publisher exited before staging: ${output}`); })]);
+    assert.deepEqual(staged, ["staged", undefined]);
+    assert.equal(existsSync(stage), true);
+    writeFileSync(proceed, "publish", { mode: 0o600 });
+    assert.deepEqual(w.roots.inventory(), next);
+    assert.deepEqual(await closed, [0, null], output);
+    assert.equal(existsSync(stage), false);
+  } finally {
+    writeFileSync(proceed, "publish", { mode: 0o600 });
+    await closed;
+    await w.close();
+  }
 });
 
 it("fresh native acquisition sees durable intent and a closed row never substitutes for another native acquisition", async () => {
