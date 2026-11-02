@@ -8,6 +8,7 @@ import { recordBrowserAction, withBrowserActionSession } from "../../../../src/b
 import { RecoveryActivityError } from "../../../../src/backend/runtime/writes/recovery-activity.js";
 import { BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
 import { WorkerControlRefusal } from "../../../../src/models/run/worker-control.js";
+import { TaskError } from "../../../../src/workflow-kit/errors.js";
 import { checkParkedWrite } from "../../../../src/backend/runtime/writes/write-recovery.js";
 import { WorkerSessionClosureUnprovedError, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { createWorkerBrowserControl } from "../../../../src/backend/runtime/workers/worker-browser-control.js";
@@ -151,6 +152,36 @@ describe("held-only parked write checks", () => {
     assert.equal(canonicalJsonStringify([h.run, h.intent, h.attempt]), before);
     assert.equal(h.timeline.page({}).at(-1)?.payload.kind, "recovery-activity-ended");
     assert.equal(h.input.repositories.runCheckpoints.latest(h.run.envelope.workflow, h.run.envelope.itemId, "submit-write"), undefined);
+  });
+
+  for (const failure of ["missing", "outage"] as const) it(`refuses nested required capture errors from real sessions with ${failure} persistence`, async () => {
+    const h = await fixture(1), sessionId = BrowserSessionIdSchema.parse(UUID_6);
+    let closed = 0;
+    const sessions = new WorkerSessionManager({ workerId: WorkerIdSchema.parse(h.input.target.workerId), workflowId: descriptor.id,
+      stores: taskStoreRegistry, clock: h.clock, scheduler: h.input.probe.scheduler, acquireDeadlineMs: 10_000,
+      duoCeremony: await fixtureDuoCeremonyGates(h.clock),
+      ...(failure === "missing" ? {} : { browserScreenshotCapture: { capture: async () => { throw new Error("synthetic-persistence-outage"); } } }),
+      factory: { probeProfile: async () => undefined, open: async request => ({ ...request, sessionId,
+        signInFingerprint: request.configFingerprint, profileRevision: 1, profileDirectory: "/synthetic/capture-probe", driver: h.driver,
+        authentication: { authenticate: async () => "already-authenticated" }, reset: async () => undefined,
+        screenshot: async () => ({ state: "available", sessionId, pageVersion: 1, observedAt: h.clock.now().toISOString(),
+          bytes: new Uint8Array([137, 80, 78, 71]), width: 1280, height: 720 }),
+        close: async () => { closed++; return { sessionId, system: "ucpath", pagesClosed: true, contextClosed: true }; },
+      }) } });
+    try {
+      await assert.rejects(checkParkedWrite({ ...h.input, sessions }), error => {
+        assert.ok(error instanceof RecoveryActivityError);
+        assert.ok(error.cause instanceof AggregateError);
+        assert.ok(error.cause.errors.some(cause => cause instanceof TaskError && cause.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED"));
+        assert.ok(error.cause.errors.length > 1);
+        return true;
+      });
+      assert.equal(closed, 1);
+      assert.equal(h.run.lifecycle.state, "parked-write"); assert.equal(h.intent.status, "parked");
+      assert.equal(h.attempt.outcome.state, "parked");
+      assert.equal(h.input.repositories.runCheckpoints.latest(h.run.envelope.workflow, h.run.envelope.itemId, "submit-write"), undefined);
+      assert.equal(h.timeline.page({}).at(-1)?.payload.kind, "recovery-activity-ended");
+    } finally { await sessions.closeAll("worker-stop"); }
   });
 
   it("preserves channel Error identity and non-Error causes without changing held authority", async () => {

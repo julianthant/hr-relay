@@ -30,11 +30,10 @@ export class RecoveryActivityError extends WorkerControlRefusal {
   }
 }
 
-function hasUnprovedClosure(error: unknown): boolean {
-  if (error instanceof WorkerSessionClosureUnprovedError || error instanceof BrowserSessionClosureUnprovedError
-    || error instanceof DuoCeremonyReleaseFailedError) return true;
-  if (error instanceof AggregateError && error.errors.some(hasUnprovedClosure)) return true;
-  return error instanceof Error && error.cause !== undefined && hasUnprovedClosure(error.cause);
+function containsFailure(error: unknown, matches: (error: unknown) => boolean): boolean {
+  if (matches(error)) return true;
+  if (error instanceof AggregateError && error.errors.some(cause => containsFailure(cause, matches))) return true;
+  return error instanceof Error && error.cause !== undefined && containsFailure(error.cause, matches);
 }
 
 export async function executeRecoveryProbe(input: Readonly<{
@@ -172,7 +171,9 @@ export async function executeRecoveryProbe(input: Readonly<{
     endFailure = error;
   }
   const failures = [failure, noteFailure, endFailure].filter(error => error !== undefined);
-  if (closureFailure !== undefined || failures.some(hasUnprovedClosure)) {
+  if (closureFailure !== undefined || failures.some(error => containsFailure(error, cause =>
+    cause instanceof WorkerSessionClosureUnprovedError || cause instanceof BrowserSessionClosureUnprovedError
+      || cause instanceof DuoCeremonyReleaseFailedError))) {
     if (failures.length === 1 && failure === closureFailure
       && (failure instanceof WorkerSessionClosureUnprovedError || failure instanceof BrowserSessionClosureUnprovedError
         || failure instanceof DuoCeremonyReleaseFailedError)) throw failure;
@@ -180,7 +181,9 @@ export async function executeRecoveryProbe(input: Readonly<{
   }
   if (endFailure !== undefined) throw new RecoveryActivityError(new AggregateError(failures, "Recovery activity close failed"));
   if (noteFailure !== undefined) throw noteFailure;
-  if (failure instanceof TaskError && failure.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED") throw new RecoveryActivityError(failure);
+  if (containsFailure(failure, error => error instanceof TaskError && error.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED")) {
+    throw new RecoveryActivityError(failure);
+  }
   if (failure !== undefined) throw failure;
   return outcome!;
 }
