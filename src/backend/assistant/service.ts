@@ -2,7 +2,7 @@ import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.j
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantFunctionNamespaceSchema, AssistantActionDecisionSchema, AssistantActionResultSchema, AssistantActionProposalSchema, type AssistantActionProposal, type AssistantActionDecision, type AssistantActionResult,
-  type AssistantFailureCode, type AssistantResult, type AssistantInputItem, AssistantCitationSchema } from "../../models/dashboard/assistant.js";
+  type AssistantFailureCode, type AssistantResult, type AssistantInputItem, AssistantCitationSchema, AssistantPermissionViewSchema, type AssistantPermissionView } from "../../models/dashboard/assistant.js";
 import { ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { AssistantContextError, type AssistantContext } from "./context.js";
@@ -44,6 +44,7 @@ export interface AssistantFunctionSet {
 export interface AssistantServiceOptions {
   readonly verifySelectedModel?: (signal: AbortSignal) => Promise<void>;
   readonly readModelPreference?: () => AssistantModelPreferenceView;
+  readonly readPermission?: () => AssistantPermissionView;
   readonly account: Pick<ChatGptAccountService, "inferAssistant" | "listAssistantModels" | "readAuthority" | "revalidateAuthority">;
   readonly context: AssistantContext | (() => AssistantContext);
   readonly runtime: () => Readonly<{ repositoryId: string; revision: string }>;
@@ -84,6 +85,10 @@ export function createAssistantService(options: AssistantServiceOptions) {
     return { policy, modelPolicyCurrent };
   }
   return Object.freeze({
+    permission() {
+      if (options.readPermission === undefined) throw new Error("assistant-permission-unavailable");
+      return AssistantPermissionViewSchema.parse(options.readPermission());
+    },
     modelPreference() {
       if (options.readModelPreference === undefined) throw new AssistantModelPolicyError('assistant-model-preference-unavailable');
       return AssistantModelPreferenceViewSchema.parse(options.readModelPreference());
@@ -215,4 +220,4 @@ export function createAssistantService(options: AssistantServiceOptions) {
     },
   });
 }
-export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'modelPreference'>>;
+export type AssistantService = Pick<ReturnType<typeof createAssistantService>, 'respond'> & Partial<Pick<ReturnType<typeof createAssistantService>, 'decide' | 'modelPreference' | 'permission'>>;
