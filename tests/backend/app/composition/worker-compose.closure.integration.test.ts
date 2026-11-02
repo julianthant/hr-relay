@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, readFileSync } from "node:fs";
-import { join, relative, isAbsolute } from "node:path";
+import { basename, join, relative, isAbsolute } from "node:path";
 import { spawnSync } from "node:child_process";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { chromium } from "playwright";
@@ -45,7 +45,8 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
   let closedWorkerDatabase: AuthorityDatabase | undefined, launchedDirectory: string | undefined;
   let beforeLaunch: WorkerLeaseRecord | undefined, launchReport: WorkerLaunchUncertainError | undefined;
   let profileRoot: string | undefined;
-  const registryPath = join(f.admission.captureBrowserRegistryContext().machineRoot, "machine", "browser-roots.json");
+  const machineRoot = f.admission.captureBrowserRegistryContext().machineRoot;
+  const registryPath = join(machineRoot, "machine", "browser-roots.json");
   let custodyOraclesProved = false, primary: unknown;
   const run = workerLoop.runWorkerLoop;
   const store = credentialStores.createCredentialStore;
@@ -109,10 +110,16 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
         return WorkerLeaseRecordSchema.parse(JSON.parse(row.payload_json));
       });
       assert.notEqual(lease.lifecycle.state, "stopped"); assert.deepEqual(lease, expectedLease);
+      assert.ok(probes > 0); assert.equal(launches, 1); assert.ok(launchedDirectory);
       const registry = BrowserRootsSchema.parse(JSON.parse(readFileSync(registryPath, "utf8")));
       const owned = registry.roots.filter(row => row.owner.kind === "worker" && row.owner.workerId === expectedLease.workerId);
-      assert.equal(owned.length, 1); assert.equal(owned[0]?.launch.state, "unknown");
-      assert.ok(probes > 0); assert.equal(launches, 1); assert.ok(launchedDirectory);
+      assert.deepEqual(owned.map(row => basename(row.directory)).sort(), [...expectedLease.browserSystems].sort());
+      const uncertain = owned.find(row => join(machineRoot, row.directory) === launchedDirectory);
+      assert.ok(uncertain); assert.equal(uncertain.launch.state, "unknown");
+      for (const row of owned) {
+        assert.equal(row.native, undefined);
+        if (row !== uncertain) assert.equal(row.launch.state, "closed");
+      }
       assert.ok(profileRoot); const contained = relative(profileRoot, launchedDirectory);
       assert.ok(contained.length > 0 && !contained.startsWith("..") && !isAbsolute(contained));
       assert.ok(launchFailure); await assert.rejects(launchFailure);
