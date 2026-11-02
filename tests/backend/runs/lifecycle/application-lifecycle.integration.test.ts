@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
 import { createApplicationLifecycle } from "../../../../src/backend/runs/lifecycle/application-lifecycle.js";
 import { settingsFixture } from "../../../support/helpers/backend/settings-activation-fixture.js";
+import { ApplicationAdmissionRefusedError } from "../../../../src/backend/storage/sqlite/run-store-contracts.js";
 
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); });
@@ -21,7 +22,8 @@ it("holds durable current-runtime admission before awaiting an idle installer an
   assert.throws(() => f.create());
   await assert.rejects(lifecycle.installIdleUpdate(), /application-update-work-active/u);
   assert.ok(rejectInstall); rejectInstall(new Error("fixture installer failed"));
-  await assert.rejects(installing, /fixture installer failed/u);
+  await assert.rejects(installing, error => error instanceof ApplicationAdmissionRefusedError
+    && error.code === "APPLICATION_ADMISSION_REFUSED" && error.cause instanceof Error && error.cause.message === "fixture installer failed");
   assert.equal(f.database.authority.runs.admission().state, "draining");
   const active = f.database.authority.runtimeConfig.get(); assert.ok(active);
   assert.notEqual(f.save({ "timeouts.taskMs": { set: 90_000 } }).state, "applied");

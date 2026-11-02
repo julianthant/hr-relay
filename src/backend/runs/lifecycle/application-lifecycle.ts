@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { ApplicationLifecycleSchema } from "../../../models/dashboard/application-lifecycle.js";
 import { runClaim } from "../../../models/run/record.js";
+import { ApplicationAdmissionRefusedError } from "../../storage/sqlite/run-store-contracts.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 
 export interface ApplicationUpdateHost {
@@ -26,7 +27,7 @@ export function createApplicationLifecycle(input: Readonly<{
       || facts.browsers.some(browser => browser.health !== "closed") || facts.duoLeases.some(lease => lease.state === "held")
       || facts.controls.some(control => control.auditedAt === undefined) || facts.pendingArtifacts.length > 0;
     const runtime = input.database.authority.runtimeConfig.get();
-    if (runtime === undefined) throw new Error("application-runtime-unavailable");
+    if (runtime === undefined) throw new ApplicationAdmissionRefusedError("application-runtime-unavailable");
     return ApplicationLifecycleSchema.parse({ runtimeGeneration: runtime.generation,
       state: quitting ? "quitting" : admission.state === "open" ? "ready" : "pausing",
       targets: active.map(run => ({ runId: run.envelope.runId, expectedVersion: run.version })),
@@ -47,13 +48,14 @@ export function createApplicationLifecycle(input: Readonly<{
   return Object.freeze({ snapshot,
     quitAccepted() { if (!quitting && scheduled === undefined) scheduled = setTimeout(observeQuit, 0); },
     async installIdleUpdate() {
-      if (input.updateHost === undefined) throw new Error("application-update-installer-unavailable");
+      if (input.updateHost === undefined) throw new ApplicationAdmissionRefusedError("application-update-installer-unavailable");
       input.database.withAuthorityTransaction(repositories => {
         const current = snapshot();
-        if (current.update !== "pending" || repositories.runs.admission().state !== "open") throw new Error("application-update-work-active");
+        if (current.update !== "pending" || repositories.runs.admission().state !== "open") throw new ApplicationAdmissionRefusedError("application-update-work-active");
         repositories.runs.holdAdmission({ commandId: randomUUID(), runtimeGeneration: current.runtimeGeneration, reason: "update" });
       });
-      await input.updateHost.install();
+      try { await input.updateHost.install(); }
+      catch (error) { throw new ApplicationAdmissionRefusedError("application-update-install-failed", { cause: error }); }
     },
     dispose() { if (scheduled !== undefined) clearTimeout(scheduled); scheduled = undefined; },
   });

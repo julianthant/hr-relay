@@ -60,6 +60,14 @@ import {
 
 export { WorkerClaimLifetimeSchema } from "../../../models/run/worker.js";
 
+export class ApplicationAdmissionRefusedError extends Error {
+  readonly code = "APPLICATION_ADMISSION_REFUSED";
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ApplicationAdmissionRefusedError";
+  }
+}
+
 export const ApplicationAdmissionRequestSchema = z.strictObject({ commandId: CommandIdSchema,
   runtimeGeneration: PositiveIntSchema, reason: z.enum(["update", "shutdown"]) });
 
