@@ -113,6 +113,22 @@ describe("redaction surface scan — the declaration audit", () => {
     }
   });
 
+  it("limits operator-authored manual version names to their written local retention exception", () => {
+    const surface = REDACTION_SURFACES.find(surface => surface.id === 'durable/workbook-operation');
+    const entry = SURFACE_LEAF_ORIGINS.find(entry => entry.surface === 'durable/workbook-operation' && entry.path === 'change.name');
+    assert.ok(surface); assert.ok(entry);
+    assert.equal(entry.origin, 'operator-authored');
+    assert.match(entry.exception ?? '', /data-intake-and-edit-data\.md/u);
+    const { exception: _exception, ...withoutException } = entry;
+    const missing = auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS.map(candidate => candidate === entry ? withoutException : candidate));
+    assert.equal(missing.length, 1);
+    assert.match(missing[0] ?? '', /change\.name.*written exception/u);
+    for (const egress of ['process-egress', 'os-notification'] as const) {
+      const violations = auditSurfaceOrigins(REDACTION_SURFACES.map(candidate => candidate === surface ? { ...candidate, egress } : candidate), SURFACE_LEAF_ORIGINS);
+      assert.ok(violations.some(problem => problem.includes('change.name') && problem.includes('may not carry at all')));
+    }
+  });
+
   it("retains observed object keys in real collector addresses without treating them as authored text", () => {
     const points: RecordedDataPoint[] = [];
     const execution = { runId: UUID_1, traceId: "pl-180000-aaaa", attempt: 1, workflowId: "person-lookup", nodeId: "searching", taskId: SearchPersonOrg.id };

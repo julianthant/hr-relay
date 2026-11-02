@@ -105,7 +105,7 @@ export const WorkbookLinkSchema = z.strictObject({ url: z.url().refine(value => 
     && (url.hostname.endsWith('.sharepoint.com') || url.hostname === 'sharepoint.com');
 }), verifiedAt: IsoInstantSchema });
 export const WorkbookMetadataSchema = z.strictObject({ typeId: WorkbookIdSchema, sharePoint: WorkbookLinkSchema.nullable() });
-export const WorkbookCellValueWireSchema = z.union([PrimitiveCellSchema, DateCellWireSchema]);
+const WorkbookCellValueWireSchema = z.union([PrimitiveCellSchema, DateCellWireSchema]);
 export const WorkbookWriteSourceSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('operator') }),
   z.strictObject({ kind: z.literal('run'), runId: z.string().min(1) }),

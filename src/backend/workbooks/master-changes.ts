@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { EditableWorkbookWireSchema, WorkbookOperationReceiptSchema, WorkbookCellValueWireSchema, type EditableWorkbookWire, type WorkbookType, type WorkbookOperation, type WorkbookOperationReceipt } from '../../models/dashboard/workbooks.js';
+import { EditableWorkbookWireSchema, WorkbookOperationReceiptSchema, type EditableWorkbookWire, type WorkbookType, type WorkbookOperation, type WorkbookOperationReceipt } from '../../models/dashboard/workbooks.js';
 import { canonicalJsonStringify } from '../../rules/validation/canonical-json.js';
 
 export const WorkbookOwnershipSchema = z.record(z.string(), z.discriminatedUnion('owner', [
-  z.strictObject({ owner: z.literal('relay'), value: WorkbookCellValueWireSchema }), z.strictObject({ owner: z.literal('operator') }),
+  z.strictObject({ owner: z.literal('relay'), value: WorkbookOperationReceiptSchema.shape.changes.element.shape.newValue }), z.strictObject({ owner: z.literal('operator') }),
 ]));
 export type WorkbookOwnership = z.infer<typeof WorkbookOwnershipSchema>;
 const same = (a: unknown, b: unknown) => canonicalJsonStringify(JSON.parse(JSON.stringify(a ?? null))) === canonicalJsonStringify(JSON.parse(JSON.stringify(b ?? null)));

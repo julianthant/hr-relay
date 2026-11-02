@@ -298,6 +298,7 @@ these snapshots are tagged ISO values. Workbook rows do not become run items thr
 The live `version` is a CAS revision. Named versions are explicit operator snapshots; saves, run
 patches and manual Sync do not create versions. Existing saved revisions retain their data with
 migration provenance. The immutable creation record independently proves workflow publication replay.
+Operator-approved manual named-version retention preserves the operator-entered version name in local durable workbook authority and its operation journal only; it grants no process or OS notification egress.
 
 Read-only revision lookup reconstructs the exact CAS revision for chat attachment open/download.
 It starts from immutable creation or a retained migration snapshot, then replays applied journal
