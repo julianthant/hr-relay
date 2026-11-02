@@ -3284,7 +3284,12 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     profileInventory(profileId: string): StoppedControlProfileInventory {
       held();
       const existing = inventoryClaims.get(profileId);
-      if (existing !== undefined) { requireStoppedControlProfileInventory(existing).assertHeld(); return existing; }
+      if (existing !== undefined) {
+        const source = requireStoppedControlProfileInventory(existing); source.assertHeld();
+        const issued = Object.freeze({ profileId: existing.profileId });
+        stoppedControlInventories.set(issued, source); issuedInventoryClaims.add(issued);
+        return issued;
+      }
       const pending = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath) : undefined;
       const prior = pending?.prior ?? readProfileEvidence(controlPath, StoppedProfileContinuitySchema);
       if (pending === undefined) readProfileEvidence(markerPath, z.strictObject({ schemaVersion: z.literal(prior.schemaVersion + 1) }));
