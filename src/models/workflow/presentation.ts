@@ -241,7 +241,8 @@ export const NodePurposeSpecSchema = z.strictObject({
 export type NodePurposeSpec = z.infer<typeof NodePurposeSpecSchema>;
 
 /** Sinks are a closed infrastructure registry, deliberately keyed by sink kind, never by workflow. */
-export const ArtifactSinkIdSchema = z.enum(["xlsx-retention"]);
+export const ArtifactSinkIdSchema = z.enum(["xlsx-retention", "documents-file"]);
+export const ArtifactSinkKeySchema = z.union([z.literal("xlsx-retention"), z.string().regex(/^documents-file-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u)]);
 export type ArtifactSinkId = z.infer<typeof ArtifactSinkIdSchema>;
 
 export const DurableArtifactProjectionSpecRuntimeSchema = z.strictObject({

@@ -1381,6 +1381,7 @@ export async function executeClaimedRun(
               specs: declaredProjections,
               nodeId: String(node.id),
               outputValue: record.output.value,
+              runId: record.runId,
             });
             const outboxRows = derived.map((row) => ({
               outboxId: generatedUpdateId(record, row),

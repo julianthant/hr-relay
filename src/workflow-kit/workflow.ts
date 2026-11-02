@@ -1020,6 +1020,7 @@ export function defineWorkflowDescriptor<
       assertSchemaOwnsPath(schema, keyField, `${id}: ${owner} key field`);
     }
   }
+  if ((spec.artifactProjections ?? []).filter(projection => projection.sink === "documents-file").length > 1) throw new Error(`${id} may publish only one named document artifact per run`);
   assertUnique(id, "artifact projection ids", (spec.artifactProjections ?? []).map((entry) => entry.id));
 
   for (const preset of spec.presets ?? []) {
