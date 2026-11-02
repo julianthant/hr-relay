@@ -18,6 +18,7 @@ import { isOfflineMaintenanceOperationActive,OfflineMaintenanceOperationUnavaila
 import { readPrivateFile } from "../../storage/configuration/credential-safe-file.js";
 import { assertCredentialStoreOwner,createCredentialStore,type CredentialStoreHooks } from "../../storage/configuration/credential-store.js";
 import { prepareStoppedBackupClosure,probeRestoreProfileBrowsersClosed,type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
+import { assertStoppedProfileResourcesClosed } from "../../storage/maintenance/profile-custody.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../storage/sqlite/migrations.js";
 import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
@@ -145,7 +146,7 @@ async function recoverRegisteredPersonCrash(workspace: string, lifetime: Runtime
 }
 
 export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, lifetime: RuntimeLifetimeLock,
-  hostFacts: HostConfigFacts, clock: Clock = systemClock): Promise<void> {
+  clock: Clock = systemClock): Promise<void> {
   lifetime.assertHeld();
   if (!existsSync(join(workspace, ".tracker", "control", "installation.json"))) throw new Error("shutdown-backup-installation-missing");
   try {
@@ -157,11 +158,13 @@ export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, l
           const repair = machine.admitStoppedProfileRepair(row.profileId, operation); owned.push(repair);
           await resumeShutdownBackupRetirement(repair, clock);
         }
-        const admission = await machine.forStoppedProfileUpgrade(profileBrowserClosure, row.profileId, operation, clock, hostFacts); owned.push(admission);
+        const admission = machine.admitStoppedProfile(row.profileId, operation); owned.push(admission);
+        assertStoppedProfileResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
         const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
         const closure = await prepareStoppedBackupClosure(profileBrowserClosure, admission, operation, clock, processLockRoot);
         const { backupStoppedAuthority } = await import("../../storage/maintenance/upgrade.js");
         await backupStoppedAuthority(closure, admission, admission.stateRoot, clock, processLockRoot, operation, "graceful-drain");
+        assertStoppedProfileResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
         const { retainCleanShutdownBackups } = await import("../../storage/maintenance/clean-shutdown-backups.js");
         await retainCleanShutdownBackups(admission, clock);
       }
