@@ -85,7 +85,7 @@ import { readAppSettings } from "./settings-storage.js";
 import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } from "./timeline-repository.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { selectTransactions } from "./transaction-selection.js";
-import { createWorkbookLibraryRepository,validateWorkbookLibrary } from "./workbook-library-repository.js";
+import { createWorkbookLibraryRepository,hasOnlyInitialWorkbookType,validateWorkbookLibrary } from "./workbook-library-repository.js";
 import { assertWorkerResetParkedWrite,authenticateWorkerControlClosure,authenticateWorkerSupervisorEffect,consumeWorkerControlClosure,consumeWorkerSupervisorEffect,createWorkerControlRepository,readWorkerControl,validateWorkerControls,workerBrowserFromRow,workerControlFromRow,type WorkerControlClosure,type WorkerControlRepository,type WorkerSupervisorEffect } from "./worker-control.js";
 import { admitWorkerVerification,createWorkerSlotRepository,readWorkerReservationCustody,readWorkerVerificationProfiles,requireWorkerPoolRoster,retireWorkerVerification,workerSlotFromRow } from "./worker-slots.js";
 
@@ -1933,10 +1933,13 @@ export class AuthorityDatabase implements Disposable {
       const counts = Object.freeze(AUTHORITY_TABLE_REGISTRY.map(table => Object.freeze({ table: table.name,
         count: z.strictObject({ count: z.number().int().safe().nonnegative() }).parse(database.prepare(`SELECT COUNT(*) AS count FROM ${table.name}`).get()).count })));
       const artifactReferenceCount = readManagedArtifactReferencesFromDatabase(database).length;
-      let empty = counts.every(row => row.table === "database_states" || row.table === "database_upgrades" || row.count === 0) && artifactReferenceCount === 0;
+      const initialWorkbookTypeOnly = hasOnlyInitialWorkbookType(database);
+      const pristineTable = (row: typeof counts[number]) => row.table === "database_states" || row.table === "database_upgrades"
+        || (row.table === "workbook_types" ? initialWorkbookTypeOnly : row.count === 0);
+      let empty = counts.every(pristineTable) && artifactReferenceCount === 0;
       const initializationTables = new Set<AuthorityTableName>(["settings", "commands", "command_audits", "settings_snapshots"]);
       if (!empty && artifactReferenceCount === 0
-        && counts.every(row => row.table === "database_states" || row.table === "database_upgrades" || initializationTables.has(row.table) || row.count === 0)
+        && counts.every(row => pristineTable(row) || initializationTables.has(row.table))
         && counts.every(row => !["settings", "commands", "command_audits"].includes(row.table) || row.count === 1)) {
         const settings = readAppSettings(database), active = settings?.active;
         if (settings !== undefined && settings.saved === null && active != null

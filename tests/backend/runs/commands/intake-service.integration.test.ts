@@ -787,7 +787,10 @@ describe("saved workbook intake bridge", () => {
       await assert.rejects(restartedBridge(first.libraryId, { ...request, expectedVersion: second.version }), { code: "WORKBOOK_INTAKE_SOURCE_CONFLICT" });
       assert.equal(reopened.getMeta().authorityGeneration, beforeConflict);
       assert.equal(reopened.authority.intakeSessions.findActiveBySource(result.session.artifact.sha256).length, 1);
-      assert.deepEqual(restartedLibrary.history(first.libraryId)[0].workbook, first.workbook);
+      assert.deepEqual(restartedLibrary.revision(first.libraryId, 1), first);
+      assert.deepEqual(reopened.authority.workbooks.creation(first.libraryId), first);
+      assert.deepEqual(restartedLibrary.read(first.libraryId), second);
+      assert.deepEqual(restartedLibrary.history(first.libraryId), []);
     }
     finally { reopened.close(); }
   });

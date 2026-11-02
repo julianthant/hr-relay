@@ -251,7 +251,7 @@ export class RuntimeAdmission {
     const path = join(root, "state.db");
     const binding = { installationId: this.locator.installationId, profileId: id };
     const observed = readProfileDatabaseBinding(path);
-    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION)) throw new Error("profile-stopped-upgrade-bound-required");
+    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== 11 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION)) throw new Error("profile-stopped-upgrade-bound-required");
     if (purpose === "layout" && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("fixed-layout-current-schema-required");
     assertCanonicalProfileBinding(path, binding);
     const ancestry = new Map<string, DirectoryIdentity>();
@@ -473,7 +473,7 @@ export class RuntimeAdmission {
       if (observed.state !== "unbound" || observed.schemaVersion !== 6) throw new Error("existing-data-owner-source-changed");
       return 6;
     }
-    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || observed.binding.installationId !== this.profileBinding.installationId
+    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== 11 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || observed.binding.installationId !== this.profileBinding.installationId
       || observed.binding.profileId !== this.profileBinding.profileId) throw new Error("profile-stopped-upgrade-binding-changed");
     return observed.schemaVersion;
   }

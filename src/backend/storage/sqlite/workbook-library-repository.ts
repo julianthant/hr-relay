@@ -28,6 +28,16 @@ export const WORKBOOK_LIBRARY_MIGRATION = Object.freeze({
   ]),
 });
 
+export const INITIAL_WORKBOOK_TYPE = Object.freeze({ id: 'general', name: 'General workbook', keyFieldId: null, fields: Object.freeze([]), defaultWorkbookId: null });
+
+export function hasOnlyInitialWorkbookType(database: DatabaseSync): boolean {
+  const rows = database.prepare('SELECT id,payload_json FROM workbook_types').all();
+  if (rows.length !== 1) return false;
+  const row = z.strictObject({ id: z.string(), payload_json: z.string() }).parse(rows[0]);
+  const value = WorkbookTypeSchema.parse(JSON.parse(row.payload_json));
+  return row.id === INITIAL_WORKBOOK_TYPE.id && canonicalJsonStringify(value) === canonicalJsonStringify(INITIAL_WORKBOOK_TYPE);
+}
+
 export const WORKBOOK_MASTER_MIGRATION = Object.freeze({ statements: [
   `ALTER TABLE workbook_library ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{"typeId":"general","sharePoint":null}' CHECK(json_valid(metadata_json))`,
   `ALTER TABLE workbook_library ADD COLUMN ownership_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(ownership_json))`,
@@ -38,7 +48,7 @@ export const WORKBOOK_MASTER_MIGRATION = Object.freeze({ statements: [
   `DROP TRIGGER workbook_library_history_retained`, `DROP TABLE workbook_library_history`,
   `ALTER TABLE workbook_versions RENAME TO workbook_library_history`,
   `CREATE TABLE workbook_types (id TEXT PRIMARY KEY, payload_json TEXT NOT NULL CHECK(json_valid(payload_json))) STRICT`,
-  `INSERT INTO workbook_types(id,payload_json) VALUES('general','{"id":"general","name":"General workbook","keyFieldId":null,"fields":[],"defaultWorkbookId":null}')`,
+  `INSERT INTO workbook_types(id,payload_json) VALUES('${INITIAL_WORKBOOK_TYPE.id}','${JSON.stringify(INITIAL_WORKBOOK_TYPE)}')`,
   `CREATE TABLE workbook_operations (sequence INTEGER PRIMARY KEY AUTOINCREMENT, workbook_id TEXT NOT NULL REFERENCES workbook_library(id), operation_id TEXT NOT NULL, digest TEXT NOT NULL, request_json TEXT NOT NULL CHECK(json_valid(request_json)), receipt_json TEXT CHECK(receipt_json IS NULL OR json_valid(receipt_json)), UNIQUE(workbook_id,operation_id)) STRICT`,
   ...['workbook_creations', 'workbook_library_history'].flatMap(table => [
     `CREATE TRIGGER ${table}_immutable BEFORE UPDATE ON ${table} BEGIN SELECT RAISE(ABORT,'workbook-evidence-immutable'); END`,
