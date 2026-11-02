@@ -43,6 +43,7 @@ describe("Person Lookup task implementations", () => {
         "ucpath/match-pending-terminations",
         "ucpath/read-job-summary",
         "ucpath/read-pending-termination-set",
+        "ucpath/read-transaction-findings",
         "ucpath/search-person-match",
         "ucpath/search-person-org",
         "ucpath/stage-pending-termination-sweep",
