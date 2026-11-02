@@ -82,7 +82,7 @@ it("keeps logical operation membership and content fences after closed byte-iden
   const f = await createBoundProfileFixture({ sharedMachine: true });
   try {
     const operationId = randomUUID(), root = f.machine.stateRoot;
-    const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 1000 });
+    const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 1000, migrationOwner: "profile-session-test" });
     let source: ReturnType<typeof database.capturePendingLogoutSource>;
     try { source = database.capturePendingLogoutSource(); } finally { database.close(); }
     const operation = LogoutOperationSchema.parse({ schemaVersion: 2, kind: "logout", operationId,

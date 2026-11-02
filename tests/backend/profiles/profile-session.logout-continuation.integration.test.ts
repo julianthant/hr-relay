@@ -44,7 +44,7 @@ async function fixture(withForeign = false) {
   const active = await finishProfileOnboarding(source, source.signUp({ ...fields, firstName: "Fixture", lastName: "Operator", createdAt: "2026-10-22T12:00:00.000Z" }));
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("actual fixture signup required");
   const sourceOwner = originalMachine.admitProfile(active.profileId);
-  const database = AuthorityDatabase.open(sourceOwner, { path: join(sourceOwner.stateRoot, "state.db"), openMode: "read-write" }, clock,
+  const database = AuthorityDatabase.open(sourceOwner, { path: join(sourceOwner.stateRoot, "state.db"), busyTimeoutMs: 1000, migrationOwner: "profile-session-test", openMode: "read-write" }, clock,
     undefined, undefined, undefined, createCredentialStore({ admission: sourceOwner, stateRoot: sourceOwner.stateRoot }));
   const pending = source.logOut(active.token, { at: fields.at });
   assert.equal(pending.state, "cancelling"); if (pending.state !== "cancelling" || pending.operationId === undefined) throw new Error("actual pending logout required");
