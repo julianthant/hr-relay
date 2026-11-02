@@ -17,6 +17,9 @@ const INTEGRATION_SCENARIO_FILES = [
   "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts",
   "tests/workflows/i9-check/workflow.integration.test.ts",
   "tests/backend/workbooks/workflow-workbook-service.integration.test.ts",
+  "tests/backend/systems/onbase/tasks/read-source-page.test.ts",
+  "tests/backend/systems/onbase/driver/interpreter.test.ts",
+  "tests/workflows/onbase/workflow.integration.test.ts",
 ] as const;
 export const ExecutableScenarioSpecSchema = z.strictObject({
   scenarioId: ScenarioIdSchema,
@@ -45,6 +48,15 @@ const I9_LOOKUP_FILE = workflowStructuralScenarioPath("i9-lookup", defineWorkflo
 export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
   { scenarioId: "workbooks/publish", file: "tests/backend/workbooks/workflow-workbook-service.integration.test.ts" },
   { scenarioId: "i9-check/person", file: "tests/workflows/i9-check/workflow.integration.test.ts" },
+  { scenarioId: "onbase/one-page", file: "tests/backend/systems/onbase/tasks/read-source-page.test.ts" },
+  { scenarioId: "onbase/invalid-pdf", file: "tests/backend/systems/onbase/tasks/read-source-page.test.ts" },
+  { scenarioId: "onbase/prepare", file: "tests/backend/systems/onbase/driver/interpreter.test.ts" },
+  { scenarioId: "onbase/keyset-miss", file: "tests/backend/systems/onbase/driver/interpreter.test.ts" },
+  { scenarioId: "onbase/identity-mismatch", file: "tests/backend/systems/onbase/driver/interpreter.test.ts" },
+  { scenarioId: "onbase/saved-effect", file: "tests/backend/systems/onbase/driver/interpreter.test.ts" },
+  { scenarioId: "onbase/committed", file: "tests/workflows/onbase/workflow.integration.test.ts" },
+  { scenarioId: "onbase/unknown", file: "tests/workflows/onbase/workflow.integration.test.ts" },
+  { scenarioId: "onbase/dry-run", file: "tests/workflows/onbase/workflow.integration.test.ts" },
   { scenarioId: "i9-lookup/signed", file: I9_LOOKUP_FILE },
   { scenarioId: "i9-lookup/unsigned", file: I9_LOOKUP_FILE },
   { scenarioId: "i9-lookup/historical", file: I9_LOOKUP_FILE },

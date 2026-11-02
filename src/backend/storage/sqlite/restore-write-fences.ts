@@ -1,10 +1,11 @@
+import { exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { z } from "zod";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 
 const Tables = ["deleted_runs", "settings_snapshots", "run_batches", "run_requests", "run_delegations", "delegation_dependencies", "diagnostic_snapshots", "diagnostic_files", "write_intents", "write_attempts", "runs", "run_checkpoints", "gate_results", "run_results", "run_failures", "run_receipts", "artifacts", "timeline_events", "commands", "command_audits"] as const;
-export type RestoreWriteFences = Readonly<{ unresolved: readonly string[]; tables: readonly Readonly<{ name: typeof Tables[number]; rows: readonly string[] }>[] }>;
+export type RestoreWriteFences = Readonly<{ unresolved: readonly string[]; tables: readonly Readonly<{ name: typeof Tables[number] | "exclusive_session_leases"; rows: readonly string[] }>[] }>;
 
 type FenceReader = Readonly<{ prepare(sql: string): Readonly<{ all(): readonly unknown[] }> }>;
 
@@ -42,9 +43,11 @@ export function readRestoreWriteFences(database: FenceReader): RestoreWriteFence
   });
   const tombstones = database.prepare("SELECT * FROM deleted_runs").all();
   const outputs = database.prepare("SELECT * FROM artifacts WHERE kind='generated'").all();
-  const preserve = tombstones.length !== 0 || outputs.length !== 0 || intents.length !== 0 || attempts.length !== 0 || parked.length !== 0 || spanFence;
-  return { unresolved: [...unresolved].sort(), tables: !preserve ? [] : Tables.map(name => ({ name,
-    rows: database.prepare(`SELECT * FROM ${name}`).all().map(row => canonicalJsonStringify(row)).sort() })) };
+  const hasSessionLeases = database.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name='exclusive_session_leases'").all().length === 1;
+  const heldSessionLeases = hasSessionLeases ? database.prepare("SELECT * FROM exclusive_session_leases").all().filter(row => exclusiveSessionLeaseFromRow(row).releasedAt === null) : [];
+  const preserve = heldSessionLeases.length !== 0 || tombstones.length !== 0 || outputs.length !== 0 || intents.length !== 0 || attempts.length !== 0 || parked.length !== 0 || spanFence;
+  return { unresolved: [...unresolved].sort(), tables: !preserve ? [] : [...Tables.map(name => ({ name,
+    rows: database.prepare(`SELECT * FROM ${name}`).all().map(row => canonicalJsonStringify(row)).sort() })), ...(heldSessionLeases.length === 0 ? [] : [{ name: "exclusive_session_leases" as const, rows: heldSessionLeases.map(row => canonicalJsonStringify(row)).sort() }])] };
 }
 
 export function restoreWriteFenceDigest(fences: RestoreWriteFences): string { return sha256Hex(canonicalJsonStringify(fences)); }

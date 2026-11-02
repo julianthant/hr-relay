@@ -298,7 +298,7 @@ describe("dashboard wire boundary (ref frontend-backend-integration)", () => {
   it("bounds retained fixture literals exactly and refuses served or sibling workflow branches", () => {
     const ids = [...WORKFLOW_DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor)].map(descriptor => String(descriptor.id));
     const sources = new Map(files.map(file => [repoRelative(file), readFileSync(file, "utf8")]));
-    expect(Object.values(RETAINED_MOCK_LITERALS).flat()).toHaveLength(42);
+    expect(Object.values(RETAINED_MOCK_LITERALS).flat()).toHaveLength(73);
 
     expect(workflowLiteralIssues(sources, ids)).toEqual([]);
     for (const path of ["src/dashboard/client/queries/day-queries.ts", "src/dashboard/surfaces/workflows/mocks/new-sibling.ts", "src/dashboard/surfaces/workflows/mocks/workflow-mock-run.tsx", ...Object.keys(RETAINED_MOCK_LITERALS)]) {
