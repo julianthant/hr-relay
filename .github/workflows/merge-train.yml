@@ -67,7 +67,7 @@ jobs:
             elif grep -qi conflict <<<"$err"; then
               if node_modules/.bin/tsx scripts/build/merge-generated-conflicts.ts "$number" "$head"; then
                 gh pr edit "$number" --remove-label merge-conflict
-              elif [ "$(gh api "repos/$GH_REPO/pulls/$number" --jq .head.sha)" != "$head" ]; then
+              elif current_head=$(gh api "repos/$GH_REPO/pulls/$number" --jq .head.sha) && [ "$current_head" != "$head" ]; then
                 echo "Skipped #$number: head moved"
               else
                 gh pr edit "$number" --add-label merge-conflict

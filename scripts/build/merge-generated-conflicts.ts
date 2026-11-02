@@ -34,7 +34,7 @@ export function mergeGeneratedConflicts(root: string, staging: string, generate 
       if ("section" in output) {
         writeFileSync(join(root, path), clearGeneratedSection(readFileSync(join(root, path), "utf8"), output.section));
       } else {
-        git(root, "checkout", "--ours", "--", path);
+        rmSync(join(root, path), { force: true });
       }
     }
   }
@@ -78,7 +78,8 @@ function updatePullRequest(number: string, expectedHead: string): boolean {
     if (!mergeGeneratedConflicts(checkout, staging)) return false;
     git(checkout, "-c", "user.name=Relay merge train", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com",
       "commit", "-m", "Merge staging and regenerate derived outputs");
-    if (!eligible(pullRequest(repo, number))) throw new Error("pr-no-longer-eligible-or-head-moved");
+    const current = pullRequest(repo, number);
+    if (!eligible(current) || current.head.ref !== pr.head.ref) throw new Error("pr-no-longer-eligible-or-head-moved");
     git(checkout, "push", "origin", `HEAD:refs/heads/${pr.head.ref}`);
     process.stdout.write(`Regenerated and updated #${number}: ${git(checkout, "rev-parse", "HEAD")}\n`);
     return true;

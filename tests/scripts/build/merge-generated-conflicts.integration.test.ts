@@ -63,6 +63,18 @@ it("refuses a mixed conflict before running any generator or creating a commit",
   });
 });
 
+it("regenerates a generated file deleted by the PR and modified by staging", () => {
+  fixture(false, (root, _head, staging) => {
+    execFileSync("git", ["rm", "--", manifest], { cwd: root });
+    execFileSync("git", ["commit", "-m", "delete generated output"], { cwd: root });
+    assert.equal(mergeGeneratedConflicts(root, staging, checkout => {
+      writeFileSync(join(checkout, manifest), "regenerated combined manifest\n");
+    }), true);
+    assert.equal(readFileSync(join(root, manifest), "utf8"), "regenerated combined manifest\n");
+    assert.equal(execFileSync("git", ["diff", "--name-only", "--diff-filter=U"], { cwd: root, encoding: "utf8" }), "");
+  });
+});
+
 it("propagates generator failures and refuses unexpected authored output", () => {
   fixture(false, (root, _head, staging) => {
     assert.throws(() => mergeGeneratedConflicts(root, staging, () => { throw new Error("generator failed"); }), /generator failed/u);
