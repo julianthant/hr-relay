@@ -355,7 +355,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
         for (const browser of browsers) {
           if (browser.profileDirectory !== workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: slot.ordinal, system: browser.system })) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
         }
-        return { browsers, processId: lease?.processId, identity: canonicalJsonStringify({ slot, lease: lease ?? null, pending, standing: standing ?? null, browsers }) };
+        return { browsers, browserSystems: lease?.browserSystems, processId: lease?.processId, identity: canonicalJsonStringify({ slot, lease: lease ?? null, pending, standing: standing ?? null, browsers }) };
       });
       const before = capture(), roots = createBrowserRoots(input.admission);
       const directory = join(input.profileRoot, `w${String(member.ordinal)}`);
@@ -381,7 +381,10 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
         for (const row of retained) {
           const profileDirectory = join(input.admission.captureBrowserRegistryContext().machineRoot, row.directory);
           const browser = before.browsers.find(browser => browser.profileDirectory === profileDirectory);
-          if (browser === undefined) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
+          if (!before.browserSystems?.some(system => profileDirectory === workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: member.ordinal, system }))
+            || browser === undefined && (row.credentialFingerprint !== null || row.launch.state !== "closed" || row.native !== undefined)) {
+            throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
+          }
           const assertRoot = await roots.withUnused(profileDirectory, { clock: input.clock, scheduler: input.scheduler,
             closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs, launchTimeoutMs: ConfigSchema.shape.timeouts.parse(undefined).sessionAcquireMs,
             signal: new AbortController().signal }, async ({ remove, assertCurrent: assertRoot }) => {
@@ -389,7 +392,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
             remove();
             return assertRoot;
           },
-          { profileId: row.profileId, profileRoot: input.profileRoot, profileDirectory, credentialFingerprint: browser.signInFingerprint,
+          { profileId: row.profileId, profileRoot: input.profileRoot, profileDirectory, credentialFingerprint: browser?.signInFingerprint ?? null,
             owner: { kind: "worker", database: input.database, workerId: member.workerId, stoppedProcess: process } });
           rootAssertions.push(assertRoot);
           assertCurrent();
