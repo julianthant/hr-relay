@@ -54,9 +54,4 @@
   - button "Edit Onboarding roster": Edit
   - text: Employment records Define which columns belong to this type.
   - button "Edit Employment records": Edit
-  - heading "Kronos reports" [level=2]
-  - text: Start date Default start date for Kronos reports.
-  - textbox "Kronos report start date": 2026-10-01
-  - text: End date Default end date for Kronos reports.
-  - textbox "Kronos report end date": 2026-10-31
 - region "Notifications"
