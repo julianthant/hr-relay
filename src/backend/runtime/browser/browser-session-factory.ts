@@ -552,18 +552,20 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     const errors: unknown[] = [];
     try { if (launch === undefined) throw new ProfileCustodyUnavailableError(); launch.closing(); }
     catch (error) { errors.push(error); }
+    const deadline = this.#options.clock.monotonicMs() + this.#options.config.browser.closeProofMs;
     let timer: ReturnType<BrowserDeadlineScheduler["schedule"]> | undefined;
     const brokerClose = duo === undefined ? undefined : Promise.race([duo.stop(), new Promise<never>((_resolve, reject) => {
-      timer = this.#options.scheduler.schedule(this.#options.clock.monotonicMs() + this.#options.config.browser.closeProofMs,
+      timer = this.#options.scheduler.schedule(deadline,
         () => reject(new Error("duo-broker-close-unproved")));
     })]);
-    const results = await Promise.allSettled([
-      ...(brokerClose === undefined ? [] : [brokerClose]),
-      closeContextWithProof({ clock: this.#options.clock, scheduler: this.#options.scheduler,
-        closeProofMs: this.#options.config.browser.closeProofMs }, context, lifecycle, system, reason),
-    ]);
+    if (brokerClose !== undefined) {
+      try { await brokerClose; } catch (error) { errors.push(error); }
+    }
     timer?.cancel();
-    for (const result of results) if (result.status === "rejected") { const reason: unknown = result.reason; errors.push(reason); }
+    try {
+      await closeContextWithProof({ clock: this.#options.clock, scheduler: this.#options.scheduler,
+        closeProofMs: Math.max(0, deadline - this.#options.clock.monotonicMs()) }, context, lifecycle, system, reason);
+    } catch (error) { errors.push(error); }
     if (errors.length > 0) {
       const failure = retainAuthoritySourceClosure(errors, { directory: { context, owned, launch } });
       try { if (launch !== undefined) launch.uncertain(failure); }

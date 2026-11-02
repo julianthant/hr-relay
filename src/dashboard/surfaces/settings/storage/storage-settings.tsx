@@ -17,7 +17,13 @@ export function StorageBanner({ storage, onOpenSettings }: {
   storage: StorageHealthSummary;
   onOpenSettings: () => void;
 }) {
-  if (storage.authority === "healthy") return null;
+  if (storage.authority === "healthy") {
+    if (storage.automaticRepair.state === "none") return null;
+    return <Banner className="shrink-0" tone={storage.automaticRepair.state === "restored" ? "info" : "warning"} shape="band"
+      title={storage.automaticRepair.state === "restored" ? "Person data restored automatically" : "Repair notice unavailable"}>
+      {storage.automaticRepair.state === "restored" ? <>Saved person data was restored from the backup made <time dateTime={storage.automaticRepair.backupTime}>{fmtInstantDay(storage.automaticRepair.backupTime)} {fmtClock(storage.automaticRepair.backupTime)}</time>. Changes after that backup may be missing. Current credentials were kept.</> : storage.automaticRepair.message}
+    </Banner>;
+  }
   return <Banner className="shrink-0" tone="danger" shape="band"
     icon={<ShieldAlert aria-hidden className={dsIcon.lg} />}
     title="Authority storage is unavailable"
@@ -136,6 +142,7 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
         {doctor.state === "running" ? "Running checks…" : doctor.state === "reading" ? "Loading last check…" : report === undefined ? "Run storage checks" : "Run checks again"}
       </Button>
     } />
+    {storage.authority === "healthy" && storage.automaticRepair.state !== "none" && <StorageBanner storage={storage} onOpenSettings={runDoctor} />}
     <BodySection title="Status">
       {doctor.state === "reading" && <span role="status" aria-label="Loading storage checks" className="sr-only">Loading storage checks</span>}
       {authority !== "healthy" && report !== undefined && <p className="diagnostic-status">Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></p>}

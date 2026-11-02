@@ -1,3 +1,4 @@
+import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 
 import assert from "node:assert/strict";
 import { createElement } from "react";
@@ -11,6 +12,7 @@ const CHECKED_AT = "2026-08-27T16:00:00.000Z";
 function storage(authority: "healthy" | "unavailable") {
   return StorageHealthSummaryWireSchema.parse({
     authority,
+    automaticRepair: { state: "none" },
     backup: "current",
     checkedAt: CHECKED_AT,
   });
@@ -60,3 +62,20 @@ for (const authority of ["healthy", "unavailable"] as const) {
     assert.doesNotMatch(markup, /unaffected|cadence allows|read-write/iu);
   });
 }
+
+it("shows the verified repair time as a read-only notice without backup or restore controls", () => {
+  const markup = renderToStaticMarkup(createElement(StorageBanner, { storage: { ...storage("healthy"), automaticRepair: {
+    state: "restored", backupTime: IsoInstantSchema.parse(CHECKED_AT), restoredAt: IsoInstantSchema.parse("2026-08-28T16:00:00.000Z") } }, onOpenSettings: () => assert.fail("readonly notice dispatched an action") }));
+  assert.match(markup, /Person data restored automatically/u);
+  assert.ok(markup.includes(`dateTime="${CHECKED_AT}"`) || markup.includes(`datetime="${CHECKED_AT}"`));
+  assert.match(markup, /Changes after that backup may be missing/u);
+  assert.match(markup, /Current credentials were kept/u);
+  assert.doesNotMatch(markup, /<(?:button|input|select)\b/u);
+});
+
+it("keeps unavailable repair evidence distinct from a verified absence", () => {
+  const markup = renderToStaticMarkup(createElement(StorageBanner, { storage: { ...storage("healthy"), automaticRepair: {
+    state: "unavailable", message: "Repair evidence unavailable" } }, onOpenSettings: () => undefined }));
+  assert.match(markup, /Repair notice unavailable/u); assert.match(markup, /Repair evidence unavailable/u);
+  assert.doesNotMatch(markup, /Person data restored automatically/u);
+});
