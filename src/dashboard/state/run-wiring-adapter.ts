@@ -596,6 +596,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       && (sameHeldOccurrence(attempt.envelope, parked?.section === "parked-write" ? parked.payload : undefined)
         || workbookWrites?.section === "workbook-writes" && workbookWrites.payload.operations.some(operation => operation.resolution.state === "resolved"
           && workbookWriteMatchesReplay(operation, attempt.envelope)))), [matchesDecision, detailGate, row.rowRevision, parked, workbookWrites]);
+  const commandBlocksDecision = useCallback((attempt: NonNullable<typeof command>) => attempt.state !== "refused"
+    && (attempt.state !== "settled" || matchesDecision(attempt.envelope)), [matchesDecision]);
   const currentDecisionMatches = useRef(matchesDecision);
   currentDecisionMatches.current = matchesDecision;
   const currentParkedWrite = useRef<ParkedWriteDetailWire | undefined>(undefined);
@@ -639,7 +641,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   }, [commandOwner, send]);
   const dispatchIfDecisionCurrent = useRef<(envelope: CommandRequest) => void>(() => undefined);
   dispatchIfDecisionCurrent.current = (envelope: CommandRequest) => {
-    if (mounted.current && currentCommandOwner.current === commandOwner && value.state === "loaded" && matchesDecision(envelope) && !(commandRef.current?.owner === commandOwner && commandRef.current.state !== "refused" && commandApplies(commandRef.current))) {
+    if (mounted.current && currentCommandOwner.current === commandOwner && value.state === "loaded" && matchesDecision(envelope) && !(commandRef.current?.owner === commandOwner && commandBlocksDecision(commandRef.current))) {
       dispatch(envelope);
       return;
     }
@@ -648,7 +650,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   };
   const preparingCorrection = useRef(false);
   const onDecision = useCallback((id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => {
-    if (value.state !== "loaded" || value.snapshot === undefined || binding === undefined || (commandRef.current?.owner === commandOwner && commandRef.current.state !== "refused" && commandApplies(commandRef.current))) return;
+    if (value.state !== "loaded" || value.snapshot === undefined || binding === undefined || (commandRef.current?.owner === commandOwner && commandBlocksDecision(commandRef.current))) return;
     const workbooks = value.snapshot.sections.find(section => section.section === "workbook-writes");
     const operation = workbooks?.section === "workbook-writes" ? workbooks.payload.operations.find(operation => operation.native.eventId === id) : undefined;
     if (operation !== undefined) {
@@ -740,7 +742,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     confirm({ action: descriptor, target: { runId: row.runId, expectedVersion: gate.expectedVersion }, subject: row.title, traceId: String(row.traceId),
       workflowLabel: selection.workflowLabel, source: "run-detail", commandId: envelope.commandId, requestedAt: envelope.requestedAt,
       triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : null }, () => dispatchIfDecisionCurrent.current(envelope));
-  }, [value, binding, commandOwner, row, selection.workflowLabel, dispatch, commandApplies, confirm, launch, correctionCommand]);
+  }, [value, binding, commandOwner, row, selection.workflowLabel, dispatch, commandBlocksDecision, confirm, launch, correctionCommand]);
   const onUcpathDecision = useCallback((decision: UcpathFoundDecision) => {
     if (decision.kind !== "check-again" || parked?.section !== "parked-write" || parked.payload.ucpathFindings === undefined
       || decision.transactionNumber !== undefined && !parked.payload.acceptsTransactionId) return;
@@ -765,16 +767,16 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     || retained.request.family === "worker-browser" && retained.request.type === "check-parked-write") ? retained.request : undefined;
   const retainedState = retained === undefined ? undefined : retained.state === "pending" ? "pending" : retained.outcome?.kind === "uncertain" ? "uncertain" : retained.outcome?.kind === "confirmed" ? "settled" : "refused";
   const retainedFeedback = retained?.outcome !== undefined && "feedback" in retained.outcome ? retained.outcome.feedback.text : undefined;
-  const retainedCommand = useMemo(() => retainedEnvelope === undefined || retainedState === undefined ? undefined
+  const retainedCommand = useMemo<typeof command>(() => retainedEnvelope === undefined || retainedState === undefined ? undefined
     : { owner: commandOwner, envelope: retainedEnvelope, state: retainedState, feedback: retainedFeedback },
   [commandOwner, retainedEnvelope, retainedState, retainedFeedback]);
   const currentCommand = command?.owner === commandOwner && command !== undefined && commandApplies(command)
     && (command.state !== "refused" || newest === undefined || newest.request.commandId === command.envelope.commandId) ? command : retainedCommand;
   const replayEnvelope = currentCommand?.state === "uncertain" ? currentCommand.envelope : undefined;
   const replay = useCallback(() => { if (replayEnvelope !== undefined) void send(replayEnvelope, true); }, [replayEnvelope, send]);
-  return { ...value, onDecision: value.state === "loaded" && binding !== undefined && (currentCommand === undefined || currentCommand.state === "refused") ? onDecision : undefined,
+  return { ...value, onDecision: value.state === "loaded" && binding !== undefined && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onDecision : undefined,
     onUcpathDecision: value.state === "loaded" && binding !== undefined && parked?.section === "parked-write"
       && parked.payload.actions.some(action => action.kind === "command" && action.command === "check-parked-write")
-      && (currentCommand === undefined || currentCommand.state === "refused") ? onUcpathDecision : undefined,
+      && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onUcpathDecision : undefined,
     command: currentCommand, replay: replayEnvelope === undefined ? undefined : replay };
 }
