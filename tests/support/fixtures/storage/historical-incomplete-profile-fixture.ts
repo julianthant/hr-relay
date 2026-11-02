@@ -256,7 +256,7 @@ export async function createHistoricalIncompleteProfileFixture(options: { keyFor
   const keyStat = statSync(keyPath), controlPath = join(root, ".tracker", "control", "profile-registry.json");
   const control = JSON.parse(readFileSync(controlPath, "utf8")) as Record<string, unknown>;
   fixtureJson(controlPath, { ...control, schemaVersion: 4, digest: createHash("sha256").update(canonicalJsonStringify(registry)).digest("hex"),
-    revision: registry.revision, generation: registry.sessionGeneration, operations: [],
+    revision: registry.revision, generation: registry.sessionGeneration, operations: [], completedRestores: [],
     erasures: [{ profileId: draft.profileId, originOperationId: operation.operationId, head: { state: "never-erased", epoch: 0 },
       credentialKey: { keyId: head.key.keyId, binding: { installationId, profileId: draft.profileId },
         file: { device: keyStat.dev, inode: keyStat.ino, digest: createHash("sha256").update(keyBytes).digest("hex") } } }],

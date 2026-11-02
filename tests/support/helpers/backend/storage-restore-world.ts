@@ -63,9 +63,9 @@ export function createStorageRestoreTestWorld() {
   const attemptClosureFailures = new Set<AuthoritySourceClosureUnprovedError>();
 
   async function composeStorageCommand(isolation:typeof rebuildRuntimeIsolation,args:readonly string[],clock:typeof CLOCK,repoRoot:string){const fixture=admissions.get(repoRoot);assert.ok(fixture);return composeNativeStorageCommand(isolation,args,clock,repoRoot,fixture.admission,boundProfileCredentials(fixture.admission));}
-  async function repairAutomatically(paths: DrillPaths) {
+  async function repairAutomatically(paths: DrillPaths, clock = CLOCK) {
     const fixture = admissions.get(paths.repoRoot); assert.ok(fixture);
-    const report = await restoreNewestPersonBackup(fixture.admission, fixture.admission.acquireOfflineMaintenance(), CLOCK);
+    const report = await restoreNewestPersonBackup(fixture.admission, fixture.admission.acquireOfflineMaintenance(), clock);
     return { exitCode: 0, output: JSON.stringify(report) };
   }
 

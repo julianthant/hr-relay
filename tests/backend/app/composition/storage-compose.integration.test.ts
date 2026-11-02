@@ -264,12 +264,18 @@ afterEach(_afterEachFixture0);
       fenceWriteFixture(newer, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT });
     }
     finally { releaseSeededWriteOwners(newer, CLOCK.now().toISOString()); newer.close(); }
+    const currentAdmission = admissions.get(p.repoRoot); assert.ok(currentAdmission);
+    const expected = withAuthorityDatabaseReadOnly(currentAdmission, p.authorityPath, database => {
+      const row = database.prepare("SELECT * FROM write_attempts WHERE id=?").get(WRITE_ATTEMPT.writeAttemptId); assert.ok(row);
+      return WriteAttemptRecordSchema.parse(nativeOrdinaryRecordFromRow("write_attempts", row));
+    });
+    assert.equal(expected.outcome.state, "parked");
     const before = readFileSync(p.authorityPath);
     await assert.rejects(repairAutomatically(p), /automatic-repair-verified-backup-missing/u);
     assert.deepEqual(readFileSync(p.authorityPath), before);
     const retained = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "attempt-source-retained" }, CLOCK);
     try {
-      assert.deepEqual(retained.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), WRITE_ATTEMPT);
+      assert.deepEqual(retained.authority.writeAttempts.get(WRITE_ATTEMPT.writeAttemptId), expected);
       assert.equal(retained.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId)?.writeIntentId, WRITE_INTENT_ATTEMPTING.writeIntentId);
     } finally { retained.close(); }
     assert.equal(existsSync(join_m0(p.repoRoot, ".tracker", "control", "journal.json")), false);

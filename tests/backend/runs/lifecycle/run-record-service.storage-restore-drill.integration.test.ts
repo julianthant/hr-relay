@@ -72,11 +72,11 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
   assert.equal(backupAfterCommit ? manifestPath !== beforeManifestPath : manifestPath === beforeManifestPath, true);
   if (!backupAfterCommit) {
     const bytes = readFileSync(p.authorityPath);
-    await assert.rejects(repairAutomatically(p), /automatic-repair-verified-backup-missing/u);
+    await assert.rejects(repairAutomatically(p, CLOCK), /automatic-repair-verified-backup-missing/u);
     assert.deepEqual(readFileSync(p.authorityPath), bytes); assert.deepEqual(inspect(p.authorityPath), committed);
     return;
   }
-  const restore = await repairAutomatically(p);
+  const restore = await repairAutomatically(p, CLOCK);
   assert.equal(restore.exitCode, 0, restore.output);
   const restoredReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
   p.renewAfterRestore();

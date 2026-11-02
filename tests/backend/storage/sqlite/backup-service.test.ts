@@ -1,5 +1,5 @@
 import { createHash,randomUUID } from "node:crypto";
-import { copyFileSync,existsSync,readdirSync,readFileSync,renameSync,rmSync,statSync,writeFileSync } from "node:fs";
+import { copyFileSync,existsSync,mkdirSync,readdirSync,readFileSync,renameSync,rmSync,statSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,beforeEach,describe,expect,it } from "vitest";
@@ -94,7 +94,8 @@ describe("native authority backup", () => {
     const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
     f.database.close();
-    const original = readFileSync(f.path), credentials = join(f.root, "credentials"), credentialPath = join(f.root, "offline-custody.bin");
+    const original = readFileSync(f.path), credentials = join(f.root, "credentials"), credentialPath = join(f.root, "files", "offline-custody.bin");
+    mkdirSync(join(f.root, "files"), { recursive: true, mode: 0o700 });
     expect(statSync(credentials).isDirectory()).toBe(true); writeFileSync(credentialPath, "synthetic-independent-credential", { mode: 0o600 });
     const credentialBytes = readFileSync(credentialPath), credentialStat = statSync(credentialPath), processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
     const operation = f.admission.acquireOfflineMaintenance();
