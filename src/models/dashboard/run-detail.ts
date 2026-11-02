@@ -834,6 +834,9 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
     /* An interactive control exists only because the SERVER described it; both typed resolutions are always served for a parked run, because hiding either would pre-decide the operator's question. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
 }).superRefine((parked, context) => {
+  if (parked.ucpathFindings !== undefined && (parked.system !== "ucpath" || parked.taskId !== "ucpath/create-termination")) {
+    context.addIssue({ code: "custom", path: ["ucpathFindings"], message: "UCPath findings belong to a parked termination submit" });
+  }
   for (const target of [parked.check?.state === "available" ? parked.check.target : undefined, parked.lastCheck?.target]) {
     if (target !== undefined && (target.runId !== parked.runId || target.writeIntentId !== parked.writeIntentId
       || target.intentGeneration !== parked.generation || target.runAttempt !== parked.runAttempt

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { UcpathTransactionFindingsReadSchema } from "../ui/ucpath-transaction-findings.js";
+import { UcpathTransactionReceiptSchema } from "../ui/ucpath-ss-smart-hr.js";
 
 export const UcpathFindingsDetailSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("unavailable") }),
@@ -8,7 +9,7 @@ export const UcpathFindingsDetailSchema = z.discriminatedUnion("state", [
     findings: UcpathTransactionFindingsReadSchema,
     selectorVerification: z.literal("pending-live-verification"),
     authoritative: z.literal(false),
-    matches: z.array(z.strictObject({ transactionId: z.string().min(1), match: z.enum(["exact", "ambiguous", "different"]) })),
+    matches: z.array(z.strictObject({ transactionId: UcpathTransactionReceiptSchema, match: z.enum(["exact", "ambiguous", "different"]) })),
   }).superRefine((detail, context) => {
     if (detail.matches.length !== detail.findings.rows.length
       || detail.matches.some((match, index) => match.transactionId !== detail.findings.rows[index]?.transactionId)) {

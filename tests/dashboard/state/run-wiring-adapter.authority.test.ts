@@ -23,6 +23,7 @@ import { IdentityApprovalResultSchema } from "../../../src/rules/separations/ide
 import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
+import { UcpathReadTransactionFindings } from "../../../src/models/systems/ucpath/read-transaction-findings.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
 const NOTE = "00000000-0000-4000-8000-000000000003";
@@ -235,6 +236,59 @@ function parkedClient(selected: LogSelection, sent: CommandRequest[], options: {
 }
 
 describe("served parked-write Logs decisions", () => {
+  function findingsWrite() {
+    return ParkedWriteDetailWireSchema.parse({ ...parkedAt(), taskId: "ucpath/create-termination",
+      ucpathFindings: { state: "found", findings: UcpathReadTransactionFindings.example,
+        selectorVerification: "pending-live-verification", authoritative: false, matches: [] } });
+  }
+
+  it("projects retained findings at the exact parked Logs step", async () => {
+    const selected = selectionAt(3), write = findingsWrite();
+    const fixture = parkedClient(selected, [], { write });
+    const snapshot = await readRunLogs(fixture.client, selected, new AbortController().signal);
+    const projection = projectRunLogs(snapshot, fixture.client);
+    assert.ok(projection.steps.some(step => step.id === write.writeIntentId));
+    assert.deepEqual(projection.ucpathFindings, { stepId: write.writeIntentId, attemptLabel: "Attempt 1",
+      presentation: { state: "found", complete: true, authoritative: false, rows: [] } });
+  });
+
+  for (const transactionNumber of [undefined, "T123456"]) it(`confirms the findings recheck with its original targets (${transactionNumber})`, async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [];
+    const write = findingsWrite(), fixture = parkedClient(selected, sent, { write });
+    const h = await harness(fixture.client, (_pending, send) => confirmations.push(send)); await h.render(selected);
+    await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again", ...(transactionNumber === undefined ? {} : { transactionNumber }) }));
+    assert.equal(sent.length, 0); assert.equal(confirmations.length, 1);
+    await act(async () => confirmations[0]());
+    assert.equal(sent.length, 1);
+    const request = sent[0]; assert.ok(request.family === "run" && request.type === "recheck-write");
+    const action = write.actions.find(action => action.kind === "command" && action.command === "recheck-write");
+    assert.ok(action?.kind === "command" && action.writeTarget !== undefined);
+    const { occurrenceKeyDigest, ...target } = action.writeTarget;
+    assert.deepEqual(request.target, { runId: RUN, expectedVersion: 3, ...target });
+    assert.deepEqual(request.payload, { occurrenceKeyDigest, ...(transactionNumber === undefined ? {} : { transactionId: transactionNumber }) });
+  });
+
+  it("refuses findings submitted/absent decisions and invalid typed IDs while selector authority is pending", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [];
+    const h = await harness(parkedClient(selected, sent, { write: findingsWrite() }).client, (_pending, send) => confirmations.push(send));
+    await h.render(selected);
+    await act(async () => h.state?.onUcpathDecision?.({ kind: "submitted", transactionNumber: "T123456" }));
+    await act(async () => h.state?.onUcpathDecision?.({ kind: "not-submitted" }));
+    await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again", transactionNumber: "invalid" }));
+    assert.equal(confirmations.length, 0); assert.equal(sent.length, 0);
+  });
+
+  it("refuses the findings confirmation after the original write target changes", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [];
+    const write = findingsWrite(), fixture = parkedClient(selected, sent, { write });
+    const h = await harness(fixture.client, (_pending, send) => confirmations.push(send)); await h.render(selected);
+    await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again", transactionNumber: "T123456" }));
+    fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, generation: 2, actions: write.actions.map(action => action.kind === "command"
+      ? { ...action, writeTarget: { ...action.writeTarget, intentGeneration: 2 } } : action) }));
+    await h.render(selected); await act(async () => confirmations[0]());
+    assert.equal(sent.length, 0); assert.equal(h.outcomes.at(-1)?.kind, "refused");
+  });
+
   for (const [acceptsId, choice, answer, verb, transactionId] of [
     [true, 0, {}, "recheck-write", undefined],
     [true, 1, { outcome: "present", transaction: " T123456 " }, "recheck-write", "T123456"],

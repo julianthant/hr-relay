@@ -22,6 +22,7 @@ import type { LogTimelineStage, LogTimelineState } from "../surfaces/run-detail/
 import type { LogSelection } from "../surfaces/run-detail/logs/log-selection-model.js";
 import type { PendingCommand } from "../surfaces/shared/actions/actions.js";
 import { fmtActionClock, fmtElapsed } from "../surfaces/shared/status/format.js";
+import { ucpathFoundPresentation, type UcpathFoundDecision, type UcpathFoundPresentation } from "../surfaces/run-detail/logs/ucpath-found-model.js";
 
 class RunLogIdentityError extends Error {
   readonly code = "LOGS_IDENTITY_REFUSED";
@@ -219,7 +220,10 @@ function operatorActionReason(reason: string): string {
   }
 }
 
-export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardClient, "artifactUrl">): Readonly<{ steps: readonly LogStep[]; timeline: readonly LogTimelineStage[] }> {
+export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardClient, "artifactUrl">): Readonly<{
+  steps: readonly LogStep[]; timeline: readonly LogTimelineStage[];
+  ucpathFindings?: Readonly<{ stepId: string; attemptLabel: string; presentation: UcpathFoundPresentation }>;
+}> {
   validateRunLogSnapshot(snapshot);
   const { detail, logs, sections } = snapshot;
   const order = new Map<string, number>();
@@ -401,7 +405,12 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         state: member.state === "replayed" ? "completed" : TIMELINE_STATE[member.state],
         ...(member.durationSec === undefined ? {} : { durationLabel: fmtElapsed(member.durationSec) }) }; }) };
   });
-  return { steps: grouped, timeline };
+  const findings = sections.find(section => section.section === "parked-write" && section.payload.ucpathFindings !== undefined);
+  return { steps: grouped, timeline,
+    ...(findings?.section !== "parked-write" || findings.payload.ucpathFindings === undefined ? {} : { ucpathFindings: {
+      stepId: findings.payload.writeIntentId, attemptLabel: `Attempt ${findings.payload.runAttempt}`,
+      presentation: ucpathFoundPresentation(findings.payload.ucpathFindings),
+    } }) };
 }
 
 export function parkedWriteLogActions(write: ParkedWriteDetailWire): readonly LogDecisionAction[] {
@@ -640,7 +649,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       if (descriptor?.kind !== "command" || descriptor.confirm === undefined || confirm === undefined) return;
       const composed = composeCommandRequest(descriptor, { runId: row.runId, expectedVersion: row.rowRevision },
         { actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, parkedWrite: write.payload,
-          ...(choice.input?.kind === "verification" && answer.outcome === "present" ? { transactionId: answer.transaction } : {}) });
+          ...(verb === "recheck-write" && write.payload.acceptsTransactionId && answer.transaction !== undefined
+            ? { transactionId: answer.transaction } : {}) });
       if (composed.state !== "ready") return;
       const envelope = CommandRequestSchema.parse(composed.request);
       confirm({ action: descriptor, target: { runId: row.runId, expectedVersion: row.rowRevision }, subject: row.title,
@@ -668,6 +678,14 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       workflowLabel: selection.workflowLabel, source: "run-detail", commandId: envelope.commandId, requestedAt: envelope.requestedAt,
       triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : null }, () => dispatchIfDecisionCurrent.current(envelope));
   }, [value, binding, commandOwner, row, selection.workflowLabel, dispatch, commandApplies, confirm, launch, correctionCommand]);
+  const onUcpathDecision = useCallback((decision: UcpathFoundDecision) => {
+    if (decision.kind !== "check-again" || parked?.section !== "parked-write" || parked.payload.ucpathFindings === undefined
+      || decision.transactionNumber !== undefined && !parked.payload.acceptsTransactionId) return;
+    const descriptor = parked.payload.actions.find(action => action.kind === "command" && action.command === "recheck-write");
+    const choice = parkedWriteLogActions(parked.payload).find(action => action.id === descriptor?.key);
+    if (choice !== undefined) onDecision(parked.payload.writeIntentId, choice,
+      decision.transactionNumber === undefined ? {} : { transaction: decision.transactionNumber });
+  }, [parked, onDecision]);
   const newest = binding?.executor.retainedAttempts().findLast(attempt => {
     const request = attempt.request;
     if ("targets" in request || request.requestedBy !== binding.scope.actorId || attempt.scope.client !== binding.scope.client
@@ -689,5 +707,6 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const replayEnvelope = currentCommand?.state === "uncertain" ? currentCommand.envelope : undefined;
   const replay = useCallback(() => { if (replayEnvelope !== undefined) void send(replayEnvelope, true); }, [replayEnvelope, send]);
   return { ...value, onDecision: value.state === "loaded" && binding !== undefined && (currentCommand === undefined || currentCommand.state === "refused") ? onDecision : undefined,
+    onUcpathDecision: value.state === "loaded" && binding !== undefined && (currentCommand === undefined || currentCommand.state === "refused") ? onUcpathDecision : undefined,
     command: currentCommand, replay: replayEnvelope === undefined ? undefined : replay };
 }

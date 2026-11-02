@@ -16,6 +16,7 @@ import { useDashboardClient, useDashboardCommandBinding } from "../../../state/c
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
 import { LogSkeleton } from "../../shared/loading/loading.js";
 import { queueRunHeader } from "../run-header-model.js";
+import { UcpathFoundTransactions } from "./log-decision.js";
 
 export function LogSample({ selection, nowIso, source = "served", initialStepId, confirm }: { selection?: LogSelection; nowIso?: string; source?: WorkflowSource; initialStepId?: string; confirm?: RunWiringConfirm }) {
   if (source === "served" && selection !== undefined) return <ServedLogSample selection={selection} nowIso={nowIso} initialStepId={initialStepId} confirm={confirm} />;
@@ -30,7 +31,7 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm }: { select
   const logsUnavailableTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_UNAVAILABLE_TITLE", {})).text;
   const confirmedActionsUnavailableTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE", {})).text;
   const incompleteActionEvidenceText = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE", {})).text;
-  const projection = useMemo(() => resource.snapshot === undefined ? { steps: [], timeline: [] } : projectRunLogs(resource.snapshot, client), [resource.snapshot, client]);
+  const projection = useMemo<ReturnType<typeof projectRunLogs>>(() => resource.snapshot === undefined ? { steps: [], timeline: [] } : projectRunLogs(resource.snapshot, client), [resource.snapshot, client]);
   const failureMissing = resource.snapshot !== undefined && initialStepId !== undefined && !projection.steps.some(step => step.id === initialStepId);
   const toolbar = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" ? <Banner tone="danger" title={logsReadFailedTitle}>{resource.error}</Banner> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error, logsReadFailedTitle]);
   const content = useMemo(() => failureMissing ? <Banner tone="danger" title={logsUnavailableTitle}>{formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text}</Banner> : resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <Banner tone="danger" title={logsUnavailableTitle}>{resource.error}</Banner> : undefined : resource.snapshot.actionEvidence?.state === "unavailable" && projection.steps.length === 0 ? <Banner tone="warning" title={confirmedActionsUnavailableTitle}>{incompleteActionEvidenceText}</Banner> : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, resource.error, projection.steps.length, confirmedActionsUnavailableTitle, incompleteActionEvidenceText]);
@@ -38,6 +39,10 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm }: { select
     context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}
     status={<StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" />}
     toolbar={toolbar}
+    afterStep={projection.ucpathFindings === undefined ? undefined : id => id !== projection.ucpathFindings?.stepId ? undefined
+      : <UcpathFoundTransactions key={`${selection.row.runId}:${projection.ucpathFindings.stepId}`} attemptLabel={projection.ucpathFindings.attemptLabel}
+        presentation={resource.command?.state === "pending" ? { state: "checking" } : projection.ucpathFindings.presentation}
+        onDecision={resource.onUcpathDecision} />}
     content={content} />;
 }
 
