@@ -8,7 +8,7 @@ import nativeFs, { cpSync, lstatSync, chmodSync, existsSync, linkSync, mkdirSync
 import { syncBuiltinESMExports } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
-import { it, vi } from "vitest";
+import { afterEach, beforeEach, it, vi } from "vitest";
 import { acquireStorageBackupEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { prepareStorageBackupCommand, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -19,6 +19,10 @@ import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapsh
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createHistoricalFlatProfileFixture } from "../../../support/fixtures/storage/historical-flat-profile-fixture.js";
+
+let previousUmask = process.umask();
+beforeEach(() => { previousUmask = process.umask(0o077); });
+afterEach(() => { process.umask(previousUmask); });
 
 function oldArtifactSnapshot(root: string) {
   const paths = [root], entries = [];
@@ -296,7 +300,7 @@ it("refuses a foreign managed-file owner without certifying a backup", async () 
   });
   syncBuiltinESMExports();
   try {
-    await assert.rejects(backup(f), /permissions or identity/u);
+    await assert.rejects(backup(f), { message: "flat-archive-member-unsafe" });
     assert.equal(existsSync(join(receiptRoot(f), "backup.json")), false); untouched(f);
   } finally { spy.mockRestore(); syncBuiltinESMExports(); await f.close(); }
 });
