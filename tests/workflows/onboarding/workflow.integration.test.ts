@@ -156,7 +156,7 @@ describe("read-only onboarding workflow", () => {
       } });
       for (const leaf of evidenceLeaves(result)) classifyEvidenceLeaf({ kind: "workflow-result", workflowId: descriptor.id }, leaf.path);
     }
-    const ssn = "234567890";
+    const ssn = "123456789";
     const redacted = redactEvidenceLeaf({ kind: "task-output", taskId: OnboardingReadHirePlan.id },
       { path: "employee.ssn", field: "ssn", value: ssn });
     assert.equal(JSON.stringify(redacted).includes(ssn), false);
