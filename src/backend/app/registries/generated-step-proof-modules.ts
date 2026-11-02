@@ -3,6 +3,7 @@ import { compileWorkflow, composeWorkflowModule } from "../../../workflow-kit/wo
 import { taskStoreRegistry } from "./task-registry.js";
 import { registration as i9CheckModuleRegistration } from "../../../workflows/i9-check/index.js";
 import { registration as i9LookupModuleRegistration } from "../../../workflows/i9-lookup/index.js";
+import { registration as onbaseModuleRegistration } from "../../../workflows/onbase/index.js";
 import { registration as personLookupModuleRegistration } from "../../../workflows/person-lookup/index.js";
 import { registration as separationsModuleRegistration } from "../../../workflows/separations/index.js";
 
@@ -19,6 +20,8 @@ export const i9LookupStepModule = composeWorkflowModule(compileWorkflow(i9Lookup
 export const i9CheckPersonMatchModule = composeWorkflowModule(compileWorkflow(i9CheckModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
 export const i9CheckPersonLookupModule = composeWorkflowModule(compileWorkflow(i9CheckModuleRegistration.proofs[1].definition), taskStoreRegistry.stores);
 export const i9CheckRosterMatchModule = composeWorkflowModule(compileWorkflow(i9CheckModuleRegistration.proofs[2].definition), taskStoreRegistry.stores);
+export const onbaseSourcePageModule = composeWorkflowModule(compileWorkflow(onbaseModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
+export const onbaseImportDocumentModule = composeWorkflowModule(compileWorkflow(onbaseModuleRegistration.proofs[1].definition), taskStoreRegistry.stores);
 
 export const STEP_PROOF_MODULES = Object.freeze([
   separationsKronosTimecardModule,
@@ -34,4 +37,6 @@ export const STEP_PROOF_MODULES = Object.freeze([
   i9CheckPersonMatchModule,
   i9CheckPersonLookupModule,
   i9CheckRosterMatchModule,
+  onbaseSourcePageModule,
+  onbaseImportDocumentModule,
 ] as const);

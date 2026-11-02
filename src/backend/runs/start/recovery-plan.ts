@@ -1,3 +1,4 @@
+import { assertCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import { CanonicalRecoverRunRequestSchema, CanonicalRetrySourceRequestSchema } from "../../storage/sqlite/run-store-contracts.js";
 import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
@@ -30,7 +31,17 @@ function field(value: unknown, path: string): JsonValue {
   return JsonValueSchema.parse(current);
 }
 
-export function planRunRecovery(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord) {
+export function assertRunRecoveryCommandScope(repositories: AuthorityRepositories, sourceCommandId: string | undefined) {
+  if (sourceCommandId === undefined) throw new RunContinuationRefusedError("run-recovery-command-scope-unavailable");
+  const source = repositories.commands.get(sourceCommandId);
+  if (source?.family !== "run" || source.type !== "recover-run") throw new RunContinuationRefusedError("run-recovery-command-scope-unavailable");
+  try { assertCanonicalRunCommandScope(repositories, source); }
+  catch (cause) { throw new RunContinuationRefusedError("run-recovery-command-scope-unavailable", { cause }); }
+  return source;
+}
+
+export function planRunRecovery(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord, sourceCommandId?: string) {
+  assertRunRecoveryCommandScope(repositories, sourceCommandId);
   const current = repositories.runs.get(run.envelope.runId);
   if (current === undefined || repositories.deletedRuns.get(run.envelope.runId) !== undefined
     || canonicalJsonStringify(current) !== canonicalJsonStringify(run))

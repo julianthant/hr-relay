@@ -1,4 +1,4 @@
-import { removeSchema14RunPause } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
 import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";
@@ -45,7 +45,7 @@ import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/s
 const hostFacts = { primaryDisplay: null };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 = 8, extractionEvidence = false) {
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 = 8, extractionEvidence = false) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
@@ -107,7 +107,8 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
-    removeSchema14RunPause(raw);
+    removeSchema15RunPause(raw);
+    if (sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(raw);
     if (sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(raw);
     if (sourceVersion < 10) {
       const editorDdl = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE TABLE explorer_overrides \([\s\S]*?\n\) STRICT;/u)?.[0];
@@ -260,7 +261,7 @@ it("refuses a genuine canonical queued run despite stopped global process roles"
   } finally { await f.close(); }
 });
 
-it.each([8, 11, 12, 13] as const)("automatically upgrades schema %s with queued work intact instead of retiring its durable state", async sourceVersion => {
+it.each([8, 11, 12, 13, 14] as const)("automatically upgrades schema %s with queued work intact instead of retiring its durable state", async sourceVersion => {
   const f = await readyBoundEight("queued", sourceVersion);
   try {
     const before = rawEight(f.path);
@@ -474,7 +475,7 @@ it("revokes READY custody on exact artifact-root ancestry substitution", async (
   }
 });
 
-it.each([9, 10, 11, 12, 13] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
+it.each([9, 10, 11, 12, 13, 14] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
   const f = await readyBoundEight("idle", sourceVersion);
   try {
     const before = rawEight(f.path);

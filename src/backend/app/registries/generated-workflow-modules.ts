@@ -3,11 +3,13 @@ import { compileWorkflow, composeWorkflowModule } from "../../../workflow-kit/wo
 import { taskStoreRegistry } from "./task-registry.js";
 import { registration as i9CheckModuleRegistration } from "../../../workflows/i9-check/index.js";
 import { registration as i9LookupModuleRegistration } from "../../../workflows/i9-lookup/index.js";
+import { registration as onbaseModuleRegistration } from "../../../workflows/onbase/index.js";
 import { registration as personLookupModuleRegistration } from "../../../workflows/person-lookup/index.js";
 import { registration as separationsModuleRegistration } from "../../../workflows/separations/index.js";
 
 export const i9CheckModule = composeWorkflowModule(compileWorkflow(i9CheckModuleRegistration.definition), taskStoreRegistry.stores);
 export const i9LookupModule = composeWorkflowModule(compileWorkflow(i9LookupModuleRegistration.definition), taskStoreRegistry.stores);
+export const onbaseModule = composeWorkflowModule(compileWorkflow(onbaseModuleRegistration.definition), taskStoreRegistry.stores);
 export const personLookupModule = composeWorkflowModule(compileWorkflow(personLookupModuleRegistration.definition), taskStoreRegistry.stores);
 export const separationsModule = composeWorkflowModule(compileWorkflow(separationsModuleRegistration.definition), taskStoreRegistry.stores);
 
@@ -19,4 +21,5 @@ export const WORKFLOW_MODULES = Object.freeze([
 export const CHILD_ONLY_WORKFLOW_MODULES = Object.freeze([
   i9CheckModule,
   i9LookupModule,
+  onbaseModule,
 ] as const);

@@ -305,7 +305,7 @@ Registry document 3 binds immutable installation ID and safe revision. Control 7
 
 SQLite precommit proofs cover registry/verifier/control evidence, registry operations. Fixed-layout claims separately bind their exact external journal. Independent credential head and record publications retain their own authenticated writer checks and do not invalidate those registry proofs.
 
-`storage upgrade --machine-control` uses the existing stopped three-file forward protocol. Supported settled prior tuples and bound SQL schemas 8–13 require genuine source inspection and durable verified credential-free SQL backup before canonical key/frame/control publication. One receipt records exact tuple backups, encrypted credential plans, source fingerprints and the verified SQL archive. Publication resumes only exact recorded source-or-published prefixes. Old credentials/key plaintext are not copied into the new archive. Old runtime readers are deleted. Unknown software Duo counter history or unsupported pending journals produce a named HOLD before mutation; no clock seed, inferred absence, key adoption or silent retirement is allowed. Completed historical artifacts remain exact preserved inventory.
+`storage upgrade --machine-control` uses the existing stopped three-file forward protocol. Supported settled prior tuples and bound SQL schemas 8 through 15 require genuine source inspection and durable verified credential-free SQL backup before canonical key/frame/control publication. One receipt records exact tuple backups, encrypted credential plans, source fingerprints and the verified SQL archive. Publication resumes only exact recorded source-or-published prefixes. Old credentials/key plaintext are not copied into the new archive. Old runtime readers are deleted. Unknown software Duo counter history or unsupported pending journals produce a named HOLD before mutation; no clock seed, inferred absence, key adoption or silent retirement is allowed. Completed historical artifacts remain exact preserved inventory.
 
 Offline restore replaces SQLite only. It preserves current canonical head/key/generation/floors and credentials, and retains existing source/stage/suspect, settings and UNKNOWN-write proofs. Same-machine native key absence refuses. Same-person restore candidate checks bind immutable IDs, current paths, and verified manifest facts before replacement.
 
@@ -382,24 +382,25 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-The current schema is 14. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
+The current schema is 15. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
+
 
 Fresh workbook storage contains one General type seed. Incomplete-profile inventory reports that row and treats only its exact initial payload as pristine, alongside either bare authority or authenticated Settings initialization. Extra or edited types and workbook masters, creations, operations or named versions remain activity that blocks withdrawal.
 
-The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12 and 13. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
+The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13 and 14. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 14` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 15` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
 ordinary startup. Ordinary writable opens and stopped upgrades use SQLite existing-only mode,
 including when a source disappears during opening. Only `initializeProfile`, after its issued setup
 admission check, creates the absent canonical profile database and its current baseline.
-Schemas 1 through 13 are inspected only under stopped upgrade or maintenance authority; ordinary readers
-use the current layout. Stopped inspection projects the absent pre-v14 pause column as null only
+Schemas 1 through 14 are inspected only under stopped upgrade or maintenance authority; ordinary readers
+use the current layout. Stopped inspection projects the absent pre-v15 pause column as null only
 after validating the predecessor's registered schema, including run/search/timeline/result owners.
-The forward v14 migration adds the pause scalar and its JSON-equality triggers before runtime opens.
+The forward v15 migration adds the pause scalar and its JSON-equality triggers before runtime opens.
 
 Assistant grants, chats and once-consumable actions use three profile-owned authority tables.
 An explicit operator `apply-settings` command may carry `assistantPermission` with the expected
@@ -468,7 +469,7 @@ A changed source fails with `source-changed: re-plan upgrade`. Startup completes
 
 Bootstrap holds the lifetime listener before the supported forward conversion. The finite source
 reader admits only the known default pair at generation zero. Existing stopped machine-control and
-flat-store conversion run through their current owners. Supported registered schemas 8–12 then receive
+flat-store conversion run through their current owners. Supported registered schemas 8–14 then receive
 the automatic backed-up W11a upgrade before current-only layout qualification. Registered ready/cancelling people and initialized pending sign-ups need a verified current SQL backup and genuine native closure before paths change.
 Current-only layout source admissions preserve unfinished durable work and ordinary output files and
 cannot authorize schema migration; manual upgrade and credential-copy admissions retain their strict
@@ -563,7 +564,7 @@ instead of reading the map directly.
 
 Dashboard startup inspects registered ready/cancelling people and initialized pending sign-ups under genuine exclusive installation and
 maintenance ownership before ordinary admission, HTTP or credential consumers. Supported SQLite
-schemas 8–12 receive a verified same-person backup and the stopped forward migration, followed by
+schemas 8–14 receive a verified same-person backup and the stopped forward migration, followed by
 current-schema health readback. Current stores are inspected without another backup. Missing,
 corrupt, foreign and future databases refuse with `STORAGE_PROFILE_UPGRADE_REFUSED`; they never
 initialize empty storage. Only a genuinely not-yet-created sign-up with its planned credential

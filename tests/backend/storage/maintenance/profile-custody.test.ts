@@ -3,6 +3,7 @@ import { it } from "vitest";
 import { assertCredentialCopyResourcesClosed, assertShutdownResourcesClosed } from "../../../../src/backend/storage/maintenance/profile-custody.js";
 import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { ExclusiveSessionLeaseSchema } from "../../../../src/models/sessions/exclusive-session-lease.js";
 import { WriteIntentRecordSchema } from "../../../../src/rules/write-safety/write-safety.js";
 import { NOW, UUID_1, UUID_6, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
@@ -10,12 +11,21 @@ import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 const empty: ReturnType<AuthorityDatabase["readProfileResourceCustody"]> = {
   authorityGeneration: 0, upgrades: [], slots: [], reservations: [], verificationProfiles: [],
   leases: [], controls: [], browsers: [], runs: [], writeIntents: [], duoLeases: [],
-  pendingArtifacts: [], artifactReferences: [], configSnapshots: [],
+  exclusiveSessionLeases: [], pendingArtifacts: [], artifactReferences: [], configSnapshots: [],
 };
 const queued = RunRecordSchema.parse(QUEUED_RUN);
 const paused = RunRecordSchema.parse({ ...queued, pause: {
   state: "paused", commandId: UUID_1, requestedAt: NOW, pausedAt: NOW,
 } });
+
+it("requires exclusive browser identity release before shutdown can retain paused work", () => {
+  const lease = ExclusiveSessionLeaseSchema.parse({ identityKey: "a".repeat(64), generation: 1,
+    workerId: "onbase-worker-1", workerLeaseGeneration: 1, sessionId: UUID_6, acquiredAt: NOW, releasedAt: null });
+  const facts = { ...empty, runs: [paused], exclusiveSessionLeases: [lease] };
+  assert.throws(() => assertShutdownResourcesClosed(facts), /credential-maintenance-custody-unproved/u);
+  assert.doesNotThrow(() => assertShutdownResourcesClosed({ ...facts,
+    exclusiveSessionLeases: [ExclusiveSessionLeaseSchema.parse({ ...lease, releasedAt: NOW })] }));
+});
 
 it("retains an acknowledged pause only for shutdown, keeping credential-copy closure strict", () => {
   assert.doesNotThrow(() => assertShutdownResourcesClosed({ ...empty, runs: [paused] }));

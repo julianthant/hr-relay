@@ -169,13 +169,14 @@ function effects(h: Fixture) {
     checkpoints: h.database.authority.runCheckpoints.listByItem(descriptor.id, h.failed.envelope.itemId).filter(row => row.nodeId === WRITE_FIXTURE_NODE_ID),
     confirmations: h.database.authority.timelineEvents.page({}).filter(row => row.payload.kind === "operation-confirmed") };
 }
-function recover(h: Fixture, run = h.failed) {
-  return h.lifecycle.recover({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version,
-    runtimeConfig: selectRunRuntime(h.database.authority), appVersion: "0.1.0" }, h.descriptor, { title: "Transaction continuation", actorId: "local-operator" });
-}
-function operatorRecover(h: Fixture, run = h.failed) {
-  const result = h.kernel.execute({ commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
-    source: "dashboard", family: "run", type: "recover-run", target: { runId: run.envelope.runId, expectedVersion: run.version } });
+function operatorRecover(h: Fixture, run = h.failed, replay = false) {
+  const command = { commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+    source: "dashboard", family: "run", type: "recover-run", target: { runId: run.envelope.runId, expectedVersion: run.version } };
+  const result = h.kernel.execute(command);
+  if (replay) {
+    const repeated = h.kernel.execute(command); assert.ok(repeated.state === "already-applied");
+    assert.ok(result.state === "applied"); assert.deepEqual(repeated.affectedTargets, result.affectedTargets);
+  }
   assert.equal(result.state, "applied"); assert.ok(result.state === "applied");
   const target = result.affectedTargets[0]; assert.ok(target?.family === "run");
   const next = h.database.authority.runs.get(target.runId); assert.ok(next); return next;
@@ -192,20 +193,19 @@ function correctedContinuation(h: Fixture, raw: z.input<typeof Input>) {
     runtimeConfig: selectRunRuntime(h.database.authority) }, { title: "Corrected transaction continuation", actorId: "local-operator" }));
 }
 
-for (const door of ["recover", "operator-recover"] as const) it(`${door} replays a completed dependent read only after the transaction restores its semantic output`, async () => {
+for (const door of ["first-delivery", "lost-acknowledgement"] as const) it(`${door} replays a completed dependent read only after the transaction restores its semantic output`, async () => {
   const h = await fixture([3], receiptDescriptor), before = effects(h);
   assert.equal(h.world.events.filter(event => event === "read:T123456").length, 1);
-  const next = door === "recover" ? requireLifecycleApplied(recover(h))
-    : operatorRecover(h);
+  const next = operatorRecover(h, h.failed, door === "lost-acknowledgement");
   assert.equal((await h.execute(next)).state, "done");
   assert.deepEqual(effects(h), before);
   assert.equal(h.world.events.filter(event => event === "read:T123456").length, 1);
 });
 
-for (const door of ["recover", "operator-recover"] as const) it(`${door} reuses authenticated child-dependent transaction and receipt without relaunching the child`, async () => {
+for (const door of ["first-delivery", "lost-acknowledgement"] as const) it(`${door} reuses authenticated child-dependent transaction and receipt without relaunching the child`, async () => {
   const h = await fixture([3], childReceiptDescriptor, undefined, [sourceBoundReadDescriptor]), before = effects(h);
   const children = h.database.authority.runs.listChildren(h.failed.envelope.runId); assert.equal(children.length, 1);
-  const next = door === "recover" ? requireLifecycleApplied(recover(h)) : operatorRecover(h);
+  const next = operatorRecover(h, h.failed, door === "lost-acknowledgement");
   assert.equal((await h.execute(next)).state, "done");
   assert.deepEqual(effects(h), before);
   assert.deepEqual(h.database.authority.runs.listChildren(h.failed.envelope.runId), children);
@@ -273,10 +273,10 @@ it("keeps a real publisher healthy when complete-display continuation reuses a t
   assert.deepEqual(effects(h), before);
 });
 
-it("enters lifecycle and operator checkpoint recovery across a bounded chain without repeating the completed transaction", async () => {
+it("enters operator checkpoint recovery across a bounded chain without repeating the completed transaction", async () => {
   const h = await fixture([2, 3]);
   const before = effects(h); assert.equal(before.intents.length, 1); assert.equal(before.checkpoints.length, 1);
-  const next = requireLifecycleApplied(recover(h));
+  const next = operatorRecover(h);
   assert.equal((await h.execute(next)).state, "failed");
   const second = h.fresh(next);
   assert.equal(h.database.authority.failures.listByRun(second.envelope.runId)[0]?.nodeId, "finish");
@@ -362,7 +362,9 @@ it("refuses a genuinely acknowledged predecessor repeat at recovery admission be
   const before = effects(h);
   assert.equal(before.intents.length, 2); assert.equal(new Set(before.intents.map(intent => intent.idempotencyKey)).size, 2);
   assert.ok(before.intents.some(intent => intent.status === "committed" && intent.occurrence !== undefined));
-  assert.throws(() => recover(h, failedRepeat), RerunRefusedError);
+  const rejected = h.kernel.execute({ commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+    source: "dashboard", family: "run", type: "recover-run", target: { runId: failedRepeat.envelope.runId, expectedVersion: failedRepeat.version } });
+  assert.ok(rejected.state === "rejected"); assert.equal(rejected.code, "RUN_CONTINUATION_REFUSED");
   assert.throws(() => validateCompletedTransactionContinuations(h.database.authority, h.descriptor, failedRepeat),
     error => error instanceof RerunRefusedError && error.code === "invalid-state" && /repeat-occurrence/u.test(error.message));
   assert.deepEqual(effects(h), before);

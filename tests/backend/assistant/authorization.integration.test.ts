@@ -397,3 +397,23 @@ it.each(["confirm", "cancel"] as const)("keeps stale collection confirmation ref
     assert.deepEqual(f.database.authority.notifications.listByActor("local-operator"), rows);
   });
 });
+
+it("keeps checkpoint recovery operator-only even when a manifest classifies the command", async () => {
+  const f = await fixture();
+  assert.equal(f.grant("every-action").state, "applied");
+  const chat = f.authorization.createChat();
+  const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(),
+    requestedBy: "local-operator", source: "dashboard", family: "run", type: "recover-run",
+    target: { runId: randomUUID(), expectedVersion: 1 } });
+  assert.ok(f.kernel.assistantAvailability().some(entry => entry.family === "run" && entry.action === "recover-run" && entry.availability === "unavailable"));
+  const manifest = f.kernel.assistantManifest();
+  assert.ok(manifest.entries.every(entry => entry.family !== "run" || entry.action !== "recover-run"));
+  f.kernel.assistantManifest = () => ({ ...manifest, entries: [...manifest.entries,
+    { family: "run", action: "recover-run", classification: "external-submit", subject: "classified" }] });
+  const generation = f.database.getMeta().authorityGeneration;
+  assert.throws(() => f.authorization.prepare(chat, command), /assistant-command-values-unbound/u);
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  assert.equal(f.database.authority.commands.get(command.commandId), undefined);
+  assert.equal(f.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+  assert.equal(f.database.authority.assistantAuthorization.actionByCommand(command.commandId), undefined);
+});

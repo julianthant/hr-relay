@@ -1,4 +1,4 @@
-import { planRunRecovery } from "../start/recovery-plan.js";
+import { assertRunRecoveryCommandScope, planRunRecovery } from "../start/recovery-plan.js";
 import { protectedSubjectDisplay } from "../start/protected-input.js";
 import { continuationDelegationGroups } from "../../storage/sqlite/run-continuation-delegation.js";
 import { captureRunContinuation, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
@@ -1097,6 +1097,11 @@ export class RunRecordService {
     const request = CanonicalRecoverRunRequestSchema.parse(input);
     descriptorRuntimeNodes(descriptor);
     const outcome = this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome | RunExistence => {
+      const command = assertRunRecoveryCommandScope(repositories, request.sourceCommandId);
+      if (request.continuationOwner === undefined && (command.target.runId !== request.runId
+        || command.target.expectedVersion !== request.expectedVersion
+        || request.commandId !== lifecycleCommandId("operator-recover-run", command.commandId)))
+        throw new RunContinuationRefusedError("run-recovery-command-binding-mismatch");
       const journal = this.inspectJournal(repositories, "recover", request, {
         kind: "version",
         expectedVersion: request.expectedVersion,
@@ -1124,7 +1129,7 @@ export class RunRecordService {
       }
       if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
       if (request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint) return refused({ reason: "runtime-stale" });
-      const plan = planRunRecovery(repositories, descriptor, run);
+      const plan = planRunRecovery(repositories, descriptor, run, request.sourceCommandId);
       const continuation = plan.continuation;
       if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,

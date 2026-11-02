@@ -604,7 +604,7 @@ export function deriveRunEvidenceReceipt(
       evidence.values.set(leaf.path, leaf.value);
       const provenance = provenanceFor(
         record,
-        node.kind === "transaction" ? `output.${leaf.path}` : leaf.path,
+        node.kind === "transaction" ? `output.value.${leaf.path}` : leaf.path,
       );
       const mandatory = declaredDetails.has(`${id}\u0000${leaf.path}`);
       observations.push(observationFact({

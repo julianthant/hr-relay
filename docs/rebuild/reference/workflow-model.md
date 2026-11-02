@@ -476,7 +476,7 @@ members never substitute for an unprovable original scope.
 Dashboard Rerun consumes its canonical source-bound plan; native Retry and Restart use the lifecycle
 service. These ordinary doors do not capture continuation lineage.
 
-The separate **Recover completed steps** action uses `run/recover-run`. Its public request names only
+The separate **Recover completed steps** action uses `run/recover-run`. It is operator-only: the assistant cannot retain or dispatch it. Native recovery and its server-derived planner require the kernel's exact active canonical recovery-command scope before reading product audit proof or minting an attempt; a parsed or retained command alone provides no authority. Its public request names only
 the source run and expected version. `runs/start/recovery-plan.ts` derives a `RunRecoveryPlan` from
 native authority, distinct from a Rerun plan. It accepts failed or interrupted sources under the same
 descriptor version, contract and runtime fingerprint, with no attempting or parked writes. It keeps

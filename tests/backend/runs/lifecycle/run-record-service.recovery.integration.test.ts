@@ -1,3 +1,7 @@
+import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
+import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
+import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { RunContinuationRefusedError } from "../../../../src/backend/storage/sqlite/run-continuation.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
@@ -49,4 +53,26 @@ it("recovers through exact product and lifecycle journals after equivalent runti
   assert.equal(canonicalJsonStringify(h.database.authority.runCheckpoints.get(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId,
     checkpoint.attempt, checkpoint.claimGeneration)), originalCheckpoint);
   assert.deepEqual(h.world.events, ["read:absent", "read:absent"]);
+});
+
+it("refuses direct native recovery even with a retained parsed product command before IDs or lifecycle journals", async () => {
+  const h = await sourceBoundHarness(failedSourceReadDescriptor, world => sourceBoundReadStores(world, [2])); cleanups.push(h.dispose);
+  const queued = h.start(h.proposal()); assert.equal((await h.execute(queued)).state, "failed");
+  const source = h.fresh(queued), records = h.database.authority.runs.listByWorkflow(source.envelope.workflow);
+  const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: h.clock.now().toISOString(), requestedBy: "local-operator",
+    source: "dashboard", family: "run", type: "recover-run", target: { runId: source.envelope.runId, expectedVersion: source.version } });
+  h.database.withAuthorityTransaction(repositories => repositories.commands.insert(command));
+  const nativeId = lifecycleCommandId("operator-recover-run", command.commandId);
+  const generation = h.database.getMeta().authorityGeneration, ids = h.lifecycleIds.minted();
+  for (const sourceCommandId of [undefined, command.commandId]) {
+    assert.throws(() => h.lifecycle.recover({ commandId: nativeId, runId: source.envelope.runId, expectedVersion: source.version,
+      runtimeConfig: selectRunRuntime(h.database.authority), ...(sourceCommandId === undefined ? {} : { sourceCommandId }) }, h.descriptor),
+      RunContinuationRefusedError);
+    assert.equal(h.database.getMeta().authorityGeneration, generation);
+    assert.deepEqual(h.lifecycleIds.minted(), ids);
+    assert.equal(h.database.authority.lifecycleJournal.getCommand(nativeId), undefined);
+    assert.equal(h.database.authority.lifecycleJournal.findAuditByCommand(nativeId), undefined);
+    assert.equal(h.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+    assert.deepEqual(h.database.authority.runs.listByWorkflow(source.envelope.workflow), records);
+  }
 });

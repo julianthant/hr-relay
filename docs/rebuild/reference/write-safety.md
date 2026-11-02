@@ -295,6 +295,19 @@ Before Kuali finalization, `ucpath/verify-termination-filing-present` always re-
 
 HTTP 200, `Ok`, and a success banner are not landing proof. `kuali/verify-separation-finalization` reloads the document, checks its identity, and compares every stored field exactly. Unsupported payload encodings are not guessed. The reload comparison covers all twelve fields even where payload assertions are narrower.
 
+## OnBase Emergency Contact import
+
+The child-only OnBase workflow extracts one verified source PDF page, probes for that exact page,
+then stages the Employee Lookup keyset form. Preparation and commit read back the employee,
+required keywords, document type and single-page upload queue. The write sequencer fences one
+Import action; dry runs stop after preparation.
+
+`onbase/match-import` and `onbase/verify-import` require exact retrieval filters, a fresh complete
+result census, matching employee/document metadata and the downloaded PDF digest. A success
+banner cannot prove completion. Uncertain submission stays parked with operator-only negative
+recovery; no indexing delay authorizes another Import. Retrieval selectors and the probe-to-fence
+budget still require live operator acceptance before activation.
+
 ## Verification ownership
 
 [Guards and tests](guards-and-tests.md) owns the verification commands and guard inventory. Current architecture tests cover write-safety contracts, transaction pairing, subject-before-fence ordering, permanent-key dedupe, stabilized negative settlement, atomic write settlement, and identity authority before both commit and terminal sinks. Driver boundary tests restrict capability minting and commit implementation ownership.
@@ -304,7 +317,7 @@ The corresponding runtime tests exercise preview, parked resolution, proof verif
 ## Not built yet
 
 - Artifact subject observation remains a refusal in `buildBindingProof`; the first artifact-writing workflow needs its implemented observation arm.
-- OnBase and ServiceNow have no commit contracts; their first writing workflows need positive proof and justified recovery policies.
+- ServiceNow has no commit contract; its first writing workflow needs positive proof and a justified recovery policy.
 - Onboarding has no hire commit/probe contract; its workflow needs a stable pre-hire business identity and evidence-qualified duplicate probe.
 - Separation workflow cutover still requires operator-approved controlled-write evidence for each write, safe target disposition, and measured probe-to-fence budgets.
 - Kuali finalization's configured stabilized policy still needs its own controlled-write propagation confirmation before production reliance.

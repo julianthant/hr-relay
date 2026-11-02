@@ -9,7 +9,6 @@ import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { validateCompletedTransactionContinuations } from "../../../../src/backend/runs/start/recovery-plan.js";
 import { RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
 import { sourceBoundHarness } from "../../../support/fixtures/integration/source-bound-fixtures.js";
@@ -60,8 +59,7 @@ async function harness(descriptor: AnyWorkflowDescriptor, failOn: readonly numbe
 }
 type Harness = Awaited<ReturnType<typeof harness>>;
 function retry(h: Harness, source: ReturnType<Harness["fresh"]>) {
-  return requireLifecycleApplied(h.lifecycle.recover({ commandId: randomUUID(), runId: source.envelope.runId, expectedVersion: source.version,
-    runtimeConfig: selectRunRuntime(h.database.authority), appVersion: "0.1.0" }, h.descriptor, { title: "Continue after failure", actorId: "local-operator" }));
+  return operatorRecover(h, source);
 }
 function transactionEffects(h: Harness) {
   const source = h.database.authority.runs.listByWorkflow(h.descriptor.id)[0]; assert.ok(source);

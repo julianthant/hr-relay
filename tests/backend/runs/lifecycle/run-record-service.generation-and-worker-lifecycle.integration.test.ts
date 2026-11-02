@@ -1,3 +1,4 @@
+import { RunContinuationRefusedError } from "../../../../src/backend/storage/sqlite/run-continuation.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { runClaim } from "../../../../src/models/run/record.js";
@@ -86,16 +87,26 @@ describe("canonical run-record service", () => {
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
     }));
     if (terminal.state !== "applied") throw new Error("coverage transition refused");
-    const retry = measure("retry", 0, () => service.retry({
+    const retry = measure("retry", 1, () => service.retry({
       commandId: commandId(), runId: source.envelope.runId,
       expectedVersion: terminal.run.version, runtimeConfig,
     }, personLookupDescriptor));
-    assert.deepEqual(retry, { state: "refused", refusal: { reason: "invalid-state" } });
-    const restart = measure("restart", 0, () => service.restart({
+    if (retry.state !== "applied") throw new Error("coverage retry refused");
+    const settledRetry = service.transition({
+      commandId: commandId(), runId: retry.run.envelope.runId, expectedVersion: retry.run.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    if (settledRetry.state !== "applied") throw new Error("coverage retry setup refused");
+    const restart = measure("restart", 1, () => service.restart({
       commandId: commandId(), runId: source.envelope.runId,
       expectedVersion: terminal.run.version, runtimeConfig,
     }, personLookupDescriptor));
-    assert.deepEqual(restart, { state: "refused", refusal: { reason: "invalid-state" } });
+    if (restart.state !== "applied") throw new Error("coverage restart refused");
+    const settledRestart = service.transition({
+      commandId: commandId(), runId: restart.run.envelope.runId, expectedVersion: restart.run.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    });
+    if (settledRestart.state !== "applied") throw new Error("coverage restart setup refused");
 
     const workerRun = created(service, {
       ...request,
@@ -160,6 +171,12 @@ describe("canonical run-record service", () => {
       personLookupDescriptor,
     ));
     if (terminalized.state !== "applied") throw new Error("coverage terminalize refused");
+    const directRecoveryCommandId = commandId();
+    measure("recover", 0, () => assert.throws(() => service.recover({ commandId: directRecoveryCommandId,
+      runId: terminalized.run.envelope.runId, expectedVersion: terminalized.run.version, runtimeConfig }, personLookupDescriptor),
+      RunContinuationRefusedError));
+    assert.equal(database.authority.lifecycleJournal.getCommand(directRecoveryCommandId), undefined);
+    assert.deepEqual(database.authority.runs.get(terminalized.run.envelope.runId), terminalized.run);
 
     const recoverable = created(service, { ...request, commandId: commandId(), matchKey: "coverage-requeue" });
     const recoveryClaim = service.claimNext({
@@ -442,7 +459,7 @@ it("competing connections cannot accept conflicting failure settlements", async 
 
 
 describe("current settings selection",()=>{
-  for(const operation of ["retry","restart"] as const)it(`${operation} refuses a cancelled source and preserves its selected settings`,async ()=>{
+  for(const operation of ["retry","restart"] as const)it(`${operation} selects active settings and preserves source and journal replay`,async ()=>{
     const f=await settingsFixture();
     try{
       const source=f.create(),terminal=requireLifecycleApplied(f.service.transition({commandId:UUID_5,
@@ -451,15 +468,16 @@ describe("current settings selection",()=>{
       const selected=f.database.authority.runtimeConfig.get();assert.ok(selected);
       const request={commandId:"83000000-0000-4000-8000-000000000091",runId:terminal.envelope.runId,
         expectedVersion:terminal.version,runtimeConfig:selectRunRuntime(f.database.authority)};
-      const generation=f.database.getMeta().authorityGeneration;
-      assert.deepEqual(f.service[operation](request,personLookupDescriptor),{state:"refused",refusal:{reason:"invalid-state"}});
-      assert.equal(f.database.getMeta().authorityGeneration,generation);
-      assert.notEqual(selected.configSnapshotId,terminal.envelope.configSnapshotId);
+      const next=requireLifecycleApplied(f.service[operation](request,personLookupDescriptor));
+      assert.equal(next.envelope.configSnapshotId,selected.configSnapshotId);
+      assert.equal(next.envelope.configFingerprint,selected.configFingerprint);
+      assert.notEqual(next.envelope.configSnapshotId,terminal.envelope.configSnapshotId);
+      assert.deepEqual(next.input,terminal.input);
       assert.deepEqual(f.database.authority.runs.get(terminal.envelope.runId),terminal);
       assert.equal(f.save({"timeouts.taskMs":{clear:true}}).state,"applied");
-      const afterSave=f.database.getMeta().authorityGeneration;
-      assert.deepEqual(f.service[operation](request,personLookupDescriptor),{state:"refused",refusal:{reason:"invalid-state"}});
-      assert.equal(f.database.getMeta().authorityGeneration,afterSave);
+      const generation=f.database.getMeta().authorityGeneration;
+      assert.deepEqual(requireLifecycleApplied(f.service[operation](request,personLookupDescriptor)),next);
+      assert.equal(f.database.getMeta().authorityGeneration,generation);
     }finally{await f.close();}
   });
 });

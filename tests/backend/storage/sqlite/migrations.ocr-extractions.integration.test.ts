@@ -86,6 +86,12 @@ it("upgrades populated OCR schema twelve to workbook masters without rewriting s
     assert.throws(() => inspectNormalAuthority(database), /normal-authority-schema-mismatch/u);
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get()?.count, 42);
     assert.deepEqual(database.prepare('SELECT * FROM artifacts').all(), before);
+    database.exec('BEGIN EXCLUSIVE');
+    for (const migration of SQLITE_MIGRATIONS.filter(value => value.version > 13)) for (const statement of migration.statements) database.exec(statement);
+    database.exec(`UPDATE database_states SET schema_version=${CURRENT_AUTHORITY_SCHEMA_VERSION}; PRAGMA user_version=${CURRENT_AUTHORITY_SCHEMA_VERSION}; COMMIT`);
+    assert.equal(inspectNormalAuthority(database).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get()?.count, 43);
+    assert.deepEqual(database.prepare('SELECT * FROM artifacts').all(), before);
     assert.deepEqual(extractedArtifactFromRow(before[0]), stored);
     const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: () => { throw new Error('migration-read-only-proof'); } });
     assert.deepEqual(repository.read(first.libraryId), second);
@@ -95,10 +101,5 @@ it("upgrades populated OCR schema twelve to workbook masters without rewriting s
     ]);
     assert.throws(() => database.exec("UPDATE artifacts SET payload_json='{}'"), /artifacts-extracted-immutable/u);
     assert.throws(() => database.exec('DELETE FROM artifacts'), /artifact-evidence-retained/u);
-    const pause = SQLITE_MIGRATIONS.find(value => value.version === 14); assert.ok(pause);
-    for (const statement of pause.statements) database.exec(statement);
-    database.exec('UPDATE database_states SET schema_version=14; PRAGMA user_version=14');
-    assert.equal(inspectNormalAuthority(database).schemaVersion, 14);
-    assert.deepEqual(database.prepare('SELECT * FROM artifacts').all(), before);
   } finally { database.close(); }
 });

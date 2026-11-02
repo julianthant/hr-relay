@@ -611,7 +611,7 @@ function executeRecover(
   let record: RunRecord;
   let children: readonly RunRecord[];
   try {
-    planRunRecovery(repositories, descriptor, current);
+    planRunRecovery(repositories, descriptor, current, request.commandId);
     record = lifecycleRun(request, dependencies.lifecycle.recover({
       commandId: lifecycleCommandId("operator-recover-run", request.commandId),
       runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,

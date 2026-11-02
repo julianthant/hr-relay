@@ -272,6 +272,8 @@ export const ERROR_CATALOG = Object.freeze({
     "CRM sign-in failed.",
     EmptyParametersSchema,
   ),
+  ONBASE_SESSION_HELD: catalogEntry("OnBase is held by another session. Its browser closure must be proven before this account can be used again.", EmptyParametersSchema),
+  ONBASE_IMPORT_UNPROVED: catalogEntry("The OnBase document import could not be verified. Review the saved evidence before continuing.", EmptyParametersSchema),
   ONBASE_SIGN_IN_FAILED: catalogEntry(
     "OnBase sign-in failed.",
     EmptyParametersSchema,
