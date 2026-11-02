@@ -3,9 +3,9 @@ import { EidSchema, IsoInstantSchema, RunIdSchema } from "../../../rules/identit
 import { WorkbookIdSchema } from "../../dashboard/workbooks.js";
 import { UcpathApprovalStatusSchema, UcpathTransactionReceiptSchema } from "../../ui/ucpath-ss-smart-hr.js";
 
-/** Task payloads only; the shared Spreadsheets capability owns workbook access. */
+const namePart = z.string().min(1).refine(value => value.trim() === value);
 const RosterPersonNameSchema = z.strictObject({
-  firstName: z.string().trim().min(1), lastName: z.string().trim().min(1), middleName: z.string().trim(),
+  firstName: namePart, lastName: namePart, middleName: z.string().refine(value => value.trim() === value),
 });
 
 export const OnboardingRosterRowKeySchema = z.strictObject({ email: z.email() });

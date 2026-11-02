@@ -63,4 +63,3 @@ export function readHirePlan(input: z.input<typeof OnboardingReadHirePlan.input>
     },
   });
 }
-

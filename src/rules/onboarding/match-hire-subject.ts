@@ -26,4 +26,3 @@ export function matchHireSubject(input: z.output<typeof OnboardingMatchHireSubje
   }
   return { state: "existing-person", person };
 }
-
