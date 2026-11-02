@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { z } from "zod";
 import { isDirectExecution } from "./scope-files.js";
 
 // Storage closure, backup and restore proofs refuse off macOS, so these files run on macOS runners.
@@ -72,20 +73,26 @@ export function selectCiFiles(listed: readonly string[], project: CiProject, run
   const macos = [...MACOS_FILES, ...SERIAL_FILES];
   const missing = macos.filter(file => projectOf(file) === project && !listed.includes(file));
   if (missing.length > 0) throw new Error(`CI file lists name files Vitest does not list: ${missing.join(", ")}`);
-  const known = Object.values(durations).sort((a, b) => a - b);
-  const seconds = (file: string) => durations[file] ?? known[Math.floor(known.length / 2)] ?? 1;
+  const known = Object.values(durations).filter(seconds => seconds > 0).sort((a, b) => a - b);
+  const seconds = (file: string) => Math.max(0.1, durations[file] ?? known[Math.floor(known.length / 2)] ?? 1);
   if (runner === "ubuntu") return balance(listed.filter(file => !macos.includes(file)), jobs, seconds)[job - 1] ?? [];
   // Serial proofs run alone; other files share two workers, so they count half their time.
   const bin = balance(macos, jobs, file => isSerial(file) ? seconds(file) : seconds(file) / 2)[job - 1] ?? [];
   return bin.filter(file => projectOf(file) === project && isSerial(file) === (runner === "serial"));
 }
 
-type VitestReport = { testResults: { name: string; startTime: number; endTime: number }[] };
+const vitestReportSchema = z.object({ testResults: z.array(z.object({
+  name: z.string(), startTime: z.number().nonnegative(), endTime: z.number().nonnegative(),
+})) });
 
 // Vitest JSON reports (`--reporter=json`) record each file's absolute path, start and end time.
-export function durationsFromReports(reports: readonly VitestReport[]): Record<string, number> {
-  const entries = reports.flatMap(report => report.testResults.map(({ name, startTime, endTime }) =>
-    [name.slice(name.lastIndexOf("/tests/") + 1), Math.round((endTime - startTime) / 100) / 10] as const));
+export function durationsFromReports(reports: readonly unknown[]): Record<string, number> {
+  const entries = reports.flatMap(report => vitestReportSchema.parse(report).testResults.map(({ name, startTime, endTime }) => {
+    const normalized = name.replaceAll("\\", "/");
+    const root = normalized.lastIndexOf("/tests/");
+    if (root < 0 || endTime < startTime) throw new Error(`Invalid CI timing for ${normalized}`);
+    return [normalized.slice(root + 1), Math.round((endTime - startTime) / 100) / 10] as const;
+  }));
   return Object.fromEntries(entries.sort(([a], [b]) => a.localeCompare(b)));
 }
 
@@ -94,7 +101,7 @@ if (isDirectExecution(import.meta.url)) {
   if (command === "durations") {
     const dir = args[0] ?? ".";
     const reports = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter(file => file.endsWith(".json"))
-      .map(file => JSON.parse(readFileSync(join(dir, file), "utf8")) as VitestReport);
+      .map(file => JSON.parse(readFileSync(join(dir, file), "utf8")) as unknown);
     const merged: Record<string, number> = { ...(JSON.parse(readFileSync(DURATIONS_PATH, "utf8")) as CiDurations), ...durationsFromReports(reports) };
     writeFileSync(DURATIONS_PATH, JSON.stringify(Object.fromEntries(Object.entries(merged).sort(([a], [b]) => a.localeCompare(b))), null, 2) + "\n");
   } else {

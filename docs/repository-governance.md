@@ -38,22 +38,40 @@ skip or loosen tests, edit workflows, touch HR write paths, or update parity ref
 for screens the PR did not intentionally change; anything that needs those gets `needs-human`. While no orchestrator
 session runs, red PRs wait; nothing red merges. The operator watches only `needs-human`.
 
-CI takes Node from `package.json` engines and caches npm. Routine test suites are macOS:
-required unit, integration, architecture and parity on `macos-15` Apple Silicon runners.
-Static, privacy and the four required suite summaries stay on Ubuntu. CI runs no Windows jobs.
-Test suites run on Ubuntu runners, except files that need macOS: the native browser process proofs,
-the storage closure, backup and restore proofs, and Desktop parity. A pull request into `staging`
-uses all twenty Ubuntu jobs and all five macOS jobs; a release pull request gives three of the
-macOS jobs to parity. The release runner starts after these jobs finish.
+CI takes Node from `package.json` engines and caches npm. Tests run on Ubuntu except the
+macOS-only storage and native browser proofs and Desktop parity. A full staging run uses two
+Ubuntu unit shards, two architecture shards and fourteen integration shards, plus static and
+privacy, within twenty Ubuntu runners. Native files use all five macOS runners; when parity is
+selected, three macOS runners run parity and two run native files. The release runner starts after
+the routine suites finish. Windows jobs are not enabled.
 
-PRs into `staging` run static, privacy, unit, integration and architecture; PRs into `main` add
-parity and release. PR path filters select affected suites. Pushes to `staging` and `main` do not run CI: they only
-change through pull requests whose up-to-date result already passed. A manual run selects all routine
-suites. Markdown-only PRs run static and privacy without test runners. The required suite names
-stay unchanged: each summary succeeds for a deliberately omitted suite, or requires every
-scheduled group to succeed. Failed change detection, failed groups and cancelled selected groups
-fail the summaries. The [test reference](rebuild/reference/guards-and-tests.md#2-vitest-selection-and-commands)
-owns the selection rules and membership proof. Markdown-only release PRs also omit coverage and perf.
+`ci.yml` retains per-PR or per-dispatch-branch cancellation, and queues its reusable `ci-checks.yml`
+job in the shared `ci-runners` concurrency group with `queue: max`. GitHub admits one pipeline at
+a time without a waiting runner. Completion, failure or cancellation releases admission; no polling
+job can occupy a runner needed by an older run. GitHub orders this queue by when pipelines start
+waiting, rather than guaranteeing workflow creation-time order, and accepts at most 100 pending
+pipelines. Queue overflow cancels additional arrivals. The merge train remains outside admission.
+The seven required check names remain top-level summaries of the corresponding pipeline results;
+unit also requires a successful pipeline, including timing publication.
+
+Ready PRs into `staging` run static, privacy, unit, integration and architecture; PRs into `main`
+add parity and release. Path filters select affected suites. Draft pushes run static, privacy and
+affected unit files; becoming ready starts full applicable validation. Explicit dispatches always
+select all routine suites, including parity. Drafts cannot merge. Protected-branch pushes do not
+repeat CI; Markdown-only PRs run static and privacy. A deliberately omitted suite has a successful
+summary, while failed change detection or any failed/cancelled selected group fails its summary.
+Markdown-only release PRs omit coverage and perf.
+
+Every admitted run downloads the latest successful run's retained `ci-timings` artifact before
+selecting files. Its immutable `ci-balancing` artifact gives every shard identical duration inputs.
+After successful runner groups, CI merges their per-file reports into those inherited timings and
+publishes `ci-timings` for the next run, retaining measurements for suites not selected this time.
+Without a retained artifact, CI explicitly uses the committed `scripts/test/ci-durations.json` seed;
+unmeasured files use the positive measured median, or one second without measurements. Invalid
+reports or failed downloads fail CI. Every later CI fix must preserve this automatic timing feedback
+and refresh the committed seed when shard end times spread more than a minute. The
+[test reference](rebuild/reference/guards-and-tests.md#2-vitest-selection-and-commands) owns file
+membership and selection details.
 
 Playwright browser caches use `~/Library/Caches/ms-playwright`, keyed by runner OS, architecture,
 macOS image, browser set and `package-lock.json` digest. An exact hit skips installation; a miss

@@ -95,27 +95,31 @@ Project/file/suite and full behavior or refusal titles remain visible. Short uni
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
 CI runs test files on Ubuntu unless they need macOS. `scripts/test/ci-files.ts` names the macOS
 files: `MACOS_FILES` (storage closure, backup and restore proofs that refuse off macOS, unit and
-integration) and `SERIAL_FILES` (the three native browser process proofs: browser control,
-onboarding Duo provider, worker supervisor). `scripts/test/ci-run.sh` lists a project through
+integration) and `SERIAL_FILES` (native browser process proofs that require file isolation). `scripts/test/ci-run.sh` lists a project through
 Vitest, selects the job's files with that script and passes the paths explicitly; Vitest 4.1.11's
 CLI exclusions do not reach these named projects. Selection refuses when a named file is no longer
 listed. Files are packed longest first onto the least-loaded job using
-`scripts/test/ci-durations.json`; unmeasured files count as the median. Serial proofs count their
+the preceding successful run's `ci-timings` artifact, seeded by `scripts/test/ci-durations.json`
+when none is retained; unmeasured files count as the positive median, or one second.
+Zero-rounded measurements still receive positive work. Serial proofs count their
 full time because they run alone; other macOS files count half because two workers share them.
 
 | Job | Runner | Jobs | Contents |
 | --- | --- | --- | --- |
-| unit | Ubuntu | 3 | unit files except `MACOS_FILES` |
+| unit | Ubuntu | 2 (3 without integration) | unit files except `MACOS_FILES` |
 | architecture | Ubuntu | 2 | architecture files |
-| integration | Ubuntu | 13 | integration files except `MACOS_FILES` and `SERIAL_FILES` |
+| integration | Ubuntu | 14 | integration files except `MACOS_FILES` and `SERIAL_FILES` |
 | native | macOS | 5 (2 when parity runs) | its `SERIAL_FILES` alone, then its macOS unit and integration files |
 | parity | macOS | 3 shards | Desktop parity, release pull requests only |
 
-With `static` and `privacy`, a pull request into `staging` starts exactly the twenty Ubuntu jobs that
-run at once. Every job uploads Vitest JSON reports as `durations-*` artifacts. When job end times
-spread more than a minute, refresh the durations from a recent run and commit them in the next
-bundled pull request:
-`gh run download <run-id> -p 'durations-*' -D <dir>` then `npx tsx scripts/test/ci-files.ts durations <dir>`.
+With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The runner-free FIFO
+admission and draft policy are described in [repository governance](../../repository-governance.md).
+Each shard downloads the same `ci-balancing` input and uploads Vitest JSON reports as `durations-*`.
+CI merges successful groups into inherited timings and publishes `ci-timings` for the next run;
+omitted suites retain their prior measurements. When shard end times spread more than a minute,
+also refresh the committed seed from a successful run:
+`gh run download <run-id> -n ci-timings -D <dir>` then copy its generated `ci-durations.json` to
+`scripts/test/ci-durations.json`. Corrupt reports and download failures fail CI.
 A new test file that needs macOS fails on Ubuntu with the darwin refusal; add it to `MACOS_FILES`.
 
 Unit, integration and parity use two workers. Ubuntu jobs put test temp on tmpfs and have 20-minute
@@ -125,7 +129,8 @@ Vitest test and hook limits, test wait helpers and the browser deadlines tests p
 Local runs use 1. Product defaults are unchanged. Remaining steps run after a failed serial proof
 unless the workflow is cancelled, preserving failure visibility, and any shard failure fails its suite.
 
-PR filtering uses these rules. Static and privacy always run.
+PR filtering uses these rules. Static and privacy always run. Draft PRs select only affected unit files;
+`ready_for_review` triggers all applicable suites, and explicit dispatches bypass the draft limit.
 
 | Changed paths | Routine suites selected |
 | --- | --- |

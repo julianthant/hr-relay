@@ -31,4 +31,21 @@ describe("CI file selection", () => {
     const report = { testResults: [{ name: "/home/runner/work/hr-relay/hr-relay/tests/x.test.ts", startTime: 1_000, endTime: 3_460 }] };
     expect(durationsFromReports([report])).toEqual({ "tests/x.test.ts": 2.5 });
   });
+
+  it("uses the same file keys for Windows reports", () => {
+    expect(durationsFromReports([{ testResults: [{ name: "D:\\a\\relay\\tests\\x.test.ts", startTime: 0, endTime: 2_000 }] }]))
+      .toEqual({ "tests/x.test.ts": 2 });
+  });
+
+  it("refuses corrupt timing reports instead of replacing measured work", () => {
+    expect(() => durationsFromReports([{}])).toThrow();
+    expect(() => durationsFromReports([{ testResults: [{ name: "/tmp/x.test.ts", startTime: 0, endTime: 1 }] }])).toThrow();
+    expect(() => durationsFromReports([{ testResults: [{ name: "/repo/tests/x.test.ts", startTime: 2, endTime: 1 }] }])).toThrow();
+  });
+
+  it("gives untimed files work even when the committed timings round to zero", () => {
+    const shards = [1, 2, 3].map(job => selectCiFiles(integration, "integration", "ubuntu", job, 3, { [portable[0]!]: 0 }));
+    expect(shards.every(files => files.length > 0)).toBe(true);
+    expect(shards.flat().sort()).toEqual(portable);
+  });
 });
