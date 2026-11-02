@@ -61,7 +61,7 @@ import { deriveStableUuid, lifecycleCommandId } from "../../../rules/identity/id
 import { createTimelineRepository, timelineEventFromRow, TimelineRecordError } from "./timeline-repository.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import { CommandIdentityConflictError, AuthorityCommandAuditRecordSchema, AuthorityCommandRecordSchema, StoredAuthorityCommandRecordSchema, BulkParentCommandRecordSchema, BulkRunCommandAcceptanceRecordSchema, CommandAuditRecordSchema, CommandRequestSchema, StorageRelocationCommandRequestSchema, RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
-import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
+import { assertCredentialStoreOwner, stoppedLogoutOwnsCredentialCommand } from "../configuration/credential-store.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
@@ -1848,6 +1848,7 @@ export class AuthorityDatabase implements Disposable {
       readAppSettings(this.#database);
       this.#database.exec("COMMIT");
       this.#credentialCommandIds = commandId => {
+        if (purpose === "stopped-logout-settlement") return stoppedLogoutOwnsCredentialCommand(this.#admission, commandId);
         if (credentials === undefined) throw new CredentialContextRequiredError();
         assertCredentialStoreOwner(credentials, this.#admission);
         return credentials.ownsCommandId(commandId);
@@ -2454,7 +2455,7 @@ export class AuthorityDatabase implements Disposable {
           if (identity.workerLifetime.leaseGeneration !== worker.leaseGeneration || identity.workerLifetime.membershipRevision !== worker.member.membershipRevision) throw new Error("profile-logout-run-generation-changed");
           return [CanonicalCrashRecoveryRequestSchema.parse({ commandId: lifecycleCommandId("logout-crash", { operationId: operation.operationId,
             runId: run.envelope.runId, version: run.version, ...identity }), runId: run.envelope.runId, expectedVersion: run.version,
-            claim, ...identity, now: stoppedAt })];
+            claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, ...identity, now: stoppedAt })];
         });
         snapshot.assertUnchanged();
         this.#publishPendingLogout(admission, LogoutOperationSchema.parse({ ...operation, settlement: { phase: "prepared", stoppedAt,

@@ -8,12 +8,15 @@ import { createProfileRegistry } from "../../../../src/backend/profiles/registry
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createCredentialStore, stoppedLogoutOwnsCredentialCommand } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createChatGptCredentialRepository } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
 async function pending() {
   const f = await createBoundProfileFixture();
+  const protectedCommandId = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot }).read().lastApplied?.commandId;
+  assert.ok(protectedCommandId);
+  assert.throws(() => stoppedLogoutOwnsCredentialCommand(f.admission, protectedCommandId), /profile-logout-settlement-required/u);
   const session = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine,
     prepareLogout(_profileId, owner) {
       const database = AuthorityDatabase.open(owner, { path: join(owner.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "actual-logout-source" });
@@ -32,14 +35,26 @@ async function pending() {
   const sibling = f.machine.admitProfileSettlement(operation.operationId);
   const restore = f.machine.beginOfflineMaintenance();
   const stopped = f.machine.forStoppedLogoutSettlement(owner, operation, restore);
-  return { f, operation, operationPath, owner, sibling, restore, stopped,
-    async close() { stopped.release(); restore.release(); sibling.release(); owner.release(); await f.close(); } };
+  return { f, operation, operationPath, owner, sibling, restore, stopped, protectedCommandId,
+    async close() { restore.release(); stopped.release(); sibling.release(); owner.release(); await f.close(); } };
 }
 
 it("issues only actual stopped Logout2 source access while ordinary credential and runtime effects remain refused", async () => {
   const w = await pending();
   try {
     const before = readFileSync(w.f.path), operationBytes = readFileSync(w.operationPath);
+    assert.equal(stoppedLogoutOwnsCredentialCommand(w.stopped, w.protectedCommandId), true);
+    assert.equal(stoppedLogoutOwnsCredentialCommand(w.stopped, randomUUID()), false);
+    assert.throws(() => stoppedLogoutOwnsCredentialCommand(w.owner, w.protectedCommandId), /profile-logout-settlement-required/u);
+    const protectedPath = join(w.f.stateRoot, "credentials", "protected.json"), protectedBytes = readFileSync(protectedPath);
+    const corrupt = Buffer.from(protectedBytes), index = Math.floor(corrupt.length / 2);
+    corrupt.writeUInt8(corrupt.readUInt8(index) ^ 1, index);
+    try {
+      writeFileSync(protectedPath, corrupt);
+      assert.throws(() => stoppedLogoutOwnsCredentialCommand(w.stopped, w.protectedCommandId));
+      assert.deepEqual(readFileSync(protectedPath), corrupt);
+    } finally { writeFileSync(protectedPath, protectedBytes); }
+    assert.equal(stoppedLogoutOwnsCredentialCommand(w.stopped, w.protectedCommandId), true);
     assert.deepEqual(w.stopped.assertPendingLogoutSettlementDatabase(w.f.path), w.operation);
     const facts = AuthorityDatabase.readProfileMaintenanceInventory(w.stopped);
     assert.equal(facts.authorityGeneration, AuthorityDatabase.readProfileMaintenanceInventory(w.stopped).authorityGeneration);
@@ -64,9 +79,9 @@ for (const mutation of ["operation", "selection", "owner", "parent", "native-ope
       if (mutation === "operation") assert.throws(() => w.f.machine.publishProfileOperation({ ...w.operation, phase: "incomplete" }));
       else if (mutation === "selection") assert.throws(() => createProfileRegistry(w.f.machine).advanceSession(null));
       else if (mutation === "owner") w.owner.release();
-      else if (mutation === "parent") w.f.machine.release();
+      else if (mutation === "parent") assert.throws(() => w.f.machine.release(), { reason: "offline-maintenance-busy" });
       else w.restore.release();
-      if (mutation === "operation" || mutation === "selection") {
+      if (mutation === "operation" || mutation === "selection" || mutation === "parent") {
         assert.deepEqual(w.stopped.assertPendingLogoutSettlementDatabase(w.f.path), w.operation);
       } else {
         assert.throws(() => w.stopped.assertPendingLogoutSettlementDatabase(w.f.path));

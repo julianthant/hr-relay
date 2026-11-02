@@ -695,6 +695,7 @@ export class RuntimeAdmission {
     const lifetime = this.lifetime, context = this.readInstallationContext();
     if (!(lifetime instanceof RuntimeLifetimeLock) || context === undefined) throw new Error("profile-logout-settlement-controller-required");
     lifetime.assertOfflineMaintenance(restore, context.workspace);
+    assertOfflineMaintenanceForProcessRoot(restore, resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot));
     const operation = deepFreeze(LogoutOperationSchema.parse(input)), lease = this.#authority as InstallationLease;
     const state = { operation, restore, witness: lease.capturePendingProfileLogout(operation) };
     const held = (publication?: ProfilePublicationRead) => {
