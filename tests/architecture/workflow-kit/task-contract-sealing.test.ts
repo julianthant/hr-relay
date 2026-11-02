@@ -242,6 +242,7 @@ describe("task contract sealing architecture", () => {
       "src/models/systems/ucpath/match-pending-terminations.ts",
       "src/models/systems/ucpath/read-job-summary.ts",
       "src/models/systems/ucpath/read-pending-termination-set.ts",
+      "src/models/systems/ucpath/read-transaction-findings.ts",
       "src/models/systems/ucpath/search-person-match.ts",
       "src/models/systems/ucpath/search-person-org.ts",
       "src/models/systems/ucpath/stage-pending-termination-sweep.ts",

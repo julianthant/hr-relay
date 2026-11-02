@@ -36,6 +36,8 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 
 `src/backend/runtime/writes/recovery-activity.ts` owns retained-run recovery read activity, action notes and required captures. `src/models/run/recovery-activity.ts` owns its exact operation identity and task-compatible note path.
 
+`src/backend/systems/ucpath/driver/transaction-findings-operation.ts` owns the shared Smart HR result-list/detail read and its complete-only operational projection. `src/models/ui/ucpath-transaction-findings.ts` owns findings, displayed Requested time and population accounting. The UCPath UI registry keeps candidate findings recipes outside its verified registry until live match counts and visibility are confirmed.
+
 `src/models/run/display-name.ts` owns the browser-safe run display-name schema; command and run records share that leaf.
 
 ## Source tree

@@ -122,6 +122,7 @@ const UCPATH_DELETE_PENDING = taskOutput("ucpath/delete-pending-terminations");
 const UCPATH_VERIFY_TERMINATION = taskOutput("ucpath/verify-termination");
 const UCPATH_VERIFY_SWEEP = taskOutput("ucpath/verify-pending-terminations-cleared");
 const UCPATH_PENDING_SET = taskOutput("ucpath/read-pending-termination-set");
+const UCPATH_FINDINGS = taskOutput("ucpath/read-transaction-findings");
 const UCPATH_FILING_PRESENCE = taskOutput("ucpath/verify-termination-filing-present");
 const KUALI_FINALIZATION_INPUT = workflowInput("separations-kuali-finalization");
 const KUALI_FINALIZATION_RESULT = workflowResult("separations-kuali-finalization");
@@ -600,6 +601,10 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...person(UCPATH_PENDING_SET, "emplId"),
   ...population(UCPATH_PENDING_SET, "eligible", "protected"),
   ...open(UCPATH_PENDING_SET, "kind", "observedAt", "source"),
+  ...person(UCPATH_FINDINGS, "emplId"),
+  ...population(UCPATH_FINDINGS, "rows"),
+  ...open(UCPATH_FINDINGS, "state", "scannedRowCount", "completeness.state", "completeness.reason",
+    "completeness.reportedRowCount", "observedAt", "source"),
   ...filingPresenceLeaves(UCPATH_FILING_PRESENCE),
 
   /* separations-ucpath-termination terminal result */

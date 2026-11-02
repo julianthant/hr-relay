@@ -351,8 +351,13 @@ Ambiguity remains an explicit selection outcome.
 
 Deleting pending terminations is its own commit and transaction, with its own key, probe, and verifier.
 It is not an action hidden in prepare. Filing a termination is a separate transaction.
-`driver/smart-hr-operation.ts` uses the page's resolved person name as subject evidence rather than
-treating the entered employee ID as readback.
+`driver/transaction-findings-operation.ts` binds the server-returned employee ID and name on each
+result row to that row's stable transaction ID, then verifies the ID and name on its detail page.
+`ucpath/read-transaction-findings` retains those facts, the detail's actual Requested text and explicit
+population accounting. Requested remains displayed local time because the page supplies no timezone.
+The shared scan reads every reported row; 300 results remain incomplete. Operational probes project
+only complete findings, and unreadable or capped scans grant no settlement authority. Candidate
+findings selectors retain unconfirmed live match counts and visibility until a read-only verification pass.
 `isUcpathTerminationAction` accepts the supported `TER` and termination-label forms.
 Unmatched values remain unmatched.
 
