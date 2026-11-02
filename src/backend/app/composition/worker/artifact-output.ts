@@ -6,6 +6,7 @@ import { requireRuntimeAdmission } from "../../../storage/admission/admission-id
 import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { createArtifactSinkProjector, type ArtifactSinkProjector } from "../../../storage/artifacts/artifact-sink-projector.js";
 import { createNamedFileOutputSink } from "../../../storage/artifacts/named-file-output-sink.js";
+import { fixedLayoutOutputPath,readFixedLayoutIntent } from "../../../storage/maintenance/fixed-layout.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../../../storage/source-closure.js";
 import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 
@@ -24,7 +25,16 @@ export function composeWorkerArtifactProjector(input: Readonly<{
       if (run === undefined) throw new Error("named-file-output-run-unavailable");
       const snapshot = ConfigSnapshotRecordSchema.parse(database.authority.configSnapshots.get(run.envelope.configSnapshotId));
       if (snapshot.configSnapshotId !== run.envelope.configSnapshotId || snapshot.fingerprint !== run.envelope.configFingerprint) throw new Error("named-file-output-config-snapshot-mismatch");
-      return snapshot.config.paths.onboardingDocsDir;
+      if (snapshot.config.paths.stateRoot === admission.stateRoot) return snapshot.config.paths.onboardingDocsDir;
+      const context = admission.readInstallationContext();
+      if (context === undefined) throw new Error("named-file-output-installation-unavailable");
+      const layout = readFixedLayoutIntent(context.workspace), binding = admission.profileBinding;
+      const profile = layout?.profiles.find(row => row.profileId === binding.profileId);
+      if (layout?.phase !== "complete" || layout.installationId !== binding.installationId
+        || profile?.sourceRoot !== snapshot.config.paths.stateRoot || profile.authorityPath !== join(admission.stateRoot, "state.db")
+        || snapshot.config.paths.artifactRoot !== join(profile.sourceRoot, "artifacts")) throw new Error("named-file-output-layout-binding-mismatch");
+      assertCurrent();
+      return fixedLayoutOutputPath(snapshot.config.paths.onboardingDocsDir, profile.sourceRoot, admission.stateRoot);
     } }) },
   });
   return Object.freeze({ async projectOutbox(ids: readonly string[]) {

@@ -32,7 +32,7 @@ const FIXED_LAYOUT_OUTPUT_PATHS = ["reportsDir", "downloadsDir", "onboardingDocs
 const OutputPathUpdatesSchema = z.strictObject({ reportsDir: z.string().min(1).optional(), downloadsDir: z.string().min(1).optional(),
   onboardingDocsDir: z.string().min(1).optional(), i9CheckTrackerPath: z.string().min(1).optional() });
 
-function movedOutputPath(path: string, sourceRoot: string, targetRoot: string): string {
+export function fixedLayoutOutputPath(path: string, sourceRoot: string, targetRoot: string): string {
   const suffix = relative(sourceRoot, path);
   return suffix !== ".." && !suffix.startsWith(`..${sep}`) && !isAbsolute(suffix) ? join(targetRoot, suffix) : path;
 }
@@ -40,7 +40,7 @@ function movedOutputPath(path: string, sourceRoot: string, targetRoot: string): 
 export function fixedLayoutOutputPaths(settings: SettingsFileRecord["settings"], paths: ConfigSnapshotRecord["config"]["paths"],
   sourceRoot: string, targetRoot: string): z.infer<typeof OutputPathUpdatesSchema> {
   return OutputPathUpdatesSchema.parse(Object.fromEntries(FIXED_LAYOUT_OUTPUT_PATHS.flatMap(key => {
-    const saved = settings.paths?.[key], previous = saved ?? paths[key], next = movedOutputPath(previous, sourceRoot, targetRoot);
+    const saved = settings.paths?.[key], previous = saved ?? paths[key], next = fixedLayoutOutputPath(previous, sourceRoot, targetRoot);
     return saved === next ? [] : [[key, next]];
   })));
 }
@@ -111,7 +111,7 @@ export type FixedLayoutActivation = z.infer<typeof FixedLayoutActivationSchema>;
 export function fixedLayoutSnapshot(source: ConfigSnapshotRecord, sourceRoot: string, targetRoot: string,
   identity: Pick<z.input<typeof ConfigSnapshotRecordSchema>, "configSnapshotId" | "capturedAt" | "capturedBy">): ConfigSnapshotRecord {
   if (source.config.paths.stateRoot !== sourceRoot || source.config.paths.artifactRoot !== join(sourceRoot, "artifacts")) throw new Error("fixed-layout-source-snapshot-mismatch");
-  const paths = Object.fromEntries(Object.entries(source.config.paths).map(([key, path]) => [key, movedOutputPath(path, sourceRoot, targetRoot)]));
+  const paths = Object.fromEntries(Object.entries(source.config.paths).map(([key, path]) => [key, fixedLayoutOutputPath(path, sourceRoot, targetRoot)]));
   const config = { ...source.config, paths };
   return ConfigSnapshotRecordSchema.parse({ ...source, ...identity, config, fingerprint: hash(Buffer.from(canonicalJsonStringify(config))) });
 }
@@ -121,7 +121,7 @@ export function fixedLayoutSettingsUpdate(intent: FixedLayoutActivation, previou
   if (update === undefined || previous.paths?.browserProfileRoot !== update.previousBrowserRoot) throw new Error("fixed-layout-browser-setting-changed");
   const browserProfileRoot = update.previousBrowserRoot === undefined ? undefined : intent.snapshot.config.paths.browserProfileRoot;
   if (FIXED_LAYOUT_OUTPUT_PATHS.some(key => update.outputPaths[key] !== undefined && previous.paths?.[key] !== undefined
-    && update.outputPaths[key] !== movedOutputPath(previous.paths[key], intent.sourceRoot, dirname(intent.authorityPath)))) throw new Error("fixed-layout-output-override-changed");
+    && update.outputPaths[key] !== fixedLayoutOutputPath(previous.paths[key], intent.sourceRoot, dirname(intent.authorityPath)))) throw new Error("fixed-layout-output-override-changed");
   const settings = { ...previous, paths: { ...previous.paths, ...update.outputPaths, ...(browserProfileRoot === undefined ? {} : { browserProfileRoot }) } };
   const patch = { ...Object.fromEntries(FIXED_LAYOUT_OUTPUT_PATHS.flatMap(key => update.outputPaths[key] === undefined ? [] : [[`paths.${key}`, { set: update.outputPaths[key] }]])),
     ...(browserProfileRoot === undefined ? {} : { "paths.browserProfileRoot": { set: browserProfileRoot } }) };
