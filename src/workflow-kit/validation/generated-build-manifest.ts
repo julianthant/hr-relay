@@ -14551,7 +14551,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr/extract-form-page"
     },
     {
-      "fingerprint": "692dd61c06b761cf77e8ab3326a1a2be541a243240bab1c3b45157f7aa627e4f",
+      "fingerprint": "78e4e588cb02d9c917ef49c1a3a9027a2f27ecc8ea751c8bf3687492a5cb3279",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -14563,11 +14563,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/onbase/driver/interpreter.ts",
-          "sha256": "44ff55fd0e87dabfde533fb146d9665a7c92560af1d78ddcd7944a9d257afdd4"
+          "sha256": "91af94676cd20199774747c263c7c04d6d8031410b216afddcc6e110ae026e15"
         },
         {
           "path": "src/backend/systems/onbase/driver/ui-registry.ts",
-          "sha256": "3b386cb0da327a4649fc7e0f4670374aa5524bc912f4d836983587a181e884c7"
+          "sha256": "70fd97b9a1e891b8120528f20ee1847e06e70bcab4af1a177fc407dd6103cf6c"
         },
         {
           "path": "src/backend/systems/onbase/tasks/import-document.ts",
@@ -14809,7 +14809,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onbase/import-document"
     },
     {
-      "fingerprint": "bc6ac4e508a047a50ef28e50635be6a5c4ac89d0dcd4ff3b7bdef1e92b72effa",
+      "fingerprint": "0c4ca39808e4eb40fb594ad3c5e0b5adecb597898e9b91cafcc4fdc391c7b926",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -14821,11 +14821,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/onbase/driver/interpreter.ts",
-          "sha256": "44ff55fd0e87dabfde533fb146d9665a7c92560af1d78ddcd7944a9d257afdd4"
+          "sha256": "91af94676cd20199774747c263c7c04d6d8031410b216afddcc6e110ae026e15"
         },
         {
           "path": "src/backend/systems/onbase/driver/ui-registry.ts",
-          "sha256": "3b386cb0da327a4649fc7e0f4670374aa5524bc912f4d836983587a181e884c7"
+          "sha256": "70fd97b9a1e891b8120528f20ee1847e06e70bcab4af1a177fc407dd6103cf6c"
         },
         {
           "path": "src/backend/systems/onbase/tasks/read-source-page.ts",
