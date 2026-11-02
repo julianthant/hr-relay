@@ -71,7 +71,7 @@ export function createRunResourcesFactory(input:Readonly<{
    if(sha256Hex(canonicalJsonStringify(snapshot.config))!==snapshot.fingerprint)throw new Error("run-resources-retained-snapshot-unavailable");
    const previous=cache.get(snapshot.fingerprint);
    const baseline=previous??compose(StoredConfigSchema.parse(snapshot.config));cache.set(snapshot.fingerprint,baseline);
-   const key=`${run.envelope.runId}:${snapshot.fingerprint}`;
+   const key=`${run.envelope.runId}:${run.envelope.attempt}:${run.claimGeneration}:${snapshot.fingerprint}`;
    const resources=runCache.get(key)??Object.freeze({...baseline,providers:{...baseline.providers,adapters:Object.freeze({...baseline.providers.adapters,
     "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock,
       references:{runId:run.envelope.runId,write:command=>runWorkbooks.write(run,command)}}),

@@ -38,10 +38,13 @@ export function buildRunSection(
   const section = SectionNameSchema.parse(sectionInput);
   switch (section) {
     case "workbook-writes": {
-      const run = requireTrustRun(deps.runReader, runId);
       const canonical = deps.canonical;
-      if (run.input.workbookReferences === undefined || canonical === undefined) throw new SectionUnavailableError("Workbook reference authority is unavailable.");
-      return { section, payload: canonical.database.withAuthorityReadSnapshot(() => buildRunWorkbookSection(canonical.database.authority, run)) };
+      if (canonical === undefined) throw new SectionUnavailableError("Workbook reference authority is unavailable.");
+      return { section, payload: canonical.database.withAuthorityReadSnapshot(() => {
+        const run = requireTrustRun(deps.runReader, runId);
+        if (run.input.workbookReferences === undefined) throw new SectionUnavailableError("Workbook reference authority is unavailable.");
+        return buildRunWorkbookSection(canonical.database.authority, run);
+      }) };
     }
     case "context-data":
     case "context-attempts":
