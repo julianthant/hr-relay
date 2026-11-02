@@ -1,3 +1,4 @@
+import { CHILD_ONLY_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
@@ -28,7 +29,7 @@ import { RunEvidenceReceiptSchema } from "../../../src/models/trust/evidence.js"
 import { RedactedFieldSchema, retainLocalEvidenceValue } from "../../../src/rules/redaction/redaction.js";
 import { SECRET_SPECS } from "../../../src/models/config/secrets.js";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
-import { WORKFLOW_DESCRIPTORS, CHILD_WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
+import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { STEP_PROOF_DESCRIPTORS } from "../../../src/backend/app/registries/step-proof-modules.js";
 
 import { separationsKualiFinalizationDescriptor } from "../../support/helpers/registered-workflows.js";
@@ -51,7 +52,7 @@ import {
 } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
 
-const RECEIPT_DESCRIPTORS = [...WORKFLOW_DESCRIPTORS, ...CHILD_WORKFLOW_DESCRIPTORS, ...STEP_PROOF_DESCRIPTORS];
+const RECEIPT_DESCRIPTORS = [...WORKFLOW_DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...STEP_PROOF_DESCRIPTORS];
 
 function kualiReceipt() {
   const evidence = kualiReceiptEvidence();

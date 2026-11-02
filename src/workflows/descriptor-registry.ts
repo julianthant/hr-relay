@@ -1,17 +1,5 @@
-/** The bundle-safe descriptor tuple — the dashboard's aggregation of the one workflow composition root, not a second registry (a test pins every entry equals WORKFLOW_MODULES). */
-import { compileWorkflow } from "../workflow-kit/workflow-definition.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../workflow-kit/workflow.js";
-import { personLookupWorkflow } from "./person-lookup/workflow.js";
-import { separationsWorkflow } from "./separations/workflow.js";
-import { i9CheckWorkflow } from "./i9-check/workflow.js";
-
-export const CHILD_WORKFLOW_DESCRIPTORS = Object.freeze([compileWorkflow(i9CheckWorkflow).descriptor]);
-
-export const WORKFLOW_DESCRIPTORS = Object.freeze([
-  compileWorkflow(personLookupWorkflow).descriptor,
-  compileWorkflow(separationsWorkflow).descriptor,
-] as const);
-
+export { WORKFLOW_DESCRIPTORS } from "./generated-descriptors.js";
 export function createWorkflowDescriptorRegistry(
   publicDescriptors: readonly AnyWorkflowDescriptor[],
   childOnlyDescriptors: readonly AnyWorkflowDescriptor[],

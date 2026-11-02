@@ -2,11 +2,7 @@ import { FingerprintSchema, type Fingerprint } from "../../../rules/identity/ids
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 
 import { readFileSync } from "node:fs";
-import {
-  compileWorkflow,
-  composeWorkflowModule,
-  type WorkflowModule,
-} from "../../../workflow-kit/workflow-definition.js";
+import type { WorkflowModule } from "../../../workflow-kit/workflow-definition.js";
 import { workflowProjections } from "../../../workflow-kit/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { PendingImplBindingsSchema } from "../../../workflow-kit/validation/impl-bindings.js";
@@ -21,11 +17,9 @@ import {
   workflowRoleRegistry,
 } from "../../../workflow-kit/validation/workflow-module-audit.js";
 import { taskStoreRegistry } from "./task-registry.js";
-import { personLookupWorkflow } from "../../../workflows/person-lookup/workflow.js";
-import { separationsWorkflow } from "../../../workflows/separations/workflow.js";
 import { createWorkflowDescriptorRegistry } from "../../../workflows/descriptor-registry.js";
-import { i9CheckWorkflow } from "../../../workflows/i9-check/workflow.js";
-
+import { WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES } from "./generated-workflow-modules.js";
+export * from "./generated-workflow-modules.js";
 export function createWorkflowRegistry<PublicModule extends WorkflowModule>(
   publicEntries: readonly PublicModule[],
   childOnlyEntries: readonly WorkflowModule[],
@@ -60,23 +54,7 @@ export function createWorkflowRegistry<PublicModule extends WorkflowModule>(
   });
 }
 
-export const personLookupModule = composeWorkflowModule(
-  compileWorkflow(personLookupWorkflow),
-  taskStoreRegistry.stores,
-);
-export const separationsModule = composeWorkflowModule(
-  compileWorkflow(separationsWorkflow),
-  taskStoreRegistry.stores,
-);
-export const i9CheckModule = composeWorkflowModule(compileWorkflow(i9CheckWorkflow), taskStoreRegistry.stores);
-export const CHILD_WORKFLOW_MODULES = Object.freeze([i9CheckModule]);
-const registry = createWorkflowRegistry([
-  personLookupModule,
-  separationsModule,
-], CHILD_WORKFLOW_MODULES);
-
-export const WORKFLOW_MODULES = registry.publicModules;
-
+const registry = createWorkflowRegistry(WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES);
 /** Resolve a public workflow, or refuse with its registered alternatives. */
 export const workflowModuleOf = registry.moduleOf;
 
@@ -116,15 +94,15 @@ export const WORKFLOW_IDS_BY_CODE = workflowCodeRegistry(DESCRIPTORS);
 
 export function auditImplBindings(bindings: PendingImplBindings): readonly string[] {
   const violations: string[] = [
-    ...auditWorkflowModuleBindings([...WORKFLOW_MODULES, ...CHILD_WORKFLOW_MODULES]),
-    ...auditWorkflowModuleRoles([...WORKFLOW_MODULES, ...CHILD_WORKFLOW_MODULES]),
-    ...auditWorkflowCodes([...DESCRIPTORS, ...CHILD_WORKFLOW_MODULES.map(module => module.descriptor)]),
+    ...auditWorkflowModuleBindings([...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES]),
+    ...auditWorkflowModuleRoles([...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES]),
+    ...auditWorkflowCodes([...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor)]),
   ];
   const bound = new Set(boundTaskIds());
   const pending = new Map(bindings.tasks.map((entry) => [String(entry.taskId), entry]));
   const used = new Set<string>();
 
-  for (const descriptor of [...DESCRIPTORS, ...CHILD_WORKFLOW_MODULES.map(module => module.descriptor)]) {
+  for (const descriptor of [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor)]) {
     for (const contract of workflowProjections(descriptor).contracts) {
       const id = String(contract.id);
       used.add(id);

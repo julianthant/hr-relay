@@ -205,6 +205,31 @@ _No tasks registered — this store is a declaration-only placeholder._
 |---|---|---|---|---|---|---|---|---|---|
 | `ocr/extract-form-page` | Reading form page | read | extract | — (sessionless) | `ocr.extract` | `formType`, `page`, `sourcePage` | `formType`, `source`, `readAt`, `sourceSha256`, `sourcePage`, `pageKind`, `record`, `pageFingerprint` | 4h | bound |
 
+### `roster`
+
+**Kind:** service store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 1 (1 read · 0 prepare · 0 commit)
+
+| Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| `roster/match-spreadsheet` | Matching against roster | read | match | — (sessionless) | — | `subjects`, `rosterFileRef`, `sheet`, `mapping`, `readAt` | `matches` | 24h | bound |
+
+### `workbooks`
+
+**Kind:** service store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 1 (1 read · 0 prepare · 0 commit)
+
+| Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| `workbooks/read-result` | Save workflow workbook | read | read | — (sessionless) | `workbooks.library` | `name`, `table` | `state="saved"` + `operationId`, `libraryId`, `version` / `state="refused"` + `code`, `message` | ∞ | bound |
+
+### `workflow:i9-check`
+
+**Kind:** workflow mini-store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 2 (2 read · 0 prepare · 0 commit)
+
+| Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| `workflow:i9-check/read-match-outcome` | Resolve identifier match | read | read | — (sessionless) | — | `match` | `identity`, `shouldLookup` | ∞ | bound |
+| `workflow:i9-check/read-retention-row` | Match roster and derive retention | read | read | — (sessionless) | — | `input`, `initial`, `search` | `identity`, `row` | ∞ | bound |
+
 ### `workflow:person-lookup`
 
 **Kind:** workflow mini-store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 2 (2 read · 0 prepare · 0 commit)
@@ -213,14 +238,6 @@ _No tasks registered — this store is a declaration-only placeholder._
 |---|---|---|---|---|---|---|---|---|---|
 | `workflow:person-lookup/read-resolved-identity` | Identity cross-check | read | read | — (sessionless) | — | `input`, `person`, `match`, `crm` | `shouldCheckCrm`, `ucpathFound`, `crmErrorCode`, `state`, `crmIdentity`, `unselectedCrmRecords`, `selected`, `crmRecord`, `candidateEids`, `recoveryEid`, `crmState`, `method` | ∞ | bound |
 | `workflow:person-lookup/read-active-status` | Read employment status | read | read | — (sessionless) | — | `input`, `identity`, `verifiedCrm`, `recovered`, `match` | `ucpathSelection`, `datesEid`, `state`, `reason`, `code`, `hdh`, `candidateEids`, `details` | ∞ | bound |
-
-### `roster`
-
-**Kind:** service store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 1 (1 read · 0 prepare · 0 commit)
-
-| Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
-|---|---|---|---|---|---|---|---|---|---|
-| `roster/match-spreadsheet` | Matching against roster | read | match | — (sessionless) | — | `subjects`, `rosterFileRef`, `sheet`, `mapping`, `readAt` | `matches` | 24h | bound |
 
 ### `workflow:separations`
 
@@ -237,23 +254,6 @@ _No tasks registered — this store is a declaration-only placeholder._
 | `workflow:separations/match-active-employment` | Select Employment | read | match | — (sessionless) | — | `documentNumber`, `jobSummary` | `rowIndex`, `emplRecord`, `hrStatus`, `businessUnit`, `deptId`, `department`, `payrollTitleCode`, `payrollTitle`, `effectiveDate`, `rowCount` | ∞ | bound |
 | `workflow:separations/read-separation-dates` | Reconcile Separation Dates | read | read | — (sessionless) | — | `plan`, `timekeeperName`, `lastPunchDate`, `sickDates`, `holidayDates`, `unclassifiedPayCodes`, `observedWindow` | `lastDayWorked`, `separationDate`, `terminationEffectiveDate`, `kualiLastDayWorked`, `kualiSeparationDate`, `lastDayWorkedChanged`, `separationDateChanged`, `latestSickDate`, `firstHolidayDate`, `latestHolidayDate`, `separationDeterminingLeave`, `unclassifiedPayCodes`, `terminationComments`, `dateChangeComments`, `source` | ∞ | bound |
 | `workflow:separations/verify-termination-receipt` | Verify Termination Receipt | read | verify | — (sessionless) | — | `proof`, `disposition`, `approvedEmplId`, `expectedEffectiveDate` | `transactionNumber`, `approvalStatus`, `effectiveDate`, `emplId`, `displayedName`, `disposition` | ∞ | bound |
-
-### `workflow:i9-check`
-
-**Kind:** workflow mini-store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 2 (2 read · 0 prepare · 0 commit)
-
-| Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
-|---|---|---|---|---|---|---|---|---|---|
-| `workflow:i9-check/read-match-outcome` | Resolve identifier match | read | read | — (sessionless) | — | `match` | `identity`, `shouldLookup` | ∞ | bound |
-| `workflow:i9-check/read-retention-row` | Match roster and derive retention | read | read | — (sessionless) | — | `input`, `initial`, `search` | `identity`, `row` | ∞ | bound |
-
-### `workbooks`
-
-**Kind:** service store · **Browser system:** none (sessionless) · **Driver declaration:** none · **Tasks:** 1 (1 read · 0 prepare · 0 commit)
-
-| Contract id | Title | Effect | Verb | Session | Capability | Inputs | Outputs | Freshness | Status |
-|---|---|---|---|---|---|---|---|---|---|
-| `workbooks/read-result` | Save workflow workbook | read | read | — (sessionless) | `workbooks.library` | `name`, `table` | `state="saved"` + `operationId`, `libraryId`, `version` / `state="refused"` + `code`, `message` | ∞ | bound |
 
 ### Pending contracts (declared by a descriptor, no store implementation)
 

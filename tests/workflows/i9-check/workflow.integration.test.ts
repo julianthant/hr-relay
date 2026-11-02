@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, expect, it } from "vitest";
-import { i9CheckModule, CHILD_WORKFLOW_MODULES, createWorkflowRegistry, workflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
+import { i9CheckModule, CHILD_ONLY_WORKFLOW_MODULES, createWorkflowRegistry, workflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../src/backend/systems/ucpath/driver/fake.js";
 import { executeClaimedRun } from "../../../src/backend/runtime/execution/run-executor.js";
 import { planStart } from "../../../src/backend/runs/start/plan.js";
@@ -27,7 +27,7 @@ const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
 
 it("i9-check/person — admits I-9 only as a declared child and limits it to read-only UCPath operations", () => {
-  expect(CHILD_WORKFLOW_MODULES).toContain(i9CheckModule);
+  expect(CHILD_ONLY_WORKFLOW_MODULES).toContain(i9CheckModule);
   expect(() => workflowModuleOf("i9-check")).toThrow(/not registered/u);
   expect(descriptor.surfaces).toEqual({});
   expect(workflowProjections(descriptor).systems).toEqual(["ucpath"]);
