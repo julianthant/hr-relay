@@ -1,3 +1,4 @@
+import { Session } from "node:inspector/promises";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { ChatGptCredentialRecordSchema, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
@@ -582,25 +583,42 @@ async function offlineCanonicalPredecessor() {
 }
 
 for (const padding of [0, 16 * 1024 * 1024]) it(`converts an offline canonical5 predecessor with ${padding} receipt padding bytes and retains genuine generated D-format backup bytes`, async () => {
-  const f = await offlineCanonicalPredecessor();
-  if (padding !== 0) writeFileSync(f.receiptPath, Buffer.concat([readFileSync(f.receiptPath), Buffer.alloc(padding, " ")]), { mode: 0o600 });
-  const retained = storageTree(f.backupRoot), keys = FakeKeyringEntry.snapshot();
+  const started = performance.now(), profiler = padding === 0 ? undefined : new Session();
+  if (profiler !== undefined) { profiler.connect(); await profiler.post("Profiler.enable"); await profiler.post("Profiler.start"); }
   try {
-    const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+    const f = await offlineCanonicalPredecessor();
+    if (padding !== 0) writeFileSync(f.receiptPath, Buffer.concat([readFileSync(f.receiptPath), Buffer.alloc(padding, " ")]), { mode: 0o600 });
+    const retained = storageTree(f.backupRoot), keys = FakeKeyringEntry.snapshot();
     try {
-      const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
-      assert.equal(result.state, "upgraded");
-      const after = storageTree(f.backupRoot);
-      for (const [path, digest] of Object.entries(retained)) assert.equal(after[path], digest);
-      const receipt = z.looseObject({ retained: z.array(z.looseObject({ kind: z.string(), name: z.string() })), backups: z.array(z.looseObject({ directory: z.string() })), credentials: z.array(z.unknown()) })
-        .parse(JSON.parse(readFileSync(join(f.backupRoot, `${z.uuid().parse(result.receiptId)}.receipt.json`), "utf8")));
-      assert.ok(receipt.retained.some(row => row.kind === "authority-directory" && row.name === f.backup.directory));
-      assert.equal(receipt.backups.length, 1); assert.notEqual(receipt.backups[0]?.directory, f.backup.directory);
-      assert.deepEqual(receipt.credentials, []);
-      for (const row of f.preserved) assert.deepEqual(readFileSync(row.path), row.bytes);
-      assert.deepEqual(FakeKeyringEntry.snapshot(), keys); f.assertSeedUnchanged();
-    } finally { maintenance.release(); }
-  } finally { await f.close(); }
+      const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+      try {
+        const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+        assert.equal(result.state, "upgraded");
+        const after = storageTree(f.backupRoot);
+        for (const [path, digest] of Object.entries(retained)) assert.equal(after[path], digest);
+        const receipt = z.looseObject({ retained: z.array(z.looseObject({ kind: z.string(), name: z.string() })), backups: z.array(z.looseObject({ directory: z.string() })), credentials: z.array(z.unknown()) })
+          .parse(JSON.parse(readFileSync(join(f.backupRoot, `${z.uuid().parse(result.receiptId)}.receipt.json`), "utf8")));
+        assert.ok(receipt.retained.some(row => row.kind === "authority-directory" && row.name === f.backup.directory));
+        assert.equal(receipt.backups.length, 1); assert.notEqual(receipt.backups[0]?.directory, f.backup.directory);
+        assert.deepEqual(receipt.credentials, []);
+        for (const row of f.preserved) assert.deepEqual(readFileSync(row.path), row.bytes);
+        assert.deepEqual(FakeKeyringEntry.snapshot(), keys); f.assertSeedUnchanged();
+      } finally { maintenance.release(); }
+    } finally { await f.close(); }
+  } finally {
+    if (profiler !== undefined) {
+      try {
+        const { profile } = await profiler.post("Profiler.stop"), costs = new Map<number, number>();
+        assert.ok(profile.samples && profile.timeDeltas && profile.samples.length === profile.timeDeltas.length);
+        for (const [index, sample] of profile.samples.entries()) costs.set(sample, (costs.get(sample) ?? 0) + profile.timeDeltas[index]!);
+        const hot = profile.nodes.map(node => ({ function: node.callFrame.functionName,
+          source: /(?:^|\/)((?:src|tests)\/[^?]+)$/u.exec(node.callFrame.url)?.[1] ?? (node.callFrame.url.startsWith("node:") ? node.callFrame.url : "runtime"),
+          line: node.callFrame.lineNumber + 1, selfMs: (costs.get(node.id) ?? 0) / 1000 })).sort((a, b) => b.selfMs - a.selfMs).slice(0, 12);
+        console.info("stopped-canonical-profile", JSON.stringify({ padding, elapsedMs: performance.now() - started, hot }));
+      } finally { profiler.disconnect(); }
+    }
+  }
+
 });
 
 for (const change of ["operation-prefix", "malformed-receipt", "manifest-digest"] as const) it(`holds an offline canonical5 ${change} before intent or Chrome effects`, async () => {

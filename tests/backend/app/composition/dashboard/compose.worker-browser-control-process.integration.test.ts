@@ -194,7 +194,8 @@ it("real ingress, two real workers and Chromium: read-only claims, exact control
       });
     }
     for (const index of [1,2]) {
-      assert.equal((await post("resume-worker",target(index))).result.state,"applied");
+      const resumed = (await post("resume-worker",target(index))).result;
+      assert.equal(resumed.state,"applied",JSON.stringify(resumed));
       phase = 'claimed-runs';
       await waitFor(()=>db.authority.workerLeases.get(worker(index))?.lifecycle.state==="busy","worker did not claim",diagnostics);
     }
