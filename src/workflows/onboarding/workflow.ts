@@ -9,6 +9,7 @@ import { onboardingI9ProfileCreationDefinition } from "./steps/i9-profile-creati
 
 export const onboardingWorkflow = defineWorkflow({
   id: "onboarding", version: 1, code: "on", label: "Onboarding", icon: "UserPlus", category: "onboarding",
+  requiredWorkbookTypeIds: [],
   summary: "Read-only hire review: CRM data, UCPath duplicate search and I-9 profile planning. Hire submission and I-9 profile creation are not yet available; roster library access is pending.",
   input: OnboardingInput, canonicalInput: OnboardingCanonicalInput, inputSubject: "email",
   surface: { shape: "single" }, surfaces: {}, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
