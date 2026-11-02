@@ -5,6 +5,7 @@ import { createProductionAssistantTools } from "../../../src/backend/assistant/t
 import { assistantKnowledgeArtifact, createAssistantContext } from "../../../src/backend/assistant/context.js";
 import { AssistantRequestSchema, AssistantResultSchema } from "../../../src/models/dashboard/assistant.js";
 import { type AssistantFunctionContext } from "../../../src/backend/assistant/service.js";
+import { createAssistantAuthorization } from "../../../src/backend/assistant/authorization.js";
 
 
 
@@ -96,6 +97,33 @@ it("does not turn the displayed default into a grant, and requires genuine token
   assert.equal(permission.type, "apply-settings"); if (permission.type !== "apply-settings") throw new Error("settings required");
   const before = f.database.getMeta().authorityGeneration;
   assert.throws(() => f.execute({ ...permission, payload: { ...permission.payload, assistantPermission: { clear: true } } }));
+  assert.equal(f.database.getMeta().authorityGeneration, before);
+});
+
+it("reads the exact person grant and Settings revisions without granting or dispatching", async () => {
+  const f = await fixture(), before = f.database.getMeta().authorityGeneration;
+  const initial = f.authorization.permission();
+  assert.deepEqual(initial, { profileId: f.active.profileId, epoch: f.context.profileEpoch, mode: "every-action",
+    state: "grant-required", policyRevision: 0, settingsRevision: 1, settingsSchemaHash: SETTINGS_SCHEMA_HASH });
+  assert.equal(f.database.getMeta().authorityGeneration, before);
+  assert.equal(f.database.authority.assistantAuthorization.grant(), undefined);
+  assert.equal(f.grant("every-action").state, "applied");
+  const granted = f.database.getMeta().authorityGeneration;
+  assert.deepEqual(f.authorization.permission(), { ...initial, state: "granted", policyRevision: 1, settingsRevision: 2 });
+  assert.equal(f.database.getMeta().authorityGeneration, granted);
+  const foreign = createAssistantAuthorization({ database: f.database, kernel: f.kernel, clock: f.clock,
+    current: () => ({ profileId: randomUUID(), epoch: f.context.profileEpoch }) });
+  assert.throws(() => foreign.permission(), /assistant-permission-authority-invalid/u);
+  createProfileRegistry(f.machine).advanceSession(null);
+  assert.throws(() => f.authorization.permission());
+});
+
+it("refuses permission readback when its captured session epoch changes", async () => {
+  const f = await fixture(); let reads = 0;
+  const authorization = createAssistantAuthorization({ database: f.database, kernel: f.kernel, clock: f.clock,
+    current: () => ({ profileId: f.active.profileId, epoch: f.context.profileEpoch + reads++ }) });
+  const before = f.database.getMeta().authorityGeneration;
+  assert.throws(() => authorization.permission(), /assistant-permission-owner-changed/u);
   assert.equal(f.database.getMeta().authorityGeneration, before);
 });
 
