@@ -11,5 +11,5 @@ const sequence = repository.enqueue(id, JSON.parse(request));
 process.send?.({ state: 'admitted', sequence });
 process.once('message', () => {
   try { repository.drain(id); process.send?.({ state: 'drained' }); }
-  finally { database.close(); process.disconnect(); }
+  finally { database.close(); process.disconnect?.(); }
 });

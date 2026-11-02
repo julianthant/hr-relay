@@ -495,7 +495,7 @@ it('upgrades populated schema 11 workbooks without replacing masters or claiming
         assert.deepEqual(database.authority.workbooks.versions(first.libraryId).map(({ name, provenance }) => ({ name, provenance })), [
           { name: 'Saved revision 1', provenance: 'migration' }, { name: 'Saved revision 2', provenance: 'migration' }]);
         assert.equal(database.authority.workbooks.metadata(first.libraryId).typeId, 'general');
-        assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+        assert.equal(inspectAuthorityBackupReadOnly(admission, f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       } finally { database.close(); }
     } finally { admission.release(); }
   } finally { await f.close(); }

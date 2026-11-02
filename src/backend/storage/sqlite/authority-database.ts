@@ -972,10 +972,11 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
   }
 
 
-function nativeTableKey(table: AuthorityTableName | "explorer_overrides"): string {
+function nativeTableKey(table: AuthorityTableName | "explorer_overrides", database: DatabaseSync): string {
   if (table === "run_results" || table === "deleted_runs" || table === "run_search") return "run_id";
   if (table === "worker_pools") return "workflow";
-  if (table === "workbook_library_history") return "workbook_id,version,payload_json";
+  if (table === "workbook_library_history") return readIntPragma(database, "user_version") >= 12
+    ? "workbook_id,version,name" : "workbook_id,version,payload_json";
   if (table === "workbook_operations") return "sequence";
   if (table === "worker_controls") return "command_id";
   if (table === "auth_leases") return "credential_key";
@@ -1055,7 +1056,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
     if (table === "run_search" && (!validateSearch || !searchReady)) continue;
     const retained = expectedSchemaVersion >= 10 ? "" : table === "commands" ? " WHERE family<>'explorer'"
       : table === "command_audits" ? " WHERE command_id NOT IN (SELECT id FROM commands WHERE family='explorer')" : "";
-    for (const raw of database.prepare(`SELECT * FROM ${table}${retained} ORDER BY ${nativeTableKey(table)}`).iterate()) {
+    for (const raw of database.prepare(`SELECT * FROM ${table}${retained} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
       try {
         if (table === "database_states") {
           const row = z.strictObject({id:z.literal(1),schema_version:z.literal(expectedSchemaVersion),authority_generation:z.number().int().nonnegative(),updated_at:IsoInstantSchema,
@@ -1136,7 +1137,7 @@ function authorityContentFingerprint(database: DatabaseSync, excludedUpgradeReco
   const rowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null()]));
   for (const table of migrationTableNames(readIntPragma(database, "user_version"))) {
     hash.update(canonicalJsonStringify(table));
-    for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
+    for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
       if (table === "database_upgrades" && row.id === excludedUpgradeRecord) continue;
       hash.update(canonicalJsonStringify(rowSchema.parse(row)));
     }
@@ -1153,7 +1154,7 @@ function fixedLayoutUnchangedAuthorityFingerprint(database: DatabaseSync, intent
   const hash = createHash("sha256");
   for (const table of AuthorityTableNameSchema.options.filter((name) => present.has(name) && !excluded.has(name))) {
     hash.update(canonicalJsonStringify(table));
-    for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
+    for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
       const record = z.record(z.string(), z.unknown()).parse(row);
       if (initialization !== undefined && (table === "commands" && record.id === initialization.commandId
         || table === "command_audits" && record.id === initialization.auditId)) continue;
@@ -1189,7 +1190,7 @@ function fixedLayoutChangedAuthorityTables(before: DatabaseSync, after: Database
     if (!beforeNames.has(table)) return false;
     const fingerprint = (database: DatabaseSync): string => {
       const hash = createHash("sha256");
-      for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
+      for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
         hash.update(canonicalJsonStringify(z.record(z.string(), z.unknown()).parse(row)));
       }
       return hash.digest("hex");

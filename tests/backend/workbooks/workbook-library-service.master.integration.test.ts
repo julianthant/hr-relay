@@ -7,7 +7,8 @@ import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_M
 import { createWorkbookLibraryService } from '../../../src/backend/workbooks/workbook-library-service.js';
 import { encodeSavedWorkbook, type WorkbookOperation } from '../../../src/models/dashboard/workbooks.js';
 import { manualClock } from '../../../src/rules/time/clock.js';
-const at = '2026-11-02T00:00:00.000Z';
+import { IsoInstantSchema } from '../../../src/rules/identity/ids.js';
+const at = IsoInstantSchema.parse('2026-11-02T00:00:00.000Z');
 const roots: string[] = [], databases: DatabaseSync[] = [];
 afterEach(() => { databases.splice(0).forEach(db => db.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
 function open(path = ':memory:', initialize = true) {
@@ -30,7 +31,9 @@ function fixture(path?: string) {
       { id: 'bob', cells: [{ value: '002' }, { value: 'Bob' }, { value: '' }] }] }] });
   f.repository.putType({ id: 'roster', name: 'Roster', keyFieldId: 'eid', fields: ['eid', 'roster.legalName', 'roster.notes'], defaultWorkbookId: null });
   f.service.operatorOperation(saved.libraryId, 'type', { kind: 'metadata', expectedVersion: 1, metadata: { typeId: 'roster', sharePoint: null } });
-  f.repository.putType({ ...f.repository.types()[0], defaultWorkbookId: saved.libraryId });
+  const rosterType = f.repository.types().find(type => type.id === 'roster');
+  if (!rosterType) throw new Error('roster type missing from fixture');
+  f.repository.putType({ ...rosterType, defaultWorkbookId: saved.libraryId });
   const operation = (operationId: string, change: WorkbookOperation['change']): WorkbookOperation => ({ operationId, at, source: { kind: 'run', runId: 'run-1' }, change });
   const patch = (operationId: string, key: string, note: string) => operation(operationId, { kind: 'patch', key, values: { 'roster.notes': note } });
   return { ...f, id: saved.libraryId, patch, operation };
@@ -102,6 +105,39 @@ it('reconciles manual Sync under the same writer and preserves managed cell meta
   expect(result.state).toBe('applied'); expect(f.service.read(f.id).workbook.sheets[0].rows[1].cells[2]).toEqual(changed.sheets[0].rows[1].cells[2]);
   expect(f.repository.versions(f.id)).toEqual([]);
   await expect(f.service.sync(f.id, 'unavailable', new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_SYNC_UNAVAILABLE' });
+});
+it('journals operator additions and keyed Sync changes after rows receive new import IDs', () => {
+  const f = fixture();
+  const current = f.service.read(f.id), expanded = structuredClone(current.workbook);
+  expanded.sheets[0].rows.push({ id: 'carol', cells: [{ value: '003' }, { value: 'Carol' }, { value: '' }] });
+  const saved = f.service.save(f.id, current.version, expanded);
+  const saveChanges = f.repository.journal(f.id).at(-1)?.changes ?? [];
+  expect(saveChanges).toContainEqual(expect.objectContaining({ key: '003', fieldId: 'roster.legalName', oldValue: null, newValue: 'Carol' }));
+  const incoming = encodeSavedWorkbook(saved).workbook;
+  incoming.sheets[0].rows[1].id = 'import-bob';
+  incoming.sheets[0].rows[1].cells = [{ value: '002' }, { value: 'Bobby' }, { value: '' }];
+  incoming.sheets[0].rows[2].id = 'import-alice';
+  incoming.sheets[0].rows[2].cells = [{ value: '001' }, { value: { type: 'date', value: IsoInstantSchema.parse('2000-01-01T00:00:00.000Z') } }, { value: '' }];
+  incoming.sheets[0].rows.splice(3, 1);
+  const receipt = f.repository.operation(f.id, { operationId: 'sync-reordered', source: { kind: 'sync', syncId: 'sync-reordered' }, at,
+    change: { kind: 'sync', expectedVersion: saved.version, workbook: incoming } });
+  expect(receipt.state).toBe('applied');
+  expect(receipt.changes).toContainEqual(expect.objectContaining({ key: '002', fieldId: 'roster.legalName', oldValue: 'Bob', newValue: 'Bobby' }));
+  expect(receipt.changes).toContainEqual(expect.objectContaining({ key: '003', fieldId: 'roster.legalName', oldValue: 'Carol', newValue: null }));
+  expect(receipt.changes).not.toContainEqual(expect.objectContaining({ key: '001', fieldId: 'roster.legalName', oldValue: null }));
+});
+it('adds the row key once whether or not the run repeats it in values', () => {
+  const f = fixture();
+  const add = (operationId: string, values: Record<string, string>) => f.operation(operationId,
+    { kind: 'add', sheetId: 'people', rowId: operationId, key: '003', values });
+  const first = f.repository.operation(f.id, add('new-row', { eid: '003', 'roster.notes': 'ready' }));
+  expect(first.state).toBe('applied');
+  expect(first.changes.filter(change => change.fieldId === 'eid')).toEqual([
+    expect.objectContaining({ key: '003', oldValue: null, newValue: '003' }),
+  ]);
+  expect(f.repository.operation(f.id, add('second-row', { 'roster.notes': 'duplicate' }))).toMatchObject({ state: 'resolve-required', reason: 'duplicate-key' });
+  expect(f.repository.operation(f.id, f.operation('bad-key', { kind: 'add', sheetId: 'people', rowId: 'bad-key', key: '004', values: { eid: 'wrong' } }))).toMatchObject({ state: 'refused', reason: 'invalid' });
+  expect(f.service.read(f.id).workbook.sheets[0].rows).toHaveLength(4);
 });
 it('migrates every retained revision with explicit migration provenance without changing masters', () => {
   const db = new DatabaseSync(':memory:'); databases.push(db);

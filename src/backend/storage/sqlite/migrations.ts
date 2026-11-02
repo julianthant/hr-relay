@@ -791,8 +791,9 @@ export function migrationTableNames(version: number): readonly (AuthorityTableNa
 export function auditMigrationTableCoverage(): readonly string[] {
   const statements = [...SQLITE_MIGRATIONS[0].statements, ...WORKBOOK_LIBRARY_MIGRATION.statements, ...SQLITE_MIGRATIONS.filter(migration => migration.version >= 8).flatMap(migration => migration.statements)];
   const names = new Set<string>();
-  for (const statement of statements) for (const match of statement.matchAll(/(CREATE|DROP) TABLE ([a-z_]+)/gu)) {
-    if (match[1] === "CREATE") names.add(match[2]);
+  for (const statement of statements) for (const match of statement.matchAll(/(CREATE|DROP) TABLE ([a-z_]+)|ALTER TABLE ([a-z_]+) RENAME TO ([a-z_]+)/gu)) {
+    if (match[3]) { names.delete(match[3]); names.add(match[4]); }
+    else if (match[1] === "CREATE") names.add(match[2]);
     else names.delete(match[2]);
   }
   const registered = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);

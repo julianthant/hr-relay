@@ -128,7 +128,7 @@ export const WorkbookOperationSchema = z.strictObject({
     ctx.addIssue({ code: 'custom', message: 'workbook operation source mismatch' });
 });
 export const WorkbookCellChangeSchema = z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema,
-  fieldId: z.string(), oldValue: WorkbookCellValueWireSchema, newValue: WorkbookCellValueWireSchema });
+  fieldId: z.string(), key: z.string().optional(), oldValue: WorkbookCellValueWireSchema, newValue: WorkbookCellValueWireSchema });
 export const WorkbookOperationReceiptSchema = z.strictObject({
   operationId: WorkbookIdSchema, sequence: z.number().int().positive(), libraryId: WorkbookIdSchema,
   key: z.string().optional(), state: z.enum(['applied', 'resolve-required', 'refused']), version: z.number().int().positive(),

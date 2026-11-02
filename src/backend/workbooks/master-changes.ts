@@ -11,6 +11,38 @@ const address = (sheet: string, row: string, field: string) => JSON.stringify([s
 function columns(sheet: EditableWorkbookWire['sheets'][number], field: string): number[] {
   return sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === field ? [index] : []) ?? [];
 }
+function workbookCells(workbook: EditableWorkbookWire, type: WorkbookType | undefined) {
+  const cells = new Map<string, { sheetId: string; rowId: string; fieldId: string; key?: string; value: EditableWorkbookWire['sheets'][number]['rows'][number]['cells'][number]['value'] }>();
+  const counts = new Map<string, number>();
+  if (type?.keyFieldId) for (const sheet of workbook.sheets) {
+    const keyColumns = columns(sheet, type.keyFieldId);
+    for (const row of sheet.rows.slice(sheet.headerRow ?? 1)) {
+      for (const key of new Set(keyColumns.map(column => row.cells[column]?.value).filter((value): value is string => typeof value === 'string')))
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  for (const sheet of workbook.sheets) {
+    const keyColumn = type?.keyFieldId ? columns(sheet, type.keyFieldId)[0] : undefined;
+    sheet.rows.forEach((row, rowIndex) => row.cells.forEach((cell, column) => {
+    const fieldId = sheet.columnBindings?.[column]?.fieldId ?? `column:${column}`;
+    const value = keyColumn === undefined ? undefined : row.cells[keyColumn]?.value;
+    const key = rowIndex >= (sheet.headerRow ?? 1) && typeof value === 'string' && counts.get(value) === 1 ? value : undefined;
+    const identity = key === undefined ? JSON.stringify(['row', sheet.id, row.id, fieldId]) : JSON.stringify(['key', key, fieldId]);
+    cells.set(identity, { sheetId: sheet.id, rowId: row.id, fieldId, ...(key === undefined ? {} : { key }), value: cell.value });
+    }));
+  }
+  return cells;
+}
+function journalChanges(before: EditableWorkbookWire, after: EditableWorkbookWire, type: WorkbookType | undefined) {
+  const oldCells = workbookCells(before, type), newCells = workbookCells(after, type);
+  return [...new Set([...oldCells.keys(), ...newCells.keys()])].flatMap(id => {
+    const previous = oldCells.get(id), next = newCells.get(id);
+    if (same(previous?.value ?? null, next?.value ?? null)) return [];
+    const location = next ?? previous!;
+    return [{ sheetId: location.sheetId, rowId: location.rowId, fieldId: location.fieldId,
+      ...(location.key === undefined ? {} : { key: location.key }), oldValue: previous?.value ?? null, newValue: next?.value ?? null }];
+  });
+}
 export function workbookMatches(workbook: EditableWorkbookWire, keyField: string, key: string) {
   return workbook.sheets.flatMap(sheet => {
     const indexes = columns(sheet, keyField);
@@ -41,10 +73,10 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
       const after = nextCol === undefined ? undefined : nextRow?.cells[nextCol];
       if (!same(cell, after ?? null)) {
         ownership[address(sheet.id, row.id, field)] = { owner: 'operator' };
-        receipt.changes.push({ sheetId: sheet.id, rowId: row.id, fieldId: field, oldValue: cell.value, newValue: after?.value ?? null });
       }
     });
     workbook = structuredClone(next);
+    receipt.changes = journalChanges(input.workbook, workbook, type);
   } else {
     if (!type || type.keyFieldId === null) return refuse('invalid');
     if (change.kind === 'sync') {
@@ -106,11 +138,7 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
         }
       }
       workbook = next; ownership = nextOwnership;
-      for (const sheet of workbook.sheets) for (const row of sheet.rows) row.cells.forEach((cell, index) => {
-        const before = input.workbook.sheets.find(item => item.id === sheet.id)?.rows.find(item => item.id === row.id)?.cells[index];
-        if (!same(before?.value ?? null, cell.value)) receipt.changes.push({ sheetId: sheet.id, rowId: row.id,
-          fieldId: sheet.columnBindings?.[index]?.fieldId ?? `column:${index}`, oldValue: before?.value ?? null, newValue: cell.value });
-      });
+      receipt.changes = journalChanges(input.workbook, workbook, type);
     } else {
       if (!Object.keys(change.values).length || Object.keys(change.values).some(field => !type.fields.includes(field))) return refuse('invalid');
       let matches = workbookMatches(workbook, type.keyFieldId, change.key);
@@ -121,6 +149,8 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
         if (!sheet || sheet.rows.some(row => row.id === change.rowId) || columns(sheet, type.keyFieldId).length !== 1) return refuse('invalid');
         const row: EditableWorkbookWire['sheets'][number]['rows'][number] = { id: change.rowId, cells: Array.from({ length: sheet.width }, () => ({ value: null })) };
         row.cells[columns(sheet, type.keyFieldId)[0]].value = change.key;
+        ownership[address(sheet.id, row.id, type.keyFieldId)] = { owner: 'relay', value: change.key };
+        receipt.changes.push({ sheetId: sheet.id, rowId: row.id, fieldId: type.keyFieldId, key: change.key, oldValue: null, newValue: change.key });
         sheet.rows.push(row); matches = [{ sheetId: sheet.id, rowId: row.id, sheet, row }];
       } else {
         if (change.selection) {
@@ -133,6 +163,7 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
       const match = matches[0];
       for (const [field, value] of Object.entries(change.values)) {
         if (field === type.keyFieldId && value !== change.key) return refuse('invalid');
+        if (change.kind === 'add' && field === type.keyFieldId) continue;
         const indexes = columns(match.sheet, field);
         if (indexes.length !== 1) return refuse('invalid');
         const cell = match.row.cells[indexes[0]], id = address(match.sheetId, match.rowId, field), owner = ownership[id];

@@ -19,7 +19,7 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
   };
   app.get("/api/v1/workbooks/list", c => c.json(service().library.list().map(encodeSavedWorkbook)));
   app.post("/api/v1/workbooks", async c => {
-    const request = workbookRequest(WorkbookOperatorOperationRequestSchema, WorkbookTypeSchema, WorkbookCreateRequestSchema, await c.req.json());
+    const request = workbookRequest(WorkbookCreateRequestSchema, await c.req.json());
     return c.json(encodeSavedWorkbook(service().library.create(decodeEditableWorkbook(request.workbook))), 201);
   });
   app.get('/api/v1/workbooks/types', c => c.json(service().library.types()));
