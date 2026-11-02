@@ -55,7 +55,7 @@ import { RuntimeLifetimeLock,offlineMaintenanceWorkspace,type OfflineMaintenance
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { inspectArtifactDeletionFile,pendingDiagnosticArtifacts,reclaimDiagnosticStages,removeArtifactDeletionFile } from "../artifacts/content-addressed-artifact-writer.js";
 import { clearOperationProofSlots,outermostOperationProof,readPrivateFile,revalidateOperationProof,withOperationProof } from "../configuration/credential-safe-file.js";
-import { assertCredentialStoreOwner,stoppedLogoutOwnsCredentialCommand } from "../configuration/credential-store.js";
+import { assertCredentialStoreOwner,stoppedProfileOwnsCredentialCommand } from "../configuration/credential-store.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
 import { fixedLayoutOutputPaths,fixedLayoutSettingsUpdate,fixedLayoutSnapshot,readFixedLayoutIntent,type FixedLayoutActivation } from "../maintenance/fixed-layout.js";
@@ -1883,7 +1883,7 @@ export class AuthorityDatabase implements Disposable {
       readAppSettings(this.#database);
       this.#database.exec("COMMIT");
       this.#credentialCommandIds = commandId => {
-        if (purpose === "stopped-logout-settlement") return stoppedLogoutOwnsCredentialCommand(this.#admission, commandId);
+        if (purpose === "stopped-logout-settlement" || purpose === "stopped-layout-target") return stoppedProfileOwnsCredentialCommand(this.#admission, purpose === "stopped-layout-target" ? "layout" : "logout", commandId);
         if (credentials === undefined) throw new CredentialContextRequiredError();
         assertCredentialStoreOwner(credentials, this.#admission);
         return credentials.ownsCommandId(commandId);

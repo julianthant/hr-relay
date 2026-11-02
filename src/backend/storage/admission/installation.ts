@@ -629,7 +629,7 @@ function readLocator(control: string, workspace: string,
     const journal = readStrict(join(control, "journal.json"), JournalSchema);
     if (journal.phase !== "restoring" || restoreRecovery === undefined
       || journal.restore.operationId !== restoreRecovery.operationId || journal.installationId !== locator.installationId
-      || canonicalJsonStringify(journal.source) !== canonicalJsonStringify(locator)) fail(`unfinished ${journal.phase} operation; exact offline recovery required`);
+      || canonicalJsonStringify(journal.source) !== canonicalJsonStringify(locator)) fail(`unfinished ${journal.phase} operation; exact offline restore recovery required`);
     assertRestoreHeld(workspace, restoreRecovery.restoreAdmission);
     checkRestoreInput(locator, journal.restore);
   } else if (restoreRecovery !== undefined) fail("restore-recovery-journal-missing");
@@ -994,6 +994,7 @@ function captureProfileRegistryWitness(control: string, locator: RuntimeLocator)
   for (const directory of roots) assertNoSymlinkComponents(directory);
   const membership = profileRegistryStatWitness(control, locator, directories);
   const paths = [...profileEvidencePaths(control, locator), ...roots,
+    join(dirname(control), "fixed-layout.json"),
     ...["profile-publication.json", "journal.json", "profile-control-upgrade.json", "device-recertification.json"].map(name => join(control, name)),
     join(locator.stateRoot, FENCE), join(locator.artifactRoot, FENCE),
     ...directories.flatMap(directory => lstatMaybe(directory) === undefined ? [] : readdirSync(directory).sort().map(name => join(directory, name)))];
@@ -1829,12 +1830,11 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       const guard = () => {
         if (read() !== original) fail("profile-stopped-upgrade-authority-changed");
       };
-      const owner = this;
-      return Object.freeze({ assertHeld: guard, ...(logout === undefined ? {} : { logout }), settleLogout(conversion: StartupLogoutConversion) {
+      return Object.freeze({ assertHeld: guard, ...(logout === undefined ? {} : { logout }), settleLogout: (conversion: StartupLogoutConversion) => {
         if (purpose !== "startup" || logout === undefined) fail("profile-startup-logout-required");
         mutate(held => {
           guard(); held.assertHeld();
-          const { expected, next } = AuthorityDatabase.consumeStartupLogoutConversion(conversion, owner);
+          const { expected, next } = AuthorityDatabase.consumeStartupLogoutConversion(conversion, this);
           if (canonicalJsonStringify(expected) !== canonicalJsonStringify(logout)
             || canonicalJsonStringify(readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${logout.operationId}.json`), LogoutOperationSchema)) !== canonicalJsonStringify(expected)) fail("profile-startup-logout-source-changed");
           const { settlement: _before, ...beforeIdentity } = logout, { settlement: _after, ...afterIdentity } = next;

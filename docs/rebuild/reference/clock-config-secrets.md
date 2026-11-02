@@ -482,6 +482,8 @@ Configuring startup issues only exact-person layout admissions. One SQLite trans
 planned active configuration, rewrites retained browser-session paths and binds them to equivalent
 new configuration snapshots, and records any saved
 browser-root/default-output changes through ordinary command, audit, and settings repositories.
+Command identity checks authenticate protected history through the exact stopped layout admission.
+Planning establishes the same published host display used by dashboard composition before capturing configuration.
 External output choices stay unchanged, while output paths inside the moved tree rebind to the same relative folders. Effective defaults become explicit settings; other history,
 credentials, keys, counters, unresolved writes, and original snapshots remain preserved. A never-initialized
 pending sign-up receives only the ordinary empty-overrides settings initialization, with journaled

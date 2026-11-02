@@ -528,9 +528,12 @@ export function captureStoppedIncompleteCredentials(admissionInput: RuntimeAdmis
   }
 }
 
-export function readStoppedLogoutProtectedRecord(admissionInput: RuntimeAdmission): CanonicalCredentialRecord {
+export function readStoppedProtectedRecord(admissionInput: RuntimeAdmission, purpose: "logout" | "layout"): CanonicalCredentialRecord {
   const admission = requireRuntimeAdmission(admissionInput), path = join(admission.stateRoot, "state.db");
-  const current = () => { admission.assertPendingLogoutSettlementDatabase(path); };
+  const current = () => {
+    if (purpose === "layout") admission.assertFixedLayoutDatabase(path);
+    else admission.assertPendingLogoutSettlementDatabase(path);
+  };
   current();
   const paths = canonicalPaths(admission);
   try {

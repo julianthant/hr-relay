@@ -829,7 +829,7 @@ export function auditSoleRunnerInvocation(
       && ts.isStringLiteral(statement.moduleSpecifier) && resolvedModule(path, statement.moduleSpecifier.text) === "src/backend/storage/admission/admission.ts"
       && statement.importClause?.namedBindings !== undefined && ts.isNamedImports(statement.importClause.namedBindings)
       && statement.importClause.namedBindings.elements.some(element => !element.isTypeOnly && element.name.text === "acquireExclusiveRuntimeAdmission" && element.propertyName === undefined));
-    if (admissionCalls.length !== 1 || runtimeAdmissionCalls.length !== 3 || machineAdmissions.length !== 2 || exclusiveAdmission.length !== 1
+    if (admissionCalls.length !== 1 || runtimeAdmissionCalls.length !== 2 || machineAdmissions.length !== 1 || exclusiveAdmission.length !== 1
       || keyRefusal !== 1 || mainAdmission !== 1 || !selectorValid || admittedCall === undefined || !exclusiveImport) {
       violations.push(`${path}: secure environment bootstrap requires canonical key refusal, exact storage/test-data exemptions, strict selector and canonical runtime admission`);
     }

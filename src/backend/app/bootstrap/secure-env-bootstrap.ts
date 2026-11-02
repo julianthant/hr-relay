@@ -3,9 +3,9 @@ import { profileBrowserClosure } from "../../runtime/browser/profile-browser-clo
 import { acquireRuntimeLifetimeLock,receiveRuntimeLifetimeLock,RuntimeLifetimeLock,WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 
-import { join } from "node:path";
+import { join,resolve } from "node:path";
 import { hostConfigFacts } from "../../../models/config/host-display.js";
-import { assertNoMigratedEnvironmentKeys,workerBootstrapEnvironment } from "../../../models/config/secrets.js";
+import { assertNoMigratedEnvironmentKeys,hostAwareResolutionEnvironment } from "../../../models/config/secrets.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { acquireExclusiveRuntimeAdmission,RuntimeAdmission } from "../../storage/admission/admission.js";
 import { acquireDashboardEntrypointAdmission,acquireEntrypointAdmission,acquireStorageBackupEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
@@ -13,6 +13,7 @@ import { FixedLayoutRefusedError } from "../../storage/maintenance/fixed-layout.
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
 import { RuntimeCustodyUncertainError } from "../composition/storage-compose.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
+import { probePrimaryDisplay } from "../host/primary-display.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
@@ -71,7 +72,7 @@ async function runAdmittedEnvironmentBootstrap(
   lifetime.parentSignal.throwIfAborted();
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
-  const repoRoot = fileURLToPath(new URL("../../../..", import.meta.url));
+  const repoRoot = resolve(fileURLToPath(new URL("../../../..", import.meta.url)));
   const workspace = lifetime.lock instanceof WorkerRuntimeLifetimeLock ? lifetime.lock.workspace : applicationDataWorkspace();
   const workerLifetime = (): WorkerRuntimeLifetimeLock => {
     if (!(lifetime.lock instanceof WorkerRuntimeLifetimeLock)) throw new Error("inherited-worker-lifetime-required");
@@ -83,14 +84,14 @@ async function runAdmittedEnvironmentBootstrap(
     lifetime.lock.assertHeld();
     return lifetime.lock;
   };
-  if (dependencies.acquireAdmission === undefined && !(lifetime.lock instanceof WorkerRuntimeLifetimeLock)) {
+  if (repoRoot !== workspace && dependencies.acquireAdmission === undefined && !(lifetime.lock instanceof WorkerRuntimeLifetimeLock)) {
     const { prepareApplicationDataWorkspace } = await import("../composition/storage-compose.js");
-    try { await prepareApplicationDataWorkspace(repoRoot, workspace, rootLifetime(), hostConfigFacts(workerBootstrapEnvironment())); }
+    try { await prepareApplicationDataWorkspace(repoRoot, workspace, rootLifetime(), hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay))); }
     catch (error) { throw new FixedLayoutRefusedError(error); }
   }
   if (entrypoint === "cli" && entrypointArgs[0] === "dashboard" && dependencies.acquireAdmission === undefined) {
     const { upgradeRegisteredPersonStores } = await import("../composition/storage-compose.js");
-    await upgradeRegisteredPersonStores(workspace, rootLifetime(), hostConfigFacts(workerBootstrapEnvironment()));
+    await upgradeRegisteredPersonStores(workspace, rootLifetime(), hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay)));
   }
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "cancel-queued-runs") {
     const { runOfflineQueuedRunCancellation } = await import("../../storage/maintenance/cancel-queued-runs.js");

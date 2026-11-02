@@ -7,22 +7,25 @@ import { existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it,vi } from "vitest";
+import { z } from "zod";
 import { prepareApplicationDataWorkspace,upgradeRegisteredPersonStores,composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
+import { seedRegisteredSignupBrowser } from "../../../support/helpers/browser/browser-roots.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { fixedLayoutEntries,fixedLayoutOutputPaths,readFixedLayoutIntent } from "../../../../src/backend/storage/maintenance/fixed-layout.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { createCredentialStore,stoppedProfileOwnsCredentialCommand } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { SETTINGS_SCHEMA_HASH,derivePersistedSettingsFingerprint,deriveRawSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { SettingsCommandRequestSchema,deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { boundProfileCredentials,createBoundProfileFixture,syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { boundProfileCredentials,createBoundProfileFixture,readAuthenticatedCredentialFixture,syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import { assertRuntimeLifetimeHeld } from "../../../support/helpers/backend/runtime-lifetime.js";
 
 const hostFacts = { primaryDisplay: null };
@@ -58,7 +61,10 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 =
     });
     const binding = profile.admission.profileBinding, active = database.authority.runtimeConfig.get(); assert.ok(active);
     const currentSnapshot = database.authority.configSnapshots.get(active.configSnapshotId); assert.ok(currentSnapshot);
-    const before = { binding, meta: database.getMeta(), registry: profile.machine.readProfileRegistry(), snapshots: database.readProfileResourceCustody().configSnapshots,
+    const protectedCommandId = z.looseObject({ record: z.looseObject({ lastApplied: z.looseObject({ commandId: z.uuid() }) }) })
+      .parse(readAuthenticatedCredentialFixture(profile.machine.stateRoot, binding.profileId)).record.lastApplied.commandId;
+    assert.throws(() => stoppedProfileOwnsCredentialCommand(profile.admission, "layout", protectedCommandId), /fixed-layout-admission-required/u);
+    const before = { binding, protectedCommandId, meta: database.getMeta(), registry: profile.machine.readProfileRegistry(), snapshots: database.readProfileResourceCustody().configSnapshots,
       settings: readSettings(database.authority), config: currentSnapshot.config };
     database.close();
     mkdirSync(join(profile.stateRoot, "files", "downloads"), { recursive: true, mode: 0o700 });
@@ -86,6 +92,8 @@ it.each([[false, 11], [true, 11], [false, 10]] as const)("converts the stopped d
     assert.throws(() => admission.assertCredentialRead(), /fixed-layout-credential-read-refused/u);
     assert.throws(() => admission.assertArtifactRoot(admission.artifactRoot), /fixed-layout-artifact-mutation-refused/u);
     assert.throws(() => admission.assertBrowserRegistryCustody(), /fixed-layout-browser-mutation-refused/u);
+    assert.equal(stoppedProfileOwnsCredentialCommand(admission, "layout", f.before.protectedCommandId), true);
+    assert.equal(stoppedProfileOwnsCredentialCommand(admission, "layout", randomUUID()), false);
     return activate(admission);
   });
   let machine: RuntimeAdmission | undefined, profile: RuntimeAdmission | undefined, database: AuthorityDatabase | undefined;
@@ -115,7 +123,7 @@ it.each([[false, 11], [true, 11], [false, 10]] as const)("converts the stopped d
     profile = machine.admitProfile(f.before.binding.profileId);
     assert.deepEqual(fixedLayoutEntries(join(profile.stateRoot, "credentials")), f.credentials);
     database = AuthorityDatabase.open(profile, { path: join(profile.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "fixed-layout-readback" }, systemClock,
-      undefined, undefined, undefined, boundProfileCredentials(profile));
+      undefined, undefined, undefined, createCredentialStore({ admission: profile, stateRoot: profile.stateRoot }));
     assert.equal(database.getMeta().authorityGeneration, f.before.meta.authorityGeneration + 1);
     const directory = join(profile.stateRoot, "backups", "authority");
     const manifests = readdirSync(directory).filter(name => name.endsWith(".manifest.json"))
@@ -182,6 +190,7 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
   const target = realpathSync(mkdtempSync(join(tmpdir(), "fixed-layout-pending-signup-")));
   let machine: RuntimeAdmission | undefined, runtime: ReturnType<typeof composeProfileRuntime> | undefined;
   try {
+    seedRegisteredSignupBrowser(profile.machine, operation);
     await profile.closeController();
     const source = new DatabaseSync(profile.path);
     try { source.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT"); }
@@ -199,9 +208,10 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     assert.equal(machine.readProfileRegistry().profiles.some(row => row.profileId === operation.profileId), false);
     runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu") });
     await runtime.session.recoverOnboarding();
+    assert.equal(existsSync(movedOperation), false); assert.equal(existsSync(stateRoot), false);
     const resumed = runtime.session.signUp({ firstName: operation.firstName, lastName: operation.lastName, createdAt: operation.createdAt,
       email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
     assert.equal(resumed.state, "onboarding");
-    assert.equal("profileId" in resumed ? resumed.profileId : undefined, operation.profileId);
-  } finally { await runtime?.close(); machine?.release(); await lifetime.close(); await profile.close(); rmSync(target, { recursive: true, force: true }); }
+    assert.notEqual("profileId" in resumed ? resumed.profileId : undefined, operation.profileId);
+  } finally { await runtime?.close(); machine?.release(); await profile.close(); await lifetime.close(); rmSync(target, { recursive: true, force: true }); }
 });
