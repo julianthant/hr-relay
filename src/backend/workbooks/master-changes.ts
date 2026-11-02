@@ -11,13 +11,17 @@ const address = (sheet: string, row: string, field: string) => JSON.stringify([s
 function columns(sheet: EditableWorkbookWire['sheets'][number], field: string): number[] {
   return sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === field ? [index] : []) ?? [];
 }
+function workbookKey(value: unknown): string | undefined {
+  if (typeof value === 'string') return value.length ? value : undefined;
+  return typeof value === 'number' && Number.isFinite(value) ? String(value) : undefined;
+}
 function workbookCells(workbook: EditableWorkbookWire, type: WorkbookType | undefined) {
   const cells = new Map<string, { sheetId: string; rowId: string; fieldId: string; key?: string; value: EditableWorkbookWire['sheets'][number]['rows'][number]['cells'][number]['value'] }>();
   const counts = new Map<string, number>();
   if (type?.keyFieldId) for (const sheet of workbook.sheets) {
     const keyColumns = columns(sheet, type.keyFieldId);
     for (const row of sheet.rows.slice(sheet.headerRow ?? 1)) {
-      for (const key of new Set(keyColumns.map(column => row.cells[column]?.value).filter((value): value is string => typeof value === 'string')))
+      for (const key of new Set(keyColumns.map(column => workbookKey(row.cells[column]?.value)).filter((value): value is string => value !== undefined)))
         counts.set(key, (counts.get(key) ?? 0) + 1);
     }
   }
@@ -25,8 +29,8 @@ function workbookCells(workbook: EditableWorkbookWire, type: WorkbookType | unde
     const keyColumn = type?.keyFieldId ? columns(sheet, type.keyFieldId)[0] : undefined;
     sheet.rows.forEach((row, rowIndex) => row.cells.forEach((cell, column) => {
     const fieldId = sheet.columnBindings?.[column]?.fieldId ?? `column:${column}`;
-    const value = keyColumn === undefined ? undefined : row.cells[keyColumn]?.value;
-    const key = rowIndex >= (sheet.headerRow ?? 1) && typeof value === 'string' && counts.get(value) === 1 ? value : undefined;
+    const value = keyColumn === undefined ? undefined : workbookKey(row.cells[keyColumn]?.value);
+    const key = rowIndex >= (sheet.headerRow ?? 1) && value !== undefined && counts.get(value) === 1 ? value : undefined;
     const identity = key === undefined ? JSON.stringify(['row', sheet.id, row.id, fieldId]) : JSON.stringify(['key', key, fieldId]);
     cells.set(identity, { sheetId: sheet.id, rowId: row.id, fieldId, ...(key === undefined ? {} : { key }), value: cell.value });
     }));
@@ -46,7 +50,7 @@ function journalChanges(before: EditableWorkbookWire, after: EditableWorkbookWir
 export function workbookMatches(workbook: EditableWorkbookWire, keyField: string, key: string) {
   return workbook.sheets.flatMap(sheet => {
     const indexes = columns(sheet, keyField);
-    return sheet.rows.slice(sheet.headerRow ?? 1).flatMap(row => indexes.some(index => row.cells[index]?.value === key)
+    return sheet.rows.slice(sheet.headerRow ?? 1).flatMap(row => indexes.some(index => workbookKey(row.cells[index]?.value) === key)
       ? [{ sheetId: sheet.id, rowId: row.id, sheet, row }] : []);
   });
 }
@@ -110,11 +114,11 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
       for (const sheet of workbook.sheets) for (const row of sheet.rows.slice(sheet.headerRow ?? 1)) {
         const keyCol = columns(sheet, type.keyFieldId);
         if (keyCol.length !== 1) return refuse('sync-ambiguous', true);
-        const key = row.cells[keyCol[0]].value;
+        const key = workbookKey(row.cells[keyCol[0]].value);
         for (const field of type.fields) {
           const owner = ownership[address(sheet.id, row.id, field)];
           if (!owner) continue;
-          if (typeof key !== 'string' || workbookMatches(workbook, type.keyFieldId, key).length !== 1) return refuse('sync-ambiguous', true);
+          if (key === undefined || workbookMatches(workbook, type.keyFieldId, key).length !== 1) return refuse('sync-ambiguous', true);
           const matches = workbookMatches(next, type.keyFieldId, key);
           if (matches.length !== 1) return refuse('sync-ambiguous', true);
           const target = matches[0];
@@ -148,10 +152,12 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
         if (matches.length) return refuse('duplicate-key', true);
         const sheet = workbook.sheets.find(item => item.id === change.sheetId);
         if (!sheet || sheet.rows.some(row => row.id === change.rowId) || columns(sheet, type.keyFieldId).length !== 1) return refuse('invalid');
+        const keyValue = type.keyFieldId in change.values ? change.values[type.keyFieldId] : change.key;
+        if (workbookKey(keyValue) !== change.key) return refuse('invalid');
         const row: EditableWorkbookWire['sheets'][number]['rows'][number] = { id: change.rowId, cells: Array.from({ length: sheet.width }, () => ({ value: null })) };
-        row.cells[columns(sheet, type.keyFieldId)[0]].value = change.key;
-        ownership[address(sheet.id, row.id, type.keyFieldId)] = { owner: 'relay', value: change.key };
-        receipt.changes.push({ sheetId: sheet.id, rowId: row.id, fieldId: type.keyFieldId, key: change.key, oldValue: null, newValue: change.key });
+        row.cells[columns(sheet, type.keyFieldId)[0]].value = keyValue;
+        ownership[address(sheet.id, row.id, type.keyFieldId)] = { owner: 'relay', value: keyValue };
+        receipt.changes.push({ sheetId: sheet.id, rowId: row.id, fieldId: type.keyFieldId, key: change.key, oldValue: null, newValue: keyValue });
         sheet.rows.push(row); matches = [{ sheetId: sheet.id, rowId: row.id, sheet, row }];
       } else {
         if (change.selection) {
@@ -163,14 +169,14 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
       }
       const match = matches[0];
       for (const [field, value] of Object.entries(change.values)) {
-        if (field === type.keyFieldId && value !== change.key) return refuse('invalid');
+        if (field === type.keyFieldId && workbookKey(value) !== change.key) return refuse('invalid');
         if (change.kind === 'add' && field === type.keyFieldId) continue;
         const indexes = columns(match.sheet, field);
         if (indexes.length !== 1) return refuse('invalid');
         const cell = match.row.cells[indexes[0]], id = address(match.sheetId, match.rowId, field), owner = ownership[id];
         if (owner?.owner === 'operator' || (owner?.owner === 'relay' ? !same(cell.value, owner.value) : cell.value !== null && cell.value !== ''))
           return refuse('operator-edited', true);
-        receipt.changes.push({ sheetId: match.sheetId, rowId: match.rowId, fieldId: field, oldValue: cell.value, newValue: value });
+        receipt.changes.push({ sheetId: match.sheetId, rowId: match.rowId, fieldId: field, key: change.key, oldValue: cell.value, newValue: value });
         cell.value = structuredClone(value); delete cell.richText; delete cell.hyperlink; delete cell.tooltip;
         ownership[id] = { owner: 'relay', value: structuredClone(value) };
       }

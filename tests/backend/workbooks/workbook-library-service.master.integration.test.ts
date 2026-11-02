@@ -303,3 +303,94 @@ it('drains acknowledged durable admissions from two processes in FIFO order afte
     for (const child of [first, second]) if (child && child.exitCode === null) { child.kill(); await once(child, 'exit'); }
   }
 });
+
+async function numericKeys() {
+  const source = new Workbook();
+  source.addWorksheet('People').addRows([['EID', 'Legal name', 'Notes'], [10800000, 'Alice', null], [10800001, 'Bob', null], ['00108', 'Padded', null]]);
+  const bytes = writeXlsx(source), data = new ArrayBuffer(bytes.byteLength); new Uint8Array(data).set(bytes);
+  const imported = await importWorkbook('Numeric.xlsx', data);
+  const f = fixture();
+  const saved = f.service.create({ ...imported, sheets: imported.sheets.map(sheet => ({ ...sheet, headerRow: 1,
+    columnBindings: ['eid', 'roster.legalName', 'roster.notes'].map((fieldId, column) => ({ id: `binding-${column}`, sourceColumn: column, sourceHeader: ['EID', 'Legal name', 'Notes'][column], fieldId, basis: 'manual' })) })) });
+  f.service.operatorOperation(saved.libraryId, 'numeric-type', { kind: 'metadata', expectedVersion: 1, metadata: { typeId: 'roster', sharePoint: null } });
+  return { ...f, id: saved.libraryId };
+}
+it('patches imported numeric keys, prevents adding an existing numeric key and journals its stable key', async () => {
+  const f = await numericKeys(), before = f.service.read(f.id), sheet = before.workbook.sheets[0];
+  expect(sheet.rows[1].cells[0].value).toBe(10800000);
+  const result = f.repository.operation(f.id, f.patch('numeric-patch', '10800000', 'filled'));
+  expect(result).toMatchObject({ state: 'applied', key: '10800000', changes: [{ key: '10800000', fieldId: 'roster.notes', oldValue: null, newValue: 'filled' }] });
+  expect(f.service.read(f.id).workbook.sheets[0].rows[1].cells[2].value).toBe('filled');
+  const current = f.service.read(f.id);
+  expect(f.service.revision(f.id, before.version)).toEqual(before);
+  expect(f.service.revision(f.id, current.version)).toEqual(current);
+  expect(f.repository.operation(f.id, f.patch('numeric-patch', '10800000', 'filled'))).toEqual(result);
+  expect(f.repository.operation(f.id, f.operation('numeric-add', { kind: 'add', sheetId: sheet.id, rowId: 'duplicate', key: '10800000', values: { 'roster.notes': 'new' } })))
+    .toMatchObject({ state: 'resolve-required', reason: 'duplicate-key' });
+  expect(f.service.read(f.id)).toEqual(current);
+  const snapshot = f.service.snapshot({ libraryId: f.id, typeId: 'roster', keys: ['10800000', '00108', '108'], fields: ['eid', 'roster.legalName'] });
+  expect(snapshot.rows).toEqual([
+    { key: '10800000', state: 'matched', matches: [{ sheetId: sheet.id, rowId: sheet.rows[1].id, values: { eid: 10800000, 'roster.legalName': 'Alice' } }] },
+    { key: '00108', state: 'matched', matches: [{ sheetId: sheet.id, rowId: sheet.rows[3].id, values: { eid: '00108', 'roster.legalName': 'Padded' } }] },
+    { key: '108', state: 'missing', matches: [] },
+  ]);
+});
+it('reconciles numeric keys across Sync reordering and retains Relay and operator ownership with keyed journal entries', async () => {
+  const f = await numericKeys();
+  expect(f.repository.operation(f.id, f.patch('numeric-fill', '10800000', 'relay'))).toMatchObject({ state: 'applied' });
+  const current = f.service.read(f.id), edited = structuredClone(current.workbook);
+  edited.sheets[0].rows[2].cells[2].value = 'operator';
+  const saved = f.service.save(f.id, current.version, edited), incoming = encodeSavedWorkbook(saved).workbook;
+  const sheet = incoming.sheets[0];
+  sheet.rows = [sheet.rows[0], sheet.rows[2], sheet.rows[1], sheet.rows[3]].map((row, index) => ({ ...row, id: index === 0 ? row.id : `remote-${index}` }));
+  sheet.rows[1].cells[2].value = 'remote-bob'; sheet.rows[2].cells[2].value = 'remote-alice';
+  sheet.rows[2].cells[1].value = 'Alice remote';
+  const result = f.repository.operation(f.id, { operationId: 'numeric-sync', source: { kind: 'sync', syncId: 'numeric-sync' }, at,
+    change: { kind: 'sync', expectedVersion: saved.version, workbook: incoming } });
+  expect(result).toMatchObject({ state: 'applied', changes: [{ key: '10800000', fieldId: 'roster.legalName', oldValue: 'Alice', newValue: 'Alice remote' }] });
+  const syncedRecord = f.service.read(f.id), synced = syncedRecord.workbook.sheets[0];
+  expect(synced.rows[1].cells[2].value).toBe('operator'); expect(synced.rows[2].cells[2].value).toBe('relay');
+  expect(f.repository.operation(f.id, f.patch('numeric-after-sync', '10800000', 'relay-next'))).toMatchObject({ state: 'applied' });
+  expect(f.repository.operation(f.id, f.patch('numeric-operator-after-sync', '10800001', 'unsafe'))).toMatchObject({ state: 'resolve-required', reason: 'operator-edited' });
+  const latest = f.service.read(f.id);
+  for (const record of [current, saved, syncedRecord, latest]) expect(f.service.revision(f.id, record.version)).toEqual(record);
+  expect(f.repository.operation(f.id, { operationId: 'numeric-sync', source: { kind: 'sync', syncId: 'numeric-sync' }, at,
+    change: { kind: 'sync', expectedVersion: saved.version, workbook: incoming } })).toEqual(result);
+  expect(f.service.read(f.id)).toEqual(latest);
+});
+it('refuses numeric/string key collisions across patch, add, snapshot and owned Sync', async () => {
+  const f = await numericKeys();
+  expect(f.repository.operation(f.id, f.patch('before-collision', '10800000', 'owned'))).toMatchObject({ state: 'applied' });
+  const current = f.service.read(f.id), duplicate = structuredClone(current.workbook), sheet = duplicate.sheets[0];
+  sheet.rows.push({ id: 'collision', cells: [{ value: '10800000' }, { value: 'Other' }, { value: null }] });
+  const incoming = encodeSavedWorkbook({ ...current, workbook: duplicate }).workbook;
+  expect(f.repository.operation(f.id, { operationId: 'collision-sync', source: { kind: 'sync', syncId: 'collision-sync' }, at,
+    change: { kind: 'sync', expectedVersion: current.version, workbook: incoming } })).toMatchObject({ state: 'resolve-required', reason: 'sync-ambiguous' });
+  expect(f.service.read(f.id)).toEqual(current);
+  const saved = f.service.save(f.id, current.version, duplicate);
+  expect(f.repository.operation(f.id, f.patch('collision-patch', '10800000', 'unsafe'))).toMatchObject({ state: 'resolve-required', reason: 'duplicate-key' });
+  expect(f.repository.operation(f.id, f.operation('collision-add', { kind: 'add', sheetId: sheet.id, rowId: 'another', key: '10800000', values: { 'roster.notes': 'unsafe' } })))
+    .toMatchObject({ state: 'resolve-required', reason: 'duplicate-key' });
+  const snapshot = f.service.snapshot({ libraryId: f.id, typeId: 'roster', keys: ['10800000'], fields: ['eid'] });
+  expect(snapshot.rows[0]).toMatchObject({ state: 'ambiguous', matches: [{ values: { eid: 10800000 } }, { values: { eid: '10800000' } }] });
+  expect(f.service.read(f.id)).toEqual(saved);
+});
+it('validates proposed numeric key cells through the same stable identity without rewriting raw values', async () => {
+  const f = await numericKeys(), sheet = f.service.read(f.id).workbook.sheets[0];
+  expect(f.repository.operation(f.id, f.operation('numeric-new', { kind: 'add', sheetId: sheet.id, rowId: 'new', key: '10800002', values: { eid: 10800002, 'roster.notes': 'new' } })))
+    .toMatchObject({ state: 'applied' });
+  expect(f.service.read(f.id).workbook.sheets[0].rows.at(-1)?.cells[0].value).toBe(10800002);
+  expect(f.repository.operation(f.id, f.operation('numeric-wrong', { kind: 'add', sheetId: sheet.id, rowId: 'wrong', key: '10800003', values: { eid: 999, 'roster.notes': 'unsafe' } })))
+    .toMatchObject({ state: 'refused', reason: 'invalid' });
+});
+
+it('does not treat booleans, dates, blanks or null as canonical string keys', async () => {
+  const f = await numericKeys(), current = f.service.read(f.id), edited = structuredClone(current.workbook);
+  edited.sheets[0].rows[1].cells[0].value = true;
+  edited.sheets[0].rows[2].cells[0].value = new Date('2026-01-01T00:00:00.000Z');
+  edited.sheets[0].rows[3].cells[0].value = null;
+  edited.sheets[0].rows.push({ id: 'blank-key', cells: [{ value: '' }, { value: 'Blank' }, { value: null }] });
+  f.service.save(f.id, current.version, edited);
+  const snapshot = f.service.snapshot({ libraryId: f.id, typeId: 'roster', keys: ['true', '2026-01-01T00:00:00.000Z', 'null'], fields: ['eid'] });
+  expect(snapshot.rows).toEqual(['true', '2026-01-01T00:00:00.000Z', 'null'].map(key => ({ key, state: 'missing', matches: [] })));
+});

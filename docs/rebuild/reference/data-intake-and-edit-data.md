@@ -296,6 +296,7 @@ imports use General workbook until the operator assigns a keyed type. Types reta
 IDs, a key field and an optional default workbook. A run's requested item keys resolve against a
 single immutable wire snapshot of the selected/default workbook, type and live revision. Dates in
 these snapshots are tagged ISO values. Workbook rows do not become run items through this API.
+Key matching retains nonempty strings exactly and compares finite numeric cells by their stable string value. It does not pad numeric keys or coerce booleans, dates, blanks or null. Numeric/string collisions stay ambiguous; snapshots retain original typed cell values.
 
 The live `version` is a CAS revision. Named versions are explicit operator snapshots; saves, run
 patches and manual Sync do not create versions. Existing saved revisions retain their data with
