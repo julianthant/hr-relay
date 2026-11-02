@@ -9,10 +9,10 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import {
   DESCRIPTORS,
+  CHILD_ONLY_WORKFLOW_MODULES,
   INTAKE_PROJECTIONS,
   SERVER_REGISTRY,
   WORKFLOW_MODULES,
-  CHILD_ONLY_WORKFLOW_MODULES,
   WORKFLOW_IDS_BY_CODE,
   WORKFLOW_ROLES,
   auditImplBindings,

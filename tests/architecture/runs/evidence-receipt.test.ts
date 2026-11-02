@@ -1,4 +1,3 @@
-import { CHILD_ONLY_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
@@ -30,6 +29,7 @@ import { RedactedFieldSchema, retainLocalEvidenceValue } from "../../../src/rule
 import { SECRET_SPECS } from "../../../src/models/config/secrets.js";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { STEP_PROOF_DESCRIPTORS } from "../../../src/backend/app/registries/step-proof-modules.js";
 
 import { separationsKualiFinalizationDescriptor } from "../../support/helpers/registered-workflows.js";

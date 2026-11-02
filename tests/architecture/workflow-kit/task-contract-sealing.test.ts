@@ -225,6 +225,7 @@ describe("task contract sealing architecture", () => {
       "src/models/systems/crm/read-onboarding-results.ts",
       "src/models/systems/crm/search-onboarding-records.ts",
       "src/models/systems/crm/verify-onboarding-record.ts",
+      "src/models/systems/i9/read-section2-signer.ts",
       "src/models/systems/kuali/match-separation-finalization.ts",
       "src/models/systems/kuali/read-separation-document.ts",
       "src/models/systems/kuali/save-separation-finalization.ts",
@@ -248,6 +249,8 @@ describe("task contract sealing architecture", () => {
       "src/models/systems/ucpath/verify-termination.ts",
       "src/models/task/task-contract.ts",
       "src/models/workflows/i9-check/check.ts",
+      "src/models/workflows/i9-lookup/read-result.ts",
+
       "src/models/workflows/ocr-page/read-manual-reading.ts",
       "src/models/workflows/ocr-page/read-page-reading.ts",
       "src/models/workflows/ocr/read-result.ts",

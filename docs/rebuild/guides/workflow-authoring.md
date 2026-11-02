@@ -17,6 +17,10 @@ Workflow-owned task implementations live in `tasks/` with `task-registry.ts`; on
 composition loads them. A chunk harness lives at
 `src/workflows/<composition>/steps/<step>/step.ts`.
 
+Every workflow has `tasks/` and `steps/`. Steps group tasks into the checkpoints on the run
+timeline; hovering a checkpoint shows its tasks. Reused system operations stay in their system
+store, and a thin workflow-owned task retains their typed result through declared dependencies.
+
 `src/workflow-kit/workflow-definition.ts` owns `defineWorkflow` (validation), `compileWorkflow`
 (descriptor, graph, timeline, contracts, namespaces, display and manifest fingerprint), and
 `composeWorkflowModule` (exact implementation bindings).
@@ -88,6 +92,11 @@ For a new operator workflow:
 Harnesses declared in `index.ts` enter the generated `STEP_PROOF_MODULES` list.
 They do not enter the operator tuple or picker.
 A group without a harness needs no step folder.
+
+Declare delegated-only workflows with child-only exposure in their `index.ts`. Generation places
+them in `CHILD_ONLY_WORKFLOW_MODULES`, outside the public tuples. Give them no start surface.
+The registry resolves a child only for a parent that declares its delegation edge. A child may
+remain registered without a parent; I-9 Lookup uses this shape.
 
 Registration refuses missing or duplicate stores and a store that binds a different contract
 object. Import the real contract value; an equivalent schema or copied declaration does not satisfy

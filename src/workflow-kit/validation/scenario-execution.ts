@@ -40,10 +40,19 @@ const SEPARATIONS_FILE = workflowStructuralScenarioPath("separations", defineWor
 
 /** The person-lookup workflow — ONE structural scenario file, as §10.3 admits exactly one collected structural scenario per workflow. */
 const PERSON_LOOKUP_FILE = workflowStructuralScenarioPath("person-lookup", defineWorkflowRole({ kind: "composition" }));
+const I9_LOOKUP_FILE = workflowStructuralScenarioPath("i9-lookup", defineWorkflowRole({ kind: "standalone" }));
 
 export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
   { scenarioId: "workbooks/publish", file: "tests/backend/workbooks/workflow-workbook-service.integration.test.ts" },
   { scenarioId: "i9-check/person", file: "tests/workflows/i9-check/workflow.integration.test.ts" },
+  { scenarioId: "i9-lookup/signed", file: I9_LOOKUP_FILE },
+  { scenarioId: "i9-lookup/unsigned", file: I9_LOOKUP_FILE },
+  { scenarioId: "i9-lookup/historical", file: I9_LOOKUP_FILE },
+  { scenarioId: "i9-lookup/not-found", file: I9_LOOKUP_FILE },
+  { scenarioId: "i9-lookup/restricted", file: I9_LOOKUP_FILE },
+  { scenarioId: "i9-lookup/ambiguous", file: I9_LOOKUP_FILE },
+  { scenarioId: "i9-lookup/read-failed", file: I9_LOOKUP_FILE },
+
   { scenarioId: "person-lookup/s1", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
   { scenarioId: "person-lookup/s2", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
   { scenarioId: "person-lookup/s3", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },

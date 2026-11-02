@@ -382,6 +382,15 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ]),
   ...open(taskOutput("workbooks/read-result"), "state", "version", "code", "message"),
   ...["operationId", "libraryId"].map(path => ({ scope: taskOutput("workbooks/read-result"), path, classification: "direct-identifier", transform: "digest" })),
+  ...["i9-lookup", "i9-lookup-lookup"].flatMap(id => [
+    ...person(workflowInput(id), "lastName", "firstName"),
+    { scope: workflowInput(id), path: "ssn", classification: "direct-identifier", transform: "digest" },
+  ]),
+  ...[taskOutput("i9/read-section2-signer"), taskOutput("workflow:i9-lookup/read-result"), workflowResult("i9-lookup"), workflowResult("i9-lookup-lookup")].flatMap(scope => [
+    ...person(scope, "signerName", "profileId", "i9Id"),
+    ...open(scope, "i9Status"),
+  ]),
+
   /* person-lookup ingress */
   ...[PERSON_LOOKUP_INPUT,
     ...["person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates"].map(workflowInput),

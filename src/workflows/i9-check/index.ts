@@ -10,8 +10,8 @@ export const registration = deepFreeze({
   exposure: { kind: "child-only" },
   store: i9CheckStore,
   proofs: [
-    { definition: i9CheckPersonMatchWorkflow, order: 9 },
-    { definition: i9CheckPersonLookupWorkflow, order: 10 },
-    { definition: i9CheckRosterMatchWorkflow, order: 11 },
+    { definition: i9CheckPersonMatchWorkflow, order: 10 },
+    { definition: i9CheckPersonLookupWorkflow, order: 11 },
+    { definition: i9CheckRosterMatchWorkflow, order: 12 },
   ],
 } as const);
