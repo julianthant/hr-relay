@@ -254,6 +254,29 @@ it("opens credential-free before a ceremony and refuses restored-page signing wi
   });
 });
 
+it("drains the broker before closing its worker context without extending the proof deadline", async () => {
+  await withTempRuntime(async ({ config }) => {
+    const broker = fixtureWorkflowWorker(), testClock = manualClock(clock.now());
+    let releaseStop: () => void = () => { throw new Error("stop not entered"); };
+    let enteredStop: () => void = () => { throw new Error("stop observer not bound"); };
+    const entered = new Promise<void>(resolve => { enteredStop = resolve; });
+    const stop = broker.owner.stop.bind(broker.owner);
+    broker.owner.stop = () => { stop(); enteredStop(); return new Promise<void>(resolve => { releaseStop = resolve; }); };
+    const deadlines: number[] = [];
+    const scheduler = { schedule: (deadline: number) => { deadlines.push(deadline); return { cancel() {} }; } };
+    const harness = fakeLauncher({ serviceWorker: broker.worker });
+    const local = createBrowserSessionFactoryFixtures(testClock, "00000000-0000-4000-8000-000000000001", scheduler);
+    const resource = await local.factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings(), scheduler).open(input);
+    const closing = resource.close({ reason: "worker-stop" });
+    await entered;
+    assert.equal(harness.page.closed, false); assert.equal(harness.contextClosed(), false);
+    testClock.advanceMonotonic(100);
+    releaseStop(); await closing;
+    assert.equal(harness.contextClosed(), true);
+    assert.deepEqual(deadlines, [config.browser.closeProofMs, config.browser.closeProofMs]);
+  });
+});
+
 it("preserves both broker-stop and native-close failures and keeps the profile reserved", async () => {
   await withTempRuntime(async ({ config }) => {
     const broker = fixtureWorkflowWorker();

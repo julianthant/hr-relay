@@ -92,7 +92,7 @@ describe("workflow definition registry conformance", () => {
         settingsSchemaHash: descriptorSetHash_m0(["settings-schema"]),
         projection: world.projection,
         authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
-        backupSummary: () => "current",
+        automaticRepair: () => ({ state: "none" as const }), backupSummary: () => "current",
         preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
       });
       const bootstrapWorkflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);

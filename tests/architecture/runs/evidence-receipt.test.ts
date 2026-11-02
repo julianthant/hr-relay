@@ -51,8 +51,9 @@ import {
   WriteFixtureSaveCommit,
 } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { personLookupDescriptor } from "../../support/helpers/registered-workflows.js";
+import { namedFileOutputDescriptor } from "../../support/fixtures/named-file-output-workflow.js";
 
-const RECEIPT_DESCRIPTORS = [...WORKFLOW_DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...STEP_PROOF_DESCRIPTORS];
+const RECEIPT_DESCRIPTORS = [...WORKFLOW_DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...STEP_PROOF_DESCRIPTORS, namedFileOutputDescriptor];
 
 function kualiReceipt() {
   const evidence = kualiReceiptEvidence();

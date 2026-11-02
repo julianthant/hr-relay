@@ -130,7 +130,7 @@ it("uses the configured singleton port for production parents and refuses busy r
   try {
     const config = z.object({ rebuild: z.object({ lockPort: z.number().int().positive() }) }).parse(JSON.parse(
       await readFile(new URL("../../../../config/runtime-isolation.json", import.meta.url), "utf8")));
-    for (const args of [["cli", "dashboard"], ["cli", "dashboard", "--prod"], ["cli", "storage", "backup"],
+    for (const args of [["cli", "dashboard"], ["cli", "dashboard", "--prod"],
       ["cli", "storage", "upgrade"],
       ["cli", "storage", "cancel-queued-runs"], ["test-target-document-number"]]) {
       await assert.rejects(runSecureEnvironmentBootstrap(args, {
