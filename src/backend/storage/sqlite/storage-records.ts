@@ -1,6 +1,6 @@
 import { AssistantModelPreferenceRecordSchema } from "../../../models/dashboard/assistant.js";
 import { AssistantGrantRecordSchema, AssistantChatRecordSchema, AssistantActionRecordSchema } from "../../../models/profiles/assistant-authorization.js";
-import { SavedWorkbookSchema } from "../../../models/dashboard/workbooks.js";
+import { SavedWorkbookSchema, WorkbookTypeSchema, WorkbookOperationSchema } from "../../../models/dashboard/workbooks.js";
 import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
 import { NativeCommandRequestSchema, NativeCommandAuditSchema } from "./command-record-row.js";
 import { WorkerSlotRecordSchema } from "../../../models/run/worker-slot.js";
@@ -80,6 +80,9 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   diagnostic_files: DiagnosticAttachmentStorageRecordSchema,
   dryrun_results: DryRunScenarioResultSchema,
   run_search: RunSearchIndexRecordSchema,
+  workbook_creations: SavedWorkbookSchema,
+  workbook_types: WorkbookTypeSchema,
+  workbook_operations: WorkbookOperationSchema,
   workbook_library: SavedWorkbookSchema,
   workbook_library_history: SavedWorkbookSchema,
 } satisfies Record<Exclude<AuthorityTableName, "database_states">, z.ZodType>);

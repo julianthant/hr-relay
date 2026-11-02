@@ -60,15 +60,15 @@ describe("durable exclusive identity-session leases", () => {
     } finally { database.close(); }
   });
 
-  it("adds only its table and triggers at thirteen while retaining all twelve-layout rows", () => {
+  it("adds only its table and triggers at fourteen while retaining all thirteen-layout rows", () => {
     const database = new DatabaseSync(":memory:");
     try {
-      for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= 12)) for (const statement of migration.statements) database.exec(statement);
-      const prior = migrationTableNames(12).map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() }));
-      const migration = SQLITE_MIGRATIONS.find(value => value.version === 13); assert.ok(migration);
+      for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= 13)) for (const statement of migration.statements) database.exec(statement);
+      const prior = migrationTableNames(13).map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() }));
+      const migration = SQLITE_MIGRATIONS.find(value => value.version === 14); assert.ok(migration);
       for (const statement of migration.statements) database.exec(statement);
       assert.deepEqual(prior.map(({ table }) => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), prior);
-      assert.deepEqual(migrationTableNames(13).filter(table => !migrationTableNames(12).includes(table)), ["exclusive_session_leases"]);
+      assert.deepEqual(migrationTableNames(14).filter(table => !migrationTableNames(13).includes(table)), ["exclusive_session_leases"]);
       assert.deepEqual(auditMigrationTableCoverage(), []);
     } finally { database.close(); }
   });

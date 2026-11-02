@@ -4,7 +4,7 @@ import { foreignOriginCases, disposeHttpRouteHarness, harness, json } from "../.
 
 import assert from "node:assert/strict";
 import { UNWIRED_INTAKE_SERVICE } from "../../../../support/fixtures/intake-kernel-seams.js";
-import Excel from "exceljs";
+import { Workbook, writeXlsx } from "@shbernal/ts-xlsx";
 import JSZip from "jszip";
 import { composeIntake } from "../../../../../src/backend/app/composition/dashboard/intake.js";
 import { createIntakeParser } from "../../../../../src/backend/processing/spreadsheet/intake-parser.js";
@@ -77,8 +77,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const actual = composeIntake({ database: h.database, artifacts: h.artifacts, parser: createIntakeParser({ artifacts: h.artifacts }),
       projections: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureProjection : undefined },
       descriptors: { resolve: id => id === INTAKE_FIXTURE_WORKFLOW_ID ? intakeFixtureDescriptor : undefined }, clock: h.clock, ids: sequentialIdFactory("c") });
-    const workbook = new Excel.Workbook(); workbook.addWorksheet("Roster").addRow(["Employee ID#"]);
-    const archive = await JSZip.loadAsync(await workbook.xlsx.writeBuffer());
+    const workbook = new Workbook(); workbook.addWorksheet("Roster").addRow(["Employee ID#"]);
+    const archive = await JSZip.loadAsync(writeXlsx(workbook));
     if (corruption === "xml" || corruption === "rels") archive.file(corruption === "rels" ? "xl/_rels/workbook.xml.rels" : "xl/worksheets/sheet1.xml", "<worksheet><sheetData><row>");
     if (corruption === "workbook-empty") archive.file("xl/workbook.xml", '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>');
     if (corruption === "relationships-empty") archive.file("xl/_rels/workbook.xml.rels", '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>');

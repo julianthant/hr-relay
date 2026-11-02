@@ -3,7 +3,8 @@ import { beforeEach, describe, it, vi } from 'vitest';
 import { SavedWorkbookSchema, type SavedWorkbook } from '../../../../src/models/dashboard/workbooks.js';
 import { createSpreadsheetWiringAdapter } from '../../../../src/dashboard/state/spreadsheet-wiring-adapter.js';
 import { createSpreadsheetChatRegistrationPort } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-chat-registration-model.js';
-import { newEditableWorkbook, type EditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { newEditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { type EditableWorkbook } from '../../../../src/rules/spreadsheets/workbook-io.js';
 import { exportSheetInWorker } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js';
 import type { WorkbookLibraryQueries } from '../../../../src/dashboard/client/queries/workbook-library-queries.js';
 vi.mock('../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js', () => ({ exportSheetInWorker: vi.fn(async () => 'Name,ID\r\nAlex,10000001'), exportSpreadsheetInWorker: vi.fn(async () => new ArrayBuffer(4)) }));
@@ -16,7 +17,8 @@ function world() {
     workbookOpen: vi.fn(async () => { const saved = versions.at(-1); if (!saved) throw new Error('not found'); return saved; }),
     workbookCreate: vi.fn(async (workbook: unknown) => { const saved = record(workbook, 1); versions.push(saved); return saved; }),
     workbookSave: vi.fn(async (_id: string, expected: number, workbook: unknown) => { assert.equal(expected, versions.at(-1)?.version); const saved = record(workbook, expected + 1); versions.push(saved); return saved; }),
-    workbookHistory: vi.fn(async () => [...versions]), workbookIntake: vi.fn(),
+    workbookRevision: vi.fn(async (_id: string, version: number) => { const saved = versions.find(record => record.version === version); if (!saved) throw new Error('WORKBOOK_REVISION_UNAVAILABLE'); return saved; }),
+    workbookHistory: vi.fn(async () => []), workbookIntake: vi.fn(),
   } satisfies WorkbookLibraryQueries;
   const adapter = createSpreadsheetWiringAdapter(client), port = createSpreadsheetChatRegistrationPort(adapter);
   return { versions, client, adapter, port };
@@ -35,7 +37,7 @@ describe('chat spreadsheet registration', () => {
     assert.equal(result.state, 'confirmed'); assert.equal(client.workbookSave.mock.calls[0][1], 1);
     if (result.state !== 'confirmed') throw new Error('expected update');
     const download = await port.download(result.file); assert.equal(download.name, 'Autumn-updated.csv'); assert.match(await download.blob.text(), /Alex/);
-    await port.open(first.file); assert.equal(client.workbookHistory.mock.calls.length, 1);
+    await port.open(first.file); assert.deepEqual(client.workbookRevision.mock.calls.at(-1), [first.file.libraryId, 1]); assert.equal(client.workbookHistory.mock.calls.length, 0);
     assert.equal(vi.mocked(exportSheetInWorker).mock.calls[0][0].rows[1].cells[0].value, 'Alex');
     assert.equal(adapter.snapshot().files[0].version, 2); assert.equal(adapter.snapshot().files[0].status, 'Updated');
   });
@@ -89,7 +91,7 @@ describe('chat spreadsheet registration', () => {
     const { port, versions, client } = world();
     await port.register({ operationId: 'create', status: 'Attached', workbook: newEditableWorkbook() });
     assert.equal((await port.register({ operationId: 'stale', status: 'Updated', base: { libraryId: 'library-id', version: 9 }, workbook: versions[0].workbook })).state, 'conflict');
-    await assert.rejects(port.open({ libraryId: 'library-id', version: 9, name: 'Untitled.xlsx', status: 'Updated' }), /VERSION_UNAVAILABLE/);
+    await assert.rejects(port.open({ libraryId: 'library-id', version: 9, name: 'Untitled.xlsx', status: 'Updated' }), /REVISION_UNAVAILABLE/);
     assert.equal(client.workbookSave.mock.calls.length, 0);
   });
 });

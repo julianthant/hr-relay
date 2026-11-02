@@ -4,7 +4,8 @@ import { Readable } from 'node:stream';
 import { matchSpreadsheetTask } from '../../../src/backend/processing/roster/task-registry.js';
 import { ArtifactRefSchema } from '../../../src/models/artifacts/artifacts.js';
 import { MatchSpreadsheetInputSchema } from '../../../src/models/processing/roster/match-spreadsheet.js';
-import { importSpreadsheet, spreadsheetXlsx, editSpreadsheetCell, updateSpreadsheetFields, sortSpreadsheet } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { editSpreadsheetCell, updateSpreadsheetFields, sortSpreadsheet } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { importWorkbook as importSpreadsheet, writeWorkbookXlsx as spreadsheetXlsx } from '../../../src/rules/spreadsheets/workbook-io.js';
 import { prepareSpreadsheetColumns, selectSpreadsheetColumns, spreadsheetColumnErrors, spreadsheetColumnValueIssues } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.js';
 import { CANONICAL_FIELDS } from '../../../src/models/fields/registry.js';
 import { defineIntakeProjection } from '../../../src/models/intake/projection.js';
@@ -14,9 +15,9 @@ import { parseSpreadsheetGrid } from '../../../src/backend/processing/spreadshee
 import { ItemIdSchema, IntakeTargetFieldIdSchema } from '../../../src/rules/identity/ids.js';
 import type { EditableWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { DatabaseSync } from "node:sqlite";
-import Excel from "exceljs";
+import { Workbook, writeXlsx } from "@shbernal/ts-xlsx";
 import { afterEach, expect, it } from "vitest";
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkbookLibraryService, WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 
@@ -24,7 +25,7 @@ const databases: DatabaseSync[] = [];
 afterEach(() => { for (const database of databases.splice(0)) database.close(); });
 function fixture() {
   const database = new DatabaseSync(":memory:"); databases.push(database);
-  for (const statement of WORKBOOK_LIBRARY_MIGRATION.statements) database.exec(statement);
+  for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements]) database.exec(statement);
   const transaction = <T>(work: () => T): T => {
     database.exec("BEGIN IMMEDIATE");
     try { const result = work(); database.exec("COMMIT"); return result; }
@@ -36,7 +37,7 @@ function fixture() {
 }
 function workbook(): EditableWorkbook {
   return {
-    name: "Roster.xlsx", themes: ["<theme>original</theme>"], hasFormulas: true,
+    name: "Roster.xlsx", themes: ["<theme>original</theme>"], hasFormulas: false,
     sheets: [{ id: "sheet-a", name: "People", width: 2, hidden: [1], headerRow: 1, sourceHeaderRow: 7,
       columnBindings: [{ id: "binding-a", sourceColumn: 4, sourceHeader: "Employee ID", fieldId: "eid", basis: "manual" }, { id: "binding-b", sourceColumn: null, sourceHeader: "Notes", fieldId: "roster.notes", basis: "header" }],
       rows: [{ id: "source-7", cells: [{ value: "Employee ID", fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF0000" } }, background: "#ff0000" }, { value: "Notes" }] },
@@ -62,7 +63,7 @@ it("preserves all workbook data, typed dates, hidden cells and stable bindings t
   expect(updated.savedAt).toBe("2026-10-12T12:00:01.000Z");
   expect(updated.workbook.sheets).toEqual(created.workbook.sheets);
   expect(f.service.list()).toEqual([updated]);
-  expect(f.service.history(created.libraryId)).toEqual([created, updated]);
+  expect(f.service.history(created.libraryId)).toEqual([]);
   expect(f.database.prepare("SELECT payload_json FROM workbook_library").get()?.payload_json).toContain('"type":"date"');
 });
 
@@ -73,7 +74,7 @@ it("refuses stale versions and identity changes without touching the current wor
   failure(() => f.service.save(created.libraryId, 2, { ...created.workbook, libraryId: "other" }), "WORKBOOK_INVALID");
   failure(() => f.service.save(created.libraryId, 2, { ...created.workbook, sheets: [] }), "WORKBOOK_INVALID");
   expect(f.service.read(created.libraryId)).toEqual(saved);
-  expect(f.service.history(created.libraryId)).toEqual([created, saved]);
+  expect(f.service.history(created.libraryId)).toEqual([]);
   failure(() => f.service.read("missing"), "WORKBOOK_NOT_FOUND");
   failure(() => f.service.history("missing"), "WORKBOOK_NOT_FOUND");
 });
@@ -114,33 +115,31 @@ it.each(malformed)("refuses %s before storage effects", (_name, change) => {
   expect(f.database.prepare("SELECT COUNT(*) AS count FROM workbook_library_history").get()?.count).toBe(0);
 });
 
-it("rolls back both current and history changes when history publication fails", () => {
+it("rolls back master and ownership changes when receipt publication fails", () => {
   const f = fixture(), created = f.service.create(workbook());
-  f.database.exec("CREATE TRIGGER injected_failure BEFORE INSERT ON workbook_library_history WHEN NEW.version=2 BEGIN SELECT RAISE(ABORT,'injected'); END");
+  f.database.exec("CREATE TRIGGER injected_failure BEFORE UPDATE OF receipt_json ON workbook_operations BEGIN SELECT RAISE(ABORT,'injected'); END");
   failure(() => f.service.save(created.libraryId, 1, { ...created.workbook, name: "Changed.xlsx" }), "WORKBOOK_STORAGE_FAILED");
   expect(f.service.read(created.libraryId)).toEqual(created);
-  expect(f.service.history(created.libraryId)).toEqual([created]);
+  expect(f.service.history(created.libraryId)).toEqual([]);
 });
 
-it.each(["payload", "columns", "history"])("refuses corrupt stored %s without replacing it", kind => {
+it.each(["payload", "columns"])("refuses corrupt stored %s without replacing it", kind => {
   const f = fixture(), created = f.service.create(workbook());
   if (kind === "payload") f.database.prepare("UPDATE workbook_library SET payload_json='{}' WHERE id=?").run(created.libraryId);
   else if (kind === "columns") f.database.prepare("UPDATE workbook_library SET version=99 WHERE id=?").run(created.libraryId);
-  else {
-    f.database.exec("DROP TRIGGER workbook_library_history_immutable");
-    f.database.prepare("UPDATE workbook_library_history SET payload_json='{}' WHERE workbook_id=?").run(created.libraryId);
-  }
+
   failure(() => f.service.read(created.libraryId), "WORKBOOK_STORAGE_CORRUPT");
   failure(() => f.service.list(), "WORKBOOK_STORAGE_CORRUPT");
   failure(() => f.service.history(created.libraryId), "WORKBOOK_STORAGE_CORRUPT");
   failure(() => f.service.save(created.libraryId, 1, created.workbook), "WORKBOOK_STORAGE_CORRUPT");
 });
 
-it("retains accepted history against update and delete", () => {
+it("retains manual named versions against update, delete and replacement", () => {
   const f = fixture(), created = f.service.create(workbook());
-  expect(() => f.database.prepare("DELETE FROM workbook_library_history WHERE workbook_id=?").run(created.libraryId)).toThrow("workbook-history-retained");
-  expect(() => f.database.prepare("UPDATE workbook_library_history SET version=9 WHERE workbook_id=?").run(created.libraryId)).toThrow("workbook-history-immutable");
-  expect(() => f.database.exec("INSERT OR REPLACE INTO workbook_library_history SELECT * FROM workbook_library_history")).toThrow("workbook-history-immutable");
+  f.service.operatorOperation(created.libraryId, 'manual', { kind: 'version', expectedVersion: 1, name: 'Reviewed' });
+  expect(() => f.database.prepare("DELETE FROM workbook_library_history WHERE workbook_id=?").run(created.libraryId)).toThrow('workbook-evidence-retained');
+  expect(() => f.database.prepare("UPDATE workbook_library_history SET version=9 WHERE workbook_id=?").run(created.libraryId)).toThrow('workbook-evidence-immutable');
+  expect(() => f.database.exec("INSERT OR REPLACE INTO workbook_library_history SELECT * FROM workbook_library_history")).toThrow('workbook-evidence-immutable');
   expect(f.service.history(created.libraryId)).toEqual([created]);
 });
 
@@ -162,11 +161,12 @@ it("distinguishes dates from date-like strings and omits undefined optionals wit
   expect(restored.workbook.sheets[1].rows[0].cells[2].value).toBeNull();
 });
 
-it("validates older snapshots and contiguous versions when full history is requested", () => {
+it("validates named snapshots independently of the live master", () => {
   const f = fixture(), first = f.service.create(workbook());
+  f.service.operatorOperation(first.libraryId, 'manual', { kind: 'version', expectedVersion: 1, name: 'Reviewed' });
   const last = f.service.save(first.libraryId, 1, first.workbook);
   f.database.exec("DROP TRIGGER workbook_library_history_immutable");
-  f.database.prepare("UPDATE workbook_library_history SET payload_json='{}' WHERE workbook_id=? AND version=1").run(first.libraryId);
+  f.database.prepare("UPDATE workbook_library_history SET payload_json='{}' WHERE workbook_id=?").run(first.libraryId);
   expect(f.service.read(first.libraryId)).toEqual(last);
   failure(() => f.service.history(first.libraryId), "WORKBOOK_STORAGE_CORRUPT");
 });
@@ -174,26 +174,33 @@ it("validates older snapshots and contiguous versions when full history is reque
 it("refuses a regressing clock without changing accepted versions", () => {
   const f = fixture(), first = f.service.create(workbook());
   f.clock.advanceWall(1000);
-  const last = f.service.save(first.libraryId, 1, first.workbook);
+  f.service.save(first.libraryId, 1, first.workbook);
   f.clock.advanceWall(-500);
   failure(() => f.service.save(first.libraryId, 2, first.workbook), "WORKBOOK_INVALID");
-  expect(f.service.history(first.libraryId)).toEqual([first, last]);
+  expect(f.service.history(first.libraryId)).toEqual([]);
 });
 
-it("preserves the actual theme object emitted by ExcelJS XLSX imports", async () => {
-  const f = fixture(), source = new Excel.Workbook();
+it("preserves the theme object emitted by XLSX imports", async () => {
+  const f = fixture(), source = new Workbook();
   source.addWorksheet("People").getCell("A1").value = "Employee ID";
-  const imported = new Excel.Workbook();
-  await imported.xlsx.load(await source.xlsx.writeBuffer());
-  expect(Array.isArray(imported.model.themes)).toBe(false);
-  const value = { ...workbook(), themes: imported.model.themes };
+  const imported = await importSpreadsheet('Theme.xlsx', new Uint8Array(writeXlsx(source)).buffer);
+  expect(Array.isArray(imported.themes)).toBe(false);
+  const value = { ...workbook(), themes: imported.themes };
   const saved = f.service.create(value);
-  expect(f.service.read(saved.libraryId).workbook.themes).toEqual(imported.model.themes);
+  expect(f.service.read(saved.libraryId).workbook.themes).toEqual(imported.themes);
+});
+it('admits the selected writer default style for a safe imported master edit', async () => {
+  const f = fixture();
+  const imported = await importSpreadsheet('Plain.xlsx', await spreadsheetXlsx({ ...workbook(), themes: [] }));
+  expect(imported.unsupportedMetadata).toBeUndefined();
+  const created = f.service.create(imported);
+  const changed = f.service.save(created.libraryId, created.version, { ...created.workbook, name: 'Edited.xlsx' });
+  expect(changed.workbook.name).toBe('Edited.xlsx');
 });
 
 
 it('roundtrips a wide multi-sheet roster as raw library data while execution rejects invalid canonical rows', async () => {
-  const source = new Excel.Workbook();
+  const source = new Workbook();
   const rosterEids = [
     ['10800000', '10800001', '10873698'],
     ['10000001', '10456712', '10101010'],
@@ -216,12 +223,13 @@ it('roundtrips a wide multi-sheet roster as raw library data while execution rej
       target.getRow(row).values = ['Morrow, Bea', 'Morrow, Bee', rawEid, row === 8 ? 'invalid@' : 'bea@example.com', row === 9 ? '02/30/2026' : new Date('2026-10-19T00:00:00Z'), 'JZ 05/29/26', '6.16.26 KM', '  untouched  '];
     }
     target.getCell('A6').value = { richText: [{ text: 'Morrow, ', font: { bold: true, color: { argb: 'FF112233' } } }, { text: 'Bea', font: { italic: true } }] };
-    target.getCell('D6').value = { text: 'bea@example.com', hyperlink: 'mailto:bea@example.com', tooltip: 'Email' };
+    target.getCell('D6').value = 'bea@example.com';
+    target.addHyperlink({ ref: 'D6', target: 'mailto:bea@example.com', tooltip: 'Email' });
     target.getCell('C6').numFmt = '00000000';
     target.getCell('E6').numFmt = 'mm/dd/yyyy';
     target.getCell('F6').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } };
   }
-  const originalBytes = await source.xlsx.writeBuffer();
+  const originalBytes = new Uint8Array(writeXlsx(source)).buffer;
   const imported = await importSpreadsheet('Synthetic.xlsx', originalBytes);
   const prepared = prepareSpreadsheetColumns(imported);
   expect(prepared.sheets.map(sheet => sheet.headerRow)).toEqual(Array(9).fill(5));
@@ -284,13 +292,13 @@ it('retains original worksheet row locations after sorting and save/reopen', asy
 
 
 it('preserves selected blank trailing columns and rows using native XLSX dimensions', async () => {
-  const source = new Excel.Workbook(), target = source.addWorksheet('Synthetic');
+  const source = new Workbook(), target = source.addWorksheet('Synthetic');
   for (let row = 1; row <= 4; row++) for (let column = 1; column <= 3; column++) {
-    const cell = target.getCell(row, column);
+    const cell = target.getRow(row).getCell(column);
     cell.value = row === 1 && column < 3 ? `Field ${column}` : row === 2 && column === 1 ? false : null;
     cell.fill = { type: 'pattern', pattern: 'none' };
   }
-  const imported = selectSpreadsheetColumns(prepareSpreadsheetColumns(await importSpreadsheet('Synthetic.xlsx', await source.xlsx.writeBuffer())));
+  const imported = selectSpreadsheetColumns(prepareSpreadsheetColumns(await importSpreadsheet('Synthetic.xlsx', new Uint8Array(writeXlsx(source)).buffer)));
   expect(imported.sheets[0].width).toBe(3);
   expect(imported.sheets[0].rows).toHaveLength(4);
   const f = fixture(), created = f.service.create(imported), reopened = f.service.read(created.libraryId);
@@ -304,8 +312,8 @@ it('preserves selected blank trailing columns and rows using native XLSX dimensi
 });
 
 it('validates native worksheet dimensions and references before allocating the editable grid', async () => {
-  const source = new Excel.Workbook(); source.addWorksheet('Synthetic').getCell('C3').value = 'Retained';
-  const bytes = await source.xlsx.writeBuffer();
+  const source = new Workbook(); source.addWorksheet('Synthetic').getCell('C3').value = 'Retained';
+  const bytes = new Uint8Array(writeXlsx(source)).buffer;
   const rewrite = async (path: string, change: (xml: string) => string) => {
     const archive = await JSZip.loadAsync(bytes);
     const entry = archive.file(path); if (!entry) throw new Error('Synthetic XML missing');
@@ -330,10 +338,10 @@ it('validates native worksheet dimensions and references before allocating the e
 
 
 it('maps native dimensions through exact worksheet relationships rather than relation order or sheet index', async () => {
-  const source = new Excel.Workbook();
+  const source = new Workbook();
   source.addWorksheet('First').getCell('C3').value = 'First value';
   source.addWorksheet('Second').getCell('F8').value = 'Second value';
-  const archive = await JSZip.loadAsync(await source.xlsx.writeBuffer());
+  const archive = await JSZip.loadAsync(writeXlsx(source));
   const rels = archive.file('xl/_rels/workbook.xml.rels'); if (!rels) throw new Error('Synthetic relationships missing');
   let xml = (await rels.async('string')).replace(/Target="worksheets\/sheet([12])\.xml"/gu, (_match, number: string) => `Target="/xl/worksheets/sheet${3 - Number(number)}.xml"`);
   const reversed = [...xml.matchAll(/<Relationship\b[^>]*\/>/gu)].map(match => match[0]).reverse();

@@ -3,7 +3,8 @@ import { useEffect, useDeferredValue, useId, useMemo, useRef, useState } from 'r
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Columns3, Download, MoreHorizontal, Plus, Undo2, Redo2 } from 'lucide-react';
 import { Spinner, Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, PageBreadcrumbs, PageHeading, SearchInput, Select } from '../../ds/ui.js';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ds/primitives/dropdown-menu.js';
-import { addSpreadsheetColumn, cellDisplayText, cellText, columnName, downloadSpreadsheet, editSpreadsheetCell, sortSpreadsheet, spreadsheetCellProblem, spreadsheetForeground, spreadsheetSaveMatches, type SpreadsheetSaveResult, type EditableSheet, type EditableWorkbook } from './spreadsheet-editor-model.js';
+import { addSpreadsheetColumn, cellDisplayText, columnName, downloadSpreadsheet, editSpreadsheetCell, sortSpreadsheet, spreadsheetCellProblem, spreadsheetForeground, spreadsheetSaveMatches, type SpreadsheetSaveResult } from './spreadsheet-editor-model.js';
+import { cellText, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { exportSheetInWorker, exportSpreadsheetInWorker } from "./spreadsheet-import-client.js";
 import { EMPTY_WORKBOOK_HISTORY, recordWorkbookEdit, stepWorkbookHistory, type WorkbookHistory } from './spreadsheet-history-model.js';
 import './spreadsheet-editor.css';

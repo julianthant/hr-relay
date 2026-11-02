@@ -5,11 +5,12 @@ import type { DashboardClient } from '../client/index.js';
 import { DashboardClientError } from '../client/errors.js';
 import { useDashboardClient, useDashboardCommandBinding } from './client-context.js';
 import type { SavedWorkbook } from '../../models/dashboard/workbooks.js';
-import { cellText, spreadsheetSaveMatches, type EditableWorkbook, type SpreadsheetSaveResult } from '../surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { spreadsheetSaveMatches, type SpreadsheetSaveResult } from '../surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { cellText, type EditableWorkbook } from '../../rules/spreadsheets/workbook-io.js';
 import { NOT_MAPPED, type RegisteredSpreadsheet } from '../surfaces/spreadsheets/spreadsheet-mock-model.js';
 import { spreadsheetField } from '../surfaces/spreadsheets/spreadsheet-fields-model.js';
 
-type WorkbookLibraryQueries = Pick<DashboardClient, 'workbookList' | 'workbookOpen' | 'workbookCreate' | 'workbookSave' | 'workbookHistory'>;
+type WorkbookLibraryQueries = Pick<DashboardClient, 'workbookList' | 'workbookOpen' | 'workbookRevision' | 'workbookCreate' | 'workbookSave' | 'workbookHistory'>;
 type SaveIntent = { draft: EditableWorkbook; expectedVersion: number; libraryId?: string; error?: unknown };
 type Draft = { document: EditableWorkbook; dirty: boolean; opened?: SavedWorkbook; intent?: SaveIntent; saving?: Promise<SpreadsheetSaveResult> };
 type Snapshot = { files: readonly RegisteredSpreadsheet[]; loading: boolean; refreshing: boolean; opening?: string; openError: string; error: string };
@@ -84,12 +85,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
       return readWithDeadline(() => client.workbookHistory(libraryId), "DASHBOARD_READ_FAILED");
     },
     async readVersion(libraryId: string, version: number) {
-      const current = await readWithDeadline(() => client.workbookOpen(libraryId), "DASHBOARD_READ_FAILED");
-      if (current.version === version) return current;
-      const history = await adapter.history(libraryId);
-      const record = history.find(record => record.version === version);
-      if (!record) throw new Error("SPREADSHEET_VERSION_UNAVAILABLE");
-      return record;
+      return readWithDeadline(() => client.workbookRevision(libraryId, version), "DASHBOARD_READ_FAILED");
     },
     markRegistered(id: string, version: number, status: "Attached" | "Generated" | "Updated") {
       const key = keyFor(id), draft = drafts.get(key);

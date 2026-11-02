@@ -5,8 +5,9 @@ This reference owns test selection, runner containment, coverage policy, and gua
 acceptance scope and the gate schedule. A declared test, scenario ID, or guard is not evidence that
 it ran.
 
-TypeScript sources use LF checkouts through `.gitattributes`. Build manifests and reviewed source
-digests hash exact source bytes, so Windows and CI must read the same line endings.
+Tracked TypeScript files use LF on every platform through `.gitattributes`. Build manifests and
+reviewed-source pins hash the exact checkout bytes; consistent line endings preserve those byte
+checks when generation moves between Windows, macOS and Linux.
 
 ## 1. Test layers and ownership
 

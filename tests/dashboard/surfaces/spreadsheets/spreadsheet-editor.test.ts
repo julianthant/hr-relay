@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { act,createElement,useState } from 'react';
 import { createRoot,type Root } from 'react-dom/client';
 import { afterEach,describe,it,vi } from 'vitest';
-import { newEditableWorkbook,type EditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { newEditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { type EditableWorkbook } from '../../../../src/rules/spreadsheets/workbook-io.js';
 import { SpreadsheetEditor } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
