@@ -77,7 +77,6 @@ for (const binding of ["unbound-source", "source-bound"] as const) {
       try { stored = binding === "source-bound" ? w.database.authority.ocrExtractions.insert(reading).record
         : insertUnboundOcrExtraction(raw, reading.extraction); }
       finally { raw.close(); }
-      assert.equal(containsDeletionArtifactReference(stored, image), true);
       if (stored.binding === "unbound-source") {
         const { sourceSha256: _source, ...withoutSource } = stored.extraction;
         assert.equal(containsDeletionArtifactReference({ ...stored, extraction: withoutSource }, image), false);
@@ -97,12 +96,15 @@ for (const binding of ["unbound-source", "source-bound"] as const) {
         assert.deepEqual([...result.purged].sort(), [shared.bundleId, unrelated.bundleId].sort());
         assert.equal(result.retainedBytes, sourceBytes.length);
       } else {
-        assert.equal(w.service.delete({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: terminal.version }).state, "deleted");
+        const commandId = randomUUID();
+        assert.equal(w.service.delete({ commandId, runId: run.envelope.runId, expectedVersion: terminal.version }).state, "deleted");
         assert.equal(w.database.authority.runs.get(run.envelope.runId), undefined);
+        assert.equal(w.database.settleRunDeletionFiles({ runId: run.envelope.runId, commandId }), "complete");
       }
       assert.deepEqual(readFileSync(sourcePath), before);
       assert.equal(existsSync(join(w.profile.admission.artifactRoot, `${unrelated.attachments[0]?.digest}.artifact`)), false);
       assert.deepEqual(w.database.authority.ocrExtractions.get(stored.extractionId), stored);
+      assert.equal(containsDeletionArtifactReference(stored, image), true);
       const stream = await artifacts.open(image), chunks: Uint8Array[] = [];
       for await (const chunk of stream) {
         assert.ok(chunk instanceof Uint8Array);
