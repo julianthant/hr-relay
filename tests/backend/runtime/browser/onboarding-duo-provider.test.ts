@@ -69,10 +69,10 @@ function world(method: "key" | "touch" = "key") {
       throw new Error("unexpected operation");
     },
   } as unknown as Worker;
-  function makePage() {
+  function makePage(initialUrl = "about:blank") {
     let pageClosed = false;
-    let url = "about:blank";
-    return { bringToFront: async () => { focusCount++; }, url: () => url,
+    let url = initialUrl;
+    return { evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => url,
       goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://")) { portalPages++; throw new Error("synthetic navigation failure"); } url = destination; },
       close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
   }
@@ -90,7 +90,7 @@ function world(method: "key" | "touch" = "key") {
         closed=false;pages=[makePage()];listeners.length=0;
         return context;
       }
-      launchCount++; closed = false; pages = [makePage()]; listeners.length = 0; profile = input.profileDirectory;
+      launchCount++; closed = false; pages = [makePage(), ...(method === "touch" ? [makePage("https://test.duosecurity.com")] : [])]; listeners.length = 0; profile = input.profileDirectory;
       assert.equal(existsSync(join(input.extensionDirectory, "unlisted.txt")), false);
       assert.equal(readFileSync(join(input.extensionDirectory, "LICENSE"), "utf8"), "synthetic license fixture");
       assert.equal(readFileSync(join(input.extensionDirectory, "THIRD_PARTY_NOTICES.md"), "utf8"), "synthetic notices fixture");

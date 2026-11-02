@@ -92,7 +92,7 @@ it("serves public profile state without minting a selected profile, actor or aut
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const response = await fetch(`${base}/api/v1/profile/state`);
-    assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "signed-out" });
+    assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "signed-out", signUpRequired: true });
     assert.equal(response.headers.get("set-cookie"), null);
     const proxyHost = `localhost:${String(rebuildRuntimeIsolation.frontendPort)}`;
     const proxyRequest = (path: string, host: string, body?: string) => new Promise<{ status: number | undefined; body: unknown }>((resolve, reject) => {
@@ -106,7 +106,7 @@ it("serves public profile state without minting a selected profile, actor or aut
       request.on("error", reject); request.end(body);
     });
     const proxyState = await proxyRequest("/api/v1/profile/state", proxyHost);
-    assert.equal(proxyState.status, 200); assert.deepEqual(proxyState.body, { state: "signed-out" });
+    assert.equal(proxyState.status, 200); assert.deepEqual(proxyState.body, { state: "signed-out", signUpRequired: true });
     const invalidProfile = await proxyRequest("/api/v1/profile/sign-up", proxyHost, "{}");
     assert.equal(invalidProfile.status, 400); assert.deepEqual(invalidProfile.body, { state: "error", code: "SCHEMA_INVALID" });
     const foreignHost = `localhost:${String(rebuildRuntimeIsolation.frontendPort + 1)}`;
@@ -233,7 +233,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
       join(f.machine.stateRoot, "machine", "duo-credentials", `${active.profileId}.json`), join(f.machine.stateRoot, "machine", "credential-keys", `${active.profileId}.json`)];
     const retainedCredentials = credentialPaths.map(path => createHash("sha256").update(readFileSync(path)).digest("hex"));
     const logout = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/logout", {}, cookie)).json());
-    assert.deepEqual(logout, { state: "signed-out" });
+    assert.deepEqual(logout, { state: "signed-out", signUpRequired: false });
     assert.equal(f.machine.readProfileRegistry().activeProfileId, null);
     assert.equal(f.machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.credentialState, "saved");
     assert.deepEqual(credentialPaths.map(path => createHash("sha256").update(readFileSync(path)).digest("hex")), retainedCredentials);

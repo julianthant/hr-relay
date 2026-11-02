@@ -11,7 +11,7 @@ export async function mountRelayOptions(initial) {
   $('editor').hidden = false;
   $('connection').hidden = false;
   $('openLogin').hidden = false;
-  $('openLogin').textContent = 'Open duo.ucsd.edu';
+  $('openLogin').textContent = 'Open duo.ucpath.edu';
   $('editorTitle').textContent = 'Set up your sign-in methods';
   document.querySelector('.brand small').textContent = 'Relay sign-in setup';
   document.querySelector('.brand span').firstChild.textContent = 'Fast Duo';

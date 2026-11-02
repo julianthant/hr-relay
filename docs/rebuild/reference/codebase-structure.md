@@ -53,6 +53,9 @@ src/
 
 ### Backend
 
+`storage/maintenance/account-deletion.ts` owns captured local-account erasure and startup continuation.
+`runtime/browser/onboarding-platform-authenticator.ts` selects native or Chromium virtual platform enrollment and exports virtual keys into canonical custody.
+
 Paths in this table are relative to `src/backend/`.
 
 | Path | Ownership |

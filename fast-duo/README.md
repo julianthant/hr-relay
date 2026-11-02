@@ -45,7 +45,7 @@ The signup extension retains only public key descriptors after enrollment persis
 
 The Security key method captures the approved software credential. The Touch ID
 method disables software capture/signing, passes through to the native platform
-ceremony, and records only public metadata. Duo's added-method observation and the
+ceremony. Relay uses Chromium’s virtual internal authenticator when a successful platform probe reports none available, and retains that key in canonical encrypted custody. Native Touch ID exposes only public metadata. Duo's added-method observation and the
 operator's explicit Touch ID confirmation remain separate requirements. An internal
 transport or user-verification flag alone does not establish a biometric operation.
 

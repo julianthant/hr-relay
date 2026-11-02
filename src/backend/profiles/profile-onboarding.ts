@@ -82,13 +82,13 @@ export function createProfileOnboarding(input: {
     if (receipt.method === "key") {
       if (receipt.ceremony.mechanism !== "fast-duo") return unavailable();
     } else if (receipt.portal?.acceptance !== "portal-accepted") return receipt;
-    else if (receipt.ceremony.mechanism !== "native-platform" || !receipt.ceremony.softwareInterceptionDisabled) return unavailable();
+    else if ((receipt.ceremony.mechanism !== "native-platform" && receipt.ceremony.mechanism !== "chromium-platform") || !receipt.ceremony.softwareInterceptionDisabled) return unavailable();
     return { ...receipt, state: "complete" };
   }
   function settleAttempt(attempt: DraftDuoAttempt): void {
     const { operation, receipt } = current(attempt), completed = completeIfProved(receipt);
     if (completed.state !== "complete") return;
-    if (attempt.method === "key") {
+    if (attempt.method === "key" || receipt.ceremony?.mechanism === "chromium-platform") {
       if (receipt.scope === undefined) return unavailable();
       const store = input.store(operation), credential = store.readForScope(receipt.scope).find(entry => entry.credentialId === receipt.ceremony?.credentialId);
       if (credential?.state === "pending" && receipt.scope !== undefined) store.confirm(credential.credentialId, receipt.scope);
@@ -123,7 +123,7 @@ export function createProfileOnboarding(input: {
     };
     const capability: DraftDuoCapability = Object.freeze<DraftDuoCapability>({ attempt, scope, assertCurrent,
       async persistPending(credential) {
-        assertCurrent(); if (attempt.method !== "key") return unavailable();
+        assertCurrent(); if (attempt.method === "touch" && credential.transport !== "internal") return unavailable();
         const latest = current(attempt).operation;
         const store = input.store(latest);
         if (store.readForScope(scope).length !== 0) return unavailable();
@@ -139,7 +139,7 @@ export function createProfileOnboarding(input: {
       },
       async recordCeremony(proof) {
         assertCurrent(); z.string().min(1).parse(proof.credentialId); z.string().min(1).parse(proof.requestId);
-        if (attempt.method === "key" ? proof.mechanism !== "fast-duo" : proof.mechanism !== "native-platform" || !proof.softwareInterceptionDisabled) return unavailable();
+        if (attempt.method === "key" ? proof.mechanism !== "fast-duo" : (proof.mechanism !== "native-platform" && proof.mechanism !== "chromium-platform") || !proof.softwareInterceptionDisabled) return unavailable();
         updateAttempt(attempt, (_latest, prior) => {
           if (prior.ceremony !== undefined && JSON.stringify(prior.ceremony) !== JSON.stringify(proof)) return unavailable();
           return { receipt: { ...prior, ceremony: proof }, result: undefined };
@@ -276,10 +276,13 @@ export function createProfileOnboarding(input: {
     verifyFinish(operation: SignUpOperation): void {
       if (retainedFailures.length > 0) throw new AggregateError(retainedFailures, "profile-onboarding-custody-unproved");
       assertFinishedProfileOnboarding(operation);
-      const key = requiredDraft(operation).attempts.findLast(entry => entry.method === "key" && entry.generation === operation.onboarding?.generation);
-      if (key?.scope === undefined) return unavailable();
-      const credential = input.store(operation).readForScope(key.scope).find(entry => entry.credentialId === key.ceremony?.credentialId);
-      if (credential?.state !== "ready") return unavailable();
+      for (const method of ["key", "touch"] as const) {
+        const receipt = requiredDraft(operation).attempts.findLast(entry => entry.method === method && entry.generation === operation.onboarding?.generation);
+        if (receipt?.scope === undefined) return unavailable();
+        if (method === "touch" && receipt.ceremony?.mechanism === "native-platform") continue;
+        const credential = input.store(operation).readForScope(receipt.scope).find(entry => entry.credentialId === receipt.ceremony?.credentialId);
+        if (credential?.state !== "ready") return unavailable();
+      }
     },
   };
   return { ...owner,

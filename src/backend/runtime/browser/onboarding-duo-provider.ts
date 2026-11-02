@@ -1,3 +1,4 @@
+import { prepareOnboardingPlatformAuthenticator, type OnboardingPlatformAuthenticator } from "./onboarding-platform-authenticator.js";
 import { createNativeBrowserProbe, DEFAULT_BROWSER_LAUNCHER, type PersistentContextLauncher } from "./native-browser.js";
 import { privatePathRejects } from "../../storage/private-path.js";
 import { DuoAssertionRequestSchema } from "../../storage/configuration/duo-signing.js";
@@ -70,7 +71,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     closeProofMs: options.closeProofMs, launchTimeoutMs: options.closeProofMs, signal: new AbortController().signal, launcher: browserLauncher });
   type ProviderSession = {
     attempt: DraftDuoAttempt; profileDirectory: string; context?: BrowserContext; launching?: Promise<BrowserContext>; worker?: Worker;
-    capability?: DraftDuoCapability; credentialId?: string; requestId?: string; accepted: boolean; revoked: boolean;
+    capability?: DraftDuoCapability; platform?: OnboardingPlatformAuthenticator; credentialId?: string; requestId?: string; accepted: boolean; revoked: boolean;
     contextClosed: boolean; launchStarted: boolean; startup?: Promise<void>; pump?: Promise<void>;
     reportFailure: (error: Error) => Promise<void>; reporting?: Promise<void>; failure?: ProfileOnboardingDuoProviderError; retentionFailed?: boolean; stopFailureAfterSettlement?: ProfileOnboardingDuoProviderError; expiry?: ReturnType<typeof setTimeout>; close?: Promise<Readonly<{ state: "closed" | "uncertain" }>>;
   };
@@ -132,7 +133,13 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     if (request.kind === "software-created" || request.kind === "native-created") {
       const native = request.kind === "native-created";
       if (native !== (session.attempt.method === "touch") || session.requestId || !native && credentialId !== session.credentialId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-      await scoped(session, () => capability.recordCeremony({ credentialId, requestId, mechanism: native ? "native-platform" : "fast-duo", softwareInterceptionDisabled: native }));
+      if (native && session.platform?.mechanism === "chromium-platform") {
+        const platform = session.platform;
+        await scoped(session, async () => capability.persistPending(await platform.credential(credentialId, capability.scope.rpId, options.clock.now().toISOString())));
+      }
+      const mechanism = native ? session.platform?.mechanism : "fast-duo";
+      if (mechanism === undefined) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+      await scoped(session, () => capability.recordCeremony({ credentialId, requestId, mechanism, softwareInterceptionDisabled: native }));
       current(session);
       session.credentialId = credentialId; session.requestId = requestId;
       return { observed: true };
@@ -259,7 +266,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       const page = await context.newPage();
       session.portal = page; browserCurrent(session);
       try {
-        await page.goto("https://duo.ucsd.edu", { waitUntil: "domcontentloaded" });
+        await page.goto("https://duo.ucpath.edu", { waitUntil: "domcontentloaded" });
         browserCurrent(session);
         await submitOnboardingSsoCredentials(page, () => session.owner.acquireCredentials(), () => browserCurrent(session), options.closeProofMs);
         browserCurrent(session);
@@ -271,7 +278,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     const url = new URL(page.url());
     if (url.protocol !== "https:" || url.port || url.username || url.password
       || !(url.hostname === "a5.ucsd.edu" && url.pathname.startsWith("/tritON/")
-        || url.hostname === "duo.ucsd.edu"
+        || url.hostname === "duo.ucpath.edu"
         || url.hostname === "duosecurity.com" || url.hostname.endsWith(".duosecurity.com"))) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     await page.bringToFront(); browserCurrent(session);
     if (page.url() !== url.href) throw new ProfileOnboardingDuoProviderError("refused", "scope");
@@ -432,6 +439,13 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
                 const url = new URL(request.data.origin);
                 if (url.protocol !== "https:" || url.port || url.username || url.password || url.origin !== request.data.origin || !(url.hostname === "duosecurity.com" || url.hostname.endsWith(".duosecurity.com"))) throw new ProfileOnboardingDuoProviderError("refused", "scope");
                 await observedCurrent(session);
+                if (attempt.method === "touch") {
+                  const context = session.context;
+                  const pages = context?.pages().filter(page => !page.isClosed() && new URL(page.url()).origin === request.data.origin);
+                  if (!context || pages?.length !== 1 || !pages[0]) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+                  session.platform = await prepareOnboardingPlatformAuthenticator(context, pages[0]);
+                  await observedCurrent(session);
+                }
                 const capability = await bindObservedContext({ contextId: request.data.documentId, tabId: request.data.tabId, accountName: request.data.username,
                   origin: request.data.origin, rpId: request.data.rpId });
                 if (canonicalJsonStringify(capability.attempt) !== canonicalJsonStringify(attempt)

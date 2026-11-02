@@ -328,6 +328,7 @@ export function createProfileSession(input: {
         ...(attempt === undefined ? {} : { attemptId: attempt.attemptId }),
         ceremonyObserved: attempt?.ceremony !== undefined, portalAccepted: attempt?.portal?.acceptance === "portal-accepted",
         operatorConfirmed: attempt?.operatorConfirmedAt !== undefined,
+        ...(attempt?.ceremony?.mechanism === "native-platform" || attempt?.ceremony?.mechanism === "chromium-platform" ? { platformAuthenticator: attempt.ceremony.mechanism } : {}),
         exactCredentialRequestObserved: attempt?.portal?.acceptance === "exact-credential-request" };
     };
     const methods = { key: method("key"), touch: method("touch") };
@@ -801,6 +802,14 @@ export function createProfileSession(input: {
         if (operation.phase === "complete") return refusal("PROFILE_SESSION_STALE");
         return continueLogout(operation);
       });
+    },
+    deleteLoggedOutAccount(operationId: string): void {
+      admission.assertWritable();
+      const completed = input.completedLogout?.(operationId), document = registry.read();
+      if (completed === undefined || document.activeProfileId !== null || document.sessionGeneration !== completed.epoch
+        || storageAdmissions.has(completed.profileId) || sessions.size !== 0) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+      try { admission.deleteProfileAccount(completed.profileId, completed.epoch); }
+      catch (cause) { throw new ProfileSessionRefusedError("PROFILE_ACCOUNT_DELETION_REFUSED", { cause }); }
     },
     logoutOperations(): readonly { readonly operationId: string; readonly profileId: string; readonly phase: string }[] {
       return readOperations().filter((operation): operation is LogoutOperation => operation.kind === "logout").map((operation) => ({
