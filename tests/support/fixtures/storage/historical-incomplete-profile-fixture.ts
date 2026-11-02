@@ -32,7 +32,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../helpers/admission-fixture.js";
 
-export async function createHistoricalRegisteredProfileFixture(options: { sourceVersion: 8 | 9 | 10 | 11 | 12; workspace?: string; lifetime?: RuntimeLifetimeLock }) {
+export async function createHistoricalRegisteredProfileFixture(options: { sourceVersion: 8 | 9 | 10 | 11 | 12 | 13; workspace?: string; lifetime?: RuntimeLifetimeLock }) {
   assert.equal(Entry, FakeKeyringEntry, "historical fixture requires the actual fake keychain before backend imports");
   const lifetime = options.lifetime ?? await RuntimeLifetimeLock.acquire(0);
   const fixture = await createBoundProfileFixture({ pending: "onboarding", lifetime, ...(options.workspace === undefined ? {} : { workspace: options.workspace }) });
@@ -74,7 +74,9 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
   let failure: { error: unknown } | undefined;
   try {
     database.exec("PRAGMA foreign_keys=ON; BEGIN EXCLUSIVE");
-    restoreEmptyPreMasterWorkbookFixture(database);
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM exclusive_session_leases").get()?.count, 0);
+    database.exec("DROP TABLE exclusive_session_leases");
+    if (options.sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(database);
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     if (options.sourceVersion < 10) {
       const editor = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE TABLE explorer_overrides \([\s\S]*?\n\) STRICT;/u)?.[0];

@@ -576,7 +576,7 @@ describe("worker browser session factory", () => {
     });
   });
 
-  it("refuses a system with no landed binding and an exclusive lease it cannot honor", async () => {
+  it("refuses an unbound system and an exclusive request for a system without that policy", async () => {
     await withTempRuntime(async ({ config }) => {
       const harness = fakeLauncher();
       const factory = factoryFor(
@@ -592,7 +592,7 @@ describe("worker browser session factory", () => {
       );
       await assert.rejects(
         factory.open({ ...OPEN_INPUT, exclusive: true }),
-        /exclusive OnBase lease is not landed/,
+        /browser-session-exclusivity-mismatch/,
       );
       assert.deepEqual(harness.launches(), [], "no browser may be launched for a refused session");
     });

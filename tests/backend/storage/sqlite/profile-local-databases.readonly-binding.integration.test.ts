@@ -328,7 +328,7 @@ it("takes and disposes a fresh strict snapshot for every ordinary binding read",
   } finally { observer.mockRestore(); await f.close(); }
 });
 
-it.each([9, 10, 11, 12, CURRENT_AUTHORITY_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION + 1])("accepts only supported bound database version %s", async version => {
+it.each([9, 10, 11, 12, 13, CURRENT_AUTHORITY_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION + 1])("accepts only supported bound database version %s", async version => {
   const f = await createBoundProfileFixture();
   const expectedBinding = f.admission.profileBinding;
   try {
