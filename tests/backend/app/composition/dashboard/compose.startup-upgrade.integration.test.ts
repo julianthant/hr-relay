@@ -12,7 +12,6 @@ import * as notificationOwner from "../../../../../src/backend/app/composition/d
 import * as credentialInventoryOwner from "../../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { prepareApplicationDataWorkspace,composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
 import { createProfileSession } from "../../../../../src/backend/profiles/profile-session.js";
 import { requireLifecycleApplied,RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { reconcileStartupCrash } from "../../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
@@ -325,14 +324,13 @@ function historicalTen(path: string): void {
 
 for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] as const) it(
   `upgrades ${mode} work and held durable leases intact before current-format crash recovery (fixed layout: ${move})`, async () => {
-    const world = createRunRecordServiceTestWorld(), f = await world.interruptedFixture();
+    const world = createRunRecordServiceTestWorld(), f = await world.interruptedFixture({ nativePaths: move });
     const profileId = f.admission.profileBinding.profileId, workspace = f.machine.readInstallationContext()?.workspace; assert.ok(workspace);
     const intent = mode === "unknown" ? world.parkedWriteIntent(f.database, f.run, { writeIntentId: randomUUID(), code: "unknown", message: "Unresolved external write" }) : undefined;
     const heldWorker = f.database.authority.workerLeases.get(CANONICAL_WORKER_ID); assert.ok(heldWorker && isLiveWorker(heldWorker));
     if (move) {
-      const resolved = resolveConfigWithProvenance({}, hostFacts, f.clock, { stateRoot: f.root, artifactRoot: f.admission.artifactRoot });
-      const snapshot = { ...resolved, configSnapshotId: randomUUID(), revision: 1, capturedAt: f.clock.now().toISOString(), capturedBy: "local-operator" as const };
-      f.database.withAuthorityTransaction(repositories => repositories.configSnapshots.insert(snapshot));
+      const custody = f.database.readProfileResourceCustody(), active = f.database.authority.runtimeConfig.get(); assert.ok(active);
+      const snapshot = custody.configSnapshots.find(row => row.configSnapshotId === active.configSnapshotId); assert.ok(snapshot);
       const worker = heldWorker;
       const profileRoot = snapshot.config.paths.browserProfileRoot, profileDirectory = join(profileRoot, "w1", "ucpath");
       const launch = createBrowserRoots(f.admission).beginLaunch({ profileId, profileRoot, profileDirectory, credentialFingerprint: "b".repeat(64),

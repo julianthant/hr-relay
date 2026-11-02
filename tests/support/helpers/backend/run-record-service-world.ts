@@ -1,4 +1,5 @@
 import { testProcessImport } from "../../compiled-process.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { randomUUID } from "node:crypto";
 import { detachBoundFixtureWorkers } from "../synthetic-database-admission.js";
@@ -49,7 +50,7 @@ export function createRunRecordServiceTestWorld() {
   async function fixture(
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
-    options?: { interrupted: boolean },
+    options?: { interrupted: boolean; nativePaths?: boolean },
   ) {
     const profile = await createBoundProfileFixture({ sharedMachine: true });
     const root = profile.stateRoot;
@@ -73,7 +74,9 @@ export function createRunRecordServiceTestWorld() {
       } catch (error) { databaseCloseFailure = { error }; throw error; }
     };
     cleanups.push(closeDatabase);
-    const active = database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+    const snapshot = options?.nativePaths === true ? { ...CONFIG_SNAPSHOT, ...resolveConfigWithProvenance({}, { primaryDisplay: null }, clock,
+      { stateRoot: root, artifactRoot: profile.admission.artifactRoot }) } : CONFIG_SNAPSHOT;
+    const active = database.authority.runtimeConfig.initialize(snapshot);
     testWorkerPorts(database,clock,{path:join(root,"state.db"),descriptor:personLookupDescriptor,poolIndex:1});
     const runtimeConfig = RuntimeConfigClaimTokenSchema.parse({
       generation: active.generation, settingsRevision: active.settingsRevision,
@@ -96,8 +99,8 @@ export function createRunRecordServiceTestWorld() {
       commandId: UUID_1, code: "pl", matchKey: "synthetic-item", workflow: WORKFLOW_ID,
       descriptorVersion: QUEUED_RUN.envelope.descriptorVersion,
       contractFingerprint: QUEUED_RUN.envelope.contractFingerprint,
-      configFingerprint: CONFIG_SNAPSHOT.fingerprint,
-      configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
+      configFingerprint: snapshot.fingerprint,
+      configSnapshotId: snapshot.configSnapshotId,
       resolvedInstance: RunRecordSchema.parse(QUEUED_RUN).envelope.resolvedInstance,
       priority: "bulk", shape: "single", dryRun: true,
       input: QUEUED_RUN.input, runtimeConfig,
@@ -106,8 +109,8 @@ export function createRunRecordServiceTestWorld() {
       async closeController() { closeDatabase(); await profile.closeController(); } };
   }
 
-  async function interruptedFixture() {
-    const f = await fixture(undefined, undefined, { interrupted: true });
+  async function interruptedFixture(options: { nativePaths?: boolean } = {}) {
+    const f = await fixture(undefined, undefined, { interrupted: true, ...options });
     const lock = f.lifetime;
     const run = runningRun(f.service, f.request, f.runtimeConfig);
     const claim = RunRecordSchema.parse(run).lifecycle;

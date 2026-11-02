@@ -247,7 +247,7 @@ it("retires a real worker only after its opened Chromium profile closes, custody
     assertWorkerProcessStopped(join_m1(root, rebuildRuntimeIsolation.processLockRoot), slot.workerId);
     assert.equal(existsSync(slotDirectory), false, "retirement acknowledgement requires deletion of the opened slot profile");
     assert.ok(db.authority.workerSlots.get(slot.workerId)?.retiredAt);
-    for (const child of children) { assert.ok(child.pid); assert.deepEqual(JSON.parse(readFileSync(join_m1(root, `cleanup-${String(child.pid)}.json`), "utf8")), { openContexts: 0, failures: 0 }); }
+    for (const child of children) { assert.ok(child.pid); assert.deepEqual(JSON.parse(readFileSync(join_m1(root, `cleanup-${String(child.pid)}.json`), "utf8")), { openContexts: 0, failures: 0 }, diagnostics()); }
     const completed = db.authority.runs.get(runId); assert.ok(completed);
     assert.equal(completed.lifecycle.state, 'terminal');
     assert.equal(runClaim(completed), undefined);

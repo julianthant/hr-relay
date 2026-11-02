@@ -582,13 +582,25 @@ async function offlineCanonicalPredecessor() {
 }
 
 for (const padding of [0, 16 * 1024 * 1024]) it(`converts an offline canonical5 predecessor with ${padding} receipt padding bytes and retains genuine generated D-format backup bytes`, async () => {
+  const started = performance.now(), timing: Record<string, number> = {};
   const f = await offlineCanonicalPredecessor();
+  timing.fixtureMs = performance.now() - started;
   if (padding !== 0) writeFileSync(f.receiptPath, Buffer.concat([readFileSync(f.receiptPath), Buffer.alloc(padding, " ")]), { mode: 0o600 });
   const retained = storageTree(f.backupRoot), keys = FakeKeyringEntry.snapshot();
+  const parse = JSON.parse; let largeParses = 0, largeParseMs = 0;
+  const parseSpy = vi.spyOn(JSON, "parse").mockImplementation((value, reviver) => {
+    const before = performance.now();
+    try { return parse(value, reviver); }
+    finally { if (value.length >= 16 * 1024 * 1024) { largeParses++; largeParseMs += performance.now() - before; } }
+  });
   try {
+    const acquired = performance.now();
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+    timing.admissionMs = performance.now() - acquired;
     try {
+      const upgrading = performance.now();
       const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
+      timing.upgradeMs = performance.now() - upgrading;
       assert.equal(result.state, "upgraded");
       const after = storageTree(f.backupRoot);
       for (const [path, digest] of Object.entries(retained)) assert.equal(after[path], digest);
@@ -600,7 +612,11 @@ for (const padding of [0, 16 * 1024 * 1024]) it(`converts an offline canonical5 
       for (const row of f.preserved) assert.deepEqual(readFileSync(row.path), row.bytes);
       assert.deepEqual(FakeKeyringEntry.snapshot(), keys); f.assertSeedUnchanged();
     } finally { maintenance.release(); }
-  } finally { await f.close(); }
+  } finally {
+    parseSpy.mockRestore();
+    console.info("retained-receipt-timing", { padding, ...timing, largeParses, largeParseMs, totalMs: performance.now() - started });
+    await f.close();
+  }
 });
 
 for (const change of ["operation-prefix", "malformed-receipt", "manifest-digest"] as const) it(`holds an offline canonical5 ${change} before intent or Chrome effects`, async () => {
