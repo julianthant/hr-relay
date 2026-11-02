@@ -14,7 +14,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `docs/rebuild/guard-inventory.json` | Guard owners and reasons. |
 | `docs/roadmap/roadmap.md` | Roadmap content. |
 | `docs/roadmap/index.html` | Generated roadmap site. |
-| `fast-duo/` | Shared software authenticator, isolated signup runtime, and backend-signed workflow login runtime. |
+| `fast-duo/` | Dashboard-owned Chromium enrollment and backend-signed workflow login runtimes. |
 | `scripts/build/` | Workflow registry and manifest generation and checks. |
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. |
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
