@@ -1123,6 +1123,8 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrObservations",
   "src/models/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrTerminationDriver",
 
+  "src/models/ui/ucpath-emergency-contact.ts:UcpathEmergencyContactDriver",
+  "src/models/ui/ucpath-emergency-contact.ts:UcpathContactObservations",
   "src/models/ui/ucpath-driver.ts:UcpathStoreDriver",
   "src/models/task/task-contract.ts:ReadTaskContract",
   "src/models/task/task-contract.ts:PrepareTaskContract",

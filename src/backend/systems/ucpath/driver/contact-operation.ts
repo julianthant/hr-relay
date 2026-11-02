@@ -15,7 +15,7 @@ import type {
 import { UcpathContactPageSnapshotSchema } from "../../../../models/ui/ucpath-emergency-contact.js";
 import type { UcpathContactPageSnapshot } from "../../../../models/ui/ucpath-emergency-contact.js";
 
-/** Fixture seam for editor preparation; no save or primary-change operation is exposed. */
+/** Editor preparation exposes no save or primary-change operation. */
 export interface UcpathContactPagePort {
   snapshot(): Promise<UcpathContactPageSnapshot>;
   viewAll(): Promise<void>;
@@ -37,8 +37,8 @@ function sameEffect(a: UcpathContactEffect, b: UcpathContactEffect): boolean {
     === canonicalJsonStringify({ ...b, name: normalizedName(b.name) });
 }
 
-function assertContactSubject(
-  page: UcpathContactPageSnapshot,
+export function assertContactSubject(
+  page: Pick<UcpathContactPageSnapshot, "pageStateId" | "displayedEid" | "displayedName">,
   subject: Pick<UcpathEmergencyContactInput, "emplId" | "expectedName">,
 ): void {
   if (page.pageStateId !== "ucpath.emergency-contact.editor-ready") refuse("unexpected-contact-page");

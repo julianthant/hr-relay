@@ -1,5 +1,6 @@
 /** The ONE `ucpath` driver surface every task in the store binds; a sibling task family EXTENDS it rather than minting a second declaration. */
 import type { SystemDriver } from "./driver.js";
+import type { UcpathContactObservations, UcpathEmergencyContactDriver } from "./ucpath-emergency-contact.js";
 import type {
   UcpathPersonOrgDriver,
   UcpathPersonOrgFields,
@@ -20,10 +21,11 @@ type UcpathNavigationDriver = SystemDriver<
   UcpathPersonOrgScreens | UcpathSmartHrScreens,
   UcpathPersonOrgStates | UcpathSmartHrStates,
   UcpathPersonOrgFields,
-  UcpathPersonOrgObservations & UcpathSmartHrObservations
+  UcpathPersonOrgObservations & UcpathSmartHrObservations & UcpathContactObservations
 >;
 
 export type UcpathStoreDriver =
   & UcpathNavigationDriver
   & Pick<UcpathPersonOrgDriver, "searchPersonOrg" | "searchPersonMatch" | "readJobSummary">
-  & UcpathSmartHrTerminationDriver;
+  & UcpathSmartHrTerminationDriver
+  & UcpathEmergencyContactDriver;

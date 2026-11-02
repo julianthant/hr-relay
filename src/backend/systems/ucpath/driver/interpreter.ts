@@ -1,4 +1,8 @@
 import { searchPersonMatchOnPage } from "./person-match-operation.js";
+import { createUcpathContactOperations } from "./contact-page.js";
+import { UCPATH_CONTACT_DISPLAYED_NAME } from "../../../../models/ui/ucpath-emergency-contact.js";
+import { UCPATH_PENDING_CONTACT_RECIPES } from "./ui-registry.js";
+import { UcpathContactRefusedError } from "../../../../models/systems/ucpath/emergency-contacts.js";
 import type { Page } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
@@ -72,6 +76,7 @@ export function createUcpathPersonOrgDriver(
 ): UcpathStoreDriver {
   let sweepSubjectEmplId: Eid | undefined;
   return {
+    ...createUcpathContactOperations(assertCurrent, page, clock),
     system: "ucpath",
     searchPersonMatch: async (input) => {
       assertCurrent();
@@ -150,6 +155,13 @@ export function createUcpathPersonOrgDriver(
       return UiActionProofSchema.parse({ elementId: id, effect: "prepare", performed: true });
     },
     async read(id) {
+      if (id === UCPATH_CONTACT_DISPLAYED_NAME) {
+        assertCurrent();
+        const name = (await page.locator(UCPATH_PENDING_CONTACT_RECIPES.displayedName).textContent())?.trim();
+        assertCurrent();
+        if (!name) throw new UcpathContactRefusedError("contact-identity-unreadable");
+        return name;
+      }
 
       // Direct Smart HR anchors have no proven registry selector provenance.
       if (id === UCPATH_SMART_HR_IN_PROGRESS_NAME) {
