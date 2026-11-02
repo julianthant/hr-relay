@@ -182,7 +182,7 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
       catch (error) {
         if (hasUnprovedSourceClosure(error)) throw error;
         try { await repairRegisteredPerson(workspace, lifetime, profileId, clock); }
-        catch (repair) { throw new AggregateError([error, repair], "startup-inspection-and-repair-failed", { cause: error }); }
+        catch (repair) { throw new AggregateError([error, repair], "startup-inspection-and-repair-failed", { cause: repair }); }
       }
     }
     await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts, clock);
