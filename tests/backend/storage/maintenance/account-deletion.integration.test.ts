@@ -17,6 +17,7 @@ import { systemClock } from "../../../../src/rules/time/clock.js";
 import { AccountDeletionSchema } from "../../../../src/backend/storage/maintenance/account-deletion.js";
 import { fixedLayoutEntries } from "../../../../src/backend/storage/maintenance/fixed-layout.js";
 import { ProfileVerifierDocumentSchema } from "../../../../src/models/profiles/profile.js";
+import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 
@@ -39,10 +40,14 @@ async function fixture() {
     assert.equal(runtime.session.resumeLogout(pending.operationId).state, "signed-out"); return pending.operationId;
   }
   const other = await signUp("other@ucsd.edu"); await logOut(other);
-  const active = await signUp("fixture@ucsd.edu"), operationId = await logOut(active);
+  const active = await signUp("fixture@ucsd.edu");
   const root = join(machine.stateRoot, "profiles", active.profileId), otherRoot = join(machine.stateRoot, "profiles", other.profileId);
-  mkdirSync(join(root, "backups", "synthetic"), { recursive: true, mode: 0o700 });
-  const retained = join(root, "backups", "synthetic", "retained.bin"); writeFileSync(retained, "synthetic backup", { mode: 0o600 });
+  const context = runtime.selectedContext(active.token), directory = join(root, "backups", "authority");
+  const backup = await new AuthorityBackupService(context.admission, context.database, { directory }, systemClock)
+    .request({ trigger: "schema-migration", requiredGeneration: context.database.getMeta().authorityGeneration });
+  assert.equal(backup.state, "verified");
+  const manifest = backup.manifests.at(-1); assert.ok(manifest);
+  const retained = join(directory, manifest.backupFileName), operationId = await logOut(active);
   return { workspace, runtime, active, other, root, otherRoot, operationId, retained,
     get machine() { return machine; }, get lifetime() { return lifetime; },
     async restart() {
