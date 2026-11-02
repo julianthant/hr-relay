@@ -211,6 +211,20 @@ function taskEntries(
       const driverEntry = join(storeRoot, "driver/interpreter.ts");
       for (const file of readdirSync(tasksRoot)) {
         if (!file.endsWith(".ts")) continue;
+        if (workflowMatch !== null) {
+          const source = ts.createSourceFile(file, readFileSync(join(tasksRoot, file), "utf8"), ts.ScriptTarget.Latest, true);
+          let callsSystemTask = false, definesImplementation = false;
+          const visit = (node: ts.Node): void => {
+            if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+              if (node.expression.text === "defineStepEntries") callsSystemTask = true;
+              if (node.expression.text === "defineTask") definesImplementation = true;
+            }
+            ts.forEachChild(node, visit);
+          };
+          visit(source);
+          // System task calls are already fingerprinted through their workflow closure.
+          if (callsSystemTask && !definesImplementation) continue;
+        }
         entries.push({
           id: `${namespace}/${file.slice(0, -3)}`,
           entries: [

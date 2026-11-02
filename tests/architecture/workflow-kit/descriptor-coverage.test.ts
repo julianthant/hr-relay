@@ -396,7 +396,7 @@ describe("descriptor coverage", () => {
   it("keeps the checked-in build manifest current", () => {
     const regenerated = computeCurrentBuildManifest();
     assert.deepEqual(regenerated, BUILD_MANIFEST, "run `npm run build:manifest` and commit the result");
-    for (const descriptor of [...DESCRIPTORS, ...UNREGISTERED_OCR_MODULES.map(module => module.descriptor)]) {
+    for (const descriptor of [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...UNREGISTERED_OCR_MODULES.map(module => module.descriptor)]) {
       const entry = regenerated.workflows.find(({ id }) => id === descriptor.id);
       assert.ok(entry, `${String(descriptor.id)} has no manifest entry`);
       assert.equal(entry.fingerprint, descriptor.contractFingerprint);
