@@ -599,7 +599,7 @@ refuses release. There are no geocode election, endpoint or PID files.
 
 `storage/browser-roots.ts` owns the private `machine/browser-roots.json` registry outside person
 SQLite. Reads and publications share the registry mutex, so readers inspect only settled publications.
-Its strict bounded document records actual worker or signup ownership and launch generations.
+Its strict bounded document records actual worker, signup or command ownership and launch generations.
 Each launch and native acquisition records intent before Chromium starts. A fresh full-Chromium
 probe must acquire and close the exact profile before reuse or removal; saved closed/observed states
 do not authorize effects. One row remains excluded through native closure, the awaited effect and

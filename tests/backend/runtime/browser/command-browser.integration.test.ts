@@ -13,7 +13,8 @@ import { join } from "node:path";
 import { it } from "vitest";
 import { composeProfileActivity, composeSelectedProfileStorage } from "../../../../src/backend/app/composition/storage-compose.js";
 import { composeProfileClosureInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
-import { createCommandBrowserManager, CommandBrowserError, type CommandBrowserInput } from "../../../../src/backend/runtime/browser/command-browser.js";
+import { createCommandBrowserManager, CommandBrowserError } from "../../../../src/backend/runtime/browser/command-browser.js";
+import type { CommandBrowserInput } from "../../../../src/backend/systems/browser-shared/command-session.js";
 import { workerProfileDirectory } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import { createBrowserRoots, commandProfileDirectory } from "../../../../src/backend/storage/browser-roots.js";
 import { probeStoppedProfileBrowsersClosed } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
@@ -210,7 +211,7 @@ for (const changed of ["abort", "revoked"] as const) it(`leaves no unowned empty
   } finally { await w.close(); }
 });
 
-for (const scenario of ["native-close", "stale-release"] as const) it(`retains genuine command sources after ${scenario} uncertainty`, async () => {
+for (const scenario of ["native-close", "stale-release", "launch-rejected"] as const) it(`retains genuine command sources after ${scenario} uncertainty`, async () => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relay-command-custody-")));
   const child = fork(fileURLToPath(new URL("../../../support/processes/command-custody-worker.ts", import.meta.url)), [workspace, scenario],
     { execArgv: ["--import", testProcessImport()], env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "ignore", "pipe", "ipc"] });

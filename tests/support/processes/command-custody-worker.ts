@@ -17,7 +17,7 @@ import { resolveConfigWithProvenance } from "../../../src/backend/app/config/res
 import { manualClock } from "../../../src/rules/time/clock.js";
 
 if (!process.env.NODE_OPTIONS?.includes("credential-keychain-process-preload.mjs")) throw new Error("command-worker-fake-keychain-required");
-const [workspace, scenario] = z.tuple([z.string().min(1), z.enum(["native-close", "stale-release"])]).parse(process.argv.slice(2));
+const [workspace, scenario] = z.tuple([z.string().min(1), z.enum(["native-close", "stale-release", "launch-rejected"])]).parse(process.argv.slice(2));
 if (process.send === undefined || !process.connected) throw new Error("command-worker-ipc-required");
 try {
   const f = await createBoundProfileFixture({ workspace });
@@ -32,7 +32,7 @@ try {
   const profileId = f.admission.profileBinding.profileId, commandId = randomUUID();
   const registryPath = join(f.machine.stateRoot, "machine", "browser-roots.json");
   const manager = createCommandBrowserManager({ admission: f.admission, leases: context.database.authority.duoCeremonyLeases,
-    clock, scheduler, launcher: native.launcher, recordEvidence: () => {} });
+    clock, scheduler, launcher: scenario === "launch-rejected" ? { launch: async () => { throw new Error("fixture native launch rejected /private/fixture/profile"); } } : native.launcher, recordEvidence: () => {} });
   let credentialKey: string | undefined;
   const input = { commandId, requestDigest: "a".repeat(64), config, signal: new AbortController().signal,
     assertCurrent: context.assertCurrent, protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-password" }) };
@@ -44,12 +44,12 @@ try {
       throw new Error("fixture external epoch revocation");
     });
   }), CommandBrowserClosureError);
-  assert.equal(native.contextClosed(), true);
+  assert.equal(native.contextClosed(), scenario !== "launch-rejected");
   assert.equal(manager.hasUnquiescedWork(profileId), true);
   const document = BrowserRootsSchema.parse(JSON.parse(readFileSync(registryPath, "utf8")));
   assert.equal(document.roots[0]?.owner.kind, "command");
-  assert.equal(document.roots[0]?.launch.state, scenario === "native-close" ? "unknown" : "closed");
-  assert.equal(profileReservations.has(commandProfileDirectory(config.paths.browserProfileRoot)), scenario === "native-close");
+  assert.equal(document.roots[0]?.launch.state, scenario !== "stale-release" ? "unknown" : "closed");
+  assert.equal(profileReservations.has(commandProfileDirectory(config.paths.browserProfileRoot)), scenario !== "stale-release");
   assert.throws(() => f.admission.assertBrowserRegistryCustody());
   if (scenario === "stale-release") {
     const read = new DatabaseSync(f.path, { readOnly: true });

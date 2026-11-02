@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
-import type { CommandBrowserManager } from "../../../src/backend/runtime/browser/command-browser.js";
+import type { CommandBrowserCommands } from "../../../src/backend/systems/browser-shared/command-session.js";
 import { createSharePointWorkbookSync } from "../../../src/backend/workbooks/sharepoint-sync.js";
 import { hostConfigFacts } from "../../../src/models/config/host-display.js";
 import { initialProtectedStoreRecord, ProtectedStoreRecordSchema } from "../../../src/models/config/protected-settings.js";
@@ -36,7 +36,7 @@ it.each([
 it.each(["profile", "settings", "protected"] as const)("rechecks captured %s authority at command boundaries", async changed => {
   const refused = new Error("fake selected context changed");
   let current = true, record = initialProtectedStoreRecord(), admitted = 0;
-  const commands: Pick<CommandBrowserManager, "withCommand"> = {
+  const commands: CommandBrowserCommands = {
     withCommand: input => {
       admitted++;
       if (changed === "protected") record = ProtectedStoreRecordSchema.parse({ ...record, revision: record.revision + 1,

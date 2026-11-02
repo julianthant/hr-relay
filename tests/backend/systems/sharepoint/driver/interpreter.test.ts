@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { runInNewContext } from "node:vm";
 import type { Page } from "playwright";
 import { afterEach, describe, it, vi } from "vitest";
-import { downloadSharePointWorkbook, parseSharePointWorkbookLink, SharePointDownloadError } from "../../../../src/backend/systems/sharepoint/download.js";
-import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
-import { createSystemSessionTestWorld } from "../../../support/helpers/backend/system-session-world.js";
+import { downloadSharePointWorkbook, parseSharePointWorkbookLink, SharePointDownloadError } from "../../../../../src/backend/systems/sharepoint/driver/interpreter.js";
+import { BrowserLoginError } from "../../../../../src/backend/systems/browser-shared/login-contract.js";
+import { createSystemSessionTestWorld } from "../../../../support/helpers/backend/system-session-world.js";
+import { sharePointBrowserTransport } from "../../../../../src/backend/processing/providers/sharepoint-browser-transport.js";
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 
 const { CONFIG, contextFor } = createSystemSessionTestWorld();
 const ORIGIN = CONFIG.urls.sharepoint.prod.entry;
@@ -133,7 +136,10 @@ async function world(options: Options = {}) {
       };
     },
     async evaluate(callback: (value: unknown) => unknown, argument?: { controller: { controller: AbortController } }) {
-      const result: unknown = await callback(argument === undefined ? undefined : { ...argument, controller: argument.controller.controller });
+      const result: unknown = argument === undefined ? await callback(undefined) : await runInNewContext(`(${callback.toString()})(input)`, {
+        input: { ...argument, controller: argument.controller.controller }, location: { origin: URL.parse(original.harness.url())?.origin },
+        fetch: globalThis.fetch, URL, Uint8Array, TextDecoder, btoa,
+      });
       if (typeof result === "object" && result !== null && "chunks" in result && Array.isArray(result.chunks)) chunkCounts.push(result.chunks.length);
       return result;
     },
@@ -143,7 +149,7 @@ async function world(options: Options = {}) {
     requests, cleanup, chunkCounts, original, scopes: () => scopes, controllers: () => controllerCount,
     download: () => downloadSharePointWorkbook({ ...original.context, page, assertCurrent,
       withDuoSigningScope: async <T>(_token: unknown, run: () => Promise<T>) => { scopes++; return run(); },
-    }, parseSharePointWorkbookLink(options.fileName === "Book.csv" ? LINK.replace("Book.xlsx", "Book.csv") : LINK, ORIGIN)) };
+    }, parseSharePointWorkbookLink(options.fileName === "Book.csv" ? LINK.replace("Book.xlsx", "Book.csv") : LINK, ORIGIN), sharePointBrowserTransport) };
 }
 
 describe("canonical SharePoint workbook links", () => {
@@ -163,12 +169,52 @@ describe("canonical SharePoint workbook links", () => {
     "https://user:secret@ucsdcloud.sharepoint.com/Book.xlsx", `${LINK}?web=1`, `${LINK}#sheet`,
     `${ORIGIN}/:x:/s/Team/Book.xlsx`, `${ORIGIN}/_layouts/15/Doc.aspx`, `${ORIGIN}/guestaccess/Book.xlsx`,
     `${SITE}/../Library/Book.xlsx`, `${SITE}/%2e%2e/Book.xlsx`, `${SITE}/Library%2fBook.xlsx`, `${SITE}/Bad%zz.xlsx`,
+    `${SITE}/Null%00.xlsx`, `${SITE}/Control%1f.xlsx`, `${SITE}/Delete%7f.xlsx`, `${SITE}/Back%5cslash.xlsx`,
   ])("refuses unsupported URL before browser or secret access: %s", link => {
     assert.throws(() => parseSharePointWorkbookLink(link, ORIGIN), { code: "SHAREPOINT_LINK_UNSUPPORTED" });
   });
 });
 
 describe("authenticated SharePoint downloads", () => {
+  it("retains a generic gate failure as a private cause behind static sign-in diagnostics", async () => {
+    const f = await world({ cold: true });
+    const failure = new Error("private fixture gate identity");
+    await assert.rejects(downloadSharePointWorkbook({ ...f.context,
+      duoCeremony: { withCeremony: async () => { throw failure; } },
+    }, parseSharePointWorkbookLink(LINK, ORIGIN), sharePointBrowserTransport), (error: unknown) => {
+      assert.ok(error instanceof BrowserLoginError);
+      assert.equal(error.cause, failure); assert.equal(error.message, ERROR_CATALOG.SHAREPOINT_SIGN_IN_FAILED.text);
+      assert.equal(error.observedUrl, ""); assert.equal(error.detail.includes("private fixture gate identity"), false);
+      return true;
+    });
+    assert.deepEqual(f.original.harness.filled(), []);
+    assert.equal(f.requests.some(request => request.url.endsWith("/$value")), false);
+  });
+
+  it("preserves a generic gate cleanup aggregate verbatim", async () => {
+    const f = await world({ cold: true });
+    const failure = new AggregateError([new Error("private cleanup failure")], "fixture cleanup uncertainty");
+    await assert.rejects(downloadSharePointWorkbook({ ...f.context,
+      duoCeremony: { withCeremony: async () => { throw failure; } },
+    }, parseSharePointWorkbookLink(LINK, ORIGIN), sharePointBrowserTransport), error => error === failure);
+    assert.deepEqual(f.original.harness.filled(), []);
+  });
+
+  it.each(["signal", "currentness"] as const)("preserves %s revocation when a generic gate fails", async mode => {
+    const cancellation = new AbortController();
+    const refusal = new Error("fixture command revoked");
+    let current = true;
+    const f = await world({ cold: true, signal: cancellation.signal, assertCurrent: () => { if (!current) throw refusal; } });
+    await assert.rejects(downloadSharePointWorkbook({ ...f.context,
+      duoCeremony: { withCeremony: async () => {
+        if (mode === "signal") cancellation.abort(refusal);
+        else current = false;
+        throw new Error("fixture gate stopped");
+      } },
+    }, parseSharePointWorkbookLink(LINK, ORIGIN), sharePointBrowserTransport), error => error === refusal);
+    assert.deepEqual(f.original.harness.filled(), []);
+  });
+
   it("reverifies warm identity and downloads GUID-pinned bytes using only same-origin browser fetch", async () => {
     const f = await world();
     const result = await f.download();
@@ -244,9 +290,9 @@ describe("authenticated SharePoint downloads", () => {
 
   it("refuses copied targets and changed tenant configuration before evaluation", async () => {
     const f = await world(), target = parseSharePointWorkbookLink(LINK, ORIGIN);
-    await assert.rejects(downloadSharePointWorkbook(f.context, { ...target }), { code: "SHAREPOINT_LINK_UNSUPPORTED" });
+    await assert.rejects(downloadSharePointWorkbook(f.context, { ...target }, sharePointBrowserTransport), { code: "SHAREPOINT_LINK_UNSUPPORTED" });
     await assert.rejects(downloadSharePointWorkbook({ ...f.context, config: { ...CONFIG,
-      urls: { ...CONFIG.urls, sharepoint: { prod: { entry: "https://other.sharepoint.com" } } } } }, target), { code: "SHAREPOINT_LINK_UNSUPPORTED" });
+      urls: { ...CONFIG.urls, sharepoint: { prod: { entry: "https://other.sharepoint.com" } } } } }, target, sharePointBrowserTransport), { code: "SHAREPOINT_LINK_UNSUPPORTED" });
     assert.equal(f.controllers(), 0);
   });
 });

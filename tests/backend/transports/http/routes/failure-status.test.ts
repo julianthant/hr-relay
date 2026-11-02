@@ -16,7 +16,7 @@ TargetNotFoundError,
 import { StartStepOmissionRefusedError } from "../../../../../src/backend/runs/start/step-selection.js";
 import { failureStatus } from "../../../../../src/backend/transports/http/routes/failure-status.js";
 import { CommandBrowserError, CommandBrowserClosureError } from "../../../../../src/backend/runtime/browser/command-browser.js";
-import { SharePointDownloadError } from "../../../../../src/backend/systems/sharepoint/download.js";
+import { SharePointDownloadError } from "../../../../../src/backend/systems/sharepoint/driver/interpreter.js";
 import { BrowserLoginError } from "../../../../../src/backend/systems/browser-shared/login-contract.js";
 
 

@@ -90,6 +90,9 @@ Paths in this table are relative to `src/backend/`.
 | `transports/cli/` | CLI dispatch and command handling. |
 | `transports/http/` | Dashboard HTTP routes, request schemas, and SSE subscriptions. |
 | `workbooks/` | Typed workbook library: one mutable master, ordered durable keyed writes, cell ownership, operation receipts, manual named versions, immutable creation proofs and reference snapshots. `sharepoint-sync.ts` binds manual Sync to a fresh profile/settings/credential command and the authenticated SharePoint download. |
+| `systems/sharepoint/driver/interpreter.ts` | Canonical workbook URLs, account authentication and GUID-pinned workbook reads through an owned command browser. The workbook composition injects its bounded browser transport. |
+| `systems/browser-shared/command-session.ts` | Command input, browser scope and callback contracts shared by runtime acquisition and workbook composition. The runtime retains native custody and private Duo cleanup handles. |
+| `processing/providers/sharepoint-browser-transport.ts` | Serializable same-origin Fetch streaming for SharePoint JSON proofs and workbook bytes, with exact response checks, byte bounds and reader cleanup. |
 | `workbooks/workflow-workbook-service.ts` | Creates one new table workbook per run through the admitted library repository. The `workbooks.library` provider is composed in `app/composition/worker/run-resources.ts`; the original saved record supplies replay proof. |
 
 ### Dashboard and shared packages

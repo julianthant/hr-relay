@@ -1,11 +1,11 @@
+import type { SharePointBrowserTransport } from "../../../../models/systems/sharepoint/workbook-download.js";
 import type { JSHandle } from "playwright";
-import { resolveSystemLoginUrl } from "../../../models/config/instance.js";
-import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { assertDuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
-import { defineVerifiedLoginRecipe } from "../browser-shared/authenticated-application.js";
-import { BrowserLoginError, type AuthenticationProbe, type SystemLoginContext } from "../browser-shared/login-contract.js";
-import { submitPinnedUcsdSsoCredentials, waitForAuthenticatedLanding, waitForSsoForm } from "../browser-shared/ucsd-sso.js";
-import { DuoCeremonyLeaseExpiredError, DuoCeremonyLeaseHeldError, DuoCeremonyReleaseFailedError } from "../../runtime/gates/duo-ceremony-gate.js";
+import { resolveSystemLoginUrl } from "../../../../models/config/instance.js";
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
+import { assertDuoCeremonyLeaseToken } from "../../../../workflow-kit/duo-ceremony-lease.js";
+import { defineVerifiedLoginRecipe } from "../../browser-shared/authenticated-application.js";
+import { BrowserLoginError, type AuthenticationProbe, type SystemLoginContext } from "../../browser-shared/login-contract.js";
+import { submitPinnedUcsdSsoCredentials, waitForAuthenticatedLanding, waitForSsoForm } from "../../browser-shared/ucsd-sso.js";
 
 type DownloadCode = "SHAREPOINT_LINK_UNSUPPORTED" | "SHAREPOINT_DOWNLOAD_FAILED" | "SHAREPOINT_DOWNLOAD_TOO_LARGE";
 export class SharePointDownloadError extends Error {
@@ -44,7 +44,8 @@ export function parseSharePointWorkbookLink(link: string, configuredEntry: strin
   try { path = decodeURIComponent(url.pathname); configuredPath = decodeURIComponent(configured.pathname); }
   catch { throw new SharePointDownloadError("SHAREPOINT_LINK_UNSUPPORTED"); }
   const segments = path.split("/");
-  if (!extension(path) || /[\u0000-\u001f\u007f\\]/u.test(path) || segments.some(segment => segment === "." || segment === "..")
+  if (!extension(path) || [...path].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127 || character === "\\")
+    || segments.some(segment => segment === "." || segment === "..")
     || /%2f|%5c/iu.test(url.pathname) || path.includes("//") || /^\/(?::[^/]+:|guestaccess|_layouts|_api)(?:\/|$)/iu.test(path)
     || segments.some(segment => /^(?:_layouts|_api)$/iu.test(segment))) throw new SharePointDownloadError("SHAREPOINT_LINK_UNSUPPORTED");
   const site = /^\/(?:sites|teams)\/[^/]+(?=\/)/u.exec(path)?.[0];
@@ -64,27 +65,24 @@ function current(context: SystemLoginContext): void {
   context.assertCurrent();
   context.signal.throwIfAborted();
 }
-function signInFailed(): BrowserLoginError {
-  return new BrowserLoginError("sharepoint", "verify-landing", "SharePoint authentication could not be proved", "");
+function signInFailed(options?: ErrorOptions): BrowserLoginError {
+  return new BrowserLoginError("sharepoint", "verify-landing", "SharePoint authentication could not be proved", "", options);
 }
 
-type TransferResult = Readonly<{ chunks: string[]; failed: boolean; tooLarge: boolean; cleanupFailed: boolean }>;
-
 async function transfer(context: SystemLoginContext, target: SharePointWorkbookTarget, url: string,
-  kind: "json" | "xlsx" | "csv"): Promise<Buffer> {
+  kind: "json" | "xlsx" | "csv", transport: SharePointBrowserTransport): Promise<Buffer> {
   current(context);
   let controller: JSHandle<AbortController> | undefined;
-  let aborting: Promise<void> | undefined;
+  let aborting: Promise<"aborted" | "failed"> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
-  let cleanupFailed = false;
+  const cleanupFailures: SharePointDownloadError[] = [];
   let browserCleanupFailed = false;
   const failures: unknown[] = [];
   let bytes: Buffer | undefined;
   const abort = () => {
-    if (controller !== undefined && aborting === undefined) aborting = controller.evaluate(value => value.abort()).then(() => undefined);
-    // Observe immediately; final cleanup still awaits the same promise.
-    void aborting?.catch(() => undefined);
+    if (controller !== undefined && aborting === undefined) aborting = controller.evaluate(value => value.abort())
+      .then(() => "aborted" as const, () => "failed" as const);
   };
   try {
     controller = await context.page.evaluateHandle(() => new AbortController());
@@ -93,56 +91,7 @@ async function transfer(context: SystemLoginContext, target: SharePointWorkbookT
     current(context);
     const remaining = context.acquisitionRemainingMs?.() ?? context.config.timeouts.sessionAcquireMs;
     timer = setTimeout(() => { timedOut = true; abort(); }, Math.max(1, Math.min(remaining, context.config.timeouts.sessionAcquireMs)));
-    const result: TransferResult = await context.page.evaluate(async input => {
-      const chunks: string[] = [];
-      let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-      let failed = false, tooLarge = false, cleanupFailed = false;
-      try {
-        if (location.origin !== input.origin || new URL(input.url).origin !== input.origin) throw new Error("scope");
-        const response = await fetch(input.url, { credentials: "same-origin", mode: "same-origin", redirect: "error", cache: "no-store",
-          headers: { Accept: input.kind === "json" ? "application/json;odata=nometadata" : "*/*" }, signal: input.controller.signal });
-        reader = response.body?.getReader();
-        if (reader === undefined || response.status !== 200 || response.redirected || new URL(response.url).origin !== input.origin
-          || new URL(response.url).href !== new URL(input.url).href) throw new Error("response");
-        const length = response.headers.get("content-length");
-        if (length !== null && (!/^\d+$/u.test(length) || !Number.isSafeInteger(Number(length)))) throw new Error("length");
-        if (length !== null && Number(length) > input.limit) { tooLarge = true; throw new Error("limit"); }
-        const media = (response.headers.get("content-type") ?? "").split(";", 1)[0].trim().toLowerCase();
-        const allowed = input.kind === "json" ? ["application/json"] : input.kind === "xlsx"
-          ? ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"]
-          : ["text/csv", "application/csv", "text/plain", "application/vnd.ms-excel", "application/octet-stream"];
-        if (!allowed.includes(media)) throw new Error("media");
-        const pending = new Uint8Array(64 * 1024);
-        let used = 0, total = 0, prefix = "";
-        const emit = () => {
-          let binary = "";
-          for (let index = 0; index < used; index++) binary += String.fromCharCode(pending[index]);
-          chunks.push(btoa(binary)); used = 0;
-        };
-        while (true) {
-          const part = await reader.read();
-          if (part.done) break;
-          total += part.value.byteLength;
-          if (total > input.limit) { tooLarge = true; throw new Error("limit"); }
-          if (prefix.length < 512) prefix += new TextDecoder().decode(part.value.subarray(0, 512 - prefix.length));
-          let offset = 0;
-          while (offset < part.value.length) {
-            const count = Math.min(pending.length - used, part.value.length - offset);
-            pending.set(part.value.subarray(offset, offset + count), used); used += count; offset += count;
-            if (used === pending.length) emit();
-          }
-        }
-        if (total === 0 || /^\s*<(?:!doctype\s+html|html|form)(?:\s|>)/iu.test(prefix)) throw new Error("body");
-        if (used > 0) emit();
-      } catch { failed = true; }
-      finally {
-        if (reader !== undefined) {
-          try { await reader.cancel(); } catch { cleanupFailed = true; }
-          try { reader.releaseLock(); } catch { cleanupFailed = true; }
-        }
-      }
-      return { chunks: failed ? [] : chunks, failed, tooLarge, cleanupFailed };
-    }, { controller, origin: target.origin, url, kind, limit: kind === "json" ? MAX_JSON_BYTES : MAX_FILE_BYTES });
+    const result = await context.page.evaluate(transport, { controller, origin: target.origin, url, kind, limit: kind === "json" ? MAX_JSON_BYTES : MAX_FILE_BYTES });
     browserCleanupFailed = result.cleanupFailed;
     current(context);
     if (result.failed) failures.push(new SharePointDownloadError(result.tooLarge ? "SHAREPOINT_DOWNLOAD_TOO_LARGE" : "SHAREPOINT_DOWNLOAD_FAILED"));
@@ -158,11 +107,11 @@ async function transfer(context: SystemLoginContext, target: SharePointWorkbookT
   } finally {
     clearTimeout(timer);
     context.signal.removeEventListener("abort", abort);
-    if (browserCleanupFailed) { cleanupFailed = true; failures.push(new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED")); }
-    try { await aborting; } catch { cleanupFailed = true; failures.push(new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED")); }
-    try { await controller?.dispose(); } catch { cleanupFailed = true; failures.push(new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED")); }
+    if (browserCleanupFailed) cleanupFailures.push(new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED"));
+    if (await aborting === "failed") cleanupFailures.push(new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED"));
+    try { await controller?.dispose(); } catch { cleanupFailures.push(new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED")); }
   }
-  if (cleanupFailed || failures.length > 1) throw new AggregateError(failures, "SharePoint transfer and resource cleanup failed");
+  if (cleanupFailures.length !== 0 || failures.length > 1) throw new AggregateError([...failures, ...cleanupFailures], "SharePoint transfer and resource cleanup failed");
   if (failures.length === 1) throw failures[0];
   if (bytes === undefined) throw new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED");
   return bytes;
@@ -175,12 +124,12 @@ function expectedIdentity(userId: string): string {
   throw signInFailed();
 }
 
-async function verify(context: SystemLoginContext, target: SharePointWorkbookTarget, expected: string): Promise<AuthenticationProbe> {
+async function verify(context: SystemLoginContext, target: SharePointWorkbookTarget, expected: string, transport: SharePointBrowserTransport): Promise<AuthenticationProbe> {
   current(context);
   if (URL.parse(context.page.url())?.origin !== target.origin) return { authenticated: false, reason: "SharePoint origin is absent" };
   try {
     if (await context.page.locator(LOGIN_CONTROLS).count() !== 0) return { authenticated: false, reason: "Sign-in controls are present" };
-    const bytes = await transfer(context, target, `${target.siteUrl}/_api/web/currentuser?$select=Id,LoginName`, "json");
+    const bytes = await transfer(context, target, `${target.siteUrl}/_api/web/currentuser?$select=Id,LoginName`, "json", transport);
     const value: unknown = JSON.parse(bytes.toString("utf8"));
     const record = typeof value === "object" && value !== null && "d" in value ? value.d : value;
     if (typeof record !== "object" || record === null || !("Id" in record) || !("LoginName" in record)
@@ -194,7 +143,7 @@ async function verify(context: SystemLoginContext, target: SharePointWorkbookTar
   } catch (error) {
     if (error instanceof AggregateError) throw error;
     current(context);
-    throw signInFailed();
+    throw signInFailed({ cause: error });
   }
 }
 
@@ -203,14 +152,14 @@ function onSso(raw: string): boolean {
   return url !== null && url.origin === "https://a5.ucsd.edu" && SSO_PATHS.has(url.pathname) && url.username === "" && url.password === "" && url.hash === "";
 }
 
-export async function downloadSharePointWorkbook(context: SystemLoginContext, target: SharePointWorkbookTarget): Promise<Readonly<{ name: string; bytes: ArrayBuffer }>> {
+export async function downloadSharePointWorkbook(context: SystemLoginContext, target: SharePointWorkbookTarget, transport: SharePointBrowserTransport): Promise<Readonly<{ name: string; bytes: ArrayBuffer }>> {
   current(context);
   if (!targets.has(target)) throw new SharePointDownloadError("SHAREPOINT_LINK_UNSUPPORTED");
   const configured = resolveSystemLoginUrl(context.config, "sharepoint", context.instance, context.label);
   const checked = parseSharePointWorkbookLink(`${target.origin}${target.serverRelativePath.split("/").map(segment => encodeURIComponent(segment)).join("/")}`, configured);
   if (checked.metadataUrl !== target.metadataUrl) throw new SharePointDownloadError("SHAREPOINT_LINK_UNSUPPORTED");
   const expected = expectedIdentity(context.credentials.userId);
-  const verifier = () => verify(context, target, expected);
+  const verifier = () => verify(context, target, expected, transport);
   const recipe = defineVerifiedLoginRecipe({
     system: "sharepoint", verify: verifier,
     navigate: async () => {
@@ -256,12 +205,11 @@ export async function downloadSharePointWorkbook(context: SystemLoginContext, ta
   });
   try { await recipe(context); }
   catch (error) {
-    if (error instanceof AggregateError || error instanceof DuoCeremonyReleaseFailedError) throw error;
+    if (error instanceof AggregateError) throw error;
     current(context);
-    if (error instanceof DuoCeremonyLeaseExpiredError || error instanceof DuoCeremonyLeaseHeldError) throw error;
-    throw signInFailed();
+    throw signInFailed({ cause: error });
   }
-  const metadataBytes = await transfer(context, target, target.metadataUrl, "json");
+  const metadataBytes = await transfer(context, target, target.metadataUrl, "json", transport);
   let metadata: unknown;
   try { metadata = JSON.parse(metadataBytes.toString("utf8")); } catch { throw new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED"); }
   if (typeof metadata === "object" && metadata !== null && "d" in metadata) metadata = metadata.d;
@@ -275,7 +223,7 @@ export async function downloadSharePointWorkbook(context: SystemLoginContext, ta
   const proof = await verifier();
   if (!proof.authenticated) throw signInFailed();
   context.recordEvidence(proof.evidence);
-  const bytes = await transfer(context, target, `${target.siteUrl}/_api/web/GetFileById('${metadata.UniqueId}')/$value`, extension(metadata.Name)!);
+  const bytes = await transfer(context, target, `${target.siteUrl}/_api/web/GetFileById('${metadata.UniqueId}')/$value`, extension(metadata.Name)!, transport);
   if (bytes.byteLength !== length) throw new SharePointDownloadError("SHAREPOINT_DOWNLOAD_FAILED");
   return { name: metadata.Name, bytes: Uint8Array.from(bytes).buffer };
 }

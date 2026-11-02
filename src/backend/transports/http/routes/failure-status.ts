@@ -9,7 +9,7 @@ import { ProtectedSubjectDisplayRefusedError } from "../../../runs/start/protect
 import { RerunRefusedError } from "../../../runs/start/rerun.js";
 import { ProfileBrowserRootRefusalError } from "../../../storage/admission/admission-identity.js";
 import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
-import { SharePointDownloadError } from "../../../systems/sharepoint/download.js";
+import { SharePointDownloadError } from "../../../systems/sharepoint/driver/interpreter.js";
 import { browserLoginFailure } from "../../../systems/browser-shared/login-contract.js";
 import { CommandBrowserError, CommandBrowserClosureError } from "../../../runtime/browser/command-browser.js";
 

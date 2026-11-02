@@ -8,12 +8,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/browser/onboarding-duo-provider.ts",
-    "sha256": "21f768c22c54e394f0cd158295e673748a3273f316eb9ab323f72a5c13da1991",
+    "sha256": "19f84ecd02ab97738aa4ee6c4f595ed36d2b3cc78b328e80937e8f3dd9ef780b",
     "reason": "Failed UNKNOWN retention or failure-report callbacks retain both causes and leave attempt/browser closure unproved. Context or broker termination revokes the owner and settles the attempt; physical profile deletion waits for owner cleanup and keeps all private-path and native closure checks. Worker stop failure remains uncertain until pump/report settlement and enclosing browser closure are proved; replacement or relaunch remains refused after unproved cleanup. Platform-probe, emulation and virtual-key custody failures enter the same scoped UNKNOWN retention and closure path; no native failure triggers a second ceremony."
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "a05c21abe927a5507c1216e0f73904a09bba9a1786c299d51a383f2046c33604",
+    "sha256": "7defa46dbe720fa03f1a1c4a9a2500353d5d8064317fcdb49a972c95c8c69262",
     "reason": "Startup producer closure failures retain dependent native database and admission custody. Selected-context open failure rethrows typed custody uncertainty. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and stop promises, whose callers await failures before storage release. An unavailable authority generation remains explicitly unavailable; backup presence is assessed separately. Automatic upgrade runs before composition in storage-compose.ts and has no HTTP response handoff. Confirmed account deletion shares the exact session logout drain; deletion errors propagate with pending identity retained and never report signed-out success."
   },
   {
@@ -118,8 +118,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/systems/browser-shared/ucsd-sso.ts",
-    "sha256": "4b4aceac9796ee6d65bb2197e33fe2e28ef8d482db8e3c302339df4dc21607cb",
-    "reason": "The navigation rejection observer preserves the original promise raced by the training-reminder wait; the landing wait owns timeout and diagnosis. An empty diagnostic title accompanies LANDING_PROBE_UNAVAILABLE and a thrown BrowserLandingStallError with the original landing cause, never authenticated success. Probe uncertainty stays explicit; initiated clicks drain before settlement, and compound click, disposal and landing failures retain their causes."
+    "sha256": "c4e00211674cfb593ee361f51115203b7eb63b82f38e62e3dc6324987396e281",
+    "reason": "The navigation rejection observer preserves the original promise raced by the training-reminder wait; the landing wait owns timeout and diagnosis. An empty diagnostic title accompanies LANDING_PROBE_UNAVAILABLE and a thrown BrowserLandingStallError with the original landing cause, never authenticated success. Probe uncertainty stays explicit; initiated clicks drain before settlement, and compound click, disposal and landing failures retain their causes. Pinned credential submission attempts every handle disposal and rethrows the primary error or aggregates all cleanup failures."
   },
   {
     "path": "src/dashboard/state/activity-wiring-adapter.ts",

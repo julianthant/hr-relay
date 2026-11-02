@@ -1,20 +1,18 @@
 import { mkdirSync, rmdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { BrowserContext, Page } from 'playwright';
+import type { BrowserContext } from 'playwright';
 import { z } from 'zod';
 import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
-import type { Config } from '../../../models/config/schema.js';
-import { requireSecret, type ProtectedSecretSource } from '../../../models/config/secrets.js';
+import { requireSecret } from '../../../models/config/secrets.js';
 import { FingerprintSchema } from '../../../rules/identity/ids.js';
 import type { Clock } from '../../../rules/time/clock.js';
 import { assertDuoCeremonyLeaseToken, type DuoCeremonyLeaseToken } from '../../../workflow-kit/duo-ceremony-lease.js';
-import type { AuthenticatedApplicationEvidence } from '../../systems/browser-shared/login-contract.js';
+import type { CommandBrowserInput, CommandBrowserContext, CommandBrowserScope } from '../../systems/browser-shared/command-session.js';
 import type { RuntimeAdmission } from '../../storage/admission/admission.js';
 import { requireRuntimeAdmission } from '../../storage/admission/admission-identity.js';
 import { admitCommandBrowser, commandProfileDirectory, createBrowserRoots, profileReservations, assertPrivateProfilePath, type BrowserRootLaunchInput } from '../../storage/browser-roots.js';
 import { fsyncPath } from '../../storage/private-path.js';
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
-import type { DuoSigningSource } from '../../storage/configuration/duo-signing.js';
 import type { DuoCeremonyLeaseRepository } from '../../storage/sqlite/authority-database.js';
 import { composeDuoCeremonyGateFactory } from '../gates/duo-ceremony-gate.js';
 import type { DuoCeremonyGateHandle } from '../gates/duo-ceremony-gate.js';
@@ -32,31 +30,10 @@ export class CommandBrowserClosureError extends AggregateError {
   readonly code = 'COMMAND_BROWSER_CLOSURE_UNPROVED';
   constructor(errors: readonly unknown[]) { super(errors, ERROR_CATALOG.COMMAND_BROWSER_CLOSURE_UNPROVED.text); this.name = 'CommandBrowserClosureError'; }
 }
-export interface CommandBrowserInput {
-  readonly commandId: string;
-  readonly requestDigest: string;
-  readonly signal: AbortSignal;
-  readonly config: Config;
-  readonly protectedSecrets: ProtectedSecretSource;
-  readonly duo?: DuoSigningSource;
-  readonly assertCurrent: () => void;
-}
-export interface CommandBrowserContext {
-  readonly page: Page;
-  readonly signal: AbortSignal;
-  readonly assertCurrent: () => void;
-  readonly credentials: Readonly<{ userId: string; password: string }>;
-  readonly duoCeremony: DuoCeremonyGateHandle;
-  readonly withDuoSigningScope: <T>(token: DuoCeremonyLeaseToken, body: () => Promise<T>) => Promise<T>;
-  readonly recordEvidence: (evidence: AuthenticatedApplicationEvidence) => void;
-  readonly assertDuoCurrent: () => void;
-  readonly acquisitionRemainingMs: () => number;
-}
-export interface CommandBrowserScope {
-  readonly signal: AbortSignal;
-  readonly assertCurrent: () => void;
-  withBrowser<T>(use: (browser: CommandBrowserContext) => Promise<T>): Promise<T>;
-}
+type NativeLaunchOutcome = Readonly<{ state: 'opened'; context: BrowserContext }>
+  | Readonly<{ state: 'profile-in-use'; error: unknown }>
+  | Readonly<{ state: 'rejected-uncertain'; error: unknown }>;
+type NativeLaunchState = NativeLaunchOutcome | Readonly<{ state: 'not-attempted' }> | Readonly<{ state: 'launching' }>;
 
 export function createCommandBrowserManager(options: Readonly<{
   admission: RuntimeAdmission; leases: DuoCeremonyLeaseRepository; clock: Clock; scheduler: BrowserDeadlineScheduler;
@@ -66,7 +43,7 @@ export function createCommandBrowserManager(options: Readonly<{
   const admission = requireRuntimeAdmission(options.admission), profileId = admission.profileBinding.profileId;
   admission.assertProfileRuntime();
   const lifetime = admission.lifetime, roots = createBrowserRoots(admission), launcher = options.launcher ?? DEFAULT_BROWSER_LAUNCHER;
-  type Active = { controller: AbortController; completion: Promise<void>; failure?: unknown };
+  type Active = { controller: AbortController; completion: Promise<void>; failure?: CommandBrowserClosureError };
   let active: Active | undefined, closing = false;
   const owner = (id: string) => { if (id !== profileId) throw new CommandBrowserError('COMMAND_BROWSER_UNAVAILABLE'); };
   async function withCommand<T>(input: CommandBrowserInput, body: (scope: CommandBrowserScope) => Promise<T>): Promise<T> {
@@ -95,9 +72,10 @@ export function createCommandBrowserManager(options: Readonly<{
         let context: BrowserContext | undefined, lifecycle: ReturnType<typeof observeContextLifecycle> | undefined;
         let launch: ReturnType<typeof roots.beginLaunch> | undefined, broker: Awaited<ReturnType<typeof provisionWorkflowDuo>> | undefined;
         let gate: DuoCeremonyGateHandle | undefined, signing: DuoCeremonyLeaseToken | undefined;
-        let closePromise: Promise<void> | undefined, attempted = false, proven = false, reserved = false, setupReady = false;
+        let closePromise: Promise<void> | undefined, proven = false, reserved = false, setupReady = false;
+        let nativeLaunch: NativeLaunchState = { state: 'not-attempted' };
         const retain = (errors: readonly unknown[]): never => {
-          const failure = retainAuthoritySourceClosure(errors, { admission, directory: { directory, context, lifecycle, broker, launch, capability, entry } });
+          const failure = retainAuthoritySourceClosure(errors, { admission, directory: { directory, context, lifecycle, nativeLaunch, broker, launch, capability, entry } });
           admission.retainSourceClosure(failure); lifetime.retainSourceClosure(failure);
           entry.failure = new CommandBrowserClosureError([...errors, failure]); throw entry.failure;
         };
@@ -115,7 +93,8 @@ export function createCommandBrowserManager(options: Readonly<{
           if (context !== undefined && lifecycle !== undefined) {
             try { await closeContextWithProof({ clock, scheduler, closeProofMs: Math.max(0, closeDeadline - clock.monotonicMs()) }, context, lifecycle, 'sharepoint', 'poisoned'); }
             catch (error) { nativeErrors.push(error); }
-          } else if (attempted) nativeErrors.push(new Error('command-native-launch-unproved'));
+          } else if (nativeLaunch.state === 'launching' || nativeLaunch.state === 'rejected-uncertain' || nativeLaunch.state === 'opened')
+            nativeErrors.push(new Error('command-native-launch-unproved'));
           try { gate?.dispose(); } catch (error) { errors.push(error); }
           if (nativeErrors.length === 0) {
             try { launch?.closed(); proven = true; if (reserved) { profileReservations.delete(directory); reserved = false; } } catch (error) { nativeErrors.push(error); }
@@ -125,7 +104,7 @@ export function createCommandBrowserManager(options: Readonly<{
           }
           if (errors.length || nativeErrors.length) retain([...errors, ...nativeErrors]);
         })();
-        const interrupted = () => { if (context !== undefined && setupReady) void close().catch(error => { entry.failure = error; }); };
+        const interrupted = () => { if (context !== undefined && setupReady) void close().catch((error: unknown) => { entry.failure = error instanceof CommandBrowserClosureError ? error : new CommandBrowserClosureError([error]); }); };
         controller.signal.addEventListener('abort', interrupted, { once: true });
         let result: { value: Result } | undefined, primary: { error: unknown } | undefined, callbackStarted = false;
         try {
@@ -150,11 +129,17 @@ export function createCommandBrowserManager(options: Readonly<{
           mkdirSync(dirname(directory), { recursive: true, mode: 0o700 });
           const extensionDirectory = join(directory, 'relay-extension');
           if (config.features.duoWebAuthn) { mkdirSync(directory, { recursive: true, mode: 0o700 }); stageFastDuoExtension(config.paths.duoExtensionDir, extensionDirectory, 'workflow'); }
-          assertCurrent(); attempted = true;
-          try { context = await launcher.launch({ profileDirectory: directory, headless: config.browser.headless, extensionDirectory,
+          assertCurrent(); nativeLaunch = { state: 'launching' };
+          const outcome = await launcher.launch({ profileDirectory: directory, headless: config.browser.headless, extensionDirectory,
             ...(config.features.duoWebAuthn ? {} : { nativeOnly: true }), acceptDownloads: true, downloadsPath: config.paths.downloadsDir,
-            viewport: { width: config.display.screenWidth, height: config.display.screenHeight }, timeoutMs: Math.max(1, deadline - clock.monotonicMs()) }); }
-          catch (error) { if (chromiumProfileInUse(error)) attempted = false; throw error; }
+            viewport: { width: config.display.screenWidth, height: config.display.screenHeight }, timeoutMs: Math.max(1, deadline - clock.monotonicMs()) }).then(
+            (opened): NativeLaunchOutcome => ({ state: 'opened', context: opened }),
+            (error: unknown): NativeLaunchOutcome => chromiumProfileInUse(error)
+              ? { state: 'profile-in-use', error } : { state: 'rejected-uncertain', error },
+          );
+          nativeLaunch = outcome;
+          if (outcome.state !== 'opened') throw outcome.error;
+          context = outcome.context;
           lifecycle = observeContextLifecycle(context); launch.opened(); assertCurrent();
           gate = composeDuoCeremonyGateFactory({ config, duo: input.duo, leases: options.leases, clock, scheduler }).openGate({
             commandId: input.commandId, system: 'sharepoint', envelopeDeadlineMonotonicMs: deadline,
@@ -211,7 +196,7 @@ export function createCommandBrowserManager(options: Readonly<{
       await browserCompletion;
       if (browserFailure !== undefined && browserFailure.error !== failure?.error) failure = { error: failure === undefined
         ? browserFailure.error : new AggregateError([failure.error, browserFailure.error], 'command-browser-operation-failed') };
-      if (failure !== undefined && (hasUnprovedSourceClosure(failure.error) || failure.error instanceof CommandBrowserClosureError)) entry.failure = failure.error;
+      if (failure !== undefined && (hasUnprovedSourceClosure(failure.error) || failure.error instanceof CommandBrowserClosureError)) entry.failure = failure.error instanceof CommandBrowserClosureError ? failure.error : new CommandBrowserClosureError([failure.error]);
       input.signal.removeEventListener('abort', cancel); if (entry.failure === undefined) active = undefined; finished();
     }
     if (failure !== undefined) throw failure.error;
