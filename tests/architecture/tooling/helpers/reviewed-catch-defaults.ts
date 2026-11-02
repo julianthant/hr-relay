@@ -8,13 +8,13 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/browser/onboarding-duo-provider.ts",
-    "sha256": "5accb5fa4da30d55e3d2b5a9546eb5fc23f191677c8edf28154b9d5ac3c38863",
-    "reason": "Failed UNKNOWN retention or failure-report callbacks retain both causes and leave attempt/browser closure unproved. Context or broker termination revokes the owner and settles the attempt; physical profile deletion waits for owner cleanup and keeps all private-path and native closure checks. Worker stop failure remains uncertain until pump/report settlement and enclosing browser closure are proved; replacement or relaunch remains refused after unproved cleanup."
+    "sha256": "749b74522c07ce33655a3bd787442c23f0345ebd28c54ce37162cf33d96319ca",
+    "reason": "Failed UNKNOWN retention or failure-report callbacks retain both causes and leave attempt/browser closure unproved. Context or broker termination revokes the owner and settles the attempt; physical profile deletion waits for owner cleanup and keeps all private-path and native closure checks. Worker stop failure remains uncertain until pump/report settlement and enclosing browser closure are proved; replacement or relaunch remains refused after unproved cleanup. Platform-probe, emulation and virtual-key custody failures enter the same scoped UNKNOWN retention and closure path; no native failure triggers a second ceremony."
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "b5827f78a3e279e7a248a5554fd722514df0b30e317dc129fc86afb13ea3748d",
-    "reason": "Startup producer closure failures retain dependent native database and admission custody. Selected-context open failure rethrows typed custody uncertainty. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and stop promises, whose callers await failures before storage release. An unavailable authority generation remains explicitly unavailable; backup presence is assessed separately. Automatic upgrade runs before composition in storage-compose.ts and has no HTTP response handoff."
+    "sha256": "0a99e7c37abb4c286289148f2369a3cb531c6bd357f563c249ecae68489a0097",
+    "reason": "Startup producer closure failures retain dependent native database and admission custody. Selected-context open failure rethrows typed custody uncertainty. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and stop promises, whose callers await failures before storage release. An unavailable authority generation remains explicitly unavailable; backup presence is assessed separately. Automatic upgrade runs before composition in storage-compose.ts and has no HTTP response handoff. Confirmed account deletion shares the exact session logout drain; deletion errors propagate with pending identity retained and never report signed-out success."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
@@ -68,8 +68,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/admission/installation.ts",
-    "sha256": "07924d9b948dcaccd97ffef689a5b802ba637de1167a2d4d09444198198dd976",
-    "reason": "Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
+    "sha256": "a2b232f468125770815e76792c8981e411bf5a565d21615b7e11fd46c3f0b7f1",
+    "reason": "Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts. Account erasure failures retain their private cause in AccountDeletionRefusedError; the captured journal blocks ordinary registry admission until exact startup continuation succeeds."
   },
   {
     "path": "src/backend/runs/commands/ordinary-path-validator.ts",
