@@ -234,11 +234,12 @@ function auditBareDefaults(files: readonly string[]): string[] {
   const violations: string[] = [];
   for (const file of files) {
     const content=readFileSync(file, "utf8");
-    const findings=auditFailLoudCatchDefaults(file,content);
-    const reviewed=REVIEWED_CATCH_DEFAULTS.find(entry=>normalize(file).endsWith(`/${entry.path}`));
+    const path=normalize(file);
+    const findings=auditFailLoudCatchDefaults(path,content);
+    const reviewed=REVIEWED_CATCH_DEFAULTS.find(entry=>path.endsWith(`/${entry.path}`));
     if (reviewed !== undefined && createHash("sha256").update(content).digest("hex") === reviewed.sha256) {
-      if (findings.length === 0) violations.push(`${file}: stale reviewed catch classification`);
-    } else violations.push(...findings, ...(reviewed === undefined ? [] : [`${file}: reviewed catch source changed; re-review required`]));
+      if (findings.length === 0) violations.push(`${path}: stale reviewed catch classification`);
+    } else violations.push(...findings, ...(reviewed === undefined ? [] : [`${path}: reviewed catch source changed; re-review required`]));
   }
   return violations;
 }

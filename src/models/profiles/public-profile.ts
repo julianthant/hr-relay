@@ -7,6 +7,8 @@ export const ProfileLoginRequestSchema = z.strictObject({ email: z.string().min(
 export const ProfileSignUpRequestSchema = ProfileLoginRequestSchema.extend({ firstName: z.string().min(1).max(64), lastName: z.string().min(1).max(64) });
 export type ProfileLoginRequest = z.infer<typeof ProfileLoginRequestSchema>;
 export type ProfileSignUpRequest = z.infer<typeof ProfileSignUpRequestSchema>;
+export const DeleteProfileAccountRequestSchema = z.strictObject({ confirmed: z.literal(true) });
+export type DeleteProfileAccountRequest = z.infer<typeof DeleteProfileAccountRequestSchema>;
 export const ProfileOnboardingMethodSchema = z.enum(["key", "touch"]);
 export type ProfileOnboardingMethod = z.infer<typeof ProfileOnboardingMethodSchema>;
 export const ProfileOnboardingMethodStateSchema = z.strictObject({
@@ -16,6 +18,7 @@ export const ProfileOnboardingMethodStateSchema = z.strictObject({
   portalAccepted: z.boolean(),
   operatorConfirmed: z.boolean(),
   exactCredentialRequestObserved: z.boolean(),
+  platformAuthenticator: z.enum(["native-platform", "chromium-platform"]).optional(),
 });
 export type ProfileOnboardingMethodState = z.infer<typeof ProfileOnboardingMethodStateSchema>;
 export const ProfileOnboardingStateSchema = z.strictObject({
@@ -45,7 +48,7 @@ export const CancelProfileOnboardingDuoRequestSchema = StartProfileOnboardingDuo
 export type CancelProfileOnboardingDuoRequest = z.infer<typeof CancelProfileOnboardingDuoRequestSchema>;
 
 export const PublicProfileStateSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("signed-out") }),
+  z.strictObject({ state: z.literal("signed-out"), signUpRequired: z.boolean().optional() }),
   z.strictObject({ state: z.literal("error"), code: ErrorCodeSchema }),
   z.strictObject({ state: z.literal("active"), profileId: ProfileIdSchema, duoState: ProfileRegistryRowSchema.shape.duoState, epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
   z.strictObject({ state: z.literal("cancelling"), operationId: z.uuid() }),
