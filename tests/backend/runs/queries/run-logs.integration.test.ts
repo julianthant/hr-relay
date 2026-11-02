@@ -1,4 +1,5 @@
 import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
+import { freezeWorkflowOperationDisplaySnapshot } from "../../../../src/models/workflow/operation-display-snapshot.js";
 import type { LogRowWire } from "../../../../src/models/dashboard/run-detail.js";
 import { createConfirmedActionPublisher } from "../../../../src/backend/logs/confirmed-action-publisher.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
@@ -292,6 +293,7 @@ it("retains a task screenshot association and native node without exposing raw a
   assert.ok(row?.kind === "note");
   assert.equal(row.note.message, "Screenshot");
   assert.deepEqual(row.note.screenshot, { bundleId: UUID_4, artifactId: UUID_5, sessionId });
+  assert.equal(row.note.operatorAction?.sessionId, sessionId);
   assert.equal(row.native?.nodeId, "searching");
   assert.equal("action" in row.note, false);
 });
@@ -348,4 +350,17 @@ it("projects retained classified Fill and Read values only through their frozen 
   assert.ok(undeclared.section === "logs");
   assert.ok(undeclared.payload.notes.every(note => note.operatorAction?.value === undefined));
   assert.equal(section.payload.operationStructure?.state, "observed");
+  assert.ok(actions.every(action => action.submit === undefined));
+  const display = actionBindingCompiled.descriptor.operationDisplay;
+  assert.ok(display?.capability === "complete");
+  const commitSnapshot = freezeWorkflowOperationDisplaySnapshot({ workflowId: run.envelope.workflow,
+    definitionFingerprint: run.envelope.contractFingerprint, display: { ...display,
+      invocations: display.invocations.map(invocation => ({ ...invocation, contractRole: "commit" as const })) } });
+  const commit = buildRunLogsSection(deps, run.envelope.runId, undefined, { ...run,
+    envelope: { ...run.envelope, operationDisplaySnapshot: commitSnapshot } });
+  assert.ok(commit.section === "logs");
+  const submits = commit.payload.notes.flatMap(note => note.operatorAction?.submit ? [note.operatorAction] : []);
+  assert.equal(submits.length, 1);
+  assert.equal(submits[0].kind, "click");
+  assert.equal(submits[0].label, "Person Org Search button");
 });

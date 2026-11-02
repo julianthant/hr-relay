@@ -87,6 +87,9 @@ categorical and equal width. Duration text carries elapsed time separately from 
 
 Pause and Resume live in the real row footer. Pause all is an icon in the queue toolbar; the quit
 confirmation has no run list. A recorded pause reuses the outline Queued pill with a Paused label.
+Sign-up method chips stay on one line, and Cancel sign-up lives in the Duo step footer with confirmation.
+Browser captures stay inline. A verified before/after pair sits under its declared submit action,
+with equal cards and captions below; incomplete or ambiguous capture associations remain visible.
 
 ## Motion
 

@@ -379,6 +379,8 @@ function operatorActionOf(note: RunAtRestNote, authority: RunRecord | undefined,
     && isLocalActionValueEligible(DeclaredActionOccurrenceSchema.parse(occurrence), authority, source) && occurrence.value?.consumed.state === "observed"
     ? occurrence.value.consumed.value : undefined;
   return { kind, label: kind === "screenshot" ? "Screenshot" : field?.label ?? declared?.label ?? registered?.label ?? "Action label unavailable",
+    ...(kind !== "click" || invocation?.contractRole !== "commit" ? {} : { submit: true }),
+    ...(action.physicalSessionId === undefined ? {} : { sessionId: action.physicalSessionId }),
     ...(["string", "number", "boolean"].includes(typeof retained) ? { value: String(retained) } : {}),
     ...(registered === undefined ? {} : { system: registered.system }),
     ...(occurrence?.state === undefined ? {} : { state: occurrence.state }),
@@ -551,6 +553,7 @@ function dryRunPreviewForLogs(deps: RunDetailQueryDeps, authority: RunRecord) {
         : step.state === "transaction-preview" ? step.preview.outcome.state === "would-prepare" ? "Filled, verified and captured without submitting."
         : "Existing completion observed; the form was not staged." : "Completed from recorded workflow evidence.";
     return { id: step.nodeId, label, state,
+      ...(step.state === "transaction-preview" && step.preview.outcome.state === "would-prepare" ? { submitNotClicked: true } : {}),
       detail: detail + (preview.coverage.state === "partial" && index === preview.steps.length - 1 ? " Historical partial preview; later stages were not recorded." : ""),
       ...(samples.length === 0 ? {} : { sample: { label: "dry-run sample", value: samples.map(sample => `${sample.field}: ${canonicalJsonStringify(sample.value)}`).join("; ") } }),
     };
