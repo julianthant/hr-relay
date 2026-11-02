@@ -19,6 +19,7 @@ export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
   readonly projection: Pick<RunQueueProjection, "ingestFromTimeline" | "refreshRun">;
   readonly startWorkerCapacity?: RunWorkerCapacity;
+  readonly quitAccepted?: () => void;
 }
 
 export interface DashboardCommandService {
@@ -34,7 +35,7 @@ export { deriveBulkChildCommandId } from "../../../rules/commands/command-groups
 
 
 const SPANLESS_RUN_TYPES = new Set([
-  "rename", "bump", "cancel", "delete",
+  "pause", "resume", "rename", "bump", "cancel", "delete",
   "recheck-write", "resolve-write-absent",
 ]);
 
@@ -45,9 +46,13 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       // The kernel already validated the request exhaustively; this re-parse
       // only recovers the typed view the emission step dispatches on.
       const request = CommandRequestSchema.parse(input);
+      if (request.family === "application") {
+        for (const target of request.payload.targets) deps.projection.refreshRun(target.runId);
+        return result;
+      }
 
       if (request.family === "start" || (request.family === "intake" && request.type === "enqueue-intake-manifest")
-        || (request.family === "run" && (request.type === "retry" || request.type === "restart"))) {
+        || (request.family === "run" && (request.type === "retry" || request.type === "restart" || request.type === "recover-run"))) {
         deps.projection.ingestFromTimeline();
         return result;
       }
@@ -73,6 +78,11 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       return deps.kernel.executeWorkerPool(input);
     }
     const parsed = CommandRequestSchema.safeParse(input);
+    if (parsed.success && parsed.data.family === "application") {
+      const result = executeOne(input);
+      if (result.state === "applied" && parsed.data.type === "pause-all-and-quit") deps.quitAccepted?.();
+      return result;
+    }
     if (!parsed.success || parsed.data.family !== "start" || deps.startWorkerCapacity === undefined) return executeOne(input);
     const request = parsed.data;
     const key = request.target.workflowId;

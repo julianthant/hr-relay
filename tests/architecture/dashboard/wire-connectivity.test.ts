@@ -217,6 +217,7 @@ function projectedRowCommands(): ReadonlySet<string> {
     for (const isMember of [false, true]) {
       const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, {
         status,
+        ...(status === "failed" ? { recoverySource: "failed" as const } : {}),
         rowRevision: 1,
         dryRun: false,
         isChild: false,
@@ -236,6 +237,10 @@ function projectedRowCommands(): ReadonlySet<string> {
 const RETAINED_UNPROJECTED_ACTIONS = new Set(["retry", "restart"]);
 
 const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
+  "pause": "typed backend and served pauseControl are ready; the action descriptor UI awaits its approved mockup",
+  "resume": "typed backend and served pauseControl are ready; the action descriptor UI awaits its approved mockup",
+  "pause-all": "application command; the application controls UI awaits its approved mockup",
+  "pause-all-and-quit": "application command; the quit UI is deferred pending its approved mockup",
   "annotate-failure": "failure resolution targets an exact failure/version and uses the resolution command payload, not a generic run action descriptor",
   "set-batch-grouping": "queue batch controls target batch presentation, not an executable run row",
   "start-run": "the Start surface composes a start plan; there is no run row to hang it off yet",

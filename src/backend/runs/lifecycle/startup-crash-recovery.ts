@@ -94,7 +94,7 @@ function reconcileInterruptedRuns(input: RecoveryInput, lock: RuntimeLifetimeLoc
             runId: run.envelope.runId, expectedVersion: run.version, claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
             ...identity, now: clock.now().toISOString() }, lock));
           notify(result.lifecycle.state === "parked-write" ? "RUN_CRASH_WRITE_UNRESOLVED" : "RUN_INTERRUPTED_BY_CRASH", { runId: run.envelope.runId, version: run.version }, run.envelope.runId);
-        } else if (worker === undefined && run.lifecycle.state === "queued" && run.claimGeneration === 0
+        } else if (worker === undefined && run.lifecycle.state === "queued" && run.pause === undefined && run.claimGeneration === 0
           && localDatePart(new Date(run.envelope.enqueuedAt)) < clock.todayLocal()) {
           database.assertPristineQueuedRun(run.envelope.runId, run.version);
           requireLifecycleApplied(lifecycle.transition({ commandId: lifecycleCommandId("startup-stale-queue", { runId: run.envelope.runId, version: run.version }),

@@ -35,20 +35,30 @@ export const plan1Contract = defineTaskContract({ id: taskId("ocr/extract-form-p
     { id: "optional-read", kind: "read-field", valueSlot: "provider-state" },
   ] },
 });
-export const plan1Task = defineTask(plan1Contract, { sessions: [], async run({ input, ctx }) {
+const createPlan1Task = (shouldFail: (input: z.output<typeof Plan1Input>) => boolean, onRun?: (input: z.output<typeof Plan1Input>) => void) => defineTask(plan1Contract, { sessions: [], async run({ input, ctx }) {
+  onRun?.(input);
   const confirm = (id: string, expected: string) => input.mode === "confirmed" ? { id: `verify-${id}`, targetId: `verify-${id}`, verify: async (value: string) => value === expected } : undefined;
   await runDeclaredAction({ id: "consume-text", kind: "read", targetId: "consume-text" }, async () => input.text, (value) => value, confirm("consume-text", input.text));
   recordDeclaredActionNotRun({ id: "optional-read", kind: "read", targetId: "optional-read" }, "condition-false");
   const eid = await runDeclaredAction({ id: "read-eid", kind: "read", targetId: "read-eid" }, async () => input.emplId, (value) => value, confirm("read-eid", input.emplId));
   const disposition = await runDeclaredAction({ id: "read-disposition", kind: "read", targetId: "read-disposition" }, async () => {
-    if (input.mode === "fail") throw new Error("synthetic callback failure"); return input.text;
+    if (shouldFail(input)) throw new Error("synthetic callback failure"); return input.text;
   }, (value) => value, confirm("read-disposition", input.text));
   if (input.mode === "repeat") await runDeclaredAction({ id: "read-disposition", kind: "read", targetId: "read-disposition" }, async () => input.text, (value) => value);
   const providerState = await runDeclaredAction({ id: "read-provider-state", kind: "read", targetId: "read-provider-state" }, async () => input.text, (value) => value, confirm("read-provider-state", input.text));
   ctx.recordData([{ direction: "read", field: "eid", value: eid }, { direction: "read", field: "disposition", value: disposition }, { direction: "read", field: "providerState", value: providerState }]);
   return { eid, disposition, providerState };
 } });
+export const plan1Task = createPlan1Task(input => input.mode === "fail");
 export const plan1Stores = defineTaskStoreRegistry([defineServiceStore("ocr", { observe: plan1Task })], { scenarioIds: [scenario], tasks: [{ id: plan1Contract.id, effect: "read" }] });
+export function plan1TransientFailureStores(onRun: (input: z.output<typeof Plan1Input>) => void) {
+  let failed = false;
+  const task = createPlan1Task(input => {
+    if (input.mode !== "fail" || failed) return false;
+    failed = true; return true;
+  }, onRun);
+  return defineTaskStoreRegistry([defineServiceStore("ocr", { observe: task })], { scenarioIds: [scenario], tasks: [{ id: plan1Contract.id, effect: "read" }] });
+}
 const ids = ["fixture-plan1-leaf", "fixture-plan1-child", "fixture-plan1-parent"];
 const common = { version: 1, code: "fpo", label: "Plan 1 synthetic workflow", icon: "Search" as const, category: "operations" as const,
   input: Plan1Input, canonicalInput: Plan1CanonicalInput, inputSubject: "eid" as const, surface: { shape: "single" as const }, enqueue: "reject-active" as const,

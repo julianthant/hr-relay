@@ -75,7 +75,7 @@ export function collectSourceClosure(repoRoot: string, entry: string): readonly 
     const file = pending.pop();
     if (file === undefined || seen.has(file) || file === manifestModule) continue;
     seen.add(file);
-    const content = readFileSync(file, "utf8");
+    const content = readFileSync(file, "utf8").replace(/\r\n/gu, "\n");
     let cached = closureSources.get(file);
     if (cached?.content !== content) {
       cached = { content, sha256: FingerprintSchema.parse(sha256(content)), specifiers: relativeSpecifiers(file, content) };

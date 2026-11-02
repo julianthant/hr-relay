@@ -104,7 +104,7 @@ describe("THE run/queue projection", () => {
     assert.deepEqual(actionKeys(2), ["cancel", "rename"], "the running row");
 
     assert.deepEqual(actionKeys(3), ["rerun", "rename", "delete"], "the done row");
-    assert.deepEqual(actionKeys(4), ["rerun", "rename", "delete"], "the failed row");
+    assert.deepEqual(actionKeys(4), ["rerun", "recover-run", "rename", "delete"], "the failed row");
     assert.deepEqual(actionKeys(9), ["cancel", "rename"], "the awaiting-approval row");
 
     assert.deepEqual(actionKeys(8), []);

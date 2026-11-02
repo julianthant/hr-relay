@@ -192,6 +192,12 @@ export const RunInputStorageSchema = z.strictObject({
 export type RunInputStorage = z.infer<typeof RunInputStorageSchema>;
 
 
+export const RunPauseSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("requested"), commandId: z.uuid(), requestedAt: IsoInstantSchema }),
+  z.strictObject({ state: z.literal("paused"), commandId: z.uuid(), requestedAt: IsoInstantSchema, pausedAt: IsoInstantSchema }),
+]);
+export type RunPause = z.infer<typeof RunPauseSchema>;
+
 const RunRecordBaseSchema = z.strictObject({
   envelope: RunEnvelopeSchema,
   input: RunInputStorageSchema,
@@ -200,6 +206,7 @@ const RunRecordBaseSchema = z.strictObject({
   claimGeneration: NonNegativeIntSchema,
     /** Operator intent; a claimed worker alone settles the cancellation. */
   cancelRequested: z.literal(true).optional(),
+  pause: RunPauseSchema.optional(),
     /** Operator-assigned label over a stable id; never identity. */
   displayName: RunDisplayNameSchema.optional(),
     /* The app build this run was enqueued under, stamped once and never rewritten; optional because it is read forward, never back-filled. */

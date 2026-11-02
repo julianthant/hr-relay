@@ -14,7 +14,7 @@ import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/mai
 import { backupFlatStorage } from "../../../../src/backend/storage/maintenance/existing-data-backup.js";
 import { SourceRecordSchema, StorageBackupSchema, retainedStorageBackup, hash } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { readNative6RunRecord } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -145,7 +145,7 @@ for (const options of [{ unknownWrite: true, closedBrowser: false, unretiredWork
     try {
       if (options.unknownWrite) {
         assert.equal(database.prepare("SELECT state FROM runs").get()?.state, "parked-write");
-        const run = runRecordFromRow(database.prepare("SELECT * FROM runs").get());
+        const run = readNative6RunRecord(database, database.prepare("SELECT * FROM runs").get());
         assert.equal(run.lifecycle.state, "parked-write"); assert.ok(run.lifecycle.state === "parked-write");
         assert.equal(run.lifecycle.code, "unknown");
         assert.equal(database.prepare("SELECT status FROM write_intents").get()?.status, "parked");

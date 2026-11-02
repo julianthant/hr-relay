@@ -25,12 +25,30 @@ export const sourceBoundReadDescriptor = defineWorkflowDescriptor({ id: "source-
   flow: flow(Input).step("read", sourceBoundReadContract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => input })
     .build({ schema: Output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
 });
-export function sourceBoundReadStores(world: WriteFixtureWorld) {
+const failedReadCalls = new WeakMap<WriteFixtureWorld, readonly number[]>();
+export function failSourceBoundReadCalls(world: WriteFixtureWorld, calls: readonly number[]): void {
+  failedReadCalls.set(world, [...calls]);
+}
+export function sourceBoundReadStores(world: WriteFixtureWorld, failOnCall?: number | readonly number[], onRead?: () => void) {
+  let calls = 0;
   const task = defineTask(sourceBoundReadContract, { sessions: [], async run({ input, ctx }) {
+    calls += 1;
+    if ((typeof failOnCall === "number" ? calls === failOnCall : failOnCall?.includes(calls)) || failedReadCalls.get(world)?.includes(calls)) throw new Error("fixture downstream failure");
     ctx.recordData({ direction: "read", field: "eid", value: input.eid });
+    onRead?.();
     world.events.push(`read:${input.memo ?? "absent"}`); return { eid: input.eid };
   } });
   return defineTaskStoreRegistry([defineServiceStore("ocr", { read: task })], {
     scenarioIds: [scenario], tasks: [{ id: sourceBoundReadContract.id, effect: sourceBoundReadContract.effect }],
   });
 }
+
+export const failedSourceReadDescriptor = defineWorkflowDescriptor({ id: sourceBoundReadDescriptor.id, version: 1,
+  contractFingerprint: sourceBoundReadDescriptor.contractFingerprint, code: "sr", label: "Source read", icon: "Search", category: "operations",
+  canonicalInput: sourceBoundReadDescriptor.canonicalInput, inputSubject: "eid", surface: { shape: "single" }, enqueue: "reject-active",
+  actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [], identity: { matchKey: (input) => input.eid },
+  presentation: { title: (input) => input.eid }, scenarios: ["source-read/happy"],
+  flow: flow(Input).step("read", sourceBoundReadContract, { dependsOn: [], replay: "always-rerun", bind: ({ input }) => input })
+    .step("finish", sourceBoundReadContract, { dependsOn: ["read"], replay: "checkpoint", bind: ({ input }) => input })
+    .build({ schema: Output, dependsOn: ["finish"], derive: ({ outputs }) => outputs.finish }),
+});

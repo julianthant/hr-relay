@@ -966,7 +966,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               const retained = recoveryEntries.find(candidate => candidate.inFlightKey === entry.inFlightKey);
               if (retained === undefined) return;
               const request = retained.request;
-              const plan: BulkVerbPlan | undefined = "targets" in request && request.type !== "bump" ? { verb: request.type, label: retained.label, eligible: retained.targets, skipped: [], unavailable: [] } : undefined;
+              const plan: BulkVerbPlan | undefined = "targets" in request && (request.type === "retry" || request.type === "cancel") ? { verb: request.type, label: retained.label, eligible: retained.targets, skipped: [], unavailable: [] } : undefined;
               void executeShell(request, retained.label, plan, true);
             }}
           />

@@ -73,7 +73,7 @@ it.each([
   } finally { database.close(); }
 });
 
-function inspectionDatabase(version: 9 | 10 | 11 | 12 | 13 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION) {
+function inspectionDatabase(version: 9 | 10 | 11 | 12 | 13 | 14 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION) {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys=ON");
   for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= version)) for (const statement of migration.statements) database.exec(statement);
@@ -83,7 +83,7 @@ function inspectionDatabase(version: 9 | 10 | 11 | 12 | 13 | typeof CURRENT_AUTH
   return database;
 }
 
-it.each([9, 10, 11, 12, 13, CURRENT_AUTHORITY_SCHEMA_VERSION] as const)("keeps historical table vocabulary inside exact stopped schema %s inspection", version => {
+it.each([9, 10, 11, 12, 13, 14] as const)("keeps historical table vocabulary inside exact stopped schema %s inspection", version => {
   const database = inspectionDatabase(version);
   try {
     const inspection = inspectNativeAuthority(database, version);
