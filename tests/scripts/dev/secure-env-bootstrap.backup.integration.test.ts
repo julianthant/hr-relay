@@ -45,7 +45,7 @@ function calibrateFixtureLockPort(workspace: string, port: number): void {
   assert.deepEqual({ ...calibrated, lockPort: rebuildRuntimeIsolation.lockPort }, rebuildRuntimeIsolation);
   assert.deepEqual(Object.keys(calibrated), Object.keys(rebuildRuntimeIsolation));
   writeFileSync(join(workspace, "src/backend/app/config/runtime-isolation.ts"),
-    `import { defineRuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";\nconst production = defineRuntimeIsolation(${JSON.stringify(rebuildRuntimeIsolation)});\nexport const rebuildRuntimeIsolation = Object.freeze({ ...production, lockPort: ${port} });\n`);
+    `import { defineRuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";\nconst production = defineRuntimeIsolation(${JSON.stringify(rebuildRuntimeIsolation)});\nexport const rebuildRuntimeIsolation = Object.freeze({ ...production, lockPort: ${port} });\nexport function applicationDataWorkspace() { return ${JSON.stringify(workspace)}; }\n`);
   const configPath = join(workspace, "config/runtime-isolation.json");
   const record = z.record(z.string(), z.unknown()).parse(JSON.parse(readFileSync(configPath, "utf8")));
   const rebuild = z.record(z.string(), z.unknown()).parse(record.rebuild);

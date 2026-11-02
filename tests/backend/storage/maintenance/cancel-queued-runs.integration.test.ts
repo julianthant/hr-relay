@@ -2,7 +2,7 @@ import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/p
 import { testProcessImport } from "../../../support/compiled-process.js";
 import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
 import assert from "node:assert/strict";
-import { chmodSync, cpSync, mkdirSync, statSync, symlinkSync, readFileSync, readdirSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, statSync, symlinkSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, it, vi } from "vitest";
@@ -131,6 +131,10 @@ it("dispatches the actual secure-bootstrap CLI plan and apply against an isolate
   const f = await fixture();
   try {
     cpSync(join(process.cwd(), "src"), join(f.workspace, "src"), { recursive: true });
+    const isolationPath = join(f.workspace, "src/backend/app/config/runtime-isolation.ts"), isolation = readFileSync(isolationPath, "utf8");
+    const fixedReturn = 'return join(homeDirectory, "Library", "Application Support", "Relay");';
+    assert.ok(isolation.includes(fixedReturn));
+    writeFileSync(isolationPath, isolation.replace(fixedReturn, `return ${JSON.stringify(f.workspace)};`));
     mkdirSync(join(f.workspace, "scripts/dev"), { recursive: true });
     cpSync(join(process.cwd(), "scripts/dev/secure-env-bootstrap.ts"), join(f.workspace, "scripts/dev/secure-env-bootstrap.ts"));
     mkdirSync(join(f.workspace, "config"));

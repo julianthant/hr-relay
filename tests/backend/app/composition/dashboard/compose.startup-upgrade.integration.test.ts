@@ -12,6 +12,7 @@ import * as notificationOwner from "../../../../../src/backend/app/composition/d
 import * as credentialInventoryOwner from "../../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { prepareApplicationDataWorkspace,composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
+import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
 import { createProfileSession } from "../../../../../src/backend/profiles/profile-session.js";
 import { requireLifecycleApplied,RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { reconcileStartupCrash } from "../../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
@@ -21,16 +22,19 @@ import { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admissio
 import { createBrowserRoots } from "../../../../../src/backend/storage/browser-roots.js";
 import { readFixedLayoutIntent } from "../../../../../src/backend/storage/maintenance/fixed-layout.js";
 import { WorkerBrowserObservationSchema } from "../../../../../src/models/run/worker-control.js";
+import { isLiveWorker } from "../../../../../src/models/run/worker.js";
 import { canonicalJsonStringify } from "../../../../../src/rules/validation/canonical-json.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import { createCredentialStore } from "../../../../../src/backend/storage/configuration/credential-store.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../../src/backend/storage/sqlite/migrations.js";
 import { readProfileDatabaseBinding } from "../../../../../src/backend/storage/sqlite/profile-local-databases.js";
 import * as http from "../../../../../src/backend/transports/http/http-server.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
-import { LogoutOperationSchema } from "../../../../../src/models/profiles/profile.js";
+import { LogoutOperationSchema,SignUpOperationSchema } from "../../../../../src/models/profiles/profile.js";
+import { seedRegisteredSignupBrowser } from "../../../../support/helpers/browser/browser-roots.js";
 import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
-import { boundProfileCredentials,createBoundProfileFixture,syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture,syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
 import { CANONICAL_WORKER_ID,createRunRecordServiceTestWorld } from "../../../../support/helpers/backend/run-record-service-world.js";
 import { assertRuntimeLifetimeHeld,runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 
@@ -324,9 +328,12 @@ for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] 
     const world = createRunRecordServiceTestWorld(), f = await world.interruptedFixture();
     const profileId = f.admission.profileBinding.profileId, workspace = f.machine.readInstallationContext()?.workspace; assert.ok(workspace);
     const intent = mode === "unknown" ? world.parkedWriteIntent(f.database, f.run, { writeIntentId: randomUUID(), code: "unknown", message: "Unresolved external write" }) : undefined;
+    const heldWorker = f.database.authority.workerLeases.get(CANONICAL_WORKER_ID); assert.ok(heldWorker && isLiveWorker(heldWorker));
     if (move) {
-      const custody = f.database.readProfileResourceCustody(), snapshot = custody.configSnapshots[0], worker = custody.leases.find(row => row.workerId === CANONICAL_WORKER_ID);
-      assert.ok(snapshot && worker);
+      const resolved = resolveConfigWithProvenance({}, hostFacts, f.clock, { stateRoot: f.root, artifactRoot: f.admission.artifactRoot });
+      const snapshot = { ...resolved, configSnapshotId: randomUUID(), revision: 1, capturedAt: f.clock.now().toISOString(), capturedBy: "local-operator" as const };
+      f.database.withAuthorityTransaction(repositories => repositories.configSnapshots.insert(snapshot));
+      const worker = heldWorker;
       const profileRoot = snapshot.config.paths.browserProfileRoot, profileDirectory = join(profileRoot, "w1", "ucpath");
       const launch = createBrowserRoots(f.admission).beginLaunch({ profileId, profileRoot, profileDirectory, credentialFingerprint: "b".repeat(64),
         owner: { kind: "worker", database: f.database, workerId: CANONICAL_WORKER_ID } });
@@ -343,7 +350,7 @@ for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] 
     try {
       await f.closeController(); historicalTen(path);
       const before = rows(path, 10);
-      assert.ok(before.worker_leases?.some(row => String(row.payload_json).includes('"state":"busy"')));
+      assert.ok(before.worker_leases?.some(row => row.worker_id === CANONICAL_WORKER_ID && row.state === heldWorker.lifecycle.state));
       lifetime = await RuntimeLifetimeLock.acquire(0);
       if (target === undefined) await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts, f.clock);
       else {
@@ -370,7 +377,7 @@ for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] 
       }
       machine = acquireSharedRuntimeAdmission(currentWorkspace, lifetime); admission = machine.admitProfile(profileId);
       database = AuthorityDatabase.open(admission, { path: currentPath, migrationOwner: "startup-upgrade-recovery", busyTimeoutMs: 250 }, f.clock,
-        undefined, undefined, undefined, boundProfileCredentials(admission));
+        undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: admission.stateRoot }));
       const lifecycle = new RunRecordService({ database, clock: f.clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("startup recovery must not queue work"); } });
       reconcileStartupCrash({ machine, admission, database, lifecycle, lock: lifetime, clock: f.clock });
       const recovered = database.authority.runs.get(f.run.envelope.runId); assert.ok(recovered);
@@ -390,6 +397,7 @@ it("upgrades a pending sign-up database before onboarding recovery without publi
   const profileId = draft.profileId, operationPath = join(f.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
   let machine: RuntimeAdmission | undefined, runtime: ReturnType<typeof composeProfileRuntime> | undefined;
   try {
+    seedRegisteredSignupBrowser(f.machine, SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))));
     await f.closeController(); historicalTen(f.path);
     const operation = readFileSync(operationPath), before = rows(f.path, 10);
     await upgradeRegisteredPersonStores(f.workspace, lifetime, hostFacts);
@@ -404,24 +412,29 @@ it("upgrades a pending sign-up database before onboarding recovery without publi
     assert.equal(machine.readProfileRegistry().profiles.some(row => row.profileId === profileId), false);
     runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts, onboardingDuo: syntheticOnboardingDuo(() => login.email) });
     await runtime.session.recoverOnboarding();
+    assert.equal(existsSync(operationPath), false); assert.equal(existsSync(f.stateRoot), false);
     const resumed = runtime.session.signUp({ ...login, firstName: "Fixture", lastName: "Example", createdAt: new Date().toISOString() });
     assert.equal(resumed.state, "onboarding");
-    assert.equal("profileId" in resumed ? resumed.profileId : undefined, profileId);
-  } finally { await runtime?.close(); machine?.release(); await lifetime.close(); await f.close(); }
+    assert.notEqual("profileId" in resumed ? resumed.profileId : undefined, profileId);
+  } finally { await runtime?.close(); machine?.release(); await f.close(); await lifetime.close(); }
 });
 
 for (const phase of ["prepared", "commit-intent", "done"] as const) it(
   `converts pending logout ${phase} proof and resumes after interruption following the schema commit`, async () => {
     const lifetime = await RuntimeLifetimeLock.acquire(0), f = await createBoundProfileFixture({ lifetime });
     const profileId = f.admission.profileBinding.profileId;
-    const source = AuthorityDatabase.open(f.admission, { path: f.path, migrationOwner: "startup-logout-source", busyTimeoutMs: 250 }, systemClock,
-      undefined, undefined, undefined, boundProfileCredentials(f.admission));
+    let source: AuthorityDatabase | undefined, sourceAdmission: RuntimeAdmission | undefined;
     const session = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine, clock: systemClock,
-      activity: { hasUnquiescedWork: () => true }, prepareLogout: () => ({ source: source.capturePendingLogoutSource(), intentFailed(error) { throw error; } }) });
+      activity: { hasUnquiescedWork: () => true }, prepareLogout: () => {
+        assert.ok(source); return { source: source.capturePendingLogoutSource(), intentFailed(error) { throw error; } };
+      } });
     let machine: RuntimeAdmission | undefined;
     const convert = vi.spyOn(AuthorityDatabase, "convertStartupUpgradeLogout");
     try {
       const active = session.signIn({ ...login, at: new Date().toISOString() }); assert.ok(active.state === "active");
+      sourceAdmission = f.machine.admitProfile(profileId);
+      source = AuthorityDatabase.open(sourceAdmission, { path: f.path, migrationOwner: "startup-logout-source", busyTimeoutMs: 250 }, systemClock,
+        undefined, undefined, undefined, createCredentialStore({ admission: sourceAdmission, stateRoot: sourceAdmission.stateRoot }));
       const pending = session.logOut(active.token, { at: new Date().toISOString() }); assert.ok(pending.state === "cancelling" && pending.operationId);
       source.close(); historicalTen(f.path);
       const operationPath = join(f.machine.stateRoot, "machine", "operations", `${pending.operationId}.json`);
@@ -431,7 +444,7 @@ for (const phase of ["prepared", "commit-intent", "done"] as const) it(
         before: phase === "done" ? "a".repeat(64) : fingerprint,
         ...(phase === "prepared" ? {} : { after: phase === "done" ? fingerprint : "b".repeat(64) }), requests: [], workers: [] } });
       f.machine.publishProfileOperation(operation);
-      session.close(); await f.closeController();
+      session.close(); sourceAdmission.release(); await f.closeController();
       convert.mockImplementationOnce(() => { throw new Error("interrupted-after-schema-commit"); });
       await assert.rejects(upgradeRegisteredPersonStores(f.workspace, lifetime, hostFacts), RegisteredPersonUpgradeRefusedError);
       assert.equal(readProfileDatabaseBinding(f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
@@ -448,6 +461,6 @@ for (const phase of ["prepared", "commit-intent", "done"] as const) it(
       assert.equal(readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json")).length, 1);
       machine = acquireSharedRuntimeAdmission(f.workspace, lifetime);
       assert.equal(machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.lifecycle, "cancelling");
-    } finally { convert.mockRestore(); source.close(); session.close(); machine?.release(); await lifetime.close(); await f.close(); }
+    } finally { convert.mockRestore(); source?.close(); sourceAdmission?.release(); session.close(); machine?.release(); await f.close(); await lifetime.close(); }
   },
 );

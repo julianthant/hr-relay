@@ -25,6 +25,7 @@ import { it, vi } from "vitest";
 import { z } from "zod";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { releaseStoppedMachineControlUpgrade, upgradeStoppedMachineControl } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { composeStoppedControlCredentialInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
@@ -552,9 +553,7 @@ async function offlineCanonicalPredecessor() {
   const controlRoot = join(workspace, ".tracker", "control"), backupRoot = join(controlRoot, "profile-control-upgrades");
   const json = (path: string) => z.record(z.string(), z.unknown()).parse(JSON.parse(readFileSync(path, "utf8")));
   const write = (path: string, value: unknown) => writeFileSync(path, JSON.stringify(value), { mode: 0o600 });
-  const locatorPath = join(controlRoot, "locator.json"), locator = json(locatorPath);
-  const artifactRoot = target(z.string().parse(locator.artifactRoot));
-  write(locatorPath, { ...locator, stateRoot, artifactRoot });
+  const artifactRoot = join(workspace, rebuildRuntimeIsolation.artifactRoot);
   write(join(controlRoot, "installation.json"), { ...json(join(controlRoot, "installation.json")), workspace });
   for (const root of [stateRoot, artifactRoot]) write(join(root, ".runtime-owner.json"), { ...json(join(root, ".runtime-owner.json")), workspace });
   // Offline historical construction from closed generated data; the original seed stays unchanged.

@@ -15,19 +15,23 @@ const _afterEachFixture0 = async () => { vi.restoreAllMocks(); syncBuiltinESMExp
 describe("ordinary browser paths", () => {
 afterEach(_afterEachFixture0);
 
-  it("activates valid browser paths for new runs while old runs retain their snapshot", async () => {
+  it("activates the extension path for new runs while fixed person paths and old snapshots stay intact", async () => {
     const f = await settingsFixture(); cleanups.push(f.close);
     const old = f.create();
     const oldActive = selectActiveRunSettings(f.database.authority);
     const profile = join(f.root, "new-profile"); mkdirSync(profile);
     const extension = join(f.root, "new-extension"); mkdirSync(extension);
     writeFileSync(join(extension, "workflow-manifest.json"), '{"manifest_version":3,"name":"Synthetic Duo"}');
-    const patch = { "paths.browserProfileRoot": { set: profile }, "paths.duoExtensionDir": { set: extension } };
+    for (const path of ["paths.browserProfileRoot", "paths.duoCredential"]) {
+      assert.equal(f.save({ [path]: { set: profile } }).state, "rejected");
+      assert.deepEqual(selectActiveRunSettings(f.database.authority), oldActive);
+    }
+    const patch = { "paths.duoExtensionDir": { set: extension } };
     const saved = f.save(patch); assert.equal(saved.state, "applied");
     if (saved.state !== "applied") return;
     assert.equal(saved.restartRequired, false);
     const active = selectActiveRunSettings(f.database.authority);
-    assert.equal(active.config.paths.browserProfileRoot, profile);
+    assert.equal(active.config.paths.browserProfileRoot, oldActive.config.paths.browserProfileRoot);
     assert.equal(active.config.paths.duoCredential, oldActive.config.paths.duoCredential);
     assert.equal(active.config.paths.duoExtensionDir, extension);
     assert.equal(active.configSnapshotId === oldActive.configSnapshotId, false);

@@ -94,14 +94,15 @@ describe("typed Settings catalog controls", () => {
     assert.equal(h.host.querySelector('[data-settings-path="features.debugScreenshots"]'), null);
     assert.equal(h.host.querySelector('[data-settings-path="features.duoWebAuthn"]'), null);
   });
-  it("shows deployment state locations and editable new-run browser locations", async () => {
+  it("shows managed app-data locations and ordinary workflow pickers", async () => {
     const { host } = await setup("paths");
     assert.deepEqual([...host.querySelectorAll("h1")].map(node => node.textContent), ["Paths"]);
-    assert.deepEqual([...host.querySelectorAll("h2")].map(node => node.textContent), ["Folders", "App dataManaged by Relay", "Backup and restore", "Workflow locations"]);
+    assert.deepEqual([...host.querySelectorAll("h2")].map(node => node.textContent), ["Folders", "App dataManaged by Relay", "Workflow locations"]);
     assert.equal(host.querySelectorAll(".hub-settings-row input[readonly]").length, 2);
-    assert.equal(host.querySelectorAll(".settings-compact-row .ds-path-control button").length, 6);
+    assert.equal(host.querySelectorAll(".settings-compact-row .ds-path-control button").length, 5);
     assert.equal(host.querySelector('[data-settings-path="paths.duoCredential"]'), null);
-    for (const path of ["paths.browserProfileRoot", "paths.duoExtensionDir",
+    assert.equal(host.querySelector('[data-settings-path="paths.browserProfileRoot"]'), null);
+    for (const path of ["paths.duoExtensionDir",
       "paths.reportsDir", "paths.downloadsDir", "paths.onboardingDocsDir", "paths.i9CheckTrackerPath"]) {
       const row = host.querySelector(`[data-settings-path="${path}"]`);
       if (row === null) throw new Error(`missing ${path} row`);

@@ -12,7 +12,7 @@ import { join,resolve as resolvePath } from "node:path";
 import { tsImport } from "tsx/esm/api";
 import { beforeEach, describe,it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { assertFastDuoReady, BrowserProfileAdmissionSchema, browserSignInFingerprint, DuoProvisioningError, PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError, workerProfileDirectory, type BrowserDeadlineScheduler } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import type {
 AuthenticatedApplicationEvidence, SystemLoginContext
@@ -120,8 +120,8 @@ describe("worker browser session factory", () => {
   it("derives every profile segment from the isolation contract and an absolute root", () => {
     // Assert production path derivation as a string; never create or remove a real runtime profile root.
     const production = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config.paths;
-    assert.equal(production.browserProfileRoot, resolvePath(rebuildRuntimeIsolation.browserProfileRoot));
-    assert.equal(production.duoCredential, resolvePath(".tracker/data/credentials/duo-webauthn.json"));
+    assert.equal(production.browserProfileRoot, join(applicationDataWorkspace(), rebuildRuntimeIsolation.browserProfileRoot));
+    assert.equal(production.duoCredential, join(applicationDataWorkspace(), rebuildRuntimeIsolation.stateRoot, "credentials", "duo-webauthn.json"));
 
     const profileRoot = join(tmpdir(), "hrauto-profile-derivation");
     const directory = workerProfileDirectory({ profileRoot: profileRoot, slotOrdinal: 1, system: "ucpath" });

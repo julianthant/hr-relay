@@ -81,7 +81,7 @@ describe("native macOS path picker", () => {
     assert.equal((await pending).state, "selected");
   });
 
-  it("derives folder or file selection for all eight fields", async () => {
+  it("derives folder or file selection for every ordinary picker field", async () => {
     const p = paths();
     const calls: string[] = [];
     const picker = createNativePathPicker({ platform: "darwin", execute: async (_file, args) => {
@@ -93,7 +93,8 @@ describe("native macOS path picker", () => {
     for (const field of fields) {
       assert.equal((await picker.pick({ field }, controller().signal)).state, "selected");
     }
-    assert.deepEqual(calls, ["folder", "folder", "folder", "folder", "folder", "folder", "folder", "file"]);
+    assert.deepEqual(fields, ["paths.duoExtensionDir", "paths.reportsDir", "paths.downloadsDir", "paths.onboardingDocsDir", "paths.i9CheckTrackerPath"]);
+    assert.deepEqual(calls, ["folder", "folder", "folder", "folder", "file"]);
   });
 
   it("releases the single-dialog gate after a request aborts", async () => {

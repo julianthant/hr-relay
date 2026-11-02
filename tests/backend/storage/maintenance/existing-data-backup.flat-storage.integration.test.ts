@@ -366,6 +366,10 @@ it("runs the actual backup bootstrap in a fresh flat fixture process", async () 
   const f = await createHistoricalFlatProfileFixture();
   try {
     cpSync(join(process.cwd(), "src"), join(f.workspace, "src"), { recursive: true });
+    const isolationPath = join(f.workspace, "src/backend/app/config/runtime-isolation.ts"), isolation = readFileSync(isolationPath, "utf8");
+    const fixedReturn = 'return join(homeDirectory, "Library", "Application Support", "Relay");';
+    assert.ok(isolation.includes(fixedReturn));
+    writeFileSync(isolationPath, isolation.replace(fixedReturn, `return ${JSON.stringify(f.workspace)};`));
     mkdirSync(join(f.workspace, "scripts/dev"), { recursive: true });
     cpSync(join(process.cwd(), "scripts/dev/secure-env-bootstrap.ts"), join(f.workspace, "scripts/dev/secure-env-bootstrap.ts"));
     mkdirSync(join(f.workspace, "config"));

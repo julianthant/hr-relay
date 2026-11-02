@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { assistantSurfaceCoverage, localAssistantIntent } from "../../../src/backend/assistant/tools.js";
 import { SETTINGS_CATALOG } from "../../../src/models/config/catalog.js";
+import { isRetiredSettingsPath } from "../../../src/models/config/settings.js";
 import { assistantKnowledgeArtifact, ASSISTANT_SAFE_KNOWLEDGE } from "../../../src/backend/assistant/context.js";
 import { AssistantLocalIntentError } from "../../../src/backend/assistant/service.js";
 
@@ -23,12 +24,12 @@ it("accounts for every actual registered route as a handoff without promoting ro
 });
 
 it("projects only ordinary editable catalog identities into finite setting help without values or deployment metadata", () => {
-  const ordinary = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && row.sensitivity === "ordinary" && row.editability === "operator");
+  const ordinary = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && row.sensitivity === "ordinary" && row.editability === "operator" && !isRetiredSettingsPath(row.key));
   assert.ok(ordinary.length > 0);
   const topics = Object.keys(ASSISTANT_SAFE_KNOWLEDGE).filter(topic => topic.startsWith("setting "));
   assert.deepEqual(topics, ordinary.map(row => `setting ${row.key}`));
   for (const topic of topics) assert.deepEqual(localAssistantIntent({ message: `help ${topic}` }), { kind: "help", topic });
-  for (const row of SETTINGS_CATALOG.filter(row => row.sensitivity !== "ordinary")) {
+  for (const row of SETTINGS_CATALOG.filter(row => row.sensitivity !== "ordinary" || isRetiredSettingsPath(row.key))) {
     assert.throws(() => localAssistantIntent({ message: `help setting ${row.key}` }), AssistantLocalIntentError);
   }
   const artifact = assistantKnowledgeArtifact();
