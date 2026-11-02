@@ -37,8 +37,9 @@ describe("workflow registry generation", () => {
     for (const [path, content] of workflowRegistrySources(root)) expect(readFileSync(join(root, path), "utf8")).toBe(content);
     const closure = collectSourceClosure(root, join(root, "src/workflows/descriptor-registry.ts")).map(source => source.path);
     expect(closure).toContain("src/workflows/generated-descriptors.ts");
-    expect(closure.filter(path => path.startsWith("src/backend/") || path.endsWith("/index.ts")
-      || path.endsWith("/task-registry.ts") || path.includes("/tasks/"))).toEqual([]);
+    expect(closure).toContain("src/workflow-kit/task-registry.ts");
+    expect(closure.filter(path => path.startsWith("src/backend/")
+      || /^src\/workflows\/[^/]+\/(?:index\.ts$|task-registry\.ts$|tasks\/)/u.test(path))).toEqual([]);
   });
 
   it("sorts the picker by declared order, admits child-only modules separately and excludes unregistered owners", () => {

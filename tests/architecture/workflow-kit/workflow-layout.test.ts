@@ -290,6 +290,7 @@ const FIXTURES: readonly LayoutFixture[] = [
     arm: "a",
     files: withFiles((files) => {
       delete files["src/workflows/solo/workflow.ts"];
+      delete files["src/workflows/solo/index.ts"];
     }),
     modules: cleanFixtureModules(),
     expected: /workflow solo \(role standalone\) is addressed to src\/workflows\/solo\/, which does not exist/,
