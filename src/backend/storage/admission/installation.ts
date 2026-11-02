@@ -1431,17 +1431,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (options?.machine === true) readMachineRegistry(control, resolved, options.readonlyControl !== true);
     return resolved;
   }); } catch (error) {
-    const pending: unknown[] = [error], seen = new Set<unknown>();
-    let closureUnproved = false;
-    while (pending.length > 0) {
-      const failure = pending.pop();
-      if (seen.has(failure)) continue;
-      seen.add(failure);
-      if (failure instanceof AuthoritySourceClosureUnprovedError) closureUnproved = true;
-      if (failure instanceof AggregateError) { const errors: readonly unknown[] = failure.errors; pending.push(...errors); }
-      if (failure instanceof Error && failure.cause !== undefined) pending.push(failure.cause);
-    }
-    if (closureUnproved) lifetime.retainSourceClosure(error);
+    if (hasUnprovedSourceClosure(error)) lifetime.retainSourceClosure(error);
     else releaseExclusive?.();
     throw error;
   }
@@ -2164,7 +2154,7 @@ export interface StoppedControlProfileInventory { readonly profileId: string }
 
 const stoppedControlInventories = new WeakMap<StoppedControlProfileInventory, Readonly<{
   binding: z.infer<typeof ProfileDatabaseBindingSchema>; stateRoot: string; artifactRoot: string; machineRoot: string; locator: RuntimeLocator;
-  schemaVersion: 8 | 9 | 10 | 11; conversionOperationId: string; backupDirectory: string;
+  schemaVersion: 8 | 9 | 10 | 11 | 12; conversionOperationId: string; backupDirectory: string;
   pendingPlan(): CanonicalCredentialConversionPlan | undefined;
   assertCanonicalConversion(operationId: string, digest: string): void;
   assertCanonicalPublication(operationId: string, digest: string): void;
@@ -2686,9 +2676,9 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
       };
       const binding = ProfileDatabaseBindingSchema.parse({ installationId: locator.installationId, profileId });
       const databaseBinding = readProfileDatabaseBinding(join(locator.stateRoot, "profiles", profileId, "state.db"));
-      if (databaseBinding.state !== "bound" || ![8, 9, 10, 11].includes(databaseBinding.schemaVersion)
+      if (databaseBinding.state !== "bound" || ![8, 9, 10, 11, 12].includes(databaseBinding.schemaVersion)
         || canonicalJsonStringify(databaseBinding.binding) !== canonicalJsonStringify(binding)) fail("profile-control-upgrade-database-schema-unsupported");
-      const schemaVersion = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11)]).parse(databaseBinding.schemaVersion);
+      const schemaVersion = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12)]).parse(databaseBinding.schemaVersion);
       const pendingPlan = () => {
         held();
         const receipt = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath) : undefined;
