@@ -280,7 +280,7 @@ export async function importWorkbook(name: string, data: ArrayBuffer): Promise<E
     if (part.path.endsWith('.xml') && part.path.includes('/theme/')) parts[part.path.split('/').at(-1)!.replace('.xml', '')] = new TextDecoder().decode(part.bytes);
     return parts;
   }, {}) ?? {};
-  let hasFormulas = false, unsupportedStyle = false, total = 0;
+  let hasFormulas = false, unsupportedCellMetadata = false, total = 0;
   const sheets = workbook.worksheets.map(sheet => {
     const dimension = input.dimensions.get(sheet.name);
     const width = Math.max(1, sheet.columnCount, dimension?.width ?? 0), height = Math.max(1, sheet.rowCount, dimension?.height ?? 0);
@@ -291,14 +291,14 @@ export async function importWorkbook(name: string, data: ArrayBuffer): Promise<E
       if (!defaultCellFont(cell.style.font) || (cell.style.border && Object.keys(cell.style.border).length > 0)
         || (cell.style.alignment && Object.keys(cell.style.alignment).length > 0)
         || (cell.style.protection && Object.keys(cell.style.protection).length > 0)
-        || (cell.fill?.type === 'gradient' && cell.fill.gradient === 'path' && (cell.fill.right !== undefined || cell.fill.bottom !== undefined))) unsupportedStyle = true;
+        || (cell.fill?.type === 'gradient' && cell.fill.gradient === 'path' && (cell.fill.right !== undefined || cell.fill.bottom !== undefined))) unsupportedCellMetadata = true;
       let value = cell.value;
       const richText = value && typeof value === 'object' && 'richText' in value ? value.richText.map(part => structuredClone(part)) : undefined;
       const link = sheet.hyperlinkAt(cell.address);
       if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
         if ('formula' in value || 'sharedFormula' in value || 'shareType' in value) { hasFormulas = true; value = value.result ?? null; }
         else if ('richText' in value) value = value.richText.map(part => part.text).join('');
-        else if ('error' in value) value = value.error;
+        else if ('error' in value) { unsupportedCellMetadata = true; value = value.error; }
       }
       const fill = fromLibraryFill(cell.fill);
       return { value: value as SheetCell['value'], fill, background: fillBackground(fill, themes), numFmt: cell.numFmt, ...(richText === undefined ? {} : { richText }), ...(link === undefined ? {} : { hyperlink: link.target, ...(link.tooltip === undefined ? {} : { tooltip: link.tooltip }) }) };
@@ -306,7 +306,7 @@ export async function importWorkbook(name: string, data: ArrayBuffer): Promise<E
     return { id: String(sheet.id), name: sheet.name, rows, width, hidden: Array.from({ length: width }, (_, column) => column).filter(column => sheet.getColumn(column + 1).hidden) };
   });
   if (!sheets.length) throw new Error('SPREADSHEET_HAS_NO_SHEETS');
-  return { name, sheets, themes, hasFormulas, ...(unsupportedStyle || await hasUnsupportedMetadata(data) ? { unsupportedMetadata: true } : {}) };
+  return { name, sheets, themes, hasFormulas, ...(unsupportedCellMetadata || await hasUnsupportedMetadata(data) ? { unsupportedMetadata: true } : {}) };
 }
 export function writeWorkbookCsv(sheet: EditableSheet): string {
   return sheet.rows.map(row => row.cells.filter((_, index) => !sheet.hidden.includes(index)).map(cell => {

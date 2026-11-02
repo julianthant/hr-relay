@@ -1,4 +1,4 @@
-import { EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookOperationSchema, WorkbookReferenceRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookReferenceSnapshotSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
+import { EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookOperationSchema, WorkbookReferenceRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookReferenceSnapshotSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { RunIdSchema } from "../../rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
@@ -16,6 +16,7 @@ export class WorkbookLibraryError extends Error {
 export interface WorkbookLibraryRepository {
   create(record: SavedWorkbook): SavedWorkbook;
   read(libraryId: string): SavedWorkbook | undefined;
+  revision(libraryId: string, version: number): SavedWorkbook;
   list(): readonly SavedWorkbook[];
   save(record: SavedWorkbook, expectedVersion: number): SavedWorkbook;
   history(libraryId: string): readonly SavedWorkbook[];
@@ -49,6 +50,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       return deps.repository.create(input(SavedWorkbookSchema, { libraryId, version: 1, createdAt: now, savedAt: now, workbook: { ...workbook, libraryId } }));
     },
     read,
+    revision: (libraryId: string, version: number) => deps.repository.revision(input(WorkbookIdSchema, libraryId), input(WorkbookRevisionSchema, version)),
     list: () => deps.repository.list(),
     save(libraryId: string, expectedVersion: number, value: unknown): SavedWorkbook {
       const workbook = input(EditableWorkbookSchema, value);

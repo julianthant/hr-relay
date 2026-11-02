@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import {
-  SavedWorkbookWireSchema, WorkbookListWireSchema, WorkbookHistoryWireSchema,
+  SavedWorkbookWireSchema, WorkbookRevisionSchema, WorkbookListWireSchema, WorkbookHistoryWireSchema,
   WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema,
   WorkbookIntakeResultSchema, encodeEditableWorkbook, decodeSavedWorkbook, type SavedWorkbook,
 } from "../../../models/dashboard/workbooks.js";
@@ -12,6 +12,7 @@ import { parseOrThrow } from "./query-parse.js";
 export interface WorkbookLibraryQueries {
   workbookList(): Promise<readonly SavedWorkbook[]>;
   workbookOpen(libraryId: string): Promise<SavedWorkbook>;
+  workbookRevision(libraryId: string, version: number): Promise<SavedWorkbook>;
   workbookCreate(workbook: unknown): Promise<SavedWorkbook>;
   workbookSave(libraryId: string, expectedVersion: number, workbook: unknown): Promise<SavedWorkbook>;
   workbookHistory(libraryId: string): Promise<readonly SavedWorkbook[]>;
@@ -48,6 +49,13 @@ export function createWorkbookLibraryQueries(transport: DashboardTransport): Wor
       const record = parseOrThrow(SavedWorkbookWireSchema, path, await transport.requestJson(path, { method: "POST", body: JSON.stringify(request) }));
       if (record.version !== 1 || record.createdAt !== record.savedAt
         || canonicalContent(record.workbook) !== canonicalContent({ ...request.workbook, libraryId: record.libraryId })) throw schemaError(path, "created workbook differs from request");
+      return decodeSavedWorkbook(record);
+    },
+    async workbookRevision(libraryId: string, version: number) {
+      const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}/revisions/${version}`;
+      parseOrThrow(WorkbookRevisionSchema, path, version);
+      const record = parseOrThrow(SavedWorkbookWireSchema, path, await transport.requestJson(path));
+      if (record.libraryId !== libraryId || record.version !== version) throw schemaError(path, "workbook revision identity mismatch");
       return decodeSavedWorkbook(record);
     },
     async workbookSave(libraryId: string, expectedVersion: number, workbook: unknown) {

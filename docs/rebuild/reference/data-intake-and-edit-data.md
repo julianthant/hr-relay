@@ -299,9 +299,18 @@ The live `version` is a CAS revision. Named versions are explicit operator snaps
 patches and manual Sync do not create versions. Existing saved revisions retain their data with
 migration provenance. The immutable creation record independently proves workflow publication replay.
 
+Read-only revision lookup reconstructs the exact CAS revision for chat attachment open/download.
+It starts from immutable creation or a retained migration snapshot, then replays applied journal
+requests with the immutable type fields and cell ownership rules. Operation digests, identities,
+receipts and resulting revisions must agree. Missing proof returns `WORKBOOK_REVISION_UNAVAILABLE`;
+corrupt evidence returns `WORKBOOK_STORAGE_CORRUPT`. Reads neither create named versions nor use
+the current master in place of an older requested revision.
+
 All content writers first persist operation identity, digest and admission sequence, then settle the
 oldest pending operation for that workbook in a short transaction. The master, cell ownership and
 receipt journal commit together. Conflicts settle as resolve-required receipts without partial writes.
+Prospective content that exceeds the schema's limits settles refused/invalid without changing
+the master or ownership; the queue then continues with its next operation.
 Run patches address canonical fields and stable keys, and fill only empty cells or unchanged Relay
 fills. Operator edits, including clears, retain ownership tombstones. Explicit row selections must
 recheck current key membership and CAS revision. The journal retains source identity, key, old/new
@@ -320,8 +329,9 @@ them, using saved document and ZIP timestamps. Formula inputs retain cached valu
 presence flag; exported copies contain values. Theme/fill, rich text, links, number formats, typed dates,
 worksheet dimensions and named structural refusals remain part of this boundary. Import records
 unsupported metadata through namespace-aware OOXML admission. Master edits, keyed writes and Sync
-refuse formula-bearing workbooks or unsupported metadata with `WORKBOOK_METADATA_UNSUPPORTED`;
-clearing an incoming flag cannot bypass the stored master's refusal. The default Calibri font and
+refuse formula-bearing workbooks or unsupported metadata with `WORKBOOK_METADATA_UNSUPPORTED`.
+standalone Excel error cells also carry this flag because their display text loses the error type.
+Clearing an incoming flag cannot bypass the stored master's refusal. The default Calibri font and
 document creation/modification timestamps are admitted; edits use the library's saved timestamps.
 Other document properties, table structures, non-cell styles and opaque package parts are refused
 for master mutation. Export creates an explicit value copy and never overwrites the source file.

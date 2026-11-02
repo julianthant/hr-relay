@@ -56,6 +56,16 @@ it("creates and saves exact canonical content with explicit version and Date enc
   assert.equal(save.calls[0].url, "http://workbooks.test/api/v1/workbooks/library%20%2Fone/save");
   assert.deepEqual(WorkbookSaveRequestSchema.parse(JSON.parse(requestBody(save.calls[0]))), { expectedVersion: 1, workbook: encodeSavedWorkbook(first).workbook });
 });
+it('reads only the requested revision identity and rejects invalid revisions before transport', async () => {
+  const record = saved(2), h = harness(encodeSavedWorkbook(record));
+  assert.deepEqual(await h.client.workbookRevision(record.libraryId, 2), record);
+  assert.equal(h.calls[0].url, 'http://workbooks.test/api/v1/workbooks/library%20%2Fone/revisions/2');
+  for (const wrong of [saved(1), saved(2, 'foreign')])
+    await assert.rejects(harness(encodeSavedWorkbook(wrong)).client.workbookRevision(record.libraryId, 2), schemaFailure);
+  const invalid = harness({});
+  for (const version of [0, -1, 1.5, NaN]) await assert.rejects(invalid.client.workbookRevision(record.libraryId, version), schemaFailure);
+  assert.equal(invalid.calls.length, 0);
+});
 
 it("rejects malformed responses, duplicate list IDs and foreign open identity", async () => {
   const malformed = encodeSavedWorkbook(saved());

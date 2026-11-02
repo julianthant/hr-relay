@@ -329,7 +329,9 @@ still requires the real signed-in account with available plan use and the existi
 permission and currentness checks. After explicit verification settles, the current binding refreshes
 the served account once. Superseded requests cannot publish into another conversation.
 
-Chat files retains its composer and uses version-bound workbook registration and reads. The model,
+Chat files retains its composer and uses version-bound workbook registration and reads. Attachment
+open/download reads its exact CAS revision through the shared client's revision lookup, independent
+of operator named versions. The model,
 effort, approval and voice controls remain unavailable; setup uses the existing composer, with no new
 component. The explicit parity composition supplies approved mock conversations and sample workflow
 scenes; product failures never select those producers. Chat titles and drafts are local to the mounted

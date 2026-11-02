@@ -176,7 +176,9 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
       }
     }
   }
-  workbook = EditableWorkbookWireSchema.parse(workbook);
+  const parsed = EditableWorkbookWireSchema.safeParse(workbook);
+  if (!parsed.success) return refuse('invalid');
+  workbook = parsed.data;
   receipt.version++;
   return { workbook, ownership, receipt: WorkbookOperationReceiptSchema.parse(receipt) };
 }

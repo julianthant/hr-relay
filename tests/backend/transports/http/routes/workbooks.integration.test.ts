@@ -21,6 +21,11 @@ it("serves create/list/open/save/conflict/history with exact Date transport and 
   assert.equal(conflict.status, 409); assert.equal((await conflict.json() as { code: string }).code, "WORKBOOK_VERSION_CONFLICT");
   assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(path)).json()), second);
   assert.deepEqual((await (await h.app.request(`${path}/history`)).json() as unknown[]).map(decodeSavedWorkbook), []);
+  assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(`${path}/revisions/1`)).json()), first);
+  assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(`${path}/revisions/2`)).json()), second);
+  const unavailable = await h.app.request(`${path}/revisions/3`);
+  assert.equal(unavailable.status, 404); assert.equal((await unavailable.json() as { code: string }).code, 'WORKBOOK_REVISION_UNAVAILABLE');
+  for (const invalid of ['0', '-1', 'NaN', '1.5']) assert.equal((await h.app.request(`${path}/revisions/${invalid}`)).status, 400);
 });
 it('returns a named conflict and retains the master when formula metadata makes Save unsafe', async () => {
   const h = await harness();

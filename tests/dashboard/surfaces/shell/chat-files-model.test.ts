@@ -11,7 +11,7 @@ function world() {
     workbookList: vi.fn(async () => saved ? [saved] : []),
     workbookOpen: vi.fn(async () => { if (!saved) throw new Error('unavailable'); return saved; }),
     workbookCreate: vi.fn(async (workbook: unknown) => { saved = SavedWorkbookSchema.parse({ libraryId: 'book', version: 1, createdAt: '2026-10-01T00:00:00Z', savedAt: '2026-10-01T00:00:00Z', workbook: { ...workbook as object, libraryId: 'book' } }); return saved; }),
-    workbookSave: vi.fn(), workbookHistory: vi.fn(),
+    workbookSave: vi.fn(), workbookRevision: vi.fn(async (id: string, version: number) => { if (!saved || saved.libraryId !== id || saved.version !== version) throw new Error('WORKBOOK_REVISION_UNAVAILABLE'); return saved; }), workbookHistory: vi.fn(),
   };
   const registration = createSpreadsheetChatRegistrationPort(createSpreadsheetWiringAdapter(client));
   return { port: createChatFilesPort(registration), other: createChatFilesPort(registration), client };

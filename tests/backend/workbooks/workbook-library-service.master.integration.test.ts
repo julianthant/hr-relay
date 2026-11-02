@@ -96,6 +96,42 @@ it('settles missing and duplicate keys without effects and continues FIFO after 
   f.service.save(f.id, live.version, workbook);
   expect(f.repository.operation(f.id, f.patch('duplicate', '001', 'bad'))).toMatchObject({ state: 'resolve-required', reason: 'duplicate-key' });
 });
+it('settles an oversized add without changing content or ownership and drains the following patch', () => {
+  const f = fixture();
+  const saved = f.service.create({ name: 'At limit.xlsx', themes: [], hasFormulas: false, sheets: [{ id: 'wide', name: 'People', width: 10_000, hidden: [], headerRow: 1,
+    columnBindings: Array.from({ length: 10_000 }, (_, i) => ({ id: `column-${i}`, sourceColumn: i, sourceHeader: i === 0 ? 'EID' : i === 1 ? 'Notes' : '',
+      fieldId: i === 0 ? 'eid' : i === 1 ? 'roster.notes' : null, basis: i < 2 ? 'manual' : 'unmapped' })),
+    rows: Array.from({ length: 10 }, (_, row) => ({ id: `row-${row}`, cells: Array.from({ length: 10_000 }, (_, column) => ({ value: column === 0 ? row === 0 ? 'EID' : `person-${row}` : null })) })),
+  }] });
+  f.service.operatorOperation(saved.libraryId, 'wide-type', { kind: 'metadata', expectedVersion: 1, metadata: { typeId: 'roster', sharePoint: null } });
+  const before = f.service.read(saved.libraryId), owners = () => f.database.prepare('SELECT ownership_json FROM workbook_library WHERE id=?').get(saved.libraryId);
+  const beforeOwners = owners();
+  const oversized = f.repository.enqueue(saved.libraryId, f.operation('too-large', { kind: 'add', sheetId: 'wide', rowId: 'extra', key: 'new-person', values: { 'roster.notes': 'unsafe' } }));
+  f.repository.drain(saved.libraryId);
+  expect(f.repository.journal(saved.libraryId).at(-1)).toMatchObject({ sequence: oversized, state: 'refused', reason: 'invalid', version: before.version, changes: [] });
+  expect(f.service.read(saved.libraryId)).toEqual(before); expect(owners()).toEqual(beforeOwners);
+  const following = f.repository.enqueue(saved.libraryId, f.patch('after-oversized', 'person-1', 'good'));
+  f.repository.drain(saved.libraryId);
+  expect(following).toBeGreaterThan(oversized);
+  expect(f.repository.journal(saved.libraryId).at(-1)).toMatchObject({ sequence: following, state: 'applied', version: before.version + 1 });
+  expect(f.service.read(saved.libraryId).workbook.sheets[0].rows[1].cells[1].value).toBe('good');
+  expect(f.database.prepare('SELECT COUNT(*) AS n FROM workbook_operations WHERE workbook_id=? AND receipt_json IS NULL').get(saved.libraryId)?.n).toBe(0);
+});
+it('refuses master edits of a standalone OOXML error cell without a formula', async () => {
+  const { default: JSZip } = await import('jszip');
+  const { writeWorkbookXlsx } = await import('../../../src/rules/spreadsheets/workbook-io.js');
+  const f = fixture(), source = f.service.read(f.id).workbook;
+  const archive = await JSZip.loadAsync(await writeWorkbookXlsx(source));
+  const sheet = archive.file('xl/worksheets/sheet1.xml')!;
+  archive.file(sheet.name, (await sheet.async('string')).replace(/<c\b[^>]*\br="A1"[^>]*>[\s\S]*?<\/c>/u, '<c r="A1" t="e"><v>#N/A</v></c>'));
+  const imported = await importWorkbook('Error.xlsx', await archive.generateAsync({ type: 'arraybuffer' }));
+  expect(imported.sheets[0].rows[0].cells[0].value).toBe('#N/A');
+  expect(imported.hasFormulas).toBe(false); expect(imported.unsupportedMetadata).toBe(true);
+  const saved = f.service.create(imported);
+  expect(() => f.service.save(saved.libraryId, saved.version, { ...saved.workbook, unsupportedMetadata: false }))
+    .toThrow(expect.objectContaining({ code: 'WORKBOOK_METADATA_UNSUPPORTED' }));
+  expect(f.service.read(saved.libraryId)).toEqual(saved);
+});
 it('retains operator clears as tombstones and rechecks live row selection and field identity', () => {
   const f = fixture(); f.repository.operation(f.id, f.patch('fill', '001', 'filled'));
   const current = f.service.read(f.id), workbook = structuredClone(current.workbook);
@@ -123,6 +159,36 @@ it('snapshots requested keys only, with immutable wire dates and exact worksheet
   expect(snapshot.rows[1]).toEqual({ key: 'absent', state: 'missing', matches: [] });
   f.repository.operation(f.id, f.patch('fill', '001', 'new'));
   expect(snapshot.version).toBe(2); expect(Object.isFrozen(snapshot.rows[0].matches[0].values['roster.legalName'])).toBe(true);
+});
+it('reconstructs exact revisions across type assignment, run ownership, refusals, operator saves and Sync', () => {
+  const f = fixture(), records = [f.repository.creation(f.id)!, f.service.read(f.id)];
+  expect(f.repository.operation(f.id, f.patch('relay-first', '001', 'relay'))).toMatchObject({ state: 'applied' });
+  records.push(f.service.read(f.id));
+  f.service.operatorOperation(f.id, 'named', { kind: 'version', expectedVersion: 3, name: 'Reviewed' });
+  expect(f.repository.operation(f.id, f.patch('missing', 'absent', 'never'))).toMatchObject({ state: 'resolve-required' });
+  const edited = structuredClone(records[2].workbook); edited.sheets[0].rows[1].cells[2].value = '';
+  records.push(f.service.save(f.id, 3, edited));
+  expect(f.repository.operation(f.id, f.patch('operator-clear', '001', 'never'))).toMatchObject({ state: 'resolve-required', reason: 'operator-edited' });
+  const incoming = encodeSavedWorkbook(records[3]).workbook;
+  incoming.sheets[0].rows[1].cells[2].value = 'remote'; incoming.sheets[0].rows[2].cells[1].value = 'Bobby';
+  expect(f.repository.operation(f.id, { operationId: 'sync-replay', source: { kind: 'sync', syncId: 'sync-replay' }, at,
+    change: { kind: 'sync', expectedVersion: 4, workbook: incoming } })).toMatchObject({ state: 'applied' });
+  records.push(f.service.read(f.id));
+  const last = structuredClone(records[4].workbook); last.name = 'Later.xlsx'; f.service.save(f.id, 5, last);
+  const before = f.service.read(f.id), journal = f.repository.journal(f.id);
+  for (const record of records) expect(f.service.revision(f.id, record.version)).toEqual(record);
+  expect(f.service.revision(f.id, before.version)).toEqual(before);
+  expect(f.service.history(f.id).map(record => record.version)).toEqual([3]);
+  expect(f.repository.journal(f.id)).toEqual(journal); expect(f.service.read(f.id)).toEqual(before);
+  expect(() => f.service.revision(f.id, before.version + 1)).toThrow(expect.objectContaining({ code: 'WORKBOOK_REVISION_UNAVAILABLE' }));
+});
+it.each(['digest', 'identity', 'receipt'] as const)('refuses unprovable old revisions with a corrupt journal %s', corruption => {
+  const f = fixture(); f.repository.operation(f.id, f.patch('first', '001', 'first')); f.repository.operation(f.id, f.patch('second', '001', 'second'));
+  f.database.exec('DROP TRIGGER workbook_operations_immutable');
+  if (corruption === 'digest') f.database.prepare("UPDATE workbook_operations SET digest='wrong' WHERE workbook_id=? AND operation_id='first'").run(f.id);
+  else if (corruption === 'identity') f.database.prepare("UPDATE workbook_operations SET operation_id='foreign' WHERE workbook_id=? AND operation_id='first'").run(f.id);
+  else f.database.prepare("UPDATE workbook_operations SET receipt_json=json_set(receipt_json,'$.version',99) WHERE workbook_id=? AND operation_id='first'").run(f.id);
+  expect(() => f.service.revision(f.id, 3)).toThrow(expect.objectContaining({ code: 'WORKBOOK_STORAGE_CORRUPT' }));
 });
 it('reconciles manual Sync under the same writer and preserves managed cell metadata and operator intent', async () => {
   const f = fixture(); f.repository.operation(f.id, f.patch('fill', '001', 'relay'));
@@ -181,6 +247,15 @@ it('migrates every retained revision with explicit migration provenance without 
   expect(db.prepare('SELECT name,provenance,version FROM workbook_library_history ORDER BY version').all()).toEqual([
     { name: 'Saved revision 1', provenance: 'migration', version: 1 }, { name: 'Saved revision 2', provenance: 'migration', version: 2 }]);
   expect(validateWorkbookLibrary(db)).toBeGreaterThan(0);
+  const repository = createWorkbookLibraryRepository({ database: db, read: work => work(), mutate: work => work().result });
+  const service = createWorkbookLibraryService({ repository, clock: manualClock(new Date(at)) });
+  const baseline = service.read(first.libraryId), edited = structuredClone(baseline.workbook); edited.name = 'Post migration.xlsx';
+  service.save(first.libraryId, baseline.version, edited);
+  expect(service.revision(first.libraryId, 1)).toEqual(first);
+  expect(service.revision(first.libraryId, 2)).toEqual({ ...first, version: 2 });
+  const latest = service.read(first.libraryId), later = structuredClone(latest.workbook); later.name = 'Later.xlsx'; service.save(first.libraryId, latest.version, later);
+  expect(service.revision(first.libraryId, 3)).toEqual(latest);
+  expect(service.versions(first.libraryId).map(entry => entry.provenance)).toEqual(['migration', 'migration']);
 });
 
 it('drains acknowledged durable admissions from two processes in FIFO order after an owned writer hold', async () => {

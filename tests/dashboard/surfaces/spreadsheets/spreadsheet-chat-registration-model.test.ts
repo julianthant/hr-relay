@@ -17,7 +17,8 @@ function world() {
     workbookOpen: vi.fn(async () => { const saved = versions.at(-1); if (!saved) throw new Error('not found'); return saved; }),
     workbookCreate: vi.fn(async (workbook: unknown) => { const saved = record(workbook, 1); versions.push(saved); return saved; }),
     workbookSave: vi.fn(async (_id: string, expected: number, workbook: unknown) => { assert.equal(expected, versions.at(-1)?.version); const saved = record(workbook, expected + 1); versions.push(saved); return saved; }),
-    workbookHistory: vi.fn(async () => [...versions]), workbookIntake: vi.fn(),
+    workbookRevision: vi.fn(async (_id: string, version: number) => { const saved = versions.find(record => record.version === version); if (!saved) throw new Error('WORKBOOK_REVISION_UNAVAILABLE'); return saved; }),
+    workbookHistory: vi.fn(async () => []), workbookIntake: vi.fn(),
   } satisfies WorkbookLibraryQueries;
   const adapter = createSpreadsheetWiringAdapter(client), port = createSpreadsheetChatRegistrationPort(adapter);
   return { versions, client, adapter, port };
@@ -36,7 +37,7 @@ describe('chat spreadsheet registration', () => {
     assert.equal(result.state, 'confirmed'); assert.equal(client.workbookSave.mock.calls[0][1], 1);
     if (result.state !== 'confirmed') throw new Error('expected update');
     const download = await port.download(result.file); assert.equal(download.name, 'Autumn-updated.csv'); assert.match(await download.blob.text(), /Alex/);
-    await port.open(first.file); assert.equal(client.workbookHistory.mock.calls.length, 1);
+    await port.open(first.file); assert.deepEqual(client.workbookRevision.mock.calls.at(-1), [first.file.libraryId, 1]); assert.equal(client.workbookHistory.mock.calls.length, 0);
     assert.equal(vi.mocked(exportSheetInWorker).mock.calls[0][0].rows[1].cells[0].value, 'Alex');
     assert.equal(adapter.snapshot().files[0].version, 2); assert.equal(adapter.snapshot().files[0].status, 'Updated');
   });
@@ -90,7 +91,7 @@ describe('chat spreadsheet registration', () => {
     const { port, versions, client } = world();
     await port.register({ operationId: 'create', status: 'Attached', workbook: newEditableWorkbook() });
     assert.equal((await port.register({ operationId: 'stale', status: 'Updated', base: { libraryId: 'library-id', version: 9 }, workbook: versions[0].workbook })).state, 'conflict');
-    await assert.rejects(port.open({ libraryId: 'library-id', version: 9, name: 'Untitled.xlsx', status: 'Updated' }), /VERSION_UNAVAILABLE/);
+    await assert.rejects(port.open({ libraryId: 'library-id', version: 9, name: 'Untitled.xlsx', status: 'Updated' }), /REVISION_UNAVAILABLE/);
     assert.equal(client.workbookSave.mock.calls.length, 0);
   });
 });

@@ -6,6 +6,7 @@ import { IntakeSessionWireSchema } from "../intake/wire.js";
 import { IntakeCommandRequestSchema, CommandResultSchema } from "../../rules/commands/commands.js";
 
 export const WorkbookIdSchema = z.string().min(1);
+export const WorkbookRevisionSchema = z.number().int().positive();
 const NameSchema = z.string().refine(value => value.trim().length > 0);
 const IndexSchema = z.number().int().nonnegative();
 const ColorSchema = z.strictObject({ argb: z.string().regex(/^(?:[a-f\d]{6}|[a-f\d]{8})$/iu).optional(), theme: IndexSchema.optional(), indexed: IndexSchema.optional(), tint: z.number().min(-1).max(1).optional() });
