@@ -22,7 +22,7 @@ it.each([[12, "published"], [12, "building"], [13, "published"], [13, "building"
   const database = new DatabaseSync(":memory:");
   try {
     database.exec("PRAGMA foreign_keys=ON");
-    for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) database.exec(statement);
+    for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= 15)) for (const statement of migration.statements) database.exec(statement);
     database.prepare("INSERT INTO settings_snapshots(id,revision,fingerprint,payload_json,captured_at) VALUES(?,?,?,?,?)")
       .run(CONFIG_SNAPSHOT.configSnapshotId, CONFIG_SNAPSHOT.revision, CONFIG_SNAPSHOT.fingerprint, JSON.stringify(CONFIG_SNAPSHOT), CONFIG_SNAPSHOT.capturedAt);
     database.prepare("INSERT INTO database_states VALUES(?,?,?,?,?,?,?,?)").run(1, 15, 0, QUEUED_RUN.createdAt, 0, "ready",

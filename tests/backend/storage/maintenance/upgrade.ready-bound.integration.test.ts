@@ -1,4 +1,4 @@
-import { removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { removeEmptySchema16OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
 import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";
@@ -107,6 +107,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
+    removeEmptySchema16OcrReview(raw);
     removeSchema15RunPause(raw);
     if (sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(raw);
     if (sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(raw);

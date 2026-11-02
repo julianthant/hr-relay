@@ -1,4 +1,4 @@
-import { removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "./historical-run-schema.js";
+import { removeEmptySchema16OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "./historical-run-schema.js";
 import { restorePreReadingArtifactRetention } from "./pre-reading-artifact-retention.js";
 import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { restoreEmptyPreMasterWorkbookFixture } from "../../helpers/workbooks/pre-master-schema.js";
@@ -83,6 +83,7 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
       assert.ok(editor); database.exec(editor);
     }
     if (options.sourceVersion < 9) database.exec("DROP TABLE assistant_model_preference");
+    removeEmptySchema16OcrReview(database);
     removeSchema15RunPause(database);
     if (options.sourceVersion < 12) restorePreReadingArtifactRetention(database);
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(options.sourceVersion);
