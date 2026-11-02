@@ -1535,7 +1535,7 @@ export class RuntimeAdmission {
         const { timing } = flatBackupBrowserCensus(backup.stateRoot, restore, systemClock);
         current(); lease.prepareFlatStartClean(restore, timing);
       }
-      lease.startCleanFlatStore(restore, backup, closure);
+      await lease.startCleanFlatStore(restore, backup, closure);
     } catch (error) {
       if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission: this });
       throw new ProfileFlatStoreMigrationError(error);

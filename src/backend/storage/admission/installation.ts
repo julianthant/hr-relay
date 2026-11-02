@@ -6,7 +6,7 @@ import type { RuntimeAdmission } from "./admission.js";
 import { AuthorityBackupService, verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { inspectAuthorityBackupReadOnly, openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
 import { CredentialMaintenanceHold, captureCanonicalCredentialStartupLocks, publishStoppedCanonicalCredentials, CanonicalCredentialConversionPlanSchema, type CanonicalCredentialConversionPlan, CanonicalCredentialRestoreSnapshotSchema, CanonicalCredentialHeadSchema, CanonicalCredentialPublicationSourceSchema } from "../configuration/canonical-credential-store.js";
-import { assertStoppedBackupClosure, type StoppedBackupClosure } from "../maintenance/profile-inventory.js";
+import type { StoppedBackupClosure } from "../maintenance/profile-inventory.js";
 import { FlatStartCleanIntentSchema, assertFlatStartCleanCredentials, assertFlatStartCleanFiles, flatStartCleanPlan, readFlatStartCleanSource, type FlatStartCleanIntent } from "../maintenance/flat-start-clean.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
 import { replacePrivateFile, privatePathRejects, writePrivateStage, fsyncPath } from "../private-path.js";
@@ -259,7 +259,7 @@ export type InstallationLease = Readonly<{ retainSourceClosure(error: unknown): 
   flatStoreMigrationPending(): boolean;
   readFlatStartCleanIntent(): FlatStartCleanIntent | undefined;
   prepareFlatStartClean(restore: OfflineMaintenanceOperation, timing: FlatStartCleanIntent["timing"]): void;
-  startCleanFlatStore(restore: OfflineMaintenanceOperation, backup: RuntimeAdmission, closure: StoppedBackupClosure): void;
+  startCleanFlatStore(restore: OfflineMaintenanceOperation, backup: RuntimeAdmission, closure: StoppedBackupClosure): Promise<void>;
   abortUnpublishedProfile(operation: z.infer<typeof SignUpOperationSchema>, head?: z.infer<typeof CanonicalCredentialPublicationSourceSchema.shape.head>): boolean;
   reclassifyIncompleteProfile(profile: RuntimeAdmission): void;
   resumeIncompleteProfileDraft(profileId: string, restore: OfflineMaintenanceOperation): boolean;
@@ -2136,7 +2136,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         writePrivateStage(stage, pepper); fsyncPath(control);
       });
     },
-    startCleanFlatStore(restore: OfflineMaintenanceOperation, backup: RuntimeAdmission, closure: StoppedBackupClosure) {
+    async startCleanFlatStore(restore: OfflineMaintenanceOperation, backup: RuntimeAdmission, closure: StoppedBackupClosure) {
+      const { assertStoppedBackupClosure } = await import("../maintenance/profile-inventory.js");
       return mutate(() => {
         const assertClosed = () => {
           assertStoppedMachineMaintenance(this, restore);
