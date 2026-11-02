@@ -347,7 +347,7 @@ Established missing, foreign, or malformed authority refuses without an empty re
 registered profile's setup or ready state and current session generation. `admitProfile(profileId)`
 issues setup or runtime access, `admitProfileSettlement(operationId)` binds the matching durable logout
 operation, and `admitStoppedProfile(profileId, operation)` requires the current ready profile and binds
-it to the exact live native maintenance operation. Each validates its registration before opening
+it to the exact live native maintenance operation. `admitStoppedProfileBackup(profileId, operation)` binds a READY saved current-format person to that operation independently of the active sign-in; it grants stopped read-only backup custody. Each validates its registration before opening
 profile paths or a database. `assertLive()` proves held custody; it does not authorize ordinary data access. SQLite
 repository reads and writes, credential metadata reads, and artifact callbacks check current readable,
 writable, or credential access. Root ordinary runtime access refuses while stopped maintenance is
@@ -674,6 +674,8 @@ artifact-root identity and the empty fixed process-lock directory stay in place.
 and report roots outside the erased state are preserved.
 
 Backups are automatic. After clean application resource closure, the held lifetime obtains stopped exclusive custody and verifies a SQLite backup for each READY saved person. Shutdown backups use the `.shutdown.sqlite` filename class. Retention verifies those manifests and copies again, keeps the newest three, and removes only older verified shutdown pairs. Pre-upgrade backups and the pre-erase flat archive stay protected. Retirement first durably renames the obsolete manifest to `.retiring`. Startup and shutdown finish that exact same-person record before full backup inventory: three newer verified shutdown backups must remain, changed bytes refuse, and an already removed copy is an accepted prefix. The record disappears only after copy deletion and directory sync.
+
+Shutdown admits each current profile through the sign-in-independent backup purpose under the held stopped machine owner, verifies worker, browser, Duo and control custody closed before and after backup, and repeats native browser closure against the exact source. Never-initialized settings and retained ordinary files keep their meaning; parked write evidence is copied without resubmission.
 
 The actual native browser closure step precedes source capture. A private in-memory closure observation binds the exact operation, admitted source, browser census and directory identities. Backup revalidates that observation and read-only OS closure at IO boundaries; copied, foreign, expired or changed observations refuse. Unproved closure retains actual owners and the lifetime listener. Manual backup, restore and recovery commands do not exist. Settings displays only a read-only notice for the current person's latest automatic repair, including its backup time; reading it performs no backup or repair.
 

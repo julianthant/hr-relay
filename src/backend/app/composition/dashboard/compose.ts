@@ -1351,7 +1351,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       try { await profileRuntime?.session.closeOnboarding(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       try { await profileRuntime?.close("shutdown"); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
-      try { machine.release(); await backupRegisteredPeopleAtCleanShutdown(installation.workspace, input.lifetimeLock, hostConfigFacts(env), clock); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      try { machine.release(); await backupRegisteredPeopleAtCleanShutdown(installation.workspace, input.lifetimeLock, clock); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
     })();
     return stopping;
   } });
