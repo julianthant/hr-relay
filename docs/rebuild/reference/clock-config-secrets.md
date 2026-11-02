@@ -493,6 +493,10 @@ recorded state on the next startup; normal admission waits for completion. Compl
 does not compare later mutable person data with the migration snapshot.
 
 There are no relocation commands, HTTP routes, client methods, assistant actions, or Settings plans.
+
+Stopped machine-control conversion verifies retained backup and receipt bytes on capture, checks their
+nanosecond metadata, membership and physical ancestry during the held operation, and fully verifies
+the bytes again before publication. Changed content, identity, permissions or ancestry refuses.
 `same-person-restore-candidate.ts` retains restore identity and manifest checks.
 
 `storage recover-restore` owns interrupted restore settlement under the lifetime listener.

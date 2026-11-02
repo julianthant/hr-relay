@@ -582,25 +582,18 @@ async function offlineCanonicalPredecessor() {
 }
 
 for (const padding of [0, 16 * 1024 * 1024]) it(`converts an offline canonical5 predecessor with ${padding} receipt padding bytes and retains genuine generated D-format backup bytes`, async () => {
-  const started = performance.now(), timing: Record<string, number> = {};
   const f = await offlineCanonicalPredecessor();
-  timing.fixtureMs = performance.now() - started;
   if (padding !== 0) writeFileSync(f.receiptPath, Buffer.concat([readFileSync(f.receiptPath), Buffer.alloc(padding, " ")]), { mode: 0o600 });
   const retained = storageTree(f.backupRoot), keys = FakeKeyringEntry.snapshot();
-  const parse = JSON.parse; let largeParses = 0, largeParseMs = 0;
+  const parse = JSON.parse; let largeParses = 0;
   const parseSpy = vi.spyOn(JSON, "parse").mockImplementation((value, reviver) => {
-    const before = performance.now();
-    try { const result: unknown = parse(value, reviver); return result; }
-    finally { if (value.length >= 16 * 1024 * 1024) { largeParses++; largeParseMs += performance.now() - before; } }
+    if (value.length >= 16 * 1024 * 1024) largeParses++;
+    const result: unknown = parse(value, reviver); return result;
   });
   try {
-    const acquired = performance.now();
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-    timing.admissionMs = performance.now() - acquired;
     try {
-      const upgrading = performance.now();
       const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
-      timing.upgradeMs = performance.now() - upgrading;
       assert.equal(result.state, "upgraded");
       const after = storageTree(f.backupRoot);
       for (const [path, digest] of Object.entries(retained)) assert.equal(after[path], digest);
@@ -611,11 +604,38 @@ for (const padding of [0, 16 * 1024 * 1024]) it(`converts an offline canonical5 
       assert.deepEqual(receipt.credentials, []);
       for (const row of f.preserved) assert.deepEqual(readFileSync(row.path), row.bytes);
       assert.deepEqual(FakeKeyringEntry.snapshot(), keys); f.assertSeedUnchanged();
+      assert.equal(largeParses, padding === 0 ? 0 : 2, "retained receipt bytes are verified at capture and final publication");
     } finally { maintenance.release(); }
   } finally {
     parseSpy.mockRestore();
-    console.info("retained-receipt-timing", { padding, ...timing, largeParses, largeParseMs, totalMs: performance.now() - started });
     await f.close();
+  }
+});
+
+for (const change of ["receipt-in-place", "authority-replacement"] as const) it(`refuses retained ${change} after its stopped proof is warm`, async () => {
+  const f = await offlineCanonicalPredecessor();
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  const restore = maintenance.maintenanceOperation(), control = maintenance.beginStoppedMachineControlUpgrade(restore);
+  let undo: (() => void) | undefined;
+  try {
+    await control.prepareBrowserInventory(false, createNativeBrowserProbe);
+    control.profileInventory(f.seed.profileId);
+    if (change === "receipt-in-place") {
+      const bytes = readFileSync(f.receiptPath);
+      undo = () => writeFileSync(f.receiptPath, bytes, { mode: 0o600 });
+      nativeFs.appendFileSync(f.receiptPath, " ");
+    } else {
+      const path = join(f.backupRoot, f.backup.directory, f.backup.verifiedBackup.manifest.backupFileName);
+      const held = join(f.workspace, "retained-authority.test-owned"), bytes = readFileSync(path);
+      renameSync(path, held);
+      undo = () => { nativeFs.rmSync(path); renameSync(held, path); };
+      writeFileSync(path, bytes, { mode: 0o600, flag: "wx" });
+    }
+    assert.throws(() => control.profileInventory(f.seed.profileId), /profile-control-upgrade-retained-changed/u);
+  } finally {
+    undo?.();
+    releaseStoppedMachineControlUpgrade(control, restore, false, { admission: maintenance });
+    maintenance.release(); await f.close();
   }
 });
 
