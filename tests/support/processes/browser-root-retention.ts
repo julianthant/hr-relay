@@ -15,6 +15,7 @@ import { manualClock, systemClock } from "../../../src/rules/time/clock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../helpers/admission-fixture.js";
 import { createBrowserSessionFactoryFixtures } from "../helpers/browser/session-factory-fixtures.js";
 import { testAdmittedWorker } from "../fixtures/run-lifecycle-fixtures.js";
+import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 
 const retainedOwners = new Set<object>();
 function contains(error: unknown, expected: unknown): boolean {
@@ -185,7 +186,8 @@ async function runUnknownHandoff(input: Readonly<{ scenario: string; workspace: 
   } };
   if (input.scenario === "browser-root-unknown-seed") {
     const f = await createBoundProfileFixture({ workspace });
-    const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "browser-root-unknown-seed" }, systemClock);
+    const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "browser-root-unknown-seed" }, systemClock,
+      undefined, undefined, undefined, boundProfileCredentials(f.admission));
     const worker = testAdmittedWorker(database, systemClock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: ["crm"] });
     const roots = createBrowserRoots(f.admission), profileRoot = join(f.stateRoot, "browsers"), profileDirectory = join(profileRoot, "w1", "crm");
     retainedOwners.add({ f, database, roots });
@@ -212,7 +214,8 @@ async function runUnknownHandoff(input: Readonly<{ scenario: string; workspace: 
   const lifetime = await RuntimeLifetimeLock.acquire(seed.lifetimePort);
   assert.equal(lifetime.port, seed.lifetimePort); lifetime.assertHeld();
   const machine = acquireEntrypointAdmission(workspace, "shared", lifetime), admission = machine.admitProfile(seed.profileId);
-  const database = AuthorityDatabase.open(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "browser-root-unknown-resume" }, systemClock);
+  const database = AuthorityDatabase.open(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "browser-root-unknown-resume" }, systemClock,
+    undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: admission.stateRoot }));
   const roots = createBrowserRoots(admission); retainedOwners.add({ lifetime, machine, admission, database, roots });
   const before = fs.readFileSync(registryPath), inventory = roots.inventory();
   assert.equal(hash(before), seed.registryHash); const row = inventory.roots[0]; assert.ok(row && row.owner.kind === "worker");
