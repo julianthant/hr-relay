@@ -33,7 +33,7 @@ describe("I-9 UCOP login", () => {
         "i9-training-dismiss": { navigatesTo: TRAINING }, "i9-training-confirm": { navigatesTo: APP },
       },
       elementsByUrl: { [APP]: appElements },
-      settlesTo: [WAYF, TRAINING],
+      settlesTo: [WAYF, SSO, TRAINING],
     }, undefined, "i9");
     let scopes = 0;
     assert.equal(await i9LoginRecipe({ ...world.context,
@@ -61,6 +61,19 @@ describe("I-9 UCOP login", () => {
       return true;
     });
     assert.equal(failed.evidence().length, 0);
+  });
+
+  it("waits for campus selection to reach an existing app session without requiring an SSO form", async () => {
+    const world = await contextFor({
+      url: "about:blank",
+      elements: { "i9-launch": { navigatesTo: WAYF }, "i9-campus": {}, "i9-campus-select": {}, "sso-submit": { count: 0 } },
+      elementsByUrl: { [APP]: appElements },
+      settlesTo: [WAYF, APP],
+    }, undefined, "i9");
+    assert.equal(await i9LoginRecipe(world.context), "logged-in");
+    assert.ok(world.harness.actions().includes("click:i9-campus-select"));
+    assert.deepEqual(world.harness.filled(), []);
+    assert.equal(world.evidence().length, 1);
   });
 
   it("stops credential effects when cancelled", async () => {

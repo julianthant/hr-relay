@@ -88,6 +88,7 @@ const loginRecipe = defineVerifiedLoginRecipe({
         await run(() => ui.campus(page).selectOption({ label: "University of California, San Diego" }, { timeout: config.timeouts.navigationMs }));
         recordBrowserAction("selected", "i9.login.campus", "University of California, San Diego");
         await run(() => ui.selectCampus(page).click({ timeout: config.timeouts.navigationMs }));
+        await run(() => page.waitForURL(url => url.origin === "https://a5.ucsd.edu" || isI9AppHost(url.href), { timeout: config.timeouts.navigationMs }));
       }
       context.assertCurrent();
       if (!isI9AppHost(page.url())) {
