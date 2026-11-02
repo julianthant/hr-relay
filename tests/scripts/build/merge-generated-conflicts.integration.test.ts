@@ -19,6 +19,8 @@ function fixture(mixed: boolean, run: (root: string, head: string, staging: stri
   };
   try {
     git("init", "--initial-branch=staging");
+    git("config", "core.autocrlf", "false");
+    git("config", "commit.gpgsign", "false");
     git("config", "user.name", "Train fixture");
     git("config", "user.email", "train@example.invalid");
     for (const output of GENERATED_OUTPUTS) for (const path of output.paths) put(path, "base\n");
