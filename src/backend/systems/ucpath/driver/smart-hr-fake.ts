@@ -1,5 +1,6 @@
 
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
+import { deterministicContactOperations } from "./contact-fake.js";
 import { IsoInstantSchema } from "../../../../rules/identity/ids.js";
 import type { Eid } from "../../../../rules/identity/ids.js";
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
@@ -55,9 +56,10 @@ export function refuseUnimplementedSmartHrHalf(half: string): Pick<
 /** The Person Org operations, refused — for a Smart HR fixture to spread in. */
 function refuseUnimplementedPersonOrgHalf(half: string): Pick<
   UcpathStoreDriver,
-  "searchPersonOrg" | "searchPersonMatch" | "readJobSummary"
+  "searchPersonOrg" | "searchPersonMatch" | "readJobSummary" | "readEmergencyContacts" | "stageEmergencyContact"
 > {
   return {
+    ...deterministicContactOperations(),
     searchPersonMatch: () => refuse(half, "searchPersonMatch"),
     searchPersonOrg: () => refuse(half, "searchPersonOrg"),
     readJobSummary: () => refuse(half, "readJobSummary"),
