@@ -1,4 +1,6 @@
 import { createApplicationLifecycle, type ApplicationUpdateHost } from "../../../runs/lifecycle/application-lifecycle.js";
+import { readAutomaticRepairNotice } from "../../../storage/maintenance/automatic-repair-notice.js";
+import { backupRegisteredPeopleAtCleanShutdown } from "../storage-compose.js";
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
@@ -640,7 +642,7 @@ async function composeDashboardRuntimeStartup(
   const backupDirectory = join(stateRoot, "backups", "authority");
   const backupServiceState: BackupServiceStateWire = BackupServiceStateWireSchema.parse({
     state: "never-run",
-    reason: "backups are written only on operator command (npm run cli -- storage backup)",
+    reason: "verified backups run after clean shutdown; the last three shutdown backups are retained",
   });
 
   const readBackupSummary = (): ReturnType<typeof summarizeBackupHealth> => {
@@ -960,7 +962,7 @@ async function composeDashboardRuntimeStartup(
         checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
       }), notificationSourceEventOf(publication.notification, { actorId: publication.notification.actorId, notificationId: publication.notification.notificationId, adopted: false, event: publication.event })),
     })) },
-    preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary,
+    preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary, automaticRepair: () => readAutomaticRepairNotice(admission),
   });
   const { hub } = shell;
   startupCleanups.push(requiredClosure(() => hub.close()));
@@ -1084,7 +1086,7 @@ async function composeDashboardRuntimeStartup(
       try { await profile.runtime.close("shutdown"); }
       catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
       if (input.applicationTransport === undefined) {
-        try { machineAdmission.release(); }
+        try { machineAdmission.release(); await backupRegisteredPeopleAtCleanShutdown(installation.workspace, input.lifetimeLock, hostConfigFacts(env), clock); }
         catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
       }
     },
@@ -1353,7 +1355,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       try { await profileRuntime?.session.closeOnboarding(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       try { await profileRuntime?.close("shutdown"); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
-      try { machine.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      try { machine.release(); await backupRegisteredPeopleAtCleanShutdown(installation.workspace, input.lifetimeLock, hostConfigFacts(env), clock); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
     })();
     return stopping;
   } });

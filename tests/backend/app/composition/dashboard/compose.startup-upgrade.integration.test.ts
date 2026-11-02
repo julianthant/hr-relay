@@ -120,7 +120,10 @@ it.each([8, 9, 10] as const)("automatically upgrades registered schema %s before
     const response = await post(application.port); assert.equal(PublicProfileStateSchema.parse(await response.json()).state, "active"); assert.ok(response.headers.get("set-cookie"));
     await application.stop(); application = undefined; machine = undefined;
     await upgradeRegisteredPersonStores(profile.workspace, profile.lifetime, hostFacts);
-    assert.equal(starts, 1); assert.equal(readdirSync(directory).filter(name => name.endsWith(".manifest.json")).length, 1);
+    assert.equal(starts, 1);
+    const retained = readdirSync(directory).filter(value => value.endsWith(".manifest.json"));
+    assert.equal(retained.length, 2); assert.equal(retained.filter(value => value.endsWith(".shutdown.sqlite.manifest.json")).length, 1);
+    assert.deepEqual(readFileSync(join(directory, name)), manifestBytes); assert.deepEqual(readFileSync(backupPath), backupBytes);
   } finally { start.mockRestore(); await application?.stop(); machine?.release(); await profile.close(); }
 });
 

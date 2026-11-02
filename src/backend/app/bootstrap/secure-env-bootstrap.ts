@@ -8,10 +8,10 @@ import { hostConfigFacts } from "../../../models/config/host-display.js";
 import { assertNoMigratedEnvironmentKeys,hostAwareResolutionEnvironment } from "../../../models/config/secrets.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { acquireExclusiveRuntimeAdmission,RuntimeAdmission } from "../../storage/admission/admission.js";
-import { acquireDashboardEntrypointAdmission,acquireEntrypointAdmission,acquireStorageBackupEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
+import { acquireDashboardEntrypointAdmission,acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { FixedLayoutRefusedError } from "../../storage/maintenance/fixed-layout.js";
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
-import { RuntimeCustodyUncertainError } from "../composition/storage-compose.js";
+import { AutomaticPersonRepairRefusedError,RegisteredPersonUpgradeRefusedError,RuntimeCustodyUncertainError } from "../composition/storage-compose.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { probePrimaryDisplay } from "../host/primary-display.js";
 
@@ -87,7 +87,10 @@ async function runAdmittedEnvironmentBootstrap(
   if (repoRoot !== workspace && dependencies.acquireAdmission === undefined && !(lifetime.lock instanceof WorkerRuntimeLifetimeLock)) {
     const { prepareApplicationDataWorkspace } = await import("../composition/storage-compose.js");
     try { await prepareApplicationDataWorkspace(repoRoot, workspace, rootLifetime(), hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay))); }
-    catch (error) { throw new FixedLayoutRefusedError(error); }
+    catch (error) {
+      if (error instanceof RegisteredPersonUpgradeRefusedError || error instanceof AutomaticPersonRepairRefusedError) throw error;
+      throw new FixedLayoutRefusedError(error);
+    }
   }
   if (entrypoint === "cli" && entrypointArgs[0] === "dashboard" && dependencies.acquireAdmission === undefined) {
     const { initializeRegisteredPersonStores } = await import("../composition/storage-compose.js");
@@ -131,7 +134,6 @@ async function runAdmittedEnvironmentBootstrap(
   const admission = await (dependencies.acquireAdmission ?? ((requested) => entrypoint === "cli" && entrypointArgs[0] === "worker"
     ? RuntimeAdmission.acquireWorker(workspace, workerLifetime()) : bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace, rootLifetime())
     : entrypoint === "cli" && entrypointArgs[0] === "dashboard" ? acquireDashboardEntrypointAdmission(profileBrowserClosure, workspace, requested, rootLifetime())
-    : storageCommand === "backup" ? acquireStorageBackupEntrypointAdmission(workspace, rootLifetime())
     : acquireEntrypointAdmission(workspace, requested, rootLifetime())))(mode, lifetime.lock);
   let shutdown: "release" | "retain" = "release";
   let dashboardOwnsAdmission = false;
