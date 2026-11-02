@@ -550,7 +550,7 @@ export class RuntimeAdmission {
     if (machine.#scope !== "installation") throw new Error("browser-registry-installation-required");
     const registry = machine.readProfileRegistry();
     return Object.freeze({ machineRoot: machine.#stateRoot, installationId: machine.locator.installationId,
-      sessionGeneration: registry.sessionGeneration, profileId: this.#profileBinding?.profileId });
+      sessionGeneration: registry.sessionGeneration, profileId: this.#profileBinding?.profileId ?? null });
   }
   assertBrowserRegistryLaunch(profileId: string, signup?: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): void {
     if (signup === undefined) {

@@ -355,7 +355,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
         for (const browser of browsers) {
           if (browser.profileDirectory !== workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: slot.ordinal, system: browser.system })) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
         }
-        return { browsers, processId: lease?.processId, identity: canonicalJsonStringify({ slot, lease, pending, standing, browsers }) };
+        return { browsers, processId: lease?.processId, identity: canonicalJsonStringify({ slot, lease: lease ?? null, pending, standing: standing ?? null, browsers }) };
       });
       const before = capture(), roots = createBrowserRoots(input.admission);
       const directory = join(input.profileRoot, `w${String(member.ordinal)}`);

@@ -8,7 +8,7 @@ import { BrowserRootsSchema, createBrowserRoots, type BrowserRootLaunchInput, ty
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { detachBoundFixtureWorkers, registerBoundFixtureWorker, stopSyntheticDatabaseWorkers } from "../../support/helpers/synthetic-database-admission.js";
-import { createBoundProfileFixture, withOfflineMaintenance } from "../../support/helpers/admission-fixture.js";
+import { boundProfileCredentials, createBoundProfileFixture, withOfflineMaintenance } from "../../support/helpers/admission-fixture.js";
 import { createBrowserSessionFactoryFixtures } from "../../support/helpers/browser/session-factory-fixtures.js";
 import { testAdmittedWorker } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
@@ -18,7 +18,7 @@ const browser = createBrowserSessionFactoryFixtures(clock, randomUUID(), schedul
 
 async function fixture() {
   const f = await createBoundProfileFixture();
-  const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "browser-roots-tests" }, clock);
+  const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "browser-roots-tests" }, clock, undefined, undefined, undefined, boundProfileCredentials(f.admission));
   const worker = testAdmittedWorker(database, clock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: ["crm"] });
   const profileRoot = join(f.stateRoot, "browsers"), profileDirectory = join(profileRoot, "w1", "crm");
   const input: BrowserRootLaunchInput = { profileId: f.admission.profileBinding.profileId, profileRoot, profileDirectory,

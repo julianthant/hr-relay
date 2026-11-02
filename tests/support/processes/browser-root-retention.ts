@@ -12,7 +12,7 @@ import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime
 import { z } from "zod";
 import { hasUnprovedSourceClosure } from "../../../src/backend/storage/source-closure.js";
 import { manualClock, systemClock } from "../../../src/rules/time/clock.js";
-import { createBoundProfileFixture } from "../helpers/admission-fixture.js";
+import { boundProfileCredentials, createBoundProfileFixture } from "../helpers/admission-fixture.js";
 import { createBrowserSessionFactoryFixtures } from "../helpers/browser/session-factory-fixtures.js";
 import { testAdmittedWorker } from "../fixtures/run-lifecycle-fixtures.js";
 
@@ -32,7 +32,7 @@ export async function runBrowserRootRetentionCase(input: Readonly<{ scenario: st
   const workspace = join(input.workspace, `.${input.scenario}-${input.nonce}`);
   assert.equal(fs.realpathSync(workspace), workspace);
   const f = await createBoundProfileFixture({ workspace });
-  const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "browser-root-retention" }, systemClock);
+  const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "browser-root-retention" }, systemClock, undefined, undefined, undefined, boundProfileCredentials(f.admission));
   const worker = testAdmittedWorker(database, systemClock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: ["crm"] });
   const roots = createBrowserRoots(f.admission), profileRoot = join(f.stateRoot, "browsers"), profileDirectory = join(profileRoot, "w1", "crm");
   const owner: BrowserRootLaunchInput = { profileId: f.admission.profileBinding.profileId, profileRoot, profileDirectory,
