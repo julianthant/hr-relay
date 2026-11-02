@@ -19,6 +19,7 @@ import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admi
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { fixedLayoutEntries,fixedLayoutOutputPaths,readFixedLayoutIntent } from "../../../../src/backend/storage/maintenance/fixed-layout.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { createCredentialStore,stoppedProfileOwnsCredentialCommand } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { SETTINGS_SCHEMA_HASH,derivePersistedSettingsFingerprint,deriveRawSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
@@ -29,7 +30,7 @@ import { boundProfileCredentials,createBoundProfileFixture,readAuthenticatedCred
 import { assertRuntimeLifetimeHeld } from "../../../support/helpers/backend/runtime-lifetime.js";
 
 const hostFacts = { primaryDisplay: null };
-async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 = 11) {
+async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION) {
   const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(profile.admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "fixed-layout-fixture" }, systemClock,
     undefined, undefined, undefined, boundProfileCredentials(profile.admission));
@@ -73,18 +74,19 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 =
     const credentials = fixedLayoutEntries(join(profile.stateRoot, "credentials"));
     const keys = fixedLayoutEntries(join(profile.machine.stateRoot, "machine", "credential-keys"));
     await profile.closeController();
-    if (sourceVersion === 10) {
+    if (sourceVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
       const native = new DatabaseSync(profile.path);
       try {
-        native.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT");
-        assert.equal(inspectOpenDatabase(native, 10).schemaVersion, 10);
+        assert.equal(native.prepare("SELECT COUNT(*) AS count FROM exclusive_session_leases").get()?.count, 0);
+        native.exec(`BEGIN EXCLUSIVE; DROP TABLE exclusive_session_leases; UPDATE database_states SET schema_version=${sourceVersion} WHERE id=1; PRAGMA user_version=${sourceVersion}; COMMIT`);
+        assert.equal(inspectOpenDatabase(native, sourceVersion).schemaVersion, sourceVersion);
       } finally { native.close(); }
     }
     return { profile, before, credentials, keys };
   } catch (error) { database.close(); await profile.close(); throw error; }
 }
 
-it.each([[false, 11], [true, 11], [false, 10]] as const)("converts the stopped default layout, retains identities/settings/key inodes, and keeps one listener (saved browser: %s, schema: %s)", async (explicitBrowser, sourceVersion) => {
+it.each([[false, CURRENT_AUTHORITY_SCHEMA_VERSION], [true, CURRENT_AUTHORITY_SCHEMA_VERSION], [false, 11], [true, 11], [false, 10]] as const)("converts the stopped default layout, retains identities/settings/key inodes, and keeps one listener (saved browser: %s, schema: %s)", async (explicitBrowser, sourceVersion) => {
   const f = await predecessor(explicitBrowser, sourceVersion), target = realpathSync(mkdtempSync(join(tmpdir(), "relay-fixed-target-")));
   const lifetime = await RuntimeLifetimeLock.acquire(0), port = lifetime.port;
   const activate = AuthorityDatabase.publishFixedLayoutActivation.bind(AuthorityDatabase);
@@ -129,7 +131,7 @@ it.each([[false, 11], [true, 11], [false, 10]] as const)("converts the stopped d
     const directory = join(profile.stateRoot, "backups", "authority");
     const manifests = readdirSync(directory).filter(name => name.endsWith(".manifest.json"))
       .map(name => StoppedAuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(directory, name), "utf8"))));
-    assert.deepEqual(manifests.map(manifest => manifest.schemaVersion).sort(), sourceVersion === 10 ? [10, 11] : [11]);
+    assert.deepEqual(manifests.map(manifest => manifest.schemaVersion).sort(), sourceVersion === CURRENT_AUTHORITY_SCHEMA_VERSION ? [CURRENT_AUTHORITY_SCHEMA_VERSION] : [sourceVersion, CURRENT_AUTHORITY_SCHEMA_VERSION]);
     for (const manifest of manifests) {
       assert.equal(manifest.installationId, f.before.binding.installationId); assert.equal(manifest.profileId, f.before.binding.profileId);
       assert.equal(manifest.verification.quickCheck, "ok"); assert.equal(manifest.verification.foreignKeyViolations, 0);
@@ -204,7 +206,10 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     seedRegisteredSignupBrowser(profile.machine, operation);
     await profile.closeController();
     const source = new DatabaseSync(profile.path);
-    try { source.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT"); }
+    try {
+      assert.equal(source.prepare("SELECT COUNT(*) AS count FROM exclusive_session_leases").get()?.count, 0);
+      source.exec("BEGIN EXCLUSIVE; DROP TABLE exclusive_session_leases; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT");
+    }
     finally { source.close(); }
     await prepareApplicationDataWorkspace(profile.workspace, target, lifetime, hostFacts);
     await upgradeRegisteredPersonStores(target, lifetime, hostFacts);
@@ -214,7 +219,7 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     assert.deepEqual(SignUpOperationSchema.parse(JSON.parse(readFileSync(movedOperation, "utf8"))), operation);
     assert.equal(readFixedLayoutIntent(target)?.phase, "complete");
     const database = new DatabaseSync(join(stateRoot, "state.db"), { readOnly: true });
-    try { assert.equal(inspectOpenDatabase(database, 11).profileId, operation.profileId); } finally { database.close(); }
+    try { assert.equal(inspectOpenDatabase(database, CURRENT_AUTHORITY_SCHEMA_VERSION).profileId, operation.profileId); } finally { database.close(); }
     machine = acquireEntrypointAdmission(target, "shared", lifetime);
     assert.equal(machine.readProfileRegistry().profiles.some(row => row.profileId === operation.profileId), false);
     runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu") });
