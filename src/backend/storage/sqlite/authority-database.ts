@@ -1,3 +1,4 @@
+import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-custody.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import type { ChildProcess } from "node:child_process";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
@@ -1982,7 +1983,6 @@ export class AuthorityDatabase implements Disposable {
   }
 
   static async readFlatQueuedRunCancellation(path: string) {
-    const { assertCredentialCopyResourcesClosed } = await import("../maintenance/profile-inventory.js");
     return withReadonlyAuthoritySnapshot(path, database => flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed));
   }
 
@@ -1990,7 +1990,7 @@ export class AuthorityDatabase implements Disposable {
   static async cancelQueuedRunsNative6(browserClosure: ProfileBrowserClosure, lease: InstallationLease, restore: OfflineMaintenanceOperation, expectedDigest: string, clock: Clock) {
     const { assertInstallationLease: assertLease, inspectFlatOfflineRunMaintenance } = await import("../admission/installation.js");
     const assertInstallationLease: typeof import("../admission/installation.js").assertInstallationLease = assertLease;
-    const { assertCredentialCopyResourcesClosed, probeFlatBrowserInventoryClosed } = await import("../maintenance/profile-inventory.js");
+    const { probeFlatBrowserInventoryClosed } = await import("../maintenance/profile-inventory.js");
     assertInstallationLease(lease);
     if (lease.mode !== "exclusive") throw new Error("queued-run-cancellation-exclusive-required");
     const workspace = lease.readInstallationContext().workspace;
@@ -2317,7 +2317,7 @@ export class AuthorityDatabase implements Disposable {
       if (this.#logoutCompletion === undefined) {
         const path = join(admission.stateRoot, "state.db"), operation = admission.assertPendingLogoutSettlementDatabase(path);
         if (operation.settlement?.phase !== "done") throw new Error("profile-logout-settlement-incomplete");
-        const { assertCredentialCopyResourcesClosed, probeStoppedProfileBrowsersClosed, enumerateProfileCredentialMembership } = await import("../maintenance/profile-inventory.js");
+        const { probeStoppedProfileBrowsersClosed, enumerateProfileCredentialMembership } = await import("../maintenance/profile-inventory.js");
         assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
         await probeStoppedProfileBrowsersClosed(admission, this.#clock, profileBrowserClosure);
         const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);

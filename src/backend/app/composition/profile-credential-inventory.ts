@@ -4,7 +4,8 @@ import { prepareStoppedCredentialConversion, releaseStoppedCredentialConversion,
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
 import { createBrowserRoots, planStoppedBrowserRoots, profileBrowserClosure } from "../../storage/browser-roots.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
-import { assertRetainedProfileBrowserRoot, inventoryFileIdentity, enumerateProfileCredentialMembership, assertCredentialCopyResourcesClosed, retainedBrowserProfiles, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
+import { inventoryFileIdentity, enumerateProfileCredentialMembership, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
+import { assertRetainedProfileBrowserRoot, assertCredentialCopyResourcesClosed, retainedBrowserProfiles } from "../../storage/maintenance/profile-custody.js";
 
 import { migrationTableNames } from "../../storage/sqlite/migrations.js";
 import { readEmergencyFaults } from "../../logs/emergency-faults.js";

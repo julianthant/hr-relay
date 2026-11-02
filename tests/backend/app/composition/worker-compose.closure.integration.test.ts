@@ -7,7 +7,7 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { chromium } from "playwright";
 import { it, vi } from "vitest";
 import { composeWorkerRuntime, WorkerLaunchUncertainError } from "../../../../src/backend/app/composition/worker-compose.js";
-import { BrowserRootsSchema } from "../../../../src/backend/storage/browser-roots.js";
+import { BrowserRootsSchema } from "../../../../src/backend/storage/browser-root-contract.js";
 import { hasUnprovedSourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { WorkerLeaseRecordSchema, type WorkerLeaseRecord } from "../../../../src/models/run/worker.js";

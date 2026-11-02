@@ -4,7 +4,8 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, wr
 import { join } from "node:path";
 import { it } from "vitest";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { BrowserRootsSchema, createBrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions, onboardingProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
+import { createBrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions, onboardingProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
+import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { detachBoundFixtureWorkers, registerBoundFixtureWorker, stopSyntheticDatabaseWorkers } from "../../support/helpers/synthetic-database-admission.js";

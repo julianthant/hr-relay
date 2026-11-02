@@ -2,7 +2,7 @@ import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/s
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { ChatGptCredentialRecordSchema, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { RuntimeLifetimeLock, type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { BrowserRootsSchema } from "../../../../src/backend/storage/browser-roots.js";
+import { BrowserRootsSchema } from "../../../../src/backend/storage/browser-root-contract.js";
 import { acquireStoppedProfileControlUpgrade } from "../../../../src/backend/storage/admission/installation.js";
 import { retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";

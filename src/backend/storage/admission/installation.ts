@@ -1,4 +1,4 @@
-import { BrowserRootsSchema, type BrowserRootsDocument } from "../browser-roots.js";
+import { BrowserRootsSchema, type BrowserRootsDocument } from "../browser-root-contract.js";
 import { lstatMaybe, assertNoSymlinkComponents, assertNoOldBuildRuntimeArtifacts } from "./process-root.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { emailKey, passwordMatches } from "../configuration/synthetic-verifier.js";
@@ -3206,58 +3206,62 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
       const sourceEvidence = controlEvidence(prior, priorDocument, pending?.credentials, pending?.browsers);
       const claims = priorDocument.profiles.map(profile => this.profileInventory(profile.profileId));
       const { assertStoppedCredentialSourceFormat } = await import("../configuration/credential-conversion.js");
-      for (const claim of claims) assertStoppedCredentialSourceFormat(claim);
-      if (plan) return;
       const { RuntimeAdmission } = await import("./admission.js");
-      const { planStoppedBrowserRoots, probeStoppedControlBrowserRoots } = await import("../browser-roots.js");
-      const { createTimeoutDeadlineScheduler } = await import("../../runtime/scheduling/timeout-deadline-scheduler.js");
       const admissions = claims.map(claim => RuntimeAdmission.forStoppedControlInventory(claim));
       let primary: { error: unknown } | undefined;
       try {
-        if (pending === undefined) {
-          let browsers: BrowserRootsDocument = BrowserRootsSchema.parse({ schemaVersion: 1, installationId: locator.installationId, revision: 0, nextGeneration: 1, roots: [] });
-          for (const [index, claim] of claims.entries()) {
-            const admission = admissions[index]; if (admission === undefined) fail("profile-control-upgrade-inventory-required");
-            const planned = planStoppedBrowserRoots(admission, claim, browsers.nextGeneration, systemClock);
-            browsers = BrowserRootsSchema.parse({ ...browsers, nextGeneration: planned.nextGeneration, roots: [...browsers.roots, ...planned.roots] });
-          }
-          const document = convertedProfileRegistry(locator, priorDocument), current = convertedProfileControl(locator, prior, document), operationId = conversionOperationId;
-          withInstallationControl(control, () => {
-            held();
-            if (lstatMaybe(intentPath) || controlEvidence(prior, priorDocument) !== sourceEvidence) fail("profile-control-upgrade-source-changed");
-            const retained = lstatMaybe(backupDirectory) ? readdirSync(backupDirectory).sort().map(name => retainedControlUpgradeEntry(backupDirectory, name, locator.installationId)) : [];
-            ControlUpgradeCommonSchema.shape.retained.parse(retained);
-            ControlUpgradeCommonSchema.shape.sourceEvidence.parse(sourceEvidence);
-            assertControlUpgradeReceiptCapacity({ schemaVersion: 3, operationId, installationId: locator.installationId,
-              phase: "preparing", credentials: [], backups: [], browsers, prior, current, priorDocument, document, retained, sourceEvidence }, 12 * 256);
-            if (!lstatMaybe(backupDirectory)) { mkdirSync(backupDirectory, { mode: 0o700 }); fsyncPath(control); }
-            privateDirectory(backupDirectory);
-            const prefix = join(backupDirectory, operationId), originals = [registryPath, controlPath, markerPath].map(path => {
-              const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 }); if (file === undefined) fail("profile-control-upgrade-evidence-missing"); return file;
-            });
-            const before = [controlUpgradeFile(registryPath), controlUpgradeFile(controlPath), controlUpgradeFile(markerPath)] as const;
-            for (const [index, role] of ["registry", "control", "marker"].entries()) {
-              const file = originals[index]; if (file === undefined) fail("profile-control-upgrade-evidence-missing");
-              writePrivateStage(`${prefix}.${role}.before.json`, file.bytes);
-              if (controlUpgradeFile(`${prefix}.${role}.before.json`).digest !== before[index]?.digest) fail("profile-control-upgrade-backup-diverged");
-            }
-            writePrivateStage(`${prefix}.registry.stage`, Buffer.from(JSON.stringify(document)));
-            writePrivateStage(`${prefix}.control.stage`, Buffer.from(JSON.stringify(current)));
-            writePrivateStage(`${prefix}.marker.stage`, Buffer.from(JSON.stringify({ schemaVersion: 7 })));
-            fsyncPath(backupDirectory);
-            const receipt = ControlUpgradeReceiptSchema.parse({ schemaVersion: 3, operationId, installationId: locator.installationId,
-              phase: "preparing", credentials: [], backups: [], browsers, prior, current, priorDocument, document, retained,
-              priorRegistry: before[0], priorControl: before[1], priorMarker: before[2],
-              registryBackup: controlUpgradeFile(`${prefix}.registry.before.json`), controlBackup: controlUpgradeFile(`${prefix}.control.before.json`), markerBackup: controlUpgradeFile(`${prefix}.marker.before.json`),
-              registryStage: controlUpgradeFile(`${prefix}.registry.stage`), controlStage: controlUpgradeFile(`${prefix}.control.stage`), markerStage: controlUpgradeFile(`${prefix}.marker.stage`), sourceEvidence });
-            writeControlUpgradeReceipt(intentPath, receipt); validateControl(receipt);
-          });
-        }
         for (const [index, claim] of claims.entries()) {
           const admission = admissions[index]; if (admission === undefined) fail("profile-control-upgrade-inventory-required");
-          const config = ConfigSchema.shape.browser.parse(undefined), timeouts = ConfigSchema.shape.timeouts.parse(undefined);
-          await probeStoppedControlBrowserRoots(admission, claim, { clock: systemClock, scheduler: createTimeoutDeadlineScheduler(systemClock), closeProofMs: config.closeProofMs,
-            launchTimeoutMs: timeouts.sessionAcquireMs, signal: new AbortController().signal });
+          assertStoppedCredentialSourceFormat(admission, claim);
+        }
+        if (!plan) {
+          const { planStoppedBrowserRoots, probeStoppedControlBrowserRoots } = await import("../browser-roots.js");
+          const { createTimeoutDeadlineScheduler } = await import("../../runtime/scheduling/timeout-deadline-scheduler.js");
+          if (pending === undefined) {
+            let browsers: BrowserRootsDocument = BrowserRootsSchema.parse({ schemaVersion: 1, installationId: locator.installationId, revision: 0, nextGeneration: 1, roots: [] });
+            for (const [index, claim] of claims.entries()) {
+              const admission = admissions[index]; if (admission === undefined) fail("profile-control-upgrade-inventory-required");
+              const planned = planStoppedBrowserRoots(admission, claim, browsers.nextGeneration, systemClock);
+              browsers = BrowserRootsSchema.parse({ ...browsers, nextGeneration: planned.nextGeneration, roots: [...browsers.roots, ...planned.roots] });
+            }
+            const document = convertedProfileRegistry(locator, priorDocument), current = convertedProfileControl(locator, prior, document), operationId = conversionOperationId;
+            withInstallationControl(control, () => {
+              held();
+              if (lstatMaybe(intentPath) || controlEvidence(prior, priorDocument) !== sourceEvidence) fail("profile-control-upgrade-source-changed");
+              const retained = lstatMaybe(backupDirectory) ? readdirSync(backupDirectory).sort().map(name => retainedControlUpgradeEntry(backupDirectory, name, locator.installationId)) : [];
+              ControlUpgradeCommonSchema.shape.retained.parse(retained);
+              ControlUpgradeCommonSchema.shape.sourceEvidence.parse(sourceEvidence);
+              assertControlUpgradeReceiptCapacity({ schemaVersion: 3, operationId, installationId: locator.installationId,
+                phase: "preparing", credentials: [], backups: [], browsers, prior, current, priorDocument, document, retained, sourceEvidence }, 12 * 256);
+              if (!lstatMaybe(backupDirectory)) { mkdirSync(backupDirectory, { mode: 0o700 }); fsyncPath(control); }
+              privateDirectory(backupDirectory);
+              const prefix = join(backupDirectory, operationId), originals = [registryPath, controlPath, markerPath].map(path => {
+                const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 }); if (file === undefined) fail("profile-control-upgrade-evidence-missing"); return file;
+              });
+              const before = [controlUpgradeFile(registryPath), controlUpgradeFile(controlPath), controlUpgradeFile(markerPath)] as const;
+              for (const [index, role] of ["registry", "control", "marker"].entries()) {
+                const file = originals[index]; if (file === undefined) fail("profile-control-upgrade-evidence-missing");
+                writePrivateStage(`${prefix}.${role}.before.json`, file.bytes);
+                if (controlUpgradeFile(`${prefix}.${role}.before.json`).digest !== before[index]?.digest) fail("profile-control-upgrade-backup-diverged");
+              }
+              writePrivateStage(`${prefix}.registry.stage`, Buffer.from(JSON.stringify(document)));
+              writePrivateStage(`${prefix}.control.stage`, Buffer.from(JSON.stringify(current)));
+              writePrivateStage(`${prefix}.marker.stage`, Buffer.from(JSON.stringify({ schemaVersion: 7 })));
+              fsyncPath(backupDirectory);
+              const receipt = ControlUpgradeReceiptSchema.parse({ schemaVersion: 3, operationId, installationId: locator.installationId,
+                phase: "preparing", credentials: [], backups: [], browsers, prior, current, priorDocument, document, retained,
+                priorRegistry: before[0], priorControl: before[1], priorMarker: before[2],
+                registryBackup: controlUpgradeFile(`${prefix}.registry.before.json`), controlBackup: controlUpgradeFile(`${prefix}.control.before.json`), markerBackup: controlUpgradeFile(`${prefix}.marker.before.json`),
+                registryStage: controlUpgradeFile(`${prefix}.registry.stage`), controlStage: controlUpgradeFile(`${prefix}.control.stage`), markerStage: controlUpgradeFile(`${prefix}.marker.stage`), sourceEvidence });
+              writeControlUpgradeReceipt(intentPath, receipt); validateControl(receipt);
+            });
+          }
+          for (const [index, claim] of claims.entries()) {
+            const admission = admissions[index]; if (admission === undefined) fail("profile-control-upgrade-inventory-required");
+            const config = ConfigSchema.shape.browser.parse(undefined), timeouts = ConfigSchema.shape.timeouts.parse(undefined);
+            await probeStoppedControlBrowserRoots(admission, claim, { clock: systemClock, scheduler: createTimeoutDeadlineScheduler(systemClock), closeProofMs: config.closeProofMs,
+              launchTimeoutMs: timeouts.sessionAcquireMs, signal: new AbortController().signal });
+          }
         }
       } catch (error) { primary = { error }; }
       if (primary !== undefined && hasUnprovedSourceClosure(primary.error)) { lease.retainSourceClosure(primary.error); retainUnprovedSourceOwners(primary.error, { admission: { lease, admissions }, restore }); throw primary.error; }

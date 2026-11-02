@@ -1,3 +1,4 @@
+import { BrowserRootOwnerSchema, BrowserRootSchema, BrowserRootsSchema, type BrowserRootOwner, type BrowserRoot, type BrowserRootsDocument } from "./browser-root-contract.js";
 import { runNativeContextProbe, BrowserProfileStillClosingError, type NativeBrowserProbeInput, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "../runtime/browser/native-browser.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -9,10 +10,11 @@ import { z } from "zod";
 import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { BrowserSystemIdSchema, PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema, type BrowserSystemId } from "../../rules/identity/ids.js";
+import { BrowserSystemIdSchema, PositiveIntSchema, type BrowserSystemId } from "../../rules/identity/ids.js";
 import type { RuntimeAdmission } from "./admission/admission.js";
 import { assertInstallationLease, inspectFlatOfflineRunMaintenance, requireStoppedControlProfileInventory, type StoppedControlProfileInventory } from "./admission/installation.js";
-import { retainedBrowserProfiles, assertCredentialCopyResourcesClosed, flatBackupBrowserCensus, type ProfileBrowserClosure } from "./maintenance/profile-inventory.js";
+import { retainedBrowserProfiles, assertCredentialCopyResourcesClosed } from "./maintenance/profile-custody.js";
+import type { ProfileBrowserClosure } from "./maintenance/profile-inventory.js";
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
 import { proveProfileRootsUnused } from "./maintenance/process-closure.js";
 import { resolveConfigWithProvenance } from "../app/config/resolve.js";
@@ -78,46 +80,10 @@ export interface BrowserProfileProbeOptions {
   readonly launcher?: PersistentContextLauncher;
 }
 
-const Integer = z.number().int().safe().nonnegative();
-const Generation = Integer.positive();
-const Digest = z.string().regex(/^[a-f0-9]{64}$/u);
-const RelativePath = z.string().min(1).max(4096).refine(value => !isAbsolute(value)
-  && !value.includes("\\") && value.split("/").every(part => part !== "" && part !== "." && part !== ".."));
-const WorkerOwner = z.strictObject({ kind: z.literal("worker"), workerId: WorkerIdSchema, workflowId: WorkflowIdSchema,
-  ordinal: Generation, membershipRevision: Generation, leaseGeneration: Generation });
-const SignupOwner = z.strictObject({ kind: z.literal("signup"), operationId: z.uuid(), accountId: z.uuid(), providerGeneration: Generation });
-export const BrowserRootOwnerSchema = z.discriminatedUnion("kind", [WorkerOwner, SignupOwner]);
-const Launch = z.strictObject({ launchId: z.uuid(), generation: Generation,
-  state: z.enum(["launching", "open", "closing", "closed", "unknown"]) });
-const NativeAction = z.strictObject({ operationId: z.uuid(), launchId: z.uuid(), generation: Generation,
-  source: z.strictObject({ device: Integer, inode: Integer }), priorLaunchDigest: Digest, phase: z.enum(["probing", "observed", "deleting"]) });
-export const BrowserRootSchema = z.strictObject({ profileId: z.uuid(), profileRoot: RelativePath, directory: RelativePath,
-  owner: BrowserRootOwnerSchema, sessionGeneration: Integer, credentialFingerprint: Digest.nullable(), launch: Launch,
-  native: NativeAction.optional() }).superRefine((row, context) => {
-  const prefix = `profiles/${row.profileId}/`;
-  const valid = row.owner.kind === "worker" ? row.profileRoot.startsWith(prefix)
-    && row.directory.startsWith(`${row.profileRoot}/w${row.owner.ordinal}/`)
-    && BrowserSystemIdSchema.safeParse(row.directory.slice(`${row.profileRoot}/w${row.owner.ordinal}/`.length)).success
-    && row.owner.workerId === `${row.owner.workflowId}-worker-${row.owner.ordinal}`
-    : row.profileRoot === "browsers/onboarding" && row.directory === `${row.profileRoot}/onboarding-${row.owner.operationId}-${row.profileId}-${row.owner.accountId}-g${row.owner.providerGeneration}`;
-  if (!valid) {
-    context.addIssue({ code: "custom", message: "browser root escapes its person" });
-  }
-});
-export const BrowserRootsSchema = z.strictObject({ schemaVersion: z.literal(1), installationId: z.uuid(), revision: Integer,
-  nextGeneration: Generation, roots: z.array(BrowserRootSchema).max(64) }).superRefine((document, context) => {
-  const paths = document.roots.map(row => row.directory), generations = document.roots.flatMap(row => [row.launch.generation,
-    ...(row.native === undefined ? [] : [row.native.generation])]);
-  const launches = document.roots.flatMap(row => [row.launch.launchId, ...(row.native === undefined ? [] : [row.native.launchId])]);
-  if (new Set(paths).size !== paths.length || new Set(launches).size !== launches.length
-    || new Set(generations).size !== generations.length || generations.some(generation => generation >= document.nextGeneration)
-    || paths.some(path => paths.some(other => other !== path && path.startsWith(`${other}/`)))) {
-    context.addIssue({ code: "custom", message: "browser root membership diverges" });
-  }
-});
-export type BrowserRootsDocument = z.infer<typeof BrowserRootsSchema>;
-export type BrowserRoot = z.infer<typeof BrowserRootSchema>;
-export type BrowserRootOwner = z.infer<typeof BrowserRootOwnerSchema>;
+const Generation = BrowserRootsSchema.shape.nextGeneration;
+const RelativePath = BrowserRootSchema.shape.directory;
+const [WorkerOwner, SignupOwner] = BrowserRootOwnerSchema.options;
+const Launch = BrowserRootSchema.shape.launch;
 export type BrowserLaunchOwner = Readonly<{ kind: "worker"; database: AuthorityDatabase; workerId: string; stoppedProcess?: ChildProcess }>
   | Readonly<z.infer<typeof SignupOwner>>;
 export interface BrowserRootLaunchInput {
@@ -497,6 +463,7 @@ export const profileBrowserClosure: ProfileBrowserClosure = {
     if (context === undefined) throw new BrowserRootUnavailableError();
     const root = admission?.stateRoot ?? inspectFlatOfflineRunMaintenance(context.workspace).roots[0]?.path;
     if (root === undefined) throw new BrowserRootUnavailableError();
+    const { flatBackupBrowserCensus } = await import("./maintenance/profile-inventory.js");
     const capture = () => {
       held();
       const census = flatBackupBrowserCensus(root, heldOperation, clock);

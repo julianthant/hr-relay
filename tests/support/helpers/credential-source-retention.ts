@@ -9,7 +9,7 @@ import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { testProcessImport } from "../compiled-process.js";
-import { BrowserRootsSchema } from "../../../src/backend/storage/browser-roots.js";
+import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { LogoutSettlementSchema } from "../../../src/models/profiles/profile.js";

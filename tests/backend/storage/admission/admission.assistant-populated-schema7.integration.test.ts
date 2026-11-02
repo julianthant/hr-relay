@@ -1,4 +1,4 @@
-import { retainedBrowserProfiles } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { retainedBrowserProfiles } from "../../../../src/backend/storage/maintenance/profile-custody.js";
 import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
 import { join } from "node:path";
 import assert from "node:assert/strict";

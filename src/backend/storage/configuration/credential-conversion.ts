@@ -11,7 +11,7 @@ import { ChatGptCredentialRecordSchema } from "./chatgpt-credential-repository.j
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { encodePrivate } from "../../../rules/validation/private-equal.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { requireStoppedControlProfileInventory, type StoppedControlProfileInventory } from "../admission/installation.js";
+import type { StoppedControlProfileInventory } from "../admission/installation.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
 
 const RevisionSchema = z.number().int().safe().positive();
@@ -138,7 +138,7 @@ function decryptSource(metadata: Readonly<{ nonce: string; tag: string; cipherte
   return decodeSource(Buffer.concat([decipher.update(ciphertext), decipher.final()]));
 }
 
-function readStoppedCredentialKey(source: Extract<ReturnType<typeof requireStoppedControlProfileInventory>, { credentialFormat: "legacy" }>) {
+function readStoppedCredentialKey(source: Extract<ReturnType<RuntimeAdmission["readStoppedControlCredentialInventorySource"]>, { credentialFormat: "legacy" }>) {
   const keyPath = join(source.machineRoot, "machine", "credential-keys", `${source.binding.profileId}.json`);
   const keyFile = sourceFile(keyPath, undefined, 4096), raw = decodeSource(keyFile.bytes);
   const inline = StoppedInlineKey.safeParse(raw), metadata = StoppedNativeKey.safeParse(raw);
@@ -160,8 +160,8 @@ function readStoppedCredentialKey(source: Extract<ReturnType<typeof requireStopp
   return { key, identity, keyDocument };
 }
 
-export function assertStoppedCredentialSourceFormat(claim: StoppedControlProfileInventory): void {
-  const source = requireStoppedControlProfileInventory(claim);
+export function assertStoppedCredentialSourceFormat(admission: RuntimeAdmission, claim: StoppedControlProfileInventory): void {
+  const source = admission.readStoppedControlCredentialInventorySource(claim);
   source.assertHeld();
   if (source.credentialFormat !== "legacy") return;
   try { ProtectedEnvelope.parse(decodeSource(sourceFile(join(source.stateRoot, "credentials", "protected.json")).bytes)); }
