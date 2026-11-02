@@ -29,6 +29,12 @@ export const verifyI9AuthenticatedApplication: AuthenticatedApplicationVerifier 
     context.assertCurrent();
     return { holds: visible, detail: visible ? "I-9 Complete rendered its Search Options application control" : "the I-9 application control is not visible" };
   },
+  additionalAbsences: [async () => {
+    context.assertCurrent();
+    const visible = await ui.dismissTraining(context.page).isVisible();
+    context.assertCurrent();
+    return { holds: !visible, detail: visible ? "the I-9 training notification is still visible" : "the I-9 training notification is absent" };
+  }],
 });
 
 async function dismissTraining(context: SystemLoginContext): Promise<void> {

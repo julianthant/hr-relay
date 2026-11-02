@@ -29,7 +29,7 @@ export const i9LookupWorkflow = defineWorkflow({
   icon: "ShieldCheck", category: "search", input: I9LookupInputSchema, canonicalInput: I9LookupCanonicalInput,
   inputSubject: "name", surface: { shape: "single" }, enqueue: "reject-active",
   actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, role: defineWorkflowRole({ kind: "standalone" }),
-  identity: { matchKey: input => `i9:${sha256Hex(JSON.stringify([input.lastName.toLowerCase(), input.firstName.toLowerCase(), input.ssn]))}` },
+  identity: { matchKey: input => ["i9", sha256Hex(JSON.stringify([input.lastName.toLowerCase(), input.firstName.toLowerCase(), input.ssn]))].join(":") },
   presentation: { title: input => `${input.lastName}, ${input.firstName}` },
   details: [
     { key: "signer-name", label: "Authorized Official Signer", source: { kind: "result", fieldPath: "signerName" }, display: "text" },

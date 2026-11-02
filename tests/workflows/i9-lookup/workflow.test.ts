@@ -30,4 +30,10 @@ describe("I-9 Lookup child-only workflow", () => {
     assert.equal(I9SignerOutputSchema.safeParse({ i9Status: "signed", signerName: "", profileId: "900001", i9Id: "900002" }).success, false);
     assert.equal(I9SignerOutputSchema.safeParse({ i9Status: "not-found", signerName: "Someone" }).success, false);
   });
+
+  it("keeps the optional SSN out of the workflow identity key", () => {
+    const key = i9LookupModule.descriptor.identity.matchKey({ lastName: "Example", firstName: "Person", ssn: "123456789" });
+    assert.match(key, /^i9:[a-f0-9]{64}$/u);
+    assert.equal(key.includes("123456789"), false);
+  });
 });

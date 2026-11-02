@@ -101,8 +101,9 @@ export function createI9Driver(assertCurrent: () => void, page: Page): I9Driver 
       if (search.rows.length === 0) return { i9Status: search.restricted ? "unable-to-access" : "not-found", signerName: "" };
       const matches = search.rows.filter(row => normalize(row.lastName) === normalize(criteria.lastName) && normalize(row.firstName) === normalize(criteria.firstName));
       if (matches.length !== search.rows.length || new Set(matches.map(row => row.profileId)).size !== 1) throw new I9LookupError("I9_LOOKUP_AMBIGUOUS");
-      const hit = matches.find(row => row.nextAction.trim().length > 0 && !/^complete\s+section\s+[12]$/iu.test(row.nextAction.trim()));
+      const hit = matches.find(row => !/^complete\s+section\s+[12]$/iu.test(row.nextAction.trim()));
       if (hit === undefined) return { i9Status: "unsigned", signerName: "" };
+      if (hit.i9Id === "") throw new I9LookupError();
       return driver.readRecordSummary({ profileId: hit.profileId, i9Id: hit.i9Id });
     },
   };

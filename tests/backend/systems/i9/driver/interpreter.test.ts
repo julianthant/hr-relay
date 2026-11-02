@@ -47,6 +47,11 @@ describe("I-9 employee search and summary", () => {
     ]) await assert.rejects(driverFor({ rows }).driver.readSection2Signer(input), error => error instanceof I9LookupError && error.code === "I9_LOOKUP_AMBIGUOUS");
   });
 
+  it("reads a blank next action from the summary and refuses a missing I-9 ID", async () => {
+    assert.equal((await driverFor({ rows: [i9SearchRow({ nextAction: "" })] }).driver.readSection2Signer(input)).i9Status, "signed");
+    await assert.rejects(driverFor({ rows: [i9SearchRow({ nextAction: "", i9Id: "" })] }).driver.readSection2Signer(input), I9LookupError);
+  });
+
   it("fails malformed rows, missing audit, blank signer and mismatched summary routes", async () => {
     for (const options of [
       { rows: [["too", "short"]] },

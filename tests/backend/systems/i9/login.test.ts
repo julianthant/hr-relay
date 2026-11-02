@@ -70,4 +70,19 @@ describe("I-9 UCOP login", () => {
     assert.deepEqual(world.harness.actions(), []);
     assert.deepEqual(world.harness.filled(), []);
   });
+
+  it("clears a warm-session training banner even when Search Options is visible beside it", async () => {
+    const cleared = `${APP}/employee`;
+    const world = await contextFor({
+      url: APP, navigation: { [CONFIG.urls.i9.prod.entry]: APP },
+      elementsByUrl: {
+        [APP]: { ...appElements, "i9-training-dismiss": {}, "i9-training-confirm": { navigatesTo: cleared } },
+        [cleared]: appElements,
+      },
+    }, undefined, "i9");
+    assert.equal((await verifyI9AuthenticatedApplication(world.context)).authenticated, false);
+    assert.equal(await i9LoginRecipe(world.context), "logged-in");
+    assert.ok(world.harness.actions().includes("click:i9-training-confirm"));
+    assert.deepEqual(world.harness.filled(), []);
+  });
 });

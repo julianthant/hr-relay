@@ -9,7 +9,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "5763265971faaf790eab5e7baa2c5767e71d7944f349f46228412ccafcf90f0b",
+      "fingerprint": "3848c8a02bcaafcdcd6461a1771d7ab93e29829219f33aaef6232dfb7c61ddaf",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -313,7 +313,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/i9-lookup/workflow.ts",
-          "sha256": "cb70af42eaa0f9944fea75ee312a9a4ccfc8c433c399b10576b2eb97f3137a57"
+          "sha256": "9d110d518be06babf95286b625daee0826d541ea67769323ce1108ce10ca3d27"
         }
       ],
       "id": "i9-lookup"
@@ -7081,7 +7081,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-spreadsheet"
     },
     {
-      "fingerprint": "31e879f7da1f2b882ad529e3e6add0a9a771ee464de773782dbb66aabe15cd58",
+      "fingerprint": "80d2335e6968e0e8a696e5d8dc2a3b2495355fc5b90a9ee48f198169ef8974c7",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7093,7 +7093,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/i9/driver/interpreter.ts",
-          "sha256": "0b0e28f2d594d56eca21b7553d559fe0698f40827f308bd2ef7e5298c6189144"
+          "sha256": "4e594268127609d0f859774c7448d5986fb433ad22cc5a09a945bf8c7659df9c"
         },
         {
           "path": "src/backend/systems/i9/driver/ui-registry.ts",
