@@ -302,9 +302,11 @@ describe("dashboard wire boundary (ref frontend-backend-integration)", () => {
 
     expect(workflowLiteralIssues(sources, ids)).toEqual([]);
     for (const path of ["src/dashboard/client/queries/day-queries.ts", "src/dashboard/surfaces/workflows/mocks/new-sibling.ts", "src/dashboard/surfaces/workflows/mocks/workflow-mock-run.tsx", ...Object.keys(RETAINED_MOCK_LITERALS)]) {
-      const changed = new Map(sources);
-      changed.set(path, `${sources.get(path) ?? ""}\nconst injected = (id: string) => id === "person-lookup";`);
-      expect(workflowLiteralIssues(changed, ids).some(issue => issue.startsWith(`${path}:`))).toBe(true);
+      for (const workflowId of ["person-lookup", "onboarding"]) {
+        const changed = new Map(sources);
+        changed.set(path, `${sources.get(path) ?? ""}\nconst injected = (id: string) => id === "${workflowId}";`);
+        expect(workflowLiteralIssues(changed, ids).some(issue => issue.startsWith(`${path}:`))).toBe(true);
+      }
     }
     const repurposedPath = "src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.ts";
     const repurposed = new Map(sources);
