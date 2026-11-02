@@ -22,6 +22,8 @@ export function singleResultAutoDrillPage(
     initialVisibleCount?: number;
     expansionStalls?: boolean;
     delayedExpansion?: boolean;
+    resetViewOnReturn?: boolean;
+    reorderOnReturn?: boolean;
     events?: string[];
     returnListMissing?: boolean;
     mutateOnReturn?: boolean;
@@ -73,7 +75,7 @@ export function singleResultAutoDrillPage(
       fill: async () => undefined,
       selectOption: async () => [],
       click: async () => {
-        if (selector === '[id="#ICList"]') { if (options.returnListMissing === true) throw new Error("fixture return list unavailable"); returnedToList = true; detailRequest = undefined; return; }
+        if (selector === '[id="#ICList"]') { if (options.returnListMissing === true) throw new Error("fixture return list unavailable"); returnedToList = true; detailRequest = undefined; if (options.resetViewOnReturn === true) expanded = false; return; }
         const drill = /PTS_CFG_CL_RSLT_PTS_DRILLIN\$40\$\$(\d+)/u.exec(selector);
         if (drill !== null) {
           const text = resultRowTexts[Number(drill[1])] ?? "";
@@ -123,9 +125,11 @@ export function singleResultAutoDrillPage(
       innerText: async () => {
         const cell = /PTS_CFG_CL_RSLT_NUI_SRCH([023])\$\d+\$\$(\d+)/u.exec(selector);
         if (cell !== null) {
-          const id = (resultRowTexts[Number(cell[2])] ?? "").replace(/^Transaction (T\d+)$/u, "$1");
+          const index = Number(cell[2]);
+          const rowIndex = options.reorderOnReturn === true && returnedToList ? resultRowTexts.length - 1 - index : index;
+          const id = (resultRowTexts[rowIndex] ?? "").replace(/^Transaction (T\d+)$/u, "$1");
           if (cell[1] === "0") return options.mutateOnReturn === true && returnedToList ? "T999999999" : id;
-          if (cell[1] === "3") return options.rowEid ?? EID;
+          if (cell[1] === "3") { options.events?.push("row-eid-read"); return options.rowEid ?? EID; }
           return options.detailFacts?.[id]?.displayedName ?? defaultDetailFacts.displayedName;
         }
         if (selector.includes("PTS_CFG_CL_RSLT_PTS_DRILLIN")) return "Details";

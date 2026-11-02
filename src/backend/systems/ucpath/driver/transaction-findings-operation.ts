@@ -210,32 +210,34 @@ async function visibleText(assertCurrent: () => void, locator: Locator): Promise
   return textOf(assertCurrent, locator);
 }
 
-async function readFindingList(assertCurrent: () => void, page: Page, emplId: Eid): Promise<{
-  reported: number; bindings: readonly FindingBinding[];
-}> {
+async function readFindingCounter(assertCurrent: () => void, page: Page): Promise<{ last: number; total: number }> {
+  const counter = await visibleText(assertCurrent, resolveUcpathFindingElement(page, UCPATH_SS_SMART_HR_RESULT_COUNTER));
+  const match = /^(\d+)-(\d+) of (\d+)$/u.exec(counter);
+  if (match === null) throw new Error("the SS Smart HR result counter is malformed");
+  const first = Number(match[1]);
+  const last = Number(match[2]);
+  const total = Number(match[3]);
+  if (first !== 1 || last < 1 || total < last || total > 300) {
+    throw new Error("the SS Smart HR result counter range is not authoritative");
+  }
+  assertCurrent();
+  const count = await page.locator(DRIVER_ANCHOR.searchResultRow).count();
+  if (count !== last) throw new Error("the SS Smart HR result counter disagrees with its rows");
+  return { last, total };
+}
+
+async function ensureCompleteFindingList(assertCurrent: () => void, page: Page, expectedReported?: number): Promise<number> {
   await waitForUcpathFindingState(assertCurrent, page, UCPATH_SS_SMART_HR_FINDINGS_LIST_READY);
   assertCurrent();
   if (await resolveUcpathElement(page, UCPATH_SS_SMART_HR_RECEIPT_DISPLAY).count() !== 0
     || await page.getByText(NO_RESULTS_MARKER).count() !== 0) {
     throw new Error("the SS Smart HR finding list has ambiguous detail or empty markers");
   }
-  const readCounter = async () => {
-    const counter = await visibleText(assertCurrent, resolveUcpathFindingElement(page, UCPATH_SS_SMART_HR_RESULT_COUNTER));
-    const match = /^(\d+)-(\d+) of (\d+)$/u.exec(counter);
-    if (match === null) throw new Error("the SS Smart HR result counter is malformed");
-    const first = Number(match[1]);
-    const last = Number(match[2]);
-    const total = Number(match[3]);
-    if (first !== 1 || last < 1 || total < last || total > 300) {
-      throw new Error("the SS Smart HR result counter range is not authoritative");
-    }
-    assertCurrent();
-    const count = await page.locator(DRIVER_ANCHOR.searchResultRow).count();
-    if (count !== last) throw new Error("the SS Smart HR result counter disagrees with its rows");
-    return { last, total };
-  };
-  let counter = await readCounter();
+  let counter = await readFindingCounter(assertCurrent, page);
   const reported = counter.total;
+  if (expectedReported !== undefined && reported !== expectedReported) {
+    throw new Error("the SS Smart HR result count changed after returning from detail");
+  }
   if (counter.last < reported) {
     const viewAll = resolveUcpathFindingElement(page, UCPATH_SS_SMART_HR_RESULTS_VIEW_ALL);
     await visibleText(assertCurrent, viewAll);
@@ -251,11 +253,18 @@ async function readFindingList(assertCurrent: () => void, page: Page, emplId: Ei
       .waitFor({ state: "visible", timeout: Math.max(1, expansionDeadline - systemClock.monotonicMs()) });
     assertCurrent();
     await waitForUcpathFindingState(assertCurrent, page, UCPATH_SS_SMART_HR_FINDINGS_LIST_READY);
-    counter = await readCounter();
+    counter = await readFindingCounter(assertCurrent, page);
     if (counter.total !== reported || counter.last !== reported) {
       throw new Error("the SS Smart HR result expansion stalled or changed its count");
     }
   }
+  return reported;
+}
+
+async function readFindingList(assertCurrent: () => void, page: Page, emplId: Eid, expectedReported?: number): Promise<{
+  reported: number; bindings: readonly FindingBinding[];
+}> {
+  const reported = await ensureCompleteFindingList(assertCurrent, page, expectedReported);
   const bindings: FindingBinding[] = [];
   const rows = await page.locator(DRIVER_ANCHOR.searchResultRow).all();
   for (const [index, row] of rows.entries()) {
@@ -278,7 +287,7 @@ async function readFindingList(assertCurrent: () => void, page: Page, emplId: Ei
   if (bindings.length !== reported || new Set(bindings.map(row => row.transactionId)).size !== reported) {
     throw new Error("the SS Smart HR result set is missing rows or repeats transaction IDs");
   }
-  const finalCounter = await readCounter();
+  const finalCounter = await readFindingCounter(assertCurrent, page);
   if (finalCounter.total !== reported || finalCounter.last !== reported) throw new Error("the SS Smart HR result count changed");
   for (const binding of bindings) {
     const transactionId = await visibleText(assertCurrent, resolveUcpathFindingIndexedElement(page, UCPATH_SS_SMART_HR_RESULT_TRANSACTION_ID, binding.index));
@@ -508,19 +517,14 @@ export async function readTransactionFindingsOnPage(
     const initial = await readFindingList(assertCurrent, page, input.emplId);
     const originalSet = findingSet(initial.bindings);
     const rows: UcpathTransactionFinding[] = [];
-    for (const original of initial.bindings) {
-      const current = await readFindingList(assertCurrent, page, input.emplId);
-      if (current.reported !== initial.reported || findingSet(current.bindings) !== originalSet) {
-        throw new Error("the SS Smart HR result set changed before drill-in");
-      }
-      const binding = current.bindings.find(row => row.transactionId === original.transactionId);
-      if (binding === undefined) throw new Error("the SS Smart HR bound row disappeared");
+    for (const binding of initial.bindings) {
       rows.push(await readFindingDetail(assertCurrent, page, binding));
       await returnToFindingList(assertCurrent, page);
-      const returned = await readFindingList(assertCurrent, page, input.emplId);
-      if (returned.reported !== initial.reported || findingSet(returned.bindings) !== originalSet) {
-        throw new Error("the SS Smart HR result set changed after returning from detail");
-      }
+      await ensureCompleteFindingList(assertCurrent, page, initial.reported);
+    }
+    const final = await readFindingList(assertCurrent, page, input.emplId, initial.reported);
+    if (findingSet(final.bindings) !== originalSet) {
+      throw new Error("the SS Smart HR result set changed after returning from detail");
     }
     assertCurrent();
     return UcpathTransactionFindingsSchema.parse({

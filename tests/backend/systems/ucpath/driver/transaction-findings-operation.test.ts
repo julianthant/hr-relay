@@ -103,14 +103,14 @@ describe("UCPath transaction findings", () => {
   it("reads every row beyond the initial 100 through verified View All", async () => {
     const events: string[] = [];
     const ids = Array.from({ length: 101 }, (_, index) => `T${String(9000001 + index).padStart(9, "0")}`);
-    const result = await read(grid(ids, { initialVisibleCount: 100, delayedExpansion: true, events }));
+    const result = await read(grid(ids, { initialVisibleCount: 100, delayedExpansion: true, resetViewOnReturn: true, events }));
     assert.equal(result.state, "read");
     if (result.state !== "read") throw new Error("complete findings read required");
     assert.deepEqual(result.rows.map(row => row.transactionId), ids);
     assert.equal(result.scannedRowCount, 101);
     assert.ok(events.includes("expansion-pending"));
     assert.ok(events.includes("wait-full-counter"));
-    assert.ok(events.includes("expansion-settled"));
+    assert.equal(events.filter(event => event === "expansion-settled").length, 102);
     assert.ok(events.includes("wait-list-ready"));
     assert.ok(events.includes("wait-detail-ready"));
     assert.deepEqual(result.completeness, { state: "complete", reportedRowCount: 101 });
@@ -119,12 +119,26 @@ describe("UCPath transaction findings", () => {
     if (stalled.state === "unreadable") assert.match(stalled.reason, /fixture expansion wait expired/u);
   });
 
+  it("refuses a reordered bound slot before opening the wrong transaction", async () => {
+    const events: string[] = [];
+    const result = await read(grid([ID, "T009000002"], { reorderOnReturn: true, events }));
+    assert.equal(result.state, "unreadable");
+    assert.deepEqual(events.filter(event => event.startsWith("drill:")), [`drill:${ID}`]);
+  });
+
   it("records all 300 capped findings but never grants operational scan authority", async () => {
     const ids = Array.from({ length: 300 }, (_, index) => `T${String(9000001 + index).padStart(9, "0")}`);
-    const result = await read(grid(ids, { initialVisibleCount: 100 }));
+    const events: string[] = [];
+    const result = await read(grid(ids, { initialVisibleCount: 100, events }));
     assert.equal(result.state, "read");
     if (result.state !== "read") throw new Error("complete findings read required");
     assert.equal(result.rows.length, 300);
+    assert.deepEqual(result.rows.map(row => row.transactionId), ids);
+    assert.equal(events.filter(event => event.startsWith("drill:")).length, 300);
+    const rowEidReads = events.filter(event => event === "row-eid-read").length;
+    assert.ok(rowEidReads >= 3 * ids.length, "the oracle observes initial, bound-slot and final row identities");
+    assert.ok(rowEidReads <= 8 * ids.length,
+      "a complete finding traversal must use only linearly many row-EID reads");
     assert.deepEqual(result.completeness, { state: "incomplete", reason: "search-cap", reportedRowCount: 300 });
     const operational = await scanTerminationTransactionsOnPage(() => undefined, grid(ids), { emplId: EID, transactionId: ID }, OBSERVED);
     assert.equal(operational.state, "unreadable");
