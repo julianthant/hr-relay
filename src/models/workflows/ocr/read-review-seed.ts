@@ -5,12 +5,12 @@ import { OcrFormTypeSchema } from "../../ocr/form-registry.js";
 import { OcrPageOutcomeSchema, accountOcrPages, ocrExtractionItemId } from "./page-accounting.js";
 import { OcrReviewSeedInputSchema, OcrReviewSeedSchema, buildOcrReviewSeed } from "./review-seed.js";
 import { OcrSourceManifestSchema, ocrPageInputs } from "./source-manifest.js";
-import { PrepareOcrPages } from "./prepare-pages.js";
+import { ReadOcrSourcePages } from "./read-source-pages.js";
 import { OCR_INPUT_EXAMPLE } from "./input.js";
 
-const manifest = OcrSourceManifestSchema.parse(PrepareOcrPages.example.manifest);
-export const BuildOcrReviewSeed = defineTaskContract({
-  id: taskId("workflow:ocr/build-review-seed"), title: "Build source-bound review", effect: "read",
+const manifest = OcrSourceManifestSchema.parse(ReadOcrSourcePages.example.manifest);
+export const ReadOcrReviewSeed = defineTaskContract({
+  id: taskId("workflow:ocr/read-review-seed"), title: "Build source-bound review", effect: "read",
   input: OcrReviewSeedInputSchema.omit({ accounting: true }).extend({ manifest: OcrSourceManifestSchema,
     readingId: ItemIdSchema, formType: OcrFormTypeSchema, outcomes: z.array(OcrPageOutcomeSchema).min(1) }),
   output: OcrReviewSeedSchema, errorCodes: ["INCONSISTENT_INPUTS"],

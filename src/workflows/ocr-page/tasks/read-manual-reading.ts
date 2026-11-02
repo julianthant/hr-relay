@@ -1,5 +1,5 @@
 import { defineTask } from "../../../workflow-kit/task.js";
-import { ReadManualOcrReading } from "../../../models/workflows/ocr-page/bind-reading.js";
+import { ReadManualOcrReading } from "../../../models/workflows/ocr-page/read-manual-reading.js";
 import { bindCanonicalManualOcrReading } from "../../../models/workflows/ocr/page-accounting.js";
 
 export const readManualOcrReadingTask = defineTask(ReadManualOcrReading, {

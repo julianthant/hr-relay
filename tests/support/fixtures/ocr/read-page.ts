@@ -4,13 +4,14 @@ import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definitio
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { evaluateNodeCondition } from "../../../../src/models/workflow/node-condition.js";
 import { ExtractFormPage, OCR_EXTRACTION_RESPONSE_HASH } from "../../../../src/models/processing/ocr/extract-form-page.js";
-import { BindOcrReading, ReadManualOcrReading } from "../../../../src/models/workflows/ocr-page/bind-reading.js";
+import { ReadOcrPageReading } from "../../../../src/models/workflows/ocr-page/read-page-reading.js";
+import { ReadManualOcrReading } from "../../../../src/models/workflows/ocr-page/read-manual-reading.js";
 import { OcrPageReadingSchema } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { OcrPageWorkflowInputSchema } from "../../../../src/models/workflows/ocr-page/input.js";
 import { ocrPageWorkflow } from "../../../../src/workflows/ocr-page/workflow.js";
 import { extractFormPageTask } from "../../../../src/backend/processing/ocr/tasks/extract-form-page.js";
 import { readManualOcrReadingTask } from "../../../../src/workflows/ocr-page/tasks/read-manual-reading.js";
-import { bindOcrReadingTask } from "../../../../src/workflows/ocr-page/tasks/bind-reading.js";
+import { readOcrPageReadingTask } from "../../../../src/workflows/ocr-page/tasks/read-page-reading.js";
 import { ocrTaskContext } from "./task-context.js";
 import { submittedPage } from "./source-pages.js";
 
@@ -18,7 +19,7 @@ export async function readOcrPageFixture(input: z.output<typeof OcrPageWorkflowI
   const nodes = descriptorRuntimeNodes(compileWorkflow(ocrPageWorkflow).descriptor);
   const extract = nodes.find(node => node.id === "extract");
   const manual = nodes.find(node => node.id === "manual-reading");
-  const bind = nodes.find(node => node.id === "bind-reading");
+  const bind = nodes.find(node => node.id === "read-page-reading");
   assert.ok(extract?.kind === "task" && extract.when !== undefined && bind?.kind === "task" && manual?.kind === "task");
   const { ctx, recorded } = ocrTaskContext();
   const requests: unknown[] = [];
@@ -33,7 +34,7 @@ export async function readOcrPageFixture(input: z.output<typeof OcrPageWorkflowI
       } } } } }) : undefined;
   const reading = OcrPageReadingSchema.parse(input.reading.kind === "manual"
     ? await readManualOcrReadingTask.impl.run({ input: ReadManualOcrReading.input.parse(manual.bind({ input, outputs: {} })), ctx })
-    : await bindOcrReadingTask.impl.run({ input: BindOcrReading.input.parse(bind.bind({ input,
+    : await readOcrPageReadingTask.impl.run({ input: ReadOcrPageReading.input.parse(bind.bind({ input,
       outputs: extraction === undefined ? {} : { extract: extraction } })), ctx }));
   return { reading, requests, recorded };
 }

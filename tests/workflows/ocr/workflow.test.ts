@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { auditWorkflowModuleRoles } from "../../../src/workflow-kit/validation/workflow-module-audit.js";
 import { compileWorkflow, workflowExplorerDeclaration } from "../../../src/workflow-kit/workflow-definition.js";
 import { descriptorRuntimeNodes, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
 import { workflowModuleOf, childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
@@ -8,10 +9,10 @@ import { ocrWorkflow, OcrResultSchema } from "../../../src/workflows/ocr/workflo
 import { OcrPageWorkflowInputSchema } from "../../../src/models/workflows/ocr-page/input.js";
 import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
 import { OcrInputSchema } from "../../../src/models/workflows/ocr/input.js";
-import { PrepareOcrPages } from "../../../src/models/workflows/ocr/prepare-pages.js";
-import { BuildOcrReviewSeed } from "../../../src/models/workflows/ocr/build-review-seed.js";
-import { prepareOcrPagesTask } from "../../../src/workflows/ocr/tasks/prepare-pages.js";
-import { buildOcrReviewSeedTask } from "../../../src/workflows/ocr/tasks/build-review-seed.js";
+import { ReadOcrSourcePages } from "../../../src/models/workflows/ocr/read-source-pages.js";
+import { ReadOcrReviewSeed } from "../../../src/models/workflows/ocr/read-review-seed.js";
+import { readOcrSourcePagesTask } from "../../../src/workflows/ocr/tasks/read-source-pages.js";
+import { readOcrReviewSeedTask } from "../../../src/workflows/ocr/tasks/read-review-seed.js";
 import { ocrLookupRequests, ocrLookupItemId } from "../../../src/models/workflows/ocr/lookup.js";
 import { OcrPageOutcomeSchema, bindManualOcrPageReading } from "../../../src/models/workflows/ocr/page-accounting.js";
 import { ItemIdSchema } from "../../../src/rules/identity/ids.js";
@@ -22,7 +23,7 @@ import { UNREGISTERED_OCR_MODULES } from "../../support/fixtures/ocr/unregistere
 
 const descriptor = compileWorkflow(ocrWorkflow).descriptor;
 const nodes = descriptorRuntimeNodes(descriptor);
-const prepareCandidate = nodes.find(node => node.id === "prepare-pages");
+const prepareCandidate = nodes.find(node => node.id === "read-source-pages");
 const childrenCandidate = nodes.find(node => node.id === "read-pages");
 const reviewCandidate = nodes.find(node => node.id === "build-review");
 const lookupCandidate = nodes.find(node => node.id === "lookup-identities");
@@ -40,22 +41,23 @@ function requestFixture(pageCount = 3) {
 async function reviewFixture(pageCount = 3) {
   const fixture = requestFixture(pageCount);
   const { request, rendered, inputs } = fixture;
-  const source = PrepareOcrPages.output.parse(await prepareOcrPagesTask.impl.run({ input: PrepareOcrPages.input.parse(prepare.bind({ input: request, outputs: { "render-pages": rendered } })), ctx: ocrTaskContext().ctx }));
-  const bound = OcrPageWorkflowInputSchema.array().parse(children.bind({ input: request, outputs: { "prepare-pages": source } }));
+  const source = ReadOcrSourcePages.output.parse(await readOcrSourcePagesTask.impl.run({ input: ReadOcrSourcePages.input.parse(prepare.bind({ input: request, outputs: { "render-pages": rendered } })), ctx: ocrTaskContext().ctx }));
+  const bound = OcrPageWorkflowInputSchema.array().parse(children.bind({ input: request, outputs: { "read-source-pages": source } }));
   assert.equal(bound.length, pageCount);
   const outcomes = [];
   for (const [index, child] of bound.entries()) {
     const { reading } = await readOcrPageFixture(child);
     outcomes.push(OcrPageOutcomeSchema.parse({ ...donePage(inputs[index]), output: reading }));
   }
-  const review = BuildOcrReviewSeed.output.parse(await buildOcrReviewSeedTask.impl.run({ input: BuildOcrReviewSeed.input.parse(reviewNode.bind({ input: request,
-    outputs: { "prepare-pages": source, "read-pages": outcomes } })), ctx: ocrTaskContext().ctx }));
+  const review = ReadOcrReviewSeed.output.parse(await readOcrReviewSeedTask.impl.run({ input: ReadOcrReviewSeed.input.parse(reviewNode.bind({ input: request,
+    outputs: { "read-source-pages": source, "read-pages": outcomes } })), ctx: ocrTaskContext().ctx }));
   return { ...fixture, source, review, outcomes };
 }
 
 describe("unregistered OCR document graph", () => {
   it("compiles complete exact stores and generated timelines without production registration", () => {
-    assert.deepEqual(UNREGISTERED_OCR_MODULES.map(module => String(module.descriptor.id)), ["ocr", "ocr-page"]);
+    assert.deepEqual(UNREGISTERED_OCR_MODULES.map(module => String(module.descriptor.id)), ["ocr", "ocr-page", "ocr-source-pages", "ocr-page-reading"]);
+    assert.deepEqual(auditWorkflowModuleRoles(UNREGISTERED_OCR_MODULES), []);
     assert.equal(children.join, "all-settled");
     assert.equal(children.policy.cascadeCancel, "cascade");
     assert.equal(lookup.join, "all-settled");
@@ -101,16 +103,16 @@ describe("unregistered OCR document graph", () => {
     const assertions = inputs.map(input => ({ sourcePage: input.sourcePage, extraction: bindManualOcrPageReading(input, "local-operator", { ...submittedPage(input),
       source: { kind: "operator", actorId: "local-operator" } }).extraction }));
     const manual = OcrInputSchema.parse({ ...request, reading: { kind: "manual", actorId: "local-operator", assertions } });
-    const output = await prepareOcrPagesTask.impl.run({ input: { request: manual, rendered }, ctx: ocrTaskContext().ctx });
+    const output = await readOcrSourcePagesTask.impl.run({ input: { request: manual, rendered }, ctx: ocrTaskContext().ctx });
     assert.equal(output.pages.every(page => page.reading.kind === "manual"), true);
     for (const subset of [[assertions[0]], [assertions[0], assertions[0]], [assertions[0], { ...assertions[1], sourcePage: 3 }]]) {
       const refused = ocrTaskContext();
-      await assert.rejects(prepareOcrPagesTask.impl.run({ input: PrepareOcrPages.input.parse({ request: { ...manual,
+      await assert.rejects(readOcrSourcePagesTask.impl.run({ input: ReadOcrSourcePages.input.parse({ request: { ...manual,
         reading: { ...manual.reading, assertions: subset } }, rendered }), ctx: refused.ctx }), /do not match/);
       assert.deepEqual(refused.recorded, []);
     }
-    await assert.rejects(prepareOcrPagesTask.impl.run({ input: { request, rendered: { pageCount: 2, pages: [rendered.pages[0]] } }, ctx: ocrTaskContext().ctx }), /do not match/);
-    await assert.rejects(buildOcrReviewSeedTask.impl.run({ input: BuildOcrReviewSeed.input.parse({ sourceRunId: SOURCE_RUN_ID,
+    await assert.rejects(readOcrSourcePagesTask.impl.run({ input: { request, rendered: { pageCount: 2, pages: [rendered.pages[0]] } }, ctx: ocrTaskContext().ctx }), /do not match/);
+    await assert.rejects(readOcrReviewSeedTask.impl.run({ input: ReadOcrReviewSeed.input.parse({ sourceRunId: SOURCE_RUN_ID,
       roster: null, manifest: output.manifest, readingId: READING_ID, formType: "emergency-contact", outcomes: [donePage(inputs[0])] }), ctx: ocrTaskContext().ctx }), /do not account/);
   });
 
@@ -119,7 +121,7 @@ describe("unregistered OCR document graph", () => {
     const child = donePage(inputs[0]);
     const failed = OcrPageOutcomeSchema.parse({ runId: child.runId, itemId: child.itemId, state: "failed",
       failureId: "00000000-0000-4000-8000-000000000777" });
-    const review = BuildOcrReviewSeed.output.parse(await buildOcrReviewSeedTask.impl.run({ input: { sourceRunId: SOURCE_RUN_ID, roster: null,
+    const review = ReadOcrReviewSeed.output.parse(await readOcrReviewSeedTask.impl.run({ input: { sourceRunId: SOURCE_RUN_ID, roster: null,
       manifest: source.manifest, readingId: READING_ID, formType: "emergency-contact", outcomes: [failed] }, ctx: ocrTaskContext().ctx }));
     assert.deepEqual(review.pages, [{ sourcePage: 1, disposition: "failed" }]);
     assert.deepEqual(lookup.bind({ input: request, outputs: { "build-review": review } }), []);

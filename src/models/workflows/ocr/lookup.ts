@@ -8,7 +8,7 @@ export const OcrLookupRequestSchema = z.strictObject({ recordIds: z.array(Stable
 
 export function ocrLookupItemId(input: z.output<typeof PersonLookupInput>) {
   if (input.mode !== "search") throw new Error("OCR only delegates identity search.");
-  return deriveItemId("person-lookup", "emplId" in input ? `eid:${input.emplId}` : `name:${input.name.toLowerCase()}`);
+  return deriveItemId("person-lookup", "emplId" in input ? ["eid", input.emplId].join(":") : `name:${input.name.toLowerCase()}`);
 }
 
 export function ocrLookupRequests(seed: OcrReviewSeed) {

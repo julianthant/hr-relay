@@ -112,7 +112,8 @@ Paths in this table are relative to `src/backend/`.
 backend task implementations. The unregistered `src/workflows/ocr/` and `src/workflows/ocr-page/`
 folders use the same layout; their test-only composition inventory in
 `tests/support/fixtures/ocr/unregistered-workflows.ts` supports compiler, layout, bundle and manifest
-audits without making either workflow available in production registries.
+audits without making either workflow available in production registries. Their retained proofs live
+at `ocr/steps/source-pages/step.ts` and `ocr-page/steps/read-page/step.ts` in the same unregistered inventory.
 
 Person Lookup has four chunk harnesses at `src/workflows/person-lookup/steps/<step>/step.ts`:
 `searching`, `cross-verify`, `active-status`, and `crm-dates`.

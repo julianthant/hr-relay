@@ -1,8 +1,8 @@
 import { defineTask } from "../../../workflow-kit/task.js";
-import { BindOcrReading } from "../../../models/workflows/ocr-page/bind-reading.js";
+import { ReadOcrPageReading } from "../../../models/workflows/ocr-page/read-page-reading.js";
 import { bindOcrPageReading } from "../../../models/workflows/ocr/page-accounting.js";
 
-export const bindOcrReadingTask = defineTask(BindOcrReading, {
+export const readOcrPageReadingTask = defineTask(ReadOcrPageReading, {
   sessions: [],
   async run({ input: { request, extraction }, ctx }) {
     let output;

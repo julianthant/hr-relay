@@ -1,9 +1,9 @@
 import { defineTask } from "../../../workflow-kit/task.js";
-import { BuildOcrReviewSeed } from "../../../models/workflows/ocr/build-review-seed.js";
+import { ReadOcrReviewSeed } from "../../../models/workflows/ocr/read-review-seed.js";
 import { accountOcrPages } from "../../../models/workflows/ocr/page-accounting.js";
 import { buildOcrReviewSeed } from "../../../models/workflows/ocr/review-seed.js";
 
-export const buildOcrReviewSeedTask = defineTask(BuildOcrReviewSeed, {
+export const readOcrReviewSeedTask = defineTask(ReadOcrReviewSeed, {
   sessions: [],
   async run({ input, ctx }) {
     let output;

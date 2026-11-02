@@ -9,8 +9,8 @@ import { OcrPageWorkflowInputSchema, OCR_PAGE_EXAMPLE } from "../ocr-page/input.
 export const PreparedOcrPagesSchema = z.strictObject({ manifest: OcrSourceManifestSchema, pages: z.array(OcrPageWorkflowInputSchema).min(1) });
 const exampleManifest = buildOcrSourceManifest(OCR_INPUT_EXAMPLE.document, { pageCount: 1,
   pages: [{ sourcePage: 1, image: OCR_PAGE_EXAMPLE.page.image }] });
-export const PrepareOcrPages = defineTaskContract({
-  id: taskId("workflow:ocr/prepare-pages"), title: "Bind original pages", effect: "read",
+export const ReadOcrSourcePages = defineTaskContract({
+  id: taskId("workflow:ocr/read-source-pages"), title: "Bind original pages", effect: "read",
   input: z.strictObject({ request: OcrInputSchema, rendered: ExtractPdfPagesOutputSchema }), output: PreparedOcrPagesSchema,
   errorCodes: ["INCONSISTENT_INPUTS"], subject: { kind: "none", reason: "binds local source artifacts without resolving a person" },
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "derived" }, scenarios: [],

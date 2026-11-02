@@ -1,9 +1,9 @@
 import { defineTask } from "../../../workflow-kit/task.js";
-import { PrepareOcrPages } from "../../../models/workflows/ocr/prepare-pages.js";
+import { ReadOcrSourcePages } from "../../../models/workflows/ocr/read-source-pages.js";
 import { buildOcrSourceManifest, ocrPageInputs } from "../../../models/workflows/ocr/source-manifest.js";
 import { bindCanonicalManualOcrReading } from "../../../models/workflows/ocr/page-accounting.js";
 
-export const prepareOcrPagesTask = defineTask(PrepareOcrPages, {
+export const readOcrSourcePagesTask = defineTask(ReadOcrSourcePages, {
   sessions: [],
   async run({ input: { request, rendered }, ctx }) {
     let output;

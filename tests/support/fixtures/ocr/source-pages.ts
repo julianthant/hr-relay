@@ -1,6 +1,6 @@
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
 import { ocrForm, fieldOnPageKind, type OcrFormType, type OcrPageKind } from "../../../../src/models/ocr/form-registry.js";
-import { admitOcrExtraction, type SubmittedExtraction } from "../../../../src/models/ocr/extraction.js";
+import { admitOcrExtraction, type SubmittedExtraction, type SubmittedAnswer } from "../../../../src/models/ocr/extraction.js";
 import { IsoInstantSchema, ItemIdSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { buildOcrSourceManifest, ocrPageInputs, type OcrPageInput } from "../../../../src/models/workflows/ocr/source-manifest.js";
@@ -23,7 +23,7 @@ export function sourceFixture(pageCount = 2, formType: OcrFormType = "emergency-
 export function submittedPage(input: OcrPageInput, name = "Example, Avery", pageKind: OcrPageKind = ocrForm(input.formType).pageKinds[0]): SubmittedExtraction {
   return { formType: input.formType, source: { kind: "provider", providerId: "chatgpt-subscription", modelId: "synthetic-test-model" },
     readAt: READ_AT, sourceSha256: input.image.sha256, sourcePage: input.sourcePage, pageKind,
-    record: !ocrForm(input.formType).pageKinds.includes(pageKind) ? null : { answers: Object.fromEntries(ocrForm(input.formType).fields.map(field => {
+    record: !ocrForm(input.formType).pageKinds.includes(pageKind) ? null : { answers: Object.fromEntries(ocrForm(input.formType).fields.map((field): [string, SubmittedAnswer] => {
       if (!fieldOnPageKind(field, pageKind)) return [field.path, { state: "absent", reason: "not-on-form" }];
       const value = ["employee.name", "printedName"].includes(field.path) ? name
         : field.path === "lastName" ? "Example" : field.path === "firstName" ? "Avery"
