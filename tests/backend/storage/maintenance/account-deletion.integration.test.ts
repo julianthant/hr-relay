@@ -15,6 +15,7 @@ import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/l
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import * as accountDeletion from "../../../../src/backend/storage/maintenance/account-deletion.js";
+import { profileProcessQuery } from "../../../../src/backend/storage/maintenance/process-closure.js";
 import { fixedLayoutEntries } from "../../../../src/backend/storage/maintenance/fixed-layout.js";
 import { ProfileVerifierDocumentSchema } from "../../../../src/models/profiles/profile.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
@@ -108,9 +109,9 @@ for (const change of ["none", "unknown-member", "shutdown-backup"] as const) it(
   } finally { spy.mockRestore(); syncBuiltinESMExports(); await f.close(); }
 });
 
-for (const empty of [true, false]) it(empty
+for (const [empty, trial] of [[true, 1], [true, 2], [true, 3], [true, 4], [true, 5], [true, 6], [true, 7], [true, 8], [false, 1]] as const) it(`${empty
   ? "serves confirmed account deletion through the guarded dashboard route and signals an empty machine"
-  : "backs up the remaining account after confirmed deletion through the guarded dashboard route", async () => {
+  : "backs up the remaining account after confirmed deletion through the guarded dashboard route"} [DEBUG-ad-20261102 trial ${trial}]`, async () => {
   const f = await fixture();
   onTestFinished(() => f.close());
   let deletionError: unknown;
@@ -120,6 +121,8 @@ for (const empty of [true, false]) it(empty
     catch (error) { deletionError = error; throw error; }
   });
   onTestFinished(() => { deletion.mockRestore(); });
+  const census = vi.spyOn(profileProcessQuery, "spawnSync");
+  onTestFinished(() => { census.mockRestore(); });
   const backups = vi.spyOn(AuthorityBackupService.prototype, "request");
   onTestFinished(() => { backups.mockRestore(); });
   await f.runtime.close();
@@ -139,6 +142,26 @@ for (const empty of [true, false]) it(empty
     assert.equal((await post("delete-account", { confirmed: false }, cookie)).status, 400);
     assert.equal(f.machine.readProfileRegistry().profiles.length, email === "fixture@ucsd.edu" ? 2 : 1);
     const response = await post("delete-account", { confirmed: true }, cookie);
+    if (deletionError !== undefined) {
+      const observations = census.mock.results.map((result, index) => {
+        if (result.type !== "return") return { type: result.type };
+        const value = result.value;
+        const stdout = typeof value.stdout === "string" ? value.stdout : undefined;
+        const stderr = typeof value.stderr === "string" ? value.stderr : undefined;
+        return {
+          lsof: census.mock.calls[index]?.[0] === "/usr/sbin/lsof", status: value.status, signal: value.signal,
+          queryError: value.error !== undefined,
+          errorCode: value.error !== undefined && "code" in value.error && typeof value.error.code === "string" ? value.error.code : null,
+          stderrPresent: stderr === undefined ? null : stderr.length !== 0,
+          stdoutEmpty: stdout === undefined ? null : stdout.length === 0,
+          newlineTerminated: stdout === undefined ? null : stdout.endsWith("\n"),
+          unresolvedDescriptor: stdout === undefined ? null : stdout.includes("vnode: FD unavailable"),
+          selectedRootMentioned: stdout === undefined ? null : stdout.includes(f.root),
+          otherRootMentioned: stdout === undefined ? null : stdout.includes(f.otherRoot),
+        };
+      });
+      throw new Error(`[DEBUG-ad-20261102] erasure failure; native census facts: ${JSON.stringify(observations)}`, { cause: deletionError });
+    }
     assert.ifError(deletionError);
     assert.equal(response.status, 200);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "signed-out", signUpRequired: empty && email === "other@ucsd.edu" });
