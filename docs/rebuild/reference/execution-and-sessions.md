@@ -600,6 +600,8 @@ ordinary startup does not reconstruct it. An ordinary profile drain checks actua
 closure without minting native-unused permission. Flat native6 maintenance keeps its finite stopped
 owner and OS census. Busy profiles refuse with `BROWSER_PROFILE_STILL_CLOSING`; unproved native
 closure refuses with `BROWSER_CLOSURE_UNPROVED` and retains the actual owner and root lifetime.
+Stopped current-profile backup refuses any registered root whose launch is not closed or whose
+native closure remains pending. A verified empty registry permits backup without an OS census.
 
 Retained settings roots and authenticated verification scratch paths have distinct membership.
 An absent directory is released only when the exact completed cleanup already proves owned context

@@ -175,6 +175,7 @@ function stoppedBackupBrowserCensus(admission: RuntimeAdmission, operation: Offl
     const { custody, config } = stoppedBrowserFacts(admission, clock, processLockRoot);
     const retained = retainedBrowserProfiles(admission.stateRoot, custody, config.paths.browserProfileRoot, layout);
     const binding = admission.captureBrowserRegistryContext(), rows = createBrowserRoots(admission).inventory().roots.filter(row => row.profileId === binding.profileId);
+    if (rows.some(row => row.launch.state !== "closed" || row.native !== undefined)) throw new StorageBackupClosureUnprovedError();
     let physical: ReturnType<typeof restoreBrowserCensus>;
     try { physical = restoreBrowserCensus(admission); }
     catch (error) { if (hasUnprovedSourceClosure(error)) throw error; throw new StorageBackupClosureUnprovedError(error); }
