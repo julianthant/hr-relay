@@ -1,4 +1,5 @@
 import { defineWorkflow, defineStepEntries } from "../../workflow-kit/workflow-definition.js";
+import type { WorkflowDefinitionSpec } from "../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep, requireFact } from "../../workflow-kit/workflow.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
@@ -11,6 +12,27 @@ const personMatch = defineWorkflowStep({ key: "person-match", label: "Match pers
 const personLookup = defineWorkflowStep({ key: "person-lookup", label: "Check hire date" });
 const rosterMatch = defineWorkflowStep({ key: "roster-match", label: "Match retention roster" });
 const match = defineStepEntries(personMatch), lookup = defineStepEntries(personLookup), roster = defineStepEntries(rosterMatch);
+
+export const i9CheckSteps: WorkflowDefinitionSpec<typeof I9CheckInput, typeof ReadRetentionRow.output>["steps"] = ({ task, result }) => {
+    const plan = task(match.task("search-plan", ReadSearchPlan, { replay: "always-rerun" }), [], ({ input }) => input);
+    const matching = task(match.task("identifier-match", SearchPersonMatch, { replay: "checkpoint",
+      when: { kind: "is-true", of: { from: "node", nodeId: "search-plan", path: "useMatch" } },
+    }), [plan], ({ input }) => ({
+      firstName: requireFact(input.person.firstName, "search-plan", "firstName"),
+      lastName: requireFact(input.person.lastName, "search-plan", "lastName"),
+      ...(input.person.dob === undefined ? {} : { dob: `${input.person.dob.slice(5, 7)}/${input.person.dob.slice(8, 10)}/${input.person.dob.slice(0, 4)}` }),
+      ...(input.person.ssn === undefined ? {} : { ssn: input.person.ssn }),
+    }));
+    const initial = task(match.task("match-outcome", ReadMatchOutcome, { replay: "always-rerun" }), [matching], ({ outputs }) => ({ match: outputs["identifier-match"] }));
+    const search = task(lookup.task("name-search", SearchPersonOrg, { replay: "checkpoint",
+      when: { kind: "is-true", of: { from: "node", nodeId: "match-outcome", path: "shouldLookup" } },
+    }), [initial], ({ input }) => ({ kind: "by-name" as const, name: input.person.name, keepNonHdh: true }));
+    const row = task(roster.task("retention-row", ReadRetentionRow, { replay: "always-rerun" }), [initial, search], ({ input, outputs }) => ({
+      input, initial: outputs["match-outcome"].identity, search: outputs["name-search"],
+    }));
+    return { steps: [[personMatch, [plan, matching, initial]], [personLookup, [search]], [rosterMatch, [row]]],
+      result: result(ReadRetentionRow.output, [row], ({ outputs }) => outputs["retention-row"]) };
+  };
 
 export const i9CheckWorkflow = defineWorkflow({
   id: "i9-check", version: 1, code: "ic", label: "I-9 Check", icon: "ClipboardCheck", category: "separation",
@@ -33,24 +55,5 @@ export const i9CheckWorkflow = defineWorkflow({
     { nodeId: "name-search", purpose: "Read all departments for hire-date corroboration when identifiers did not resolve identity." },
     { nodeId: "retention-row", purpose: "Rematch the Action History evidence and derive one retention row." },
   ],
-  steps: ({ task, result }) => {
-    const plan = task(match.task("search-plan", ReadSearchPlan, { replay: "always-rerun" }), [], ({ input }) => input);
-    const matching = task(match.task("identifier-match", SearchPersonMatch, { replay: "checkpoint",
-      when: { kind: "is-true", of: { from: "node", nodeId: "search-plan", path: "useMatch" } },
-    }), [plan], ({ input }) => ({
-      firstName: requireFact(input.person.firstName, "search-plan", "firstName"),
-      lastName: requireFact(input.person.lastName, "search-plan", "lastName"),
-      ...(input.person.dob === undefined ? {} : { dob: `${input.person.dob.slice(5, 7)}/${input.person.dob.slice(8, 10)}/${input.person.dob.slice(0, 4)}` }),
-      ...(input.person.ssn === undefined ? {} : { ssn: input.person.ssn }),
-    }));
-    const initial = task(match.task("match-outcome", ReadMatchOutcome, { replay: "always-rerun" }), [matching], ({ outputs }) => ({ match: outputs["identifier-match"] }));
-    const search = task(lookup.task("name-search", SearchPersonOrg, { replay: "checkpoint",
-      when: { kind: "is-true", of: { from: "node", nodeId: "match-outcome", path: "shouldLookup" } },
-    }), [initial], ({ input }) => ({ kind: "by-name" as const, name: input.person.name, keepNonHdh: true }));
-    const row = task(roster.task("retention-row", ReadRetentionRow, { replay: "always-rerun" }), [initial, search], ({ input, outputs }) => ({
-      input, initial: outputs["match-outcome"].identity, search: outputs["name-search"],
-    }));
-    return { steps: [[personMatch, [plan, matching, initial]], [personLookup, [search]], [rosterMatch, [row]]],
-      result: result(ReadRetentionRow.output, [row], ({ outputs }) => outputs["retention-row"]) };
-  },
+  steps: i9CheckSteps,
 });

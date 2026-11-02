@@ -111,7 +111,7 @@ Paths in this table are relative to `src/backend/`.
 `task-registry.ts`, and `tasks/`. The workflow definition is browser-safe. The registry loads
 backend task implementations.
 
-`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Shared workbook publication lives outside this workflow. `src/models/dashboard/workbook-import.ts` owns the browser-safe XLSX/CSV importer used by the dashboard and workflow workbook service.
+`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Its retained roster proof lives in `steps/roster-match/step.ts` and uses the same typed step author. Shared workbook publication lives outside this workflow; its task/command contract is `src/models/processing/workbooks/read-result.ts`. `src/models/dashboard/workbook-import.ts` owns the browser-safe XLSX/CSV importer used by the dashboard and workflow workbook service.
 
 Person Lookup has four chunk harnesses at `src/workflows/person-lookup/steps/<step>/step.ts`:
 `searching`, `cross-verify`, `active-status`, and `crm-dates`.

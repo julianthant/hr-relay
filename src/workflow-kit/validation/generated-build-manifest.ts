@@ -9,7 +9,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "fa9eb5bdcd6b4547d39727bb7779151ce0defc34ed8eb2743054d185f7d60dca",
+      "fingerprint": "0c8f5a42c18203e60f3ab001e8c8e375c691fd37f181f0d43060b5c348f825ce",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -333,13 +333,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/i9-check/workflow.ts",
-          "sha256": "7eca854715c1a623c2b38b1a10442308ccdc6422ee7b93ff72932551ff503fdc"
+          "sha256": "947d0f46d357452fdde0e705c73b9df1afc4043e563fac7a5ca642640b0e4456"
         }
       ],
       "id": "i9-check"
     },
     {
-      "fingerprint": "1f62ab4faea5971460ae42e57d45faafbf8ea4c8dfb1f57cec2005da1ed814a0",
+      "fingerprint": "a9c7347b8c23b287e83adfde7b727df4f8f133ecd2d2cbe078b351dacf188c3b",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -663,11 +663,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/i9-check/steps/roster-match/step.ts",
-          "sha256": "8250f1e506c9066267223a2f11471eda9426359deb467c9408e4d8dee8dacb6b"
+          "sha256": "69e7e40af669f00ba54d81af6ffc28e0f766cead9c0843afdc31f46ce8cfa361"
         },
         {
           "path": "src/workflows/i9-check/workflow.ts",
-          "sha256": "7eca854715c1a623c2b38b1a10442308ccdc6422ee7b93ff72932551ff503fdc"
+          "sha256": "947d0f46d357452fdde0e705c73b9df1afc4043e563fac7a5ca642640b0e4456"
         }
       ],
       "id": "i9-check-roster-match"

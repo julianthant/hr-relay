@@ -1,6 +1,6 @@
 import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowRole } from "../../../../workflow-kit/validation/module-role.js";
-import { i9CheckWorkflow } from "../../workflow.js";
+import { i9CheckWorkflow, i9CheckSteps } from "../../workflow.js";
 
 export const i9CheckRosterMatchWorkflow = defineWorkflow({
   ...i9CheckWorkflow,
@@ -8,5 +8,5 @@ export const i9CheckRosterMatchWorkflow = defineWorkflow({
   summary: "Proves the I-9 roster/retention result with its prerequisite UCPath reads.",
   surface: { shape: "single" },
   role: defineWorkflowRole({ kind: "chunk-harness", of: "i9-check", step: "roster-match" }),
-  steps: () => ({ steps: i9CheckWorkflow.steps, result: i9CheckWorkflow.result }),
+  steps: i9CheckSteps,
 });
