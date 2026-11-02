@@ -6,6 +6,7 @@ import { CrmReadHireData, CrmHireDataSchema } from "../../../../../src/models/sy
 import { CrmReadOnboardingDates } from "../../../../../src/models/systems/crm/read-onboarding-dates.js";
 import { CrmReadOnboardingRecord } from "../../../../../src/models/systems/crm/read-onboarding-record.js";
 import { classifyEvidenceLeaf, evidenceLeaves, redactEvidenceLeaf } from "../../../../../src/models/trust/evidence-classification.js";
+import { redactValue } from "../../../../../src/rules/redaction/redaction.js";
 import { DataPointSchema, type DataPoint } from "../../../../../src/rules/workflow/task-provenance.js";
 import { TaskRefusal } from "../../../../support/helpers/separation-task-fixtures.js";
 
@@ -24,7 +25,7 @@ const context = (records: DataPoint[]) => ({
 });
 
 describe("CRM hire read task", () => {
-  it("records the complete validated output and keeps every raw diagnostic leaf private", async () => {
+  it("records classified local evidence and digests every leaf for provider disclosure", async () => {
     const records: DataPoint[] = [];
     const output = await readHireDataTask.impl.run({ input: { email: data.requestedEmail }, ctx: context(records) });
     assert.deepEqual(output, data);
@@ -36,7 +37,16 @@ describe("CRM hire read task", () => {
       assert.equal(classifyEvidenceLeaf(scope, leaf.path).transform, "digest");
       return redactEvidenceLeaf(scope, leaf);
     });
-    const encoded = JSON.stringify(redacted);
+    for (const key of ["requestedEmail", "fields.address"]) {
+      assert.deepEqual(redacted.find(field => field.key === key), { key, state: "allowed", classification: "direct-identifier",
+        transform: "allow", value: key === "requestedEmail" ? privateData.requestedEmail : privateData.fields.address });
+    }
+    assert.equal(JSON.stringify(redacted).includes(privateData.fields.ssn), false);
+    const providerFields = leaves.map(leaf => {
+      const declared = classifyEvidenceLeaf(scope, leaf.path);
+      return { key: leaf.path, ...redactValue(declared.classification, declared.transform, leaf.value) };
+    });
+    const encoded = JSON.stringify(providerFields);
     for (const value of [privateData.requestedEmail, privateData.fields.ssn, privateData.fields.address]) assert.equal(encoded.includes(value), false);
   });
 

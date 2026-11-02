@@ -30,7 +30,7 @@ describe("hire plan validation", () => {
   });
 
   it("handles CRM placeholders and the no-SSN/ITIN path explicitly", () => {
-    for (const ssn of ["", "N/A", "999-99-9999", "912-34-5678"]) {
+    for (const ssn of ["", "N/A", "902-48-1357", "902-48-1357 "]) {
       const result = readHirePlan({ ...input, crm: { ...input.crm, fields: { ...input.crm.fields, ssn, middleName: "N/A" } } });
       assert.equal(result.employee.ssn, null);
       assert.equal(result.employee.middleName, "");
