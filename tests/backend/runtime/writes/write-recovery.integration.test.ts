@@ -358,16 +358,36 @@ describe("positive recovery composite refusal", () => {
     const h = await harness(true);
     const { run, writeIntentId } = parkedAttemptingWrite(h);
     const intent = intentByKey(h.database);
+    assert.ok(intent?.status === "attempting");
+    const attempt = h.database.authority.writeAttempts.get(intent.currentAttemptId);
     const generation = h.database.getMeta().authorityGeneration;
+    const beforeEvents = h.database.authority.timelineEvents.page({});
+    let settlementGeneration: number | undefined;
+    const commitWriteAttempt = h.database.commitWriteAttempt.bind(h.database);
+    const commit = vi.spyOn(h.database, "commitWriteAttempt").mockImplementation((...args) => {
+      settlementGeneration = h.database.getMeta().authorityGeneration;
+      return commitWriteAttempt(...args);
+    });
     h.world.probeResults.push({ state: "present", proof: { transactionId: "T654321" } });
-    await assert.rejects(h.recovery.recover({ descriptor: writeFixtureDescriptor, writeIntentId, signal: SIGNAL }),
-      /run lifecycle conflict/);
+    try {
+      await assert.rejects(h.recovery.recover({ descriptor: writeFixtureDescriptor, writeIntentId, signal: SIGNAL }),
+        /run lifecycle conflict/);
+      assert.equal(commit.mock.calls.length, 1);
+    } finally { commit.mockRestore(); }
     assert.deepEqual(h.database.authority.runs.get(run.envelope.runId), run);
     assert.deepEqual(intentByKey(h.database), intent);
+    assert.deepEqual(h.database.authority.writeAttempts.get(intent.currentAttemptId), attempt);
     assert.equal(h.database.authority.runCheckpoints.latest(WRITE_FIXTURE_WORKFLOW_ID,
       WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_NODE_ID), undefined);
-    assert.equal(h.database.getMeta().authorityGeneration, generation);
-    assert.deepEqual(h.database.authority.timelineEvents.page({}).filter((event) => event.payload.kind === "operation-confirmed"), []);
+    assert.equal(settlementGeneration, generation + 2);
+    assert.equal(h.database.getMeta().authorityGeneration, settlementGeneration);
+    const events = h.database.authority.timelineEvents.page({});
+    assert.deepEqual(events.slice(0, beforeEvents.length), beforeEvents);
+    const activity = events.slice(beforeEvents.length);
+    assert.deepEqual(activity.map(event => event.payload.kind), ["recovery-activity-started", "recovery-activity-ended"]);
+    assert.ok(activity[0].payload.kind === "recovery-activity-started" && activity[1].payload.kind === "recovery-activity-ended");
+    assert.deepEqual(activity[1].payload, { ...activity[0].payload, kind: "recovery-activity-ended", endedAt: h.clock.now().toISOString() });
+    assert.deepEqual(events.filter((event) => event.payload.kind === "operation-confirmed"), []);
   });
 });
 
