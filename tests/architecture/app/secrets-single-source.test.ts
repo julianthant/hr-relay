@@ -123,8 +123,11 @@ describe("secrets single source", () => {
       content.replace('await runCli(admission,', 'await runCli(undefined,'),
       content.replace('}, lifetime);', '}, lifetime, undefined);'),
       content.replace('!bootDiagnostics &&', ''),
-      content.replace('{ acquireExclusiveRuntimeAdmission, RuntimeAdmission }', '{ forgedAdmission, RuntimeAdmission }'),
-    ]) assert.ok(audit(candidate).length > 0, candidate);
+      content.replace('{ acquireExclusiveRuntimeAdmission,RuntimeAdmission }', '{ forgedAdmission,RuntimeAdmission }'),
+    ]) {
+      assert.notEqual(candidate, content, "bootstrap tampering fixture must change its source");
+      assert.ok(audit(candidate).length > 0, candidate);
+    }
     const wrapperPath = "scripts/dev/secure-env-bootstrap.ts";
     const wrapper = readFileSync(join(REPO_ROOT, wrapperPath), "utf8");
     assert.deepEqual(auditSoleRunnerInvocation([{ path, content }, { path: wrapperPath, content: wrapper }]), []);
