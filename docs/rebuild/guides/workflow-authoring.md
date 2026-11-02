@@ -17,6 +17,10 @@ Workflow-owned task implementations live in `tasks/` with `task-registry.ts`; on
 composition loads them. A chunk harness lives at
 `src/workflows/<composition>/steps/<step>/step.ts`.
 
+Every workflow has `tasks/` and `steps/`. Steps group tasks into the checkpoints on the run
+timeline; hovering a checkpoint shows its tasks. Reused system operations stay in their system
+store, and a thin workflow-owned task retains their typed result through declared dependencies.
+
 `src/workflow-kit/workflow-definition.ts` owns `defineWorkflow` (validation), `compileWorkflow`
 (descriptor, graph, timeline, contracts, namespaces, display and manifest fingerprint), and
 `composeWorkflowModule` (exact implementation bindings).

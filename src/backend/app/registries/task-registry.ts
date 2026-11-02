@@ -13,6 +13,7 @@ import { ocrStore } from "../../processing/ocr/task-registry.js";
 import { oldKronosStore } from "../../systems/old-kronos/task-registry.js";
 import { onbaseStore } from "../../systems/onbase/task-registry.js";
 import { personLookupStore } from "../../../workflows/person-lookup/task-registry.js";
+import { i9LookupStore } from "../../../workflows/i9-lookup/task-registry.js";
 import { rosterStore } from "../../processing/roster/task-registry.js";
 import { separationsStore } from "../../../workflows/separations/task-registry.js";
 import { servicenowStore } from "../../systems/servicenow/task-registry.js";
@@ -37,6 +38,7 @@ export const TASK_STORES: readonly RegisteredTaskStore[] = Object.freeze([
   normalizationStore,
   ocrStore,
   personLookupStore,
+  i9LookupStore,
   rosterStore,
   separationsStore,
 ]);

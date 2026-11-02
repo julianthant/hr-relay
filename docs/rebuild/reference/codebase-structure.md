@@ -117,7 +117,10 @@ audits without making either workflow available in production registries. Their 
 at `ocr/steps/source-pages/step.ts` and `ocr-page/steps/read-page/step.ts` in the same unregistered inventory.
 
 `src/workflows/i9-lookup/workflow.ts` is child-only, with no public delegating parent yet. It uses
-the I-9 system store and returns `signerName`, `i9Status`, and record IDs when a summary was read.
+the I-9 system store, then retains its typed result through `tasks/read-result.ts` in the workflow
+store. Its one `lookup` timeline checkpoint groups both tasks. The registered harness at
+`steps/lookup/step.ts` reuses that exact group. Results contain `signerName`, `i9Status`, and record
+IDs when a summary was read.
 `CHILD_ONLY_WORKFLOW_MODULES` in the backend workflow registry admits these modules separately
 from the public workflow tuple. A caller must declare its delegation edge to resolve a child.
 

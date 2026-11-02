@@ -12,6 +12,7 @@ import { separationsKronosTimecardWorkflow } from "../../../workflows/separation
 import { separationsKualiFinalizationWorkflow } from "../../../workflows/separations/steps/kuali-finalization/step.js";
 import { separationsKualiReadWorkflow } from "../../../workflows/separations/steps/kuali-extraction/step.js";
 import { separationsUcpathTerminationWorkflow } from "../../../workflows/separations/steps/ucpath-transaction/step.js";
+import { i9LookupStepWorkflow } from "../../../workflows/i9-lookup/steps/lookup/step.js";
 
 
 export const separationsKronosTimecardModule = composeWorkflowModule(
@@ -51,6 +52,10 @@ export const personLookupCrmDatesModule = composeWorkflowModule(
   compileWorkflow(personLookupCrmDatesWorkflow),
   taskStoreRegistry.stores,
 );
+export const i9LookupStepModule = composeWorkflowModule(
+  compileWorkflow(i9LookupStepWorkflow),
+  taskStoreRegistry.stores,
+);
 
 export const STEP_PROOF_MODULES = Object.freeze([
   separationsKronosTimecardModule,
@@ -62,6 +67,7 @@ export const STEP_PROOF_MODULES = Object.freeze([
   personLookupCrossVerifyModule,
   personLookupActiveStatusModule,
   personLookupCrmDatesModule,
+  i9LookupStepModule,
 ]);
 
 export const STEP_PROOF_DESCRIPTORS = Object.freeze(

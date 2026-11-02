@@ -18,7 +18,7 @@ describe("I-9 signer task", () => {
   it("records every output leaf through the executor provenance collector for every status", async () => {
     for (const options of [{}, { signedCells: null }, { rows: [i9SearchRow({ nextAction: "Complete Section 1", i9Id: "" })] }, { rows: [] }, { rows: [], restricted: true }, { summaryRoute: "https://wwwe.i9complete.com/form-I9-historical/900001/900002/0" }]) {
       const collector = createTaskProvenanceCollector({
-        descriptor, execution: { runId: "aaaaaaaa-0001-4000-8000-000100000000", traceId: "il-190000-aaaa", attempt: 1, workflowId: descriptor.id, nodeId: "lookup", taskId: I9ReadSection2Signer.id },
+        descriptor, execution: { runId: "aaaaaaaa-0001-4000-8000-000100000000", traceId: "il-190000-aaaa", attempt: 1, workflowId: descriptor.id, nodeId: "lookup-source", taskId: I9ReadSection2Signer.id },
         upstreamEvidence: { checkpoints: [] }, clock: manualClock(new Date("2026-11-01T12:00:00Z")),
         onRecord: batch => { redactObservedDataPoints(I9ReadSection2Signer.id, batch.points); },
       });

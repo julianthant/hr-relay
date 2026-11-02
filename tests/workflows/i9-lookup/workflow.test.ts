@@ -3,6 +3,9 @@ import { describe, it } from "vitest";
 import { CHILD_ONLY_WORKFLOW_MODULES, childWorkflowModuleOf, i9LookupModule, workflowModuleOf, WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { BROWSER_SYSTEM_BINDINGS } from "../../../src/backend/runtime/browser/system-bindings.js";
 import { i9Store } from "../../../src/backend/systems/i9/task-registry.js";
+import { i9LookupStepModule, STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
+import { i9LookupStore } from "../../../src/workflows/i9-lookup/task-registry.js";
+import { ReadI9LookupResult } from "../../../src/models/workflows/i9-lookup/read-result.js";
 import { I9LookupInputSchema, I9ReadSection2Signer, I9SignerOutputSchema } from "../../../src/models/systems/i9/read-section2-signer.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { i9LookupWorkflow } from "../../../src/workflows/i9-lookup/workflow.js";
@@ -16,11 +19,22 @@ describe("I-9 Lookup child-only workflow", () => {
     assert.throws(() => workflowModuleOf("i9-lookup"), /not registered/u);
     assert.throws(() => childWorkflowModuleOf("person-lookup", "i9-lookup"), /does not declare delegation/u);
     assert.deepEqual(i9LookupModule.descriptor.surfaces, {});
-    assert.equal(i9LookupModule.stores[0], i9Store);
+    assert.ok(i9LookupModule.stores.includes(i9Store));
+    assert.ok(i9LookupModule.stores.includes(i9LookupStore));
     assert.equal(i9Store.tasks.readSection2Signer.contract, I9ReadSection2Signer);
     assert.equal(BROWSER_SYSTEM_BINDINGS.i9?.system, "i9");
     assert.equal(compileWorkflow(i9LookupWorkflow).descriptor, i9LookupModule.descriptor);
     assert.deepEqual(i9LookupModule.descriptor.timeline.map(step => step.key), ["lookup"]);
+  });
+
+  it("groups the I-9 source task and typed workflow result in the same retained step proof", () => {
+    assert.ok(STEP_PROOF_MODULES.includes(i9LookupStepModule));
+    assert.deepEqual(i9LookupStepModule.role, { kind: "chunk-harness", of: "i9-lookup", step: "lookup" });
+    assert.deepEqual(i9LookupStepModule.definition.steps[0], i9LookupWorkflow.steps[0]);
+    assert.deepEqual(i9LookupWorkflow.steps[0]?.[1].map(entry => entry.id), ["lookup-source", "lookup"]);
+    assert.equal(i9LookupStore.tasks.readResult.contract, ReadI9LookupResult);
+    assert.deepEqual(i9LookupStore.tasks.readResult.impl.sessions, []);
+    assert.equal(i9LookupStepModule.descriptor.surfaces.inputRun, undefined);
   });
 
   it("accepts names rather than EIDs and prevents a signed output without a signer", () => {

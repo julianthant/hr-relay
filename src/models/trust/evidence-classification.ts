@@ -361,9 +361,11 @@ function personLookupResultLeaves(scope: EvidenceValueScope): unknown[] {
 }
 
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
-  ...person(workflowInput("i9-lookup"), "lastName", "firstName"),
-  { scope: workflowInput("i9-lookup"), path: "ssn", classification: "direct-identifier", transform: "digest" },
-  ...[taskOutput("i9/read-section2-signer"), workflowResult("i9-lookup")].flatMap(scope => [
+  ...["i9-lookup", "i9-lookup-lookup"].flatMap(id => [
+    ...person(workflowInput(id), "lastName", "firstName"),
+    { scope: workflowInput(id), path: "ssn", classification: "direct-identifier", transform: "digest" },
+  ]),
+  ...[taskOutput("i9/read-section2-signer"), taskOutput("workflow:i9-lookup/read-result"), workflowResult("i9-lookup"), workflowResult("i9-lookup-lookup")].flatMap(scope => [
     ...person(scope, "signerName", "profileId", "i9Id"),
     ...open(scope, "i9Status"),
   ]),

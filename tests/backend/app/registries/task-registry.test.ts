@@ -50,6 +50,7 @@ describe("Person Lookup task implementations", () => {
         "ucpath/verify-pending-terminations-cleared",
         "ucpath/verify-termination",
         "ucpath/verify-termination-filing-present",
+        "workflow:i9-lookup/read-result",
         "workflow:person-lookup/read-active-status",
         "workflow:person-lookup/read-resolved-identity",
 
