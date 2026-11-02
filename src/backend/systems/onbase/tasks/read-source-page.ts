@@ -24,6 +24,7 @@ export const readSourcePageTask = defineTask(onbaseDriver, OnbaseReadSourcePage,
       const stream = await ctx.artifacts.open(input.document), chunks: Buffer[] = [];
       let size = 0;
       for await (const chunk of stream) {
+        if (!(chunk instanceof Uint8Array)) throw new OnbaseImportError("source-chunk-not-bytes");
         const bytes = Buffer.from(chunk); size += bytes.length;
         if (size > input.document.bytes) throw new OnbaseImportError("source-size-mismatch");
         chunks.push(bytes);

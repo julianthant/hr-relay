@@ -49,7 +49,7 @@ export function createOnbaseDriver(assertCurrent: () => void, page: Page, clock:
     await selection(ui.keyset(form), "Employee Lookup");
   };
   const keywords = async () => {
-    const fields: Record<string, string> = Object.create(null);
+    const fields: Record<string, string> = {};
     for (const [key, label, combo] of KEYWORDS) fields[key] = (await run(() => ui.keyword(ui.form(page), label, combo).inputValue({ timeout: CONTROL_MS }))).trim();
     return OnbaseKeywordsSchema.parse(fields);
   };

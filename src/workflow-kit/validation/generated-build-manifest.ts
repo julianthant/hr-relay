@@ -14551,7 +14551,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr/extract-form-page"
     },
     {
-      "fingerprint": "78e4e588cb02d9c917ef49c1a3a9027a2f27ecc8ea751c8bf3687492a5cb3279",
+      "fingerprint": "162c25ff0139ce427fdbd9ead0c89272a325436a8b366f07f9c0987f593b5ff5",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -14563,7 +14563,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/onbase/driver/interpreter.ts",
-          "sha256": "91af94676cd20199774747c263c7c04d6d8031410b216afddcc6e110ae026e15"
+          "sha256": "3bf9e0a7aa5b37fd85a198ef63862da2e6cf7b882fd74787747510af099d681e"
         },
         {
           "path": "src/backend/systems/onbase/driver/ui-registry.ts",
@@ -14571,7 +14571,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/onbase/tasks/import-document.ts",
-          "sha256": "c8689190d5eae70ba38b8afa32fb79e854f69f47d65bca7cb86de8fa96cf1a1e"
+          "sha256": "8b14923419e2672be1c2d2d100471a92a294afcfa55a3d06ce9c38517e3ef2e6"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -14809,7 +14809,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onbase/import-document"
     },
     {
-      "fingerprint": "0c4ca39808e4eb40fb594ad3c5e0b5adecb597898e9b91cafcc4fdc391c7b926",
+      "fingerprint": "4d0fda5de8337f0c1bdd189dddcb1e81f380db1f37945fad74c7961ecca07bb3",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -14821,7 +14821,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/onbase/driver/interpreter.ts",
-          "sha256": "91af94676cd20199774747c263c7c04d6d8031410b216afddcc6e110ae026e15"
+          "sha256": "3bf9e0a7aa5b37fd85a198ef63862da2e6cf7b882fd74787747510af099d681e"
         },
         {
           "path": "src/backend/systems/onbase/driver/ui-registry.ts",
@@ -14829,7 +14829,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/onbase/tasks/read-source-page.ts",
-          "sha256": "257b580c2d7befe33d46dd0dbf0240faffa45c1c2c4a30ace1d9ca152987383e"
+          "sha256": "c2809f56ca67b2d7e7adc5811672beb43a36186c34ad8c9bd8cb1bf6bc10d557"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",

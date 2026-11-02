@@ -589,7 +589,11 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
         const timer = this.#options.scheduler.schedule(this.#options.clock.monotonicMs() + Math.min(200, remaining), () => {
           input.signal.removeEventListener("abort", aborted); resolve();
         });
-        const aborted = () => { timer.cancel(); reject(input.signal.reason); };
+        const aborted = () => {
+          timer.cancel();
+          const cause: unknown = input.signal.reason;
+          reject(cause instanceof Error ? cause : new Error("onbase-session-acquisition-cancelled", { cause }));
+        };
         input.signal.addEventListener("abort", aborted, { once: true });
         if (input.signal.aborted) { input.signal.removeEventListener("abort", aborted); aborted(); }
       });
