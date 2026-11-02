@@ -193,6 +193,7 @@ function admittedClientFor(
 }
 
 export interface RunExecutorDependencies {
+  readonly publishCheckpoint?: (repositories: AuthorityRepositories, checkpoint: RunCheckpointRecord) => void;
   readonly lifecycle: WorkerRunLifecyclePort;
   readonly descriptor: AnyWorkflowDescriptor;
   readonly stores: TaskStoreRegistry;
@@ -1427,7 +1428,14 @@ export async function executeClaimedRun(
         try {
           const record = await invokeTask(node, task, scope, need, capabilityWiring, spanPath, taskAttempt);
           if (declaredProjections.length === 0) {
-            deps.authority.authority.runCheckpoints.insert(record);
+            if (deps.publishCheckpoint === undefined) deps.authority.authority.runCheckpoints.insert(record);
+            else {
+              if (deps.authority.withAuthorityTransaction === undefined) throw new Error("checkpoint-publication-transaction-unavailable");
+              deps.authority.withAuthorityTransaction(repositories => {
+                repositories.runCheckpoints.insert(record);
+                deps.publishCheckpoint?.(repositories, record);
+              });
+            }
           } else {
 
             const withTransaction = deps.authority.withAuthorityTransaction?.bind(deps.authority);
@@ -1455,7 +1463,8 @@ export async function executeClaimedRun(
               createdAt: instant(),
             }));
 
-            commitGeneratedCheckpoint({withTransaction, checkpoint:record, updates:outboxRows});
+            commitGeneratedCheckpoint({withTransaction, checkpoint:record, updates:outboxRows,
+              ...(deps.publishCheckpoint === undefined ? {} : { publish: deps.publishCheckpoint })});
             // A task cannot finish before every artifact outbox row is acknowledged.
             await projectGeneratedUpdates(projector, outboxRows.map((row) => String(row.outboxId)));
           }

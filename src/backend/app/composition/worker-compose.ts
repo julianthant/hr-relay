@@ -45,7 +45,7 @@ import { BUILD_MANIFEST, resolveWorkflowFingerprint, resolveTaskImplFingerprint 
 import type { BuildManifest } from "../../../models/workflow/build-manifest.js";
 import { compileWorkflow, type WorkflowModule } from "../../../workflow-kit/workflow-definition.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
-import { DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
+import { childWorkflowModuleOf, DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
 import type { MonotonicDeadlineHandle, MonotonicDeadlineScheduler } from "../../runtime/scheduling/deadline-scheduler.js";
 import { runWorkerLoop, type WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
 import type { DuoCeremonyGateFactory } from "../../runtime/gates/duo-ceremony-gate.js";
@@ -226,6 +226,7 @@ export interface WorkerComposeInput {
   readonly args: readonly string[];
   readonly executionRegistry?: Readonly<{
     resolve(workflowId: string): WorkflowModule | undefined;
+    resolveChild?(parentId: string, workflowId: string): WorkflowModule | undefined;
     stores: TaskStoreRegistry;
     manifest: BuildManifest;
   }>;
@@ -388,10 +389,15 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     ? parseWorkerArguments(input.args) : parseWorkerArgumentSyntax(input.args);
   const stores = input.executionRegistry?.stores ?? taskStoreRegistry;
   const buildManifest = input.executionRegistry?.manifest ?? BUILD_MANIFEST;
-  const selectedRegistry = input.executionRegistry ?? { resolve: (id: string) => SERVER_REGISTRY[id], stores };
+  const selectedRegistry = input.executionRegistry ?? {
+    resolve: (id: string) => SERVER_REGISTRY[id], resolveChild: childWorkflowModuleOf, stores,
+  };
   const modules = new Map<string, WorkflowModule>();
-  const resolveModule = (id: string): WorkflowModule | undefined => {
-    const module = selectedRegistry.resolve(id), previous = modules.get(id);
+  const parents = new Map<string, string>();
+  const resolveModule = (id: string, parentId = parents.get(id)): WorkflowModule | undefined => {
+    const module = parentId === undefined || selectedRegistry.resolveChild === undefined
+      ? selectedRegistry.resolve(id) : selectedRegistry.resolveChild(parentId, id);
+    const previous = modules.get(id);
     if (module === undefined) {
       if (previous !== undefined) throw new Error("worker-execution-registry-changed");
       return undefined;
@@ -426,10 +432,11 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     if (ancestry.length >= 16 || ancestry.includes(producer.descriptor.id)) throw new Error("delegation-definition-cycle-or-depth");
     for (const node of descriptorRuntimeNodes(producer.descriptor)) {
       if (node.kind !== "child-run") continue;
-      const target = resolveModule(node.target.id);
+      const target = resolveModule(node.target.id, producer.descriptor.id);
       if (target === undefined || deriveSchemaHash(target.descriptor.input, "input") !== deriveSchemaHash(node.target.input, "input")
         || workflowTerminalResultExecution(target.descriptor).schemaHash !== deriveSchemaHash(node.target.result, "output")) throw new Error("delegation-target-descriptor-unavailable");
       for (const system of workflowProjections(target.descriptor).systems) systems.add(system);
+      parents.set(node.target.id, producer.descriptor.id);
       qualify(target, [...ancestry, producer.descriptor.id]);
     }
   };
