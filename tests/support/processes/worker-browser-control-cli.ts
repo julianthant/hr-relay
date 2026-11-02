@@ -14,6 +14,7 @@ import { hostConfigFacts } from "../../../src/models/config/host-display.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { PlaywrightWorkerSessionFactory } from "../../../src/backend/runtime/browser/browser-session-factory.js";
+import { DEFAULT_BROWSER_LAUNCHER } from "../../../src/backend/runtime/browser/native-browser.js";
 import { composeWorkerRuntime, createTimeoutDeadlineScheduler } from "../../../src/backend/app/composition/worker-compose.js";
 import { resolveSystemEntryUrl } from "../../../src/models/config/instance.js";
 import type { BrowserSystemBinding } from "../../../src/backend/runtime/browser/system-bindings.js";
@@ -103,12 +104,12 @@ try {
     bindings: { crm: binding("crm"), ucpath: binding("ucpath") },
     launcher: { launch: async input => {
       trace({ event: "launch-start", profileDirectory: input.profileDirectory });
-      const context = await chromium.launchPersistentContext(input.profileDirectory, { channel: 'chromium', headless: input.headless,
+      const context = input.nativeOnly === true ? await DEFAULT_BROWSER_LAUNCHER.launch(input) : await chromium.launchPersistentContext(input.profileDirectory, { channel: 'chromium', headless: input.headless,
         viewport: input.viewport, acceptDownloads: input.acceptDownloads, downloadsPath: input.downloadsPath,
         args: [`--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`] });
       contexts.add(context); trace({ event: "open", profileDirectory: input.profileDirectory });
       context.on("close", () => { contexts.delete(context); trace({ event: "close", profileDirectory: input.profileDirectory }); });
-      await context.route("**/*", async route => { trace({ event: "fixture-request", url: route.request().url() });
+      if (input.nativeOnly !== true) await context.route("**/*", async route => { trace({ event: "fixture-request", url: route.request().url() });
         await route.fulfill({ contentType: "text/html", body: '<!doctype html><title>Isolated session fixture</title><main data-authenticated>Fixture account</main>' }); });
       return context;
     } },
