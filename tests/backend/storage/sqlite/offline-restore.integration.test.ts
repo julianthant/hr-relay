@@ -1,4 +1,5 @@
-import { profileBrowserClosure, BrowserProfileStillClosingError } from "../../../../src/backend/storage/browser-roots.js";
+import { createBrowserRoots, profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
+import { BrowserProfileStillClosingError } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
@@ -130,6 +131,8 @@ describe("native worker control recovery", () => {
       db.authority.workerControls.transition(record.commandId,"admitted",{ state: "executing", startedAt: now });
       db.authority.workerControls.transition(record.commandId,"executing",{ state: "uncertain", startedAt: now, observedAt: now, message: "owner crashed" });
       const profileDirectory = profileBrowserClosure.workerDirectory({profileRoot:resolved.config.paths.browserProfileRoot,slotOrdinal:slot.ordinal,system:"crm"});
+      createBrowserRoots(admission).beginLaunch({ profileId: admission.profileBinding.profileId, profileRoot: resolved.config.paths.browserProfileRoot, profileDirectory,
+        credentialFingerprint: "a".repeat(64), owner: { kind: "worker", database: db, workerId: WORKER } });
       mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
       db.authority.workerControls.observe({ workerId: WORKER, leaseGeneration: 1, sessionId: randomUUID(), system: "crm", configFingerprint: resolved.fingerprint, signInFingerprint: "a".repeat(64), profileDirectory, openedAt: now, profileRevision: 1, browserMode: "headless", acceptDownloads: false, exclusive: false, health: "unknown", observedAt: now });
       const expected = { controls: db.authority.workerControls.list(), browsers: db.authority.workerControls.browsers(WORKER) }; db.close();

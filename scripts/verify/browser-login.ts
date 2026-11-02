@@ -194,7 +194,7 @@ export async function withSmokeWorker(
 export function createSmokeProfileAdmission(input: Readonly<{ database: AuthorityDatabase; lock: RuntimeLifetimeLock;
   workerId: string; ordinal: number; system: BrowserSystemId; stateRoot: string; profileRoot: string }>): BrowserSessionFactoryOptions["admitProfile"] {
   let admittedIdentity: string | undefined, readmitted = false;
-  return profile => {
+  return (profile, purpose = "acquire") => {
     input.lock.assertHeld();
     const hold = input.database.authority.workerSlots.verification(input.workerId);
     if (hold === undefined || hold.slot.ordinal !== input.ordinal || hold.request.system !== input.system
@@ -205,7 +205,7 @@ export function createSmokeProfileAdmission(input: Readonly<{ database: Authorit
     if (profile.workerId !== input.workerId || profile.system !== input.system || profile.profileDirectory !== directory
       || admittedIdentity !== undefined && identity !== admittedIdentity) throw new Error("live-smoke-profile-custody-unavailable");
     const existing = lstatSync(directory, { throwIfNoEntry: false });
-    if (existing !== undefined && (admittedIdentity === undefined || readmitted)) throw new Error("live-smoke-profile-custody-unavailable");
+    if (existing !== undefined && (admittedIdentity === undefined || readmitted && purpose !== "cleanup")) throw new Error("live-smoke-profile-custody-unavailable");
     for (let cursor = directory; ; cursor = dirname(cursor)) {
       const metadata = lstatSync(cursor, { throwIfNoEntry: false });
       if (metadata !== undefined && (!metadata.isDirectory() || metadata.isSymbolicLink()
@@ -215,8 +215,8 @@ export function createSmokeProfileAdmission(input: Readonly<{ database: Authorit
     }
     if (existing !== undefined && !realpathSync(directory).startsWith(`${realpathSync(input.profileRoot)}${sep}`)) throw new Error("live-smoke-profile-custody-unavailable");
     admittedIdentity = identity;
-    if (existing !== undefined) readmitted = true;
-    input.database.authority.workerSlots.observeVerificationAcquisition({ workerId: input.workerId,
+    if (existing !== undefined && purpose === "acquire") readmitted = true;
+    if (purpose === "acquire") input.database.authority.workerSlots.observeVerificationAcquisition({ workerId: input.workerId,
       grantCommandId: hold.command.commandId, now: systemClock.now().toISOString() });
     return Promise.resolve(admitted);
   };

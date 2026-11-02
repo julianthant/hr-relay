@@ -3,7 +3,8 @@ import { createProfileRegistry } from "../../../../src/backend/profiles/registry
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
 import { RuntimeLifetimeLock, RuntimeAlreadyRunningError, type OfflineMaintenanceOperation, isOfflineMaintenanceOperationActive } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
-import { profileBrowserClosure, BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/storage/browser-roots.js";
+import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
+import { BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-browser.js";
 import * as nativeBrowserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { z } from "zod";

@@ -567,7 +567,8 @@ async function runLogout(): Promise<void> {
     assert.throws(() => context.protectedSecrets.read()); assert.throws(() => runtime.selectedContext(active.token));
   }
   if (scenario === "logout-browser-busy" || scenario === "logout-browser-unproved") {
-    const { profileBrowserClosure, BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } = await import("../../../src/backend/storage/browser-roots.js");
+    const { profileBrowserClosure } = await import("../../../src/backend/storage/browser-roots.js");
+    const { BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } = await import("../../../src/backend/runtime/browser/native-browser.js");
     const refusal = scenario === "logout-browser-busy" ? new BrowserProfileStillClosingError(new Error("synthetic native busy"))
       : new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
     let probes = 0;

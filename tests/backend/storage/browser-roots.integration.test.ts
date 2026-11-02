@@ -49,6 +49,18 @@ it("persists intent before directory creation and rejects old callbacks after a 
   } finally { await w.close(); }
 });
 
+it("binds the first credentialed launch after a successful native-only probe", async () => {
+  const w = await fixture();
+  try {
+    await w.roots.probe({ ...w.input, credentialFingerprint: null }, w.options());
+    assert.equal(w.roots.inventory().roots[0]?.credentialFingerprint, null);
+    const launch = w.roots.beginLaunch(w.input);
+    assert.equal(w.roots.inventory().roots[0]?.credentialFingerprint, w.input.credentialFingerprint);
+    launch.closing(); launch.closed();
+    assert.throws(() => w.roots.beginLaunch({ ...w.input, credentialFingerprint: "b".repeat(64) }));
+  } finally { await w.close(); }
+});
+
 it("requires the exact native database owner and current real worker membership before publication", async () => {
   const w = await fixture(), foreign = await fixture();
   try {

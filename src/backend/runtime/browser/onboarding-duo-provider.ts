@@ -9,7 +9,8 @@ import { z } from "zod";
 import { BrowserDocumentIdSchema } from "../../../models/config/duo-credential-store.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { DEFAULT_BROWSER_LAUNCHER, onboardingProfileDirectory, type PersistentContextLauncher, type BrowserRoots, type BrowserRootLaunch, type BrowserRootLaunchInput } from "../../storage/browser-roots.js";
+import { onboardingProfileDirectory, type BrowserRoots, type BrowserRootLaunch, type BrowserRootLaunchInput } from "../../storage/browser-roots.js";
+import { DEFAULT_BROWSER_LAUNCHER, type PersistentContextLauncher } from "./native-browser.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
 

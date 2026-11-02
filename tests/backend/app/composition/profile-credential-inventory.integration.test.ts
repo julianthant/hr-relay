@@ -1,7 +1,8 @@
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
-import { createBrowserRoots, profileBrowserClosure, DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/storage/browser-roots.js";
+import { createBrowserRoots, profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
+import { DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { withSmokeWorker } from "../../../../scripts/verify/browser-login.js";
 import { credentialKeyCustody } from "../../../../src/backend/storage/configuration/credential-key-custody.js";
@@ -270,7 +271,11 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material
       sessionId: randomUUID(), system: "crm", configFingerprint: config.fingerprint, signInFingerprint: config.fingerprint,
       browserMode: "headless", profileDirectory: directory, acceptDownloads: false, exclusive: false, health: "closed",
       observedAt: f.clock.now().toISOString(), openedAt: f.clock.now().toISOString(), profileRevision: 1 });
-    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    await createBrowserRoots(f.admission).probe({ profileId: f.admission.profileBinding.profileId,
+      profileRoot: config.config.paths.browserProfileRoot, profileDirectory: directory, credentialFingerprint: config.fingerprint,
+      owner: { kind: "worker", database: f.context.database, workerId: worker.workerId } },
+    { clock: f.clock, scheduler: { schedule: () => ({ cancel() {} }) }, closeProofMs: 1000, launchTimeoutMs: 1000,
+      signal: new AbortController().signal, launcher: native.launcher });
     const key = nativeKey(f);
     const path = join(directory, "Preferences"), secret = content === "key-material" ? key.key : f.capturedSecrets[1]; assert.ok(secret);
     const escaped = [...secret].map(character => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`).join("");

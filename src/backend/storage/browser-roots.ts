@@ -1,10 +1,9 @@
+import { runNativeContextProbe, BrowserProfileStillClosingError, type NativeBrowserProbeInput, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "../runtime/browser/native-browser.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync, rmSync } from "node:fs";
-import { chromium, type BrowserContext } from "playwright";
 import { AbsolutePathSchema } from "../../models/config/schema.js";
 import type { Clock } from "../../rules/time/clock.js";
-import type { BrowserSessionCloseReason } from "../../workflow-kit/session.js";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
@@ -23,118 +22,12 @@ import { RuntimeLifetimeLock } from "./admission/lifetime-lock.js";
 import { AuthorityDatabase } from "./sqlite/authority-database.js";
 import { noSymlinkAncestry, readPrivateFile, withPrivateFileLock, type DirectoryIdentity } from "./configuration/credential-safe-file.js";
 import { fsyncPath, privatePathRejects, replacePrivateFile, writePrivateStage } from "./private-path.js";
-import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "./source-closure.js";
-
-export class NativeBrowserClosureUnprovedError extends AuthoritySourceClosureUnprovedError {
-  readonly code = "BROWSER_CLOSURE_UNPROVED";
-  constructor(errors: readonly unknown[]) { super(errors); this.name = "NativeBrowserClosureUnprovedError"; this.message = ERROR_CATALOG.BROWSER_CLOSURE_UNPROVED.text; }
-}
-
-// Keep the acquisition scheduler structural so both ports use the same timer without a module cycle.
-export interface BrowserDeadlineScheduler {
-  schedule(deadlineMonotonicMs: number, onDeadline: () => void): { cancel: () => void };
-}
-
-/** The Playwright launch seam, so a unit test can drive open/close without a real browser. */
-export interface PersistentContextLauncher {
-  launch(input: Readonly<{
-    profileDirectory: string;
-    headless: boolean;
-    extensionDirectory: string;
-    acceptDownloads: boolean;
-    downloadsPath: string;
-    viewport: Readonly<{ width: number; height: number }>;
-    timeoutMs?: number;
-    nativeOnly?: true;
-    disablePasswordManager?: true;
-    defaultContextOptions?: true;
-  }>): Promise<BrowserContext>;
-}
-
-export class BrowserProfileStillClosingError extends Error {
-  readonly code = "BROWSER_PROFILE_STILL_CLOSING";
-  constructor(cause: unknown) { super(ERROR_CATALOG.BROWSER_PROFILE_STILL_CLOSING.text, { cause }); this.name = "BrowserProfileStillClosingError"; }
-}
+import { hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "./source-closure.js";
 
 export const PROFILE_CUSTODY_UNAVAILABLE_TEXT = "Browser profile custody is unavailable. The browser cannot open until its current profile revision is admitted.";
 export class ProfileCustodyUnavailableError extends Error {
   readonly code = "browser-profile-custody-unavailable";
   constructor() { super(PROFILE_CUSTODY_UNAVAILABLE_TEXT); this.name = "ProfileCustodyUnavailableError"; }
-}
-
-export const DEFAULT_BROWSER_LAUNCHER: PersistentContextLauncher = {
-  async launch(input) {
-    return chromium.launchPersistentContext(input.profileDirectory, {
-      // The extension requires the full bundled Chromium; the headless shell
-      // cannot load one (fast-duo/README.md).
-      channel: "chromium",
-      headless: input.headless,
-      ...(input.timeoutMs === undefined ? {} : { timeout: input.timeoutMs }),
-      acceptDownloads: input.acceptDownloads,
-      ...(input.defaultContextOptions === true && input.nativeOnly !== true ? {} : { downloadsPath: input.downloadsPath, viewport: input.viewport }),
-      args: [
-        ...(input.nativeOnly === true ? ["--disable-extensions"] : [`--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`]),
-        ...(input.disablePasswordManager === true ? ["--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"] : []),
-      ],
-    });
-  },
-};
-
-export interface ContextLifecycle {
-  readonly closed: () => boolean;
-}
-
-export function observeContextLifecycle(context: BrowserContext): ContextLifecycle {
-  let closed = false;
-  context.on("close", () => {
-    closed = true;
-  });
-  return { closed: () => closed };
-}
-
-export async function closeContextWithProof(
-  options: Readonly<{ clock: Clock; scheduler: BrowserDeadlineScheduler; closeProofMs: number }>,
-  context: BrowserContext, lifecycle: ContextLifecycle, system: string, reason: BrowserSessionCloseReason,
-): Promise<void> {
-  const { clock, scheduler, closeProofMs } = options;
-  const deadline = clock.monotonicMs() + closeProofMs;
-  let expire = (): void => undefined;
-  const timedOut = new Promise<never>((_resolve, reject) => {
-    const handle = scheduler.schedule(deadline, () => {
-      reject(new Error(
-        `${system} browser session close (${reason}) did not complete within its ${String(closeProofMs)}ms proof deadline`,
-      ));
-    });
-    expire = (): void => handle.cancel();
-  });
-  const pages = context.pages();
-  try {
-    await Promise.race([
-      (async (): Promise<void> => {
-        for (const page of pages) await page.close({ runBeforeUnload: false });
-        await context.close();
-      })(),
-      timedOut,
-    ]);
-  } finally {
-    expire();
-  }
-  const openPages = pages.filter((page) => !page.isClosed());
-  if (openPages.length > 0) {
-    throw new Error(
-      `${system} browser session close (${reason}) left ${String(openPages.length)} page(s) open; closure cannot be proven`,
-    );
-  }
-  if (context.pages().length > 0) {
-    throw new Error(
-      `${system} browser session close (${reason}) left new pages open; closure cannot be proven`,
-    );
-  }
-  if (!lifecycle.closed()) {
-    throw new Error(
-      `${system} browser session close (${reason}) never emitted its context close event; closure cannot be proven`,
-    );
-  }
 }
 
 export function workerProfileDirectory(input: Readonly<{ profileRoot: string; slotOrdinal: number; system: BrowserSystemId }>): string {
@@ -149,12 +42,6 @@ export function onboardingProfileDirectory(profileRoot: string, owner: Readonly<
   return resolve(AbsolutePathSchema.parse(profileRoot),`onboarding-${operationId}-${profileId}-${accountId}-g${String(generation)}`);
 }
 
-interface NativeBrowserProbeInput {
-  profileRoot: string;
-  launch: Omit<Parameters<PersistentContextLauncher["launch"]>[0], "headless" | "acceptDownloads">;
-  clock: Clock; scheduler: BrowserDeadlineScheduler; closeProofMs: number; signal: AbortSignal;
-  launcher?: PersistentContextLauncher;
-}
 async function runNativeBrowserProbe(input: NativeBrowserProbeInput): Promise<void> {
   input.signal.throwIfAborted();
   const root = AbsolutePathSchema.parse(input.profileRoot), directory = AbsolutePathSchema.parse(input.launch.profileDirectory);
@@ -165,19 +52,7 @@ async function runNativeBrowserProbe(input: NativeBrowserProbeInput): Promise<vo
     if (info === undefined || !info.isDirectory()) throw new ProfileCustodyUnavailableError();
   }
   if (!profileReservations.has(directory)) throw new ProfileCustodyUnavailableError();
-  let context: BrowserContext | undefined;
-  try {
-    context = await (input.launcher ?? DEFAULT_BROWSER_LAUNCHER).launch({ ...input.launch, headless: true, acceptDownloads: false, nativeOnly: true });
-    const lifecycle = observeContextLifecycle(context);
-    await closeContextWithProof(input, context, lifecycle, "native profile probe", "profile-reset");
-  } catch (error) {
-    if (error instanceof Error && ["Failed to create a ProcessSingleton for your profile directory.", "Opening in existing browser session."]
-      .some(message => error.message.includes(message))) {
-        throw new BrowserProfileStillClosingError(error);
-    }
-    throw new NativeBrowserClosureUnprovedError([retainAuthoritySourceClosure([error], { directory: { context, profileDirectory: directory } })]);
-  }
-  input.signal.throwIfAborted();
+  await runNativeContextProbe(input);
 }
 
 export const profileReservations = new Set<string>();
@@ -311,11 +186,11 @@ export function createBrowserRoots(input: RuntimeAdmission) {
     if (!isAbsolute(value) || resolve(value) !== value) throw new BrowserRootUnavailableError();
     return RelativePath.parse(relative(binding.machineRoot, value).split(sep).join("/"));
   }
-  function ownerOf(owner: BrowserLaunchOwner, profileId: string, cleanup = false): BrowserRootOwner {
+  function ownerOf(owner: BrowserLaunchOwner, profileId: string, profileDirectory: string, cleanup = false): BrowserRootOwner {
     if (owner.kind === "worker") {
       admission.assertBrowserRegistryLaunch(profileId);
       if (owner.stoppedProcess !== undefined && !cleanup) throw new BrowserRootUnavailableError();
-      return WorkerOwner.parse(AuthorityDatabase.prototype.browserWorkerOwner.call(owner.database, admission, owner.workerId, owner.stoppedProcess));
+      return WorkerOwner.parse(AuthorityDatabase.prototype.browserWorkerOwner.call(owner.database, admission, owner.workerId, profileDirectory, owner.stoppedProcess));
     }
     const parsed = SignupOwner.parse(owner);
     if (cleanup) admission.assertBrowserRegistryCleanup(profileId, parsed);
@@ -323,7 +198,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
     return parsed;
   }
   function current(input: BrowserRootLaunchInput, cleanup = false): BrowserRootOwner {
-    const owner = ownerOf(input.owner, input.profileId, cleanup), captured = admission.captureBrowserRegistryContext();
+    const owner = ownerOf(input.owner, input.profileId, input.profileDirectory, cleanup), captured = admission.captureBrowserRegistryContext();
     if (!(cleanup && owner.kind === "signup") && !same(captured, binding)) throw new BrowserRootUnavailableError();
     return owner;
   }
@@ -343,7 +218,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
       assertCurrent();
       const prior = document.roots.find(row => row.directory === root);
       if (prior !== undefined && (prior.native !== undefined || prior.launch.state !== "closed" || prior.profileId !== input.profileId
-        || !same(prior.owner, owner) || prior.profileRoot !== profileRoot || prior.credentialFingerprint !== input.credentialFingerprint)) throw new BrowserRootUnavailableError();
+        || !same(prior.owner, owner) || prior.profileRoot !== profileRoot || prior.credentialFingerprint !== null && prior.credentialFingerprint !== input.credentialFingerprint)) throw new BrowserRootUnavailableError();
       if (prior === undefined && lstatSync(input.profileDirectory, { throwIfNoEntry: false }) !== undefined) throw new BrowserRootUnavailableError();
       const row = BrowserRootSchema.parse({ profileId: input.profileId, profileRoot, directory: root, owner,
         sessionGeneration: binding.sessionGeneration, credentialFingerprint: input.credentialFingerprint,
@@ -398,7 +273,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
     let captured = mutate(document => {
       assertOwner();
       const prior = document.roots.find(row => row.directory === root);
-      if (prior === undefined || owner !== undefined && (prior.native !== undefined && stoppedProcess === undefined || prior.profileId !== owner.profileId)) throw new BrowserRootUnavailableError();
+      if (prior === undefined || owner !== undefined && (prior.native !== undefined && stoppedProcess === undefined && expectedOwner?.kind !== "signup" || prior.profileId !== owner.profileId)) throw new BrowserRootUnavailableError();
       if (expectedOwner !== undefined && !same(prior.owner, expectedOwner)) {
         if (prior.owner.kind !== "worker" || expectedOwner.kind !== "worker" || prior.owner.workerId !== expectedOwner.workerId
           || prior.owner.workflowId !== expectedOwner.workflowId || prior.owner.ordinal !== expectedOwner.ordinal
@@ -560,10 +435,13 @@ export async function probeStoppedControlBrowserRoots(admission: RuntimeAdmissio
   const current = () => { source.assertHeld(); source.revalidateSource(); source.lifetime.assertSourceCustody(); };
   try {
     current();
-    const directories = source.browserPlan().roots.filter(row => row.profileId === source.binding.profileId).map(row => row.directory);
+    const initial = source.browserPlan();
+    if (initial === undefined) throw new BrowserRootUnavailableError();
+    const directories = initial.roots.filter(row => row.profileId === source.binding.profileId).map(row => row.directory);
     for (const directory of directories) {
       current();
       let plan = source.browserPlan();
+      if (plan === undefined) throw new BrowserRootUnavailableError();
       const row = plan.roots.find(row => row.directory === directory);
       if (row?.native === undefined || row.profileId !== source.binding.profileId || row.native.operationId !== source.conversionOperationId) throw new BrowserRootUnavailableError();
       const path = join(source.machineRoot, directory), before = lstatSync(path);

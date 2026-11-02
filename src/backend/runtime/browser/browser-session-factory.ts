@@ -5,11 +5,10 @@ import { retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { provisionWorkflowDuo } from "./workflow-duo-provider.js";
 import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
-import { DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, BrowserProfileStillClosingError, ProfileCustodyUnavailableError,
-  profileReservations, assertPrivateProfilePath, closeContextWithProof, observeContextLifecycle,
-  workerProfileDirectory, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "../../storage/browser-roots.js";
-export { BrowserProfileStillClosingError, ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT,
-  workerProfileDirectory, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "../../storage/browser-roots.js";
+import { ProfileCustodyUnavailableError, profileReservations, assertPrivateProfilePath, workerProfileDirectory } from "../../storage/browser-roots.js";
+import { chromiumProfileInUse, DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, BrowserProfileStillClosingError, closeContextWithProof, observeContextLifecycle, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
+export { ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT, workerProfileDirectory } from "../../storage/browser-roots.js";
+export { BrowserProfileStillClosingError, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
 import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
 import { z } from "zod";
@@ -80,7 +79,7 @@ export interface BrowserSessionFactoryOptions {
   readonly assertCurrent: (workerId: WorkerId) => void;
   readonly slotOrdinal: (workerId: WorkerId, system: BrowserSystemId) => number;
   readonly admitProfile: (input: Readonly<{ workerId: WorkerId; system: BrowserSystemId; instance: RuntimeInstance;
-    configFingerprint: Fingerprint; signInFingerprint: Fingerprint; browserMode: BrowserPresentationMode; profileDirectory: string }>) => Promise<BrowserProfileAdmission>;
+    configFingerprint: Fingerprint; signInFingerprint: Fingerprint; browserMode: BrowserPresentationMode; profileDirectory: string }>, purpose?: "acquire" | "cleanup") => Promise<BrowserProfileAdmission>;
   readonly bindings?: BrowserSystemBindings;
   readonly launcher?: PersistentContextLauncher;
   // Session proof diagnostics name the observed marker, never its sensitive value.
@@ -448,7 +447,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     });
     const instance = RuntimeInstanceSchema.parse(input.instance);
     const identity = { ...input, instance, browserMode, profileDirectory, signInFingerprint: browserSignInFingerprint(config, this.#options.protectedSecrets, input.system, instance, this.#options.duo) };
-    const { profileRevision: _revision, resetRequired: _reset, ...admitted } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(identity));
+    const { profileRevision: _revision, resetRequired: _reset, ...admitted } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(identity, "cleanup"));
     this.#options.assertCurrent(input.workerId);
     if (canonicalJsonStringify(admitted) !== canonicalJsonStringify(identity)) throw new ProfileCustodyUnavailableError();
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
@@ -493,7 +492,13 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       launch.opened();
       return context;
     } catch (error) {
-      return launch.uncertain(retainAuthoritySourceClosure([error], { directory: { context, profileDirectory, system } }));
+      if (context === undefined && chromiumProfileInUse(error)) {
+        launch.closing(); launch.closed(); this.#launches.delete(profileDirectory); profileReservations.delete(profileDirectory);
+        throw new BrowserProfileStillClosingError(error);
+      }
+      const failure = retainAuthoritySourceClosure([error], { directory: { context, profileDirectory, system } });
+      try { return launch.uncertain(failure); }
+      catch (retained) { throw new BrowserSessionClosureUnprovedError([error, retained], `${system} browser launch closure is unproved`, { cause: error }); }
     }
   }
 
@@ -561,8 +566,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     for (const result of results) if (result.status === "rejected") { const reason: unknown = result.reason; errors.push(reason); }
     if (errors.length > 0) {
       const failure = retainAuthoritySourceClosure(errors, { directory: { context, owned, launch } });
-      if (launch !== undefined) launch.uncertain(failure);
-      throw failure;
+      try { if (launch !== undefined) launch.uncertain(failure); }
+      catch (retained) { errors.push(retained); }
+      throw new BrowserSessionClosureUnprovedError([...errors, failure], `${system} browser session closure is unproved`, { cause: errors[0] });
     }
   }
 }

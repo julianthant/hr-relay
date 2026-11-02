@@ -4,8 +4,8 @@ import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { BrowserRootUnavailableError, BrowserRootsSchema, createBrowserRoots, DEFAULT_BROWSER_LAUNCHER, BrowserProfileStillClosingError,
-  type BrowserProfileProbeOptions, type BrowserRootLaunchInput } from "../../../src/backend/storage/browser-roots.js";
+import { BrowserRootUnavailableError, BrowserRootsSchema, createBrowserRoots, type BrowserProfileProbeOptions, type BrowserRootLaunchInput } from "../../../src/backend/storage/browser-roots.js";
+import { DEFAULT_BROWSER_LAUNCHER, BrowserProfileStillClosingError } from "../../../src/backend/runtime/browser/native-browser.js";
 import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
@@ -231,9 +231,9 @@ async function runUnknownHandoff(input: Readonly<{ scenario: string; workspace: 
   assert.equal(started.state, "started");
   const successor = database.authority.workerLeases.get(seed.workerId); assert.ok(successor);
   assert.ok(successor.leaseGeneration > prior.leaseGeneration); assert.equal(successor.processId, process.pid);
-  const current = database.browserWorkerOwner(admission, seed.workerId);
-  assert.equal(current.leaseGeneration, successor.leaseGeneration); assert.equal(current.ordinal, row.owner.ordinal);
   const profileRoot = join(machine.stateRoot, row.profileRoot), profileDirectory = join(machine.stateRoot, row.directory);
+  const current = database.browserWorkerOwner(admission, seed.workerId, profileDirectory);
+  assert.equal(current.leaseGeneration, successor.leaseGeneration); assert.equal(current.ordinal, row.owner.ordinal);
   const owner: BrowserRootLaunchInput = { profileId: seed.profileId, profileRoot, profileDirectory,
     credentialFingerprint: row.credentialFingerprint, owner: { kind: "worker", database, workerId: seed.workerId } };
   let launches = 0, effects = 0;

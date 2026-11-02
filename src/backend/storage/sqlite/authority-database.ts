@@ -2543,11 +2543,23 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
-  browserWorkerOwner(admission: RuntimeAdmission, workerId: string, stoppedProcess?: ChildProcess) {
+  browserWorkerOwner(admission: RuntimeAdmission, workerId: string, profileDirectory: string, stoppedProcess?: ChildProcess) {
     if (this.#admission !== admission) throw new Error("browser-profile-database-owner-mismatch");
     this.#assertOpen(); admission.assertProfileRuntime();
     const id = WorkerIdSchema.parse(workerId), slot = this.authority.workerSlots.get(id), lease = this.authority.workerLeases.get(id);
-    if (slot === undefined || slot.retiredAt !== null || lease === undefined) throw new Error("browser-profile-worker-owner-mismatch");
+    if (slot === undefined || slot.retiredAt !== null) throw new Error("browser-profile-worker-owner-mismatch");
+    const verification = this.authority.workerSlots.verification(id);
+    if (verification !== undefined) {
+      const binding = admission.profileBinding, lock = admission.lifetime;
+      if (!(lock instanceof RuntimeLifetimeLock) || stoppedProcess !== undefined || lease !== undefined
+        || verification.request.lockPort !== lock.port || verification.request.installationId !== binding.installationId
+        || verification.request.profileId !== binding.profileId || verification.slot.membershipRevision !== slot.membershipRevision
+        || profileDirectory !== join(admission.stateRoot, "scratch", "live-smoke", verification.request.profileRunId, "browsers", `w${String(slot.ordinal)}`, verification.request.system)) throw new Error("browser-profile-worker-owner-mismatch");
+      lock.assertHeld();
+      return Object.freeze({ kind: "worker" as const, workerId: slot.workerId, workflowId: slot.workflow,
+        ordinal: slot.ordinal, membershipRevision: slot.membershipRevision, leaseGeneration: verification.request.leaseGeneration });
+    }
+    if (lease === undefined) throw new Error("browser-profile-worker-owner-mismatch");
     if (stoppedProcess === undefined) {
       if (lease.processId !== process.pid || !isLiveWorker(lease) || lease.lifecycle.state === "stopping") throw new Error("browser-profile-worker-owner-mismatch");
     } else {

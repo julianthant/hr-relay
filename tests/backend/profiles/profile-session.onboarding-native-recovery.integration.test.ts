@@ -27,7 +27,8 @@ import type { DraftDuoBrowserOwner, DraftDuoCapability, ProfileOnboardingDuoProv
 import { ProfileOnboardingDuoProviderError } from "../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import { CanonicalCredentialHeadSchema } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
-import { BrowserProfileStillClosingError, onboardingProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
+import { createBrowserRoots, onboardingProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
+import { BrowserProfileStillClosingError } from "../../../src/backend/runtime/browser/native-browser.js";
 import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { scaledMs } from "../../support/time-scale.js";
 
@@ -51,6 +52,8 @@ it("refuses a canonical Chromium orphan after owner SIGKILL before erasure, then
   assert.ok(operation.onboarding);
   const owner={operationId:operation.operationId,profileId:operation.profileId,accountId:operation.onboarding.accountId,generation:operation.onboarding.generation};
   const root=join(machine.stateRoot,"browsers","onboarding");mkdirSync(root,{recursive:true,mode:0o700});
+  createBrowserRoots(machine).beginLaunch({ profileId: operation.profileId, profileRoot: root, profileDirectory: onboardingProfileDirectory(root, owner),
+    credentialFingerprint: null, owner: { kind: "signup", operationId: owner.operationId, accountId: owner.accountId, providerGeneration: owner.generation } });
   const worker=fork(join(process.cwd(),"tests/support/processes/onboarding-native-orphan-owner.ts"),[root,JSON.stringify(owner)],{execArgv:["--import",testProcessImport()],stdio:["ignore","pipe","pipe","ipc"]});
   worker.stdout?.resume();worker.stderr?.resume();
   let browser:Browser|undefined,browserPid:number|undefined;
@@ -117,8 +120,10 @@ function retainDraftBrowserDirectory(f: Awaited<ReturnType<typeof privateDraftFi
   const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "operations", `${operationId}.json`), "utf8")));
   assert.ok(operation.onboarding);
   const root = join(f.machine.stateRoot, "browsers", "onboarding");
-  mkdirSync(onboardingProfileDirectory(root, { ...operation, accountId: operation.onboarding.accountId,
-    generation: operation.onboarding.generation }), { recursive: true, mode: 0o700 });
+  const profileDirectory = onboardingProfileDirectory(root, { ...operation, accountId: operation.onboarding.accountId, generation: operation.onboarding.generation });
+  createBrowserRoots(f.machine).beginLaunch({ profileId: operation.profileId, profileRoot: root, profileDirectory, credentialFingerprint: null,
+    owner: { kind: "signup", operationId, accountId: operation.onboarding.accountId, providerGeneration: operation.onboarding.generation } });
+  mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
 }
 
 it("viewing an actual draft creates no attempt and unknown enrollment cannot be rearmed by viewing or opening its browser", async () => {

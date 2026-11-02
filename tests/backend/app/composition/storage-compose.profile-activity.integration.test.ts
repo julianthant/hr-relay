@@ -298,11 +298,11 @@ it.each(["plan-excess", "remove-worker"] as const)("proves quiescence after cano
           const child = spawn(request.command, [...request.args, "--fixture-lock-port", String(lifetimeLock.port)], { cwd: request.cwd, detached: true, stdio: ["ignore", "pipe", "pipe", "ipc"] });
           childClosures.push(once(child, "close"));
           let transfer: Promise<void>;
-          try { transfer = lifetimeLock.share(child); }
+          try { transfer = lifetimeLock.share(child); lifetimeLock.observeOwnedChildClosure(child); }
           catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }
           void transfer.catch(error => { child.kill("SIGKILL"); child.emit("error", error); });
           children.push(child); assert.ok(child.stdout); assert.ok(child.stderr); child.stdout.resume(); child.stderr.resume();
-          return { pid: child.pid, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
+          return { pid: child.pid, nativeProcess: child, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
         }, birth: { pollMs: 25, timeoutMs: 20_000 }, faultSink: line => { faults.push(line); },
       } });
     const database = profile.selectedContext(active.token).database;

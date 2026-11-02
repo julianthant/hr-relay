@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { it } from "vitest";
 import { z } from "zod";
 import { stageFastDuoExtension } from "../../../../src/backend/runtime/browser/fast-duo-extension.js";
-import { DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/storage/browser-roots.js";
+import { DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-browser.js";
 
 it("loads the staged workflow extension in full Chromium and answers a synthetic Duo page", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "relay-fast-duo-browser-")));

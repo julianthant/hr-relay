@@ -3,7 +3,8 @@ import { privatePathRejects } from "../storage/private-path.js";
 
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
 import { resolveConfigWithProvenance } from "../app/config/resolve.js";
-import { NativeBrowserClosureUnprovedError, onboardingProfileDirectory, createBrowserRoots, assertPrivateProfilePath } from "../storage/browser-roots.js";
+import { onboardingProfileDirectory, createBrowserRoots, assertPrivateProfilePath } from "../storage/browser-roots.js";
+import { NativeBrowserClosureUnprovedError } from "../runtime/browser/native-browser.js";
 import { ProfileOnboardingDuoProviderError } from "../runtime/browser/onboarding-duo-provider.js";
 import { ProfileSessionRefusedError } from "./profile-errors.js";
 import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure } from '../storage/source-closure.js';

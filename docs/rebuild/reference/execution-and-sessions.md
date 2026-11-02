@@ -586,7 +586,8 @@ do not authorize effects. One row remains excluded through native closure, the a
 settlement. Only the scoped remover can delete that profile, and it expires when the effect returns.
 Unknown files, ownership changes, unsafe paths and unproved closure hold the operation.
 
-Probes run asynchronously inside their existing native owner. The stopped control converter records
+`runtime/browser/native-browser.ts` owns Playwright launch and page/context closure. Probes run
+asynchronously under the registry owner. The stopped control converter records
 its preparing receipt before probing, then captures credential copies and verifies its SQLite backup
 before publishing browser registry, control and marker. Current control requires the external registry;
 ordinary startup does not reconstruct it. An ordinary profile drain checks actual resource and registry

@@ -175,9 +175,12 @@ function stoppedBackupBrowserCensus(admission: RuntimeAdmission, operation: Offl
     const { custody, config } = stoppedBrowserFacts(admission, clock, processLockRoot);
     const retained = retainedBrowserProfiles(admission.stateRoot, custody, config.paths.browserProfileRoot, layout);
     const binding = admission.captureBrowserRegistryContext(), rows = createBrowserRoots(admission).inventory().roots.filter(row => row.profileId === binding.profileId);
+    let physical: ReturnType<typeof restoreBrowserCensus>;
+    try { physical = restoreBrowserCensus(admission); }
+    catch (error) { if (hasUnprovedSourceClosure(error)) throw error; throw new StorageBackupClosureUnprovedError(error); }
     const present = retained.filter(row => lstatSync(row.profileDirectory, { throwIfNoEntry: false }) !== undefined);
     if (rows.length !== present.length || rows.some(row => !present.some(profile => profile.profileDirectory === join(binding.machineRoot, row.directory)))) throw new StorageBackupClosureUnprovedError();
-    return { profiles: retained, identity: canonicalJsonStringify({ profiles: rows.map(({ launch: _launch, native: _native, ...row }) => row),
+    return { profiles: retained, identity: canonicalJsonStringify({ profiles: physical,
       membership: { slots: custody.slots, verificationProfiles: custody.verificationProfiles, browsers: custody.browsers, configSnapshots: custody.configSnapshots, controls: custody.controls } }),
       timing: { launchTimeoutMs: config.timeouts.sessionAcquireMs, closeProofMs: config.browser.closeProofMs } };
   } catch (error) {
@@ -263,10 +266,54 @@ function unreadableRestoreSqlite(error: unknown): boolean {
 }
 
 function restoreBrowserCensus(admission: RuntimeAdmission) {
+  if (process.platform !== "darwin") throw new ProfileRestoreBrowserCustodyUnprovedError();
   const binding = admission.captureBrowserRegistryContext();
   const rows = createBrowserRoots(admission).inventory().roots.filter(row => row.profileId === binding.profileId);
-  return { profiles: rows.map(row => ({ profileRoot: join(binding.machineRoot, row.profileRoot), profileDirectory: join(binding.machineRoot, row.directory), cleanupCompleted: false })),
-    membership: rows.map(({ launch: _launch, native: _native, ...row }) => row) };
+  const roots = [...new Set([join(admission.stateRoot, "browsers"), ...rows.map(row => join(binding.machineRoot, row.profileRoot))])];
+  const identities: Array<{ path: string; device: number; inode: number; mode: number; owner: number }> = [];
+  const profiles: RetainedBrowserProfile[] = [];
+  const inspect = (path: string) => {
+    const stat = lstatSync(path);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || privatePathRejects(path, stat, "group-write")) throw new ProfileRestoreBrowserCustodyUnprovedError();
+    identities.push({ path, device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid });
+  };
+  const children = (path: string) => {
+    inspect(path);
+    const directory = opendirSync(path), entries: Dirent[] = [];
+    let primary: { error: unknown } | undefined;
+    try {
+      for (let entry = directory.readSync(); entry !== null; entry = directory.readSync()) {
+        if (entry.isSymbolicLink() || entries.length >= 64) throw new ProfileRestoreBrowserCustodyUnprovedError();
+        entries.push(entry);
+      }
+    } catch (error) { primary = { error }; }
+    try { directory.closeSync(); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { directory, admission }); }
+    if (primary !== undefined) throw primary.error;
+    return entries.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  };
+  const addProfile = (profileRoot: string, path: string) => {
+    if (profiles.length >= 64) throw new ProfileRestoreBrowserCustodyUnprovedError();
+    inspect(path);
+    profiles.push({ profileRoot, profileDirectory: path, cleanupCompleted: false });
+  };
+  for (const entry of children(admission.stateRoot)) {
+    if (entry.isFile() && ["state.db", "state.db-wal", "state.db-shm", "state.db-journal"].includes(entry.name)) continue;
+    if (!entry.isDirectory() || !["browsers", "credentials", "backups", "artifacts", "logs", "scratch"].includes(entry.name)) throw new ProfileRestoreBrowserCustodyUnprovedError();
+  }
+  for (const profileRoot of roots) if (lstatSync(profileRoot, { throwIfNoEntry: false }) !== undefined) for (const entry of children(profileRoot)) {
+    if (!entry.isDirectory()) throw new ProfileRestoreBrowserCustodyUnprovedError();
+    const name = entry.name, path = join(profileRoot, name);
+    if (/^w[1-9]\d*$/u.test(name)) {
+      for (const system of children(path)) {
+        if (!system.isDirectory() || !BrowserSystemIdSchema.safeParse(system.name).success) throw new ProfileRestoreBrowserCustodyUnprovedError();
+        addProfile(profileRoot, join(path, system.name));
+      }
+    } else if (/^onboarding-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-){3}g[1-9]\d*$/u.test(name)) addProfile(profileRoot, path);
+    else throw new ProfileRestoreBrowserCustodyUnprovedError();
+  }
+  if (rows.length !== profiles.length || rows.some(row => !profiles.some(profile => profile.profileDirectory === join(binding.machineRoot, row.directory)))) throw new ProfileRestoreBrowserCustodyUnprovedError();
+  return { identities, profiles, membership: rows.map(({ launch: _launch, native: _native, ...row }) => row) };
 }
 
 async function probeUnreadableRestoreBrowsersClosed(admission: RuntimeAdmission, processLockRoot: string,
