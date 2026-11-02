@@ -38,6 +38,7 @@ import {
 
 export const AuthorityBackupServiceOptionsSchema = z.strictObject({
   directory: z.string().min(1),
+  purpose: z.literal("clean-shutdown").optional(),
 });
 
 type AuthorityBackupSource = Pick<
@@ -229,6 +230,7 @@ export class AuthorityBackupService {
   #admission: RuntimeAdmission;
   #source: AuthorityBackupSource;
   #directory: string;
+  #cleanShutdown: boolean;
   #clock: Clock;
   #inFlight: Promise<AuthorityBackupRunReport> | undefined;
   #requiredGeneration = 0;
@@ -239,6 +241,7 @@ export class AuthorityBackupService {
     const options = AuthorityBackupServiceOptionsSchema.parse(input);
     this.#source = source;
     this.#directory = resolve(options.directory);
+    this.#cleanShutdown = options.purpose === "clean-shutdown";
     this.#admission.assertStateRoot(this.#directory);
     this.#clock = clock;
   }
@@ -325,7 +328,7 @@ export class AuthorityBackupService {
       const createdAt = this.#clock.now().toISOString();
       const compactTime = createdAt.replaceAll(/[^0-9]/g, "");
       const stem = `authority-g${String(inspection.authorityGeneration)}-${compactTime}-${token}`;
-      const backupFileName = `${stem}.sqlite`;
+      const backupFileName = `${stem}${this.#cleanShutdown ? ".shutdown" : ""}.sqlite`;
       const finalBackupPath = join(this.#directory, backupFileName);
       renameSync(temporaryBackupPath, finalBackupPath);
       finalPaths.push(finalBackupPath);

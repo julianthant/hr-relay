@@ -142,7 +142,6 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  explain diagnostics --boot [--json]  inspect the stopped boot fault spool without opening the database",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page",
     "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces; exit 0 = authority healthy + reconciliation healthy + protected authority readable; backup reported, not gated)",
-    "  storage backup [--json]  write a verified person SQLite backup or stopped flat native6 byte archive",
     ...TEST_DATA_USAGE.map((line) => `  ${line}`),
   ].join("\n");
 }
