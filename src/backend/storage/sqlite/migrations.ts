@@ -1,13 +1,14 @@
 import { createHash } from "node:crypto";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { EXCLUSIVE_SESSION_LEASE_MIGRATION } from "./exclusive-session-leases.js";
 import { WORKBOOK_LIBRARY_MIGRATION } from "./workbook-library-repository.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 11;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 12;
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
@@ -768,11 +769,12 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     `DELETE FROM assistant_grants
       WHERE json_extract(payload_json,'$.policy.mode') IN ('before-submits','without-asking')`,
   ] },
+  EXCLUSIVE_SESSION_LEASE_MIGRATION,
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
-  toSchemaVersion: 8 | 9 | 10 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
-  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10)
+  toSchemaVersion: 8 | 9 | 10 | 11 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11)
     || !isSupportedStoppedAuthoritySchemaVersion(fromSchemaVersion) || fromSchemaVersion < 7 || fromSchemaVersion >= toSchemaVersion)) throw new Error('authority-upgrade-plan-target-unsupported');
   const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
   return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,
@@ -783,7 +785,8 @@ export function migrationTableNames(version: number): readonly (AuthorityTableNa
   return [...(version < 10 ? ["explorer_overrides" as const] : []), ...AuthorityTableNameSchema.options.filter(name => (version >= 4
     || (name !== "workbook_library" && name !== "workbook_library_history"))
     && (version >= 8 || !name.startsWith("assistant_"))
-    && (version >= 9 || name !== "assistant_model_preference"))];
+    && (version >= 9 || name !== "assistant_model_preference")
+    && (version >= 12 || name !== "exclusive_session_leases"))];
 }
 
 export function auditMigrationTableCoverage(): readonly string[] {

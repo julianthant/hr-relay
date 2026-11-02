@@ -73,7 +73,7 @@ it.each([
   } finally { database.close(); }
 });
 
-function inspectionDatabase(version: 9 | 10 | 11) {
+function inspectionDatabase(version: 9 | 10 | 11 | 12) {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys=ON");
   for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= version)) for (const statement of migration.statements) database.exec(statement);
@@ -83,13 +83,13 @@ function inspectionDatabase(version: 9 | 10 | 11) {
   return database;
 }
 
-it.each([9, 10, 11] as const)("keeps historical table vocabulary inside exact stopped schema %s inspection", version => {
+it.each([9, 10, 11, 12] as const)("keeps historical table vocabulary inside exact stopped schema %s inspection", version => {
   const database = inspectionDatabase(version);
   try {
     const inspection = inspectNativeAuthority(database, version);
     assert.equal(inspection.tables.some(table => table.name === "explorer_overrides"), version < 10);
     assert.equal(AuthorityTableNameSchema.safeParse("explorer_overrides").success, false);
-    if (version < 11) assert.throws(() => inspectNormalAuthority(database), /normal-authority-schema-mismatch/u);
+    if (version < 12) assert.throws(() => inspectNormalAuthority(database), /normal-authority-schema-mismatch/u);
     else assert.deepEqual(inspectNormalAuthority(database), inspection);
   } finally { database.close(); }
 });

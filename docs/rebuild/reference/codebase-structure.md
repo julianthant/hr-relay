@@ -111,6 +111,8 @@ Paths in this table are relative to `src/backend/`.
 
 ### Workflow ownership and imports
 
+`src/workflows/onbase/` registers a child-only per-person Emergency Contact PDF import with source-page and import-document step proofs. Its system store and semantic driver live in `src/backend/systems/onbase/`; `src/backend/storage/sqlite/exclusive-session-leases.ts` owns the durable identity-session lease and its migration. The browser factory holds that lease through proven browser closure; uncertainty and process loss do not expire it.
+
 `src/workflows/person-lookup/` and `src/workflows/separations/` each contain `workflow.ts`,
 `task-registry.ts`, `index.ts`, and `tasks/`. The workflow definition is browser-safe. The index declares
 registration, importing the definition, backend task store and retained proofs. The generated descriptor

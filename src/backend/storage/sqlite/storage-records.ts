@@ -10,6 +10,7 @@ import { NotificationHealthSchema } from "./notification-publications.js";
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
 import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../../models/artifacts/generated-artifact.js";
 import { ImportedArtifactSchema } from "../../../models/intake/imported-artifact.js";
+import { ExclusiveSessionLeaseSchema } from "../../../models/sessions/exclusive-session-lease.js";
 import { z } from "zod";
 import { DuoCeremonyLeaseRecordSchema } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { RunSessionRecordSchema } from "../../../models/run/session.js";
@@ -70,6 +71,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   worker_controls: WorkerControlRecordSchema,
   browser_sessions: WorkerBrowserObservationSchema,
   auth_leases: DuoCeremonyLeaseRecordSchema,
+  exclusive_session_leases: ExclusiveSessionLeaseSchema,
   notifications: NotificationRecordSchema,
   notification_states: NotificationHealthSchema,
   artifacts: z.union([ImportedArtifactSchema, AdmittedExtractionSchema, GeneratedArtifactSchema]),

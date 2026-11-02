@@ -106,6 +106,7 @@ import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-cust
 import type { VerifiedBackup } from "./backup-service.js";
 import { assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationReadiness,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
+import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { AUTHORITY_APPLICATION_ID,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
@@ -542,6 +543,7 @@ export type AuthorityRepositories = Readonly<{
   workerLeases: WorkerLeaseRepository;
   workerControls: WorkerControlRepository;
   duoCeremonyLeases: DuoCeremonyLeaseRepository;
+  exclusiveSessionLeases: ReturnType<typeof createExclusiveSessionLeaseRepository>;
   workerPools: WorkerPoolRepository;
   workerSlots: ReturnType<typeof createWorkerSlotRepository>;
   runSessions: RunSessionRepository;
@@ -1074,6 +1076,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
         else if (table === "worker_slots") workerSlotFromRow(raw);
         else if (table === "worker_controls") workerControlFromRow(raw);
         else if (table === "browser_sessions") workerBrowserFromRow(raw);
+        else if (table === "exclusive_session_leases") exclusiveSessionLeaseFromRow(raw);
         else if (table === "timeline_events") assertTimelineOwner(database,timelineEventFromRow(raw));
         else if (table === "artifacts") {
           const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
@@ -1313,7 +1316,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   const tables = expectedSchemaVersion < 10 ? z.array(z.union([currentTables.element,
     z.strictObject({ name: z.literal("explorer_overrides"), classification: z.literal("authority") }),
   ])) : currentTables;
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -1443,8 +1446,9 @@ function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typ
   const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow);
   const writeIntents = database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row)));
   const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
+  const exclusiveSessionLeases = inspection.schemaVersion >= 12 ? database.prepare("SELECT * FROM exclusive_session_leases ORDER BY id").all().map(exclusiveSessionLeaseFromRow) : [];
   const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
-  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, ...browserProfiles, reservations, leases, runs, writeIntents, duoLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
+  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, ...browserProfiles, reservations, leases, runs, writeIntents, duoLeases, exclusiveSessionLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
 }
 
 function flatQueuedRunCancellationInventory(database: DatabaseSync, assertResourcesClosed: (facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) => void) {
@@ -2005,7 +2009,7 @@ export class AuthorityDatabase implements Disposable {
     owner.assertStoppedProfile(operation); copy.assertReadOnlyAuthorityDatabase(path);
     return withAuthorityDatabaseReadOnly(copy, path, database => {
       const version = readIntPragma(database, "user_version"), meta = readMetaRow(database), binding = owner.profileBinding;
-      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || ![8, 9, 10, 11].includes(version)
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || ![8, 9, 10, 11, 12].includes(version)
         || meta.schema_version !== version || meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) throw new Error("restore-candidate-binding-mismatch");
       const facts = Object.freeze(browserProfileInventory(database));
       owner.assertStoppedProfile(operation); return facts;
@@ -2248,7 +2252,7 @@ export class AuthorityDatabase implements Disposable {
         const version = readIntPragma(database, "user_version");
         if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("profile-startup-foreign-application");
         if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup schema is newer than supported");
-        if (![8, 9, 10, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)) throw new Error("profile-startup-unsupported-schema");
+        if (![8, 9, 10, 11, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)) throw new Error("profile-startup-unsupported-schema");
         const inspection = inspectNativeAuthority(database, version);
         machine.assertOfflineMaintenance(machine.maintenanceOperation());
         if (inspection.installationId !== machine.locator.installationId || inspection.profileId !== id) throw new Error("profile-startup-foreign-binding");
@@ -2316,7 +2320,7 @@ export class AuthorityDatabase implements Disposable {
       if (record === undefined || !("startupLogout" in record) || record.startupLogout === undefined
         || canonicalJsonStringify(record.startupLogout.operation) !== canonicalJsonStringify(operation)) return undefined;
       const settlement = operation.settlement;
-      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10].includes(record.fromSchemaVersion)
+      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10, 11, 12].includes(record.fromSchemaVersion)
         || settlement === undefined || record.startupLogout.postimage !== authorityContentFingerprint(database, record.recordKey)) throw new Error("profile-startup-logout-postimage-changed");
       const backup = verifyBackup(admission, record.backup.manifestPath);
       if (backup.manifest.sha256 !== record.backup.sha256 || backup.manifest.authorityContentFingerprint !== record.upgradeId
@@ -2824,6 +2828,7 @@ export class AuthorityDatabase implements Disposable {
           .map(row => this.#parseNativeRow("write_intents", row, WriteIntentRecordSchema)),
         duoLeases: this.#database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all()
           .map(row => this.#parseNativeRow("auth_leases", row, DuoCeremonyLeaseRecordSchema)),
+        exclusiveSessionLeases: this.#database.prepare("SELECT * FROM exclusive_session_leases ORDER BY id").all().map(exclusiveSessionLeaseFromRow),
         pendingArtifacts: this.authority.artifactOutbox.listPending(),
         artifactReferences: this.readManagedArtifactReferences(),
         configSnapshots: this.#database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
@@ -4712,6 +4717,8 @@ export class AuthorityDatabase implements Disposable {
         return this.withAuthorityTransaction(() => this.#authorityWrite(table, work));
       } }),
       duoCeremonyLeases: this.#buildDuoCeremonyLeaseRepository(),
+      exclusiveSessionLeases: createExclusiveSessionLeaseRepository({ database: this.#database,
+        read: work => this.#withReadSnapshot(work), mutate: work => this.#authorityWrite("exclusive_session_leases", work) }),
       workerPools: this.#buildWorkerPoolRepository(),
       workerSlots: createWorkerSlotRepository({ database: this.#database, admission: this.#admission, clock: this.#clock, mutate: work => this.#authorityWrite("worker_slots", () => {
         const outcome = work();

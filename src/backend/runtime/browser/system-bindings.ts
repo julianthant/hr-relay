@@ -1,3 +1,5 @@
+import { createOnbaseDriver } from "../../systems/onbase/driver/interpreter.js";
+import { onbaseLoginRecipe, verifyOnbaseAuthenticatedApplication } from "../../systems/onbase/login.js";
 
 import type { BrowserDriver } from "../../../workflow-kit/task.js";
 import type { Clock } from "../../../rules/time/clock.js";
@@ -31,6 +33,10 @@ export type BrowserSystemBindings = Readonly<Partial<Record<BrowserSystemId, Bro
 
 // Missing system bindings refuse; an unimplemented driver is never a fallback.
 export const BROWSER_SYSTEM_BINDINGS: BrowserSystemBindings = Object.freeze({
+  onbase: Object.freeze({ system: "onbase",
+    createDriver: (page: Page, clock: Clock, assertCurrent: () => void): BrowserDriver => createOnbaseDriver(assertCurrent, page, clock),
+    login: onbaseLoginRecipe, verifyAuthenticated: verifyOnbaseAuthenticatedApplication,
+  }),
   ucpath: Object.freeze({
     system: "ucpath",
     createDriver: (page: Page, clock: Clock, assertCurrent: () => void): BrowserDriver =>

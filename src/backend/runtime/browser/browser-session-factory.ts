@@ -1,3 +1,5 @@
+import type { ExclusiveSessionLease } from "../../../models/sessions/exclusive-session-lease.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { createNativeBrowserProbe, BrowserLaunchUncertainError, chromiumProfileInUse, DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, closeContextWithProof, observeContextLifecycle, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
 import { BrowserProfileStillClosingError, BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { privatePathRejects } from "../../storage/private-path.js";
@@ -195,11 +197,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     const browserMode = browserModeFor(input.browserMode, config.browser.headless);
     const instance = RuntimeInstanceSchema.parse(input.instance);
     const binding = bindingFor(this.#bindings, system);
-    if (input.exclusive) {
-      throw new Error(
-        `${system} requested an identity-exclusive session; the exclusive OnBase lease is not landed in this factory`,
-      );
-    }
+    if ((system === "onbase") !== input.exclusive) throw new Error("browser-session-exclusivity-mismatch");
     if (input.signal.aborted) throw new Error(`${system} browser session open was cancelled before launch`);
 
     const profileDirectory = workerProfileDirectory({
@@ -214,6 +212,10 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
     assertFastDuoReady(config, this.#options.duo);
+    const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
+    const exclusiveLease = input.exclusive ? await this.#acquireExclusiveSession({ workerId, sessionId, instance,
+      signal: input.signal, assertCurrent, ...(input.acquisitionRemainingMs === undefined ? {} : { remainingMs: input.acquisitionRemainingMs }) }) : undefined;
+    assertCurrent();
     profileReservations.add(profileDirectory);
     const rootOwner = this.#rootInput(workerId, profileDirectory, signInFingerprint);
     if (resetRequired) {
@@ -275,7 +277,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       page.on("framenavigated", navigated);
       page.on("frameattached", frameChanged);
       page.on("framedetached", frameChanged);
-      const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
+      let closeProof: BrowserSessionCloseProof | undefined;
+      let profileReleased = false;
       const emit = (phase: DebugEvent["phase"], code?: string): void => { assertCurrent(); this.#options.onDebug?.(workerId, { phase, correlationId: sessionId, ...(code === undefined ? {} : { code }) }); };
       const label = `worker ${workerId} ${system} session`;
       const resource: WorkerBrowserResource = {
@@ -402,12 +405,19 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
           emit("reset");
         },
         close: async (closeInput): Promise<BrowserSessionCloseProof> => {
+          if (closeProof !== undefined) return closeProof;
           detach();
-          await this.#closeWithProof(context, lifecycle, system, closeInput.reason);
-          this.#releaseProfile(profileDirectory);
+          if (!profileReleased) {
+            await this.#closeWithProof(context, lifecycle, system, closeInput.reason);
+            this.#releaseProfile(profileDirectory);
+            profileReleased = true;
+          }
+          if (exclusiveLease !== undefined) this.#options.browserOwner.database.authority.exclusiveSessionLeases.release(exclusiveLease, this.#options.clock.now().toISOString());
           diagnostics.dispose();
+          closeProof = Object.freeze({ sessionId, system, pagesClosed: true, contextClosed: true,
+            ...(exclusiveLease === undefined ? {} : { exclusiveLeaseReleased: true }) });
           if (observeEvent().state === "current") emit("released");
-          return Object.freeze({ sessionId, system, pagesClosed: true, contextClosed: true });
+          return closeProof;
         },
       };
       return Object.freeze(resource);
@@ -417,6 +427,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       try {
         await this.#closeWithProof(context, lifecycle, system, "login-failed");
         this.#releaseProfile(profileDirectory);
+        if (exclusiveLease !== undefined) this.#options.browserOwner.database.authority.exclusiveSessionLeases.release(exclusiveLease, this.#options.clock.now().toISOString());
       } catch (closeError) {
         throw new BrowserSessionClosureUnprovedError(
           [error, closeError],
@@ -541,6 +552,31 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     );
   }
 
+  async #acquireExclusiveSession(input: Readonly<{ workerId: WorkerId; sessionId: string; instance: RuntimeInstance;
+    signal: AbortSignal; assertCurrent: () => void; remainingMs?: () => number }>): Promise<ExclusiveSessionLease> {
+    const entry = new URL(resolveSystemEntryUrl(this.#options.config, "onbase", input.instance, "OnBase identity lease"));
+    const account = requireSecret("ucpathUserId", this.#options.protectedSecrets).trim().toLocaleLowerCase("en-US");
+    if (account.length === 0) throw new Error("onbase-session-identity-unavailable");
+    const identityKey = sha256Hex(canonicalJsonStringify({ application: new URL(".", entry).href, account }));
+    const deadline = this.#options.clock.monotonicMs() + this.#options.config.timeouts.sessionAcquireMs;
+    for (;;) {
+      input.signal.throwIfAborted(); input.assertCurrent();
+      const outcome = this.#options.browserOwner.database.authority.exclusiveSessionLeases.acquire({ identityKey,
+        workerId: input.workerId, sessionId: input.sessionId, now: this.#options.clock.now().toISOString() });
+      if (outcome.state === "acquired") return outcome.lease;
+      const remaining = Math.min(deadline - this.#options.clock.monotonicMs(), input.remainingMs?.() ?? Infinity);
+      if (remaining <= 0) throw new OnbaseSessionHeldError();
+      await new Promise<void>((resolve, reject) => {
+        const timer = this.#options.scheduler.schedule(this.#options.clock.monotonicMs() + Math.min(200, remaining), () => {
+          input.signal.removeEventListener("abort", aborted); resolve();
+        });
+        const aborted = () => { timer.cancel(); reject(input.signal.reason); };
+        input.signal.addEventListener("abort", aborted, { once: true });
+        if (input.signal.aborted) { input.signal.removeEventListener("abort", aborted); aborted(); }
+      });
+    }
+  }
+
   async #closeWithProof(
     context: BrowserContext,
     lifecycle: ContextLifecycle,
@@ -615,4 +651,9 @@ function readSsoCredentials(source: ProtectedSecretSource): SsoCredentials {
     userId: requireSecret("ucpathUserId", source),
     password: requireSecret("ucpathPassword", source),
   };
+}
+
+export class OnbaseSessionHeldError extends Error {
+  readonly code = "ONBASE_SESSION_HELD";
+  constructor() { super(ERROR_CATALOG.ONBASE_SESSION_HELD.text); this.name = "OnbaseSessionHeldError"; }
 }
