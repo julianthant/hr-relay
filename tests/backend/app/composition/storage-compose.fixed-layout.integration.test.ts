@@ -219,23 +219,16 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
   const target = realpathSync(mkdtempSync(join(tmpdir(), "fixed-layout-pending-signup-")));
   let machine: RuntimeAdmission | undefined, runtime: ReturnType<typeof composeProfileRuntime> | undefined;
   let observedLayoutOwner = false;
-  const layout = vi.spyOn(RuntimeAdmission.prototype, "forStoppedProfileLayout").mockImplementation(async function(this: RuntimeAdmission, ...args: Parameters<RuntimeAdmission["forStoppedProfileLayout"]>): Promise<RuntimeAdmission> {
-    layout.mockRestore();
-    const admission = await this.forStoppedProfileLayout(...args);
-    try {
-      assert.equal(admission.hasCurrentBrowserRegistry(), true);
-      const binding = admission.captureBrowserRegistryContext();
-      const row = createBrowserRoots(admission).inventory().roots.find(value => value.owner.kind === "signup" && value.owner.operationId === operation.operationId);
-      assert.ok(row); assert.equal(row.profileId, operation.profileId);
-      assert.equal(row.launch.state, "closed"); assert.equal(row.native, undefined);
-      assert.equal(existsSync(join(binding.machineRoot, row.directory)), true);
-      observedLayoutOwner = true;
-      return admission;
-    } catch (error) {
-      try { admission.release(); }
-      catch (closeError) { throw new AggregateError([error, closeError], "fixture-layout-owner-close-unproved", { cause: closeError }); }
-      throw error;
-    }
+  const openSource = AuthorityDatabase.openFixedLayoutSource.bind(AuthorityDatabase);
+  const layout = vi.spyOn(AuthorityDatabase, "openFixedLayoutSource").mockImplementation((owner, admission, clock) => {
+    assert.equal(admission.hasCurrentBrowserRegistry(), true);
+    const binding = admission.captureBrowserRegistryContext();
+    const row = createBrowserRoots(admission).inventory().roots.find(value => value.owner.kind === "signup" && value.owner.operationId === operation.operationId);
+    assert.ok(row); assert.equal(row.profileId, operation.profileId);
+    assert.equal(row.launch.state, "closed"); assert.equal(row.native, undefined);
+    assert.equal(existsSync(join(binding.machineRoot, row.directory)), true);
+    observedLayoutOwner = true;
+    return openSource(owner, admission, clock);
   });
   try {
     seedRegisteredSignupBrowser(profile.machine, operation);
