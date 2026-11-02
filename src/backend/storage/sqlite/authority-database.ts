@@ -1082,8 +1082,9 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
           else if (kind === "generated") generatedArtifactFromRow(raw);
           else if (expectedSchemaVersion < 12) {
             const row = z.object({ id: z.string(), payload_json: z.string() }).parse(raw);
+            const extraction: unknown = JSON.parse(row.payload_json);
             extractedArtifactFromRow({ ...raw, payload_json: canonicalJsonStringify({ binding: "unbound-source",
-              extractionId: row.id, extraction: JSON.parse(row.payload_json) }) });
+              extractionId: row.id, extraction }) });
           } else extractedArtifactFromRow(raw);
         } else if (isNativeOrdinaryTable(table)) {
           let inspected = raw;

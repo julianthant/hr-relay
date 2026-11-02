@@ -268,7 +268,7 @@ These rules identify the enforcing seam rather than relying on presentation alon
 6. `defineIntakeProjection` requires the canonical schema object at every mapped leaf; `intakeProjectionRegistry` requires the descriptor's input schema object.
 7. `admitOcrExtraction` checks every declared field and typed absence without granting weaker admission to a producer.
 8. `groupStack` matches exact name keys across the supplied stack and keeps unidentified, duplicate, incomplete, and wrong-form pages visible.
-9. `imported-artifacts.ts` and native triggers hold submitted import content immutable; OCR insertion refuses a different whole reading at an existing page/form key.
+9. `imported-artifacts.ts` and native triggers hold submitted import content immutable; OCR insertion refuses a different whole reading at an existing extraction ID.
 10. `artifact-sink-projector.ts` and `xlsx-retention-sink.ts` serialize publication and refuse unowned or changed workbook bytes.
 11. `rerunDiff` compares stable-item membership separately from changed input hashes.
 12. `data.ts` serves checkpoint values for reading; the start planner admits new Rerun values without mutating the source.
