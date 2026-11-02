@@ -1,7 +1,11 @@
+import { randomUUID } from "node:crypto";
+import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
+import { createBrowserRoots, admitCommandBrowser, commandProfileDirectory } from "../../../../src/backend/storage/browser-roots.js";
+import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { seedRegisteredBrowserProfiles } from "../../../support/helpers/browser/browser-roots.js";
 import assert from "node:assert/strict";
-import { copyFileSync, renameSync, readdirSync, lstatSync, readFileSync, existsSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
+import { copyFileSync, renameSync, readdirSync, lstatSync, readFileSync, existsSync, mkdirSync, writeFileSync, symlinkSync, rmdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
@@ -15,7 +19,7 @@ import { assertOfflineMaintenanceOperation, type OfflineMaintenanceOperation } f
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
-import { probeRestoreProfileBrowsersClosed, ProfileRestoreBrowserCustodyUnprovedError } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { probeRestoreProfileBrowsersClosed, ProfileRestoreBrowserCustodyUnprovedError, restoreBrowserMembershipDigest } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { scaledMs } from "../../../support/time-scale.js";
 
 function fileIdentity(path: string) {
@@ -156,4 +160,27 @@ for (const unsafe of ["unknown-directory", "noncanonical-root", "symlink", "unsu
   try { restore?.release(); await fixture.close(); }
   catch (error) { throw new AggregateError(primary === undefined ? [error] : [primary.error, error], "unsafe-browser-census-close-failed", { cause: error }); }
   if (primary !== undefined) throw primary.error;
+});
+
+it("censuses only the registered command slot even when the authority database is unreadable", async () => {
+  const fixture = await createBoundProfileFixture(), clock = manualClock(new Date("2026-11-01T12:00:01.000Z"));
+  const profileRoot = join(fixture.stateRoot, "browsers"), scheduler = { schedule: () => ({ cancel() {} }) };
+  const directory = commandProfileDirectory(profileRoot), extra = join(profileRoot, "commands", "unregistered");
+  const capability = admitCommandBrowser(fixture.admission, { commandId: randomUUID(), requestDigest: "a".repeat(64), profileRoot });
+  const original = readFileSync(fixture.path);
+  try {
+    const native = createBrowserSessionFactoryFixtures(clock, randomUUID(), scheduler).fakeLauncher();
+    await createBrowserRoots(fixture.admission).probe({ profileId: fixture.admission.profileBinding.profileId, profileRoot,
+      profileDirectory: directory, owner: { kind: "command", capability }, credentialFingerprint: null }, createNativeBrowserProbe({
+      launcher: native.launcher, clock, scheduler, launchTimeoutMs: 100, closeProofMs: 100, signal: new AbortController().signal }));
+    assert.equal(native.contextClosed(), true);
+    const digest = restoreBrowserMembershipDigest(fixture.admission);
+    assert.match(digest, /^[a-f0-9]{64}$/u);
+    writeFileSync(fixture.path, Buffer.alloc(original.byteLength, 0x5a));
+    assert.equal(restoreBrowserMembershipDigest(fixture.admission), digest);
+    mkdirSync(extra, { mode: 0o700 });
+    assert.throws(() => restoreBrowserMembershipDigest(fixture.admission), ProfileRestoreBrowserCustodyUnprovedError);
+    rmdirSync(extra); assert.equal(restoreBrowserMembershipDigest(fixture.admission), digest);
+    writeFileSync(fixture.path, original);
+  } finally { writeFileSync(fixture.path, original); await fixture.close(); }
 });

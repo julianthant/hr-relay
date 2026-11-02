@@ -50,7 +50,7 @@ import type {
   WorkflowDescriptor,
   WorkflowDescriptorSpec,
 } from "./workflow.js";
-import { defineWorkflowDescriptor } from "./workflow.js";
+import { defineWorkflowDescriptor, parseRequiredWorkbookTypeIds } from "./workflow.js";
 
 /** The closed entry algebra. */
 export type WorkflowEntryKind = "task" | "parallel" | "delegate" | "gate" | "transaction";
@@ -772,6 +772,7 @@ export interface WorkflowDefinition<
   Completion extends CompletionProgram | undefined = CompletionProgram | undefined,
 > extends WorkflowDefinitionPresentation<InputSchema, ResultSchema, Completion> {
   readonly kind: "workflow-definition";
+  readonly requiredWorkbookTypeIds: readonly string[];
   readonly input: InputSchema;
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
@@ -805,6 +806,7 @@ export function defineStep<const Spec extends {
 
 export function inheritStepProof<Input extends z.ZodType>(parent: WorkflowDefinition<Input>) {
   return {
+    requiredWorkbookTypeIds: parent.requiredWorkbookTypeIds,
     version: 1,
     icon: parent.icon,
     category: parent.category,
@@ -858,6 +860,7 @@ export function defineWorkflow<
 ): WorkflowDefinition<InputSchema, ResultSchema, Completion> {
   const id = WorkflowIdSchema.parse(spec.id);
   WorkflowModuleRoleSchema.parse(spec.role);
+  const requiredWorkbookTypeIds = parseRequiredWorkbookTypeIds(spec.requiredWorkbookTypeIds);
   const { steps: authorSteps, input, role, intake, operationDisplay, ...presentation } = spec;
   const authored = authorSteps(workflowAuthor<InputSchema>());
   validateSteps(id, authored.steps, authored.result.references);
@@ -865,6 +868,7 @@ export function defineWorkflow<
   Object.freeze(authored.result.references);
   return Object.freeze({
     ...presentation,
+    requiredWorkbookTypeIds,
     kind: "workflow-definition",
     input,
     role,

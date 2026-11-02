@@ -15,6 +15,9 @@ TargetNotFoundError,
 } from "../../../../../src/backend/runs/commands/refusals.js";
 import { StartStepOmissionRefusedError } from "../../../../../src/backend/runs/start/step-selection.js";
 import { failureStatus } from "../../../../../src/backend/transports/http/routes/failure-status.js";
+import { CommandBrowserError, CommandBrowserClosureError } from "../../../../../src/backend/runtime/browser/command-browser.js";
+import { SharePointDownloadError } from "../../../../../src/backend/systems/sharepoint/driver/interpreter.js";
+import { BrowserLoginError } from "../../../../../src/backend/systems/browser-shared/login-contract.js";
 
 
 const RETIRED_MARKERS = [
@@ -27,6 +30,26 @@ const RETIRED_MARKERS = [
 ] as const;
 
 describe("failureStatus", () => {
+  it("serves closed catalog failures for SharePoint commands without private cause data", () => {
+    const privateDetail = "private file URL, account and authentication response";
+    const cases = [
+      { error: new CommandBrowserError("COMMAND_BROWSER_BUSY", { cause: new Error(privateDetail) }), status: 409 },
+      { error: new CommandBrowserClosureError([new Error(privateDetail)]), status: 500 },
+      { error: new SharePointDownloadError("SHAREPOINT_LINK_UNSUPPORTED"), status: 400 },
+      { error: new SharePointDownloadError("SHAREPOINT_DOWNLOAD_TOO_LARGE"), status: 409 },
+      { error: new BrowserLoginError("sharepoint", "verify-landing", privateDetail, "https://tenant.sharepoint.com/private?key=private"), status: 409 },
+    ];
+    for (const { error, status } of cases) {
+      const result = failureStatus(error);
+      assert.equal(result.status, status);
+      assert.equal(result.body.code, error.code);
+      assert.equal(result.body.message, ERROR_CATALOG[error.code].text);
+      assert.equal(result.body.retryable, false);
+      assert.equal(JSON.stringify(result).includes(privateDetail), false);
+      assert.equal(JSON.stringify(result).includes("key=private"), false);
+    }
+  });
+
   it("refuses Logs identity contradictions with the shared catalog code and text", () => {
     const refusal = failureStatus(new LogIdentityRefusedError("private native mismatch"));
     assert.equal(refusal.status, 409);

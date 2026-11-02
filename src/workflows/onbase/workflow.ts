@@ -9,6 +9,7 @@ import { onbaseImportDocumentDefinition } from "./steps/import-document/step.js"
 
 export const OnbaseCanonicalInput = defineCanonicalInput(OnbaseInputSchema, OnbaseInputSchema, [ONBASE_EXAMPLE_INPUT]);
 export const onbaseWorkflow = defineWorkflow({
+  requiredWorkbookTypeIds: [],
   id: "onbase", version: 1, code: "ob", label: "OnBase Emergency Contact", icon: "Upload", category: "documents",
   summary: "Imports one person's selected Emergency Contact PDF page into OnBase after exact employee lookup and saved-document verification.",
   input: OnbaseInputSchema, canonicalInput: OnbaseCanonicalInput, inputSubject: "eid", surface: { shape: "single" }, enqueue: "reject-active",
