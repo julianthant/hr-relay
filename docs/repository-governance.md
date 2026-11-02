@@ -22,11 +22,11 @@ web bundle, runs coverage alone, then performance. The operator authorizes relea
 ## Merge train and automatic fixes
 
 `.github/workflows/merge-train.yml` runs on every push to `staging`, and CI calls it as its final job.
-It labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then picks the
-oldest open, non-draft, same-repository PR into `staging` with auto-merge enabled and no
-`train-failed`, `needs-human` or `merge-conflict` label. While one such PR is up to date, the train
-waits; otherwise it merges `staging` into the oldest PR that is behind, which re-runs CI on the
-combination. A PR it cannot update gets `merge-conflict`. The workflow uses the `TRAIN_TOKEN`
+It labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then merges
+`staging` into every open, non-draft, same-repository PR into `staging` that lacks it, whatever its
+labels or auto-merge state, so every PR re-runs CI on the latest `staging`; CI cancels each PR's
+older in-progress run. Auto-merge then lands whichever PR passes first. A PR it cannot update gets
+`merge-conflict`. Workers merge their remote branch before pushing (never rebase or force-push). The workflow uses the `TRAIN_TOKEN`
 secret (fine-grained, this repository, Contents and Pull requests read/write), because pushes made
 with the default token do not start CI.
 
