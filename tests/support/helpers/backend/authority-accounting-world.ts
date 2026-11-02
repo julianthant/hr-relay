@@ -1,3 +1,4 @@
+import { donePage, sourceFixture } from "../../fixtures/ocr/source-pages.js";
 import type { DuoCeremonyLeaseToken } from "../../../../src/workflow-kit/duo-ceremony-lease.js";
 import { createAssistantAuthorization } from "../../../../src/backend/assistant/authorization.js";
 import { createCommandKernel, executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -401,16 +402,7 @@ export function createAuthorityAccountingTestWorld() {
     exclusions: [],
   };
 
-  const OCR_EXTRACTION = {
-    formType: "oath",
-    source: { kind: "local-agent", agentId: "claude-code", invocation: "read page1.png" },
-    readAt: "2026-08-07T09:00:00.000Z",
-    sourceSha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
-    sourcePage: 1,
-    pageKind: "emergency-contact",
-    record: null,
-    pageFingerprint: "1".repeat(64),
-  };
+  const OCR_EXTRACTION = donePage(sourceFixture(1).inputs[0]).output;
 
   const DRY_RUN_SCENARIO_RESULT = {
     resultId: UUID_8,
