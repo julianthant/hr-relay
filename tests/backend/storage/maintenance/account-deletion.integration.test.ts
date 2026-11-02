@@ -8,7 +8,7 @@ import nativeFs, { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSyn
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { it, vi } from "vitest";
+import { it, onTestFinished, vi } from "vitest";
 import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
@@ -103,28 +103,36 @@ for (const change of ["none", "unknown-member"] as const) it(`resumes interrupte
 it("serves confirmed account deletion through the guarded dashboard route and signals an empty machine", async () => {
   const f = await fixture();
   let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
-  try {
-    await f.runtime.close();
-    for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
-    application = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation,
-      repoRoot: f.workspace, backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
-    const base = `http://127.0.0.1:${application.port}`;
-    const post = (path: string, body: unknown, cookie?: string, origin = base) => fetch(`${base}/api/v1/profile/${path}`, {
-      method: "POST", headers: { origin, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body),
-    });
-    for (const email of ["fixture@ucsd.edu", "other@ucsd.edu"]) {
-      const login = await post("sign-in", { email, password: "disposable-fixture-password" });
-      assert.equal(PublicProfileStateSchema.parse(await login.json()).state, "active");
-      const cookie = login.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
-      assert.equal((await post("delete-account", { confirmed: true }, cookie, "http://foreign.invalid")).status, 403);
-      assert.equal((await post("delete-account", { confirmed: false }, cookie)).status, 400);
-      assert.equal(f.machine.readProfileRegistry().profiles.length, email === "fixture@ucsd.edu" ? 2 : 1);
-      const response = await post("delete-account", { confirmed: true }, cookie); assert.equal(response.status, 200);
-      assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "signed-out", signUpRequired: email === "other@ucsd.edu" });
-      assert.equal((await post("delete-account", { confirmed: true }, cookie)).status, 409);
-    }
-    assert.deepEqual(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`)).json()), { state: "signed-out", signUpRequired: true });
-  } finally { await application?.stop(); await f.close(); }
+  onTestFinished(async () => { await application?.stop(); await f.close(); });
+  let deletionError: unknown;
+  const deleteProfileAccount = f.machine.deleteProfileAccount.bind(f.machine);
+  const deletion = vi.spyOn(f.machine, "deleteProfileAccount").mockImplementation((profileId, epoch) => {
+    try { deleteProfileAccount(profileId, epoch); }
+    catch (error) { deletionError = error; throw error; }
+  });
+  onTestFinished(() => { deletion.mockRestore(); });
+  await f.runtime.close();
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
+  application = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation,
+    repoRoot: f.workspace, backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+  const base = `http://127.0.0.1:${application.port}`;
+  const post = (path: string, body: unknown, cookie?: string, origin = base) => fetch(`${base}/api/v1/profile/${path}`, {
+    method: "POST", headers: { origin, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body),
+  });
+  for (const email of ["fixture@ucsd.edu", "other@ucsd.edu"]) {
+    const login = await post("sign-in", { email, password: "disposable-fixture-password" });
+    assert.equal(PublicProfileStateSchema.parse(await login.json()).state, "active");
+    const cookie = login.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+    assert.equal((await post("delete-account", { confirmed: true }, cookie, "http://foreign.invalid")).status, 403);
+    assert.equal((await post("delete-account", { confirmed: false }, cookie)).status, 400);
+    assert.equal(f.machine.readProfileRegistry().profiles.length, email === "fixture@ucsd.edu" ? 2 : 1);
+    const response = await post("delete-account", { confirmed: true }, cookie);
+    assert.ifError(deletionError);
+    assert.equal(response.status, 200);
+    assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "signed-out", signUpRequired: email === "other@ucsd.edu" });
+    assert.equal((await post("delete-account", { confirmed: true }, cookie)).status, 409);
+  }
+  assert.deepEqual(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`)).json()), { state: "signed-out", signUpRequired: true });
 });
 
 it("refuses deletion before effects when a shared installation upgrade backup retains the person", async () => {
