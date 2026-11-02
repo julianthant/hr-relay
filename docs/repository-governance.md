@@ -23,9 +23,15 @@ web bundle, runs coverage alone, then performance. The operator authorizes relea
 
 `.github/workflows/merge-train.yml` runs on every push to `staging`, and CI calls it as its final job.
 It labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then merges
-`staging` into every open, non-draft, same-repository PR into `staging` that lacks it, whatever its
+`staging` into every open, non-draft, same-repository PR by `julianthant` into `staging` that lacks it, whatever its
 labels or auto-merge state, so every PR re-runs CI on the latest `staging`; CI cancels each PR's
 older in-progress run. Auto-merge then lands whichever PR passes first. A PR it cannot update gets
+`merge-conflict`. If GitHub's update reports a conflict, the train attempts a merge in a temporary
+worktree. Conflicts exclusively in `scripts/build/generated-outputs.ts`'s registered outputs are
+resolved by running the generators against the combined sources. Catalog conflicts must be wholly
+inside the generated section of `stores.md`; conflicts in authored text refuse. Generator failure
+or any authored conflict prevents a push. Before an ordinary fast-forward push, the train rechecks
+the PR's eligibility and expected head; a moved head is left to its owner. Successful updates clear
 `merge-conflict`. Workers merge their remote branch before pushing (never rebase or force-push). The workflow uses the `TRAIN_TOKEN`
 secret (fine-grained, this repository, Contents and Pull requests read/write), because pushes made
 with the default token do not start CI.
