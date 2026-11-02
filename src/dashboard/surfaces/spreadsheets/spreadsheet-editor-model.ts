@@ -1,7 +1,5 @@
 import { cellText, type SheetCell, type SheetRow, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { displayExtractedDate, formatInstantDate } from "../../lib/date-format.js";
-import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
-import type { SpreadsheetColumnBinding } from './spreadsheet-fields-model.js';
 import { spreadsheetField, spreadsheetValueMatches } from './spreadsheet-fields-model.js';
 
 export function spreadsheetForeground(background: string | undefined): string | undefined {

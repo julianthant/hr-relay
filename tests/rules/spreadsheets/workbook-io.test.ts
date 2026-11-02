@@ -13,8 +13,7 @@ it('emits independent XLSX XML metadata, hidden intake columns and deterministic
   expect(sheet).toMatch(/hidden="1"/u); expect(sheet).toContain('tooltip="Open"');
   const styles = await archive.file('xl/styles.xml')!.async('string');
   expect(styles).toContain('gradientFill'); expect(styles).toContain('formatCode="yyyy-mm-dd"');
-  const strings = await archive.file('xl/sharedStrings.xml')!.async('string');
-  expect(strings).toContain('<b/>'); expect(strings).toContain('00123');
+  expect(sheet).toContain('<b/>'); expect(sheet).toContain('00123');
   expect((await archive.file('xl/worksheets/_rels/sheet1.xml.rels')!.async('string'))).toContain('https://example.com/');
   expect(Object.values(archive.files).every(entry => entry.date.toISOString() === options.modifiedAt)).toBe(true);
   const imported = await importWorkbook('read.xlsx', first);
@@ -22,6 +21,14 @@ it('emits independent XLSX XML metadata, hidden intake columns and deterministic
   expect(imported.sheets[0].rows[1].cells[0].richText).toEqual(workbook.sheets[0].rows[1].cells[0].richText);
   const visible = await importWorkbook('visible.xlsx', await writeWorkbookXlsx(workbook, { columns: 'visible' }));
   expect(visible.sheets[0].width).toBe(2); expect(writeWorkbookCsv(workbook.sheets[0])).not.toContain('00123');
+});
+it('refuses nondefault workbook view metadata during master edits', async () => {
+  const archive = await JSZip.loadAsync(await writeWorkbookXlsx(workbook));
+  const entry = archive.file('xl/workbook.xml');
+  if (!entry) throw new Error('fixture workbook part missing');
+  archive.file(entry.name, (await entry.async('string')).replace('windowWidth="19420"', 'windowWidth="20000"'));
+  const imported = await importWorkbook('custom-view.xlsx', await archive.generateAsync({ type: 'arraybuffer' }));
+  expect(imported.unsupportedMetadata).toBe(true);
 });
 it('marks prefixed worksheet metadata that the editable model cannot carry', async () => {
   const archive = await JSZip.loadAsync(await writeWorkbookXlsx(workbook));

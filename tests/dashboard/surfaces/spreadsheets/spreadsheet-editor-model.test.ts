@@ -83,7 +83,7 @@ describe_m1('XLSX / CSV editor round trips', () => {
     sheet.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: 0.4 } };
     sheet.getCell('A3').fill = { type: 'pattern', pattern: 'solid', fgColor: { indexed: 3 } };
     original.addWorksheet('Other').getCell('B2').value = 'Keep';
-    const source = bytes(writeXlsx(original) as unknown as Uint8Array);
+    const source = bytes(writeXlsx(original));
     const document = await importSpreadsheet_m1('source.xlsx', source);
     assert_m1.equal(document.sheets[0].rows[0].cells[0].background, '#b7d7f0');
     assert_m1.equal(document.sheets[0].rows[2].cells[0].background, '#00ff00');
@@ -110,7 +110,7 @@ describe_m1('XLSX / CSV editor round trips', () => {
   it_m1('shows stored formula results and emits value copies, never formula recalculation', async () => {
     const original = new Workbook(), sheet = original.addWorksheet('Values');
     sheet.getCell('A1').value = 'Total'; sheet.getCell('A2').value = { formula: '1+2', result: 3 };
-    const document = await importSpreadsheet_m1('formula.xlsx', bytes(writeXlsx(original) as unknown as Uint8Array));
+    const document = await importSpreadsheet_m1('formula.xlsx', bytes(writeXlsx(original)));
     assert_m1.equal(document.hasFormulas, true); assert_m1.equal(document.sheets[0].rows[1].cells[0].value, 3);
     const exported = await importSpreadsheet_m1('copy.xlsx', await spreadsheetXlsx_m1(document));
     assert_m1.equal(exported.hasFormulas, false); assert_m1.equal(exported.sheets[0].rows[1].cells[0].value, 3);

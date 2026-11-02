@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+import { z } from 'zod';
 import { Workbook, writeXlsx } from '@shbernal/ts-xlsx';
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, validateWorkbookLibrary } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { createWorkbookLibraryService } from '../../../src/backend/workbooks/workbook-library-service.js';
@@ -270,20 +271,29 @@ it('drains acknowledged durable admissions from two processes in FIFO order afte
   const path = join(root, 'db.sqlite'), f = fixture(path);
   const peer = (op: WorkbookOperation) => fork(new URL('../../support/processes/workbook-queue-peer.ts', import.meta.url), [path, f.id, JSON.stringify(op)], { execArgv: ['--import', testProcessImport()], stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
   const first = peer(f.patch('first-peer', '001', 'first'));
+  const admission = z.object({ state: z.literal('admitted'), sequence: z.number().int().positive() }).strict();
+  const admitted = async (child: ReturnType<typeof peer>) => {
+    const message: unknown = (await once(child, 'message'))[0];
+    return admission.parse(message);
+  };
+  const exited = async (child: ReturnType<typeof peer>) => {
+    const code: unknown = (await once(child, 'exit'))[0];
+    return z.number().int().nullable().parse(code);
+  };
   let second: ReturnType<typeof peer> | undefined;
   try {
-    const [admitted1] = await once(first, 'message');
+    const admitted1 = await admitted(first);
     second = peer(f.patch('second-peer', '001', 'second'));
-    const [admitted2] = await once(second, 'message');
+    const admitted2 = await admitted(second);
     expect(admitted1.state).toBe('admitted'); expect(admitted2.state).toBe('admitted');
     expect(admitted1.sequence).toBeLessThan(admitted2.sequence);
     f.database.exec('BEGIN IMMEDIATE');
-    const completed = Promise.all([once(first, 'exit'), once(second, 'exit')]);
+    const completed = Promise.all([exited(first), exited(second)]);
     first.send('drain'); second.send('drain');
     // The owned transaction prevents either peer from applying its queued write.
     expect(f.database.prepare("SELECT COUNT(*) AS n FROM workbook_operations WHERE receipt_json IS NULL").get()?.n).toBe(2);
     f.database.exec('COMMIT');
-    expect((await completed).map(([code]) => code)).toEqual([0, 0]);
+    expect(await completed).toEqual([0, 0]);
     const receipts = f.repository.journal(f.id).slice(-2);
     expect(receipts.map(receipt => receipt.operationId)).toEqual(['first-peer', 'second-peer']);
     expect(receipts[1].changes[0]).toMatchObject({ oldValue: 'first', newValue: 'second' });

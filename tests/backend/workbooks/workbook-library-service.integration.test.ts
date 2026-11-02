@@ -174,7 +174,7 @@ it("validates named snapshots independently of the live master", () => {
 it("refuses a regressing clock without changing accepted versions", () => {
   const f = fixture(), first = f.service.create(workbook());
   f.clock.advanceWall(1000);
-  const last = f.service.save(first.libraryId, 1, first.workbook);
+  f.service.save(first.libraryId, 1, first.workbook);
   f.clock.advanceWall(-500);
   failure(() => f.service.save(first.libraryId, 2, first.workbook), "WORKBOOK_INVALID");
   expect(f.service.history(first.libraryId)).toEqual([]);

@@ -129,9 +129,12 @@ it.each(["workbook", "relationships"])("refuses well-formed but missing %s sheet
 });
 it("preserves no-sheet and empty-sheet refusals for empty XLSX workbooks", async () => {
   const workbook = new Workbook();
-  const parse = async () => parseSpreadsheetGrid({ bytes: Buffer.from(writeXlsx(workbook)), artifactId: "empty-xlsx", mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  assert.deepEqual(await parse(), { state: "refused", code: "unreadable-file", message: "workbook declares no worksheets" });
   workbook.addWorksheet("Empty");
+  const archive = await JSZip.loadAsync(writeXlsx(workbook));
+  const entry = archive.file('xl/workbook.xml'); assert.ok(entry);
+  archive.file('xl/workbook.xml', (await entry.async('string')).replace(/<sheets>.*?<\/sheets>/u, '<sheets/>'));
+  assert.deepEqual(await parseSpreadsheetGrid({ bytes: await archive.generateAsync({ type: 'nodebuffer' }), artifactId: 'no-sheets', mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), { state: "refused", code: "unreadable-file", message: "workbook declares no worksheets" });
+  const parse = async () => parseSpreadsheetGrid({ bytes: Buffer.from(writeXlsx(workbook)), artifactId: "empty-xlsx", mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   assert.deepEqual(await parse(), { state: "refused", code: "empty-sheet", message: 'worksheet "Empty" has no rows' });
 });
 it("keeps prefixed workbook elements, nonsequential sheet IDs and absolute worksheet targets", async () => {

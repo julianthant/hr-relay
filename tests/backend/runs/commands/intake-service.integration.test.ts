@@ -1,5 +1,5 @@
 import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
-import { Workbook, readXlsx, writeXlsx } from "@shbernal/ts-xlsx";
+import { readXlsx } from "@shbernal/ts-xlsx";
 import { composeIntake } from "../../../../src/backend/app/composition/dashboard/intake.js";
 import { readArtifactBytes } from "../../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
