@@ -47,7 +47,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       // only recovers the typed view the emission step dispatches on.
       const request = CommandRequestSchema.parse(input);
       if (request.family === "application") {
-        for (const target of result.affectedTargets) if (target.family === "run") deps.projection.refreshRun(target.runId);
+        for (const target of request.payload.targets) deps.projection.refreshRun(target.runId);
         return result;
       }
 

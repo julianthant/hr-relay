@@ -12,7 +12,7 @@ for (const type of ["pause-all", "pause-all-and-quit"] as const) it(`${type} ref
   const events: string[] = [];
   const unexpected = () => { throw new Error("unexpected kernel route"); };
   const result = CommandResultSchema.parse({ state: "applied", commandId,
-    affectedTargets: [{ family: "application", runtimeGeneration: 1 }, ...runIds.map(runId => ({ family: "run", runId }))] });
+    affectedTargets: [{ family: "application", runtimeGeneration: 1 }] });
   const service = createDashboardCommandService({ kernel: { execute: () => result, assistantAvailability: unexpected,
     assistantManifest: unexpected, executeWorkerPool: unexpected, executeAssistantModelPreference: unexpected },
     projection: { ingestFromTimeline: unexpected, refreshRun: runId => { events.push(runId); } },
