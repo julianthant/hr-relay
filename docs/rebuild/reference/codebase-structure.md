@@ -82,6 +82,7 @@ Paths in this table are relative to `src/backend/`.
 | `transports/cli/` | CLI dispatch and command handling. |
 | `transports/http/` | Dashboard HTTP routes, request schemas, and SSE subscriptions. |
 | `workbooks/` | Saved workbook library: validated workbook records, versions and history over its SQLite repository. |
+| `workbooks/workflow-workbook-service.ts` | Creates one new table workbook per run through the admitted library repository. The `workbooks.library` provider is composed in `app/composition/worker/run-resources.ts`; the original saved record supplies replay proof. |
 
 ### Dashboard and shared packages
 
@@ -120,6 +121,7 @@ folders use the same layout; their test-only composition inventory in
 audits without making either workflow available in production registries. Their retained proofs live
 at `ocr/steps/source-pages/step.ts` and `ocr-page/steps/read-page/step.ts` in the same unregistered inventory.
 
+`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Each UCPath call has a typed workflow-owned task call under `tasks/`; all three timeline groups have retained proofs under `steps/<key>/step.ts` using the same typed authors. Shared workbook publication lives outside this workflow; its task/command contract is `src/models/processing/workbooks/read-result.ts`. The shared task creates a new Spreadsheets-library workbook per run; linked writes and SharePoint imports are not exposed.
 `src/workflows/i9-lookup/workflow.ts` is child-only, with no public delegating parent yet. It uses
 the I-9 system store, then retains its typed result through `tasks/read-result.ts` in the workflow
 store. Its one `lookup` timeline checkpoint groups both tasks. The registered harness at
@@ -128,6 +130,7 @@ IDs when a summary was read.
 Its `index.ts` declares child-only exposure, the store and the retained proof. The generated
 `CHILD_ONLY_WORKFLOW_MODULES` admits it separately from the public workflow tuple. A caller must
 declare its delegation edge to resolve a child.
+
 
 Person Lookup has four chunk harnesses at `src/workflows/person-lookup/steps/<step>/step.ts`:
 `searching`, `cross-verify`, `active-status`, and `crm-dates`.

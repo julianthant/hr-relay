@@ -51,7 +51,7 @@ The effect adds these fields and capabilities.
 
 `src/rules/identity/ids.ts` owns the closed system identities. Browser namespaces are `ucpath`,
 `crm`, `onbase`, `kuali`, `servicenow`, `i9`, `new-kronos`, `old-kronos`, and `sharepoint`.
-Service namespaces are `extraction`, `normalization`, `ocr`, and `roster`.
+Service namespaces are `extraction`, `normalization`, `ocr`, `roster`, and `workbooks`.
 `TaskStoreId` also accepts `workflow:<workflow-id>`.
 
 `operation` uses `TaskOperationDeclaration` in `src/models/workflow/operation-display.ts`.
@@ -216,7 +216,10 @@ write has stopped. [Write safety](write-safety.md) owns post-fence settlement an
 
 #### Provider and artifact capabilities
 
-Current provider IDs are `ocr.extract`, `geocode.census`, and `geocode.nominatim`.
+Current provider IDs are `ocr.extract`, `geocode.census`, `geocode.nominatim`, and `workbooks.library`.
+
+`workbooks/read-result` publishes derived local output through the run-scoped `workbooks.library` provider. Its strict command creates a workbook, appends a table to an operator-linked sheet, or imports an XLSX artifact as a new workbook or linked version. It grants no HR-system mutation or filesystem access. The provider binds `operationKey` to the executing run; each key names one immutable command. Workbook and row identities bind the command digest, and immutable library history proves replay after interruption. Linked writes use an explicit expected version; a different command under the same run/key or a changed link refuses. The shared task declares no automatic retry; unconfirmed results fail visibly and resuming the same run checks saved history. Its deadline uses the existing task timeout.
+
 `src/backend/processing/providers/provider-client.ts` validates the immutable config identity,
 canonical request, adapter capability, response, request ID uniqueness, abort, and deadline.
 Its task-facing client accepts only the schema-bound payload.

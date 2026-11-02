@@ -1,6 +1,5 @@
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../workflow-kit/workflow.js";
 export { WORKFLOW_DESCRIPTORS } from "./generated-descriptors.js";
-
 export function createWorkflowDescriptorRegistry(
   publicDescriptors: readonly AnyWorkflowDescriptor[],
   childOnlyDescriptors: readonly AnyWorkflowDescriptor[],

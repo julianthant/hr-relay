@@ -361,6 +361,27 @@ function personLookupResultLeaves(scope: EvidenceValueScope): unknown[] {
 }
 
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...open(taskOutput("workflow:i9-check/read-match-outcome"), "shouldLookup"),
+  ...[taskOutput("workflow:i9-check/read-match-outcome"), taskOutput("workflow:i9-check/read-retention-row"), workflowResult("i9-check"), workflowResult("i9-check-roster-match"), workflowResult("i9-check-person-match"), workflowResult("i9-check-person-lookup")].flatMap(scope => [
+    ...open(scope, "identity.status", "identity.candidateCount", "identity.reason"),
+    ...person(scope, "identity.eid", "identity.name"),
+    ...population(scope, "identity.candidateEids"),
+  ]),
+  ...[taskOutput("workflow:i9-check/read-retention-row"), workflowResult("i9-check"), workflowResult("i9-check-roster-match")].flatMap(scope => [
+    ...person(scope, "row.employeeName", "row.ppsEid", "row.ucpathEmplId", "row.reviewerName"),
+    { scope, path: "row.recordId", classification: "direct-identifier", transform: "digest" },
+    ...open(scope, "row.hireDate", "row.separationDate", "row.foundInUcpath", "row.action", "row.notes"),
+  ]),
+  ...open(workflowResult("i9-check-person-match"), "shouldLookup"),
+  ...open(workflowResult("i9-check-person-lookup"), "shouldLookup"),
+  ...[workflowInput("i9-check"), workflowInput("i9-check-roster-match"), workflowInput("i9-check-person-match"), workflowInput("i9-check-person-lookup")].flatMap(scope => [
+    ...person(scope, "person.name", "person.firstName", "person.lastName", "person.dob", "roster.seed.ppsEid", "reviewerName"),
+    ...["person.ssn", "recordId", "ocrRunId"].map(path => ({ scope, path, classification: "direct-identifier", transform: "digest" })),
+    ...population(scope, "roster.rows"),
+    ...open(scope, "person.hireDate", "person.sourcePages", "roster.seed.separationDate", "asOf", "person.useMatch"),
+  ]),
+  ...open(taskOutput("workbooks/read-result"), "state", "version", "code", "message"),
+  ...["operationId", "libraryId"].map(path => ({ scope: taskOutput("workbooks/read-result"), path, classification: "direct-identifier", transform: "digest" })),
   ...["i9-lookup", "i9-lookup-lookup"].flatMap(id => [
     ...person(workflowInput(id), "lastName", "firstName"),
     { scope: workflowInput(id), path: "ssn", classification: "direct-identifier", transform: "digest" },
@@ -369,6 +390,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...person(scope, "signerName", "profileId", "i9Id"),
     ...open(scope, "i9Status"),
   ]),
+
   /* person-lookup ingress */
   ...[PERSON_LOOKUP_INPUT,
     ...["person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates"].map(workflowInput),

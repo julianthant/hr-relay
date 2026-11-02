@@ -189,6 +189,10 @@ export const ERROR_CATALOG = Object.freeze({
     "Person Lookup received inconsistent UCPath and CRM identities.",
     EmptyParametersSchema,
   ),
+  I9_CHECK_DATA_INVALID: catalogEntry(
+    "I-9 check evidence is missing, invalid, or inconsistent.",
+    EmptyParametersSchema,
+  ),
   PERSON_LOOKUP_UCPATH_SEARCH_FAILED: catalogEntry(
     "UCPath search failed.",
     EmptyParametersSchema,
@@ -623,6 +627,10 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   WORKBOOK_INVALID: catalogEntry(
     "The workbook is malformed and cannot be saved.",
+    EmptyParametersSchema,
+  ),
+  WORKBOOK_PROVIDER_UNAVAILABLE: catalogEntry(
+    "The workflow workbook result is unconfirmed. Resume the same run to check its saved result.",
     EmptyParametersSchema,
   ),
   WORKBOOK_NOT_FOUND: catalogEntry(
