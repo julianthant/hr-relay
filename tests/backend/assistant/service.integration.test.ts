@@ -1,5 +1,5 @@
 import { ChatGptResourceClosureUnprovedError } from '../../../src/backend/accounts/chatgpt-account-service.js';
-import { ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema } from '../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema, AssistantPermissionViewSchema } from '../../../src/models/dashboard/assistant.js';
 import { boundProfileCredentials, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { composeSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
@@ -517,6 +517,18 @@ it('reads only a strict served preference view and never supplies a missing auth
   assert.throws(() => f.service().modelPreference());
   const failure = new Error('corrupt preference authority');
   assert.throws(() => createAssistantService({ ...f.options, readModelPreference: () => { throw failure; } }).modelPreference(), error => error === failure);
+  assert.equal(f.calls(), 0);
+});
+
+it("requires a served permission reader and performs no inference when reading it", () => {
+  const f = fixture();
+  const view = AssistantPermissionViewSchema.parse({ profileId: UUID_4, epoch: 1, state: "grant-required", mode: "every-action",
+    policyRevision: 0, settingsRevision: 1, settingsSchemaHash: "a".repeat(64) });
+  const service = createAssistantService({ ...f.options, readPermission: () => view });
+  assert.deepEqual(service.permission(), view);
+  assert.throws(() => f.service().permission(), /assistant-permission-unavailable/u);
+  const failure = new Error("corrupt permission authority");
+  assert.throws(() => createAssistantService({ ...f.options, readPermission: () => { throw failure; } }).permission(), error => error === failure);
   assert.equal(f.calls(), 0);
 });
 

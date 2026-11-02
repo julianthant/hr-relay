@@ -18941,7 +18941,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination-filing-present"
     },
     {
-      "fingerprint": "3ebd467bea83eb53c39419fdebb80b25597cde3752491309d6f7e077208d49b5",
+      "fingerprint": "308754cf4ea934afd6d6c2b63bcf2d3d377586dbd53e5018f6379570caebb9e9",
       "sources": [
         {
           "path": "src/backend/processing/workbooks/tasks/read-result.ts",
@@ -18973,7 +18973,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/dashboard/assistant.ts",
-          "sha256": "bcd7be6f2f4eb5e25f69823655d1b19c2ab86a3be3def91163d1481aaf1f5ad9"
+          "sha256": "7b28f720d6c842912b2e91cc5f4d5973e9bae8e94caf37cbbd861a1f0b1ea6ce"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
