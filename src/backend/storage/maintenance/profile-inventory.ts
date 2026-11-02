@@ -1,27 +1,27 @@
-import { createBrowserRoots } from "../browser-roots.js";
-import { privatePathRejects } from "../private-path.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { InstallationLease } from "../admission/installation.js";
-import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
-import { offlineMaintenanceWorkspace, type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
-import { BrowserSystemIdSchema, type BrowserSystemId } from "../../../rules/identity/ids.js";
-import { initialSettingsFileRecord } from "../../../models/config/settings.js";
-import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { CredentialLockRecordSchema, readPrivateFile } from "../configuration/credential-safe-file.js";
-import { lstatSync, opendirSync, readdirSync, type Dirent } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
-import { type RuntimeAdmission } from "../admission/admission.js";
-import { ProfileBrowserRootRefusalError, requireRuntimeAdmission } from "../admission/admission-identity.js";
-import type { Clock } from "../../../rules/time/clock.js";
-import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { proveProfileRootsUnused } from "./process-closure.js";
-import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
-import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { resolveConfigWithProvenance } from "../../app/config/resolve.js";
+import { lstatSync,opendirSync,readdirSync,type Dirent } from "node:fs";
+import { basename,dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
+import { initialSettingsFileRecord } from "../../../models/config/settings.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { BrowserSystemIdSchema,type BrowserSystemId } from "../../../rules/identity/ids.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { resolveConfigWithProvenance } from "../../app/config/resolve.js";
+import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
+import { ProfileBrowserRootRefusalError,requireRuntimeAdmission } from "../admission/admission-identity.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import type { InstallationLease } from "../admission/installation.js";
+import { offlineMaintenanceWorkspace,type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
+import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
+import { createBrowserRoots } from "../browser-roots.js";
+import { CredentialLockRecordSchema,readPrivateFile } from "../configuration/credential-safe-file.js";
+import { privatePathRejects } from "../private-path.js";
+import { AuthoritySourceClosureUnprovedError,hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
+import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { verifyStoppedBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { countProfileCredentialLoginRows } from "../sqlite/profile-local-databases.js";
+import { inspectRuntimeProcessOrphans,observeRuntimeLockSnapshot } from "../sqlite/runtime-process-locks.js";
+import { proveProfileRootsUnused } from "./process-closure.js";
 
 type CredentialMembershipCustody = Pick<ReturnType<AuthorityDatabase["readProfileResourceCustody"]>, "slots" | "reservations" | "verificationProfiles" | "browsers" | "configSnapshots" | "controls" | "artifactReferences" | "upgrades">;
 type BrowserProfileCustody = Pick<CredentialMembershipCustody, "slots" | "verificationProfiles" | "browsers" | "configSnapshots" | "controls">;
@@ -457,13 +457,17 @@ export function credentialCopyProcessCustody(input: Readonly<{ machine: RuntimeA
   return { processLocks: locks.processLocks, runtimeGeneration: locks.runtimeGeneration, orphans };
 }
 
-export function assertCredentialCopyResourcesClosed(facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) {
+function assertStoppedProfileResourcesClosed(facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) {
   if (facts.reservations.some(reservation => reservation.state === "pending")
     || facts.slots.some(slot => slot.retiredAt === null && !facts.leases.some(lease => lease.workerId === slot.workerId))
     || facts.leases.some(lease => !facts.slots.some(slot => slot.workerId === lease.workerId))
-    || facts.writeIntents.some(intent => intent.status !== "committed" && intent.status !== "observed-present") || facts.pendingArtifacts.length > 0
     || facts.leases.some(lease => lease.lifecycle.state !== "stopped") || facts.browsers.some(browser => browser.health !== "closed")
-    || facts.duoLeases.some(lease => lease.state === "held") || facts.controls.some(control => control.auditedAt === undefined)
+    || facts.duoLeases.some(lease => lease.state === "held") || facts.controls.some(control => control.auditedAt === undefined)) throw new Error("credential-maintenance-custody-unproved");
+}
+
+export function assertCredentialCopyResourcesClosed(facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) {
+  assertStoppedProfileResourcesClosed(facts);
+  if (facts.writeIntents.some(intent => intent.status !== "committed" && intent.status !== "observed-present") || facts.pendingArtifacts.length > 0
     || facts.runs.some(run => run.lifecycle.state !== "terminal")) throw new Error("credential-maintenance-custody-unproved");
 }
 
@@ -471,21 +475,21 @@ export function readStoppedProfileUpgradeInventory(input: Readonly<{
   machine: RuntimeAdmission; admission: RuntimeAdmission; clock: Clock; hostFacts: HostConfigFacts; browserClosure: ProfileBrowserClosure;
 }>) {
   const { machine, admission } = input;
-  admission.assertReadyStoppedProfileUpgradeOwner(machine);
+  const purpose = admission.assertReadyStoppedProfileUpgradeOwner(machine);
   const operation = machine.maintenanceOperation();
   machine.assertOfflineMaintenance(operation);
   const context = machine.readInstallationContext();
   if (context === undefined) throw new Error("profile-stopped-upgrade-installation-required");
   assertOfflineMaintenanceForProcessRoot(operation, resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot));
   const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
-  assertCredentialCopyResourcesClosed(facts);
+  if (purpose === "startup") assertStoppedProfileResourcesClosed(facts); else assertCredentialCopyResourcesClosed(facts);
   if (facts.settingsAuthority.state !== "initialized") throw new Error("profile-stopped-upgrade-settings-required");
   const settings = facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
   const probeConfig = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
     { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
   const savedBrowserRoot = probeConfig.paths.browserProfileRoot;
   const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, input.browserClosure);
-  if (membership.unsupported.length !== 0) throw new Error("profile-stopped-upgrade-copy-custody-unproved");
+  if (purpose !== "startup" && membership.unsupported.length !== 0) throw new Error("profile-stopped-upgrade-copy-custody-unproved");
   const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path));
   if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))
     || backups.some(backup => backup.manifest.installationId !== admission.profileBinding.installationId

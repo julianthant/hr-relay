@@ -13,8 +13,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "eb6dfc2188831da1e75aa5aeb71efb615151ad6b7047c9341efcb2a3260f54f2",
-    "reason": "Startup source-closure uncertainty records failed producer closure before unwind, retaining dependent database and admission custody. Selected-context open failure retains typed custody uncertainty and rethrows. Unproved upgrade failure remains retained in the exact exclusive admission and root lifetime; settled cleanup clears exclusiveOwner only after release. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and immediate stop promises, whose callers await and propagate failures before storage release. An unavailable authority generation stays explicitly unavailable and backup presence is assessed separately. Required native browser closure failures follow the same upgrade rejection and custody-retention path."
+    "sha256": "16cd4b0a910ea134433c38a23915f65fc27b272917153a4382168af52432b235",
+    "reason": "Startup producer closure failures retain dependent native database and admission custody. Selected-context open failure rethrows typed custody uncertainty. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and stop promises, whose callers await failures before storage release. An unavailable authority generation remains explicitly unavailable; backup presence is assessed separately. Automatic upgrade runs before composition in storage-compose.ts and has no HTTP response handoff."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
@@ -69,7 +69,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/storage/admission/installation.ts",
 
-      "sha256": "6fbfc0191b2201305c8b9d46588172929d43dcd484e00dd85e5023d8477eb98c",
+      "sha256": "4b17e0fe58179c7ab85d5442e4e3d6cc25ad7c9e8b6da745b137077132561a43",
     "reason": "Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
 
   },
@@ -116,7 +116,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
 
-    "sha256": "1e2a052b3a64f02c245a35f8ec91933beee7e082e9b6697c6864117f4ddd4f64",
+    "sha256": "dc05f2f82f2039a64297a3f62254acddfa7326be0c3295421281dd4bd7d19428",
 
     "reason": "Failed constructor cleanup retains the actual native database and admission with both opening and close failures. Failed rollback retains database custody with the original failure; successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or named search refusal, never validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody releases; required native browser closure precedes cancellation."
   },
@@ -152,7 +152,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/bootstrap/secure-env-bootstrap.ts",
-    "sha256": "7a50724cfd8a328d4b80d8b8ff5e7d8507d06acb0d1070d85fbb27b5c64cb9ab",
+    "sha256": "6de4ae084b7fbab7c6ac4883cd995ec2724a5dcef6b301062fa17f1500530e82",
     "reason": "The root listener or inherited lifetime is acquired before admission. Unproved source closure retains admission and rethrows; typed runtime or source-closure uncertainty retains the outer lifetime, while settled paths await its close. Stopped maintenance releases admission only when custody was not retained. No failed bootstrap becomes successful runtime admission. The real browser closure port is supplied to dashboard admission and offline cancellation without changing the failure-retention path."
   },
   {
@@ -162,7 +162,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/storage/configuration/canonical-credential-store.ts",
-    "sha256": "29501abbca72e4a478770141323436ccebba9828974b30218cc753195c9dc92a",
+    "sha256": "b4e40ab4ba2fd60f6b5da867532d82ce5e9f85c8049e53d0f300a20e50093cdc",
     "reason": "The catch revokes the asynchronous ChatGPT lease by clearing its active flag, retains any unproved source and exact process lock, and rethrows the settled body error or translates the failure to a named credential refusal. It never substitutes a credential record or successful result. Other catches preserve explicit busy, unavailable, pending or uncertain failures and retain source owners before rethrowing."
   },
   {

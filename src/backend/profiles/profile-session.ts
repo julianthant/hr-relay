@@ -1,67 +1,40 @@
-import { initializeCanonicalCredentials, captureCanonicalCredentialUpgradeSource, eraseCanonicalDraftCredentials, captureCanonicalDraftErasure } from "../storage/configuration/canonical-credential-store.js";
+import { captureCanonicalDraftErasure,eraseCanonicalDraftCredentials,initializeCanonicalCredentials } from "../storage/configuration/canonical-credential-store.js";
 import { privatePathRejects } from "../storage/private-path.js";
 
-import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
-import { resolveConfigWithProvenance } from "../app/config/resolve.js";
-import { NativeBrowserClosureUnprovedError, onboardingProfileDirectory, createBrowserRoots, assertPrivateProfilePath } from "../storage/browser-roots.js";
-import { ProfileOnboardingDuoProviderError } from "../runtime/browser/onboarding-duo-provider.js";
-import { ProfileSessionRefusedError } from "./profile-errors.js";
-import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure } from '../storage/source-closure.js';
-import { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
-import { createHash, randomUUID } from "node:crypto";
-import { closeSync, constants, fstatSync, openSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { createHash,randomUUID } from "node:crypto";
+import { closeSync,constants,existsSync,fstatSync,lstatSync,mkdirSync,openSync,readdirSync,readFileSync,realpathSync,rmSync } from "node:fs";
+import { basename,dirname,join,relative,resolve } from "node:path";
 import { z } from "zod";
-import { createCredentialStore, initialDocument, assertCredentialStoreOwner, CredentialStoreCommitUncertainError, type CredentialStoreHooks } from "../storage/configuration/credential-store.js";
-import { type RuntimeAdmission } from "../storage/admission/admission.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsApplyInputSchema } from "../../models/config/protected-settings.js";
+import { resolveConfigWithProvenance } from "../app/config/resolve.js";
+import { ProfileOnboardingDuoProviderError } from "../runtime/browser/onboarding-duo-provider.js";
+import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
 import { requireRuntimeAdmission } from "../storage/admission/admission-identity.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../models/config/protected-settings.js";
+import { type RuntimeAdmission } from "../storage/admission/admission.js";
+import { assertPrivateProfilePath,createBrowserRoots,NativeBrowserClosureUnprovedError,onboardingProfileDirectory } from "../storage/browser-roots.js";
+import { assertCredentialStoreOwner,createCredentialStore,CredentialStoreCommitUncertainError,initialDocument,type CredentialStoreHooks } from "../storage/configuration/credential-store.js";
+import { hasUnprovedSourceClosure } from '../storage/source-closure.js';
+import { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
+import { ProfileSessionRefusedError } from "./profile-errors.js";
 
-import { operatorFailureSentence, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
-import { assertFinishedProfileOnboarding, deriveProfileNames, ProfileNameValidationError, ProfileAuthoritySnapshotSchema, type ProfileAuthoritySnapshot } from "../../models/profiles/profile.js";
-import { IsoInstantSchema } from "../../rules/identity/ids.js";
-import { noSymlinkAncestry, withOperationProof, type DirectoryIdentity } from "../storage/configuration/credential-safe-file.js";
-import { type CredentialInventory } from "./credential-inventory.js";
-import { createProfileRegistry, withProfileLock, ProfileRegistryAuthorityError } from "./registry.js";
-import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation } from "../../models/profiles/profile.js";
-import { createProfileVerifiers } from "../storage/configuration/verifier-store.js";
-import { ProfileOnboardingStateSchema, type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
+import { operatorFailureSentence,type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
+import { assertFinishedProfileOnboarding,deriveProfileNames,LogoutOperationSchema,ProfileAuthoritySnapshotSchema,ProfileNameValidationError,SignUpOperationSchema,type LogoutOperation,type ProfileAuthoritySnapshot,type ProfileOperation,type SignUpOperation } from "../../models/profiles/profile.js";
 import type { ProfileOnboardingMethod } from "../../models/profiles/public-profile.js";
+import { ProfileOnboardingStateSchema,type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
+import { IsoInstantSchema } from "../../rules/identity/ids.js";
+import { systemClock,type Clock } from "../../rules/time/clock.js";
+import { noSymlinkAncestry,withOperationProof,type DirectoryIdentity } from "../storage/configuration/credential-safe-file.js";
+import { createDuoCredentialStore } from "../storage/configuration/duo-credential-store.js";
+import { createProfileVerifiers } from "../storage/configuration/verifier-store.js";
+import { type CredentialInventory } from "./credential-inventory.js";
 import type { ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
 import { createProfileOnboarding } from "./profile-onboarding.js";
-import { createDuoCredentialStore } from "../storage/configuration/duo-credential-store.js";
-import { systemClock, type Clock } from "../../rules/time/clock.js";
+import { createProfileRegistry,ProfileRegistryAuthorityError,withProfileLock } from "./registry.js";
 
-import type { ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
 import type { CredentialStore } from "../../models/config/credential-store.js";
-import type { SettingsRuntimeSnapshot } from "../runtime/settings/settings-runtime.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-
-export class ProfileUpgradeUnavailableError extends Error {
-  readonly code = "PROFILE_UPGRADE_UNAVAILABLE";
-  constructor(cause: unknown) { super(operatorFailureSentence("PROFILE_UPGRADE_UNAVAILABLE"), { cause }); this.name = "ProfileUpgradeUnavailableError"; }
-}
-
-export interface AuthenticatedProfileUpgrade { readonly profileId: string; }
-const authenticatedUpgrades = new WeakMap<AuthenticatedProfileUpgrade, (machine: RuntimeAdmission) => string>();
-export function consumeAuthenticatedProfileUpgrade(authorization: AuthenticatedProfileUpgrade, machine: RuntimeAdmission): string {
-  const consume = authenticatedUpgrades.get(authorization);
-  if (consume === undefined) throw new ProfileSessionRefusedError("PROFILE_UPGRADE_UNAVAILABLE");
-  authenticatedUpgrades.delete(authorization);
-  return consume(requireRuntimeAdmission(machine));
-}
-function issueAuthenticatedProfileUpgrade(profileId: string,
-  capture: NonNullable<ReturnType<RuntimeAdmission["captureProfileUpgradeHandoff"]>>,
-  credentials: ReturnType<typeof captureCanonicalCredentialUpgradeSource>): AuthenticatedProfileUpgrade {
-  const authorization = Object.freeze({ profileId });
-  authenticatedUpgrades.set(authorization, machine => {
-    const claim = capture.consume(machine);
-    credentials.revalidate(machine, claim);
-    return claim;
-  });
-  return authorization;
-}
-export interface ProfileUpgradeRequired extends ProfileRefusal { readonly upgrade: AuthenticatedProfileUpgrade; }
+import type { ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
+import type { SettingsRuntimeSnapshot } from "../runtime/settings/settings-runtime.js";
 
 export interface ProfileActivity {
   hasUnquiescedWork(profileId: string): boolean;
@@ -152,7 +125,6 @@ export function createProfileSession(input: {
   const storageAdmissions = new Map<string, { ordinary?: RuntimeAdmission; settlement?: RuntimeAdmission }>();
   const authoritySnapshots = new WeakSet<ProfileAuthoritySnapshot>();
   let logoutContinuationGeneration = 0;
-  let upgradeRequested = false;
 
   function writeOperation(operation: ProfileOperation): void {
     admission.publishProfileOperation(operation);
@@ -678,7 +650,7 @@ export function createProfileSession(input: {
         }
       }
     },
-    signIn(fields: { readonly email: string; readonly password: string; readonly at: string }): ActiveProfileSession | ProfileRefusal | ProfileCancelling | ProfileUpgradeRequired {
+    signIn(fields: { readonly email: string; readonly password: string; readonly at: string }): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
       const at = IsoInstantSchema.parse(fields.at);
       admission.assertWritable();
       admission.lifetime.assertRuntimeAvailable();
@@ -712,21 +684,6 @@ export function createProfileSession(input: {
         }
         if (readOperations().some((entry) => entry.kind === "logout" && entry.profileId !== row.profileId && entry.phase !== "complete")) {
           return refusal("PROFILE_TRANSITION_BLOCKED");
-        }
-        if (upgradeRequested) return refusal("PROFILE_TRANSITION_BLOCKED");
-        if (row.lifecycle === "ready" && row.credentialState === "saved") {
-          const claim = row.profileId;
-          const capture = admission.captureProfileUpgradeHandoff(claim);
-          if (capture !== undefined) {
-            let credentials: ReturnType<typeof captureCanonicalCredentialUpgradeSource>;
-            try { credentials = captureCanonicalCredentialUpgradeSource(admission, claim); }
-            catch (error) {
-              if (error instanceof AuthoritySourceClosureUnprovedError) throw error;
-              throw new ProfileUpgradeUnavailableError(error);
-            }
-            upgradeRequested = true;
-            return { ...refusal("PROFILE_UPGRADE_STARTING"), upgrade: issueAuthenticatedProfileUpgrade(row.profileId, capture, credentials) };
-          }
         }
         const active = activate(row.profileId);
         try {

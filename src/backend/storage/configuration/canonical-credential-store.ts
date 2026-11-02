@@ -1,22 +1,22 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { lstatSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { createCipheriv,createDecipheriv,createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from "node:crypto";
+import { lstatSync,readdirSync } from "node:fs";
+import { dirname,join } from "node:path";
 import { z } from "zod";
-import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { DuoCredentialRecordSchema } from "../../../models/config/duo-credential-store.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { encodePrivate } from "../../../rules/validation/private-equal.js";
-import { deepFreeze } from "../../../rules/validation/immutability.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import type { SignUpOperation } from "../../../models/profiles/profile.js";
-import type { ProfilePublicationRead, StoppedControlProfileInventory } from "../admission/installation.js";
-import { RuntimeLifetimeLock, type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
-import type { RuntimeAdmission } from "../admission/admission.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
+import { encodePrivate } from "../../../rules/validation/private-equal.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
-import { fsyncPath, replacePrivateFile, writePrivateStage } from "../private-path.js";
-import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
-import { validateDuoKeyPair } from "./duo-signing.js";
+import type { RuntimeAdmission } from "../admission/admission.js";
+import type { ProfilePublicationRead,StoppedControlProfileInventory } from "../admission/installation.js";
+import { RuntimeLifetimeLock,type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
+import { fsyncPath,replacePrivateFile,writePrivateStage } from "../private-path.js";
+import { hasUnprovedSourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { credentialKeyCustody } from "./credential-key-custody.js";
-import { assertPrivateFileLockBytes, capturePriorPrivateFileLock, createPrivateLock, ensureChildDirectory, noSymlinkAncestry, readPrivateFile, PrivateFileReadTransitionError, removeExactPath, statDirectory, withPrivateFileLock, withOperationProof, PrivateFileLockUnavailableError, type DirectoryIdentity } from "./credential-safe-file.js";
+import { assertPrivateFileLockBytes,capturePriorPrivateFileLock,createPrivateLock,ensureChildDirectory,noSymlinkAncestry,PrivateFileLockUnavailableError,PrivateFileReadTransitionError,readPrivateFile,removeExactPath,statDirectory,withOperationProof,withPrivateFileLock,type DirectoryIdentity } from "./credential-safe-file.js";
+import { validateDuoKeyPair } from "./duo-signing.js";
 
 export type CanonicalCredentialKind = "protected" | "duo" | "chatgpt";
 export type CanonicalCredentialRecord = Readonly<{ revision: number; value: unknown }>;
@@ -465,41 +465,6 @@ export function captureCanonicalCredentialPublication(machine: RuntimeAdmission,
 export function readCanonicalCredentialForPublication(machine: RuntimeAdmission, profile: RuntimeAdmission,
   operation: SignUpOperation, kind: CanonicalCredentialKind, publication: ProfilePublicationRead): CanonicalCredentialRecord | undefined {
   return captureCanonicalCredentialPublication(machine, profile, operation, publication).records[kind];
-}
-
-export function captureCanonicalCredentialUpgradeSource(machine: RuntimeAdmission, profileId: string) {
-  const observe = (owner: RuntimeAdmission, current: string): string => {
-    if (current !== profileId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-    requireRuntimeAdmission(owner).assertProfileUpgradeCredentialSource(current);
-    const binding = { installationId: owner.locator.installationId, profileId: current };
-    const paths = fixedCanonicalPaths(owner.stateRoot, join(owner.stateRoot, "profiles", current), binding);
-    const ancestry = new Map<string, DirectoryIdentity>();
-    const assertCurrent = () => owner.assertProfileUpgradeCredentialSource(current);
-    try {
-      assertCurrent();
-      if (!noSymlinkAncestry(paths.directory, ancestry)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-      if (readPrivateFile(paths.operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
-      const file = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
-      if (file === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
-      const head = ActiveHead.parse(parse(file.bytes));
-      if (head.installationId !== binding.installationId || head.profileId !== binding.profileId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-      assertCurrent(); const key = authenticateHead(head), files = [file];
-      inspectCanonicalNamespace(paths, head, key, new Map(), assertCurrent, ancestry);
-      for (const kind of kinds) {
-        assertCurrent(); const record = readPrivateFile(paths.records[kind], { label: "protected.json", maxBytes });
-        if (record === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-        open(head, key, kind, record.bytes); files.push(record);
-      }
-      assertCurrent(); return canonicalJsonStringify(files.map(source => ({ ...source.identity, digest: digest(source.bytes) })));
-    } catch (error) {
-      if (hasUnprovedSourceClosure(error)) { owner.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission: owner }); }
-      throw error;
-    }
-  };
-  const original = observe(machine, profileId);
-  return Object.freeze({ revalidate(owner: RuntimeAdmission, current: string): void {
-    if (observe(owner, current) !== original) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
-  } });
 }
 
 export const CanonicalCredentialRestoreSnapshotSchema = z.strictObject({ binding: Binding,

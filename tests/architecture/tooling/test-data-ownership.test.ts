@@ -1,12 +1,12 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { describe, it } from "vitest";
+import { existsSync,readFileSync,realpathSync } from "node:fs";
+import { dirname,join,relative,resolve } from "node:path";
 import ts from "typescript";
-import { TEST_DATA_CONFIG_PATH, TEST_DATA_LOCAL_CONFIG_PATH, TEST_DATA_LOCAL_EXAMPLE_PATH } from "../../../src/models/config/test-data.js";
-import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
+import { describe,it } from "vitest";
+import { TEST_DATA_CONFIG_PATH,TEST_DATA_LOCAL_CONFIG_PATH,TEST_DATA_LOCAL_EXAMPLE_PATH } from "../../../src/models/config/test-data.js";
+import { gitVisibleFiles,REPO_ROOT } from "../support/helpers/guard-files.js";
 
 function isUnitTest(path: string): boolean {
   return path.startsWith("tests/") && /\.test\.(?:ts|js)$/u.test(path)
@@ -83,7 +83,7 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "authenticateDocument" },
   { importer: "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
 ] as const;
-const RETENTION_CASES_MODULE = "tests/support/processes/authenticated-upgrade-retention-cases.js";
+const RETENTION_CASES_MODULE = "tests/support/processes/startup-upgrade-retention-cases.js";
 const RETENTION_CASES_OWNER = "tests/support/processes/credential-source-retention-worker.ts";
 const PROCESS_ENTRYPOINTS = [
   { file: "credential-source-retention-worker.ts", consumers: ["tests/support/helpers/credential-source-retention.ts"] },
@@ -358,9 +358,9 @@ describe("test-data ownership", () => {
   it("process fixtures are exactly recorded child entrypoints and cannot be imported", () => {
     const files = sourceFiles(["tests", "scripts", "src"]);
     assert.deepEqual(sourceFiles(["tests/support/processes"]).map((path) => path.split("/").at(-1)).toSorted(),
-      [...PROCESS_ENTRYPOINTS.map((entry) => entry.file), "authenticated-upgrade-retention-cases.ts"].toSorted());
+      [...PROCESS_ENTRYPOINTS.map((entry) => entry.file), "startup-upgrade-retention-cases.ts"].toSorted());
     assert.equal(importsOf(RETENTION_CASES_OWNER).filter(({ resolved }) => resolved === RETENTION_CASES_MODULE).length, 1);
-    assert.equal(processImportViolations("tests/support/helpers/violation.ts", 'import "../processes/authenticated-upgrade-retention-cases.js";').length, 1);
+    assert.equal(processImportViolations("tests/support/helpers/violation.ts", 'import "../processes/startup-upgrade-retention-cases.js";').length, 1);
     assert.deepEqual(files.filter((path) => path !== "tests/architecture/tooling/test-data-ownership.test.ts").flatMap((path) => processImportViolations(path, readFileSync(join(REPO_ROOT, path), "utf8"))), []);
     for (const entry of PROCESS_ENTRYPOINTS) {
       const consumers = files.filter((path) => path !== "tests/architecture/tooling/test-data-ownership.test.ts" && !path.startsWith("tests/support/processes/")

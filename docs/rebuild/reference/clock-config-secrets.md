@@ -432,8 +432,8 @@ SQLite transaction, then applies the required migrations. The settled record car
 and canonical plan digest.
 The record's `backup_digest` matches the backup SHA-256. A failed migration rolls back its database
 changes. For pending diagnostic stages it reclaims through `diagnostic-maintenance` and verifies
-unchanged authority generation and content fingerprint. Only the explicit stopped upgrade converts a
-prior schema.
+unchanged authority generation and content fingerprint. Supported registered person schemas also
+upgrade automatically before dashboard runtime admission.
 `upgradeReadyProfileStorage` separately handles an already READY, saved profile bound to supported schema 8, 9 or 10.
 It acquires the actual machine workspace's restore admission before privately issuing a stopped
 purpose from that same exclusive machine and registered runtime claim. Issuance verifies native
@@ -446,7 +446,10 @@ grant generic writes/exclusive authority, delegate nested copies, or admit an in
 Its source fingerprint is privately bound before issuance and checked again inside the migration
 transaction with the actual verified backup. Readback binds the exact source version and current destination. Unrelated business rows, Settings, terminal assistant records and audits remain unchanged; only the declared editor records, retired automatic grants and pending automatic proposals are retired, alongside schema metadata and the appended upgrade record. Already-current READY
 inspection never reclaims diagnostics. Unproved source closure or rollback retains restore custody
-and the original failures. This service adds no public login, CLI, or automatic startup upgrade path.
+and the original failures. `upgradeProfileAtStartup` uses this same engine before HTTP, account or
+ordinary profile composition. It requires stopped native/process/browser resources while preserving
+queued runs, unresolved write fences and pending artifact rows exactly; the stricter manual and
+credential-copy paths continue to require retired durable work.
 A changed source fails with `source-changed: re-plan upgrade`. Recovery, backups, and restores remain
 explicit operations in their storage owners; ordinary shutdown does not create a backup.
 
@@ -533,10 +536,18 @@ instead of reading the map directly.
 
 ### Profile storage admission
 
-A READY, saved profile with supported SQLite schema 8–10 can request its backed-up upgrade only through genuine password-verified sign-in. Verification, normal lockout and selection/logout checks precede a private, once-consumed maintenance authorization; no applying operation, ordinary child admission, credential read or session token is issued for it. Current schema 11 sign-in remains ordinary. Pending setup operations remain intact and cannot become READY-upgrade authority.
+Dashboard startup inspects every registered READY person under genuine exclusive installation and
+maintenance ownership before ordinary admission, HTTP or credential consumers. Supported SQLite
+schemas 8–10 receive a verified same-person backup and the stopped forward migration, followed by
+current-schema health readback. Current stores are inspected without another backup. Missing,
+corrupt, foreign and future databases refuse with `STORAGE_PROFILE_UPGRADE_REFUSED`; they never
+initialize empty storage. Pending setup and logout remain owned by their existing continuation
+protocols. Sign-in only authenticates a current person and never schedules an app restart or upgrade.
 
-The authorization retains only identity evidence: exact installation/workspace/locator, registry/control/verifier/operation observation, anchored key and erasure head, canonical source and sidecar identities/digests, and strict encrypted v4 envelope metadata. It contains no password, decrypted value or ordinary authority. Its identity evidence survives intentional old shared-admission release only for comparison against a fresh genuine exclusive installation; any other drift or reuse refuses. The existing stopped service still owns actual restore, all-stopped resources, verified backup, migration and readback.
-
+The migration purpose binds immutable person/installation IDs, exact source and sidecar evidence,
+canonical credential-head metadata and source fingerprints. It cannot read credentials or grant
+ordinary writes. Failed native or descriptor closure retains the actual owners and lifetime listener;
+no successor admission or automatic retry is permitted while closure remains uncertain.
 
 Fresh machine bootstrap owns the registry, verifier and installation-control evidence without a root database or selected profile. A supported pre-profile flat store starts clean through the verified startup migration below; unsupported unbound state remains refused. Normal boot never assigns a default profile. Canonical bound database metadata binds immutable installation and profile UUIDs before writable configuration or repository construction. A control-authenticated pending sign-up issues exact database-only setup; ready storage claims require canonical binding. Normal registry publication cannot add profiles: the credential owner captures exact canonical committed replay in an opaque value-free witness, and installation control revalidates its bounded document/journal/anchor evidence when publishing the ready row.
 

@@ -1,53 +1,103 @@
-import { LogoutOperationSchema, type LogoutOperation } from "../../../models/profiles/profile.js";
-import { readPrivateFile } from "../../storage/configuration/credential-safe-file.js";
-import { reconcileExitedWorker, reconcileStoppedLogout } from "../../runs/lifecycle/startup-crash-recovery.js";
-import { runClaim } from "../../../models/run/record.js";
-import { prepareStoppedBackupClosure, StorageBackupClosureUnprovedError, type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
-import { isOfflineMaintenanceOperationActive, OfflineMaintenanceOperationUnavailableError, type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
-import { type AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
-import { profileBrowserClosure } from "../../storage/browser-roots.js";
-import { assertProfileBrowserRoot, composeProfileClosureInventory } from "./profile-credential-inventory.js";
-import { createAssistantAuthorization } from "../../assistant/authorization.js";
-import type { CommandKernel } from "../../runs/commands/command-kernel.js";
-import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../storage/sqlite/migrations.js";
-import { requireLifecycleApplied, RunRecordService } from "../../runs/lifecycle/run-record-service.js";
-import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
-import { composeProfileSettings } from "./dashboard/settings.js";
-import { activeSettingsConfig, activeSettingsRuntimeIdentity, readBootSettings } from "../../runtime/settings/settings-runtime.js";
-import { createProfileSession } from "../../profiles/profile-session.js";
-import { ProfileSessionRefusedError } from "../../profiles/profile-errors.js";
-import type { ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
-import { type CredentialStoreHooks, assertCredentialStoreOwner, createCredentialStore } from "../../storage/configuration/credential-store.js";
-import type { CredentialStore } from "../../../models/config/credential-store.js";
-import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { randomUUID } from "node:crypto";
-import { resolveConfigWithProvenance } from "../config/resolve.js";
-import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
-import { protectedSettingsReadback } from "../../../models/config/protected-settings.js";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { DashboardWorkerProcessSupervisor } from "../../runtime/workers/worker-supervisor.js";
-import { workerPoolMember, type WorkerPoolMember } from "../../../models/run/worker-slot.js";
+import { existsSync,readdirSync,readFileSync } from "node:fs";
+import { basename,join,resolve } from "node:path";
 import { z } from "zod";
+import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
+import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
-import { acquireRecoveryRuntimeRestore, type RuntimeAdmission } from "../../storage/admission/admission.js";
-import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
-import { descriptorSetHash, DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
-import { type Clock, systemClock } from "../../../rules/time/clock.js";
-import { IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
-import { AuthorityDatabase, OfflineAuthorityRestoreService, OfflineRestoreFailure, doctorAuthorityStorage, summarizeSpanAuthorityReconciliation } from "../../storage/sqlite/index.js";
-import { settleInterruptedAuthorityRestore } from "../../storage/sqlite/offline-restore.js";
-import { type OfflineRestoreReport, type StorageDoctorReport } from "../../storage/sqlite/recovery-contracts.js";
+import type { HostConfigFacts } from "../../../models/config/host-display.js";
+import { protectedSettingsReadback } from "../../../models/config/protected-settings.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { LogoutOperationSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
+import { runClaim } from "../../../models/run/record.js";
+import { workerPoolMember,type WorkerPoolMember } from "../../../models/run/worker-slot.js";
+import { IsoInstantSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
+import { systemClock,type Clock } from "../../../rules/time/clock.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
+import { createAssistantAuthorization } from "../../assistant/authorization.js";
+import type { ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
+import { ProfileSessionRefusedError } from "../../profiles/profile-errors.js";
+import { createProfileSession } from "../../profiles/profile-session.js";
+import type { CommandKernel } from "../../runs/commands/command-kernel.js";
+import { requireLifecycleApplied,RunRecordService } from "../../runs/lifecycle/run-record-service.js";
+import { reconcileExitedWorker,reconcileStoppedLogout } from "../../runs/lifecycle/startup-crash-recovery.js";
 import { createRunQueueProjection } from "../../runs/projections/run-queue-projection.js";
+import { OfflineSpanRootRepairService,type SpanRootRepairReport } from "../../runs/recovery/span-root-repair.js";
+import { activeSettingsConfig,activeSettingsRuntimeIdentity,readBootSettings } from "../../runtime/settings/settings-runtime.js";
+import type { DashboardWorkerProcessSupervisor } from "../../runtime/workers/worker-supervisor.js";
+import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";
+import { acquireRecoveryRuntimeRestore,RuntimeAdmission as StorageAdmission,type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { isOfflineMaintenanceOperationActive,OfflineMaintenanceOperationUnavailableError,RuntimeLifetimeLock,type OfflineMaintenanceOperation } from "../../storage/admission/lifetime-lock.js";
+import { profileBrowserClosure } from "../../storage/browser-roots.js";
+import { readPrivateFile } from "../../storage/configuration/credential-safe-file.js";
+import { assertCredentialStoreOwner,createCredentialStore,type CredentialStoreHooks } from "../../storage/configuration/credential-store.js";
+import { prepareStoppedBackupClosure,StorageBackupClosureUnprovedError,type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
+import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,type AuthoritySourceClosureUnprovedError } from "../../storage/source-closure.js";
+import { AuthorityDatabase,doctorAuthorityStorage,OfflineAuthorityRestoreService,OfflineRestoreFailure,summarizeSpanAuthorityReconciliation } from "../../storage/sqlite/index.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../storage/sqlite/migrations.js";
+import { settleInterruptedAuthorityRestore } from "../../storage/sqlite/offline-restore.js";
+import { type OfflineRestoreReport,type StorageDoctorReport } from "../../storage/sqlite/recovery-contracts.js";
 import { createTransactionHistory } from "../../storage/sqlite/transaction-history.js";
-import { OfflineSpanRootRepairService, type SpanRootRepairReport } from "../../runs/recovery/span-root-repair.js";
+import { resolveConfigWithProvenance } from "../config/resolve.js";
+import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
+import { DESCRIPTORS,descriptorSetHash,SERVER_REGISTRY } from "../registries/workflow-registry.js";
+import { composeProfileSettings } from "./dashboard/settings.js";
+import { assertProfileBrowserRoot,composeProfileClosureInventory } from "./profile-credential-inventory.js";
 
 export interface StorageCommandOutcome {
   readonly output: string;
   readonly exitCode: number;
+}
+
+async function withStoppedMachineStorage<Result>(workspace: string, lifetime: RuntimeLifetimeLock,
+  work: (machine: RuntimeAdmission) => Promise<Result>): Promise<Result> {
+  const machine = StorageAdmission.acquireStoppedMachineControlMaintenance(workspace, lifetime);
+  let outcome: { value: Result } | undefined, primary: { error: unknown } | undefined;
+  try { outcome = { value: await work(machine) }; }
+  catch (error) { primary = { error }; }
+  if (primary !== undefined && hasUnprovedSourceClosure(primary.error)) {
+    machine.retainSourceClosure(primary.error);
+    throw retainAuthoritySourceClosure([primary.error], { admission: machine });
+  }
+  const failures: unknown[] = [];
+  try { machine.release(); } catch (error) { failures.push(error); }
+  if (failures.length !== 0) {
+    const failure = retainAuthoritySourceClosure(primary === undefined ? failures : [primary.error, ...failures], { admission: machine });
+    lifetime.retainSourceClosure(failure); throw failure;
+  }
+  if (primary !== undefined) throw primary.error;
+  if (outcome === undefined) throw new Error("storage-startup-result-missing");
+  return outcome.value;
+}
+
+export class RegisteredPersonUpgradeRefusedError extends Error {
+  readonly code = "STORAGE_PROFILE_UPGRADE_REFUSED";
+  constructor(cause: unknown) { super(ERROR_CATALOG.STORAGE_PROFILE_UPGRADE_REFUSED.text, { cause }); this.name = "RegisteredPersonUpgradeRefusedError"; }
+}
+
+export async function upgradeRegisteredPersonStores(workspace: string, lifetime: RuntimeLifetimeLock,
+  hostFacts: HostConfigFacts, clock: Clock = systemClock): Promise<void> {
+  lifetime.assertHeld();
+  if (!existsSync(join(workspace, ".tracker", "control", "installation.json"))) return;
+  try {
+    const profiles = await withStoppedMachineStorage(workspace, lifetime, async machine => {
+      if (machine.requiresFlatStoreMigration()) return [];
+      const registry = machine.readProfileRegistry();
+      return registry.profiles.filter(row => row.lifecycle === "ready").flatMap(row => {
+        const inspection = AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, row.profileId);
+        return inspection.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION ? [] : [row.profileId];
+      });
+    });
+    for (const profileId of profiles) await withStoppedMachineStorage(workspace, lifetime, async machine => {
+      const { upgradeProfileAtStartup } = await import("../../storage/maintenance/upgrade.js");
+      const report = await upgradeProfileAtStartup(profileBrowserClosure, machine, profileId, hostFacts, clock);
+      if (report.state !== "upgraded" || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup-upgrade-unproved");
+    });
+    if (profiles.length !== 0) await withStoppedMachineStorage(workspace, lifetime, async machine => {
+      for (const profileId of profiles) if (AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId).schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup-readback-unproved");
+    });
+  } catch (error) { throw new RegisteredPersonUpgradeRefusedError(error); }
 }
 
 export class RuntimeCustodyUncertainError extends AggregateError {

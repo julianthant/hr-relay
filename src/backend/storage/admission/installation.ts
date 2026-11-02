@@ -1,45 +1,44 @@
-import { BrowserRootsSchema, type BrowserRootsDocument } from "../browser-roots.js";
-import { lstatMaybe, assertNoSymlinkComponents, assertNoOldBuildRuntimeArtifacts } from "./process-root.js";
-import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { emailKey, passwordMatches } from "../configuration/synthetic-verifier.js";
-import type { RuntimeAdmission } from "./admission.js";
-import { AuthorityBackupService, verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
-import { inspectAuthorityBackupReadOnly, openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
-import { CredentialMaintenanceHold, captureCanonicalCredentialStartupLocks, publishStoppedCanonicalCredentials, CanonicalCredentialConversionPlanSchema, type CanonicalCredentialConversionPlan, CanonicalCredentialRestoreSnapshotSchema, CanonicalCredentialHeadSchema, CanonicalCredentialPublicationSourceSchema } from "../configuration/canonical-credential-store.js";
-import { assertStoppedBackupClosure, type StoppedBackupClosure } from "../maintenance/profile-inventory.js";
-import { FlatStartCleanIntentSchema, assertFlatStartCleanCredentials, assertFlatStartCleanFiles, flatStartCleanPlan, readFlatStartCleanSource, type FlatStartCleanIntent } from "../maintenance/flat-start-clean.js";
-import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
-import { replacePrivateFile, privatePathRejects, writePrivateStage, fsyncPath } from "../private-path.js";
-import { assertOfflineMaintenanceOperation, OfflineMaintenanceOperationUnavailableError, isOfflineMaintenanceOperationActive, type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
-import { ProfileStorageRelocationUnsupportedError, requireRuntimeAdmission } from "./admission-identity.js";
-import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
-import { createProfileVerifiers, preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
-import { retainedStorageBackup, SourceRecordSchema, hash as backupHash, file as backupFile } from "../maintenance/existing-data-backup-files.js";
-import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, hasUnprovedSourceClosure, retainUnprovedSourceOwners, rememberUnprovedSourceClosure, assertSourceClosuresProved } from "../source-closure.js";
-import { capturePriorPrivateFileLock, withPrivateFileLock, withOperationProof, outermostOperationProof, type PrivateFileLock, readPrivateFile, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
-import { assertProfileRestoreDatabaseBinding, assertCanonicalProfileBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
-import { ProfileDatabaseBindingSchema, SignUpOperationSchema, LogoutOperationSchema, type ProfileOperation, ProfileRegistryDocumentSchema, advanceProfileRegistryDocument, ProfileRegistryRowSchema, ProfileVerifierDocumentSchema, ProfileOnboardingCompletionSchema, assertFinishedProfileOnboarding, deriveProfileNames, type ProfileRegistryDocument } from "../../../models/profiles/profile.js";
-import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash,randomBytes,randomUUID } from "node:crypto";
 import {
-  closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
-  readdirSync, realpathSync, renameSync, rmSync, rmdirSync, unlinkSync, writeFileSync,
+closeSync,constants,existsSync,fstatSync,fsyncSync,lstatSync,mkdirSync,openSync,readFileSync,
+readdirSync,realpathSync,renameSync,rmSync,rmdirSync,unlinkSync,writeFileSync,
 } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename,dirname,isAbsolute,join,relative,resolve } from "node:path";
 import { z } from "zod";
-import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { readProcessCustodyFile } from "../sqlite/runtime-process-locks.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { encodePrivate } from "../../../rules/validation/private-equal.js";
+import { ActiveRuntimeConfigRecordSchema } from "../../../models/config/runtime-generation.js";
+import { ConfigSchema } from "../../../models/config/schema.js";
+import { ConfigSnapshotRecordSchema,ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
+import { LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument } from "../../../models/profiles/profile.js";
 import { storageRelocationDesiredDigest } from "../../../rules/commands/commands.js";
 import { NonNegativeIntSchema } from "../../../rules/identity/ids.js";
 import { systemClock } from "../../../rules/time/clock.js";
-import { ConfigSchema } from "../../../models/config/schema.js";
-import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
-import { ActiveRuntimeConfigRecordSchema } from "../../../models/config/runtime-generation.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { encodePrivate } from "../../../rules/validation/private-equal.js";
+import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
+import { BrowserRootsSchema,type BrowserRootsDocument } from "../browser-roots.js";
+import { CanonicalCredentialConversionPlanSchema,CanonicalCredentialHeadSchema,CanonicalCredentialPublicationSourceSchema,CanonicalCredentialRestoreSnapshotSchema,CredentialMaintenanceHold,captureCanonicalCredentialStartupLocks,publishStoppedCanonicalCredentials,type CanonicalCredentialConversionPlan } from "../configuration/canonical-credential-store.js";
+import { StoppedCredentialErasureHeadSchema as CredentialErasureHeadSchema,StoppedCredentialKeyWitnessSchema as CredentialKeyWitnessSchema,StoppedDuoContinuityRowSchema as DuoContinuityRowSchema,readStoppedCredentialConversion,releaseStoppedCredentialConversion,type StoppedDuoContinuityRow as DuoContinuityRow,type StoppedControlCredentialAttestation } from "../configuration/credential-conversion.js";
+import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
+import { capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock } from "../configuration/credential-safe-file.js";
+import { emailKey,passwordMatches } from "../configuration/synthetic-verifier.js";
+import { createProfileVerifiers,preparedProfileVerifierPepperWitness,verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
+import { SourceRecordSchema,file as backupFile,hash as backupHash,profileAuthorityFileWitnesses,retainedStorageBackup } from "../maintenance/existing-data-backup-files.js";
+import { FlatStartCleanIntentSchema,assertFlatStartCleanCredentials,assertFlatStartCleanFiles,flatStartCleanPlan,readFlatStartCleanSource,type FlatStartCleanIntent } from "../maintenance/flat-start-clean.js";
+import { assertStoppedBackupClosure,type StoppedBackupClosure } from "../maintenance/profile-inventory.js";
+import { fsyncPath,privatePathRejects,replacePrivateFile,writePrivateStage } from "../private-path.js";
+import { AuthoritySourceClosureUnprovedError,assertSourceClosuresProved,hasUnprovedSourceClosure,rememberUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
+import { AuthorityDatabase } from "../sqlite/authority-database.js";
+import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
+import { AuthorityBackupService,verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
+import { assertCanonicalProfileBinding,assertProfileRestoreDatabaseBinding,readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
-import { readStoppedCredentialConversion, releaseStoppedCredentialConversion, type StoppedControlCredentialAttestation, StoppedDuoContinuityRowSchema as DuoContinuityRowSchema, type StoppedDuoContinuityRow as DuoContinuityRow, StoppedCredentialKeyWitnessSchema as CredentialKeyWitnessSchema, StoppedCredentialErasureHeadSchema as CredentialErasureHeadSchema } from "../configuration/credential-conversion.js";
+import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
+import { readProcessCustodyFile } from "../sqlite/runtime-process-locks.js";
+import { ProfileStorageRelocationUnsupportedError,requireRuntimeAdmission } from "./admission-identity.js";
+import type { RuntimeAdmission } from "./admission.js";
+import { OfflineMaintenanceOperationUnavailableError,RuntimeLifetimeLock,WorkerRuntimeLifetimeLock,assertOfflineMaintenanceOperation,isOfflineMaintenanceOperationActive,type OfflineMaintenanceOperation } from "./lifetime-lock.js";
+import { assertNoOldBuildRuntimeArtifacts,assertNoSymlinkComponents,lstatMaybe } from "./process-root.js";
 
 
 const ProfileOperationSchema = z.union([SignUpOperationSchema, LogoutOperationSchema]);
@@ -266,7 +265,6 @@ export type InstallationLease = Readonly<{ retainSourceClosure(error: unknown): 
   assertColdPendingLogout(operation: z.infer<typeof LogoutOperationSchema>): void;
   capturePendingProfileLogout(operation: z.infer<typeof LogoutOperationSchema>): Readonly<{ assertHeld(publication?: ProfilePublicationRead): void }>;
   captureStoppedProfileUpgrade(profileId: string): Readonly<{ assertHeld(): void }>;
-  captureProfileUpgradeHandoff(profileId: string): Readonly<{ consume(next: InstallationLease): void }>;
   publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, profile: RuntimeAdmission): void;
   publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument): void;
   beginProfileSignUp(fields: Omit<z.infer<typeof SignUpOperationSchema>, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding" | "credentials">): z.infer<typeof SignUpOperationSchema>;
@@ -2256,20 +2254,6 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         prepareUnpublishedDraftAbort(control, locator, document, prior, intent)();
         readMachineRegistry(control, locator, false); assertHeld(); return true;
       });
-    },
-    captureProfileUpgradeHandoff(profileId: string) {
-      if (mode !== "shared") fail("profile-upgrade-handoff-shared-required");
-      const id = z.uuid().parse(profileId);
-      const original = createHash("sha256").update(readProfileUpgradeAuthority(control, workspace, locator, id, assertHeld)).digest("hex");
-      let consumed = false;
-      return Object.freeze({ consume(next: InstallationLease): void {
-        if (consumed) fail("profile-upgrade-handoff-consumed");
-        consumed = true;
-        if (!released) fail("profile-upgrade-handoff-release-required");
-        assertInstallationLease(next);
-        if (next.mode !== "exclusive" || next.readInstallationContext().workspace !== workspace || !equalLocator(next.locator, locator)) fail("profile-upgrade-handoff-installation-changed");
-        if (createHash("sha256").update(readProfileUpgradeAuthority(control, workspace, locator, id, () => next.assertHeld())).digest("hex") !== original) fail("profile-upgrade-handoff-authority-changed");
-      } });
     },
     captureStoppedProfileUpgrade(profileId: string) {
       if (mode !== "exclusive") fail("profile-stopped-upgrade-exclusive-required");

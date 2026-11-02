@@ -1,17 +1,18 @@
-import { profileBrowserClosure } from "../../storage/browser-roots.js";
-import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
-import { acquireRuntimeLifetimeLock, receiveRuntimeLifetimeLock, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { fileURLToPath } from "node:url";
+import { acquireRuntimeLifetimeLock,receiveRuntimeLifetimeLock,RuntimeLifetimeLock,WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
+import { profileBrowserClosure } from "../../storage/browser-roots.js";
+import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 
-import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
-import { acquireStorageBackupEntrypointAdmission, acquireDashboardEntrypointAdmission, acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
-import { inspectPendingRelocationStatus } from "../../storage/admission/installation.js";
-import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
-import { systemClock } from "../../../rules/time/clock.js";
 import { join } from "node:path";
-import { acquireExclusiveRuntimeAdmission, RuntimeAdmission } from "../../storage/admission/admission.js";
+import { hostConfigFacts } from "../../../models/config/host-display.js";
+import { assertNoMigratedEnvironmentKeys,workerBootstrapEnvironment } from "../../../models/config/secrets.js";
+import { systemClock } from "../../../rules/time/clock.js";
+import { acquireExclusiveRuntimeAdmission,RuntimeAdmission } from "../../storage/admission/admission.js";
+import { acquireDashboardEntrypointAdmission,acquireEntrypointAdmission,acquireStorageBackupEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
+import { inspectPendingRelocationStatus } from "../../storage/admission/installation.js";
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
 import { RuntimeCustodyUncertainError } from "../composition/storage-compose.js";
+import { rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
@@ -84,6 +85,10 @@ async function runAdmittedEnvironmentBootstrap(
     lifetime.lock.assertHeld();
     return lifetime.lock;
   };
+  if (entrypoint === "cli" && entrypointArgs[0] === "dashboard" && dependencies.acquireAdmission === undefined) {
+    const { upgradeRegisteredPersonStores } = await import("../composition/storage-compose.js");
+    await upgradeRegisteredPersonStores(workspace, rootLifetime(), hostConfigFacts(workerBootstrapEnvironment()));
+  }
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "cancel-queued-runs") {
     const { runOfflineQueuedRunCancellation } = await import("../../storage/maintenance/cancel-queued-runs.js");
     const { report, json } = await runOfflineQueuedRunCancellation(profileBrowserClosure, workspace, entrypointArgs.slice(2), rootLifetime());

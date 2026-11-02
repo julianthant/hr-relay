@@ -13,6 +13,7 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  STORAGE_PROFILE_UPGRADE_REFUSED: catalogEntry("Relay could not verify and upgrade its saved person data. Your data has been retained; startup cannot continue.", EmptyParametersSchema),
   DRY_RUN_SAMPLE_UNDECLARED: catalogEntry("Dry-run sample values require declared preview provenance.", EmptyParametersSchema),
   DRY_RUN_SAMPLE_REFUSED: catalogEntry("Dry-run samples cannot authorize a real submission.", EmptyParametersSchema),
   RUNTIME_LIFETIME_LOCK_RELEASED: catalogEntry("Relay runtime authority has closed. Restart Relay before continuing.", EmptyParametersSchema),
@@ -484,15 +485,7 @@ export const ERROR_CATALOG = Object.freeze({
     "A password change waits for a live sign-in that proves the new password.",
     EmptyParametersSchema,
   ),
-  PROFILE_UPGRADE_STARTING: catalogEntry(
-    "A verified backup and local storage upgrade are starting. Sign in again after Relay restarts.",
-    EmptyParametersSchema,
-  ),
   PROFILE_FLAT_STORE_MIGRATION_FAILED: catalogEntry("Relay could not verify the old store backup and start a clean profile installation. Startup is stopped; remaining data is preserved.", EmptyParametersSchema),
-  PROFILE_UPGRADE_UNAVAILABLE: catalogEntry(
-    "The authenticated storage upgrade could not finish. Storage custody is retained; do not retry the upgrade.",
-    EmptyParametersSchema,
-  ),
   PROFILE_TRANSITION_BLOCKED: catalogEntry(
     "Sign in waits until the other profile is logged out.",
     EmptyParametersSchema,

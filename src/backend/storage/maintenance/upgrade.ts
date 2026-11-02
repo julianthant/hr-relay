@@ -1,22 +1,22 @@
-import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
-import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
-import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../source-closure.js";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname,join,resolve } from "node:path";
 import { z } from "zod";
-import type { Clock } from "../../../rules/time/clock.js";
-import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { AuthorityBackupService, verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath, type VerifiedBackup } from "../sqlite/backup-service.js";
-import { openAuthorityBackupSourceReadOnly, inspectAuthorityBackupReadOnly } from "../sqlite/backup-inspection.js";
-import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
-import { pendingDiagnosticArtifacts } from "../artifacts/content-addressed-artifact-writer.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, deriveAuthorityUpgradePlanDigest } from "../sqlite/migrations.js";
-import { type RuntimeAdmission } from "../admission/admission.js";
-import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
-import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
+import type { Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { prepareStoppedBackupClosure, assertStoppedBackupClosure, StorageBackupClosureUnprovedError, type StoppedBackupClosure, readStoppedProfileUpgradeInventory, type ProfileBrowserClosure } from "./profile-inventory.js";
+import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
+import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
+import { pendingDiagnosticArtifacts } from "../artifacts/content-addressed-artifact-writer.js";
+import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../source-closure.js";
+import { AuthorityDatabase } from "../sqlite/authority-database.js";
+import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
+import { AuthorityBackupService,verifyBackupManifestAtPath,verifyStoppedBackupManifestAtPath,type VerifiedBackup } from "../sqlite/backup-service.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION,deriveAuthorityUpgradePlanDigest } from "../sqlite/migrations.js";
+import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
+import { assertStoppedBackupClosure,prepareStoppedBackupClosure,readStoppedProfileUpgradeInventory,StorageBackupClosureUnprovedError,type ProfileBrowserClosure,type StoppedBackupClosure } from "./profile-inventory.js";
 
 
 
@@ -40,7 +40,7 @@ function requireStopped(admission:RuntimeAdmission,input:StorageUpgradeInput,_cl
   admission.assertOfflineMaintenance(operation);
   assertOfflineMaintenanceForProcessRoot(operation, input.processLockRoot);
 }
-export async function backupStoppedAuthority(closure: StoppedBackupClosure, admission:RuntimeAdmission,stateRoot:string,clock:Clock,processLockRoot:string,restore:OfflineMaintenanceOperation) {
+export async function backupStoppedAuthority(closure: StoppedBackupClosure, admission:RuntimeAdmission,stateRoot:string,clock:Clock,processLockRoot:string,restore:OfflineMaintenanceOperation, trigger: "operator" | "schema-migration" = "operator") {
   const stopped = requireRuntimeAdmission(admission).forStoppedMaintenance(restore);
   const input={stateRoot,processLockRoot,plan:false};
   const verifyHeld=()=>{ admission.assertOfflineMaintenance(restore); assertOfflineMaintenanceForProcessRoot(restore,processLockRoot); assertStoppedBackupClosure(closure,admission,restore); };
@@ -55,7 +55,7 @@ export async function backupStoppedAuthority(closure: StoppedBackupClosure, admi
     let report: Awaited<ReturnType<AuthorityBackupService["request"]>> | undefined;
     let primary: { error: unknown } | undefined;
     try {report=await new AuthorityBackupService(stopped,source,{directory:join(stateRoot,"backups","authority")},clock)
-      .request({trigger:"operator",requiredGeneration:source.getMeta().authorityGeneration});verifyHeld();requireStopped(stopped,input,clock,true);
+      .request({trigger,requiredGeneration:source.getMeta().authorityGeneration});verifyHeld();requireStopped(stopped,input,clock,true);
     }catch(error){primary={error};}
     const failures: unknown[] = [];
     try{source.close();}catch(error){failures.push(error);}
@@ -101,7 +101,7 @@ export async function upgradeStorage(browserClosure: ProfileBrowserClosure, admi
       if(again.authorityGeneration!==inspection.authorityGeneration||again.authorityContentFingerprint!==inspection.authorityContentFingerprint)throw new Error("source-changed: re-plan upgrade");
       if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
         const closure = await prepareStoppedBackupClosure(browserClosure, admission, restore, clock, input.processLockRoot);
-        const backupReport=await backupStoppedAuthority(closure, admission,input.stateRoot,clock,input.processLockRoot,restore);
+        const backupReport=await backupStoppedAuthority(closure, admission,input.stateRoot,clock,input.processLockRoot,restore,"schema-migration");
         const manifest=backupReport.manifests.at(-1);
         if(manifest===undefined)throw new Error("upgrade-verified-backup-required");
         const backup=verifyStoppedBackupManifestAtPath(admission,join(input.stateRoot,"backups","authority",`${manifest.backupFileName}.manifest.json`));
@@ -173,6 +173,16 @@ function assertReadyUpgradeInventory(before: ReadyUpgradeInventory, after: Ready
 
 export async function upgradeReadyProfileStorage(browserClosure: ProfileBrowserClosure, machine: RuntimeAdmission, claim: string,
   input: Readonly<{ plan: boolean; hostFacts: HostConfigFacts }>, clock: Clock): Promise<StorageUpgradeReport> {
+  return upgradeRegisteredProfile(browserClosure, machine, claim, input, clock, "manual");
+}
+
+export async function upgradeProfileAtStartup(browserClosure: ProfileBrowserClosure, machine: RuntimeAdmission, claim: string,
+  hostFacts: HostConfigFacts, clock: Clock): Promise<StorageUpgradeReport> {
+  return upgradeRegisteredProfile(browserClosure, machine, claim, { plan: false, hostFacts }, clock, "startup");
+}
+
+async function upgradeRegisteredProfile(browserClosure: ProfileBrowserClosure, machine: RuntimeAdmission, claim: string,
+  input: Readonly<{ plan: boolean; hostFacts: HostConfigFacts }>, clock: Clock, purpose: "manual" | "startup"): Promise<StorageUpgradeReport> {
   requireRuntimeAdmission(machine).assertExclusive();
   const context = machine.readInstallationContext();
   if (context === undefined) throw new Error("profile-stopped-upgrade-installation-required");
@@ -184,7 +194,8 @@ export async function upgradeReadyProfileStorage(browserClosure: ProfileBrowserC
   let result: StorageUpgradeReport | undefined;
   let primary: { error: unknown } | undefined;
   try {
-    admission = await machine.forStoppedProfileUpgrade(browserClosure, claim, restore, clock, input.hostFacts);
+    admission = await (purpose === "startup" ? machine.forStartupProfileUpgrade(browserClosure, claim, restore, clock, input.hostFacts)
+      : machine.forStoppedProfileUpgrade(browserClosure, claim, restore, clock, input.hostFacts));
     result = await runReadyProfileUpgrade(browserClosure, machine, admission, processLockRoot, restore, input, clock);
   } catch (error) { primary = { error }; }
   if (primary !== undefined && hasUnprovedSourceClosure(primary.error)) throw retainAuthoritySourceClosure([primary.error], { ...(admission === undefined ? {} : { admission }), restore });
@@ -222,7 +233,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
   if (initial.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return report("already-upgraded");
   if (![8, 9, 10].includes(initial.schemaVersion)) throw new Error("profile-stopped-upgrade-version-refused");
   if (closure === undefined) throw new StorageBackupClosureUnprovedError();
-  const backed = await backupStoppedAuthority(closure, owner, owner.stateRoot, clock, processLockRoot, restore);
+  const backed = await backupStoppedAuthority(closure, owner, owner.stateRoot, clock, processLockRoot, restore, "schema-migration");
   if (backed.manifests.length !== 1) throw new Error("profile-stopped-upgrade-single-backup-required");
   const manifest = backed.manifests[0];
   if (manifest === undefined) throw new Error("upgrade-verified-backup-required");

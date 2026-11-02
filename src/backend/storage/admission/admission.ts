@@ -1,43 +1,36 @@
-import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
-import { deepFreeze } from "../../../rules/validation/immutability.js";
-import type { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { ProfileVerifierDocumentSchema } from "../../../models/profiles/profile.js";
-import { emailKey, passwordMatches } from "../configuration/synthetic-verifier.js";
-import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
-import { captureStoppedIncompleteCredentials, captureStoppedCanonicalCredentialHead, captureCanonicalCredentialPublication } from "../configuration/canonical-credential-store.js";
-import { authenticateDocument } from "../configuration/credential-store.js";
-import { DuoCredentialRecordSchema } from "../../../models/config/duo-credential-store.js";
-import { validateDuoKeyPair } from "../configuration/duo-signing.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
-import type { AuthorityBackupExpectedSource } from "../sqlite/database-identity.js";
-import { inspectAuthorityBackupReadOnly } from "../sqlite/backup-inspection.js";
-import { readProfilePublicationRegistry, type ProfilePublicationRead, PROFILE_CUSTODY_PROOF, acquireInstallation, assertInstallationLease, acquireStoppedProfileControlUpgrade, assertStoppedMachineMaintenance, requireStoppedControlProfileInventory, type ExistingAuthorityEvidence, type InstallationLease, type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory, type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier, type RelocationVerifier, type RuntimeLocator, type RuntimePair, type ProfileRestoreContext, type VerifiedSourceControlEntries, type AuthorityRestoreInput, type AuthorityRestoreVerifier, type CompletedRestoreCustody, type StoppedControlProfileInventory, type StoppedProfileControlUpgradeAdmission } from "./installation.js";
-import { assertOfflineMaintenanceForProcessRoot } from "./process-root.js";
-import { type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
-import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
-import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, retainUnprovedSourceOwners, rememberUnprovedSourceClosure, assertSourceClosuresProved, hasUnprovedSourceClosure } from "../source-closure.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
-import { ProfileStorageRelocationUnsupportedError, registerRuntimeAdmission, requireRuntimeAdmission } from "./admission-identity.js";
-import { z } from "zod";
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync, existsSync, readdirSync, type BigIntStats, type Stats } from "node:fs";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash,randomUUID } from "node:crypto";
+import { closeSync,constants,existsSync,fstatSync,lstatSync,openSync,readdirSync,readSync,realpathSync,type Stats } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
-import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { assertFinishedProfileOnboarding, deriveProfileNames, SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation, type ProfileRegistryDocument, type ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
-import { readPrivateFile, unpublishedDraftAbortMembership, noSymlinkAncestry, ensureChildDirectory, outermostOperationProof, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
-import { privatePathRejects } from "../private-path.js";
-import { assertLiveProfileDatabaseBinding, assertCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
-import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { systemClock, type Clock } from "../../../rules/time/clock.js";
+import { basename,dirname,isAbsolute,join,parse,relative,resolve } from "node:path";
+import { z } from "zod";
+import { DuoCredentialRecordSchema } from "../../../models/config/duo-credential-store.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
-
-
-export class ProfileUpgradeSourceRefusalError extends Error {
-  readonly code = "PROFILE_UPGRADE_UNAVAILABLE";
-  constructor() { super(ERROR_CATALOG.PROFILE_UPGRADE_UNAVAILABLE.text); this.name = "ProfileUpgradeSourceRefusalError"; }
-}
+import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { assertFinishedProfileOnboarding,deriveProfileNames,LogoutOperationSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,type LogoutOperation,type ProfileDatabaseBinding,type ProfileOperation,type ProfileRegistryDocument,type SignUpOperation } from "../../../models/profiles/profile.js";
+import { systemClock,type Clock } from "../../../rules/time/clock.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
+import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
+import { captureCanonicalCredentialPublication,captureStoppedCanonicalCredentialHead,captureStoppedIncompleteCredentials } from "../configuration/canonical-credential-store.js";
+import { ensureChildDirectory,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
+import { authenticateDocument } from "../configuration/credential-store.js";
+import { validateDuoKeyPair } from "../configuration/duo-signing.js";
+import { emailKey,passwordMatches } from "../configuration/synthetic-verifier.js";
+import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
+import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
+import { privatePathRejects } from "../private-path.js";
+import { assertSourceClosuresProved,AuthoritySourceClosureUnprovedError,hasUnprovedSourceClosure,rememberUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
+import type { AuthorityDatabase } from "../sqlite/authority-database.js";
+import { inspectAuthorityBackupReadOnly } from "../sqlite/backup-inspection.js";
+import type { AuthorityBackupExpectedSource } from "../sqlite/database-identity.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../sqlite/migrations.js";
+import { assertCanonicalProfileBinding,assertLiveProfileDatabaseBinding,assertProfileRestoreDatabaseBinding,readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
+import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
+import { ProfileStorageRelocationUnsupportedError,registerRuntimeAdmission,requireRuntimeAdmission } from "./admission-identity.js";
+import { acquireInstallation,acquireStoppedProfileControlUpgrade,assertInstallationLease,assertStoppedMachineMaintenance,PROFILE_CUSTODY_PROOF,readProfilePublicationRegistry,requireStoppedControlProfileInventory,type AuthorityRestoreInput,type AuthorityRestoreVerifier,type CompletedRestoreCustody,type ExclusiveInstallationLease,type ExistingAuthorityEvidence,type FreshInitializationWitness,type InstallationLease,type ProfilePublicationRead,type ProfileRestoreContext,type RelocationActivationVerifier,type RelocationCompletionReceipt,type RelocationInventory,type RelocationPlanBinding,type RelocationPreparationVerifier,type RelocationVerifier,type RuntimeLocator,type RuntimePair,type StoppedControlProfileInventory,type StoppedProfileControlUpgradeAdmission,type VerifiedSourceControlEntries } from "./installation.js";
+import { RuntimeLifetimeLock,WorkerRuntimeLifetimeLock,type OfflineMaintenanceOperation } from "./lifetime-lock.js";
+import { assertOfflineMaintenanceForProcessRoot } from "./process-root.js";
 
 export class ProfileFlatStoreMigrationError extends Error {
   readonly code = "PROFILE_FLAT_STORE_MIGRATION_FAILED";
@@ -129,7 +122,7 @@ type AdmissionScope = "profile-maintenance" | "flat-backup" | "profile-restore" 
   | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification"
   | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile-ready-upgrade" | "profile" | "profile-settlement" | "profile-pending-logout-inventory" | "stopped-control-inventory" | "stopped-incomplete-profile-inventory";
 
-type ReadyProfileUpgrade = Readonly<{ sourcePath: string; processLockRoot: string; sourceSchemaVersion: 6 | 8 | 9 | 10 | 11; copyPath?: string;
+type ReadyProfileUpgrade = Readonly<{ purpose: "manual" | "startup"; sourcePath: string; processLockRoot: string; sourceSchemaVersion: 6 | 8 | 9 | 10 | 11; copyPath?: string;
   qualification: { current: Readonly<{ kind: "inspection" }> | Readonly<{ kind: "qualified"; sourceFingerprint: string }> | Readonly<{ kind: "revoked" }> } }>;
 
 /** A lifetime-bound, path-specific authority to open this installation's physical storage. */
@@ -190,77 +183,6 @@ export class RuntimeAdmission {
     machine.assertWritable();
     if (!this.#released || this.#scope !== "profile-initialization" || this.#profileParent !== machine) throw new Error("profile-draft-closure-unproved");
   }
-  assertProfileUpgradeCredentialSource(profileId: string): void {
-    const claim = this.#captureProfileAccess(profileId);
-    this.assertLive();
-    if (this.#scope !== "installation" || (this.#mode !== "shared" && this.#mode !== "exclusive")) throw new Error("profile-upgrade-handoff-installation-required");
-    claim.verify("issue");
-    if (claim.phase !== "runtime") throw new Error("profile-upgrade-handoff-runtime-claim-required");
-    const observed = readProfileDatabaseBinding(join(this.#stateRoot, "profiles", claim.profileId, "state.db"));
-    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10) || observed.binding.profileId !== claim.profileId
-      || observed.binding.installationId !== this.locator.installationId) throw new Error("profile-upgrade-handoff-binding-refused");
-    const lease = this.#authority as InstallationLease;
-    assertInstallationLease(lease);
-    if (lease.mode === "shared") lease.lifetime.assertRuntimeAvailable();
-  }
-  captureProfileUpgradeHandoff(profileId: string): Readonly<{ consume(next: RuntimeAdmission): string }> | undefined {
-    try {
-      const claim = this.#captureProfileAccess(profileId);
-      this.assertLive();
-      if (this.#scope !== "installation") throw new Error("profile-upgrade-handoff-installation-required");
-      claim.verify("issue");
-      const path = join(this.#stateRoot, "profiles", profileId, "state.db");
-      const ancestry = new Map<string, DirectoryIdentity>();
-      noSymlinkAncestry(dirname(path), ancestry);
-      const observed = readProfileDatabaseBinding(path);
-      if (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10) return undefined;
-      if (this.#mode !== "shared") throw new Error("profile-upgrade-handoff-shared-required");
-      if (claim.phase !== "runtime") throw new ProfileUpgradeSourceRefusalError();
-      if (observed.state !== "bound" || observed.binding.installationId !== this.locator.installationId
-        || observed.binding.profileId !== claim.profileId) throw new Error("profile-upgrade-handoff-binding-refused");
-      const lease = this.#authority as InstallationLease;
-      assertInstallationLease(lease);
-      const capture = lease.captureProfileUpgradeHandoff(profileId);
-      const source = () => ["", "-wal", "-shm", "-journal"].map(suffix => {
-        const filePath = path + suffix;
-        const file = lstatSync(filePath, { bigint: true, throwIfNoEntry: false });
-        if (file === undefined) return { suffix, absent: true };
-        if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1n || privatePathRejects(filePath, file, "group-write")) throw new Error("profile-upgrade-handoff-source-unsafe");
-        const identity = (value: BigIntStats) => [value.dev, value.ino, value.size, value.mode, value.uid, value.nlink, value.mtimeNs, value.ctimeNs].join(":");
-        const expected = identity(file);
-        const descriptor = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
-        let result: { suffix: string; identity: string; digest: string } | undefined;
-        let primary: { error: unknown } | undefined;
-        try {
-          if (identity(fstatSync(descriptor, { bigint: true })) !== expected) throw new Error("profile-upgrade-handoff-source-changed");
-          const hash = createHash("sha256"), buffer = Buffer.allocUnsafe(64 * 1024);
-          let length: number;
-          while ((length = readSync(descriptor, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, length));
-          if (identity(fstatSync(descriptor, { bigint: true })) !== expected || identity(lstatSync(filePath, { bigint: true })) !== expected) throw new Error("profile-upgrade-handoff-source-changed");
-          result = { suffix, identity: expected, digest: hash.digest("hex") };
-        } catch (error) { primary = { error }; }
-        try { closeSync(descriptor); }
-        catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
-          { descriptor: { descriptor, identity: file } }); }
-        if (primary !== undefined) throw primary.error;
-        if (result === undefined) throw new Error("profile-upgrade-handoff-source-result-missing");
-        return result;
-      });
-      const before = canonicalJsonStringify(source());
-      return Object.freeze({ consume(next: RuntimeAdmission): string {
-        const nextLease = next.#exclusiveInstallationLease();
-        capture.consume(nextLease);
-        if (!noSymlinkAncestry(dirname(path), ancestry)) throw new Error("profile-upgrade-handoff-source-changed");
-        if (canonicalJsonStringify(source()) !== before) throw new Error("profile-upgrade-handoff-source-changed");
-        const current = next.#captureProfileAccess(profileId);
-        if (current.phase !== "runtime") throw new Error("profile-upgrade-handoff-runtime-claim-required");
-        return current.profileId;
-      } });
-    } catch (error) {
-      if (hasUnprovedSourceClosure(error)) { this.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission: this }); }
-      throw error;
-    }
-  }
   forStoppedProfileUpgrade(): RuntimeAdmission;
   forStoppedProfileUpgrade(browserClosure: ProfileBrowserClosure, profileId: string, restore: OfflineMaintenanceOperation, clock: Clock, hostFacts: HostConfigFacts): Promise<RuntimeAdmission>;
   forStoppedProfileUpgrade(...args: [] | [ProfileBrowserClosure, string, OfflineMaintenanceOperation, Clock, HostConfigFacts]): RuntimeAdmission | Promise<RuntimeAdmission> {
@@ -275,8 +197,11 @@ export class RuntimeAdmission {
       return stopped;
     } catch (error) { if (stopped !== this) stopped.release(); throw error; }
   }
+  forStartupProfileUpgrade(browserClosure: ProfileBrowserClosure, profileId: string, restore: OfflineMaintenanceOperation, clock: Clock, hostFacts: HostConfigFacts): Promise<RuntimeAdmission> {
+    return this.#readyStoppedProfileUpgrade(browserClosure, profileId, restore, clock, hostFacts, "startup");
+  }
   async #readyStoppedProfileUpgrade(browserClosure: ProfileBrowserClosure, profileId: string | undefined, restore: OfflineMaintenanceOperation | undefined,
-    clock: Clock | undefined, hostFacts: HostConfigFacts | undefined): Promise<RuntimeAdmission> {
+    clock: Clock | undefined, hostFacts: HostConfigFacts | undefined, purpose: "manual" | "startup" = "manual"): Promise<RuntimeAdmission> {
     const lease = this.#exclusiveInstallationLease();
     if (profileId === undefined || restore === undefined || clock === undefined || hostFacts === undefined) throw new Error("profile-stopped-upgrade-runtime-claim-required");
     const claim = this.#captureProfileAccess(profileId);
@@ -316,7 +241,7 @@ export class RuntimeAdmission {
     assertHeld();
     const admission = new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release() {} },
       root, artifacts, [path], "profile-ready-upgrade", "exclusive", this.#locator, binding, this, undefined,
-      { sourcePath: path, processLockRoot, sourceSchemaVersion: observed.schemaVersion, qualification });
+      { purpose, sourcePath: path, processLockRoot, sourceSchemaVersion: observed.schemaVersion, qualification });
     const assertUnpublishedSource = () => {
       assertHeld();
       const current = lstatSync(path);
@@ -336,7 +261,15 @@ export class RuntimeAdmission {
       qualification.current = { kind: "qualified", sourceFingerprint: before.authorityContentFingerprint };
       assertHeld();
       return admission;
-    } catch (error) { admission.release(); throw error; }
+    } catch (error) {
+      if (hasUnprovedSourceClosure(error)) {
+        admission.retainSourceClosure(error);
+        throw retainAuthoritySourceClosure([error], { admission, restore });
+      }
+      try { admission.release(); }
+      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission, restore }); }
+      throw error;
+    }
   }
   assertStoppedAuthorityBackup(path: string, processLockRoot: string): void {
     if (this.#scope === "profile") {
@@ -376,10 +309,11 @@ export class RuntimeAdmission {
     this.assertExclusive();
     this.assertAuthorityDatabase(path);
   }
-  assertReadyStoppedProfileUpgradeOwner(machine: RuntimeAdmission): void {
+  assertReadyStoppedProfileUpgradeOwner(machine: RuntimeAdmission): "manual" | "startup" {
     this.assertLive();
     if (this.#readyUpgrade === undefined || this.#readyUpgrade.copyPath !== undefined || this.#profileParent !== machine) throw new Error("profile-stopped-upgrade-owner-required");
     this.assertStoppedProfileUpgrade(this.#readyUpgrade.sourcePath, this.#readyUpgrade.processLockRoot);
+    return this.#readyUpgrade.purpose;
   }
   assertProfileMigration(path: string, sourceVersion: number, sourceFingerprint?: string): "ready" | "setup" {
     if (this.#readyUpgrade !== undefined) {

@@ -24,7 +24,9 @@ task starts at the repository root.
 - Run resources first admit exact run membership through RunRecordService.read, then bind evidence
   to the immutable run/digest and retained capture metadata. Never reconstruct evidence from current
   inputs or infer purge from a deadline; preserve safe download headers.
-- Boot/upgrade follows the current authority contract; ordinary startup never converts an incompatible database.
+- Boot upgrades supported registered person databases under stopped exclusive custody with a verified
+  backup before mutation. Missing, corrupt, foreign or future authority stops admission; ordinary readers
+  accept only the current schema.
 
 Before changing a seam, read the relevant
 `docs/rebuild/reference/frontend-backend-integration.md`, `dashboard-surfaces.md`, and

@@ -1,10 +1,10 @@
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readdirSync,readFileSync,writeFileSync } from "node:fs";
+import { join,relative } from "node:path";
 import { isDirectExecution } from "./scope-files.js";
 
 // Storage closure, backup and restore proofs refuse off macOS, so these files run on macOS runners.
 export const MACOS_FILES: readonly string[] = [
-  "tests/backend/app/composition/dashboard/compose.authenticated-upgrade.integration.test.ts",
+  "tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts",
   "tests/backend/app/composition/profile-credential-inventory.integration.test.ts",
   "tests/backend/app/composition/storage-compose.integration.test.ts",
   "tests/backend/app/composition/storage/relocate.integration.test.ts",
