@@ -70,6 +70,7 @@ function omittedOr<T, R>(
 
 export const separationsWorkflow = defineWorkflow({
   id: "separations",
+  requiredWorkbookTypeIds: [],
   version: 1,
   code: "sp",
   label: "Separations",

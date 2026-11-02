@@ -1,3 +1,4 @@
+import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,7 +23,7 @@ function open(path = ':memory:', initialize = true) {
     try { const value = work(); database.exec('COMMIT'); return value; } catch (error) { database.exec('ROLLBACK'); throw error; }
   };
   const repository = createWorkbookLibraryRepository({ database, read: tx, mutate: work => tx(() => work().result) });
-  const service = createWorkbookLibraryService({ repository, clock: manualClock(new Date(at)) });
+  const service = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository, clock: manualClock(new Date(at)) });
   return { database, repository, service };
 }
 function fixture(path?: string) {
@@ -204,7 +205,7 @@ it('reconciles manual Sync under the same writer and preserves managed cell meta
   const result = f.repository.operation(f.id, { operationId: 'sync', source: { kind: 'sync', syncId: 'sync' }, at, change: { kind: 'sync', expectedVersion: edited.version, workbook: incoming } });
   expect(result.state).toBe('applied'); expect(f.service.read(f.id).workbook.sheets[0].rows[1].cells[2]).toEqual(changed.sheets[0].rows[1].cells[2]);
   expect(f.repository.versions(f.id)).toEqual([]);
-  await expect(f.service.sync(f.id, 'unavailable', new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_SYNC_UNAVAILABLE' });
+  await expect(f.service.sync(f.id, 'unlinked', new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_SYNC_LINK_REQUIRED' });
 });
 it('journals operator additions and keyed Sync changes after rows receive new import IDs', () => {
   const f = fixture();
@@ -253,7 +254,7 @@ it('migrates every retained revision with explicit migration provenance without 
     { name: 'Saved revision 1', provenance: 'migration', version: 1 }, { name: 'Saved revision 2', provenance: 'migration', version: 2 }]);
   expect(validateWorkbookLibrary(db)).toBeGreaterThan(0);
   const repository = createWorkbookLibraryRepository({ database: db, read: work => work(), mutate: work => work().result });
-  const service = createWorkbookLibraryService({ repository, clock: manualClock(new Date(at)) });
+  const service = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository, clock: manualClock(new Date(at)) });
   const baseline = service.read(first.libraryId), edited = structuredClone(baseline.workbook); edited.name = 'Post migration.xlsx';
   service.save(first.libraryId, baseline.version, edited);
   expect(service.revision(first.libraryId, 1)).toEqual(first);

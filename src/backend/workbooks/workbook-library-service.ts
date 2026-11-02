@@ -36,7 +36,20 @@ function input<T>(schema: z.ZodType<T>, value: unknown): T {
   if (!parsed.success) throw new WorkbookLibraryError("WORKBOOK_INVALID", { cause: parsed.error });
   return parsed.data;
 }
-export function createWorkbookLibraryService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock; downloadSharePoint?: (link: NonNullable<WorkbookMetadata["sharePoint"]>, signal: AbortSignal) => Promise<Readonly<{ name: string; bytes: ArrayBuffer }>> }>) {
+export interface WorkbookSyncCommand {
+  readonly libraryId: string;
+  readonly operationId: string;
+  readonly expectedVersion: number;
+  readonly link: NonNullable<WorkbookMetadata["sharePoint"]>;
+  readonly signal: AbortSignal;
+}
+export interface WorkbookSyncDownload {
+  withDownload<Result>(command: WorkbookSyncCommand, use: (
+    downloaded: Readonly<{ name: string; bytes: ArrayBuffer }>,
+    scope: Readonly<{ signal: AbortSignal; assertCurrent(): void }>,
+  ) => Promise<Result>): Promise<Result>;
+}
+export function createWorkbookLibraryService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock; sync: WorkbookSyncDownload }>) {
   const read = (libraryId: string): SavedWorkbook => {
     const record = deps.repository.read(input(WorkbookIdSchema, libraryId));
     if (record === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
@@ -95,15 +108,23 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
         return replay;
       }
       const record = read(libraryId), link = deps.repository.metadata(libraryId).sharePoint;
-      if (!link || !deps.downloadSharePoint) throw new WorkbookLibraryError('WORKBOOK_SYNC_UNAVAILABLE');
+      if (!link) throw new WorkbookLibraryError('WORKBOOK_SYNC_LINK_REQUIRED');
+      if (record.workbook.hasFormulas || record.workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
       signal.throwIfAborted();
-      const downloaded = await deps.downloadSharePoint(link, signal);
-      const { importWorkbook } = await import('../../rules/spreadsheets/workbook-io.js');
-      const workbook = await importWorkbook(downloaded.name, downloaded.bytes);
-      if (record.workbook.hasFormulas || record.workbook.unsupportedMetadata || workbook.hasFormulas || workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
-      signal.throwIfAborted();
-      return deps.repository.operation(libraryId, { operationId, source: { kind: 'sync', syncId: operationId }, at: deps.clock.now().toISOString(),
-        change: { kind: 'sync', expectedVersion: record.version, workbook: encodeSavedWorkbook({ ...record, workbook: { ...workbook, libraryId } }).workbook } });
+      return deps.sync.withDownload({ libraryId, operationId, expectedVersion: record.version, link, signal }, async (downloaded, scope) => {
+        scope.assertCurrent();
+        const { importWorkbook } = await import('../../rules/spreadsheets/workbook-io.js');
+        scope.assertCurrent();
+        const workbook = await importWorkbook(downloaded.name, downloaded.bytes).catch((cause: unknown) => {
+          throw new WorkbookLibraryError('WORKBOOK_SYNC_IMPORT_FAILED', { cause });
+        });
+        scope.assertCurrent();
+        if (record.workbook.hasFormulas || record.workbook.unsupportedMetadata || workbook.hasFormulas || workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
+        signal.throwIfAborted();
+        scope.signal.throwIfAborted();
+        return deps.repository.operation(libraryId, { operationId, source: { kind: 'sync', syncId: operationId }, at: deps.clock.now().toISOString(),
+          change: { kind: 'sync', expectedVersion: record.version, workbook: encodeSavedWorkbook({ ...record, workbook: { ...workbook, libraryId } }).workbook } });
+      });
     },
   });
 }
