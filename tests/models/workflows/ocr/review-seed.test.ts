@@ -7,6 +7,21 @@ import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { DOCUMENT, donePage, READ_AT, READING_ID, SOURCE_RUN_ID, sourceFixture, submittedPage } from "../../../support/fixtures/ocr/source-pages.js";
 
 describe("OCR explicit review seed", () => {
+  it.each(["oath", "i9"] as const)("keeps %s fields and grouping in the selected form", formType => {
+    const { manifest, inputs } = sourceFixture(2, formType);
+    const outcomes = inputs.map((input, index) => donePage(input, "Example, Avery", formType === "i9" && index === 1 ? "i9-section2" : undefined));
+    const seed = buildOcrReviewSeed({ sourceRunId: SOURCE_RUN_ID,
+      accounting: accountOcrPages(manifest, READING_ID, outcomes, formType), roster: null });
+    assert.equal(seed.formType, formType);
+    assert.equal(seed.grouping.subjects[0].completeness, formType === "i9" ? "complete" : "duplicate");
+    assert.equal(seed.records[0].subjectName, "Example, Avery");
+    assert.equal(seed.records[0].recordId, `${DOCUMENT.sha256}#${formType}#1`);
+    assert.equal(seed.records[0].fields.answers.some(answer => answer.path.startsWith("contact.")), false);
+    assert.equal(seed.records.every(record => record.issues.includes("identity-unverified")), true);
+    assert.equal(OcrReviewSeedSchema.safeParse({ ...seed, formType: "emergency-contact" }).success, false);
+    assert.equal(OcrReviewSeedSchema.safeParse({ ...seed, accounting: { ...seed.accounting, formType: "emergency-contact" } }).success, false);
+  });
+
   it("retains separate duplicate pages, unresolved names, typed absences and original fields", () => {
     const { manifest, inputs } = sourceFixture(3);
     const outcomes = [donePage(inputs[0]), donePage(inputs[1]), donePage(inputs[2], "A")];

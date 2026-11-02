@@ -1,3 +1,4 @@
+import { PersonLookupResultSchema } from "../../../../models/workflows/person-lookup/result.js";
 /** `person-lookup-crm-dates` — read-only proof of the crm-dates step with its prerequisite reads. */
 import { defineWorkflow } from "../../../../workflow-kit/workflow-definition.js";
 import { requireFact } from "../../../../workflow-kit/workflow.js";
@@ -30,7 +31,6 @@ import {
   ACTIVE_STATUS_NODE,
   MATCHING_NODE,
   CRM_DATES_NODE,
-  PersonLookupResultSchema,
 } from "../../workflow.js";
 
 export const personLookupCrmDatesWorkflow = defineWorkflow({
