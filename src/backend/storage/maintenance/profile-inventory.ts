@@ -4,7 +4,7 @@ import { privatePathRejects } from "../private-path.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { InstallationLease } from "../admission/installation.js";
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
-import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
+import { offlineMaintenanceWorkspace, type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { BrowserSystemIdSchema, type BrowserSystemId } from "../../../rules/identity/ids.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
@@ -71,7 +71,7 @@ const stoppedBackupClosureBrand: unique symbol = Symbol("stopped-backup-closure"
 export interface StoppedBackupClosure { readonly [stoppedBackupClosureBrand]: true }
 const stoppedBackupClosures = new WeakMap<StoppedBackupClosure, {
   admission: RuntimeAdmission; operation: OfflineMaintenanceOperation; processLockRoot: string; clock: Clock;
-  census: string; layout: Pick<ProfileBrowserClosure, "workerDirectory">;
+  census: ReturnType<typeof stoppedBackupBrowserCensus>; layout: Pick<ProfileBrowserClosure, "workerDirectory">;
 }>();
 
 export class StorageBackupClosureUnprovedError extends Error {
@@ -87,11 +87,19 @@ function proveStoppedBackupSourceUnused(admission: RuntimeAdmission): void {
   }
 }
 
-export function flatBackupBrowserCensus(root: string, operation: OfflineMaintenanceOperation, clock: Clock) {
-  const { settings } = AuthorityDatabase.readFlatArchiveInventory(join(root, "state.db"), operation);
-  const config = resolveConfigWithProvenance(settings, { primaryDisplay: null }, clock, { stateRoot: root, artifactRoot: join(root, "artifacts") }).config;
+export function flatBackupBrowserCensus(root: string, operation: OfflineMaintenanceOperation, clock: Clock,
+  timing?: Readonly<{ launchTimeoutMs: number; closeProofMs: number }>) {
+  operation.assertHeld();
+  const workspace = offlineMaintenanceWorkspace(operation);
+  if (root !== join(workspace, rebuildRuntimeIsolation.stateRoot)) throw new StorageBackupClosureUnprovedError();
+  assertOfflineMaintenanceForProcessRoot(operation, join(workspace, rebuildRuntimeIsolation.processLockRoot));
   const profileRoot = join(root, "browsers");
-  if (config.paths.browserProfileRoot !== profileRoot) throw new StorageBackupClosureUnprovedError();
+  if (timing === undefined) {
+    const { settings } = AuthorityDatabase.readFlatArchiveInventory(join(root, "state.db"), operation);
+    const config = resolveConfigWithProvenance(settings, { primaryDisplay: null }, clock, { stateRoot: root, artifactRoot: join(root, "artifacts") }).config;
+    if (config.paths.browserProfileRoot !== profileRoot) throw new StorageBackupClosureUnprovedError();
+    timing = { launchTimeoutMs: config.timeouts.sessionAcquireMs, closeProofMs: config.browser.closeProofMs };
+  }
   const identities: Array<{ path: string; device: number; inode: number; mode: number; owner: number }> = [];
   const profiles: RetainedBrowserProfile[] = [];
   const inspect = (path: string) => {
@@ -129,13 +137,13 @@ export function flatBackupBrowserCensus(root: string, operation: OfflineMaintena
     } else if (/^onboarding-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-){3}g[1-9]\d*$/u.test(entry.name)) add(path);
     else throw new StorageBackupClosureUnprovedError();
   }
-  return { profiles, identity: canonicalJsonStringify({ profileRoot, identities, profiles }),
-    timing: { launchTimeoutMs: config.timeouts.sessionAcquireMs, closeProofMs: config.browser.closeProofMs } };
+  return { profiles, identities, identity: canonicalJsonStringify({ profileRoot, identities, profiles }),
+    timing };
 }
 
 function stoppedBackupBrowserCensus(admission: RuntimeAdmission, operation: OfflineMaintenanceOperation, clock: Clock, processLockRoot: string,
   layout: Pick<ProfileBrowserClosure, "workerDirectory">) {
-  if (admission.isFlatBackup()) return flatBackupBrowserCensus(admission.stateRoot, operation, clock);
+  if (admission.isFlatBackup()) return flatBackupBrowserCensus(admission.stateRoot, operation, clock, admission.flatBackupTiming());
   const owner = admission;
   admission = owner.forStoppedMaintenance(operation);
   let retain = false;
@@ -176,7 +184,7 @@ export async function prepareStoppedBackupClosure(browserClosure: ProfileBrowser
     if (admission.isFlatBackup()) proveStoppedBackupSourceUnused(admission);
     held();
     const issued: StoppedBackupClosure = { [stoppedBackupClosureBrand]: true };
-    stoppedBackupClosures.set(issued, { admission, operation, processLockRoot, clock, census: after.identity, layout });
+    stoppedBackupClosures.set(issued, { admission, operation, processLockRoot, clock, census: after, layout });
     return Object.freeze(issued);
   } catch (error) {
     if (hasUnprovedSourceClosure(error)) retainUnprovedSourceOwners(error, { admission, restore: operation });
@@ -191,7 +199,12 @@ export function assertStoppedBackupClosure(closure: StoppedBackupClosure, admiss
   if (issued === undefined || issued.admission !== admission || issued.operation !== operation) throw new StorageBackupClosureUnprovedError();
   assertOfflineMaintenanceForProcessRoot(operation, issued.processLockRoot);
   const census = stoppedBackupBrowserCensus(admission, operation, issued.clock, issued.processLockRoot, issued.layout);
-  if (census.identity !== issued.census) throw new StorageBackupClosureUnprovedError();
+  if (census.identity !== issued.census.identity) {
+    const original = issued.census;
+    if (!admission.isFlatBackup() || admission.flatBackupTiming() === undefined || !("identities" in census) || !("identities" in original)
+      || census.identities.some(row => !original.identities.some(prior => canonicalJsonStringify(row) === canonicalJsonStringify(prior)))
+      || census.profiles.some(row => !original.profiles.some(prior => canonicalJsonStringify(row) === canonicalJsonStringify(prior)))) throw new StorageBackupClosureUnprovedError();
+  }
   if (admission.isFlatBackup()) proveStoppedBackupSourceUnused(admission);
   admission.assertOfflineMaintenance(operation);
   return issued.layout;

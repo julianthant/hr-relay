@@ -6,13 +6,15 @@ import type { RuntimeAdmission } from "./admission.js";
 import { AuthorityBackupService, verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { inspectAuthorityBackupReadOnly, openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
 import { CredentialMaintenanceHold, captureCanonicalCredentialStartupLocks, publishStoppedCanonicalCredentials, CanonicalCredentialConversionPlanSchema, type CanonicalCredentialConversionPlan, CanonicalCredentialRestoreSnapshotSchema, CanonicalCredentialHeadSchema, CanonicalCredentialPublicationSourceSchema } from "../configuration/canonical-credential-store.js";
+import { assertStoppedBackupClosure, type StoppedBackupClosure } from "../maintenance/profile-inventory.js";
+import { FlatStartCleanIntentSchema, assertFlatStartCleanCredentials, assertFlatStartCleanFiles, flatStartCleanPlan, readFlatStartCleanSource, type FlatStartCleanIntent } from "../maintenance/flat-start-clean.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
 import { replacePrivateFile, privatePathRejects, writePrivateStage, fsyncPath } from "../private-path.js";
 import { assertOfflineMaintenanceOperation, OfflineMaintenanceOperationUnavailableError, isOfflineMaintenanceOperationActive, type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
 import { ProfileStorageRelocationUnsupportedError, requireRuntimeAdmission } from "./admission-identity.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
 import { createProfileVerifiers, preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
-import { retainedStorageBackup, SourceRecordSchema, StorageBackupSchema, inventory as backupFileInventory, file as backupFile } from "../maintenance/existing-data-backup-files.js";
+import { retainedStorageBackup, SourceRecordSchema, hash as backupHash, file as backupFile } from "../maintenance/existing-data-backup-files.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, hasUnprovedSourceClosure, retainUnprovedSourceOwners, rememberUnprovedSourceClosure, assertSourceClosuresProved } from "../source-closure.js";
 import { capturePriorPrivateFileLock, withPrivateFileLock, withOperationProof, outermostOperationProof, type PrivateFileLock, readPrivateFile, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
 import { captureCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, assertCanonicalProfileBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
@@ -255,8 +257,9 @@ export type InstallationLease = Readonly<{ retainSourceClosure(error: unknown): 
   readCompletedRestores(profileId: string): readonly CompletedRestoreCustody[];
   requiresFlatStoreMigration(): boolean;
   flatStoreMigrationPending(): boolean;
-  eraseFlatStoreCredentials(restore: OfflineMaintenanceOperation): void;
-  startCleanFlatStore(restore: OfflineMaintenanceOperation): void;
+  readFlatStartCleanIntent(): FlatStartCleanIntent | undefined;
+  prepareFlatStartClean(restore: OfflineMaintenanceOperation, timing: FlatStartCleanIntent["timing"]): void;
+  startCleanFlatStore(restore: OfflineMaintenanceOperation, backup: RuntimeAdmission, closure: StoppedBackupClosure): void;
   abortUnpublishedProfile(operation: z.infer<typeof SignUpOperationSchema>, head?: z.infer<typeof CanonicalCredentialPublicationSourceSchema.shape.head>): boolean;
   reclassifyIncompleteProfile(profile: RuntimeAdmission): void;
   resumeIncompleteProfileDraft(profileId: string, restore: OfflineMaintenanceOperation): boolean;
@@ -297,8 +300,7 @@ const MARKER = ".runtime-owner.json";
 const FENCE = ".runtime-source-fence.json";
 export const RUNTIME_ROOT_AUTHORITY_ENTRY_NAMES = Object.freeze([MARKER,FENCE]);
 const RECEIPTS = "relocation-receipts";
-const FlatStartCleanIntentSchema = z.strictObject({ schemaVersion: z.literal(1), installationId: z.uuid(),
-  backup: z.strictObject({ backupPath: z.string(), backupDigest: z.string() }) });
+
 const issuedLeases = new WeakSet<object>();
 
 function fail(reason: string): never { throw new Error(`runtime-control: ${reason}`); }
@@ -1506,7 +1508,17 @@ function readProfileUpgradeAuthority(control: string, workspace: string, locator
   return canonicalJsonStringify({ document, observation: before, files, directories });
 }
 
-function initializeMachineRegistry(control: string, locator: RuntimeLocator): void {
+function flatStartCleanPepper(control: string, locator: RuntimeLocator, intent: FlatStartCleanIntent) {
+  const stage = join(control, `.flat-start-clean-${intent.operationId}.pepper`), target = join(locator.stateRoot, "machine", "profile-pepper");
+  noSymlinkAncestry(dirname(stage), new Map()); noSymlinkAncestry(dirname(target), new Map());
+  const prepared = readPrivateFile(stage, { label: "lock", maxBytes: 32 }), published = readPrivateFile(target, { label: "lock", maxBytes: 32 });
+  const pepper = prepared ?? published;
+  if (pepper?.bytes.length !== 32 || backupHash(pepper.bytes) !== intent.pepperDigest || prepared !== undefined && published !== undefined
+    || intent.phase === "erasing" && prepared === undefined) fail("flat-start-clean-pepper-changed");
+  return { stage, target };
+}
+
+function initializeMachineRegistry(control: string, locator: RuntimeLocator, flat?: FlatStartCleanIntent): void {
   const directory = join(locator.stateRoot, "machine");
   if (!lstatMaybe(directory)) { mkdirSync(directory, { mode: 0o700 }); fsyncPath(locator.stateRoot); }
   privateDirectory(directory);
@@ -1522,7 +1534,10 @@ function initializeMachineRegistry(control: string, locator: RuntimeLocator): vo
   publish(join(directory, "profiles.json"), document);
   publish(join(directory, "profile-verifiers.json"), { schemaVersion: 1, profiles: [] });
   const pepperPath = join(directory, "profile-pepper");
-  if (!lstatMaybe(pepperPath)) writeFileSync(pepperPath, randomBytes(32), { mode: 0o600, flag: "wx" });
+  if (flat !== undefined) {
+    const { stage, target } = flatStartCleanPepper(control, locator, flat);
+    if (!lstatMaybe(target)) { renameSync(stage, target); fsyncPath(control); fsyncPath(directory); }
+  } else if (!lstatMaybe(pepperPath)) writeFileSync(pepperPath, randomBytes(32), { mode: 0o600, flag: "wx" });
   const pepper = readPrivateFile(pepperPath, { label: "lock", maxBytes: 32 });
   if (pepper?.bytes.length !== 32) fail("profile-machine-pepper-invalid");
   fsyncPath(pepperPath); fsyncPath(directory);
@@ -1638,12 +1653,16 @@ export function inspectPendingRelocationRecovery(workspacePath: string, operatio
 function preflightProfileFormats(control: string, workspace: string, stoppedForward: boolean): void {
   if (!lstatMaybe(join(control, "installation.json"))) return;
   const locator = rawLocator(control, workspace), machine = join(locator.stateRoot, "machine");
+  const completed = join(control, "flat-start-clean-complete.json");
+  if (lstatMaybe(completed)) {
+    const intent = readStrict(completed, FlatStartCleanIntentSchema);
+    if (intent.phase !== "complete" || intent.installationId !== locator.installationId) fail("flat-start-clean-completion-invalid");
+    flatStartCleanPepper(control, locator, intent);
+  }
   const clean = join(control, "flat-start-clean.json");
   if (lstatMaybe(clean)) {
     const intent = readStrict(clean, FlatStartCleanIntentSchema);
-    const backup = retainedStorageBackup(workspace, locator.installationId);
-    if (intent.installationId !== locator.installationId || backup === undefined
-      || canonicalJsonStringify(intent.backup) !== canonicalJsonStringify(backup)) fail("flat-start-clean-intent-changed");
+    readFlatStartCleanSource(workspace, locator.installationId, intent);
     return;
   }
   if (!lstatMaybe(machine)) return;
@@ -2088,54 +2107,79 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       return true;
     },
     flatStoreMigrationPending() { assertHeld(); return lstatMaybe(join(control, "flat-start-clean.json")) !== undefined; },
-    eraseFlatStoreCredentials(restore: OfflineMaintenanceOperation) {
+    readFlatStartCleanIntent() {
+      assertHeld();
+      const path = join(control, "flat-start-clean.json");
+      if (!lstatMaybe(path)) return undefined;
+      const intent = readStrict(path, FlatStartCleanIntentSchema);
+      readFlatStartCleanSource(workspace, locator.installationId, intent);
+      flatStartCleanPepper(control, locator, intent);
+      return intent;
+    },
+    prepareFlatStartClean(restore: OfflineMaintenanceOperation, timing: FlatStartCleanIntent["timing"]) {
       return mutate(() => {
-      assertStoppedMachineMaintenance(this, restore);
-      if (!this.requiresFlatStoreMigration() || this.flatStoreMigrationPending()) fail("flat-start-clean-source-required");
-      const credentials = join(locator.stateRoot, "credentials");
-      if (lstatMaybe(credentials)) {
-        noSymlinkAncestry(credentials, new Map());
-        unpublishedDraftAbortMembership(credentials);
-        rmSync(credentials, { recursive: true }); fsyncPath(locator.stateRoot);
-      }
+        assertStoppedMachineMaintenance(this, restore);
+        if (!this.requiresFlatStoreMigration() || this.flatStoreMigrationPending()) fail("flat-start-clean-source-required");
+        const reference = retainedStorageBackup(workspace, locator.installationId);
+        if (reference === undefined) fail("flat-start-clean-backup-required");
+        const bytes = backupFile(join(dirname(reference.backupPath), "source.json")).bytes;
+        const source = SourceRecordSchema.parse(JSON.parse(bytes.toString("utf8")));
+        const pepper = randomBytes(32);
+        const intent = FlatStartCleanIntentSchema.parse({ schemaVersion: 2, kind: "flat-start-clean", installationId: locator.installationId,
+          operationId: source.operationId, sourceDigest: backupHash(bytes), backup: reference, credentialLayout: "flat-plaintext",
+          pepperDigest: backupHash(pepper), timing, phase: "erasing", cursor: 0, pending: false });
+        readFlatStartCleanSource(workspace, locator.installationId, intent);
+        assertFlatStartCleanFiles(source, intent); assertFlatStartCleanCredentials(source);
+        const stage = join(control, `.flat-start-clean-${intent.operationId}.pepper`);
+        if (lstatMaybe(stage)) fail("flat-start-clean-pepper-stage-exists");
+        atomicJson(join(control, "flat-start-clean.json"), intent);
+        writePrivateStage(stage, pepper); fsyncPath(control);
       });
     },
-    startCleanFlatStore(restore: OfflineMaintenanceOperation) {
+    startCleanFlatStore(restore: OfflineMaintenanceOperation, backup: RuntimeAdmission, closure: StoppedBackupClosure) {
       return mutate(() => {
-      assertStoppedMachineMaintenance(this, restore);
-      assertHeld();
-      const reference = retainedStorageBackup(workspace, locator.installationId);
-      if (reference === undefined) fail("flat-start-clean-backup-required");
-      const backup = StorageBackupSchema.parse(JSON.parse(backupFile(reference.backupPath).bytes.toString("utf8")));
-      if (backup.files.some(entry => entry.path === "profile/credentials" || entry.path.startsWith("profile/credentials/"))) fail("flat-start-clean-backup-credentials-refused");
-      const intentPath = join(control, "flat-start-clean.json");
-      const intent = { schemaVersion: 1 as const, installationId: locator.installationId, backup: reference };
-      if (lstatMaybe(intentPath)) {
-        const prior = readStrict(intentPath, FlatStartCleanIntentSchema);
-        if (canonicalJsonStringify(prior) !== canonicalJsonStringify(intent)) fail("flat-start-clean-intent-changed");
-      } else atomicJson(intentPath, intent);
-      const source = SourceRecordSchema.parse(JSON.parse(backupFile(join(dirname(reference.backupPath), "source.json")).bytes.toString("utf8")));
-      const sourceFiles = source.members.filter(member => member.kind === "file");
-      const excluded = new Set([".runtime-owner.json", "locks", "machine"]);
-      const observed = backupFileInventory(locator.stateRoot, "profile", excluded).filter(entry => entry.file.path !== "profile/artifacts/.runtime-owner.json");
-      for (const entry of observed) {
-        const saved = sourceFiles.find(file => file.path === entry.file.path);
-        if (saved === undefined || saved.digest !== entry.file.digest || saved.size !== entry.file.size || saved.mode !== entry.file.mode) fail("flat-start-clean-source-changed");
-      }
-      for (const entry of observed) { unlinkSync(entry.path); fsyncPath(dirname(entry.path)); }
-      const removeEmpty = (directory: string) => {
-        for (const name of readdirSync(directory)) {
-          if (directory === locator.stateRoot && excluded.has(name) || directory === locator.artifactRoot && name === ".runtime-owner.json") continue;
-          const child = join(directory, name), info = lstatSync(child);
-          if (!info.isDirectory() || info.isSymbolicLink()) fail("flat-start-clean-membership-changed");
-          removeEmpty(child);
-          if (child !== locator.artifactRoot) { rmdirSync(child); fsyncPath(directory); }
+        const assertClosed = () => {
+          assertStoppedMachineMaintenance(this, restore);
+          if (!backup.isFlatBackup() || backup.stateRoot !== locator.stateRoot || backup.artifactRoot !== locator.artifactRoot) fail("flat-start-clean-source-refused");
+          assertStoppedBackupClosure(closure, backup, restore);
+        };
+        assertClosed();
+        const intentPath = join(control, "flat-start-clean.json");
+        const pending = this.readFlatStartCleanIntent();
+        if (pending === undefined) fail("flat-start-clean-backup-required");
+        let intent: FlatStartCleanIntent = pending;
+        const source = readFlatStartCleanSource(workspace, locator.installationId, intent), plan = flatStartCleanPlan(source);
+        const current = () => {
+          assertStoppedMachineMaintenance(this, restore);
+          const observed = this.readFlatStartCleanIntent();
+          if (observed === undefined || canonicalJsonStringify(observed) !== canonicalJsonStringify(intent)) fail("flat-start-clean-intent-changed");
+          assertFlatStartCleanFiles(source, intent); assertClosed();
+        };
+        current();
+        while (intent.cursor < plan.length) {
+          if (!intent.pending) { intent = { ...intent, pending: true }; atomicJson(intentPath, intent); }
+          current();
+          const member = plan[intent.cursor];
+          if (member === undefined) fail("flat-start-clean-cursor-invalid");
+          const path = join(locator.stateRoot, ...member.path.split("/").slice(1));
+          if (lstatMaybe(path)) {
+            if (member.kind === "directory") rmdirSync(path); else unlinkSync(path);
+          }
+          fsyncPath(dirname(path));
+          intent = { ...intent, cursor: intent.cursor + 1, pending: false }; atomicJson(intentPath, intent);
+          current();
         }
-      };
-      removeEmpty(locator.stateRoot);
-      initializeMachineRegistry(control, locator);
-      readMachineRegistry(control, locator, false);
-      unlinkSync(intentPath); fsyncPath(control);
+        if (intent.phase === "erasing") { intent = { ...intent, phase: "publishing" }; atomicJson(intentPath, intent); }
+        current(); initializeMachineRegistry(control, locator, intent);
+        current();
+        const document = readMachineRegistry(control, locator, false);
+        const registryDigest = backupHash(Buffer.from(canonicalJsonStringify(document)));
+        if (intent.result !== undefined && intent.result.registryDigest !== registryDigest) fail("flat-start-clean-result-changed");
+        intent = { ...intent, phase: "complete", result: { registryDigest } };
+        atomicJson(intentPath, intent);
+        const completed = join(control, "flat-start-clean-complete.json");
+        if (lstatMaybe(completed)) fail("flat-start-clean-completion-exists");
+        renameSync(intentPath, completed); fsyncPath(control);
       });
     },
     readProfileRegistry() {

@@ -663,8 +663,8 @@ async function runLogout(): Promise<void> {
     const refusal = scenario === "logout-browser-busy" ? new BrowserProfileStillClosingError(new Error("synthetic native busy"))
       : new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
     let probes = 0;
-    profileBrowserClosure.probeClosed = async profiles => {
-      probes++; assert.deepEqual(profiles, []);
+    profileBrowserClosure.probeClosed = async (profiles, _timing, _clock, _signal, owner) => {
+      probes++; assert.deepEqual(profiles, []); assert.equal(owner, context?.admission);
       throw refusal;
     };
     startLogout();

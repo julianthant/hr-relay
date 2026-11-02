@@ -466,7 +466,7 @@ export const profileBrowserClosure: ProfileBrowserClosure = {
     const { flatBackupBrowserCensus } = await import("./maintenance/profile-inventory.js");
     const capture = () => {
       held();
-      const census = flatBackupBrowserCensus(root, heldOperation, clock);
+      const census = flatBackupBrowserCensus(root, heldOperation, clock, admission?.flatBackupTiming());
       if (profiles.some(profile => !census.profiles.some(row => same(row, profile))) || census.profiles.length !== profiles.length) throw new BrowserRootUnavailableError();
       return census.identity;
     };

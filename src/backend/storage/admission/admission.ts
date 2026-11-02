@@ -352,6 +352,12 @@ export class RuntimeAdmission {
     if (path !== this.#flatBackup.sourcePath || processLockRoot !== this.#flatBackup.processLockRoot) throw new Error("flat-backup-source-refused");
   }
   isFlatBackup(): boolean { this.assertLive(); return this.#scope === "flat-backup"; }
+  flatBackupTiming() {
+    this.assertLive();
+    const parent = this.#profileParent;
+    if (!this.isFlatBackup() || parent === undefined || parent.#scope !== "installation") throw new Error("flat-backup-authority-required");
+    return (parent.#authority as InstallationLease).readFlatStartCleanIntent()?.timing;
+  }
   assertStoppedProfileUpgrade(path: string, processLockRoot: string): void {
     if (this.#scope === "profile-maintenance") {
       this.assertReadOnlyAuthorityDatabase(path);
@@ -1513,29 +1519,54 @@ export class RuntimeAdmission {
     const { lease, restore } = this.#stoppedMachineMaintenance();
     try {
       if (!lease.flatStoreMigrationPending()) {
-        lease.eraseFlatStoreCredentials(restore);
-        const backup = await this.forStoppedFlatBackup();
-        const { backupFlatStorage } = await import("../maintenance/existing-data-backup.js");
-        const { prepareStoppedBackupClosure } = await import("../maintenance/profile-inventory.js");
-        const closure = await prepareStoppedBackupClosure(browserClosure, backup, restore, systemClock,
-          join(lease.readInstallationContext().workspace, rebuildRuntimeIsolation.processLockRoot));
-        await backupFlatStorage(closure, backup, systemClock);
+        const { captureFlatArchiveSource } = await import("../maintenance/existing-data-backup-files.js");
+        const { assertFlatStartCleanCredentials } = await import("../maintenance/flat-start-clean.js");
+        assertFlatStartCleanCredentials(captureFlatArchiveSource({ workspace: lease.readInstallationContext().workspace,
+          stateRoot: this.stateRoot, installationId: this.locator.installationId, operationId: restore.operationId }).document);
       }
-      lease.startCleanFlatStore(restore);
+      const backup = await this.#forStoppedFlatSource();
+      const { prepareStoppedBackupClosure, assertStoppedBackupClosure, flatBackupBrowserCensus } = await import("../maintenance/profile-inventory.js");
+      const closure = await prepareStoppedBackupClosure(browserClosure, backup, restore, systemClock,
+        join(lease.readInstallationContext().workspace, rebuildRuntimeIsolation.processLockRoot));
+      const current = () => { assertStoppedBackupClosure(closure, backup, restore); };
+      if (!lease.flatStoreMigrationPending()) {
+        const { backupFlatStorage } = await import("../maintenance/existing-data-backup.js");
+        await backupFlatStorage(closure, backup, systemClock);
+        const { timing } = flatBackupBrowserCensus(backup.stateRoot, restore, systemClock);
+        current(); lease.prepareFlatStartClean(restore, timing);
+      }
+      lease.startCleanFlatStore(restore, backup, closure);
     } catch (error) {
-      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: this });
+      if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission: this });
       throw new ProfileFlatStoreMigrationError(error);
     }
   }
   async forStoppedFlatBackup(): Promise<RuntimeAdmission> {
+    const { lease } = this.#stoppedMachineMaintenance();
+    if (lease.flatStoreMigrationPending()) throw new Error("flat-start-clean-pending");
+    return this.#forStoppedFlatSource();
+  }
+  async #forStoppedFlatSource(): Promise<RuntimeAdmission> {
     const { lease, restore } = this.#stoppedMachineMaintenance(), context = lease.readInstallationContext();
     const root = join(context.workspace, rebuildRuntimeIsolation.stateRoot), path = join(root, "state.db");
     const processLockRoot = join(context.workspace, rebuildRuntimeIsolation.processLockRoot);
     const ancestry = new Map<string, DirectoryIdentity>();
     noSymlinkAncestry(root, ancestry); noSymlinkAncestry(join(root, "artifacts"), ancestry);
+    const { assertFlatStartCleanFiles, readFlatStartCleanSource } = await import("../maintenance/flat-start-clean.js");
+    let cleanupIdentity: string | undefined;
     const assertSource = () => {
       this.assertLive(); assertStoppedMachineMaintenance(lease, restore);
+      if (this.stateRoot !== root || this.artifactRoot !== join(root, "artifacts")) throw new Error("flat-backup-source-refused");
       if (!noSymlinkAncestry(root, ancestry) || !noSymlinkAncestry(join(root, "artifacts"), ancestry)) throw new Error("flat-backup-source-changed");
+      const pending = lease.readFlatStartCleanIntent();
+      if (pending !== undefined) {
+        const { cursor: _cursor, pending: _pending, phase: _phase, result: _result, ...identity } = pending;
+        const current = canonicalJsonStringify(identity);
+        if (cleanupIdentity !== undefined && current !== cleanupIdentity) throw new Error("flat-start-clean-intent-changed");
+        cleanupIdentity = current;
+        assertFlatStartCleanFiles(readFlatStartCleanSource(context.workspace, this.locator.installationId, pending), pending);
+        return;
+      }
       if (this.stateRoot !== root || this.artifactRoot !== join(root, "artifacts")
         || ["machine", "profiles"].some(name => existsSync(join(root, name)))
         || ["profile-registry.json", "profile-flat-claim.json", "profile-publication.json", "profile-owner-claims"].some(name => existsSync(join(context.workspace, ".tracker", "control", name)))) throw new Error("flat-backup-source-refused");
@@ -1552,6 +1583,7 @@ export class RuntimeAdmission {
     });
     const assertHeld = () => {
       assertSource();
+      if (lease.flatStoreMigrationPending()) return;
       for (const source of sources) if (canonicalJsonStringify(source.identity(lstatSync(source.sourcePath, { throwIfNoEntry: false })) ?? null) !== source.before) throw new Error("flat-backup-source-changed");
     };
     const child = new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release: () => this.release() },
@@ -1559,10 +1591,10 @@ export class RuntimeAdmission {
       { sourcePath: path, processLockRoot });
     try {
       const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
-      AuthorityDatabase.readFlatArchiveInventory(path, restore);
+      if (!lease.flatStoreMigrationPending()) AuthorityDatabase.readFlatArchiveInventory(path, restore);
       return child;
     } catch (error) {
-      if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: child });
+      if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission: child });
       child.release(); throw error;
     }
   }
