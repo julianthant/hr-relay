@@ -81,8 +81,9 @@ describe("I-9 UCOP login", () => {
       },
     }, undefined, "i9");
     assert.equal((await verifyI9AuthenticatedApplication(world.context)).authenticated, false);
-    assert.equal(await i9LoginRecipe(world.context), "logged-in");
+    assert.equal(await i9LoginRecipe(world.context), "already-authenticated");
     assert.ok(world.harness.actions().includes("click:i9-training-confirm"));
+    assert.equal(world.harness.actions().some(action => action.startsWith("goto:")), false);
     assert.deepEqual(world.harness.filled(), []);
   });
 });

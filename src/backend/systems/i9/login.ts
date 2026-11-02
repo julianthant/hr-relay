@@ -57,6 +57,15 @@ const loginRecipe = defineVerifiedLoginRecipe({
   system: "i9",
   verify: verifyI9AuthenticatedApplication,
   navigate: async context => {
+    context.assertCurrent();
+    if (isI9AppHost(context.page.url())) {
+      const trainingRoute = /training/iu.test(new URL(context.page.url()).pathname);
+      const banner = await raceCancellation(() => ui.dismissTraining(context.page).isVisible(), "i9", "verify-landing", context);
+      if (trainingRoute || banner) {
+        await dismissTraining(context);
+        return;
+      }
+    }
     const entry = resolveSystemLoginUrl(context.config, "i9", context.instance, context.label);
     await raceCancellation(() => context.page.goto(entry, { waitUntil: "domcontentloaded", timeout: context.config.timeouts.navigationMs }), "i9", "navigate-login-entry", context);
     recordBrowserAction("opened", "i9.login.entry");
