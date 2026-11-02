@@ -20,7 +20,6 @@ import { taskStoreRegistry } from "./task-registry.js";
 import { createWorkflowDescriptorRegistry } from "../../../workflows/descriptor-registry.js";
 import { WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES } from "./generated-workflow-modules.js";
 export * from "./generated-workflow-modules.js";
-
 export function createWorkflowRegistry<PublicModule extends WorkflowModule>(
   publicEntries: readonly PublicModule[],
   childOnlyEntries: readonly WorkflowModule[],
@@ -56,7 +55,6 @@ export function createWorkflowRegistry<PublicModule extends WorkflowModule>(
 }
 
 const registry = createWorkflowRegistry(WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES);
-
 /** Resolve a public workflow, or refuse with its registered alternatives. */
 export const workflowModuleOf = registry.moduleOf;
 
@@ -100,12 +98,14 @@ export function auditImplBindings(bindings: PendingImplBindings): readonly strin
     ...auditWorkflowModuleBindings(allModules),
     ...auditWorkflowModuleRoles(allModules),
     ...auditWorkflowCodes(allModules.map(module => module.descriptor)),
+
   ];
   const bound = new Set(boundTaskIds());
   const pending = new Map(bindings.tasks.map((entry) => [String(entry.taskId), entry]));
   const used = new Set<string>();
 
   for (const { descriptor } of allModules) {
+
     for (const contract of workflowProjections(descriptor).contracts) {
       const id = String(contract.id);
       used.add(id);

@@ -25,6 +25,7 @@ import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/dea
 import type { WorkerBrowserSessionFactory } from "../../../runtime/workers/worker-sessions.js";
 import type { WorkerRunResources } from "../../../runtime/workers/worker-loop.js";
 import { selectRunSettings } from "../../../runs/settings/run-settings.js";
+import { createWorkbookLibraryAdapter } from "../../../processing/providers/workbook-library-adapter.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
@@ -43,7 +44,7 @@ export function createRunResourcesFactory(input:Readonly<{
  if(input.sessionFactory!==undefined&&input.createSessionFactory!==undefined)throw new Error("browser-session-factory-owner-conflict");
  const profiles=createBrowserProfileAuthority(input);
  const nominatim=input.nominatim;
- const compose=(config:Config):WorkerRunResources=>{
+ const compose=(config:Config)=>{
   input.assertBrowserRoot(config.paths.browserProfileRoot);
   return Object.freeze({
    sessionFactory:input.sessionFactory??input.createSessionFactory?.(profiles)??new PlaywrightWorkerSessionFactory({config,protectedSecrets:input.protectedSecrets,isolation:input.isolation,clock:input.clock,scheduler:input.scheduler,newSessionId:()=>input.ids.uuid(),
@@ -56,7 +57,8 @@ export function createRunResourcesFactory(input:Readonly<{
     configSnapshots:input.authority.configSnapshots,idFactory:{next:()=>input.ids.uuid()}},
   });
  };
- const cache=new Map<string,WorkerRunResources>();
+ const cache=new Map<string,ReturnType<typeof compose>>();
+ const runCache=new Map<string,WorkerRunResources>();
  return Object.freeze({
   baseline:compose,
   stop:()=>nominatim.stop(),
@@ -66,7 +68,12 @@ export function createRunResourcesFactory(input:Readonly<{
    input.assertBrowserRoot(snapshot.config.paths.browserProfileRoot);
    if(sha256Hex(canonicalJsonStringify(snapshot.config))!==snapshot.fingerprint)throw new Error("run-resources-retained-snapshot-unavailable");
    const previous=cache.get(snapshot.fingerprint);
-   const resources=previous??compose(StoredConfigSchema.parse(snapshot.config));cache.set(snapshot.fingerprint,resources);
+   const baseline=previous??compose(StoredConfigSchema.parse(snapshot.config));cache.set(snapshot.fingerprint,baseline);
+   const key=`${run.envelope.runId}:${snapshot.fingerprint}`;
+   const resources=runCache.get(key)??Object.freeze({...baseline,providers:{...baseline.providers,adapters:Object.freeze({...baseline.providers.adapters,
+    "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock}),
+   })}});
+   runCache.set(key,resources);
    return input.preflight===undefined?resources:Object.freeze({...resources,sessionFactory:preflightSessionFactory(resources.sessionFactory,input.preflight,input.preflight.runScope(run.envelope))});
   },
  });

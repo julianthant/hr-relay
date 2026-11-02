@@ -1,6 +1,5 @@
 import { STEP_PROOF_MODULES } from "./generated-step-proof-modules.js";
 export * from "./generated-step-proof-modules.js";
-
 export const STEP_PROOF_DESCRIPTORS = Object.freeze(
   STEP_PROOF_MODULES.map((module) => module.descriptor),
 );
