@@ -4,7 +4,7 @@ import { CrmSearchOnboardingRecords } from "../../../../models/systems/crm/searc
 import { CrmVerifyOnboardingRecord } from "../../../../models/systems/crm/verify-onboarding-record.js";
 import { SearchPersonMatch } from "../../../../models/systems/ucpath/search-person-match.js";
 import { SearchPersonOrg } from "../../../../models/systems/ucpath/search-person-org.js";
-import { PersonLookupInput, personLookupTitle } from "../../../../models/workflows/person-lookup/input.js";
+import { PERSON_LOOKUP_EXAMPLE_EID, PersonLookupInput, personLookupTitle } from "../../../../models/workflows/person-lookup/input.js";
 import { ReadResolvedIdentity } from "../../../../models/workflows/person-lookup/read-resolved-identity.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
@@ -22,7 +22,7 @@ export const CROSS_VERIFY_STEP = Object.freeze({
   system: "crm",
   selection: { inputField: "crmCheck", selectedWhen: true },
   operatorFields: [
-    ...[["name", "Name", "Quillan, Petra A."], ["department", "Department", "CAMPUS DINING OPERATIONS"], ["emplId", "Employee ID", "10000001"], ["firstDayOfService", "Start date", "3/14/2031"]].map(([path, label, example]) => ({
+    ...[["name", "Name", "Quillan, Petra A."], ["department", "Department", "CAMPUS DINING OPERATIONS"], ["emplId", "Employee ID", PERSON_LOOKUP_EXAMPLE_EID], ["firstDayOfService", "Start date", "3/14/2031"]].map(([path, label, example]) => ({
       label, example, sources: [
         ...["cross-verify", "crm-selected-record", "crm-results"].map(nodeId => ({ nodeId, kind: "output" as const, fieldPath: `records.${path}` })),
         ...["crmIdentity", "crmRecord", "unselectedCrmRecords"].map(prefix => ({ nodeId: "crm-identity", kind: "output" as const, fieldPath: `${prefix}.${path}` })),

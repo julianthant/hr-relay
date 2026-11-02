@@ -1,6 +1,6 @@
 import { SearchPersonMatch } from "../../../../models/systems/ucpath/search-person-match.js";
 import { SearchPersonOrg } from "../../../../models/systems/ucpath/search-person-org.js";
-import { PersonLookupInput } from "../../../../models/workflows/person-lookup/input.js";
+import { PERSON_LOOKUP_EXAMPLE_EID, PersonLookupInput } from "../../../../models/workflows/person-lookup/input.js";
 import { ReadResolvedIdentity } from "../../../../models/workflows/person-lookup/read-resolved-identity.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
@@ -20,7 +20,7 @@ export const SEARCHING_STEP = Object.freeze({
   description: "Search UCPath by employee ID or name and read the matching person records.",
   system: "ucpath",
   operatorFields: [
-    ...[["emplId", "Employee ID", "10000001"], ["name", "Name", "Quillan, Petra A."], ["department", "Department", "CAMPUS DINING OPERATIONS"], ["jobTitle", "Job title", "Fictional analyst"], ["hrStatus", "HR status", "Active"]].map(([path, label, example]) => ({
+    ...[["emplId", "Employee ID", PERSON_LOOKUP_EXAMPLE_EID], ["name", "Name", "Quillan, Petra A."], ["department", "Department", "CAMPUS DINING OPERATIONS"], ["jobTitle", "Job title", "Fictional analyst"], ["hrStatus", "HR status", "Active"]].map(([path, label, example]) => ({
       label, example, sources: [
         ...(["emplId", "name"].includes(path) ? [{ nodeId: "searching", kind: "input" as const, fieldPath: path }] : []),
         ...["results", "selection.selected"].map(prefix => ({ nodeId: "searching", kind: "output" as const, fieldPath: `${prefix}.${path}` })),
