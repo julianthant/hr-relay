@@ -5976,7 +5976,8 @@ export class AuthorityDatabase implements Disposable {
           if (current.lifecycle.state === "terminal" || current.lifecycle.state === "parked-write") throw new Error("run-pause-invalid-state");
           if (request.acknowledge && (request.claim === undefined || current.pause?.state !== "requested")) throw new Error("run-pause-claim-required");
           if (request.pause?.state === "paused" && runClaim(current) !== undefined && !request.acknowledge) throw new Error("run-pause-acknowledgment-required");
-          return RunRecordSchema.parse({ ...current, pause: request.pause,
+          const { pause: _pause, ...withoutPause } = current;
+          return RunRecordSchema.parse({ ...withoutPause, ...(request.pause === undefined ? {} : { pause: request.pause }),
             ...(request.continuation === undefined ? {} : { envelope: { ...current.envelope, continuation: request.continuation } }),
             ...(request.acknowledge ? { lifecycle: { state: "queued", requeuedFrom: "recovery" } } : {}) });
         });

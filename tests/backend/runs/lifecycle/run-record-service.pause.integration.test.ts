@@ -21,6 +21,9 @@ it("persists queued pause, excludes claims, replays exactly, and resumes only by
   assert.equal(f.service.resumePaused({ ...request, commandId: randomUUID() }).state, "refused");
   const resumed = requireLifecycleApplied(f.service.resumePaused({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: paused.version }));
   assert.equal(resumed.pause, undefined);
+  assert.equal(Object.hasOwn(resumed, "pause"), false);
+  const persisted = f.database.authority.runs.get(resumed.envelope.runId); assert.ok(persisted);
+  assert.equal(Object.hasOwn(persisted, "pause"), false);
   assert.equal(resumed.envelope.continuation?.sources[0]?.runId, run.envelope.runId);
   assert.equal(resumed.version, paused.version + 1);
 });
