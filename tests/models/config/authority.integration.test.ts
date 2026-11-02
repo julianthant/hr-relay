@@ -1,3 +1,4 @@
+import { encodeEditableWorkbook, type SavedWorkbook, type WorkbookOperation } from "../../../src/models/dashboard/workbooks.js";
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { createAuthorityAccountingTestWorld } from "../../support/helpers/backend/authority-accounting-world.js";
 import { authorityMutationCases, type MutationCase } from "../../support/helpers/backend/authority-accounting-world.js";
@@ -10,6 +11,7 @@ import { it } from "vitest";
 import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "../../../src/backend/storage/sqlite/storage-records.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../src/models/config/authority.js";
 import { DryRunScenarioResultSchema } from "../../../src/models/trust/dry-run-scenario-result.js";
+import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 
 
 
@@ -74,16 +76,72 @@ afterEach(async () => {
   for (const profile of heldProfiles.splice(0)) await profile.close();
 });
 afterAll(() => profiles.close());
+  type AccountingDatabase = Parameters<MutationCase['mutate']>[0];
+  const accountingWorkbooks = new WeakMap<AccountingDatabase, SavedWorkbook>();
+  const createAccountingWorkbook = (database: AccountingDatabase) => createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK })
+    .create({ name: "Accounting.xlsx", themes: [], hasFormulas: false,
+      sheets: [{ id: "sheet", name: "Rows", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "synthetic" }] }] }] });
+  const prepareAccountingWorkbook = (database: AccountingDatabase) => { accountingWorkbooks.set(database, createAccountingWorkbook(database)); };
+  const accountingWorkbook = (database: AccountingDatabase) => {
+    const saved = accountingWorkbooks.get(database); assert.ok(saved); return saved;
+  };
+  const accountingSave = (saved: SavedWorkbook): WorkbookOperation => ({ operationId: 'accounting-save', source: { kind: 'operator' }, at: IsoInstantSchema.parse(CLOCK.now().toISOString()),
+    change: { kind: 'save', expectedVersion: 1, workbook: encodeEditableWorkbook({ ...saved.workbook, name: 'Settled.xlsx' }) } });
+  const accountingVersion = (_saved: SavedWorkbook): WorkbookOperation => ({ operationId: 'accounting-version', source: { kind: 'operator' }, at: IsoInstantSchema.parse(CLOCK.now().toISOString()),
+    change: { kind: 'version', expectedVersion: 1, name: 'Reviewed' } });
   const cases: readonly MutationCase[] = [...authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT }),
-    ...(["workbook_library", "workbook_library_history"] as const).map(table => ({ table,
-      mutate: (database: Parameters<MutationCase["mutate"]>[0]) => {
-        const service = createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK });
-        const saved = service.create({ name: "Accounting.xlsx", themes: [], hasFormulas: false,
-          sheets: [{ id: "sheet", name: "Rows", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "synthetic" }] }] }] });
-        assert.deepEqual(database.authority.workbooks.read(saved.libraryId), saved);
-        assert.deepEqual(database.authority.workbooks.history(saved.libraryId), [saved]);
-      },
-    })),
+    { table: "workbook_creations", mutate: database => {
+      const saved = createAccountingWorkbook(database);
+      assert.deepEqual(database.authority.workbooks.creation(saved.libraryId), saved);
+      assert.deepEqual(database.authority.workbooks.revision(saved.libraryId, 1), saved);
+      assert.deepEqual(database.authority.workbooks.history(saved.libraryId), []);
+    } },
+    { table: "workbook_types", mutate: database => {
+      const type = { id: 'accounting', name: 'Accounting type', keyFieldId: null, fields: [], defaultWorkbookId: null };
+      assert.deepEqual(database.authority.workbooks.putType(type), type);
+      assert.deepEqual(database.authority.workbooks.types().find(value => value.id === type.id), type);
+    } },
+    { table: "workbook_operations", prepare: prepareAccountingWorkbook, mutate: database => {
+      const saved = accountingWorkbook(database), request = accountingSave(saved);
+      const sequence = database.authority.workbooks.enqueue(saved.libraryId, request);
+      assert.ok(sequence > 0);
+      assert.equal(database.authority.workbooks.enqueue(saved.libraryId, request), sequence);
+      assert.deepEqual(database.authority.workbooks.read(saved.libraryId), saved);
+      assert.deepEqual(database.authority.workbooks.journal(saved.libraryId), []);
+      assert.deepEqual(database.authority.workbooks.history(saved.libraryId), []);
+    } },
+    { table: "workbook_library", prepare: database => {
+      prepareAccountingWorkbook(database);
+      const saved = accountingWorkbook(database);
+      database.authority.workbooks.enqueue(saved.libraryId, accountingSave(saved));
+    }, mutate: database => {
+      const saved = accountingWorkbook(database);
+      database.authority.workbooks.drain(saved.libraryId);
+      const changed = database.authority.workbooks.read(saved.libraryId);
+      assert.ok(changed); assert.equal(changed.version, 2); assert.equal(changed.workbook.name, 'Settled.xlsx');
+      assert.deepEqual(database.authority.workbooks.creation(saved.libraryId), saved);
+      assert.deepEqual(database.authority.workbooks.revision(saved.libraryId, 1), saved);
+      assert.deepEqual(database.authority.workbooks.history(saved.libraryId), []);
+      const receipt = database.authority.workbooks.journal(saved.libraryId)[0];
+      assert.equal(receipt.state, 'applied');
+      assert.deepEqual(database.authority.workbooks.operation(saved.libraryId, accountingSave(saved)), receipt);
+    } },
+    { table: "workbook_library_history", prepare: database => {
+      prepareAccountingWorkbook(database);
+      const saved = accountingWorkbook(database);
+      database.authority.workbooks.enqueue(saved.libraryId, accountingVersion(saved));
+    }, mutate: database => {
+      const saved = accountingWorkbook(database);
+      database.authority.workbooks.drain(saved.libraryId);
+      assert.deepEqual(database.authority.workbooks.history(saved.libraryId), [saved]);
+      assert.deepEqual(database.authority.workbooks.versions(saved.libraryId).map(({ name, provenance }) => ({ name, provenance })), [{ name: 'Reviewed', provenance: 'operator' }]);
+      assert.deepEqual(database.authority.workbooks.creation(saved.libraryId), saved);
+      assert.deepEqual(database.authority.workbooks.read(saved.libraryId), saved);
+      const receipt = database.authority.workbooks.journal(saved.libraryId)[0];
+      assert.equal(receipt.state, 'applied');
+      assert.deepEqual(database.authority.workbooks.operation(saved.libraryId, accountingVersion(saved)), receipt);
+      assert.deepEqual(database.authority.workbooks.history(saved.libraryId), [saved]);
+    } },
   ];
 
   it("accounts for every authority table", () => {

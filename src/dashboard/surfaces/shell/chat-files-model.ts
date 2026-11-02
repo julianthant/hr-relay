@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { EditableWorkbook } from '../spreadsheets/spreadsheet-editor-model.js';
+import type { EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import type { SpreadsheetChatRegistrationPort, SpreadsheetFileReference, SpreadsheetRegistrationRequest } from '../spreadsheets/spreadsheet-chat-registration-model.js';
 
 export type ChatFile = Readonly<{ id: string; name: string }> & (

@@ -15,7 +15,7 @@ import { RUN_START_DOOR_ID as RUN_START_DOOR_ID_m0 } from "../../../src/dashboar
 import { DashboardApp as DashboardApp_m0 } from "../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient as createDashboardClient_m0,type DashboardClient as DashboardClient_m0 } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider as DashboardClientProvider_m0 } from "../../../src/dashboard/state/client-context.js";
-import { importSpreadsheet as importSpreadsheet_m0 } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js";
+import { importWorkbook as importSpreadsheet_m0 } from '../../../src/rules/spreadsheets/workbook-io.js';
 import { registeredSpreadsheetWorkbook as registeredSpreadsheetWorkbook_m0,resetSpreadsheetMocks as resetSpreadsheetMocks_m0,useSpreadsheetMocks as useSpreadsheetMocks_m0,type RegisteredSpreadsheet as RegisteredSpreadsheet_m0 } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js";
 import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m1 } from "../../parity/helpers/workflow-composition.js";
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from "../../support/fixtures/dashboard/fixture-queue.js";

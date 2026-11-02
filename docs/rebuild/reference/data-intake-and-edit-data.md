@@ -288,3 +288,54 @@ Its 42 rows bind EID and department, with a supplied effective-date constant. Th
 - Saved-mapping persistence, visible reuse, and commands for constants and unbinding targets.
 - Workflow declarations and operator workbook columns for retention projections, including I-9 consumers.
 - Dashboard connections for Intake, OCR, Records, and Rerun values through the existing component set and shared client/models.
+
+## Saved workbook reference data
+
+`backend/workbooks/` owns the persisted library. Every workbook has a served type; unclassified
+imports use General workbook until the operator assigns a keyed type. Types retain canonical field
+IDs, a key field and an optional default workbook. A run's requested item keys resolve against a
+single immutable wire snapshot of the selected/default workbook, type and live revision. Dates in
+these snapshots are tagged ISO values. Workbook rows do not become run items through this API.
+Key matching retains nonempty strings exactly and compares finite numeric cells by their stable string value. It does not pad numeric keys or coerce booleans, dates, blanks or null. Numeric/string collisions stay ambiguous; snapshots retain original typed cell values.
+
+The live `version` is a CAS revision. Named versions are explicit operator snapshots; saves, run
+patches and manual Sync do not create versions. Existing saved revisions retain their data with
+migration provenance. The immutable creation record independently proves workflow publication replay.
+Operator-approved manual named-version retention preserves the operator-entered version name in local durable workbook authority and its operation journal only; it grants no process or OS notification egress.
+
+Read-only revision lookup reconstructs the exact CAS revision for chat attachment open/download.
+It starts from immutable creation or a retained migration snapshot, then replays applied journal
+requests with the immutable type fields and cell ownership rules. Operation digests, identities,
+receipts and resulting revisions must agree. Missing proof returns `WORKBOOK_REVISION_UNAVAILABLE`;
+corrupt evidence returns `WORKBOOK_STORAGE_CORRUPT`. Reads neither create named versions nor use
+the current master in place of an older requested revision.
+
+All content writers first persist operation identity, digest and admission sequence, then settle the
+oldest pending operation for that workbook in a short transaction. The master, cell ownership and
+receipt journal commit together. Conflicts settle as resolve-required receipts without partial writes.
+Prospective content that exceeds the schema's limits settles refused/invalid without changing
+the master or ownership; the queue then continues with its next operation.
+Run patches address canonical fields and stable keys, and fill only empty cells or unchanged Relay
+fills. Operator edits, including clears, retain ownership tombstones. Explicit row selections must
+recheck current key membership and CAS revision. The journal retains source identity, key, old/new
+cell values, time and sequence; reusing an operation ID with different input refuses.
+
+Workbook-scoped HTTP commands retain the operator loopback/JSON guards. Operator source identity
+and time are server-owned. Manual Sync downloads/parses before admission, rechecks the expected
+revision, and reconciles owned fields by unique keys. It preserves Relay fills and operator edits to
+those fields, including cell metadata. Without an authenticated SharePoint download port Sync returns
+`WORKBOOK_SYNC_UNAVAILABLE`. Workflow start snapshot retention, run-bound writer composition and
+Logs row-resolution dispatch remain integrations owned by Runs; this library API does not dispatch them.
+
+`rules/spreadsheets/workbook-io.ts` owns library XLSX/CSV import/export, using browser-safe
+`@shbernal/ts-xlsx` for XLSX and the existing CSV parser/writer. Downloads omit selected hidden columns; the intake export retains and marks
+them, using saved document and ZIP timestamps. Formula inputs retain cached values and the formula
+presence flag; exported copies contain values. Theme/fill, rich text, links, number formats, typed dates,
+worksheet dimensions and named structural refusals remain part of this boundary. Import records
+unsupported metadata through namespace-aware OOXML admission. Master edits, keyed writes and Sync
+refuse formula-bearing workbooks or unsupported metadata with `WORKBOOK_METADATA_UNSUPPORTED`.
+standalone Excel error cells also carry this flag because their display text loses the error type.
+Clearing an incoming flag cannot bypass the stored master's refusal. The default Calibri font and
+document creation/modification timestamps are admitted; edits use the library's saved timestamps.
+Other document properties, table structures, non-cell styles and opaque package parts are refused
+for master mutation. Export creates an explicit value copy and never overwrites the source file.

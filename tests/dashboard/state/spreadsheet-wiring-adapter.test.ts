@@ -9,7 +9,7 @@ import { SavedWorkbookSchema, type SavedWorkbook } from '../../../src/models/das
 const book = () => ({ ...newEditableWorkbook(), libraryId: 'saved' });
 const saved = (version = 3, workbook = book()): SavedWorkbook => SavedWorkbookSchema.parse({ libraryId: workbook.libraryId, version, createdAt: '2026-10-01T00:00:00Z', savedAt: '2026-10-15T00:00:00Z', workbook });
 function setup() {
-  const client = { workbookList: vi.fn(async () => [saved()]), workbookOpen: vi.fn(async () => saved()), workbookCreate: vi.fn(async (workbook: unknown) => saved(1, { ...workbook as ReturnType<typeof book>, libraryId: 'generated' })), workbookSave: vi.fn(async (_id: string, version: number, workbook: unknown) => saved(version + 1, workbook as ReturnType<typeof book>)), workbookHistory: vi.fn(), workbookIntake: vi.fn() } satisfies WorkbookLibraryQueries;
+  const client = { workbookList: vi.fn(async () => [saved()]), workbookOpen: vi.fn(async () => saved()), workbookCreate: vi.fn(async (workbook: unknown) => saved(1, { ...workbook as ReturnType<typeof book>, libraryId: 'generated' })), workbookSave: vi.fn(async (_id: string, version: number, workbook: unknown) => saved(version + 1, workbook as ReturnType<typeof book>)), workbookRevision: vi.fn(), workbookHistory: vi.fn(), workbookIntake: vi.fn() } satisfies WorkbookLibraryQueries;
   return { client, adapter: createSpreadsheetWiringAdapter(client) };
 }
 describe('served workbook authority', () => {

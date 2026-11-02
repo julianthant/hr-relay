@@ -160,6 +160,7 @@ field membership and discriminated states. The client checks identity as well as
 | Analytics | `queries/activity-queries.ts` | `activity.ts`: `GET /api/v1/reports/activity`, `/api/v1/reports/activity.csv`, `/api/v1/reports/activity/population`, `/api/v1/reports/activity/population/selected`, `/api/v1/reports/activity/population.csv` |
 | Explorer | `queries/explorer-queries.ts` | `explorer.ts`: read-only `GET /api/v1/explorer` |
 | Intake | `queries/intake-queries.ts` | `intake.ts`: `POST /api/v1/intake/files`, `GET /api/v1/intake/:sessionId` |
+| Workbook revisions | `queries/workbook-library-queries.ts` | `workbooks.ts`: read-only `GET /api/v1/workbooks/:libraryId/revisions/:version`; exact CAS revision for attachment open/download, independent of named-version history |
 | Commands | `commands/shared-commands.ts` | `commands.ts`: `POST /api/v1/commands`, `/api/v1/commands/bulk` |
 | Day events | `subscriptions/subscription.ts` | `shell.ts`: `GET /events/v1?topics=dashboard-day:<day>` |
 

@@ -1,4 +1,4 @@
-import type { EditableWorkbook } from './spreadsheet-editor-model.js';
+import type { EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 
 export type WorkbookHistory = Readonly<{
   undo: readonly EditableWorkbook[];
