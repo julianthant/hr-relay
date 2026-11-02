@@ -135,8 +135,15 @@ original page, including failed, cancelled and blocked children. Each successful
 manifest, original page, image and explicit reading invocation. Replay keeps that extraction ID;
 a deliberate rereading uses a new invocation. Manual readings retain operator assertion provenance.
 The immutable review seed retains raw fields and absences, separate duplicate records, roster source
-evidence and match proposals, and explicit unresolved identity work. These contracts do not register
-an executable workflow, persist versions or approve records.
+evidence and match proposals, and explicit unresolved identity work. Source binding and review seeds
+support all three canonical forms. The unregistered definitions in
+`src/workflows/ocr/` and `src/workflows/ocr-page/` compose full-document rendering, subscription or
+manual page readings, all-settled page accounting and deduplicated Person Lookup children. Identity
+outcomes remain separate from the original review seed in a derived result checkpoint; neither grants
+approval. Before registration,
+intake must bind `sourceRunId` to the actual run and manual assertions to the authenticated operator.
+The definitions and mini-stores are audited through a test-only inventory; neither public nor child
+production registries contain them. No reading versions or review revisions are persisted here.
 
 The native `artifacts` table stores `imported`, `extracted`, and `generated` rows. `AuthorityDatabase.authority.ocrExtractions` stores admitted OCR records under `${sourceSha256}#${sourcePage}#${formType}`. An identical whole-record replay returns `existing`; different content at that key throws. Producer or timestamp changes can therefore conflict even when answer fingerprints agree.
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ArtifactRefSchema } from "../../artifacts/artifacts.js";
 import { AdmittedRecordSchema, type AdmittedRecord } from "../../ocr/extraction.js";
+import { OcrFormTypeSchema, type OcrFormType } from "../../ocr/form-registry.js";
 import { groupStack, personMatchKey, StackGroupingSchema } from "../../ocr/stack.js";
 import { EidSchema, FingerprintSchema, IsoInstantSchema, RunIdSchema, StableRecordIdSchema } from "../../../rules/identity/ids.js";
 import { matchRosterSubjects, RosterRowFactsSchema, RosterSubjectMatchSchema } from "../../../rules/matching/roster-match.js";
@@ -18,7 +19,7 @@ export const OcrRosterEvidenceSchema = z.strictObject({
   }
 });
 
-const OcrReviewSeedInputSchema = z.strictObject({
+export const OcrReviewSeedInputSchema = z.strictObject({
   sourceRunId: RunIdSchema,
   accounting: OcrPageAccountingSchema,
   roster: OcrRosterEvidenceSchema.nullable(),
@@ -51,8 +52,16 @@ function fieldText(record: AdmittedRecord, path: string): string | null {
   return answer?.state === "read" && typeof answer.value === "string" ? answer.value : null;
 }
 
+function subjectName(record: AdmittedRecord, formType: OcrFormType): string | null {
+  if (formType === "emergency-contact") return fieldText(record, "employee.name");
+  if (formType === "oath") return fieldText(record, "printedName");
+  const last = fieldText(record, "lastName"), first = fieldText(record, "firstName");
+  return last === null || first === null ? null : `${last}, ${first}`;
+}
+
 function deriveReview(input: OcrReviewSeedInput) {
   const { accounting, roster } = input;
+  const { formType } = accounting;
   const pages = accounting.outcomes.map((outcome, index) => OcrPageDispositionSchema.parse({
     sourcePage: index + 1,
     disposition: outcome.state !== "done" ? outcome.state : outcome.output.extraction.record !== null ? "record"
@@ -60,28 +69,28 @@ function deriveReview(input: OcrReviewSeedInput) {
   }));
   const classified = accounting.outcomes.flatMap((outcome, index) => outcome.state !== "done" ? [] : [{
     sourcePage: index + 1, pageKind: outcome.output.extraction.pageKind,
-    subjectName: outcome.output.extraction.record === null ? null : fieldText(outcome.output.extraction.record, "employee.name"),
+    subjectName: outcome.output.extraction.record === null ? null : subjectName(outcome.output.extraction.record, formType),
   }]);
-  const grouping = groupStack({ pages: classified }, "emergency-contact");
+  const grouping = groupStack({ pages: classified }, formType);
   const records = accounting.outcomes.flatMap((outcome, index) => {
     if (outcome.state !== "done") return [];
     const { extractionId, extraction } = outcome.output;
     const fields = extraction.record;
     if (fields === null) return [];
-    const subjectName = fieldText(fields, "employee.name");
-    const eid = fieldText(fields, "employee.employeeId");
+    const name = subjectName(fields, formType);
+    const eid = formType === "i9" ? null : fieldText(fields, formType === "oath" ? "employeeId" : "employee.employeeId");
     const assertedEid = eid === null ? null : EidSchema.parse(eid);
-    const recordId = StableRecordIdSchema.parse(`${accounting.manifest.document.sha256}#emergency-contact#${index + 1}`);
+    const recordId = StableRecordIdSchema.parse(`${accounting.manifest.document.sha256}#${formType}#${index + 1}`);
     const rosterMatch = roster === null ? null : matchRosterSubjects([{ subjectId: recordId,
-      ...(subjectName === null ? {} : { name: subjectName }), ...(assertedEid === null ? {} : { eid: assertedEid }) }], roster.rows);
+      ...(name === null ? {} : { name }), ...(assertedEid === null ? {} : { eid: assertedEid }) }], roster.rows);
     const match = rosterMatch === null ? null : rosterMatch[0];
     if (match === undefined) throw new Error("OCR roster matcher returned no disposition for a record");
-    const key = subjectName === null ? null : personMatchKey(subjectName);
+    const key = name === null ? null : personMatchKey(name);
     const duplicate = key !== null && grouping.subjects.some(subject => subject.matchKey === key && subject.completeness === "duplicate");
-    return [OcrReviewRecordSeedSchema.parse({ recordId, sourcePage: index + 1, extractionId, fields, subjectName, assertedEid,
+    return [OcrReviewRecordSeedSchema.parse({ recordId, sourcePage: index + 1, extractionId, fields, subjectName: name, assertedEid,
       identitySource: extraction.source.kind === "operator" ? "operator" : "document", rosterMatch: match,
-      lookup: subjectName === null && assertedEid === null ? { state: "unavailable", reason: "missing-identity" }
-        : { state: "required", name: subjectName, eid: assertedEid ?? match?.matchedEid ?? null },
+      lookup: name === null && assertedEid === null ? { state: "unavailable", reason: "missing-identity" }
+        : { state: "required", name, eid: assertedEid ?? match?.matchedEid ?? null },
       issues: [...(fields.blockingPaths.length > 0 ? ["mandatory-fields"] : []),
         ...(duplicate ? ["duplicate-subject"] : []), ...(key === null ? ["unidentified-subject"] : []), "identity-unverified"],
     })];
@@ -90,13 +99,16 @@ function deriveReview(input: OcrReviewSeedInput) {
 }
 
 export const OcrReviewSeedSchema = OcrReviewSeedInputSchema.extend({
-  formType: z.literal("emergency-contact"),
+  formType: OcrFormTypeSchema,
   pages: z.array(OcrPageDispositionSchema).min(1),
   grouping: StackGroupingSchema,
   records: z.array(OcrReviewRecordSeedSchema),
 }).superRefine((seed, context) => {
   const source = OcrReviewSeedInputSchema.safeParse({ sourceRunId: seed.sourceRunId, accounting: seed.accounting, roster: seed.roster });
   if (!source.success) return;
+  if (seed.formType !== source.data.accounting.formType) {
+    context.addIssue({ code: "custom", message: "OCR review form does not match its page accounting" });
+  }
   const expected = deriveReview(source.data);
   if (canonicalJsonStringify({ pages: seed.pages, grouping: seed.grouping, records: seed.records }) !== canonicalJsonStringify(expected)) {
     context.addIssue({ code: "custom", message: "OCR review seed does not match its retained page and roster evidence" });
@@ -106,5 +118,5 @@ export type OcrReviewSeed = z.infer<typeof OcrReviewSeedSchema>;
 
 export function buildOcrReviewSeed(candidate: OcrReviewSeedInput): OcrReviewSeed {
   const input = OcrReviewSeedInputSchema.parse(candidate);
-  return deepFreeze(OcrReviewSeedSchema.parse({ ...input, formType: "emergency-contact", ...deriveReview(input) }));
+  return deepFreeze(OcrReviewSeedSchema.parse({ ...input, formType: input.accounting.formType, ...deriveReview(input) }));
 }
