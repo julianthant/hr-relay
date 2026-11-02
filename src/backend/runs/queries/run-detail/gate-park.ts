@@ -1,4 +1,5 @@
 import { acceptsRecheckTransactionId } from "../../../../rules/write-safety/parked-resolution.js";
+import { retainedUcpathFindings } from "./ucpath-findings.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
 import { ParkedWriteCheckTargetSchema } from "../../../../rules/commands/commands.js";
 import { requireParkedWriteCheckTarget } from "../../../runtime/writes/write-recovery.js";
@@ -518,6 +519,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
   const lastCheck = latest?.phase.state === "succeeded" && latest.phase.acknowledgement.kind === "parked-write-check"
     ? latest.phase.acknowledgement.result : undefined;
   return ParkedWriteDetailWireSchema.parse({ acceptsTransactionId, check, ...(lastCheck === undefined ? {} : { lastCheck }),
+    ...(intent.taskId === "ucpath/create-termination" ? { ucpathFindings: retainedUcpathFindings(deps, authority, intent) } : {}),
     ...(native === undefined || nativeEvent === undefined ? {} : { native: {
       eventId: nativeEvent.eventId, order: nativeEvent.cursor, runId: native.runId,
       attempt: native.attempt, traceId: native.traceId, nodeId: native.nodeId,

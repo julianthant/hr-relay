@@ -4,6 +4,7 @@ import { StartPlanRequestSchema } from "./start-plan.js";
 import { ActionConfirmWireSchema } from "./actions.js";
 import { FailureCorrectionSchema } from "../workflow/failure-correction.js";
 import { ParkedWriteCheckTargetSchema, ParkedWriteCheckResultSchema } from "../../rules/commands/commands.js";
+import { UcpathFindingsDetailSchema } from "./ucpath-findings.js";
 import { FailureDisplaySchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
 import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } from "../trust/failure-resolution.js";
@@ -804,6 +805,7 @@ export type ProofContractWire = z.infer<typeof ProofContractWireSchema>;
 
 /** The parked-write section: a `parked-write` run is the one lifecycle whose ordinary controls are REFUSED BY NAME, because a fenced write may already exist in a real HR system. */
 export const ParkedWriteDetailWireSchema = z.strictObject({
+  ucpathFindings: UcpathFindingsDetailSchema.optional(),
   acceptsTransactionId: z.boolean(),
   check: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("available"), target: ParkedWriteCheckTargetSchema }),
