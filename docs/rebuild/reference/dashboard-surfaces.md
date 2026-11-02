@@ -425,7 +425,7 @@ The result is a diagnostic only and never contributes to readiness reports or ad
 
 Storage displays health and doctor reports through its typed client. Authority availability differs
 from backup age. Storage excludes run-history presentation. Recovery actions require their exact
-served admission; ordinary startup/Settings rendering does not perform a repair or backup.
+served admission. Startup completes automatic repair before ordinary runtime admission; Settings rendering performs no repair or backup. A read-only notice identifies restored person data and its backup time.
 
 ### Keyboard
 

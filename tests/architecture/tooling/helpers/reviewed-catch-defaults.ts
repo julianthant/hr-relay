@@ -13,7 +13,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "afc39738a1af9a795f00513ae33a1404793aff1718123bc813aff601b8f8ea12",
+    "sha256": "f58a6bed14e221b9edf599c120e0c8f978d5cae4c0b271e77919c35291cb0292",
     "reason": "Startup producer closure failures retain dependent native database and admission custody. Selected-context open failure rethrows typed custody uncertainty. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and stop promises, whose callers await failures before storage release. An unavailable authority generation remains explicitly unavailable; backup presence is assessed separately. Automatic upgrade runs before composition in storage-compose.ts and has no HTTP response handoff."
   },
   {
@@ -151,7 +151,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/bootstrap/secure-env-bootstrap.ts",
-    "sha256": "cc23a88119b73bb6a208477f11b72de7cc290d2e608150f24133d7c11954a10b",
+    "sha256": "00fb5bfbfb5dd6be68864092dcb800715dc602fe477cc350701e809bc4a96fd5",
     "reason": "The root listener or inherited lifetime is acquired before admission. Unproved source closure retains admission and rethrows; typed runtime or source-closure uncertainty retains the outer lifetime, while settled paths await its close. Stopped maintenance releases admission only when custody was not retained. No failed bootstrap becomes successful runtime admission. The real browser closure port is supplied to dashboard admission and offline cancellation without changing the failure-retention path. Fixed-layout failure preserves its cause before ordinary admission, so nested closure uncertainty retains the same root listener."
   },
   {

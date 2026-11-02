@@ -11,7 +11,7 @@ export class MeasurementFreeResizeObserver {
 export function createSettingsStorageDoctorFixtures() {
   const STORAGE = StorageHealthSummaryWireSchema.parse({
     authority: "healthy",
-    backup: "current",
+    automaticRepair: { state: "none" }, backup: "current",
     checkedAt: "2026-08-31T16:00:00.000Z",
   });
 

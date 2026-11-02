@@ -1,3 +1,4 @@
+import { takeStoppedProfileBackupFixture } from "../../../support/helpers/storage/backup-fixtures.js";
 import { restoreNewestPersonBackup } from "../../../../src/backend/app/composition/storage-compose.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -74,8 +75,8 @@ afterEach(_afterEachFixture0);
   it("after uncertain audit, automatic restore preserves credentials and exact retry repairs the missing audit", async () => {
     const f = await fixture(undefined, true); const revision = f.store.read().revision; const request = protectedCommand(revision); assert.ok(f.admission);
     f.database.close();
-    const backup = await composeStorageCommand_m0(rebuildRuntimeIsolation, ["backup"], f.clock, f.repoRoot, f.admission, f.store);
-    assert.equal(backup.exitCode, 0, backup.output);
+    const backup = await takeStoppedProfileBackupFixture(f.admission, f.clock);
+    assert.equal(backup.state, "verified");
     const directory = join_m0(f.root, "backups", "authority");
     const name = readdirSync(directory).find((entry) => entry.endsWith(".manifest.json")); assert.ok(name);
     const backupFiles = Object.fromEntries(readdirSync(directory).map((entry) => [entry, readFileSync(join_m0(directory, entry))]));
@@ -131,6 +132,11 @@ function openAuthority(input: z.input<typeof AuthorityDatabaseOptionsSchema>, cl
 function composeStorageCommand(isolation: Parameters<typeof composeStorageCommand_m0>[0], args: readonly string[], clock = CLOCK, repoRoot: string) {
   const admission = admissions.get(repoRoot);
   return admission === undefined ? syntheticComposeStorageCommand_m1(isolation, args, clock, repoRoot) : composeStorageCommand_m0(isolation, args, clock, repoRoot, admission, boundProfileCredentials(admission));
+}
+
+function backupFixture(p: Paths, clock = CLOCK) {
+  const admission = admissions.get(p.repoRoot); assert.ok(admission);
+  return takeStoppedProfileBackupFixture(admission, clock);
 }
 
 async function repairAutomatically(p: Paths, clock = CLOCK) {
@@ -209,13 +215,13 @@ function createAuthority(p: Paths): number {
   }
 }
 
-describe("cli storage backup", () => {
+describe("automatic storage backup and repair", () => {
 afterEach(_afterEachFixture0);
 
   it("automatic repair refuses a backup that would discard standalone fenced evidence", async () => {
     const p = await paths("ready"); createAuthority(p);
-    const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
-    assert.equal(backup.exitCode, 0, backup.output);
+    const backup = await backupFixture(p, CLOCK);
+    assert.equal(backup.state, "verified");
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
     const database = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "fenced-restore-proof" }, CLOCK);
     const queued = queuedRun(p), e = queued.envelope;
@@ -250,7 +256,7 @@ afterEach(_afterEachFixture0);
       createTimelineEmitter({ repository: initial.authority.timelineEvents, clock: CLOCK }).emit(
         runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Retained restore owner" }));
     } finally { releaseSeededWriteOwners(initial, CLOCK.now().toISOString()); initial.close(); }
-    assert.equal((await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot)).exitCode, 0);
+    assert.equal((await backupFixture(p, CLOCK)).state, "verified");
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json")); assert.ok(manifest);
     const newer = openAuthority({ path: p.authorityPath, busyTimeoutMs: 500, migrationOwner: "newer-write" }, CLOCK);
     try {
@@ -384,10 +390,10 @@ afterEach(_afterEachFixture0);
     writeFileSync(environmentFile, source, { mode: 0o600 });
     const profile = profiles.find(value => value.workspace === p.repoRoot); assert.ok(profile);
     assert.equal(boundProfileCredentials(profile.admission).read().revision, 2);
-    const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], CLOCK, p.repoRoot);
-    assert.equal(backup.exitCode, 0, backup.output);
+    const backup = await backupFixture(p, CLOCK);
+    assert.equal(backup.state, "verified");
     for (const value of values) {
-      assert.equal(backup.output.includes(value), false);
+      assert.equal(JSON.stringify(backup).includes(value), false);
       assert.equal(readFileSync(p.authorityPath).includes(Buffer.from(value)), false);
       for (const name of readdirSync(p.backupDirectory)) assert.equal(readFileSync(join_m0(p.backupDirectory, name)).includes(Buffer.from(value)), false);
     }
@@ -418,11 +424,10 @@ afterEach(_afterEachFixture0);
   it("writes exactly one verified backup and manifest at the live generation", async () => {
     const p = await paths("ready");
     const generation = createAuthority(p);
-    assert.equal(existsSync(p.backupDirectory), false, "no backup exists before the operator asks");
+    assert.equal(existsSync(p.backupDirectory), false, "fixture starts without a backup");
 
-    const outcome = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
-    assert.equal(outcome.exitCode, 0, outcome.output);
-    assert.match(outcome.output, /^backup: verified — authority-g\d+-/u);
+    const outcome = await backupFixture(p, CLOCK);
+    assert.equal(outcome.state, "verified");
 
     const entries = readdirSync(p.backupDirectory).sort();
     assert.equal(entries.length, 2, entries.join(", "));
@@ -430,7 +435,7 @@ afterEach(_afterEachFixture0);
     const backupName = entries.find((name) => name.endsWith(".sqlite"));
     assert.ok(manifestName !== undefined && backupName !== undefined, entries.join(", "));
     assert.equal(manifestName, `${backupName}.manifest.json`);
-    assert.ok(outcome.output.includes(backupName));
+    assert.equal(outcome.manifests[0]?.backupFileName, backupName);
     const manifest = ManifestGenerationSchema.parse(
       JSON.parse(readFileSync(join_m0(p.backupDirectory, manifestName), "utf8")),
     );
@@ -439,16 +444,6 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(entries.filter((name) => name.endsWith(".tmp")), []);
   });
 
-  it("refuses when no authority database exists and creates nothing", async () => {
-    const p = await paths("pending");
-    const before = storageTree(p.stateRoot);
-    const outcome = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
-    assert.equal(outcome.exitCode, 1);
-    assert.match(outcome.output, /storage backup REFUSED — no authority database exists/u);
-    assert.equal(existsSync(p.authorityPath), false, "a refused backup must not mint an authority");
-    assert.equal(existsSync(p.backupDirectory), false);
-    assert.deepEqual(storageTree(p.stateRoot), before);
-  });
 
   it("lets the doctor exit 0 on a healthy reconciled authority with no backup, reporting it missing", async () => {
     const p = await paths("ready");
@@ -458,15 +453,15 @@ afterEach(_afterEachFixture0);
     assert.match(doctor.output, /^authority: healthy/mu);
     assert.match(doctor.output, /^backup: MISSING/mu);
 
-    await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
+    await backupFixture(p, CLOCK);
     const after = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor"], CLOCK, p.repoRoot);
     assert.equal(after.exitCode, 0, after.output);
     assert.match(after.output, /^backup: current/mu);
   });
   it.each(["missing", "malformed"])("refuses automatic SQL repair before effects with %s current credentials", async (credentialState) => {
     const p = await paths("ready"); createAuthority(p);
-    const backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], CLOCK, p.repoRoot);
-    assert.equal(backup.exitCode, 0, backup.output);
+    const backup = await backupFixture(p, CLOCK);
+    assert.equal(backup.state, "verified");
     const manifest = readdirSync(p.backupDirectory).find((name) => name.endsWith(".manifest.json"));
     assert.ok(manifest);
     const credentialPath = join_m0(p.stateRoot, "credentials", "protected.json");
@@ -545,8 +540,8 @@ try {
   }, 500);
   const before = inspect(p.authorityPath);
   assert.equal(before.lifecycle, "parked-write"); assert.equal(before.outcome, "parked"); assert.equal(before.outcomeCode, "unknown");
-  let backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], clock, p.repoRoot);
-  assert.equal(backup.exitCode, 0, backup.output);
+  let backup = await backupFixture(p, clock);
+  assert.equal(backup.state, "verified");
   let manifest = readdirSync(p.backupDirectory).find(name => name.endsWith(".manifest.json")); assert.ok(manifest);
   function resolutionKernel(database: AuthorityDatabase) {
     const active = database.authority.runtimeConfig.get(); assert.ok(active);
@@ -611,8 +606,8 @@ try {
   assert.equal(committed.outcome, before.outcome); assert.equal(committed.outcomeCode, "unknown");
   assert.equal(committed.checkpoint, true);
   if (backupAfterCommit) {
-    backup = await composeStorageCommand(rebuildRuntimeIsolation, ["backup"], clock, p.repoRoot);
-    assert.equal(backup.exitCode, 0, backup.output);
+    backup = await backupFixture(p, clock);
+    assert.equal(backup.state, "verified");
     manifest = readdirSync(p.backupDirectory).filter(name => name.endsWith(".manifest.json")).sort().at(-1); assert.ok(manifest);
   }
   if (!backupAfterCommit) {

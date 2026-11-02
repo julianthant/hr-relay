@@ -6,8 +6,8 @@ task starts at the repository root.
 ## Invariants
 
 - A long-lived CLI command owns and awaits shutdown. Keep signal handlers installed throughout
-  the drain, retain the lifetime listener through worker shutdown, and propagate a failed stop. Shutdown does not imply
-  a backup: backups are explicit-only.
+  the drain, retain the lifetime listener through worker shutdown, and propagate a failed stop. After clean resource closure, create verified person backups and retain the last three shutdown
+  backups before releasing the lifetime listener; pre-erase and pre-upgrade backups stay protected.
 - Acquire the genuine root lifetime before installation effects and retain that same capability
   through admissions, composition and recovery. Inherited workers receive it over actual IPC.
   Prior fixed mutex cleanup runs only during the root's first workspace initialization; synchronous

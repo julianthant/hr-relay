@@ -1,3 +1,4 @@
+import { acquireFlatArchiveFixture } from "../../../support/helpers/storage/flat-archive-admission.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { FlatStartCleanIntentSchema } from "../../../../src/backend/storage/maintenance/flat-start-clean.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -7,7 +8,7 @@ import nativeFs, { existsSync, readFileSync, readdirSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { it, vi } from "vitest";
-import { acquireDashboardEntrypointAdmission, acquireStorageBackupEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { acquireDashboardEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
 import { retainedStorageBackup, StorageBackupSchema, file, hash } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
@@ -129,7 +130,7 @@ for (const change of ["missing-later", "unknown-member", "pepper"] as const) {
       const intent = FlatStartCleanIntentSchema.parse(JSON.parse(readFileSync(join(control, "flat-start-clean.json"), "utf8")));
       assert.equal(intent.pending, true);
       const parked = storageTree(f.workspace);
-      await assert.rejects(acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime), /flat-start-clean-pending/u);
+      await assert.rejects(acquireFlatArchiveFixture(f.workspace, f.lifetime), /flat-start-clean-pending/u);
       assert.deepEqual(storageTree(f.workspace), parked);
       if (change === "missing-later") unlink(f.databasePath);
       if (change === "unknown-member") nativeFs.writeFileSync(join(f.stateRoot, "unknown"), "unknown", { mode: 0o600 });
