@@ -146,10 +146,10 @@ it("retires a real worker only after its opened Chromium profile closes, custody
     childClosures.push(once(child, "close"));
     children.push(child); child.stdout?.on("data", chunk => output.push(String(chunk))); child.stderr?.on("data", chunk => output.push(String(chunk)));
     let transfer: Promise<void>;
-    try { transfer = profile.lifetime.share(child); }
+    try { transfer = profile.lifetime.share(child); profile.lifetime.observeOwnedChildClosure(child); }
     catch (error) { transfer = Promise.reject(error instanceof Error ? error : new Error("worker lifetime transfer failed", { cause: error })); }
     void transfer.catch(error => { child.emit("error", error); child.kill("SIGTERM"); });
-    return { pid: child.pid, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
+    return { pid: child.pid, nativeProcess: child, kill: signal => child.kill(signal), onExit: listener => { child.on("exit", listener); }, onError: listener => { child.on("error", listener); } };
   };
   try {
     runtime = await composeDashboardRuntime({ lifetimeLock: profile.lifetime, ...profile.dashboardInput, preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, repoRoot: root,
