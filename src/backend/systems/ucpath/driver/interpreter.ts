@@ -2,6 +2,7 @@ import { searchPersonMatchOnPage } from "./person-match-operation.js";
 import { createUcpathContactOperations } from "./contact-page.js";
 import { UCPATH_CONTACT_DISPLAYED_NAME } from "../../../../models/ui/ucpath-emergency-contact.js";
 import { UCPATH_PENDING_CONTACT_RECIPES } from "./ui-registry.js";
+import { UCPATH_SS_SMART_HR_DETAIL_NAME } from "../../../../models/ui/ucpath-transaction-findings.js";
 import { UcpathContactRefusedError } from "../../../../models/systems/ucpath/emergency-contacts.js";
 import type { Page } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
@@ -42,6 +43,7 @@ import type { UcpathJobSummaryRead } from "../../../../models/ui/ucpath-job-summ
 import { readJobSummaryOnPage, searchPersonOrgOnPage } from "./person-org-operation.js";
 import {
   resolveUcpathElement,
+  resolveUcpathFindingElement,
   ucpathElementById,
   waitForUcpathElementStates,
   waitForUcpathState,
@@ -81,6 +83,12 @@ export function createUcpathPersonOrgDriver(
     searchPersonMatch: async (input) => {
       assertCurrent();
       const result = await searchPersonMatchOnPage(assertCurrent, page, input);
+      assertCurrent();
+      return result;
+    },
+    async readTransactionFindings(input) {
+      assertCurrent();
+      const result = await smartHr.readTransactionFindings(assertCurrent, page, input, nowIso(clock));
       assertCurrent();
       return result;
     },
@@ -183,7 +191,12 @@ export function createUcpathPersonOrgDriver(
       }
       if (id === UCPATH_SS_SMART_HR_DISPLAYED_NAME) {
         assertCurrent();
-        const raw = await page.locator('[id="NAME$0"]').first().textContent();
+        const display = resolveUcpathFindingElement(page, UCPATH_SS_SMART_HR_DETAIL_NAME);
+        if (await display.count() !== 1 || !await display.isVisible()) {
+          throw new Error(`${String(id)} requires exactly one visible detail name`);
+        }
+        assertCurrent();
+        const raw = await display.textContent();
         const name = (raw ?? "").trim();
         if (name.length === 0) {
           throw new Error(
