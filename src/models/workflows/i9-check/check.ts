@@ -3,7 +3,7 @@ import { taskId, EidSchema } from "../../../rules/identity/ids.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 import { SearchPersonMatchOutputSchema } from "../../systems/ucpath/search-person-match.js";
 import { SearchPersonOrgOutputSchema } from "../../systems/ucpath/search-person-org.js";
-import { I9CheckInput } from "./input.js";
+import { I9CheckCanonicalInput } from "./input.js";
 
 export const I9IdentitySchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("found"), eid: EidSchema, name: z.string().min(1) }),
@@ -27,10 +27,6 @@ const policy = {
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" },
   provenance: { default: "derived" }, scenarios: [],
 } as const;
-export const ReadSearchPlan = defineTaskContract({
-  ...policy, id: taskId("workflow:i9-check/read-search-plan"), title: "Choose identity search",
-  input: I9CheckInput, output: z.strictObject({ useMatch: z.boolean() }), example: { useMatch: false },
-});
 export const ReadMatchOutcome = defineTaskContract({
   ...policy, id: taskId("workflow:i9-check/read-match-outcome"), title: "Resolve identifier match",
   input: z.strictObject({ match: SearchPersonMatchOutputSchema.optional() }),
@@ -39,7 +35,7 @@ export const ReadMatchOutcome = defineTaskContract({
 });
 export const ReadRetentionRow = defineTaskContract({
   ...policy, id: taskId("workflow:i9-check/read-retention-row"), title: "Match roster and derive retention",
-  input: z.strictObject({ input: I9CheckInput, initial: I9IdentitySchema, search: SearchPersonOrgOutputSchema.optional() }),
+  input: z.strictObject({ input: I9CheckCanonicalInput, initial: I9IdentitySchema, search: SearchPersonOrgOutputSchema.optional() }),
   output: z.strictObject({ identity: I9IdentitySchema, row: I9CheckRowSchema }),
   example: { identity: { status: "not-found", candidateCount: 0 }, row: {
     recordId: "record-1", employeeName: "Example, Person", ppsEid: "", ucpathEmplId: "", hireDate: "",

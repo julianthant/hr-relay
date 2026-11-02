@@ -80,7 +80,7 @@ Paths in this table are relative to `src/backend/`.
 | `transports/cli/` | CLI dispatch and command handling. |
 | `transports/http/` | Dashboard HTTP routes, request schemas, and SSE subscriptions. |
 | `workbooks/` | Saved workbook library: validated workbook records, versions and history over its SQLite repository. |
-| `workbooks/workflow-workbook-service.ts` | Shared run-scoped workbook publication: create, append table rows, or import XLSX as a new workbook or linked version. The `workbooks.library` provider is composed per run in `app/composition/worker/run-resources.ts`; immutable workbook history supplies replay proof. |
+| `workbooks/workflow-workbook-service.ts` | Creates one new table workbook per run through the admitted library repository. The `workbooks.library` provider is composed in `app/composition/worker/run-resources.ts`; the original saved record supplies replay proof. |
 
 ### Dashboard and shared packages
 
@@ -117,7 +117,7 @@ folders use the same layout; their test-only composition inventory in
 audits without making either workflow available in production registries. Their retained proofs live
 at `ocr/steps/source-pages/step.ts` and `ocr-page/steps/read-page/step.ts` in the same unregistered inventory.
 
-`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Its retained roster proof lives in `steps/roster-match/step.ts` and uses the same typed step author. Shared workbook publication lives outside this workflow; its task/command contract is `src/models/processing/workbooks/read-result.ts`. `src/models/dashboard/workbook-import.ts` owns the browser-safe XLSX/CSV importer used by the dashboard and workflow workbook service.
+`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Each UCPath call has a typed workflow-owned task call under `tasks/`; all three timeline groups have retained proofs under `steps/<key>/step.ts` using the same typed authors. Shared workbook publication lives outside this workflow; its task/command contract is `src/models/processing/workbooks/read-result.ts`. The shared task creates a new Spreadsheets-library workbook per run; linked writes and SharePoint imports are not exposed.
 
 Person Lookup has four chunk harnesses at `src/workflows/person-lookup/steps/<step>/step.ts`:
 `searching`, `cross-verify`, `active-status`, and `crm-dates`.

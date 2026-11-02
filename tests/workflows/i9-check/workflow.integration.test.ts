@@ -47,10 +47,10 @@ it("i9-check/person — admits I-9 only as a declared child and limits it to rea
   expect(() => registry.childModuleOf("person-lookup", "i9-check")).toThrow(/does not declare/u);
 });
 
-it.each(["match", "name", "failure"] as const)("executes the registered child through the real executor: %s", async mode => {
+it.each(["match", "name", "ambiguous", "failure"] as const)("executes the registered child through the real executor: %s", async mode => {
   let matches = 0, searches = 0;
   const sessions = sessionFactoryHarness({ ucpath: () => ({ ...createDeterministicUcpathPersonOrgDriver(i9Search()),
-    async searchPersonMatch() { matches++; const hit = { emplId: i9Candidate.emplId, name: i9Candidate.name }; return { hits: [hit], confirmed: [hit], dropped: [] }; },
+    async searchPersonMatch() { matches++; const hit = { emplId: i9Candidate.emplId, name: i9Candidate.name }; return { hits: [hit], confirmed: mode === "ambiguous" ? [hit, { ...hit, emplId: "10000002" }] : [hit], dropped: [] }; },
     async searchPersonOrg(request: z.output<typeof SearchPersonOrgInputSchema>) {
       searches++;
       expect(request).toEqual({ kind: "by-name", name: i9CheckInput.person.name, keepNonHdh: true });
@@ -60,7 +60,7 @@ it.each(["match", "name", "failure"] as const)("executes the registered child th
   }) });
   const harness = await world.executorHarness({ descriptor, sessions });
   const { database, clock, path } = harness.authority;
-  const input = I9CheckInput.parse({ ...i9CheckInput, person: { ...i9CheckInput.person, ...(mode === "match" ? { dob: "2000-01-15" } : {}) } });
+  const input = I9CheckInput.parse({ ...i9CheckInput, person: { ...i9CheckInput.person, ...((mode === "match" || mode === "ambiguous") ? { dob: "2000-01-15" } : {}) } });
   const plan = planStart({ authority: database, clock, ids: sequentialIdFactory("f"), planTtlMs: 600000 }, {
     descriptor, submissions: [input], dryRun: false, priority: "bulk", shape: "operation-member", plannedBy: "local-operator",
     configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
@@ -81,7 +81,7 @@ it.each(["match", "name", "failure"] as const)("executes the registered child th
   const result = await executeClaimedRun(harness.deps, { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration }, signal: new AbortController().signal });
   const failures = database.authority.failures.listByRun(queued.envelope.runId);
   expect(result.state, failures.map(failure => failure.summary).join("; ")).toBe(mode === "failure" ? "failed" : "done");
-  expect(matches).toBe(mode === "match" ? 1 : 0);
+  expect(matches).toBe(mode === "match" || mode === "ambiguous" ? 1 : 0);
   expect(searches).toBe(mode === "match" ? 0 : 1);
   if (mode !== "failure") {
     const terminal = database.authority.runResults.get(queued.envelope.runId); assert.ok(terminal);

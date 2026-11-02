@@ -37,7 +37,7 @@ effect, input and output. `src/backend/app/registries/task-registry.ts` composes
 
 | Need | Change |
 | --- | --- |
-| Existing operation with the same contract | Import that exact contract into `workflow.ts`. |
+| Existing operation with the same contract | Add a typed call to that exact contract in the workflow’s `tasks/` folder and group it in its timeline step. |
 | Existing typed option | Bind the option from the workflow input. |
 | New variant of the same browser operation and output meaning | Extend the shared contract and implementation with the typed option; update its consumers and tests. |
 | Pure workflow-specific calculation | Use or add a task in `workflow:<id>`. |
@@ -46,7 +46,7 @@ effect, input and output. `src/backend/app/registries/task-registry.ts` composes
 | New generic dashboard interaction | Change the shared capability under its own approved scope. |
 
 Reuse follows the operation and output contract. Bind or fold the useful facts from a page-read
-task instead of adding another scrape for one field.
+task instead of adding another scrape for one field. A workflow-owned system-task call uses `defineStepEntries(step).task(...)` and a typed input binder; the system store keeps the driver implementation, session policy, screenshots and provenance. Such calls are fingerprinted through the workflow source closure, not registered again as mini-store implementations. Pure calculation tasks use `defineTask` and the workflow mini-store.
 
 ## 3 · Files and registration
 

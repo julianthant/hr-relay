@@ -52,7 +52,6 @@ describe("Person Lookup task implementations", () => {
         "workbooks/read-result",
         "workflow:i9-check/read-match-outcome",
         "workflow:i9-check/read-retention-row",
-        "workflow:i9-check/read-search-plan",
         "workflow:person-lookup/read-active-status",
         "workflow:person-lookup/read-resolved-identity",
 

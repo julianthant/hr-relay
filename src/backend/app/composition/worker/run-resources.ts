@@ -71,7 +71,7 @@ export function createRunResourcesFactory(input:Readonly<{
    const baseline=previous??compose(StoredConfigSchema.parse(snapshot.config));cache.set(snapshot.fingerprint,baseline);
    const key=`${run.envelope.runId}:${snapshot.fingerprint}`;
    const resources=runCache.get(key)??Object.freeze({...baseline,providers:{...baseline.providers,adapters:Object.freeze({...baseline.providers.adapters,
-    "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,artifacts:input.artifacts,clock:input.clock}),
+    "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock}),
    })}});
    runCache.set(key,resources);
    return input.preflight===undefined?resources:Object.freeze({...resources,sessionFactory:preflightSessionFactory(resources.sessionFactory,input.preflight,input.preflight.runScope(run.envelope))});

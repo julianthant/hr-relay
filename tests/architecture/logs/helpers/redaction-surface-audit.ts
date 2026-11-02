@@ -1983,7 +1983,6 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/rerun-warning.ts", state: "audited", reason: "Steps preview serves the same protected public Rerun plan as start-plan, without new input values or execution authority" },
     { module: "src/models/dashboard/start-plan.ts", state: "audited", reason: "the start-plan wire answers a plan with planned-row titles, match keys and refusal messages; the request and its omission facts never echo back" },
     { module: "src/models/dashboard/workbooks.ts", state: "audited", reason: "workbook values, source metadata and actual intake command receipts are served only on operator loopback and workbook revisions are retained in local authority" },
-    { module: "src/models/dashboard/workbook-import.ts", state: "no-surface", reason: "Parses XLSX/CSV bytes into the already audited EditableWorkbook model; declares no new wire or durable schema." },
     { module: "src/models/intake/wire.ts", state: "audited", reason: "the mapping grid shows the operator their own uploaded file" },
     { module: "src/rules/runs/ledger.ts", state: "audited", reason: "the ledger entry is the permanent on-disk record of a filed transaction" },
     { module: "src/rules/notifications/notification-triggers.ts", state: "audited", reason: "the trigger event and its projection become OS-delivered text" },

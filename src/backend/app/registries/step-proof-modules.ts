@@ -12,6 +12,8 @@ import { separationsKronosTimecardWorkflow } from "../../../workflows/separation
 import { separationsKualiFinalizationWorkflow } from "../../../workflows/separations/steps/kuali-finalization/step.js";
 import { separationsKualiReadWorkflow } from "../../../workflows/separations/steps/kuali-extraction/step.js";
 import { separationsUcpathTerminationWorkflow } from "../../../workflows/separations/steps/ucpath-transaction/step.js";
+import { i9CheckPersonMatchWorkflow } from "../../../workflows/i9-check/steps/person-match/step.js";
+import { i9CheckPersonLookupWorkflow } from "../../../workflows/i9-check/steps/person-lookup/step.js";
 import { i9CheckRosterMatchWorkflow } from "../../../workflows/i9-check/steps/roster-match/step.js";
 
 
@@ -52,6 +54,8 @@ export const personLookupCrmDatesModule = composeWorkflowModule(
   compileWorkflow(personLookupCrmDatesWorkflow),
   taskStoreRegistry.stores,
 );
+export const i9CheckPersonMatchModule = composeWorkflowModule(compileWorkflow(i9CheckPersonMatchWorkflow), taskStoreRegistry.stores);
+export const i9CheckPersonLookupModule = composeWorkflowModule(compileWorkflow(i9CheckPersonLookupWorkflow), taskStoreRegistry.stores);
 export const i9CheckRosterMatchModule = composeWorkflowModule(compileWorkflow(i9CheckRosterMatchWorkflow), taskStoreRegistry.stores);
 
 export const STEP_PROOF_MODULES = Object.freeze([
@@ -64,6 +68,8 @@ export const STEP_PROOF_MODULES = Object.freeze([
   personLookupCrossVerifyModule,
   personLookupActiveStatusModule,
   personLookupCrmDatesModule,
+  i9CheckPersonMatchModule,
+  i9CheckPersonLookupModule,
   i9CheckRosterMatchModule,
 ]);
 
