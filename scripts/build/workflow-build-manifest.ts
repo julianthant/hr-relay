@@ -4,14 +4,14 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../src/rules/validation/canonical-json.js";
-import { FingerprintSchema, TaskIdSchema, WorkflowIdSchema } from "../../src/rules/identity/ids.js";
+import type { BuildManifest, SourceHash } from "../../src/models/workflow/build-manifest.js";
 import {
   BUILD_MANIFEST_PATH,
   BuildManifestSchema,
   parseBuildManifest,
 } from "../../src/models/workflow/build-manifest.js";
-import type { BuildManifest, SourceHash } from "../../src/models/workflow/build-manifest.js";
+import { FingerprintSchema, TaskIdSchema, WorkflowIdSchema } from "../../src/rules/identity/ids.js";
+import { canonicalJsonStringify } from "../../src/rules/validation/canonical-json.js";
 
 const MANIFEST_VERSION = 1;
 
@@ -125,9 +125,15 @@ export function declaredWorkflowId(entry: string): string {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       const specIndex = node.expression.text === "defineWorkflowDescriptor"
         || node.expression.text === "defineWorkflow"
+        || node.expression.text === "defineStep"
         ? 0
         : undefined;
-      const spec = specIndex === undefined ? undefined : node.arguments[specIndex];
+      let spec = specIndex === undefined ? undefined : node.arguments[specIndex];
+      if (node.expression.text === "defineStep" && spec !== undefined && ts.isObjectLiteralExpression(spec)) {
+        const proof = spec.properties.find(property => ts.isPropertyAssignment(property)
+          && property.name.getText(source) === "proof");
+        spec = proof !== undefined && ts.isPropertyAssignment(proof) ? proof.initializer : undefined;
+      }
       if (spec !== undefined && ts.isObjectLiteralExpression(spec)) {
         for (const property of spec.properties) {
           if (ts.isPropertyAssignment(property)
@@ -216,7 +222,7 @@ function taskEntries(
           let callsSystemTask = false, definesImplementation = false;
           const visit = (node: ts.Node): void => {
             if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-              if (node.expression.text === "defineStepEntries") callsSystemTask = true;
+              if (node.expression.text === "reuseTask") callsSystemTask = true;
               if (node.expression.text === "defineTask") definesImplementation = true;
             }
             ts.forEachChild(node, visit);
@@ -244,7 +250,10 @@ export function computeBuildManifest(repoRoot: string): BuildManifest {
     zod: installedVersion(repoRoot, "zod"),
   };
   const workflows = descriptorEntries(repoRoot).map(({ id, entry }) => {
-    const sources = collectSourceClosure(repoRoot, entry);
+    const entries = posix(entry).endsWith("/step.ts")
+      ? [entry, resolve(entry, "../../..", "workflow.ts")]
+      : [entry];
+    const sources = collectSourceClosures(repoRoot, entries);
     return {
       id: WorkflowIdSchema.parse(id),
       fingerprint: FingerprintSchema.parse(fingerprintSourceSet(toolchain, id, sources)),

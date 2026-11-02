@@ -12,10 +12,10 @@ Read [workflow-model](../reference/workflow-model.md),
 ## 1 · What you author and what is derived
 
 Author one browser-safe `src/workflows/<id>/workflow.ts`. It declares identity, input, presentation,
-role, scenario IDs, ordered timeline tuples and the terminal result through `defineWorkflow`.
+role, scenario IDs, step composition and the terminal result through `defineWorkflow`.
 Workflow-owned task implementations live in `tasks/` with `task-registry.ts`; only backend
-composition loads them. A chunk harness lives at
-`src/workflows/<composition>/steps/<step>/step.ts`.
+composition loads them. A step definition lives at
+`src/workflows/<composition>/steps/<step>/step.ts`; the kit derives its chunk harness.
 
 Every workflow has `tasks/` and `steps/`. Steps group tasks into the checkpoints on the run
 timeline; hovering a checkpoint shows its tasks. Reused system operations stay in their system
@@ -50,7 +50,9 @@ effect, input and output. `src/backend/app/registries/task-registry.ts` composes
 | New generic dashboard interaction | Change the shared capability under its own approved scope. |
 
 Reuse follows the operation and output contract. Bind or fold the useful facts from a page-read
-task instead of adding another scrape for one field. A workflow-owned system-task call uses `defineStepEntries(step).task(...)` and a typed input binder; the system store keeps the driver implementation, session policy, screenshots and provenance. Such calls are fingerprinted through the workflow source closure, not registered again as mini-store implementations. Pure calculation tasks use `defineTask` and the workflow mini-store.
+task instead of adding another scrape for one field. A thin workflow-owned system-task call uses `reuseTask(step, identity, bindInput)` from
+`workflow-definition.ts`. It returns the typed `identity` and `bind` used by `author.task`. The
+identity retains the exact driver contract, including its input/output schemas and provenance; the system store keeps the driver implementation, session policy, screenshots and provenance. Such calls are fingerprinted through the workflow source closure, not registered again as mini-store implementations. Pure calculation tasks use `defineTask` and the workflow mini-store.
 
 ## 3 · Files and registration
 
@@ -61,8 +63,12 @@ backend task implementations, browser drivers, Playwright or credential access i
 For a new operator workflow:
 
 1. Create `src/workflows/<id>/workflow.ts` with one `defineWorkflow` call, workflow-owned `tasks/`
-   and `task-registry.ts`, and retained harnesses under `steps/<step>/step.ts`.
-2. Create `index.ts` in that folder. Import the real definition, store and harness values, then
+   and `task-registry.ts`, and step definitions under `steps/<step>/step.ts`. Each step owns its group metadata,
+   typed wiring functions, result contribution and proof recipe through one `defineStep` call.
+   `workflow.ts` calls those functions and concatenates their returned tuples. Keep task, gate,
+   transaction, delegation and omission wiring in the step module. A module may own related groups
+   when their dependencies interleave, as Separations identity and Job Summary do.
+2. Create `index.ts` in that folder. Import the real workflow, store and step definitions, then
    export `registration = deepFreeze({ ... } as const)` using `deepFreeze` from
    `src/rules/validation/immutability.ts`. Follow Person Lookup or Separations:
 
@@ -71,13 +77,19 @@ For a new operator workflow:
      definition: exampleWorkflow,
      exposure: { kind: "public", order: 2 },
      store: exampleStore,
-     proofs: [{ definition: exampleReadWorkflow, order: 9 }],
+     proofs: [defineStepProof(exampleWorkflow, exampleReadDefinition)],
    } as const);
    ```
 
-   Import definitions from `./workflow.js`, the store from `./task-registry.js`, and each harness
-   from `./steps/<step>/step.js`. Definition export names end in `Workflow`; generated module
-   exports replace that suffix with `Module`. List every retained harness exactly once.
+   Import the workflow from `./workflow.js`, the store from `./task-registry.js`, and each step
+   definition from `./steps/<step>/step.js`. Import `defineStepProof` from workflow-kit. Workflow
+   export names end in `Workflow`; step export names end in `Definition`. Generation replaces
+   either suffix with `Module`. List every retained step definition exactly once.
+   The step owns its proof `id`, `order` and `build` recipe. `defineStepProof` supplies the harness
+   role and validates the built graph. Use `inheritStepProof(parent)` to share ingress and
+   presentation; retain a specialized proof schema through `StepProofSpec<Input, Result>` when
+   the proof takes different inputs. Reference typed build results directly, never search the
+   parent graph by group key or entry id. Declare proof result dependencies in the step module.
    Public picker orders and registered proof orders are nonnegative integers, unique across indexes.
    Use `{ kind: "child-only" }` for a workflow admitted only through declared delegation edges,
    or `{ kind: "unregistered" }` to keep its module, store and proofs out of production registries.
@@ -89,7 +101,7 @@ For a new operator workflow:
 5. Record copied source provenance, acceptance evidence and unfinished checks in the brief's
    evidence folder.
 
-Harnesses declared in `index.ts` enter the generated `STEP_PROOF_MODULES` list.
+Harnesses derived from the step definitions in `index.ts` enter the generated `STEP_PROOF_MODULES` list.
 They do not enter the operator tuple or picker.
 A group without a harness needs no step folder.
 
@@ -125,7 +137,7 @@ Use the current `WorkflowDefinitionSpec` in `src/workflow-kit/workflow-definitio
 
 ### 4.2 Entries and binds
 
-`steps` receives a `WorkflowAuthor`. Return `{ steps, result }`, where `steps` is an ordered array
+`steps` receives a `WorkflowAuthor` and composes step-module build results. Return `{ steps, result }`, where `steps` is an ordered array
 of `[group, entries[]]`. Tuple order controls presentation. References control execution.
 
 | Author method | Declaration |

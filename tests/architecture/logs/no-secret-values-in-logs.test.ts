@@ -783,11 +783,23 @@ function isWithin(node: ts.Node, expression: ts.Expression): boolean {
 function isCanonicalDescriptorSpecObject(
   object: ts.ObjectLiteralExpression,
   isCanonicalDescriptorFactory: (expression: ts.Expression) => boolean,
+  isCanonicalStepFactory: (expression: ts.Expression) => boolean,
 ): boolean {
   const call = object.parent;
-  return ts.isCallExpression(call)
+  if (ts.isCallExpression(call)
     && call.arguments.at(-1) === object
-    && isCanonicalDescriptorFactory(call.expression);
+    && isCanonicalDescriptorFactory(call.expression)) return true;
+  let returned: ts.Node = object;
+  while (ts.isParenthesizedExpression(returned.parent)) returned = returned.parent;
+  const build = returned.parent;
+  if (!ts.isArrowFunction(build) || build.body !== returned
+    || !ts.isPropertyAssignment(build.parent) || propertyNameText(build.parent.name) !== "build") return false;
+  const proof = build.parent.parent;
+  if (!ts.isObjectLiteralExpression(proof) || !ts.isPropertyAssignment(proof.parent)
+    || propertyNameText(proof.parent.name) !== "proof") return false;
+  const step = proof.parent.parent;
+  return ts.isObjectLiteralExpression(step) && ts.isCallExpression(step.parent)
+    && step.parent.arguments[0] === step && isCanonicalStepFactory(step.parent.expression);
 }
 
 function isDescriptorCallbackTemplateSpan(
@@ -795,6 +807,7 @@ function isDescriptorCallbackTemplateSpan(
   isCanonicalDescriptorFactory: (expression: ts.Expression) => boolean,
   sectionName: "identity" | "presentation",
   callbackNames: ReadonlySet<string>,
+  isCanonicalStepFactory: (expression: ts.Expression) => boolean,
 ): boolean {
   const callback = enclosingPresentationCallback(node);
   if (callback === undefined || !ts.isPropertyAssignment(callback.parent)) return false;
@@ -806,7 +819,7 @@ function isDescriptorCallbackTemplateSpan(
     || propertyNameText(sectionProperty.name) !== sectionName) return false;
   const descriptorSpec = sectionProperty.parent;
   if (!ts.isObjectLiteralExpression(descriptorSpec)
-    || !isCanonicalDescriptorSpecObject(descriptorSpec, isCanonicalDescriptorFactory)) return false;
+    || !isCanonicalDescriptorSpecObject(descriptorSpec, isCanonicalDescriptorFactory, isCanonicalStepFactory)) return false;
 
   if (!ts.isBlock(callback.body)) return isWithin(node, callback.body);
   return callback.body.statements.some((statement) =>
@@ -818,24 +831,28 @@ function isDescriptorCallbackTemplateSpan(
 function isDescriptorPresentationTemplateSpan(
   node: ts.TemplateSpan,
   isCanonicalDescriptorFactory: (expression: ts.Expression) => boolean,
+  isCanonicalStepFactory: (expression: ts.Expression) => boolean,
 ): boolean {
   return isDescriptorCallbackTemplateSpan(
     node,
     isCanonicalDescriptorFactory,
     "presentation",
     new Set(["title", "subtitle"]),
+    isCanonicalStepFactory,
   );
 }
 
 function isDescriptorIdentityTemplateSpan(
   node: ts.TemplateSpan,
   isCanonicalDescriptorFactory: (expression: ts.Expression) => boolean,
+  isCanonicalStepFactory: (expression: ts.Expression) => boolean,
 ): boolean {
   return isDescriptorCallbackTemplateSpan(
     node,
     isCanonicalDescriptorFactory,
     "identity",
     new Set(["matchKey"]),
+    isCanonicalStepFactory,
   );
 }
 
@@ -865,6 +882,8 @@ export function findSecretInterpolations(path: string, content: string): readonl
     ),
   ]);
   const bindings = aliasBindings(source);
+  const stepFactoryImports = importedCanonicalBindings(path, source,
+    CANONICAL_WORKFLOW_DEFINITION_MODULE, new Set(["defineStep"]));
   const staticExpressionText = (
     raw: ts.Expression,
     resolving: ReadonlySet<ts.Node> = new Set(),
@@ -928,6 +947,8 @@ export function findSecretInterpolations(path: string, content: string): readonl
     resolvesImportedBinding(expression, canonicalSanitizerImports);
   const isCanonicalDescriptorFactory = (expression: ts.Expression): boolean =>
     resolvesImportedBinding(expression, descriptorFactoryImports);
+  const isCanonicalStepFactory = (expression: ts.Expression): boolean =>
+    resolvesImportedBinding(expression, stepFactoryImports);
   const resolvingAliases = new Set<ts.Node>();
   const baseSensitive = (name: string): boolean => !descriptors.has(name) && isSensitiveBindingName(name);
   const sensitive = (name: string, expression: ts.Expression): boolean => {
@@ -1021,8 +1042,8 @@ export function findSecretInterpolations(path: string, content: string): readonl
       );
       if (name !== undefined
         && (!isDirectIdentifierBindingName(name)
-          || (!isDescriptorPresentationTemplateSpan(node, isCanonicalDescriptorFactory)
-            && !isDescriptorIdentityTemplateSpan(node, isCanonicalDescriptorFactory)))) {
+          || (!isDescriptorPresentationTemplateSpan(node, isCanonicalDescriptorFactory, isCanonicalStepFactory)
+            && !isDescriptorIdentityTemplateSpan(node, isCanonicalDescriptorFactory, isCanonicalStepFactory)))) {
         report(node.expression, name, "template interpolates credential-named");
       }
     }
@@ -1298,6 +1319,27 @@ describe("no secret values in logs", () => {
       "};",
     ].join("\n"));
     assert.equal(lookalike.length, 1, lookalike.join("\n"));
+  });
+
+  it("recognizes only direct presentation and identity returns in canonical step proof recipes", () => {
+    const path = "src/workflows/example/steps/read/step.ts";
+    const source = [
+      'import { defineStep as step } from "../../../../workflow-kit/workflow-definition.js";',
+      "export const definition = step({ group, proof: { build: () => ({",
+      "  identity: { matchKey: (input: { emplId: string }) => `eid:${input.emplId}` },",
+      "  presentation: { title: (input: { employeeName: string }) => `${input.employeeName}` },",
+      "}) } });",
+    ].join("\n");
+    assert.deepEqual(findSecretInterpolations(path, source), []);
+    const spoofed = source.replace("../../../../workflow-kit/workflow-definition.js", "../../../../domain/impostor.js");
+    assert.equal(findSecretInterpolations(path, spoofed).length, 2);
+    assert.equal(findSecretInterpolations(path, source.replace("proof:", "other:")).length, 2);
+    const shadowed = source.replace("export const definition", "function spoof(step: (value: unknown) => unknown) { const definition") + "\n}";
+    assert.equal(findSecretInterpolations(path, shadowed).length, 2);
+    const diagnostic = source.replace("=> `${input.employeeName}`", "=> { console.error(input.employeeName); return `${input.employeeName}`; }");
+    assert.equal(findSecretInterpolations(path, diagnostic).length, 1);
+    const local = source.replace("=> `${input.employeeName}`", "=> { const message = `${input.employeeName}`; return message; }");
+    assert.equal(findSecretInterpolations(path, local).length, 1);
   });
 
   it("follows aliases into concatenation, join, Error, ctx.fail, and an aliased sink", () => {

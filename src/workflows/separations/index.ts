@@ -1,21 +1,22 @@
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { separationsWorkflow } from "./workflow.js";
+import { defineStepProof } from "../../workflow-kit/workflow-definition.js";
+import { separationsIdentityCheckDefinition } from "./steps/identity-check/step.js";
+import { separationsKronosTimecardDefinition } from "./steps/kronos-timecard/step.js";
+import { separationsKualiReadDefinition } from "./steps/kuali-extraction/step.js";
+import { separationsKualiFinalizationDefinition } from "./steps/kuali-finalization/step.js";
+import { separationsUcpathTerminationDefinition } from "./steps/ucpath-transaction/step.js";
 import { separationsStore } from "./task-registry.js";
-import { separationsKronosTimecardWorkflow } from "./steps/kronos-timecard/step.js";
-import { separationsKualiReadWorkflow } from "./steps/kuali-extraction/step.js";
-import { separationsIdentityCheckWorkflow } from "./steps/identity-check/step.js";
-import { separationsUcpathTerminationWorkflow } from "./steps/ucpath-transaction/step.js";
-import { separationsKualiFinalizationWorkflow } from "./steps/kuali-finalization/step.js";
+import { separationsWorkflow } from "./workflow.js";
 
 export const registration = deepFreeze({
   definition: separationsWorkflow,
   exposure: { kind: "public", order: 1 },
   store: separationsStore,
   proofs: [
-    { definition: separationsKronosTimecardWorkflow, order: 0 },
-    { definition: separationsKualiReadWorkflow, order: 1 },
-    { definition: separationsIdentityCheckWorkflow, order: 2 },
-    { definition: separationsUcpathTerminationWorkflow, order: 3 },
-    { definition: separationsKualiFinalizationWorkflow, order: 4 },
+    defineStepProof(separationsWorkflow, separationsKronosTimecardDefinition),
+    defineStepProof(separationsWorkflow, separationsKualiReadDefinition),
+    defineStepProof(separationsWorkflow, separationsIdentityCheckDefinition),
+    defineStepProof(separationsWorkflow, separationsUcpathTerminationDefinition),
+    defineStepProof(separationsWorkflow, separationsKualiFinalizationDefinition),
   ],
 } as const);

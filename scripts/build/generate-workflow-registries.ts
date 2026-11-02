@@ -102,8 +102,32 @@ function readRegistration(repoRoot: string, folder: string): Registration {
   const proofsNode = fields.get("proofs");
   if (proofsNode === undefined || !ts.isArrayLiteralExpression(proofsNode)) throw new Error(`${path}: proofs must be an array literal`);
   const proofs = proofsNode.elements.map(node => {
-    const proof = objectFields(node, ["definition", "order"], path);
-    return { definition: definitionOf(proof.get("definition"), /^\.\/steps\/[^/]+\/step\.js$/u), order: orderOf(proof.get("order"), path) };
+    if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression) || node.expression.text !== "defineStepProof"
+      || imports.get("defineStepProof")?.source !== "../../workflow-kit/workflow-definition.js"
+      || node.arguments.length !== 2 || node.arguments[0]?.getText(source) !== fields.get("definition")?.getText(source)) {
+      throw new Error(`${path}: proofs must call defineStepProof with this workflow and an imported step definition`);
+    }
+    const binding = imported(node.arguments[1], /^\.\/steps\/[^/]+\/step\.js$/u);
+    if (!binding.name.endsWith("Definition")) throw new Error(`${path}: step export must end in Definition`);
+    const stepPath = join(path, "..", binding.source.replace(/\.js$/u, ".ts"));
+    const stepSource = ts.createSourceFile(stepPath, readFileSync(stepPath, "utf8"), ts.ScriptTarget.Latest, true);
+    let proof: ts.Expression | undefined;
+    for (const statement of stepSource.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      for (const declaration of statement.declarationList.declarations) {
+        if (!ts.isIdentifier(declaration.name) || declaration.name.text !== binding.name
+          || declaration.initializer === undefined || !ts.isCallExpression(declaration.initializer)
+          || declaration.initializer.expression.getText(stepSource) !== "defineStep") continue;
+        const spec = declaration.initializer.arguments[0];
+        if (spec !== undefined && ts.isObjectLiteralExpression(spec)) {
+          for (const property of spec.properties) {
+            if (ts.isPropertyAssignment(property) && property.name.getText(stepSource) === "proof") proof = property.initializer;
+          }
+        }
+      }
+    }
+    const proofFields = objectFields(proof, ["id", "order", "build"], stepPath);
+    return { definition: { ...binding, moduleName: binding.name.replace(/Definition$/u, "Module") }, order: orderOf(proofFields.get("order"), stepPath) };
   });
   const steps = join(path, "../steps");
   const sources = readdirSync(steps, { withFileTypes: true }).filter(entry => entry.isDirectory()
