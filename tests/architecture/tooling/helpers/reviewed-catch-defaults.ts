@@ -8,18 +8,18 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/browser/onboarding-duo-provider.ts",
-    "sha256": "77171ff75659e0aa8b995ef8fe9901c5d9fffc71f0cab2b806fe166697f7368f",
+    "sha256": "5accb5fa4da30d55e3d2b5a9546eb5fc23f191677c8edf28154b9d5ac3c38863",
     "reason": "Failed UNKNOWN retention or failure-report callbacks retain both causes and leave attempt/browser closure unproved. Context or broker termination revokes the owner and settles the attempt; physical profile deletion waits for owner cleanup and keeps all private-path and native closure checks. Worker stop failure remains uncertain until pump/report settlement and enclosing browser closure are proved; replacement or relaunch remains refused after unproved cleanup."
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "16cd4b0a910ea134433c38a23915f65fc27b272917153a4382168af52432b235",
+    "sha256": "c7cc18737a5ba1dd0128b16a54bda25908f8a094568a98cc2f8c95c3beae0981",
     "reason": "Startup producer closure failures retain dependent native database and admission custody. Selected-context open failure rethrows typed custody uncertainty. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and stop promises, whose callers await failures before storage release. An unavailable authority generation remains explicitly unavailable; backup presence is assessed separately. Automatic upgrade runs before composition in storage-compose.ts and has no HTTP response handoff."
   },
   {
     "path": "src/backend/app/composition/worker-compose.ts",
-    "sha256": "cded6780300b999531493f8d96c45addbc5cd17c1def69010218d6af469cee3d",
-    "reason": "The bound native open validates authority in one SQLite snapshot before protected values are read. Failed opening cleanup retains the actual native database, issued admission and both original/close errors as custody uncertainty. Other open failures close the actual database before admission release and aggregate cleanup errors. Runtime cleanup releases admission only after proven database and browser closure. Maintenance failure stops rescheduling and signals the worker stop controller; composition surfaces the failure. Actual root or inherited lifetime custody remains held through shutdown."
+    "sha256": "76ea0688b886caac89132eb9ca9a210e845c681a90625e1127bd2bef5cbe3559",
+    "reason": "The bound native open validates authority in one SQLite snapshot before protected values are read. Failed opening cleanup retains the actual native database, issued admission and both original/close errors as custody uncertainty. Other open failures close the actual database before admission release and aggregate cleanup errors. Runtime cleanup releases admission only after proven database and browser closure. An uncertain launch reports launch-uncertain with custody held and leaves the lease unchanged. Maintenance failure stops rescheduling and signals the worker stop controller; composition surfaces the failure. Actual root or inherited lifetime custody remains held through shutdown."
   },
   {
     "path": "src/backend/accounts/chatgpt-account-service.ts",
@@ -69,9 +69,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/storage/admission/installation.ts",
 
-      "sha256": "4b17e0fe58179c7ab85d5442e4e3d6cc25ad7c9e8b6da745b137077132561a43",
+      "sha256": "9c20e9b35d07a3dbb3077f25d104f04f515a45d1c47cbfa02a3d27a49483accc",
     "reason": "Failed acquisition scans every nested aggregate and cause for source-closure uncertainty, retains exclusive lifetime custody when found, otherwise releases that capture, and always rethrows the failure. Descriptor, publication and inventory disposal failures retain source owners and original causes; fixed nonce mutation locks belong to credential-safe-file.ts."
-
   },
   {
     "path": "src/backend/runs/commands/ordinary-path-validator.ts",
@@ -90,7 +89,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/workers/worker-supervisor.ts",
-    "sha256": "b9e315489db5889974f9d5ea07190a4d12c6cfd6cac678db75ad1851f50b4159",
+    "sha256": "075ad1a814b24dd629d11be3985672161099e09c8cbd0037b3af1fac3e63aad4",
     "reason": "The rejection observer preserves the original drain promise, which shutdown races and propagates as aggregate failure. A failed owned-child exit reconciliation is retained as recoveryFailure, reported through onFault, blocks spawn and lifecycle reuse, and is included in the final drain failure rather than becoming successful exit settlement."
   },
   {
@@ -116,7 +115,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   {
     "path": "src/backend/storage/sqlite/authority-database.ts",
 
-    "sha256": "dc05f2f82f2039a64297a3f62254acddfa7326be0c3295421281dd4bd7d19428",
+    "sha256": "2e00f46a7e3416a32c55917bf798c7e910dcf8617e1dd0f02f8fb072a73be6d6",
 
     "reason": "Failed constructor cleanup retains the actual native database and admission with both opening and close failures. Failed rollback retains database custody with the original failure; successful rollback still rethrows it. Failed external validation invalidates the admission cache and throws the original mutation error or named search refusal, never validated data. Malformed diagnostics remain explicit. Stopped inspection, upgrade and finite queued cancellation retain original, rollback and close failures before custody releases; required native browser closure precedes cancellation."
   },
@@ -152,7 +151,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/bootstrap/secure-env-bootstrap.ts",
-    "sha256": "6de4ae084b7fbab7c6ac4883cd995ec2724a5dcef6b301062fa17f1500530e82",
+    "sha256": "6504bff4545ee31fff5902061efe46e7284737f83b21f9bcdd269c7bc55828e8",
     "reason": "The root listener or inherited lifetime is acquired before admission. Unproved source closure retains admission and rethrows; typed runtime or source-closure uncertainty retains the outer lifetime, while settled paths await its close. Stopped maintenance releases admission only when custody was not retained. No failed bootstrap becomes successful runtime admission. The real browser closure port is supplied to dashboard admission and offline cancellation without changing the failure-retention path."
   },
   {

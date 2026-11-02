@@ -9,7 +9,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "01b112fc02fe323d65f0352051372290222254623aa6326614ad7c7f9b004e1e",
+      "fingerprint": "6fd86a8c990d679e19e6e9859524a9e9efb5fa557917b313e12b17eda36cd0bd",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -333,7 +333,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -371,7 +371,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "a24be4772aa3073e27e227362c7e0c22741d57282558cba5e9988bf7628961db",
+      "fingerprint": "6feadce251053fca3cc3d68b0a26da6a049cd8c2adbecadc5a673efd7bb9ed4a",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -695,7 +695,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -737,7 +737,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup-active-status"
     },
     {
-      "fingerprint": "57f6c068f86b313d9dd761b733c4e69fad4ef16f215baec13fcc8af625ca6d7e",
+      "fingerprint": "3bf15fdc2e675beef0f598df45c9ac435dd839e7e5da988027a528403d540ba4",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -1061,7 +1061,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -1103,7 +1103,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup-crm-dates"
     },
     {
-      "fingerprint": "b6f2611db3f991dfde81ca32f0ebd20a0086a2568f66f9300ada5b33ef3f5f23",
+      "fingerprint": "be4ab215a346965c71d2bc4c08a890ca6bb97b509f0afbea10092c7b8ce6b351",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -1427,7 +1427,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -1469,7 +1469,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup-cross-verify"
     },
     {
-      "fingerprint": "8b90c5a2765e7095d5c8121e507845d8964c7fcd8649059a054e19dfdedf4f9c",
+      "fingerprint": "2cba7fbfd33811eb6454a44c6efe89ab95cd2ad76888b4dedfe3c311537e95b1",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -1793,7 +1793,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -1835,7 +1835,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup-searching"
     },
     {
-      "fingerprint": "6fc9baa01afab15e6a2679aa2ff56ae0283b1899145a91f94fbdd3ad5773fcd5",
+      "fingerprint": "7613e2aa17e5e0dd305f648533c8822519c11363eec9e60311232e717f251f8b",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -2307,7 +2307,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -2345,7 +2345,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations"
     },
     {
-      "fingerprint": "3b46e7f3612e1ffe844431a094af48e9dc8f2d9346e06ba2d260a62843713504",
+      "fingerprint": "487d88ea97141bf4ce5d5e4f82b6834515e0e05259f423122ca473093c138934",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -2817,7 +2817,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -2859,7 +2859,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-identity-check"
     },
     {
-      "fingerprint": "da153bf71b4572c7da632dd49d7181e3809fde8459d26b2903762f59d27e7ab2",
+      "fingerprint": "b5100d036157fa119aad387fffd28e32a28c9e553d22e1561846e37fa4499268",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -3331,7 +3331,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -3373,7 +3373,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "898a59c74c534db2432e48037a1b4d6d0a62519b8a978917f657c1031e9387a7",
+      "fingerprint": "5eb231149087760e8837cf9e6344e20daffd61f017d02df2245bc33a5c9e3d8a",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -3845,7 +3845,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -3887,7 +3887,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-finalization"
     },
     {
-      "fingerprint": "3e38ae210881cbcc7ca8d08187b6bb3d420620462fded4a92d5ffde496f32dcf",
+      "fingerprint": "5b74744577d33bb39e5386153b57735a190d9b4e919c96097a4e745e9cb67484",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -4359,7 +4359,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -4401,7 +4401,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-read"
     },
     {
-      "fingerprint": "5dadd219dceb6dfa90455d5770c0102cc43b38d7a95a14c7f15e7a210b42791c",
+      "fingerprint": "e8cf2afc7f758b5ffeca4d42410fcce294e817059ae2571439230c194d08e63c",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -4873,7 +4873,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -4917,7 +4917,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "e3ea0f05256e5c6dee43860d8cc6f196aaf37f67dcb734a7848ecf818a8ff53b",
+      "fingerprint": "9c6c5a7c8f1bf37a225f6722092e6a580f1ee59cbbeac4751d7336ce9c617786",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -5181,7 +5181,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -5195,7 +5195,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "8439fb658ab172f298f69ac34f4914600476e92d867031ec4b1de281a246043f",
+      "fingerprint": "0f975a5f38c0cd3cdd9db5e38f350d0bd1d5f39030f088803d2f34484ded2f28",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -5459,7 +5459,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -5473,7 +5473,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "dc8a382f06542e7a7d9fdf434a61f96103729d9261b6ba1cfef26f89d92584ee",
+      "fingerprint": "c8fa550d26fe40154ee3ed60cf95682d720613886e7d388c99278326387a3964",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -5741,7 +5741,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -5755,7 +5755,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-results"
     },
     {
-      "fingerprint": "c0936042e10a6388b6f78b1a12688aead48dfb0fba9de37fbc1a8e32c083bd77",
+      "fingerprint": "8583e8fff9b2ba24ca5307da3186d8be7fad41430400b2884b8d4fe2a9d63342",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -6019,7 +6019,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -6033,7 +6033,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/search-onboarding-records"
     },
     {
-      "fingerprint": "2e669bcbb347237ad3de0220f309f47b775a115615c755d4f6b9c79e4c1271cf",
+      "fingerprint": "a30f949f36b37ec0f1ceca9a77ae6d0fa5224f5a0f86322b4c714782719b2102",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -6301,7 +6301,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -6771,7 +6771,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-spreadsheet"
     },
     {
-      "fingerprint": "a562331859b24dc03f3c45a881fef05bbe4b5132636b373648036dc527b10e38",
+      "fingerprint": "f3072058ed96fb648f11fc7daf18bdf34df193b3cfa8696df19a23af7db8ce84",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7051,7 +7051,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -7065,7 +7065,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/match-separation-finalization"
     },
     {
-      "fingerprint": "7bb138d1b6aceb17cf7ac1859d239caa77f15f933af4425219a0389bb6b167c7",
+      "fingerprint": "242744e3909ba0bcd910b54cb30ee5904f7c66470834cb533d29f6ef377879d0",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7333,7 +7333,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -7347,7 +7347,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/read-separation-document"
     },
     {
-      "fingerprint": "2ac5d978396d8cfcfc50819404d109e057464c8d4e96bf6ea0430bf010ba27c1",
+      "fingerprint": "2dbad9f64032785bc29313e76c70ad9a65d785909f791c68909618b0c53f720e",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7619,7 +7619,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -7633,7 +7633,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/save-separation-finalization"
     },
     {
-      "fingerprint": "0e4afe1d14ff484d2f2f14f860f16bf799812548857b61fd60966b4abf951dda",
+      "fingerprint": "04330764bde7fbb1dc5d5da5a4ec487580468b037b42e45ae969a198a460ba06",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7901,7 +7901,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -7915,7 +7915,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/search-separation-action"
     },
     {
-      "fingerprint": "c5864661a7525b397c059235ae5315f692911f2ee168560ed98ce9eabdfb0fff",
+      "fingerprint": "1833736e5447ffbdf9f370530aa5da212b8c0107965414063d2b972d8436f0b6",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -8187,7 +8187,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -8201,7 +8201,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/stage-separation-finalization"
     },
     {
-      "fingerprint": "c1e660a6742ccb84b618e58bd935ae0e6787b79f7b81f3ed84c7349eae9b8a08",
+      "fingerprint": "4fefb853d6de0bb34db3e83a564d11259425c4399c22cb965512fcb5cd870bf2",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -8485,7 +8485,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -8499,7 +8499,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-separation-finalization"
     },
     {
-      "fingerprint": "2775f72a587c481a76df556fd017fa599bf30b82b59ae263de26d5e22ba578dc",
+      "fingerprint": "c0700d94f04c31a91c3a3d43f8f9abb3dcd95b93166605024c6e4db336fdfb3e",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -8771,7 +8771,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -8785,7 +8785,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "edca81de61660850a0f111a4a046dc9bdf076cdf4f80cb57d55f963c0acf1e98",
+      "fingerprint": "2d56fc22f049d12e00c4d05ea9a1f8d57813630200c0db058c5d83526ad13f5a",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -9057,7 +9057,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -9805,7 +9805,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "c382e004e02b4528fe1c562088fddf6461fd1dc338101b6df626e587a185ab0f",
+      "fingerprint": "1aeee816ceb9f7a731fc6ffaa251194db098b4e3fc9978863599e4d0b0608f73",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -10153,7 +10153,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -10167,7 +10167,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/create-termination"
     },
     {
-      "fingerprint": "4462fb31ce3d2d29c8710aaa753752aff4943a5910d54e3af241311ea51df00d",
+      "fingerprint": "e77b370c49cf191918f3588782758ff5931a9f53692c26901b28cf9cdc68343f",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -10515,7 +10515,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -10529,7 +10529,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/delete-pending-terminations"
     },
     {
-      "fingerprint": "a7eaa9535a949003c3edc3334e1c50ec064a684a2e58bdd75f193ea9c144b1cc",
+      "fingerprint": "5e90a0689f32e6203a9086981447fe75a05c060a22b6c9d324692728e6e9e0e0",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -10877,7 +10877,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -10891,7 +10891,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-existing-termination"
     },
     {
-      "fingerprint": "e7e16dc58ba6d77fe28a97803207f640d6de6ab5c9d445a8d977827a0fdcfe18",
+      "fingerprint": "13c8ed27564bd81ea8462232ff960ab4a34902863c3407c7df064e5ba060918a",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -11239,7 +11239,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -11253,7 +11253,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-pending-terminations"
     },
     {
-      "fingerprint": "26f2076d195481e792fe34c85eef963e096a1a33ad0b56bf341e9a430ec50d97",
+      "fingerprint": "dc227f1c6d7a06714a8dd98294ac8ce294b83f21dcd467e501a4f08c1ed6c6c1",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -11605,7 +11605,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -11619,7 +11619,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "a01b7d819f72fadf62d705e2116d131db1eb09d77288e9a509edf65b1e577f25",
+      "fingerprint": "94b5a7cdf448dbccad395bd643f8b69bbacec37ad24821ede48ea91ca9da8d73",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -11971,7 +11971,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -11985,7 +11985,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-pending-termination-set"
     },
     {
-      "fingerprint": "535d7b9335544a9e08a842c492d7a1df3bc7a964717579f93b00081ef6825217",
+      "fingerprint": "04a364dfe27c638c582de36d5d15bec6554bc38bd18d77d74374013a1735df37",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -12333,7 +12333,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -12347,7 +12347,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-match"
     },
     {
-      "fingerprint": "0ec89f80b88eaf098cc9fd02dccd736ab9a7a2647189f07e1cec09d96098aa2e",
+      "fingerprint": "9abb247373949a97769ce49c648e798dfc4112b6c246c234c0ad7dd8a220a4b2",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -12695,7 +12695,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -12709,7 +12709,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "2a005c927e0bfbe13a5ee221384cfdefbca4ace737688a2a6bfffca3f878119f",
+      "fingerprint": "bf72aaaf4f24ec40986d706ae9b810550fe5e87cb232b685a9e46c6b46e9544b",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -13061,7 +13061,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -13075,7 +13075,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-pending-termination-sweep"
     },
     {
-      "fingerprint": "4d7b61012c85fab167c66e574197cbebc2ba02e3d4c9699dd6d66af63dcbd7f9",
+      "fingerprint": "76eb6fe1a2aec5b316a7531bebfb6684bfbe20c33f66e3ebda396bd6e1de8f9c",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -13427,7 +13427,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -13441,7 +13441,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-termination"
     },
     {
-      "fingerprint": "5476d963b1e74adbaa61e2222e738439c33a4d36bfa17e03667d18b4f597b7b5",
+      "fingerprint": "1a3048d3d05ebeca7d301cd250e76d882772f2c729c78923debd52d32bf77c81",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -13793,7 +13793,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -13807,7 +13807,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-pending-terminations-cleared"
     },
     {
-      "fingerprint": "1a4d5143100d5e2bbafa062e5320c198e812ba4f95c0518e95e544c161224f75",
+      "fingerprint": "1c47d1fea86eafb4b570703c010efd1066e4202ec652ac72fbd3b61bf6f17657",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -14159,7 +14159,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",
@@ -14173,7 +14173,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination"
     },
     {
-      "fingerprint": "0bc1714cf419eb77484dfa4c7dfa69ca62254b041707f86109f8bfe4ebc6562b",
+      "fingerprint": "9d0b6f24aa1aa847439f7b235f1389470c4480f5d9e7441c9c07263b28f85ac1",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -14525,7 +14525,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/session.ts",
-          "sha256": "ce6a04b8d726e318845ad96330eb6e37eb8d2d5477a66c03c36228e1d78a6ab7"
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
         },
         {
           "path": "src/workflow-kit/task-registry.ts",

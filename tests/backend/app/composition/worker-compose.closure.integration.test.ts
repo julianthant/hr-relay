@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { copyFileSync } from "node:fs";
-import { join, relative, isAbsolute } from "node:path";
+import { copyFileSync, readFileSync } from "node:fs";
+import { basename, join, relative, isAbsolute } from "node:path";
 import { spawnSync } from "node:child_process";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { chromium } from "playwright";
 import { it, vi } from "vitest";
-import { composeWorkerRuntime } from "../../../../src/backend/app/composition/worker-compose.js";
+import { composeWorkerRuntime, WorkerLaunchUncertainError } from "../../../../src/backend/app/composition/worker-compose.js";
+import { BrowserRootsSchema } from "../../../../src/backend/storage/browser-root-contract.js";
+import { hasUnprovedSourceClosure } from "../../../../src/backend/storage/source-closure.js";
+import { withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
+import { WorkerLeaseRecordSchema, type WorkerLeaseRecord } from "../../../../src/models/run/worker.js";
 import { composeSelectedProfileStorage, RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import * as accounts from "../../../../src/backend/accounts/chatgpt-account-service.js";
@@ -25,9 +29,11 @@ import { duoCeremonyGatesOver } from "../../../support/helpers/duo-ceremony-fixt
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { happySessionHarness, ManualScheduler, personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 
+const retainedLaunchCustody: object[] = [];
+
 for (const failure of ["close", "launch"] as const) it(failure === "close"
   ? "retains an unproved closure report while settling the worker lease as crashed"
-  : "records a crashed lease for the real factory's generic launcher rejection", async () => {
+  : "reports launch-uncertain with custody held and leaves the worker lease unchanged", async () => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   copyFileSync("package.json", join(f.workspace, "package.json"));
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
@@ -37,6 +43,10 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
   const managers: WorkerSessionManager[] = [];
   let launches = 0, probes = 0, launchFailure: Promise<never> | undefined;
   let closedWorkerDatabase: AuthorityDatabase | undefined, launchedDirectory: string | undefined;
+  let beforeLaunch: WorkerLeaseRecord | undefined, launchReport: WorkerLaunchUncertainError | undefined;
+  let profileRoot: string | undefined;
+  const machineRoot = f.admission.captureBrowserRegistryContext().machineRoot;
+  const registryPath = join(machineRoot, "machine", "browser-roots.json");
   let custodyOraclesProved = false, primary: unknown;
   const run = workerLoop.runWorkerLoop;
   const store = credentialStores.createCredentialStore;
@@ -54,6 +64,7 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
       source: "settings-surface", target: { expectedRevision: context.settings.read().record.revision },
       payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
     assert.equal(applied.state, "applied");
+    profileRoot = context.resolveSettings(context.settings.read().record.settings).config.paths.browserProfileRoot;
     const active = context.database.authority.runtimeConfig.get(); assert.ok(active);
     const run = RunRecordSchema.parse(personLookupQueuedRun());
     const queued = context.database.withAuthorityTransaction(repositories => repositories.runs.enqueue({ ...run,
@@ -67,6 +78,7 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
         probes += 1;
         return nativeLaunch(directory, options);
       }
+      beforeLaunch = context.database.authority.workerLeases.get("person-lookup-worker-1"); assert.ok(beforeLaunch);
       launches += 1; launchedDirectory = directory; launchFailure = Promise.reject(new Error("uncertain launch failure")); return launchFailure;
     });
   }
@@ -77,18 +89,41 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
       duoCeremony: duoCeremonyGatesOver(context.database, clock, new ManualScheduler(clock)),
       ...(failure === "close" ? { sessionFactory: happySessionHarness().factory } : {}),
       stopSignal: new AbortController().signal, write: () => undefined,
-      closeDatabase: database => { database.close(); closedWorkerDatabase = database; } }), RuntimeCustodyUncertainError);
-    assert.ok(report); assert.equal(report.closure, "unproved");
-    if (failure === "close") assert.deepEqual(report.outcomes, []);
+      closeDatabase: database => { database.close(); closedWorkerDatabase = database; } }), error => {
+      assert.ok(error instanceof RuntimeCustodyUncertainError);
+      if (failure === "launch") { assert.ok(error instanceof WorkerLaunchUncertainError); launchReport = error; }
+      return true;
+    });
+    if (failure === "close") {
+      assert.ok(report); assert.equal(report.closure, "unproved"); assert.deepEqual(report.outcomes, []);
+      const lease = context.database.authority.workerLeases.get(report.workerId);
+      assert.ok(lease?.lifecycle.state === "stopped"); assert.equal(lease.lifecycle.reason, "crashed");
+    }
     else {
+      assert.equal(report, undefined); assert.ok(launchReport); assert.ok(beforeLaunch);
+      assert.deepEqual(launchReport.report, { state: "launch-uncertain", custody: "held", workerId: beforeLaunch.workerId, workflowId: "person-lookup" });
+      assert.equal(hasUnprovedSourceClosure(launchReport), true);
+      const expectedLease = beforeLaunch;
+      const lease = withReadonlyAuthoritySnapshot(f.path, database => {
+        const row = database.prepare("SELECT payload_json FROM worker_leases WHERE worker_id=?").get(expectedLease.workerId);
+        assert.ok(row && typeof row.payload_json === "string");
+        return WorkerLeaseRecordSchema.parse(JSON.parse(row.payload_json));
+      });
+      assert.notEqual(lease.lifecycle.state, "stopped"); assert.deepEqual(lease, expectedLease);
       assert.ok(probes > 0); assert.equal(launches, 1); assert.ok(launchedDirectory);
-      const root = context.resolveSettings(context.settings.read().record.settings).config.paths.browserProfileRoot;
-      const contained = relative(root, launchedDirectory);
+      const registry = BrowserRootsSchema.parse(JSON.parse(readFileSync(registryPath, "utf8")));
+      const owned = registry.roots.filter(row => row.owner.kind === "worker" && row.owner.workerId === expectedLease.workerId);
+      assert.deepEqual(owned.map(row => basename(row.directory)).sort(), [...expectedLease.browserSystems].sort());
+      const uncertain = owned.find(row => join(machineRoot, row.directory) === launchedDirectory);
+      assert.ok(uncertain); assert.equal(uncertain.launch.state, "unknown");
+      for (const row of owned) {
+        assert.equal(row.native, undefined);
+        if (row !== uncertain) assert.equal(row.launch.state, "closed");
+      }
+      assert.ok(profileRoot); const contained = relative(profileRoot, launchedDirectory);
       assert.ok(contained.length > 0 && !contained.startsWith("..") && !isAbsolute(contained));
       assert.ok(launchFailure); await assert.rejects(launchFailure);
     }
-    const lease = context.database.authority.workerLeases.get(report.workerId);
-    assert.ok(lease?.lifecycle.state === "stopped"); assert.equal(lease.lifecycle.reason, "crashed");
     assert.ok(issued); issued.assertLive(); lifetimeLock.assertHeld();
     assert.ok(closedWorkerDatabase);
     const closed = closedWorkerDatabase;
@@ -113,7 +148,11 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
       assert.equal(closedNames.has(`${path} (deleted)`), false, "closed database cannot retain a deleted descriptor");
     }
     assert.equal(custodyOraclesProved, true, new Error("worker-closure-fixture-custody-unproved", { cause: primary }));
-    issued?.release(); await f.close();
+    if (failure === "launch") {
+      assert.ok(issued); const heldAdmission = issued;
+      assert.throws(() => heldAdmission.release(), hasUnprovedSourceClosure);
+      lifetimeLock.assertHeld(); retainedLaunchCustody.push({ f, issued, launchReport });
+    } else { issued?.release(); await f.close(); }
   }
 });
 

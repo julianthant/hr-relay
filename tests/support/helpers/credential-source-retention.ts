@@ -9,14 +9,14 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
-import { BrowserRootsSchema } from "../../../src/backend/storage/browser-roots.js";
+import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
 import { LogoutSettlementSchema } from "../../../src/models/profiles/profile.js";
 import { testProcessImport } from "../compiled-process.js";
 import { scaledMs } from "../time-scale.js";
 import { createBoundProfileFixture } from "./admission-fixture.js";
-import { credentialKeychainTestEnvironment } from "./credential-keychain-fake.js";
+import { credentialKeychainTestEnvironment,FakeKeyringEntry } from "./credential-keychain-fake.js";
 
 export type CredentialSourceRetentionCase = "readonly-native-close" | "worker-native-open" | "writer-close" | "duo-read-first" | "duo-read-second" | "stopped-head-close"
   | "protected-source" | "chatgpt-source" | "account-projection" | "stopped-control-snapshot-disposal" | "setup-protected-close" | "startup-upgrade-key-close" | "startup-upgrade-service-inspection"
@@ -51,6 +51,7 @@ export async function runCredentialSourceRetentionCase(scenario: CredentialSourc
         z.strictObject({ scenario: z.literal(scenario), assertionsComplete: z.literal(false), failure: z.strictObject({
           name: z.enum(["Error", "AssertionError", "TypeError", "RangeError", "SyntaxError"]),
           locations: z.array(z.string().max(240).regex(/^(?:tests|src)\/[A-Za-z0-9_./-]+\.(?:[cm]?js|tsx?):[1-9]\d*:[1-9]\d*$/u)).max(8),
+          causes: z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9-]{0,79}$/u)).max(20),
         }) })]).parse(next.value?.[0]);
       if ("ownedWorkspace" in message) {
         assert.equal(setupWorkspace, undefined);
@@ -64,7 +65,7 @@ export async function runCredentialSourceRetentionCase(scenario: CredentialSourc
         ownedSnapshots.add(message.ownedSnapshot);
       } else {
         if (!message.assertionsComplete) {
-          const error = new Error(`credential-source-retention-failed: ${scenario}; ${message.failure.name}; ${message.failure.locations.join(", ")}`);
+          const error = new Error(`credential-source-retention-failed: ${scenario}; ${message.failure.name}; ${message.failure.causes.join(", ")}; ${message.failure.locations.join(", ")}`);
           error.name = "CredentialSourceRetentionAssertionError";
           throw error;
         }
@@ -261,7 +262,8 @@ export async function runBrowserRootUnknownHandoffCase(): Promise<void> {
       await profile.lifetime.share(child);
       const next = await Promise.race([events.next(), closed.then(() => { throw new Error("unknown-handoff-child-closed-before-proof"); })]);
       assert.equal(next.done, false);
-      const message = z.union([z.strictObject({ scenario: z.literal(scenario), assertionsComplete: z.literal(true), nonce: z.literal(nonce) }),
+      const message = z.union([z.strictObject({ scenario: z.literal(scenario), assertionsComplete: z.literal(true), nonce: z.literal(nonce),
+        ...(scenario === "browser-root-unknown-seed" ? { keychain: z.array(z.tuple([z.string(), z.string()])) } : {}) }),
         z.strictObject({ scenario: z.literal(scenario), assertionsComplete: z.literal(false), failure: z.strictObject({
           name: z.enum(["Error", "AssertionError", "TypeError", "RangeError", "SyntaxError"]),
           locations: z.array(z.string().max(240).regex(/^(?:tests|src)\/[A-Za-z0-9_./-]+\.(?:[cm]?js|tsx?):[1-9]\d*:[1-9]\d*$/u)).max(8),
@@ -269,6 +271,7 @@ export async function runBrowserRootUnknownHandoffCase(): Promise<void> {
       if (!message.assertionsComplete) throw new Error(`unknown-handoff-child-failed: ${scenario}; ${message.failure.name}; ${message.failure.locations.join(", ")}`);
       assert.equal(child.exitCode, null); assert.equal(child.signalCode, null);
       if (scenario === "browser-root-unknown-seed") {
+        FakeKeyringEntry.import(z.array(z.tuple([z.string(), z.string()])).parse(message.keychain));
         const seed = z.object({ nonce: z.literal(nonce), processId: z.number().int().positive(), registryHash: z.string() }).parse(JSON.parse(readFileSync(seedPath, "utf8")));
         assert.equal(seed.processId, child.pid); assert.equal(hash(readFileSync(registryPath)), seed.registryHash);
         assert.equal(BrowserRootsSchema.parse(JSON.parse(readFileSync(registryPath, "utf8"))).roots[0]?.launch.state, "unknown");

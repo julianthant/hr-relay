@@ -1,20 +1,23 @@
+import { createNativeBrowserProbe, DEFAULT_BROWSER_LAUNCHER } from "../../../src/backend/runtime/browser/native-browser.js";
+import { BrowserProfileStillClosingError } from "../../../src/workflow-kit/session.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { BrowserRootUnavailableError, BrowserRootsSchema, createBrowserRoots, DEFAULT_BROWSER_LAUNCHER, BrowserProfileStillClosingError,
-  type BrowserProfileProbeOptions, type BrowserRootLaunchInput } from "../../../src/backend/storage/browser-roots.js";
+import { BrowserRootUnavailableError, createBrowserRoots, type BrowserProfileProbeOptions, type BrowserRootLaunchInput } from "../../../src/backend/storage/browser-roots.js";
+import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
 import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { z } from "zod";
 import { hasUnprovedSourceClosure } from "../../../src/backend/storage/source-closure.js";
 import { manualClock, systemClock } from "../../../src/rules/time/clock.js";
-import { createBoundProfileFixture } from "../helpers/admission-fixture.js";
+import { boundProfileCredentials, createBoundProfileFixture } from "../helpers/admission-fixture.js";
 import { createBrowserSessionFactoryFixtures } from "../helpers/browser/session-factory-fixtures.js";
 import { testAdmittedWorker } from "../fixtures/run-lifecycle-fixtures.js";
+import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
 
 const retainedOwners = new Set<object>();
 function contains(error: unknown, expected: unknown): boolean {
@@ -32,7 +35,7 @@ export async function runBrowserRootRetentionCase(input: Readonly<{ scenario: st
   const workspace = join(input.workspace, `.${input.scenario}-${input.nonce}`);
   assert.equal(fs.realpathSync(workspace), workspace);
   const f = await createBoundProfileFixture({ workspace });
-  const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "browser-root-retention" }, systemClock);
+  const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "browser-root-retention" }, systemClock, undefined, undefined, undefined, boundProfileCredentials(f.admission));
   const worker = testAdmittedWorker(database, systemClock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: ["crm"] });
   const roots = createBrowserRoots(f.admission), profileRoot = join(f.stateRoot, "browsers"), profileDirectory = join(profileRoot, "w1", "crm");
   const owner: BrowserRootLaunchInput = { profileId: f.admission.profileBinding.profileId, profileRoot, profileDirectory,
@@ -45,7 +48,7 @@ export async function runBrowserRootRetentionCase(input: Readonly<{ scenario: st
     return { cancel: () => clearTimeout(timer) };
   } };
   const fixtures = createBrowserSessionFactoryFixtures(manualClock(new Date()), randomUUID(), scheduler);
-  const options = (launcher = fixtures.fakeLauncher().launcher): BrowserProfileProbeOptions => ({ clock: systemClock,
+  const options = (launcher = fixtures.fakeLauncher().launcher): BrowserProfileProbeOptions => createNativeBrowserProbe({ clock: systemClock,
     scheduler, closeProofMs: 100, launchTimeoutMs: 5000, signal: new AbortController().signal, launcher });
   let launches = 0;
   if (input.scenario === "browser-root-native-success") {
@@ -54,9 +57,18 @@ export async function runBrowserRootRetentionCase(input: Readonly<{ scenario: st
       const row = document().roots[0]; assert.ok(row);
       if (launches++ === 0) assert.equal(row.launch.state, "launching");
       else assert.equal(row.native?.phase, "probing");
-      return DEFAULT_BROWSER_LAUNCHER.launch(launch);
+      const started = performance.now();
+      try { return await DEFAULT_BROWSER_LAUNCHER.launch(launch); }
+      catch (error) {
+        if (error instanceof Error) Object.defineProperty(error, "relayNativeProbeTiming", { value: {
+          attempt: launches, elapsedMs: Math.round(performance.now() - started),
+          spawnObserved: error.message.includes("<launched> pid="),
+          exitObserved: error.message.includes("<process did exit:"),
+        } });
+        throw error;
+      }
     } };
-    const realOptions = { ...options(launcher), closeProofMs: 5000 };
+    const realOptions = createNativeBrowserProbe({ clock: systemClock, scheduler, closeProofMs: 5000, launchTimeoutMs: 5000, signal: new AbortController().signal, launcher });
     await roots.probe(owner, realOptions);
     await roots.withUnused(profileDirectory, realOptions, async ({ remove }) => { remove(); }, owner);
     assert.equal(launches, 2); assert.equal(document().roots.length, 0); assert.equal(fs.existsSync(profileDirectory), false);
@@ -185,15 +197,16 @@ async function runUnknownHandoff(input: Readonly<{ scenario: string; workspace: 
   } };
   if (input.scenario === "browser-root-unknown-seed") {
     const f = await createBoundProfileFixture({ workspace });
-    const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "browser-root-unknown-seed" }, systemClock);
+    const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "browser-root-unknown-seed" }, systemClock,
+      undefined, undefined, undefined, boundProfileCredentials(f.admission));
     const worker = testAdmittedWorker(database, systemClock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: ["crm"] });
     const roots = createBrowserRoots(f.admission), profileRoot = join(f.stateRoot, "browsers"), profileDirectory = join(profileRoot, "w1", "crm");
     retainedOwners.add({ f, database, roots });
     const owner: BrowserRootLaunchInput = { profileId: f.admission.profileBinding.profileId, profileRoot, profileDirectory,
       credentialFingerprint: "a".repeat(64), owner: { kind: "worker", database, workerId: worker.workerId } };
     const fault = new Error("owned unknown predecessor native launch failure"); let launches = 0, failure: unknown;
-    try { await roots.probe(owner, { clock: systemClock, scheduler, closeProofMs: 100, launchTimeoutMs: 100,
-      signal: new AbortController().signal, launcher: { launch: async () => { launches++; throw fault; } } }); }
+    try { await roots.probe(owner, createNativeBrowserProbe({ clock: systemClock, scheduler, closeProofMs: 100, launchTimeoutMs: 100,
+      signal: new AbortController().signal, launcher: { launch: async () => { launches++; throw fault; } } })); }
     catch (error) { failure = error; }
     assert.equal(launches, 1); assert.equal(hasUnprovedSourceClosure(failure), true); assert.equal(contains(failure, fault), true);
     const row = BrowserRootsSchema.parse(JSON.parse(fs.readFileSync(registryPath, "utf8"))).roots[0]; assert.ok(row);
@@ -212,7 +225,8 @@ async function runUnknownHandoff(input: Readonly<{ scenario: string; workspace: 
   const lifetime = await RuntimeLifetimeLock.acquire(seed.lifetimePort);
   assert.equal(lifetime.port, seed.lifetimePort); lifetime.assertHeld();
   const machine = acquireEntrypointAdmission(workspace, "shared", lifetime), admission = machine.admitProfile(seed.profileId);
-  const database = AuthorityDatabase.open(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "browser-root-unknown-resume" }, systemClock);
+  const database = AuthorityDatabase.open(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "browser-root-unknown-resume" }, systemClock,
+    undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: admission.stateRoot }));
   const roots = createBrowserRoots(admission); retainedOwners.add({ lifetime, machine, admission, database, roots });
   const before = fs.readFileSync(registryPath), inventory = roots.inventory();
   assert.equal(hash(before), seed.registryHash); const row = inventory.roots[0]; assert.ok(row && row.owner.kind === "worker");
@@ -231,14 +245,14 @@ async function runUnknownHandoff(input: Readonly<{ scenario: string; workspace: 
   assert.equal(started.state, "started");
   const successor = database.authority.workerLeases.get(seed.workerId); assert.ok(successor);
   assert.ok(successor.leaseGeneration > prior.leaseGeneration); assert.equal(successor.processId, process.pid);
-  const current = database.browserWorkerOwner(admission, seed.workerId);
-  assert.equal(current.leaseGeneration, successor.leaseGeneration); assert.equal(current.ordinal, row.owner.ordinal);
   const profileRoot = join(machine.stateRoot, row.profileRoot), profileDirectory = join(machine.stateRoot, row.directory);
+  const current = database.browserWorkerOwner(admission, seed.workerId, profileDirectory);
+  assert.equal(current.leaseGeneration, successor.leaseGeneration); assert.equal(current.ordinal, row.owner.ordinal);
   const owner: BrowserRootLaunchInput = { profileId: seed.profileId, profileRoot, profileDirectory,
     credentialFingerprint: row.credentialFingerprint, owner: { kind: "worker", database, workerId: seed.workerId } };
   let launches = 0, effects = 0;
-  await assert.rejects(roots.withUnused(profileDirectory, { clock: systemClock, scheduler, closeProofMs: 100, launchTimeoutMs: 100,
-    signal: new AbortController().signal, launcher: { launch: async () => { launches++; throw new Error("unknown predecessor cannot launch"); } } },
+  await assert.rejects(roots.withUnused(profileDirectory, createNativeBrowserProbe({ clock: systemClock, scheduler, closeProofMs: 100, launchTimeoutMs: 100,
+    signal: new AbortController().signal, launcher: { launch: async () => { launches++; throw new Error("unknown predecessor cannot launch"); } } }),
   async () => { effects++; }, owner), error => error instanceof BrowserRootUnavailableError && !hasUnprovedSourceClosure(error));
   assert.equal(launches, 0); assert.equal(effects, 0); assert.deepEqual(fs.readFileSync(registryPath), before);
   assert.deepEqual(roots.inventory(), inventory); admission.assertProfileRuntime(); lifetime.assertHeld();

@@ -1,7 +1,7 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { FlatStartCleanIntentSchema } from "../../../../src/backend/storage/maintenance/flat-start-clean.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
 import assert from "node:assert/strict";
 import nativeFs, { existsSync, readFileSync, readdirSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";

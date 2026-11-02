@@ -24,7 +24,7 @@ import { WorkerControlRefusal } from "../../../../models/run/worker-control.js";
 import { WorkerRetirementProofSchema,workerPoolMember } from "../../../../models/run/worker-slot.js";
 import { ActorIdSchema } from "../../../../rules/identity/ids.js";
 import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
-import { localDatePart,runtimeTimeZone } from "../../../../rules/time/clock.js";
+import { localDatePart,runtimeTimeZone,systemClock } from "../../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
 import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
@@ -45,6 +45,7 @@ import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-com
 import { notificationDisplayContext } from "../../../runs/queries/notification-display.js";
 import { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
 import { workerProfileDirectory } from "../../../runtime/browser/browser-session-factory.js";
+import { createNativeBrowserProbe } from "../../../runtime/browser/native-browser.js";
 import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
 import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
 import { createWorkerBrowserChannel } from "../../../runtime/workers/worker-browser-channel.js";
@@ -55,7 +56,7 @@ import { createDuoCredentialStore } from "../../../storage/configuration/duo-cre
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
 import { failureStatus } from "../../../transports/http/routes/failure-status.js";
 import { operatorMutationIngressGuard } from "../../../transports/http/routes/operator-mutation-ingress.js";
-import { staticBundleHandler } from "../../../transports/http/static-bundle.js";
+import { openStaticBundle,staticBundleHandler } from "../../../transports/http/static-bundle.js";
 import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import { composeRuntimePreflight,type RuntimePreflight } from "../../preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "../../preflight/runtime-runners.js";
@@ -87,7 +88,6 @@ import { isLiveWorker } from "../../../../models/run/worker.js";
 import { systemIdFactory,type IdFactory } from "../../../../rules/identity/identifiers.js";
 import { FingerprintSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 import type { Clock } from "../../../../rules/time/clock.js";
-import { systemClock } from "../../../../rules/time/clock.js";
 import { createRunLogStreamStore } from "../../../logs/run-log-stream.js";
 import { createCommandKernel,type WorkerPoolRuntimeAdoption,type WorkerRuntimeContext,type WriteResolutionExecutor } from "../../../runs/commands/command-kernel.js";
 import { RunRecordService,runContinuationPort } from "../../../runs/lifecycle/run-record-service.js";
@@ -104,7 +104,6 @@ import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.
 import { createStorageRelocationPlanReader } from "../../../storage/maintenance/storage-relocation-plans.js";
 import { AuthorityDatabase,AuthorityHealthPreflightRunner,summarizeBackupHealth } from "../../../storage/sqlite/index.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
-import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { RunLogsStreamHub } from "../../../transports/http/subscriptions/run-logs-stream.js";
 import { probePrimaryDisplay } from "../../host/primary-display.js";
 import { stepProofDescriptorOf } from "../../registries/step-proof-modules.js";
@@ -360,7 +359,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
         for (const browser of browsers) {
           if (browser.profileDirectory !== workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: slot.ordinal, system: browser.system })) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
         }
-        return { browsers, processId: lease?.processId, identity: canonicalJsonStringify({ slot, lease, pending, standing, browsers }) };
+        return { browsers, browserSystems: lease?.browserSystems, processId: lease?.processId, identity: canonicalJsonStringify({ slot, lease: lease ?? null, pending, standing: standing ?? null, browsers }) };
       });
       const before = capture(), roots = createBrowserRoots(input.admission);
       const directory = join(input.profileRoot, `w${String(member.ordinal)}`);
@@ -386,15 +385,18 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
         for (const row of retained) {
           const profileDirectory = join(input.admission.captureBrowserRegistryContext().machineRoot, row.directory);
           const browser = before.browsers.find(browser => browser.profileDirectory === profileDirectory);
-          if (browser === undefined) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
-          const assertRoot = await roots.withUnused(profileDirectory, { clock: input.clock, scheduler: input.scheduler,
+          if (!before.browserSystems?.some(system => profileDirectory === workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: member.ordinal, system }))
+            || browser === undefined && (row.credentialFingerprint !== null || row.launch.state !== "closed" || row.native !== undefined)) {
+            throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
+          }
+          const assertRoot = await roots.withUnused(profileDirectory, createNativeBrowserProbe({ clock: input.clock, scheduler: input.scheduler,
             closeProofMs: ConfigSchema.shape.browser.parse(undefined).closeProofMs, launchTimeoutMs: ConfigSchema.shape.timeouts.parse(undefined).sessionAcquireMs,
-            signal: new AbortController().signal }, async ({ remove, assertCurrent: assertRoot }) => {
+            signal: new AbortController().signal }), async ({ remove, assertCurrent: assertRoot }) => {
             assertCurrent();
             remove();
             return assertRoot;
           },
-          { profileId: row.profileId, profileRoot: input.profileRoot, profileDirectory, credentialFingerprint: browser.signInFingerprint,
+          { profileId: row.profileId, profileRoot: input.profileRoot, profileDirectory, credentialFingerprint: browser?.signInFingerprint ?? null,
             owner: { kind: "worker", database: input.database, workerId: member.workerId, stoppedProcess: process } });
           rootAssertions.push(assertRoot);
           assertCurrent();

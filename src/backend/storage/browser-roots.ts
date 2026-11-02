@@ -1,20 +1,20 @@
+import { BrowserRootOwnerSchema, BrowserRootSchema, BrowserRootsSchema, type BrowserRootOwner, type BrowserRoot, type BrowserRootsDocument } from "./browser-root-contract.js";
+import { BrowserProfileStillClosingError } from "../../workflow-kit/session.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync, rmSync } from "node:fs";
-import { chromium, type BrowserContext } from "playwright";
 import { AbsolutePathSchema } from "../../models/config/schema.js";
 import type { Clock } from "../../rules/time/clock.js";
-import type { BrowserSessionCloseReason } from "../../workflow-kit/session.js";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { BrowserSystemIdSchema, PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema, type BrowserSystemId } from "../../rules/identity/ids.js";
+import { BrowserSystemIdSchema, PositiveIntSchema, type BrowserSystemId } from "../../rules/identity/ids.js";
 import type { RuntimeAdmission } from "./admission/admission.js";
 import { assertInstallationLease, inspectFlatOfflineRunMaintenance, requireStoppedControlProfileInventory, type StoppedControlProfileInventory } from "./admission/installation.js";
-import { retainedBrowserProfiles, assertCredentialCopyResourcesClosed, flatBackupBrowserCensus, type ProfileBrowserClosure } from "./maintenance/profile-inventory.js";
-import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
+import { retainedBrowserProfiles, assertCredentialCopyResourcesClosed } from "./maintenance/profile-custody.js";
+import type { ProfileBrowserClosure } from "./maintenance/profile-inventory.js";
 import { proveProfileRootsUnused } from "./maintenance/process-closure.js";
 import { resolveConfigWithProvenance } from "../app/config/resolve.js";
 import { initialSettingsFileRecord } from "../../models/config/settings.js";
@@ -23,118 +23,12 @@ import { RuntimeLifetimeLock } from "./admission/lifetime-lock.js";
 import { AuthorityDatabase } from "./sqlite/authority-database.js";
 import { noSymlinkAncestry, readPrivateFile, withPrivateFileLock, type DirectoryIdentity } from "./configuration/credential-safe-file.js";
 import { fsyncPath, privatePathRejects, replacePrivateFile, writePrivateStage } from "./private-path.js";
-import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "./source-closure.js";
-
-export class NativeBrowserClosureUnprovedError extends AuthoritySourceClosureUnprovedError {
-  readonly code = "BROWSER_CLOSURE_UNPROVED";
-  constructor(errors: readonly unknown[]) { super(errors); this.name = "NativeBrowserClosureUnprovedError"; this.message = ERROR_CATALOG.BROWSER_CLOSURE_UNPROVED.text; }
-}
-
-// Keep the acquisition scheduler structural so both ports use the same timer without a module cycle.
-export interface BrowserDeadlineScheduler {
-  schedule(deadlineMonotonicMs: number, onDeadline: () => void): { cancel: () => void };
-}
-
-/** The Playwright launch seam, so a unit test can drive open/close without a real browser. */
-export interface PersistentContextLauncher {
-  launch(input: Readonly<{
-    profileDirectory: string;
-    headless: boolean;
-    extensionDirectory: string;
-    acceptDownloads: boolean;
-    downloadsPath: string;
-    viewport: Readonly<{ width: number; height: number }>;
-    timeoutMs?: number;
-    nativeOnly?: true;
-    disablePasswordManager?: true;
-    defaultContextOptions?: true;
-  }>): Promise<BrowserContext>;
-}
-
-export class BrowserProfileStillClosingError extends Error {
-  readonly code = "BROWSER_PROFILE_STILL_CLOSING";
-  constructor(cause: unknown) { super(ERROR_CATALOG.BROWSER_PROFILE_STILL_CLOSING.text, { cause }); this.name = "BrowserProfileStillClosingError"; }
-}
+import { hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "./source-closure.js";
 
 export const PROFILE_CUSTODY_UNAVAILABLE_TEXT = "Browser profile custody is unavailable. The browser cannot open until its current profile revision is admitted.";
 export class ProfileCustodyUnavailableError extends Error {
   readonly code = "browser-profile-custody-unavailable";
   constructor() { super(PROFILE_CUSTODY_UNAVAILABLE_TEXT); this.name = "ProfileCustodyUnavailableError"; }
-}
-
-export const DEFAULT_BROWSER_LAUNCHER: PersistentContextLauncher = {
-  async launch(input) {
-    return chromium.launchPersistentContext(input.profileDirectory, {
-      // The extension requires the full bundled Chromium; the headless shell
-      // cannot load one (fast-duo/README.md).
-      channel: "chromium",
-      headless: input.headless,
-      ...(input.timeoutMs === undefined ? {} : { timeout: input.timeoutMs }),
-      acceptDownloads: input.acceptDownloads,
-      ...(input.defaultContextOptions === true && input.nativeOnly !== true ? {} : { downloadsPath: input.downloadsPath, viewport: input.viewport }),
-      args: [
-        ...(input.nativeOnly === true ? ["--disable-extensions"] : [`--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`]),
-        ...(input.disablePasswordManager === true ? ["--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"] : []),
-      ],
-    });
-  },
-};
-
-export interface ContextLifecycle {
-  readonly closed: () => boolean;
-}
-
-export function observeContextLifecycle(context: BrowserContext): ContextLifecycle {
-  let closed = false;
-  context.on("close", () => {
-    closed = true;
-  });
-  return { closed: () => closed };
-}
-
-export async function closeContextWithProof(
-  options: Readonly<{ clock: Clock; scheduler: BrowserDeadlineScheduler; closeProofMs: number }>,
-  context: BrowserContext, lifecycle: ContextLifecycle, system: string, reason: BrowserSessionCloseReason,
-): Promise<void> {
-  const { clock, scheduler, closeProofMs } = options;
-  const deadline = clock.monotonicMs() + closeProofMs;
-  let expire = (): void => undefined;
-  const timedOut = new Promise<never>((_resolve, reject) => {
-    const handle = scheduler.schedule(deadline, () => {
-      reject(new Error(
-        `${system} browser session close (${reason}) did not complete within its ${String(closeProofMs)}ms proof deadline`,
-      ));
-    });
-    expire = (): void => handle.cancel();
-  });
-  const pages = context.pages();
-  try {
-    await Promise.race([
-      (async (): Promise<void> => {
-        for (const page of pages) await page.close({ runBeforeUnload: false });
-        await context.close();
-      })(),
-      timedOut,
-    ]);
-  } finally {
-    expire();
-  }
-  const openPages = pages.filter((page) => !page.isClosed());
-  if (openPages.length > 0) {
-    throw new Error(
-      `${system} browser session close (${reason}) left ${String(openPages.length)} page(s) open; closure cannot be proven`,
-    );
-  }
-  if (context.pages().length > 0) {
-    throw new Error(
-      `${system} browser session close (${reason}) left new pages open; closure cannot be proven`,
-    );
-  }
-  if (!lifecycle.closed()) {
-    throw new Error(
-      `${system} browser session close (${reason}) never emitted its context close event; closure cannot be proven`,
-    );
-  }
 }
 
 export function workerProfileDirectory(input: Readonly<{ profileRoot: string; slotOrdinal: number; system: BrowserSystemId }>): string {
@@ -149,35 +43,16 @@ export function onboardingProfileDirectory(profileRoot: string, owner: Readonly<
   return resolve(AbsolutePathSchema.parse(profileRoot),`onboarding-${operationId}-${profileId}-${accountId}-g${String(generation)}`);
 }
 
-interface NativeBrowserProbeInput {
-  profileRoot: string;
-  launch: Omit<Parameters<PersistentContextLauncher["launch"]>[0], "headless" | "acceptDownloads">;
-  clock: Clock; scheduler: BrowserDeadlineScheduler; closeProofMs: number; signal: AbortSignal;
-  launcher?: PersistentContextLauncher;
-}
-async function runNativeBrowserProbe(input: NativeBrowserProbeInput): Promise<void> {
-  input.signal.throwIfAborted();
-  const root = AbsolutePathSchema.parse(input.profileRoot), directory = AbsolutePathSchema.parse(input.launch.profileDirectory);
-  z.number().positive().finite().parse(input.closeProofMs);
+async function runNativeBrowserProbe(profileRoot: string, profileDirectory: string, probe: BrowserProfileProbeOptions): Promise<void> {
+  probe.signal.throwIfAborted();
+  const root = AbsolutePathSchema.parse(profileRoot), directory = AbsolutePathSchema.parse(profileDirectory);
   assertPrivateProfilePath(root, directory);
   for (const path of [root, directory]) {
     const info = lstatSync(path, { throwIfNoEntry: false });
     if (info === undefined || !info.isDirectory()) throw new ProfileCustodyUnavailableError();
   }
   if (!profileReservations.has(directory)) throw new ProfileCustodyUnavailableError();
-  let context: BrowserContext | undefined;
-  try {
-    context = await (input.launcher ?? DEFAULT_BROWSER_LAUNCHER).launch({ ...input.launch, headless: true, acceptDownloads: false, nativeOnly: true });
-    const lifecycle = observeContextLifecycle(context);
-    await closeContextWithProof(input, context, lifecycle, "native profile probe", "profile-reset");
-  } catch (error) {
-    if (error instanceof Error && ["Failed to create a ProcessSingleton for your profile directory.", "Opening in existing browser session."]
-      .some(message => error.message.includes(message))) {
-        throw new BrowserProfileStillClosingError(error);
-    }
-    throw new NativeBrowserClosureUnprovedError([retainAuthoritySourceClosure([error], { directory: { context, profileDirectory: directory } })]);
-  }
-  input.signal.throwIfAborted();
+  await probe.probe(root, directory);
 }
 
 export const profileReservations = new Set<string>();
@@ -195,54 +70,17 @@ export function assertPrivateProfilePath(root: string, path: string): void {
 
 
 export interface BrowserProfileProbeOptions {
-  readonly clock: Clock;
-  readonly scheduler: BrowserDeadlineScheduler;
-  readonly closeProofMs: number;
-  readonly launchTimeoutMs: number;
   readonly signal: AbortSignal;
-  readonly launcher?: PersistentContextLauncher;
+  probe(profileRoot: string, profileDirectory: string): Promise<void>;
 }
+export type BrowserProfileProbeFactory = (input: Readonly<{
+  clock: Clock; closeProofMs: number; launchTimeoutMs: number; signal: AbortSignal;
+}>) => BrowserProfileProbeOptions;
 
-const Integer = z.number().int().safe().nonnegative();
-const Generation = Integer.positive();
-const Digest = z.string().regex(/^[a-f0-9]{64}$/u);
-const RelativePath = z.string().min(1).max(4096).refine(value => !isAbsolute(value)
-  && !value.includes("\\") && value.split("/").every(part => part !== "" && part !== "." && part !== ".."));
-const WorkerOwner = z.strictObject({ kind: z.literal("worker"), workerId: WorkerIdSchema, workflowId: WorkflowIdSchema,
-  ordinal: Generation, membershipRevision: Generation, leaseGeneration: Generation });
-const SignupOwner = z.strictObject({ kind: z.literal("signup"), operationId: z.uuid(), accountId: z.uuid(), providerGeneration: Generation });
-export const BrowserRootOwnerSchema = z.discriminatedUnion("kind", [WorkerOwner, SignupOwner]);
-const Launch = z.strictObject({ launchId: z.uuid(), generation: Generation,
-  state: z.enum(["launching", "open", "closing", "closed", "unknown"]) });
-const NativeAction = z.strictObject({ operationId: z.uuid(), launchId: z.uuid(), generation: Generation,
-  source: z.strictObject({ device: Integer, inode: Integer }), priorLaunchDigest: Digest, phase: z.enum(["probing", "observed", "deleting"]) });
-export const BrowserRootSchema = z.strictObject({ profileId: z.uuid(), profileRoot: RelativePath, directory: RelativePath,
-  owner: BrowserRootOwnerSchema, sessionGeneration: Integer, credentialFingerprint: Digest.nullable(), launch: Launch,
-  native: NativeAction.optional() }).superRefine((row, context) => {
-  const prefix = `profiles/${row.profileId}/`;
-  const valid = row.owner.kind === "worker" ? row.profileRoot.startsWith(prefix)
-    && row.directory.startsWith(`${row.profileRoot}/w${row.owner.ordinal}/`)
-    && BrowserSystemIdSchema.safeParse(row.directory.slice(`${row.profileRoot}/w${row.owner.ordinal}/`.length)).success
-    && row.owner.workerId === `${row.owner.workflowId}-worker-${row.owner.ordinal}`
-    : row.profileRoot === "browsers/onboarding" && row.directory === `${row.profileRoot}/onboarding-${row.owner.operationId}-${row.profileId}-${row.owner.accountId}-g${row.owner.providerGeneration}`;
-  if (!valid) {
-    context.addIssue({ code: "custom", message: "browser root escapes its person" });
-  }
-});
-export const BrowserRootsSchema = z.strictObject({ schemaVersion: z.literal(1), installationId: z.uuid(), revision: Integer,
-  nextGeneration: Generation, roots: z.array(BrowserRootSchema).max(64) }).superRefine((document, context) => {
-  const paths = document.roots.map(row => row.directory), generations = document.roots.flatMap(row => [row.launch.generation,
-    ...(row.native === undefined ? [] : [row.native.generation])]);
-  const launches = document.roots.flatMap(row => [row.launch.launchId, ...(row.native === undefined ? [] : [row.native.launchId])]);
-  if (new Set(paths).size !== paths.length || new Set(launches).size !== launches.length
-    || new Set(generations).size !== generations.length || generations.some(generation => generation >= document.nextGeneration)
-    || paths.some(path => paths.some(other => other !== path && path.startsWith(`${other}/`)))) {
-    context.addIssue({ code: "custom", message: "browser root membership diverges" });
-  }
-});
-export type BrowserRootsDocument = z.infer<typeof BrowserRootsSchema>;
-export type BrowserRoot = z.infer<typeof BrowserRootSchema>;
-export type BrowserRootOwner = z.infer<typeof BrowserRootOwnerSchema>;
+const Generation = BrowserRootsSchema.shape.nextGeneration;
+const RelativePath = BrowserRootSchema.shape.directory;
+const [WorkerOwner, SignupOwner] = BrowserRootOwnerSchema.options;
+const Launch = BrowserRootSchema.shape.launch;
 export type BrowserLaunchOwner = Readonly<{ kind: "worker"; database: AuthorityDatabase; workerId: string; stoppedProcess?: ChildProcess }>
   | Readonly<z.infer<typeof SignupOwner>>;
 export interface BrowserRootLaunchInput {
@@ -311,11 +149,11 @@ export function createBrowserRoots(input: RuntimeAdmission) {
     if (!isAbsolute(value) || resolve(value) !== value) throw new BrowserRootUnavailableError();
     return RelativePath.parse(relative(binding.machineRoot, value).split(sep).join("/"));
   }
-  function ownerOf(owner: BrowserLaunchOwner, profileId: string, cleanup = false): BrowserRootOwner {
+  function ownerOf(owner: BrowserLaunchOwner, profileId: string, profileDirectory: string, cleanup = false): BrowserRootOwner {
     if (owner.kind === "worker") {
       admission.assertBrowserRegistryLaunch(profileId);
       if (owner.stoppedProcess !== undefined && !cleanup) throw new BrowserRootUnavailableError();
-      return WorkerOwner.parse(AuthorityDatabase.prototype.browserWorkerOwner.call(owner.database, admission, owner.workerId, owner.stoppedProcess));
+      return WorkerOwner.parse(AuthorityDatabase.prototype.browserWorkerOwner.call(owner.database, admission, owner.workerId, profileDirectory, owner.stoppedProcess));
     }
     const parsed = SignupOwner.parse(owner);
     if (cleanup) admission.assertBrowserRegistryCleanup(profileId, parsed);
@@ -323,7 +161,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
     return parsed;
   }
   function current(input: BrowserRootLaunchInput, cleanup = false): BrowserRootOwner {
-    const owner = ownerOf(input.owner, input.profileId, cleanup), captured = admission.captureBrowserRegistryContext();
+    const owner = ownerOf(input.owner, input.profileId, input.profileDirectory, cleanup), captured = admission.captureBrowserRegistryContext();
     if (!(cleanup && owner.kind === "signup") && !same(captured, binding)) throw new BrowserRootUnavailableError();
     return owner;
   }
@@ -343,7 +181,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
       assertCurrent();
       const prior = document.roots.find(row => row.directory === root);
       if (prior !== undefined && (prior.native !== undefined || prior.launch.state !== "closed" || prior.profileId !== input.profileId
-        || !same(prior.owner, owner) || prior.profileRoot !== profileRoot || prior.credentialFingerprint !== input.credentialFingerprint)) throw new BrowserRootUnavailableError();
+        || !same(prior.owner, owner) || prior.profileRoot !== profileRoot || prior.credentialFingerprint !== null && prior.credentialFingerprint !== input.credentialFingerprint)) throw new BrowserRootUnavailableError();
       if (prior === undefined && lstatSync(input.profileDirectory, { throwIfNoEntry: false }) !== undefined) throw new BrowserRootUnavailableError();
       const row = BrowserRootSchema.parse({ profileId: input.profileId, profileRoot, directory: root, owner,
         sessionGeneration: binding.sessionGeneration, credentialFingerprint: input.credentialFingerprint,
@@ -398,7 +236,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
     let captured = mutate(document => {
       assertOwner();
       const prior = document.roots.find(row => row.directory === root);
-      if (prior === undefined || owner !== undefined && (prior.native !== undefined && stoppedProcess === undefined || prior.profileId !== owner.profileId)) throw new BrowserRootUnavailableError();
+      if (prior === undefined || owner !== undefined && (prior.native !== undefined && stoppedProcess === undefined && expectedOwner?.kind !== "signup" || prior.profileId !== owner.profileId)) throw new BrowserRootUnavailableError();
       if (expectedOwner !== undefined && !same(prior.owner, expectedOwner)) {
         if (prior.owner.kind !== "worker" || expectedOwner.kind !== "worker" || prior.owner.workerId !== expectedOwner.workerId
           || prior.owner.workflowId !== expectedOwner.workflowId || prior.owner.ordinal !== expectedOwner.ordinal
@@ -425,10 +263,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
     }
     try {
       assertExcluded();
-      await runNativeBrowserProbe({ profileRoot: join(binding.machineRoot, captured.profileRoot),
-        launch: { profileDirectory, extensionDirectory: "", downloadsPath: profileDirectory, viewport: { width: 800, height: 600 }, timeoutMs: probe.launchTimeoutMs },
-        clock: probe.clock, scheduler: probe.scheduler, closeProofMs: probe.closeProofMs, signal: probe.signal,
-        ...(probe.launcher === undefined ? {} : { launcher: probe.launcher }) });
+      await runNativeBrowserProbe(join(binding.machineRoot, captured.profileRoot), profileDirectory, probe);
       assertExcluded();
       captured = mutate(document => {
         assertExcluded();
@@ -493,11 +328,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
       current(input);
       assertPrivateProfilePath(input.profileRoot, input.profileDirectory);
       mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 });
-      await runNativeBrowserProbe({ profileRoot: input.profileRoot,
-        launch: { profileDirectory: input.profileDirectory, extensionDirectory: "", downloadsPath: input.profileDirectory,
-          viewport: { width: 800, height: 600 }, timeoutMs: options.launchTimeoutMs },
-        clock: options.clock, scheduler: options.scheduler, closeProofMs: options.closeProofMs, signal: options.signal,
-        ...(options.launcher === undefined ? {} : { launcher: options.launcher }) });
+      await runNativeBrowserProbe(input.profileRoot, input.profileDirectory, options);
       current(input); launch.closing(); launch.closed();
     } catch (error) { launch.uncertain(error); }
     finally { profileReservations.delete(input.profileDirectory); }
@@ -560,10 +391,13 @@ export async function probeStoppedControlBrowserRoots(admission: RuntimeAdmissio
   const current = () => { source.assertHeld(); source.revalidateSource(); source.lifetime.assertSourceCustody(); };
   try {
     current();
-    const directories = source.browserPlan().roots.filter(row => row.profileId === source.binding.profileId).map(row => row.directory);
+    const initial = source.browserPlan();
+    if (initial === undefined) throw new BrowserRootUnavailableError();
+    const directories = initial.roots.filter(row => row.profileId === source.binding.profileId).map(row => row.directory);
     for (const directory of directories) {
       current();
       let plan = source.browserPlan();
+      if (plan === undefined) throw new BrowserRootUnavailableError();
       const row = plan.roots.find(row => row.directory === directory);
       if (row?.native === undefined || row.profileId !== source.binding.profileId || row.native.operationId !== source.conversionOperationId) throw new BrowserRootUnavailableError();
       const path = join(source.machineRoot, directory), before = lstatSync(path);
@@ -575,10 +409,7 @@ export async function probeStoppedControlBrowserRoots(admission: RuntimeAdmissio
         const intended = BrowserRootsSchema.parse({ ...plan, revision: increment(plan.revision), roots: plan.roots.map(value => value.directory === directory ? probing : value) });
         source.publishBrowserPlan(plan, intended); plan = intended;
         current();
-        await runNativeBrowserProbe({ profileRoot: join(source.machineRoot, row.profileRoot),
-          launch: { profileDirectory: path, extensionDirectory: "", downloadsPath: path, viewport: { width: 800, height: 600 }, timeoutMs: options.launchTimeoutMs },
-          clock: options.clock, scheduler: options.scheduler, closeProofMs: options.closeProofMs, signal: options.signal,
-          ...(options.launcher === undefined ? {} : { launcher: options.launcher }) });
+        await runNativeBrowserProbe(join(source.machineRoot, row.profileRoot), path, options);
         current(); const after = lstatSync(path);
         if (after.dev !== before.dev || after.ino !== before.ino) throw new BrowserRootUnavailableError();
         const observed = BrowserRootSchema.parse({ ...probing, launch: { ...probing.launch, state: "closed" }, native: { ...probing.native, phase: "observed" } });
@@ -592,56 +423,57 @@ export async function probeStoppedControlBrowserRoots(admission: RuntimeAdmissio
   }
 }
 
-export const profileBrowserClosure: ProfileBrowserClosure = {
-  workerDirectory: workerProfileDirectory,
-  async probeClosed(profiles, timing, clock, signal, owner, operation) {
-    const options = { ...timing, clock, signal, scheduler: createTimeoutDeadlineScheduler(clock) };
-    if ("assertLive" in owner && !owner.isFlatBackup()) {
-      const admission = requireRuntimeAdmission(owner), roots = createBrowserRoots(admission);
-      for (const profile of profiles) {
-        const present = lstatSync(profile.profileDirectory, { throwIfNoEntry: false });
-        if (present === undefined) { if (!profile.cleanupCompleted) throw new BrowserRootUnavailableError(); continue; }
-        await roots.withUnused(profile.profileDirectory, options, async () => undefined);
+export function createProfileBrowserClosure(createProbe: BrowserProfileProbeFactory): ProfileBrowserClosure {
+  return {
+    workerDirectory: workerProfileDirectory,
+    async probeClosed(profiles, timing, clock, signal, owner, operation) {
+      const options = createProbe({ ...timing, clock, signal });
+      if ("assertLive" in owner && !owner.isFlatBackup()) {
+        const admission = requireRuntimeAdmission(owner), roots = createBrowserRoots(admission);
+        for (const profile of profiles) {
+          const present = lstatSync(profile.profileDirectory, { throwIfNoEntry: false });
+          if (present === undefined) { if (!profile.cleanupCompleted) throw new BrowserRootUnavailableError(); continue; }
+          await roots.withUnused(profile.profileDirectory, options, async () => undefined);
+        }
+        return;
       }
-      return;
-    }
-    const admission = "assertLive" in owner ? requireRuntimeAdmission(owner) : undefined;
-    const lease = "assertLive" in owner ? undefined : owner;
-    if (lease !== undefined) assertInstallationLease(lease);
-    const heldOperation = admission === undefined ? operation : admission.maintenanceOperation();
-    if (heldOperation === undefined) throw new BrowserRootUnavailableError();
-    const held = () => {
-      if (admission !== undefined) { admission.assertOfflineMaintenance(heldOperation); if (!admission.isFlatBackup()) throw new BrowserRootUnavailableError(); }
-      else { if (lease === undefined) throw new BrowserRootUnavailableError(); assertInstallationLease(lease); lease.assertOfflineMaintenance(heldOperation); }
-    };
-    held();
-    const context = owner.readInstallationContext();
-    if (context === undefined) throw new BrowserRootUnavailableError();
-    const root = admission?.stateRoot ?? inspectFlatOfflineRunMaintenance(context.workspace).roots[0]?.path;
-    if (root === undefined) throw new BrowserRootUnavailableError();
-    const capture = () => {
+      const admission = "assertLive" in owner ? requireRuntimeAdmission(owner) : undefined;
+      const lease = "assertLive" in owner ? undefined : owner;
+      if (lease !== undefined) assertInstallationLease(lease);
+      const heldOperation = admission === undefined ? operation : admission.maintenanceOperation();
+      if (heldOperation === undefined) throw new BrowserRootUnavailableError();
+      const held = () => {
+        if (admission !== undefined) { admission.assertOfflineMaintenance(heldOperation); if (!admission.isFlatBackup()) throw new BrowserRootUnavailableError(); }
+        else { if (lease === undefined) throw new BrowserRootUnavailableError(); assertInstallationLease(lease); lease.assertOfflineMaintenance(heldOperation); }
+      };
       held();
-      const census = flatBackupBrowserCensus(root, heldOperation, clock, admission?.flatBackupTiming());
-      if (profiles.some(profile => !census.profiles.some(row => same(row, profile))) || census.profiles.length !== profiles.length) throw new BrowserRootUnavailableError();
-      return census.identity;
-    };
-    const before = capture();
-    proveProfileRootsUnused([root]);
-    for (const profile of profiles) {
-      assertPrivateProfilePath(root, profile.profileDirectory);
-      if (profile.profileRoot !== join(root, "browsers")) throw new BrowserRootUnavailableError();
-      if (lstatSync(profile.profileDirectory, { throwIfNoEntry: false }) === undefined) { if (!profile.cleanupCompleted) throw new BrowserRootUnavailableError(); continue; }
-      if (profileReservations.has(profile.profileDirectory)) throw new ProfileCustodyUnavailableError();
-      profileReservations.add(profile.profileDirectory);
-      try { await runNativeBrowserProbe({ profileRoot: profile.profileRoot,
-        launch: { profileDirectory: profile.profileDirectory, extensionDirectory: "", downloadsPath: profile.profileDirectory,
-          viewport: { width: 800, height: 600 }, timeoutMs: timing.launchTimeoutMs }, ...options }); }
-      catch (error) {
-        if (hasUnprovedSourceClosure(error)) { owner.retainSourceClosure(error); owner.lifetime.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission: owner, restore: heldOperation }); }
-        throw error;
-      } finally { profileReservations.delete(profile.profileDirectory); }
-    }
-    held(); proveProfileRootsUnused([root]);
-    if (capture() !== before) throw new BrowserRootUnavailableError();
-  },
-};
+      const context = owner.readInstallationContext();
+      if (context === undefined) throw new BrowserRootUnavailableError();
+      const root = admission?.stateRoot ?? inspectFlatOfflineRunMaintenance(context.workspace).roots[0]?.path;
+      if (root === undefined) throw new BrowserRootUnavailableError();
+      const { flatBackupBrowserCensus } = await import("./maintenance/profile-inventory.js");
+      const capture = () => {
+        held();
+        const census = flatBackupBrowserCensus(root, heldOperation, clock, admission?.flatBackupTiming());
+        if (profiles.some(profile => !census.profiles.some(row => same(row, profile))) || census.profiles.length !== profiles.length) throw new BrowserRootUnavailableError();
+        return census.identity;
+      };
+      const before = capture();
+      proveProfileRootsUnused([root]);
+      for (const profile of profiles) {
+        assertPrivateProfilePath(root, profile.profileDirectory);
+        if (profile.profileRoot !== join(root, "browsers")) throw new BrowserRootUnavailableError();
+        if (lstatSync(profile.profileDirectory, { throwIfNoEntry: false }) === undefined) { if (!profile.cleanupCompleted) throw new BrowserRootUnavailableError(); continue; }
+        if (profileReservations.has(profile.profileDirectory)) throw new ProfileCustodyUnavailableError();
+        profileReservations.add(profile.profileDirectory);
+        try { await runNativeBrowserProbe(profile.profileRoot, profile.profileDirectory, options); }
+        catch (error) {
+          if (hasUnprovedSourceClosure(error)) { owner.retainSourceClosure(error); owner.lifetime.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission: owner, restore: heldOperation }); }
+          throw error;
+        } finally { profileReservations.delete(profile.profileDirectory); }
+      }
+      held(); proveProfileRootsUnused([root]);
+      if (capture() !== before) throw new BrowserRootUnavailableError();
+    },
+  };
+}

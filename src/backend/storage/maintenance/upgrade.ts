@@ -10,6 +10,7 @@ import { type RuntimeAdmission } from "../admission/admission.js";
 import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { pendingDiagnosticArtifacts } from "../artifacts/content-addressed-artifact-writer.js";
+import type { BrowserProfileProbeFactory } from "../browser-roots.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../source-closure.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
@@ -254,7 +255,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
 type StoppedMachineControl = ReturnType<RuntimeAdmission["beginStoppedMachineControlUpgrade"]>;
 
 export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, input: Readonly<{ plan: boolean; hostFacts: HostConfigFacts }>, clock: Clock,
-  composeInventory: (input: Readonly<{ claim: ReturnType<StoppedMachineControl["profileInventory"]>; hostFacts: HostConfigFacts; clock: Clock }>) => { readonly proof: Parameters<StoppedMachineControl["recordProfileInventory"]>[1]; dispose(): void }) {
+  composeInventory: (input: Readonly<{ claim: ReturnType<StoppedMachineControl["profileInventory"]>; hostFacts: HostConfigFacts; clock: Clock }>) => { readonly proof: Parameters<StoppedMachineControl["recordProfileInventory"]>[1]; dispose(): void }, createProbe: BrowserProfileProbeFactory) {
   requireRuntimeAdmission(machine).assertExclusive();
   const context = machine.readInstallationContext();
   if (context === undefined) throw new Error("profile-control-upgrade-machine-membership-unknown");
@@ -269,7 +270,7 @@ export async function upgradeStoppedMachineControl(machine: RuntimeAdmission, in
   let primary: { error: unknown } | undefined;
   try {
     control = machine.beginStoppedMachineControlUpgrade(restore);
-    await control.prepareBrowserInventory(input.plan);
+    await control.prepareBrowserInventory(input.plan, createProbe);
     if (!input.plan && (!control.machineControlCurrent() || control.upgradeIntentPresent())) {
       for (const profileId of control.registeredProfileIds()) {
         const claim = control.profileInventory(profileId);

@@ -90,6 +90,10 @@ It assigns sequence numbers within that incarnation. On exit it closes the publi
 browser teardown and warns about pending events. Publication health does not settle a run or an
 external write.
 
+An uncertain browser launch throws `WorkerLaunchUncertainError` with a strict report containing
+`state: "launch-uncertain"`, `custody: "held"`, worker and workflow identity. It retains root and
+source custody and leaves the lease unchanged; it does not report a crashed or stopped lease.
+
 ### 3.0 Startup claim recovery
 
 The controller holds the exclusive runtime lifetime listener before selecting a profile. Workers
@@ -586,13 +590,20 @@ do not authorize effects. One row remains excluded through native closure, the a
 settlement. Only the scoped remover can delete that profile, and it expires when the effect returns.
 Unknown files, ownership changes, unsafe paths and unproved closure hold the operation.
 
-Probes run asynchronously inside their existing native owner. The stopped control converter records
+`runtime/browser/native-browser.ts` owns Playwright launch and page/context closure. Probes run
+asynchronously under the registry owner. Read-only stopped inventory without a preparing receipt
+must prove an empty browser census; a nonempty census requires recorded native preparation.
+Unsupported credential envelopes refuse before preparation publishes its receipt. The stopped control converter records
 its preparing receipt before probing, then captures credential copies and verifies its SQLite backup
 before publishing browser registry, control and marker. Current control requires the external registry;
 ordinary startup does not reconstruct it. An ordinary profile drain checks actual resource and registry
-closure without minting native-unused permission. Flat native6 maintenance keeps its finite stopped
+closure without minting native-unused permission. Closed roots retain their original session generation
+across browserless Stop and a later sign-in; a drain refuses future-generation or unproved roots.
+Physical retirement requires fresh native custody before scoped removal. Flat native6 maintenance keeps its finite stopped
 owner and OS census. Busy profiles refuse with `BROWSER_PROFILE_STILL_CLOSING`; unproved native
 closure refuses with `BROWSER_CLOSURE_UNPROVED` and retains the actual owner and root lifetime.
+Stopped current-profile backup refuses any registered root whose launch is not closed or whose
+native closure remains pending. A verified empty registry permits backup without an OS census.
 
 Retained settings roots and authenticated verification scratch paths have distinct membership.
 An absent directory is released only when the exact completed cleanup already proves owned context

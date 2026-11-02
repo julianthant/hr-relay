@@ -1,14 +1,16 @@
+import { createNativeBrowserProbe } from "../../../src/backend/runtime/browser/native-browser.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { it } from "vitest";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { BrowserRootsSchema, createBrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions, onboardingProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
+import { createBrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions, onboardingProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
+import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { detachBoundFixtureWorkers, registerBoundFixtureWorker, stopSyntheticDatabaseWorkers } from "../../support/helpers/synthetic-database-admission.js";
-import { createBoundProfileFixture, withOfflineMaintenance } from "../../support/helpers/admission-fixture.js";
+import { boundProfileCredentials, createBoundProfileFixture, withOfflineMaintenance } from "../../support/helpers/admission-fixture.js";
 import { createBrowserSessionFactoryFixtures } from "../../support/helpers/browser/session-factory-fixtures.js";
 import { testAdmittedWorker } from "../../support/fixtures/run-lifecycle-fixtures.js";
 
@@ -18,13 +20,13 @@ const browser = createBrowserSessionFactoryFixtures(clock, randomUUID(), schedul
 
 async function fixture() {
   const f = await createBoundProfileFixture();
-  const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "browser-roots-tests" }, clock);
+  const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "browser-roots-tests" }, clock, undefined, undefined, undefined, boundProfileCredentials(f.admission));
   const worker = testAdmittedWorker(database, clock, { path: f.path, workflow: "person-lookup", poolIndex: 1, browserSystems: ["crm"] });
   const profileRoot = join(f.stateRoot, "browsers"), profileDirectory = join(profileRoot, "w1", "crm");
   const input: BrowserRootLaunchInput = { profileId: f.admission.profileBinding.profileId, profileRoot, profileDirectory,
     credentialFingerprint: "a".repeat(64), owner: { kind: "worker", database, workerId: worker.workerId } };
   const roots = createBrowserRoots(f.admission), path = join(f.machine.stateRoot, "machine", "browser-roots.json");
-  const options = (launcher = browser.fakeLauncher().launcher): BrowserProfileProbeOptions => ({ clock, scheduler,
+  const options = (launcher = browser.fakeLauncher().launcher): BrowserProfileProbeOptions => createNativeBrowserProbe({ clock, scheduler,
     closeProofMs: 100, launchTimeoutMs: 100, signal: new AbortController().signal, launcher });
   return { f, database, roots, input, path, options,
     close: async () => { database.close(); await f.close(); } };
@@ -46,6 +48,18 @@ it("persists intent before directory creation and rejects old callbacks after a 
     assert.deepEqual(readFileSync(w.path), before);
     next.closing(); next.closed();
     assert.equal(createBrowserRoots(w.f.admission).inventory().roots[0]?.launch.launchId, next.launchId);
+  } finally { await w.close(); }
+});
+
+it("binds the first credentialed launch after a successful native-only probe", async () => {
+  const w = await fixture();
+  try {
+    await w.roots.probe({ ...w.input, credentialFingerprint: null }, w.options());
+    assert.equal(w.roots.inventory().roots[0]?.credentialFingerprint, null);
+    const launch = w.roots.beginLaunch(w.input);
+    assert.equal(w.roots.inventory().roots[0]?.credentialFingerprint, w.input.credentialFingerprint);
+    launch.closing(); launch.closed();
+    assert.throws(() => w.roots.beginLaunch({ ...w.input, credentialFingerprint: "b".repeat(64) }));
   } finally { await w.close(); }
 });
 
@@ -192,8 +206,8 @@ for (const phase of ["publishing", "abort"] as const)
       const input: BrowserRootLaunchInput = { profileId: operation.profileId, profileRoot,
         profileDirectory: onboardingProfileDirectory(profileRoot, { operationId: owner.operationId, profileId: operation.profileId,
           accountId: owner.accountId, generation: owner.providerGeneration }), credentialFingerprint: null, owner };
-      const roots = createBrowserRoots(f.machine), options = { clock, scheduler, closeProofMs: 100, launchTimeoutMs: 100,
-        signal: new AbortController().signal, launcher: browser.fakeLauncher().launcher };
+      const roots = createBrowserRoots(f.machine), options = createNativeBrowserProbe({ clock, scheduler, closeProofMs: 100, launchTimeoutMs: 100,
+        signal: new AbortController().signal, launcher: browser.fakeLauncher().launcher });
       await roots.probe(input, options);
       const updated = SignUpOperationSchema.parse(phase === "publishing" ? { ...operation, phase } : { ...operation,
         onboarding: { ...operation.onboarding, abort: { operationId: randomUUID(), generation: operation.credentials.generation + 1 } } });

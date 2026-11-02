@@ -1,3 +1,5 @@
+import { createNativeBrowserProbe, BrowserLaunchUncertainError, chromiumProfileInUse, DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, closeContextWithProof, observeContextLifecycle, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
+import { BrowserProfileStillClosingError, BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { privatePathRejects } from "../../storage/private-path.js";
 import type { BrowserRoots, BrowserRootLaunch, BrowserRootLaunchInput } from "../../storage/browser-roots.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
@@ -5,16 +7,12 @@ import { retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { provisionWorkflowDuo } from "./workflow-duo-provider.js";
 import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
-import { DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, BrowserProfileStillClosingError, ProfileCustodyUnavailableError,
-  profileReservations, assertPrivateProfilePath, closeContextWithProof, observeContextLifecycle,
-  workerProfileDirectory, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "../../storage/browser-roots.js";
-export { BrowserProfileStillClosingError, ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT,
-  workerProfileDirectory, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "../../storage/browser-roots.js";
-import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
+import { ProfileCustodyUnavailableError, profileReservations, assertPrivateProfilePath, workerProfileDirectory } from "../../storage/browser-roots.js";
+export { ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT, workerProfileDirectory } from "../../storage/browser-roots.js";
+export type { BrowserDeadlineScheduler, PersistentContextLauncher } from "./native-browser.js";
 import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-
 import { lstatSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import type { BrowserContext, Frame, Page } from "playwright";
@@ -80,7 +78,7 @@ export interface BrowserSessionFactoryOptions {
   readonly assertCurrent: (workerId: WorkerId) => void;
   readonly slotOrdinal: (workerId: WorkerId, system: BrowserSystemId) => number;
   readonly admitProfile: (input: Readonly<{ workerId: WorkerId; system: BrowserSystemId; instance: RuntimeInstance;
-    configFingerprint: Fingerprint; signInFingerprint: Fingerprint; browserMode: BrowserPresentationMode; profileDirectory: string }>) => Promise<BrowserProfileAdmission>;
+    configFingerprint: Fingerprint; signInFingerprint: Fingerprint; browserMode: BrowserPresentationMode; profileDirectory: string }>, purpose?: "acquire" | "cleanup") => Promise<BrowserProfileAdmission>;
   readonly bindings?: BrowserSystemBindings;
   readonly launcher?: PersistentContextLauncher;
   // Session proof diagnostics name the observed marker, never its sensitive value.
@@ -159,9 +157,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
     try {
-      await this.#options.browserRoots.probe(this.#rootInput(WorkerIdSchema.parse(input.workerId), profileDirectory, null), {
+      await this.#options.browserRoots.probe(this.#rootInput(WorkerIdSchema.parse(input.workerId), profileDirectory, null), createNativeBrowserProbe({
         launcher: this.#launcher, clock, scheduler, closeProofMs: config.browser.closeProofMs,
-        launchTimeoutMs: config.timeouts.sessionAcquireMs, signal: input.signal });
+        launchTimeoutMs: config.timeouts.sessionAcquireMs, signal: input.signal }));
     } catch (error) {
       if (error instanceof BrowserProfileStillClosingError || error instanceof ProfileCustodyUnavailableError) throw error;
       throw new BrowserSessionClosureUnprovedError([error], `${system} native profile probe closure is unproved`, { cause: error });
@@ -448,7 +446,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     });
     const instance = RuntimeInstanceSchema.parse(input.instance);
     const identity = { ...input, instance, browserMode, profileDirectory, signInFingerprint: browserSignInFingerprint(config, this.#options.protectedSecrets, input.system, instance, this.#options.duo) };
-    const { profileRevision: _revision, resetRequired: _reset, ...admitted } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(identity));
+    const { profileRevision: _revision, resetRequired: _reset, ...admitted } = BrowserProfileAdmissionSchema.parse(await this.#options.admitProfile(identity, "cleanup"));
     this.#options.assertCurrent(input.workerId);
     if (canonicalJsonStringify(admitted) !== canonicalJsonStringify(identity)) throw new ProfileCustodyUnavailableError();
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
@@ -464,9 +462,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
 
   async #unusedProfile(owner: BrowserRootLaunchInput, body: Parameters<BrowserRoots["withUnused"]>[2]): Promise<void> {
     const { config, clock, scheduler } = this.#options;
-    await this.#options.browserRoots.withUnused(owner.profileDirectory, { launcher: this.#launcher,
+    await this.#options.browserRoots.withUnused(owner.profileDirectory, createNativeBrowserProbe({ launcher: this.#launcher,
       clock, scheduler, closeProofMs: config.browser.closeProofMs, launchTimeoutMs: config.timeouts.sessionAcquireMs,
-      signal: new AbortController().signal }, body, owner);
+      signal: new AbortController().signal }), body, owner);
   }
 
   async #launchProfile(owner: BrowserRootLaunchInput, browserMode: BrowserPresentationMode, acceptDownloads: boolean, system: BrowserSystemId, timeoutMs?: number): Promise<BrowserContext> {
@@ -493,7 +491,14 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       launch.opened();
       return context;
     } catch (error) {
-      return launch.uncertain(retainAuthoritySourceClosure([error], { directory: { context, profileDirectory, system } }));
+      if (context === undefined && chromiumProfileInUse(error)) {
+        launch.closing(); launch.closed(); this.#launches.delete(profileDirectory); profileReservations.delete(profileDirectory);
+        throw new BrowserProfileStillClosingError(error);
+      }
+      const uncertain = new BrowserLaunchUncertainError([error], `${system} browser launch closure is unproved`, { cause: error });
+      const failure = retainAuthoritySourceClosure([uncertain], { directory: { context, profileDirectory, system } });
+      try { return launch.uncertain(failure); }
+      catch (retained) { throw new BrowserLaunchUncertainError([error, retained], `${system} browser launch closure is unproved`, { cause: error }); }
     }
   }
 
@@ -561,8 +566,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     for (const result of results) if (result.status === "rejected") { const reason: unknown = result.reason; errors.push(reason); }
     if (errors.length > 0) {
       const failure = retainAuthoritySourceClosure(errors, { directory: { context, owned, launch } });
-      if (launch !== undefined) launch.uncertain(failure);
-      throw failure;
+      try { if (launch !== undefined) launch.uncertain(failure); }
+      catch (retained) { errors.push(retained); }
+      throw new BrowserSessionClosureUnprovedError([...errors, failure], `${system} browser session closure is unproved`, { cause: errors[0] });
     }
   }
 }

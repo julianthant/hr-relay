@@ -32,6 +32,26 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 
+import { withOperationProof, revalidateOperationProof } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+
+for (const change of ["registry-replacement", "native-stage", "unexpected-member"] as const)
+  it(`keeps profile authority distinct from browser publication: ${change}`, async () => {
+    const f = await createBoundProfileFixture();
+    const machine = join(f.machine.stateRoot, "machine"), registry = join(machine, "browser-roots.json");
+    const stage = join(machine, `.browser-roots.${randomUUID()}.tmp`), unexpected = join(machine, "unexpected-member");
+    try {
+      withOperationProof(() => {
+        f.machine.readProfileRegistry();
+        writeFileSync(change === "unexpected-member" ? unexpected : stage, readFileSync(registry), { mode: 0o600, flag: "wx" });
+        if (change === "registry-replacement") renameSync(stage, registry);
+        if (change === "unexpected-member") assert.throws(() => revalidateOperationProof(), /profile-registry-observation-changed/u);
+        else revalidateOperationProof();
+      });
+    } finally {
+      rmSync(stage, { force: true }); rmSync(unexpected, { force: true }); await f.close();
+    }
+  });
+
 for (const boundary of ["before-admission", "before-commit"] as const)
   it(`refuses an already-open ordinary worker heartbeat revoked ${boundary} without committing database changes`, async () => {
     const f = await fixture();

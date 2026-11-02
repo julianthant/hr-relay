@@ -1,3 +1,5 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { seedRegisteredBrowserProfiles } from "../../../support/helpers/browser/browser-roots.js";
 import assert from "node:assert/strict";
 import { copyFileSync, renameSync, readdirSync, lstatSync, readFileSync, existsSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
@@ -6,7 +8,6 @@ import { it, vi } from "vitest";
 import { z } from "zod";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService, OfflineRestoreFailure } from "../../../../src/backend/storage/sqlite/offline-restore.js";
@@ -95,7 +96,7 @@ for (const malformed of ["browser", "config", "control"] as const) it(`refuses m
 for (const changed of [false, true]) it(`probes every physical browser directory without readable SQLite and ${changed ? "refuses a changed census" : "proves an unchanged census"}`, async () => {
   const fixture = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const processLockRoot = join(fixture.workspace, rebuildRuntimeIsolation.processLockRoot);
-  const profileRoot = join(fixture.stateRoot, "browsers"), paths = [join(profileRoot, "w17", "ucpath"), join(profileRoot, "w23", "onbase")];
+  const { profileRoot, paths } = await seedRegisteredBrowserProfiles(fixture, clock, ["ucpath", "onbase"]);
   const nativeProbe = profileBrowserClosure.probeClosed.bind(profileBrowserClosure);
   const native = vi.spyOn(profileBrowserClosure, "probeClosed").mockImplementation(async (profiles, timing, ...rest) => {
     await nativeProbe(profiles, { launchTimeoutMs: scaledMs(timing.launchTimeoutMs), closeProofMs: scaledMs(timing.closeProofMs) }, ...rest);
@@ -146,9 +147,7 @@ for (const unsafe of ["unknown-directory", "noncanonical-root", "symlink", "unsu
     const before = storageTree(fixture.workspace), source = fileIdentity(fixture.path);
     if (unsafe === "unsupported-platform") Object.defineProperty(process, "platform", { value: "linux" });
     await assert.rejects(probeRestoreProfileBrowsersClosed(fixture.admission, processLockRoot, restore, clock, profileBrowserClosure),
-      error => unsafe === "symlink" && process.platform === "darwin"
-        ? error instanceof Error && error.message === "profile-process-closure-unproved"
-        : error instanceof ProfileRestoreBrowserCustodyUnprovedError && error.code === "PROFILE_RESTORE_BROWSER_CUSTODY_UNPROVED");
+      error => error instanceof ProfileRestoreBrowserCustodyUnprovedError && error.code === "PROFILE_RESTORE_BROWSER_CUSTODY_UNPROVED");
     assert.equal(native.mock.calls.length, 0);
     assert.deepEqual(storageTree(fixture.workspace), before); assert.deepEqual(fileIdentity(fixture.path), source);
   } catch (error) { primary = { error }; }

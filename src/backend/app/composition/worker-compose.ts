@@ -1,3 +1,4 @@
+import { hasUncertainBrowserLaunch } from "../../runtime/browser/native-browser.js";
 import { createDuoCredentialStore } from "../../storage/configuration/duo-credential-store.js";
 import { createNominatimWorkerAdapter } from "../../processing/providers/nominatim-owner.js";
 import { createNominatimGeocodeAdapter } from "../../processing/providers/geocode-adapters.js";
@@ -350,6 +351,17 @@ function startWorkerMaintenance(input: Readonly<{
     },
     failure: (): unknown => failure,
   });
+}
+
+export const WorkerLaunchUncertainReportSchema = z.strictObject({
+  state: z.literal("launch-uncertain"), custody: z.literal("held"), workerId: WorkerIdSchema, workflowId: WorkflowIdSchema,
+});
+export class WorkerLaunchUncertainError extends RuntimeCustodyUncertainError {
+  readonly report: z.infer<typeof WorkerLaunchUncertainReportSchema>;
+  constructor(workerId: string, workflowId: string, causes: readonly unknown[]) {
+    super(causes); this.name = "WorkerLaunchUncertainError";
+    this.report = Object.freeze(WorkerLaunchUncertainReportSchema.parse({ state: "launch-uncertain", custody: "held", workerId, workflowId }));
+  }
 }
 
 export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<WorkerLoopReport> {
@@ -872,7 +884,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     } catch (loopError) {
       await stopGateSources();
       maintenance.stop();
-      settleLease(database, clock, workerId, leaseGeneration, "crashed", loopError, log);
+      if (!hasUncertainBrowserLaunch(loopError)) settleLease(database, clock, workerId, leaseGeneration, "crashed", loopError, log);
       throw loopError;
     } finally {
       resetObserver.stop();
@@ -883,7 +895,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     if (background !== undefined) {
       // The loop settled because maintenance aborted it; the background error
       // is the real cause and must not be flattened into an "abandoned" report.
-      settleLease(database, clock, workerId, leaseGeneration, "crashed", background, log);
+      if (!hasUncertainBrowserLaunch(background)) settleLease(database, clock, workerId, leaseGeneration, "crashed", background, log);
       throw background instanceof Error
         ? background
         : new Error("worker maintenance failed with a non-Error value", { cause: background });
@@ -914,7 +926,8 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   } catch (error) {
     cleanupErrors.push(error);
   }
-  const browserClosureUnproved = runtimeReport?.closure === "unproved" || runtimeError instanceof WorkerSessionClosureUnprovedError;
+  const launchUncertain = [runtimeError, ...cleanupErrors].some(hasUncertainBrowserLaunch);
+  const browserClosureUnproved = launchUncertain || runtimeReport?.closure === "unproved" || runtimeError instanceof WorkerSessionClosureUnprovedError;
   if (databaseClosureProven && !browserClosureUnproved && cleanupErrors.length === 0) {
     try {
       admission.release();
@@ -923,7 +936,9 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     }
   }
   if (!databaseClosureProven || browserClosureUnproved || cleanupErrors.length > 0) {
-    throw new RuntimeCustodyUncertainError(runtimeError === undefined ? cleanupErrors : [runtimeError, ...cleanupErrors]);
+    const errors = runtimeError === undefined ? cleanupErrors : [runtimeError, ...cleanupErrors];
+    if (launchUncertain) throw new WorkerLaunchUncertainError(workerId, workflowId, errors);
+    throw new RuntimeCustodyUncertainError(errors);
   }
   if (cleanupErrors.length === 1 && runtimeError === undefined) throw cleanupErrors[0];
   if (cleanupErrors.length > 0) {

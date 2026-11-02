@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import assert from "node:assert/strict";
 import { Entry } from "@napi-rs/keyring";
 import { randomUUID } from "node:crypto";
@@ -7,7 +8,6 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { composeSelectedProfileStorage } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";

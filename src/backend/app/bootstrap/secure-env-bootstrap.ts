@@ -1,12 +1,12 @@
 import { fileURLToPath } from "node:url";
 import { acquireRuntimeLifetimeLock,receiveRuntimeLifetimeLock,RuntimeLifetimeLock,WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
-import { profileBrowserClosure } from "../../storage/browser-roots.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 
 import { join } from "node:path";
 import { hostConfigFacts } from "../../../models/config/host-display.js";
 import { assertNoMigratedEnvironmentKeys,workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import { systemClock } from "../../../rules/time/clock.js";
+import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
 import { acquireExclusiveRuntimeAdmission,RuntimeAdmission } from "../../storage/admission/admission.js";
 import { acquireDashboardEntrypointAdmission,acquireEntrypointAdmission,acquireStorageBackupEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { inspectPendingRelocationStatus } from "../../storage/admission/installation.js";

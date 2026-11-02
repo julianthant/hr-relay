@@ -15,6 +15,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { fixtureDuoSigningSource, fixtureWorkflowWorker } from "../../../support/helpers/browser/duo-signing.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
+import { BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
 
 describe("browser current-owner fence", () => {
   const clock = manualClock(new Date("2026-11-01T12:00:00Z"));
@@ -261,10 +262,15 @@ it("preserves both broker-stop and native-close failures and keeps the profile r
     const harness = fakeLauncher({ serviceWorker: broker.worker, emitCloseEvent: false });
     const factory = factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings());
     const resource = await factory.open(input);
-    await assert.rejects(resource.close({ reason: "worker-stop" }), error => error instanceof AuthoritySourceClosureUnprovedError
-      && error.errors.length === 2 && error.cause === error.errors[0]
-      && error.errors[0] instanceof AggregateError && error.errors[0].errors.length === 1 && error.errors[0].errors[0] === stopFailure
-      && error.errors[1] instanceof Error && error.errors[1].message === "ucpath browser session close (worker-stop) never emitted its context close event; closure cannot be proven");
+    await assert.rejects(resource.close({ reason: "worker-stop" }), error => {
+      assert.ok(error instanceof BrowserSessionClosureUnprovedError); assert.equal(error.errors.length, 4);
+      const broker: unknown = error.errors[0], native: unknown = error.errors[1], source: unknown = error.errors[3];
+      assert.equal(error.cause, broker); assert.ok(broker instanceof AggregateError); assert.deepEqual(broker.errors, [stopFailure]);
+      assert.ok(native instanceof Error); assert.equal(native.message, "ucpath browser session close (worker-stop) never emitted its context close event; closure cannot be proven");
+      assert.ok(source instanceof AuthoritySourceClosureUnprovedError); assert.deepEqual(source.errors, [broker, native]);
+      assert.equal(source.cause, broker); assert.equal(error.errors[2], source);
+      return true;
+    });
     await assert.rejects(factory.open(input), /custody is unavailable/u);
   });
 });
@@ -280,9 +286,14 @@ it("bounds a nonsettling broker stop while still proving native context closure"
     const factory = factoryFor({ ...config, features: { ...config.features, duoWebAuthn: true } }, harness, recordingBindings(), scheduler);
     const resource = await factory.open(input);
     const close = resource.close({ reason: "worker-stop" });
-    const rejected = assert.rejects(close, error => error instanceof AuthoritySourceClosureUnprovedError
-      && error.errors.length === 1 && error.cause === error.errors[0]
-      && error.errors[0] instanceof Error && error.errors[0].message === "duo-broker-close-unproved");
+    const rejected = assert.rejects(close, error => {
+      assert.ok(error instanceof BrowserSessionClosureUnprovedError); assert.equal(error.errors.length, 3);
+      const broker: unknown = error.errors[0], source: unknown = error.errors[2];
+      assert.equal(error.cause, broker); assert.ok(broker instanceof Error); assert.equal(broker.message, "duo-broker-close-unproved");
+      assert.ok(source instanceof AuthoritySourceClosureUnprovedError); assert.deepEqual(source.errors, [broker]);
+      assert.equal(source.cause, broker); assert.equal(error.errors[1], source);
+      return true;
+    });
     assert.ok(deadlines[0]); deadlines[0]();
     await rejected; assert.equal(harness.contextClosed(), true);
     await assert.rejects(factory.open(input), /custody is unavailable/u);

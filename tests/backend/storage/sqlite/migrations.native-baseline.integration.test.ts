@@ -1,5 +1,5 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { withStoppedProfileMaintenanceSync } from "../../../support/helpers/admission-fixture.js";
-import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
 import assert from "node:assert/strict";
 import { existsSync,lstatSync,readFileSync,readdirSync,symlinkSync,writeFileSync } from "node:fs";
 import { join } from "node:path";

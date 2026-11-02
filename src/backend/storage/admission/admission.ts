@@ -136,7 +136,7 @@ export class RuntimeAdmission {
   readonly #mode: "shared" | "exclusive" | "synthetic";
   #released = false;
   readonly #sourceFailures = new Set<unknown>();
-  #stoppedControlInventory: StoppedControlProfileInventory | undefined;
+  #stoppedControlInventory: Readonly<{ claim: StoppedControlProfileInventory; source: ReturnType<typeof requireStoppedControlProfileInventory> }> | undefined;
   #stoppedLogout: { operation: LogoutOperation; restore: OfflineMaintenanceOperation; witness: ReturnType<InstallationLease["capturePendingProfileLogout"]> } | undefined;
   readonly #profileBinding: ProfileDatabaseBinding | undefined;
   readonly #profileParent: RuntimeAdmission | undefined;
@@ -331,7 +331,7 @@ export class RuntimeAdmission {
   }
   #stoppedControlBackupPath(path: string): boolean {
     if (this.#scope !== "stopped-control-inventory" || this.#stoppedControlInventory === undefined) return false;
-    const source = requireStoppedControlProfileInventory(this.#stoppedControlInventory), directory = source.backupDirectory;
+    const source = requireStoppedControlProfileInventory(this.#stoppedControlInventory.claim), directory = source.backupDirectory;
     return isAbsolute(path) && resolve(path) === path && (path === directory || dirname(path) === directory
       && /^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite(?:\.manifest\.json)?)$/u.test(basename(path)));
   }
@@ -399,7 +399,7 @@ export class RuntimeAdmission {
     this.assertLive();
     if (this.#flatBackup !== undefined) return 6;
     const backup = this.#readyUpgrade;
-    if (this.#scope === "stopped-control-inventory" && this.#stoppedControlInventory !== undefined) return requireStoppedControlProfileInventory(this.#stoppedControlInventory).schemaVersion;
+    if (this.#scope === "stopped-control-inventory" && this.#stoppedControlInventory !== undefined) return requireStoppedControlProfileInventory(this.#stoppedControlInventory.claim).schemaVersion;
     if (backup === undefined) return CURRENT_AUTHORITY_SCHEMA_VERSION;
     const observed = readProfileDatabaseBinding(backup.copyPath ?? backup.sourcePath);
     if (backup.sourceSchemaVersion === 6) {
@@ -496,7 +496,7 @@ export class RuntimeAdmission {
     if (machine.#scope !== "installation") throw new Error("browser-registry-installation-required");
     const registry = machine.readProfileRegistry();
     return Object.freeze({ machineRoot: machine.#stateRoot, installationId: machine.locator.installationId,
-      sessionGeneration: registry.sessionGeneration, profileId: this.#profileBinding?.profileId });
+      sessionGeneration: registry.sessionGeneration, profileId: this.#profileBinding?.profileId ?? null });
   }
   assertBrowserRegistryLaunch(profileId: string, signup?: Readonly<{ operationId: string; accountId: string; providerGeneration: number }>): void {
     if (signup === undefined) {
@@ -1072,7 +1072,7 @@ export class RuntimeAdmission {
   readCompletedRestores(): readonly CompletedRestoreCustody[] {
     this.assertLive();
     if (this.#scope === "stopped-control-inventory" && this.#stoppedControlInventory !== undefined) {
-      const source = requireStoppedControlProfileInventory(this.#stoppedControlInventory);
+      const source = requireStoppedControlProfileInventory(this.#stoppedControlInventory.claim);
       source.revalidateSource();
       return [];
     }
@@ -1391,14 +1391,13 @@ export class RuntimeAdmission {
     const issued = requireStoppedControlProfileInventory(value);
     const admission = new RuntimeAdmission(issuanceToken, { assertHeld: issued.assertHeld, readInstallationContext: issued.readInstallationContext, retainSourceClosure: issued.retainSourceClosure, release() {} },
       issued.stateRoot, issued.artifactRoot, [join(issued.stateRoot, "state.db")], "stopped-control-inventory", "exclusive", issued.locator, issued.binding);
-    admission.#stoppedControlInventory = value;
+    admission.#stoppedControlInventory = { claim: value, source: issued };
     return admission;
   }
   readStoppedControlCredentialInventorySource(claim: StoppedControlProfileInventory): ReturnType<typeof requireStoppedControlProfileInventory> {
     requireRuntimeAdmission(this);
-    if (this.#scope !== "stopped-control-inventory" || this.#stoppedControlInventory !== claim) throw new Error("stopped-control-inventory-unissued");
-    this.assertLive();
-    return requireStoppedControlProfileInventory(claim);
+    if (this.#scope !== "stopped-control-inventory" || this.#stoppedControlInventory?.claim !== claim) throw new Error("stopped-control-inventory-unissued");
+    return this.#stoppedControlInventory.source;
   }
   #installationRootLifetime(): RuntimeLifetimeLock {
     this.assertLive();
@@ -1470,7 +1469,7 @@ export class RuntimeAdmission {
         const { timing } = flatBackupBrowserCensus(backup.stateRoot, restore, systemClock);
         current(); lease.prepareFlatStartClean(restore, timing);
       }
-      lease.startCleanFlatStore(restore, backup, closure);
+      await lease.startCleanFlatStore(restore, backup, closure);
     } catch (error) {
       if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission: this });
       throw new ProfileFlatStoreMigrationError(error);

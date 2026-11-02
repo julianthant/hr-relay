@@ -64,7 +64,8 @@ export async function createHistoricalFlatProfileFixture(options: { unknownWrite
         leaseGeneration: 1, controlRevision: 1, control: { directive: "stop", requestedAt: at, requestedBy: "local-operator" },
         lifecycle: options.nonterminalWorker ? { state: "stopping", startedAt: at, heartbeatAt: at }
           : { state: "stopped", startedAt: at, stoppedAt: at, reason: "shutdown" }, version: 1, createdAt: at, updatedAt: at });
-      native.prepare("INSERT INTO worker_leases VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(lease.workerId, lease.workerId, lease.workflow, 1, 1, lease.lifecycle.state, "stop", null, 1, canonicalJsonStringify(lease), at, at);
+      native.prepare("INSERT INTO worker_leases VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(lease.workerId, lease.workerId, lease.workflow, 1, 1, lease.lifecycle.state, "stop",
+        lease.lifecycle.state === "stopping" ? lease.lifecycle.heartbeatAt : null, 1, canonicalJsonStringify(lease), at, at);
       browser = WorkerBrowserObservationSchema.parse({ workerId: slot.workerId, leaseGeneration: 1, sessionId: randomUUID(), system: "ucpath",
         configFingerprint: config?.fingerprint, signInFingerprint: "a".repeat(64), browserMode: "headless", profileDirectory: join(stateRoot, "browsers", "w1", "ucpath"),
         acceptDownloads: true, exclusive: true, health: "closed", observedAt: at, openedAt: at, profileRevision: 1 });

@@ -25,8 +25,8 @@ Installation admission owns the active storage roots. None of these authorities 
 | Entrypoint admission and secure bootstrap | `src/backend/storage/admission/bootstrap-admission.ts`, `src/backend/app/bootstrap/secure-env-bootstrap.ts` |
 
 [Execution and sessions](execution-and-sessions.md) owns browser leases, Duo ceremonies, and shutdown.
-Browser probes run inside `storage/browser-roots.ts` under the existing admission and native root
-lifetime. The stopped control converter records its browser plan before native probing and performs
+Browser probes run through `runtime/browser/native-browser.ts` under the registry authority in
+`storage/browser-roots.ts` and the existing admission and native root lifetime. The stopped control converter records its browser plan before native probing and performs
 credential assessment after actual browser closure. Ordinary bootstrap has no probe child selector.
 [Operator trust](operator-trust.md) owns capture, classified local evidence, and outbound data.
 [Stores](stores.md) owns the table catalog. [Guards and tests](guards-and-tests.md) owns verification.

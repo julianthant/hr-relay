@@ -1,4 +1,4 @@
-import { profileBrowserClosure } from "../../../src/backend/storage/browser-roots.js";
+import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../src/models/config/authority.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";

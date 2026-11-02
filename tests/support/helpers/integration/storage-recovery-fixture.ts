@@ -1,5 +1,5 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
-import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createBoundProfileFixture, withOfflineMaintenance } from "../admission-fixture.js";
 import { mkdirSync, readFileSync, readdirSync, lstatSync, readlinkSync } from "node:fs";

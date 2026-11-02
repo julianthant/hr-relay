@@ -1,5 +1,3 @@
-import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { update as artifactUpdate } from "../../../support/helpers/database-foundation/fixtures.js";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { copyFileSync,existsSync,mkdirSync,readFileSync,readdirSync,renameSync,rmdirSync,writeFileSync } from "node:fs";
@@ -13,9 +11,10 @@ import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-qu
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { RunRecordService,requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectActiveRunSettings,selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { readBootSettings,readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
+import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createProfileVerifiers } from "../../../../src/backend/storage/configuration/verifier-store.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
@@ -33,6 +32,7 @@ import { FingerprintSchema,IsoInstantSchema,LOCAL_OPERATOR_ACTOR_ID } from "../.
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { boundProfileCredentials,createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { update as artifactUpdate } from "../../../support/helpers/database-foundation/fixtures.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
