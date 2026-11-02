@@ -6,13 +6,14 @@ import { it, vi } from "vitest";
 import { composeDashboardApplication } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { backupRegisteredPeopleAtCleanShutdown, initializeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
-it("keeps the last three verified shutdown backups and preserves an independent pre-upgrade backup", async () => {
+it("keeps three verified shutdown backups for a signed-out person and preserves the pre-upgrade backup", async () => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
   const profileId = f.admission.profileBinding.profileId;
   const directory = join(f.stateRoot, "backups", "authority"), credentialsPath = join(f.stateRoot, "credentials", "protected.json");
@@ -26,6 +27,7 @@ it("keeps the last three verified shutdown backups and preserves an independent 
     database.close(); const source = readFileSync(f.path), credentials = readFileSync(credentialsPath);
     const manifest = protectedBackup.manifests[0]; assert.ok(manifest);
     const originalBackup = readFileSync(join(directory, manifest.backupFileName)), originalManifest = readFileSync(join(directory, `${manifest.backupFileName}.manifest.json`));
+    createProfileRegistry(f.machine).advanceSession(null);
     f.admission.release(); f.machine.release();
     for (let index = 0; index < 5; index++) { clock.advanceWall(1000); await backupRegisteredPeopleAtCleanShutdown(f.workspace, f.lifetime, clock); }
     const names = readdirSync(directory).filter(name => name.endsWith(".manifest.json"));

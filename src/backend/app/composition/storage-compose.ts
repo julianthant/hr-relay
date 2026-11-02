@@ -158,7 +158,7 @@ export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, l
           const repair = machine.admitStoppedProfileRepair(row.profileId, operation); owned.push(repair);
           await resumeShutdownBackupRetirement(repair, clock);
         }
-        const admission = machine.admitStoppedProfile(row.profileId, operation); owned.push(admission);
+        const admission = machine.admitStoppedProfileBackup(row.profileId, operation); owned.push(admission);
         assertStoppedProfileResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
         const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
         const closure = await prepareStoppedBackupClosure(profileBrowserClosure, admission, operation, clock, processLockRoot);
