@@ -925,6 +925,7 @@ async function composeDashboardRuntimeStartup(
     runtime: () => { assertCurrent(); return knowledge.policy; },
     modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
     readModelPreference: () => captureSelectedModel().view,
+    readPermission: () => assistantAuthorization.permission(),
     verifySelectedModel: async signal => {
       const captured = captureSelectedModel();
       await chatGptAccount.verifyAssistantCapability(captured.view.preference, captured.assertPreferenceCurrent, signal);
