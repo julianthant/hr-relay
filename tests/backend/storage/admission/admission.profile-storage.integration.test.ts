@@ -39,7 +39,8 @@ for (const boundary of ["before-admission", "before-commit"] as const)
     try {
       const active = await finishProfileOnboarding(f.session, f.session.signUp(f.fields)); assert.ok(active.state === "active");
       owner = f.machine.admitProfile(active.profileId);
-      database = AuthorityDatabase.open(owner, { path: join(owner.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" });
+      database = AuthorityDatabase.open(owner, { path: join(owner.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" },
+        undefined, undefined, undefined, undefined, createCredentialStore({ admission: owner, stateRoot: owner.stateRoot }));
       const db = database, at = "2026-09-06T12:01:00.000Z";
       const member = db.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
         commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: process.pid, now: at }, randomUUID()));
@@ -206,7 +207,7 @@ it("binds real pending logout snapshots to the exact native operation and refuse
       const protectedPath = join(child.stateRoot, "credentials", "protected.json"), protectedBefore = readFileSync(protectedPath);
       assert.throws(() => store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), writeId: randomUUID(),
         commandFingerprint: "d".repeat(64), expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-        updatedAt: f.fields.createdAt, entries: { ucpathPassword: { set: "disposable-forbidden-password" } } })), { code: "CREDENTIAL_UNAVAILABLE" });
+        updatedAt: f.fields.createdAt, entries: { ucpathPassword: { set: "disposable-forbidden-password" } } })), /profile-settlement-runtime-refused/u);
       assert.deepEqual(readFileSync(protectedPath), protectedBefore);
       assert.throws(() => child.assertWritable(), /profile-settlement-runtime-refused/u);
       assert.throws(() => AuthorityDatabase.open(child, { path: join(child.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "test" }), /profile-bound-authority-required/u);
@@ -258,6 +259,7 @@ it("publishes ready only through genuine canonical Finish custody and rechecks d
     } finally { raw.close(); }
     await assert.rejects(f.session.completeOnboarding(draft.token, draft.operationId), /profile-database-binding-mismatch/u);
     assert.equal(f.registry.read().profiles.length, 0);
+    assert.equal(existsSync(join(f.workspace, ".tracker", "control", "profile-publication.json")), false);
     const restore = new DatabaseSync(path);
     try { restore.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(draft.profileId);
       restore.exec("CREATE TRIGGER database_states_binding_immutable BEFORE UPDATE OF installation_id,profile_id ON database_states BEGIN SELECT RAISE(ABORT,'profile-database-binding-immutable'); END;"); }
@@ -265,12 +267,13 @@ it("publishes ready only through genuine canonical Finish custody and rechecks d
 
     assert.equal(createProfileVerifiers(f.machine.stateRoot).identify(f.fields.email), "unknown");
     const operationPath = join(f.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
+    const intentPath = join(f.workspace, ".tracker", "control", "profile-publication.json");
     const publicationBoundary = new Error("fixture actual registration publication boundary");
     const nativeRename = fs.renameSync;
     let publicationBoundaryObserved = false;
     const stopped = vi.spyOn(fs, "renameSync").mockImplementation((source, target) => {
       nativeRename(source, target);
-      if (String(target) === operationPath && SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).phase === "publishing") {
+      if (String(target) === intentPath && SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).phase === "publishing") {
         publicationBoundaryObserved = true;
         throw publicationBoundary;
       }
@@ -287,22 +290,18 @@ it("publishes ready only through genuine canonical Finish custody and rechecks d
         timekeeperName: { set: deriveProfileNames(f.fields.firstName, f.fields.lastName).timekeeperName } } });
     const publication = f.machine.admitProfilePublication(operation.operationId);
     const publicationStore = createCredentialStore({ admission: publication, stateRoot: publication.stateRoot });
-    assert.throws(() => publicationStore.verifyReplay(request), { code: "CREDENTIAL_UNAVAILABLE" });
+    assert.throws(() => publicationStore.verifyReplay(request), /profile-setup-operation-not-current/u);
     const publish = () => f.machine.publishProfileRegistration(publication, operation);
     assert.throws(() => Reflect.apply(f.machine.publishProfileRegistration.bind(f.machine), f.machine, [{ ...publication }, operation]), TypeError);
     assert.throws(() => f.machine.publishProfileRegistration(publication, SignUpOperationSchema.parse({ ...operation, writeId: randomUUID() })));
-    const changedBinding = new DatabaseSync(path);
+    const priorDatabase = readFileSync(path), changedBinding = new DatabaseSync(path);
     try {
       changedBinding.exec("DROP TRIGGER database_states_binding_immutable");
       changedBinding.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(randomUUID());
     } finally { changedBinding.close(); }
     try { assert.throws(() => publish(), /profile-database-binding-mismatch/u); }
     finally {
-      const restoredBinding = new DatabaseSync(path);
-      try {
-        restoredBinding.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(draft.profileId);
-        restoredBinding.exec("CREATE TRIGGER database_states_binding_immutable BEFORE UPDATE OF installation_id,profile_id ON database_states BEGIN SELECT RAISE(ABORT,'profile-database-binding-immutable'); END;");
-      } finally { restoredBinding.close(); }
+      writeFileSync(path, priorDatabase);
     }
     publication.release();
     const active = await f.session.completeOnboarding(draft.token, draft.operationId);
@@ -333,7 +332,7 @@ it("refuses a concurrent healthy observation change and performs healthy registr
       return realOpen(path, flags, mode);
     });
     syncBuiltinESMExports();
-    assert.throws(() => f.machine.readProfileRegistry(), /profile-registry-observation-changed/u);
+    assert.throws(() => f.machine.readProfileRegistry(), { name: "PrivateFileReadTransitionError" });
     assert.equal(changed, true);
     vi.restoreAllMocks(); syncBuiltinESMExports();
     const before = f.registry.read();
@@ -553,12 +552,13 @@ it("keeps runtime reads out of stopped maintenance and permits only its explicit
         () => f.machine.beginProfileSignUp({ emailKey: "a".repeat(64), firstName: "Second", lastName: "Fixture",
           createdAt: IsoInstantSchema.parse("2026-10-01T12:00:00.000Z"), commandFingerprint: "a".repeat(64) }),
         () => admission.assertReadable()]) assert.throws(read, /offline-maintenance-busy/u);
-      for (const read of [() => store.read(), () => store.ownsCommandId(commandId),
-        () => store.acceptedAt(commandId), () => store.verifyReplay(ProtectedSettingsApplyInputSchema.parse({ commandId,
-          writeId: randomUUID(), commandFingerprint: "d".repeat(64), expectedRevision: 1,
-          protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-10-01T12:00:00.000Z", entries: { ucpathPassword: { set: "disposable-fixture-password" } } }))]) {
-        assert.throws(read, { code: "CREDENTIAL_UNAVAILABLE" });
-      }
+      assert.throws(() => store.read(), { code: "CREDENTIAL_UNAVAILABLE" });
+      for (const read of [() => store.ownsCommandId(commandId), () => store.acceptedAt(commandId)])
+        assert.throws(read, { code: "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE", reason: "offline-maintenance-busy" });
+      assert.throws(() => store.verifyReplay(ProtectedSettingsApplyInputSchema.parse({ commandId,
+        writeId: randomUUID(), commandFingerprint: "d".repeat(64), expectedRevision: 1,
+        protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-10-01T12:00:00.000Z", entries: { ucpathPassword: { set: "disposable-fixture-password" } } })),
+      { code: "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE", reason: "offline-maintenance-busy" });
       assert.deepEqual(f.machine.readProfileRegistry(), registry);
       const stopped = admission.forStoppedMaintenance(operation);
       try {

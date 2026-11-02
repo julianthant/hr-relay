@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime, composeSelectedProfileStorage } from "../../../../src/backend/app/composition/storage-compose.js";
 import { composeStoppedControlCredentialInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { upgradeStoppedMachineControl } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -28,21 +28,58 @@ import { createSyntheticVerifier, emailKey, passwordMatches } from "../../../../
 import { deriveProfileNames, advanceProfileRegistryDocument, ProfileRegistryDocumentSchema, ProfileVerifierDocumentSchema, SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { createBoundProfileFixture, createSyntheticProfileSession, finishProfileOnboarding } from "../../helpers/admission-fixture.js";
+import { createBoundProfileFixture, boundProfileCredentials } from "../../helpers/admission-fixture.js";
 
 export async function createHistoricalRegisteredProfileFixture(options: { sourceVersion: 8 | 9 | 10; workspace?: string; lifetime?: RuntimeLifetimeLock }) {
   assert.equal(Entry, FakeKeyringEntry, "historical fixture requires the actual fake keychain before backend imports");
   const lifetime = options.lifetime ?? await RuntimeLifetimeLock.acquire(0);
-  const fixture = await createBoundProfileFixture({ pending: "storage", lifetime, ...(options.workspace === undefined ? {} : { workspace: options.workspace }) });
-  const binding = fixture.admission.profileBinding, at = "2026-10-01T12:00:00.000Z";
-  writeFileSync(fixture.path, Buffer.alloc(0), { mode: 0o600, flag: "wx" });
+  const fixture = await createBoundProfileFixture({ pending: "onboarding", lifetime, ...(options.workspace === undefined ? {} : { workspace: options.workspace }) });
+  const binding = fixture.admission.profileBinding;
+  const draft = fixture.draft;
+  assert.ok(draft?.state === "onboarding");
+  const operationPath = join(fixture.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
+  const signupOperation = SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
+  const priorRegistry = fixture.machine.readProfileRegistry();
+  const active = await fixture.finish();
+  assert.equal(active.state, "active");
+  const registry = fixture.machine.readProfileRegistry(), row = registry.profiles.find(profile => profile.profileId === binding.profileId);
+  assert.ok(row?.registration.onboardingCompletion);
+  assert.equal(row.lifecycle, "ready"); assert.equal(row.credentialState, "saved"); assert.equal(row.duoState, "ready");
+  assert.equal(row.registration.operationId, signupOperation.operationId); assert.equal(row.registration.commandId, signupOperation.commandId);
+  assert.equal(row.registration.writeId, signupOperation.writeId);
+  assert.equal(registry.activeProfileId, binding.profileId); assert.equal(registry.sessionGeneration, priorRegistry.sessionGeneration + 1);
+  assert.equal(existsSync(operationPath), false);
+  const frame = createCanonicalCredentials(fixture.admission).readRecord("protected"); assert.ok(frame);
+  const protectedDocument = authenticateDocument(frame.value), protectedPath = join(fixture.stateRoot, "credentials", "protected.json");
+  const protectedBytes = readFileSync(protectedPath);
+  assert.ok(protectedDocument.latestRequest?.kind === "apply");
+  assert.equal(protectedDocument.latestRequest.request.commandId, signupOperation.commandId);
+  assert.equal(protectedDocument.latestRequest.request.writeId, signupOperation.writeId);
+  assert.equal(protectedDocument.record.entries.ucpathUserId?.value, "fixture@ucsd.edu");
+  assert.equal(protectedDocument.record.entries.ucpathPassword?.value, "disposable-fixture-password");
+  assert.equal(row.registration.credentialRevision, protectedDocument.record.revision);
+  const machineRoot = join(fixture.machine.stateRoot, "machine");
+  const verifier = ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(join(machineRoot, "profile-verifiers.json"), "utf8"))).profiles.find(profile => profile.profileId === binding.profileId);
+  assert.ok(verifier);
+  assert.equal(verifier.emailKey, emailKey(readFileSync(join(machineRoot, "profile-pepper")), "fixture@ucsd.edu"));
+  assert.equal(passwordMatches("disposable-fixture-password", verifier), true);
+  const storage = composeSelectedProfileStorage({ machineAdmission: fixture.machine, admission: fixture.admission,
+    credentials: boundProfileCredentials(fixture.admission), clock: systemClock, hostFacts: { primaryDisplay: null } });
+  await storage.account.close(); storage.database.close();
+  await fixture.closeController();
+  assertClosedWorkspace(fixture.workspace);
   const database = new DatabaseSync(fixture.path);
   let failure: { error: unknown } | undefined;
   try {
-    for (const migration of SQLITE_MIGRATIONS.filter(row => row.version <= options.sourceVersion)) for (const statement of migration.statements) database.exec(statement);
-    database.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,?,0,?,NULL,'unbuilt',?,?)")
-      .run(options.sourceVersion, at, binding.installationId, binding.profileId);
-    database.exec(`PRAGMA user_version=${options.sourceVersion}; PRAGMA application_id=${AUTHORITY_APPLICATION_ID}`);
+    database.exec("PRAGMA foreign_keys=ON; BEGIN EXCLUSIVE");
+    for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
+    if (options.sourceVersion < 10) {
+      const editor = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE TABLE explorer_overrides \([\s\S]*?\n\) STRICT;/u)?.[0];
+      assert.ok(editor); database.exec(editor);
+    }
+    if (options.sourceVersion < 9) database.exec("DROP TABLE assistant_model_preference");
+    database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(options.sourceVersion);
+    database.exec(`PRAGMA user_version=${options.sourceVersion}; COMMIT`);
     inspectOpenDatabase(database, options.sourceVersion);
   } catch (error) { failure = { error }; }
   try { database.close(); }
@@ -52,40 +89,7 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
   }
   if (failure !== undefined) throw failure.error;
   const databaseBytes = readFileSync(fixture.path);
-  const session = createSyntheticProfileSession({ admission: fixture.machine, machineRoot: fixture.machine.stateRoot,
-    activity: { hasUnquiescedWork: () => false } });
-  let signupOperation: ReturnType<typeof SignUpOperationSchema.parse>;
-  try {
-    const draft = session.signUp({ firstName: "Fixture", lastName: "Example",
-      email: "fixture@ucsd.edu", password: "disposable-fixture-password", createdAt: at });
-    assert.equal(draft.state, "onboarding");
-    if (draft.state !== "onboarding") throw new Error("historical-fixture-signup-refused");
-    const operationPath = join(fixture.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
-    signupOperation = SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
-    const frame = createCanonicalCredentials(fixture.admission).readRecord("protected"); assert.ok(frame);
-    const protectedDocument = authenticateDocument(frame.value), protectedPath = join(fixture.stateRoot, "credentials", "protected.json");
-    const protectedBytes = readFileSync(protectedPath), priorRegistry = fixture.machine.readProfileRegistry();
-    assert.ok(protectedDocument.latestRequest?.kind === "apply");
-    assert.equal(protectedDocument.latestRequest?.request.commandId, signupOperation.commandId);
-    assert.equal(protectedDocument.latestRequest?.request.writeId, signupOperation.writeId);
-    assert.equal(protectedDocument.record.entries.ucpathUserId?.value, "fixture@ucsd.edu");
-    assert.equal(protectedDocument.record.entries.ucpathPassword?.value, "disposable-fixture-password");
-    await assert.rejects(finishProfileOnboarding(session, draft), error => error instanceof Error && error.message === "profile-database-schema-mismatch");
-    const registry = fixture.machine.readProfileRegistry(), row = registry.profiles.find(profile => profile.profileId === binding.profileId);
-    assert.ok(row?.registration.onboardingCompletion);
-    assert.equal(row.lifecycle, "ready"); assert.equal(row.credentialState, "saved"); assert.equal(row.duoState, "ready");
-    assert.equal(row.registration.operationId, signupOperation.operationId); assert.equal(row.registration.commandId, signupOperation.commandId);
-    assert.equal(row.registration.writeId, signupOperation.writeId); assert.equal(row.registration.credentialRevision, protectedDocument.record.revision);
-    assert.equal(registry.activeProfileId, binding.profileId); assert.equal(registry.sessionGeneration, priorRegistry.sessionGeneration + 1);
-    assert.equal(existsSync(operationPath), false); assert.deepEqual(readFileSync(protectedPath), protectedBytes);
-    const machineRoot = join(fixture.machine.stateRoot, "machine");
-    const verifier = ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(join(machineRoot, "profile-verifiers.json"), "utf8"))).profiles.find(profile => profile.profileId === binding.profileId);
-    assert.ok(verifier);
-    assert.equal(verifier.emailKey, emailKey(readFileSync(join(machineRoot, "profile-pepper")), "fixture@ucsd.edu"));
-    assert.equal(passwordMatches("disposable-fixture-password", verifier), true);
-  } finally { await session.close(); }
-  await fixture.closeController();
-  assertClosedWorkspace(fixture.workspace);
+  assert.deepEqual(readFileSync(protectedPath), protectedBytes);
   const observed = withReadonlyAuthoritySnapshot(fixture.path, native => inspectOpenDatabase(native, options.sourceVersion));
   assert.equal(observed.schemaVersion, options.sourceVersion);
   assert.equal(observed.installationId, binding.installationId); assert.equal(observed.profileId, binding.profileId);

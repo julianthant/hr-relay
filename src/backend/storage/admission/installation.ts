@@ -1764,7 +1764,12 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       const marker = lstatMaybe(join(machine, "profile-registry-version.json")) === undefined ? undefined
         : readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() }));
       if (marker?.schemaVersion === 6) {
-        readMachineRegistry(control, priorLocator, false);
+        const pending = lstatMaybe(join(control, "profile-publication.json")) === undefined ? undefined
+          : readProfileEvidence(join(control, "profile-publication.json"), ProfilePublicationSchema);
+        if (pending?.kind === "profile") {
+          const source = readProfilePublicationSource(control, priorLocator);
+          prepareProfileRegistryPublication(control, priorLocator, source.path, source.document, source.witness, pending);
+        } else readMachineRegistry(control, priorLocator, false);
         for (const entry of profileOperationInventory(priorLocator.stateRoot)) {
           const operation = readProfileEvidence(join(machine, "operations", `${entry.operationId}.json`), ProfileOperationSchema);
           if (operation.kind !== "logout" || operation.phase === "complete") continue;
@@ -1956,6 +1961,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
               || canonicalJsonStringify(row.registration.onboardingCompletion) !== canonicalJsonStringify(profileOnboardingCompletion(operation))) fail("profile-signup-intent-mismatch");
             return;
           }
+          assertCanonicalProfileBinding(join(locator.stateRoot, "profiles", operation.profileId, "state.db"),
+            { installationId: locator.installationId, profileId: operation.profileId });
           const verifierOwner = createProfileVerifiers(locator.stateRoot), prepared = verifierOwner.prepare(operation.profileId, captured.email, captured.password),
             verifier = verifyPreparedProfileVerifier(prepared, locator.stateRoot, operation.profileId, operation.emailKey),
             verifierPath = join(locator.stateRoot, "machine", "profile-verifiers.json"), priorVerifiers = readStrict(verifierPath, ProfileVerifierDocumentSchema);

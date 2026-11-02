@@ -1,4 +1,4 @@
-import { CanonicalCredentialError, CredentialMaintenanceHold, initializeCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
+import { CanonicalCredentialError, initializeCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { withOfflineMaintenance } from "../../../support/helpers/admission-fixture.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
@@ -35,17 +35,18 @@ it.each([6, 7])("keeps pending setup database-only until canonical binding, then
     const request = ProtectedSettingsApplyInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
       commandFingerprint: operation.commandFingerprint, expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
       updatedAt: operation.createdAt, entries: { ucpathPassword: { set: "disposable-profile-password" } } });
-    const assertUninitialized = () => {
+    const assertUninitialized = (binding: "missing" | "historical") => {
       const source = storageTree(workspace);
       const keys = createHash("sha256").update(JSON.stringify(FakeKeyringEntry.snapshot())).digest("hex");
-      for (const attempt of [() => store.read(), () => store.apply(request)]) {
-        assert.throws(attempt, error => error instanceof CanonicalCredentialError && error.code === "CREDENTIAL_UNAVAILABLE"
-          && error.cause instanceof CredentialMaintenanceHold && error.cause.code === "CREDENTIAL_CONVERSION_REQUIRED");
+      for (const kind of ["read", "apply"] as const) {
+        if (kind === "read" || binding === "historical" && version === 7) assert.throws(() => kind === "read" ? store.read() : store.apply(request),
+          error => error instanceof CanonicalCredentialError && error.code === "CREDENTIAL_UNAVAILABLE" && error.cause === undefined);
+        else assert.throws(() => store.apply(request), { message: "profile-database-binding-required" });
         assert.deepEqual(storageTree(workspace), source);
         assert.equal(createHash("sha256").update(JSON.stringify(FakeKeyringEntry.snapshot())).digest("hex"), keys);
       }
     };
-    assertUninitialized();
+    assertUninitialized("missing");
     const raw = new DatabaseSync(path);
     try {
       for (const migration of SQLITE_MIGRATIONS.filter(row => row.version <= version)) for (const statement of migration.statements) raw.exec(statement);
@@ -55,7 +56,7 @@ it.each([6, 7])("keeps pending setup database-only until canonical binding, then
       raw.exec(`PRAGMA user_version=${version}; PRAGMA application_id=${AUTHORITY_APPLICATION_ID}`);
     } finally { raw.close(); }
     const before = readFileSync(path);
-    assertUninitialized();
+    assertUninitialized("historical");
     assert.deepEqual(readFileSync(path), before);
     assert.throws(() => AuthorityDatabase.open(setup, { path, busyTimeoutMs: 250, migrationOwner: "test" }), /profile-bound-authority-required/u);
     const input = { stateRoot: setup.stateRoot, processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot), plan: false };

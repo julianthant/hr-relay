@@ -257,7 +257,7 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
         await session.close(); unregisterBoundProfile(admission); admission.release(); machine.release();
         if (ownsLifetime) await lifetime.close();
       })();
-      return { workspace, lifetime, get machine() { return machine; }, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish, renewAfterRestore, renewAfterSessionChange, closeController,
+      return { workspace, lifetime, draft, get machine() { return machine; }, get admission() { return admission; }, stateRoot, path: join(stateRoot, "state.db"), finish, renewAfterRestore, renewAfterSessionChange, closeController,
         async close() { await closeController(); rmSync(workspace, { recursive: true, force: true }); } };
     });
   } catch (error) {
