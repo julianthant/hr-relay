@@ -13,7 +13,13 @@ export type FakeElementName =
   | "kuali-app-chrome"
   | "stale-request"
   | "duo-refusal"
-  | "training-reminder";
+  | "training-reminder"
+  | "i9-launch"
+  | "i9-campus"
+  | "i9-campus-select"
+  | "i9-search-options"
+  | "i9-training-dismiss"
+  | "i9-training-confirm";
 
 
 const ABSENT_UNLESS_SCRIPTED: ReadonlySet<FakeElementName> = new Set<FakeElementName>(["duo-refusal", "stale-request", "training-reminder"]);
@@ -69,6 +75,12 @@ export interface FakePageHarness {
 }
 
 function classify(kind: string, argument: string): FakeElementName | undefined {
+  if (kind === "locator" && argument === "#divSearchOptions") return "i9-search-options";
+  if (kind === "locator" && argument === "#dropdownlist") return "i9-campus";
+  if (kind === "role" && argument === "Tracker I-9 Complete Application") return "i9-launch";
+  if (kind === "role" && argument === "Select") return "i9-campus-select";
+  if (kind === "role" && argument === "Dismiss the Notification") return "i9-training-dismiss";
+  if (kind === "role" && argument === "Yes") return "i9-training-confirm";
   if (kind === "locator" && argument === 'input[type="submit"][value*="Continue Log In"], button:has-text("Continue Log In")') return "training-reminder";
   if (kind === "locator" && argument.includes("_eventId_proceed")) return "sso-submit";
   if (kind === "locator" && (argument === "select" || argument.includes("authtype"))) return "login-type-select";
@@ -127,6 +139,12 @@ export function fakeLoginPage(script: FakePageScript): FakePageHarness {
         const element = scriptFor(name);
         if (element.rendersAfterWait === true && !rendered.has(name)) return 0;
         return element.count ?? 1;
+      },
+      isVisible: async () => {
+        if (name === undefined) return false;
+        const element = scriptFor(name);
+        if (element.failWith !== undefined) throw new Error(element.failWith);
+        return (element.count ?? 1) > 0;
       },
       waitFor: async () => {
         if (name === undefined) throw new Error("fake page: waitFor on an unclassified locator");

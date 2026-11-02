@@ -1,3 +1,4 @@
+import { PersonLookupResultSchema } from "../../../src/models/workflows/person-lookup/result.js";
 
 import { z } from "zod";
 import {
@@ -22,7 +23,6 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presenta
 import {
   PersonLookupInput,
   PersonLookupCanonicalInput,
-  PersonLookupResultSchema,
 } from "../../../src/workflows/person-lookup/workflow.js";
 
 const FIXTURE_FINGERPRINT = FingerprintSchema.parse("f".repeat(64));

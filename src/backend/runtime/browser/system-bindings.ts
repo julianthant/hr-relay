@@ -7,6 +7,8 @@ import { createCrmOnboardingDriver } from "../../systems/crm/driver/interpreter.
 import { createKualiRrssDocumentDriver } from "../../systems/kuali/driver/interpreter.js";
 import { kualiLoginRecipe, verifyKualiAuthenticatedApplication } from "../../systems/kuali/session.js";
 import { crmLoginRecipe, verifyCrmAuthenticatedApplication } from "../../systems/crm/session.js";
+import { createI9Driver } from "../../systems/i9/driver/interpreter.js";
+import { i9LoginRecipe, verifyI9AuthenticatedApplication } from "../../systems/i9/login.js";
 import { createNewKronosTimecardDriver } from "../../systems/new-kronos/driver/interpreter.js";
 import {
   newKronosLoginRecipe,
@@ -41,6 +43,12 @@ export const BROWSER_SYSTEM_BINDINGS: BrowserSystemBindings = Object.freeze({
     createDriver: (page: Page, _clock: Clock, assertCurrent: () => void): BrowserDriver => createCrmOnboardingDriver(assertCurrent, page),
     login: crmLoginRecipe,
     verifyAuthenticated: verifyCrmAuthenticatedApplication,
+  }),
+  i9: Object.freeze({
+    system: "i9",
+    createDriver: (page: Page, _clock: Clock, assertCurrent: () => void): BrowserDriver => createI9Driver(assertCurrent, page),
+    login: i9LoginRecipe,
+    verifyAuthenticated: verifyI9AuthenticatedApplication,
   }),
   kuali: Object.freeze({
     system: "kuali",

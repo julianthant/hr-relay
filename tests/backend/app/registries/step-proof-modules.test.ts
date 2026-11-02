@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { STEP_PROOF_MODULES, stepProofModuleOf } from "../../../../src/backend/app/registries/step-proof-modules.js";
-import { WORKFLOW_MODULES, personLookupModule, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_MODULES, personLookupModule, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
+
 import { canonicalInputSamples } from "../../../../src/models/workflow/canonical-input.js";
 import { classifyEvidenceLeaf, evidenceLeaves } from "../../../../src/models/trust/evidence-classification.js";
 import { auditWorkflowModuleRoles } from "../../../../src/workflow-kit/validation/workflow-module-audit.js";
@@ -26,7 +27,7 @@ describe("Person Lookup step proofs", () => {
     assert.deepEqual(proofs.map(module => String(module.descriptor.id)), [
       "person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates",
     ]);
-    assert.deepEqual(auditWorkflowModuleRoles([...WORKFLOW_MODULES, ...STEP_PROOF_MODULES]), []);
+    assert.deepEqual(auditWorkflowModuleRoles([...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES]), []);
     for (const proof of proofs) {
       assert.equal(stepProofModuleOf(proof.descriptor.id), proof);
       assert.throws(() => workflowModuleOf(proof.descriptor.id), /not registered/u);

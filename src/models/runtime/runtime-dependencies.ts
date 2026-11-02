@@ -124,6 +124,16 @@ export const PROVIDER_ADAPTER_SPECS = deepFreeze(ProviderAdapterSpecSchema.array
   { provider: "nominatim", capabilities: ["geocode.nominatim"], endpoint: "https://nominatim.openstreetmap.org/search", consumer: "provider-adapter" },
 ]));
 
+export const LocalProviderAdapterSpecSchema = z.strictObject({
+  capability: z.literal("workbooks.library"),
+  owner: z.literal("src/backend/processing/providers/workbook-library-adapter.ts"),
+  dependency: z.literal("storage.sqlite"),
+  check: z.literal("authority.health"),
+});
+export const LOCAL_PROVIDER_ADAPTER_SPECS = deepFreeze(LocalProviderAdapterSpecSchema.array().parse([
+  { capability: "workbooks.library", owner: "src/backend/processing/providers/workbook-library-adapter.ts", dependency: "storage.sqlite", check: "authority.health" },
+]));
+
 const ProviderBackedFeatureCapabilitySchema = z.never();
 
 export const FeatureRuntimeSpecSchema = z.strictObject({
@@ -302,6 +312,7 @@ export const RuntimeDependencyRegistrySchema = z.strictObject({
   scenarios: z.array(ScenarioIdSchema).min(1),
   systems: z.array(SystemRuntimeSpecSchema).min(1),
   providers: z.array(ProviderAdapterSpecSchema).min(1),
+  localProviders: z.array(LocalProviderAdapterSpecSchema).min(1),
   features: z.array(FeatureRuntimeSpecSchema),
   dependencies: z.array(RuntimeDependencySpecSchema).min(1),
   checks: z.array(PreflightCheckSpecSchema).min(1),
@@ -313,6 +324,7 @@ export const RUNTIME_DEPENDENCY_REGISTRY = deepFreeze(RuntimeDependencyRegistryS
   scenarios: PREFLIGHT_SCENARIO_MANIFESTS.map(({ id }) => id),
   systems: SYSTEM_RUNTIME_SPECS,
   providers: PROVIDER_ADAPTER_SPECS,
+  localProviders: LOCAL_PROVIDER_ADAPTER_SPECS,
   features: FEATURE_RUNTIME_SPECS,
   dependencies: RUNTIME_DEPENDENCIES,
   checks: PREFLIGHT_CHECKS,
@@ -403,7 +415,14 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
     }
   }
 
-  const providerCapabilities = new Set(registry.providers.flatMap(({ capabilities }) => capabilities));
+  const providerCapabilities = new Set([...registry.providers.flatMap(({ capabilities }) => capabilities), ...registry.localProviders.map(({ capability }) => capability)]);
+  unique(registry.localProviders.map(({ capability }) => capability), "local provider capabilities");
+  for (const provider of registry.localProviders) {
+    if (!registry.dependencies.some(({ id }) => id === provider.dependency)
+      || !registry.checks.some(check => check.id === provider.check && check.dependencies.some(id => id === provider.dependency))) {
+      violations.push(`local provider ${provider.capability} has no admitted storage dependency check`);
+    }
+  }
   const providersById = new Map(registry.providers.map((provider) => [provider.provider, provider]));
   for (const provider of ProviderIdSchema.options) {
     if (!providersById.has(provider)) violations.push(`provider ${provider} has no adapter or explicit target disposition`);

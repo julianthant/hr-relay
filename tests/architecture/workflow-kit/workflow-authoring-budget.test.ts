@@ -1,3 +1,5 @@
+import type { WorkflowModule } from "../../../src/workflow-kit/workflow-definition.js";
+import { UNREGISTERED_OCR_MODULES } from "../../support/fixtures/ocr/unregistered-workflows.js";
 import { createRetainedDashboardMockFixtures } from "../../support/helpers/retained-dashboard-mock-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -8,7 +10,7 @@ import { dirname, join } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
 
-import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { workflowScenarioFolder, workflowSourceFolder, workflowSourcePath } from "../../../src/workflow-kit/validation/source-layout.js";
 import { gitVisibleFilesIn, REPO_ROOT } from "../support/helpers/guard-files.js";
@@ -117,6 +119,7 @@ export interface ArtifactExemptionEntry {
 
 export interface WorkflowAuthoringBudgetInputs {
   readonly workflows: readonly RegisteredWorkflowSource[];
+  readonly unregisteredWorkflows: readonly RegisteredWorkflowSource[];
   readonly tree: WorkflowAuthoringBudgetTree;
   readonly genericIdAllowlist: readonly GenericWorkflowIdAllowlistEntry[];
   readonly preCanonicalScenarios: readonly PreCanonicalScenarioEntry[];
@@ -256,6 +259,7 @@ export function auditWorkflowAuthoringBudget(
   inputs: WorkflowAuthoringBudgetInputs,
 ): readonly string[] {
   const violations: string[] = [];
+  const authoredWorkflows = [...inputs.workflows, ...inputs.unregisteredWorkflows];
   const ids = inputs.workflows.map(({ id }) => id);
   const parsed = new Map<string, ts.SourceFile>();
   const sourceOf = (path: string, text: string): ts.SourceFile => {
@@ -308,7 +312,7 @@ export function auditWorkflowAuthoringBudget(
         violations.push(`${path}:${lineOf(source, node)} calls ${name}(): ${banned}`);
       }
     });
-    if (!inputs.workflows.some((workflow) => workflow.sourcePath === path)) {
+    if (!authoredWorkflows.some((workflow) => workflow.sourcePath === path)) {
       if (defineWorkflowCalls > 0) violations.push(`${path} authors defineWorkflow( outside a registered entry`);
       continue;
     }
@@ -362,12 +366,13 @@ export function auditWorkflowAuthoringBudget(
   // ---- arm (d): four authored artifacts per workflow, and no fifth ---------
   const artifactFiles = new Set(inputs.tree.artifactFiles);
   const allowedArtifacts = new Set<string>();
-  for (const { sourcePath, scenarioFolder } of inputs.workflows) {
+  for (const { sourcePath, scenarioFolder } of authoredWorkflows) {
     allowedArtifacts.add(sourcePath);
     allowedArtifacts.add(`${scenarioFolder}/structural.scenario.test.ts`);
     allowedArtifacts.add(`${scenarioFolder}/dry-run.scenario.ts`);
     if (sourcePath.endsWith("/workflow.ts")) {
       allowedArtifacts.add(`${sourcePath.slice(0, -"workflow.ts".length)}task-registry.ts`);
+      allowedArtifacts.add(`${sourcePath.slice(0, -"workflow.ts".length)}index.ts`);
       for (const taskFile of inputs.tree.artifactFiles) {
         if (/\/tasks\/[^/]+\.ts$/u.test(taskFile) && taskFile.startsWith(`${sourcePath.slice(0, -"workflow.ts".length)}tasks/`)) {
           allowedArtifacts.add(taskFile);
@@ -405,9 +410,9 @@ export function auditWorkflowAuthoringBudget(
     if (allowedArtifacts.has(file)) continue;
     if (inputs.artifactExemptions.some((entry) =>
       entry.path.endsWith("/") ? file.startsWith(entry.path) : file === entry.path)) continue;
-    const owner = attributeWorkflowArtifact(file, inputs.workflows);
+    const owner = attributeWorkflowArtifact(file, authoredWorkflows);
     if (owner === undefined) continue;
-    const workflow = inputs.workflows.find(({ id }) => id === owner);
+    const workflow = authoredWorkflows.find(({ id }) => id === owner);
     if (workflow === undefined) {
 
       throw new Error(`attributeWorkflowArtifact attributed ${file} to unregistered workflow "${owner}"`);
@@ -419,7 +424,7 @@ export function auditWorkflowAuthoringBudget(
     );
   }
 
-  for (const { id, scenarioFolder } of inputs.workflows) {
+  for (const { id, scenarioFolder } of authoredWorkflows) {
     const structural = [
       `${scenarioFolder}/structural.scenario.test.ts`,
       ...inputs.preCanonicalScenarios.filter((entry) => entry.workflowId === id).map(({ file }) => file),
@@ -468,8 +473,8 @@ const PRE_CANONICAL_SCENARIOS: readonly PreCanonicalScenarioEntry[] = [];
 
 const ARTIFACT_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [];
 
-function auditedWorkflowSources(): readonly RegisteredWorkflowSource[] {
-  return [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES].map((module) => {
+function auditedWorkflowSources(modules: readonly WorkflowModule[] = [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES]): readonly RegisteredWorkflowSource[] {
+  return modules.map((module) => {
     const id = String(module.descriptor.id);
     return {
       id,
@@ -483,6 +488,7 @@ function auditedWorkflowSources(): readonly RegisteredWorkflowSource[] {
 function repositoryInputs(tree: WorkflowAuthoringBudgetTree): WorkflowAuthoringBudgetInputs {
   return {
     workflows: auditedWorkflowSources(),
+    unregisteredWorkflows: auditedWorkflowSources(UNREGISTERED_OCR_MODULES),
     tree,
     genericIdAllowlist: GENERIC_WORKFLOW_ID_ALLOWLIST,
     preCanonicalScenarios: PRE_CANONICAL_SCENARIOS,
@@ -538,7 +544,7 @@ function cleanFixtureFiles(): Record<string, string> {
     "tests/scenario/dashboard/combo/world.ts": "export const WORLD = 1;\n",
     "tests/scenario/intake-extraction.scenario.test.ts": "export const INTAKE = 1;\n",
     "tests/scenario/combo-supplement.md": "# additional combo proof\n",
-    "tests/scenario/i9-lookup.md": "# an unregistered candidate\n",
+    "tests/scenario/unregistered-lookup.md": "# an unregistered candidate\n",
   };
 }
 
@@ -797,6 +803,7 @@ function writeFixtureTree(files: Record<string, string>): string {
 function fixtureInputs(fixture: BudgetFixtureTree, root: string): WorkflowAuthoringBudgetInputs {
   return {
     workflows: CLEAN_WORKFLOWS,
+    unregisteredWorkflows: [],
     tree: collectWorkflowAuthoringBudgetTree(root),
     genericIdAllowlist: fixture.genericIdAllowlist ?? [],
     preCanonicalScenarios: fixture.preCanonicalScenarios ?? CLEAN_PRE_CANONICAL,
@@ -830,7 +837,7 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
     assert.ok(tree.sources.size > 500, `source scan resolved only ${tree.sources.size} files`);
     assert.ok(tree.artifactFiles.length > 10, `artifact scan resolved only ${tree.artifactFiles.length} files`);
     const registered = auditedWorkflowSources();
-    assert.equal(registered.length, WORKFLOW_MODULES.length + STEP_PROOF_MODULES.length,
+    assert.equal(registered.length, WORKFLOW_MODULES.length + CHILD_ONLY_WORKFLOW_MODULES.length + STEP_PROOF_MODULES.length,
       "operator workflows and retained step proofs must stay in the scan");
 
     const scannedWorkflowFiles = [...tree.sources.keys()]
@@ -840,12 +847,33 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
       scannedWorkflowFiles.length >= 2,
       `arm (b) entered only ${scannedWorkflowFiles.length} workflow.ts file(s)`,
     );
-    assert.deepEqual(scannedWorkflowFiles, [...registered].map(({ sourcePath }) => sourcePath).sort());
+    assert.deepEqual(scannedWorkflowFiles, [...registered, ...auditedWorkflowSources(UNREGISTERED_OCR_MODULES)].map(({ sourcePath }) => sourcePath).sort());
     assert.deepEqual(auditWorkflowAuthoringBudget(repositoryInputs(tree)), []);
   });
 
+  it("audits unregistered source paths while generic surfaces still follow the production inventory", () => {
+    const files = cleanFixtureFiles();
+    files["src/workflows/future/workflow.ts"] = fixtureWorkflowFile("future");
+    files["src/dashboard/future.ts"] = 'export const workflowId = "future";';
+    const root = writeFixtureTree(files);
+    const future = { id: "future", sourceFolder: "src/workflows/future", sourcePath: "src/workflows/future/workflow.ts", scenarioFolder: "tests/scenario/workflows/future" };
+    try {
+      const inputs = { ...fixtureInputs({ files }, root), unregisteredWorkflows: [future] };
+      assert.deepEqual(auditWorkflowAuthoringBudget(inputs), []);
+      const sources = new Map(inputs.tree.sources);
+      sources.set(future.sourcePath, `${files[future.sourcePath]}\nflow({});`);
+      assert.ok(auditWorkflowAuthoringBudget({ ...inputs, tree: { ...inputs.tree, sources } })
+        .some(issue => issue.includes("calls flow()")));
+      assert.ok(auditWorkflowAuthoringBudget({ ...inputs, workflows: [...inputs.workflows, future], unregisteredWorkflows: [] })
+        .some(issue => issue.startsWith("src/dashboard/future.ts:")));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("arm (c): retained mock literals stay exact and served or sibling additions remain forbidden", () => {
-    assert.equal(Object.values(RETAINED_MOCK_LITERALS).flat().length, 27);
+    assert.equal(Object.values(RETAINED_MOCK_LITERALS).flat().length, 42);
+
     assert.deepEqual(auditWorkflowAuthoringBudget(repositoryInputs(tree)), []);
     for (const path of ["src/dashboard/client/queries/day-queries.ts", "src/dashboard/surfaces/workflows/mocks/new-sibling.ts", "src/dashboard/surfaces/workflows/mocks/workflow-mock-run.tsx", ...Object.keys(RETAINED_MOCK_LITERALS)]) {
       const sources = new Map(tree.sources);
@@ -887,7 +915,7 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
       attributeWorkflowArtifact("tests/scenario/separations-supplement.md", workflows),
       "separations",
     );
-    assert.equal(attributeWorkflowArtifact("tests/scenario/i9-lookup.md", workflows), undefined);
+    assert.equal(attributeWorkflowArtifact("tests/scenario/unregistered-lookup.md", workflows), undefined);
     assert.equal(attributeWorkflowArtifact("src/workflows/descriptor-registry.ts", workflows), undefined);
     // Inside `src/workflows/` the harness id is NOT in the path: only the
     // registered FOLDER can say whose budget a file beside its workflow.ts is.

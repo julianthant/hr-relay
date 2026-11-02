@@ -192,6 +192,10 @@ export const ERROR_CATALOG = Object.freeze({
     "Person Lookup received inconsistent UCPath and CRM identities.",
     EmptyParametersSchema,
   ),
+  I9_CHECK_DATA_INVALID: catalogEntry(
+    "I-9 check evidence is missing, invalid, or inconsistent.",
+    EmptyParametersSchema,
+  ),
   PERSON_LOOKUP_UCPATH_SEARCH_FAILED: catalogEntry(
     "UCPath search failed.",
     EmptyParametersSchema,
@@ -266,6 +270,14 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   I9_SIGN_IN_FAILED: catalogEntry(
     "I-9 sign-in failed.",
+    EmptyParametersSchema,
+  ),
+  I9_LOOKUP_FAILED: catalogEntry(
+    "The I-9 record could not be read or verified. Review the page state before retrying.",
+    EmptyParametersSchema,
+  ),
+  I9_LOOKUP_AMBIGUOUS: catalogEntry(
+    "I-9 search did not identify one exact-name employee profile. Resolve the identity before continuing.",
     EmptyParametersSchema,
   ),
   NEW_KRONOS_SIGN_IN_FAILED: catalogEntry(
@@ -626,6 +638,10 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   WORKBOOK_INVALID: catalogEntry(
     "The workbook is malformed and cannot be saved.",
+    EmptyParametersSchema,
+  ),
+  WORKBOOK_PROVIDER_UNAVAILABLE: catalogEntry(
+    "The workflow workbook result is unconfirmed. Resume the same run to check its saved result.",
     EmptyParametersSchema,
   ),
   WORKBOOK_NOT_FOUND: catalogEntry(

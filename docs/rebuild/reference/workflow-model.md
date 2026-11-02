@@ -56,9 +56,13 @@ Trace identity uses the code; a presentation label is not a substitute.
 ### 1.2 The bundle crossing
 
 Definitions and task contracts are browser-safe. Backend task implementations are bound separately.
-`src/workflows/descriptor-registry.ts` compiles the same definitions for the dashboard.
-`src/backend/app/registries/workflow-registry.ts` compiles and composes backend modules from the
-shared task-store inventory.
+Each workflow's `index.ts` declares its definition, public picker order or child-only/unregistered
+exposure, workflow task store and step proofs. `npm run build:registries` reads those declarations
+without executing them. It generates backend module/store/proof lists and a separate descriptor
+tuple that imports only `workflow.ts` definitions. `src/workflows/descriptor-registry.ts` re-exports
+that browser-safe tuple; `src/backend/app/registries/workflow-registry.ts` admits the generated backend
+modules against the shared task-store inventory. The manifest build and check include registry generation
+and freshness respectively.
 
 `WORKFLOW_MODULES` contains `person-lookup` and `separations`. It derives `DESCRIPTORS`,
 `SERVER_REGISTRY`, `WORKFLOW_DEFINITIONS`, `INTAKE_PROJECTIONS`, and `WORKFLOW_ROLES`.
@@ -90,7 +94,9 @@ They remain outside the operator registry. Separations retains
 harnesses for `identity-check`, `kronos-timecard`, `kuali-extraction`, `kuali-finalization`, and
 `ucpath-transaction`. Its `job-summary` group has no harness folder.
 The `workflow-layout` guard in `tests/architecture/workflow-kit/workflow-layout.test.ts` checks
-registered and retained modules against their role, owning composition, and declared groups.
+registered and retained modules against their role, owning composition, and declared groups. The
+test-only OCR inventory includes its unregistered definitions and retained harnesses in these source
+audits without admitting them to production.
 Scenario-path helpers derive potential addresses; they do not prove scenario files or execution.
 
 ### 1.3 Projections
