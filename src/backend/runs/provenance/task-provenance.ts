@@ -246,7 +246,7 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
   }
   for (const gate of allGates) {
     const producer = nodes.find(node => String(node.id) === String(gate.nodeId));
-    if (producer?.kind !== "gate" || (gate.runId !== execution.runId && !input.continuation?.permitsGate(gate)) || gate.result.schemaHash !== deriveSchemaHash(producer.result, "output")) throw new Error(`invalid condition gate ${gate.gateId}`);
+    if (producer?.kind !== "gate" || String(gate.gateId) !== String(producer.id) || (gate.runId !== execution.runId && !input.continuation?.permitsGate(gate)) || gate.result.schemaHash !== deriveSchemaHash(producer.result, "output")) throw new Error(`invalid condition gate ${gate.gateId}`);
     outputs[String(gate.nodeId)] = JsonValueSchema.parse(producer.result.parse(gate.result.value));
   }
   for (const id of visited) {
