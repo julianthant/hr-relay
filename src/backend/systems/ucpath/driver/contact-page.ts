@@ -1,7 +1,7 @@
 import type { Locator, Page } from "playwright";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
-import { UcpathContactRefusedError } from "../../../../models/systems/ucpath/emergency-contacts.js";
+import { UcpathContactAddressFieldsSchema, UcpathContactRefusedError } from "../../../../models/systems/ucpath/emergency-contacts.js";
 import type { UcpathEmergencyContactInput } from "../../../../models/systems/ucpath/emergency-contacts.js";
 import { UcpathContactPageSnapshotSchema } from "../../../../models/ui/ucpath-emergency-contact.js";
 import type { UcpathContactPageSnapshot } from "../../../../models/ui/ucpath-emergency-contact.js";
@@ -98,11 +98,14 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
       await current(() => rowField("editAddress", index).click());
       await current(() => addressField(recipes.addressFields[0][1]).waitFor({ state: "visible", timeout: 10_000 }));
       const values = await current(() => Promise.all(recipes.addressFields.map(async ([key, label]) => {
-        return [key, (await addressField(label).inputValue()).trim() || null];
+        return [key, (await addressField(label).inputValue()).trim() || null] as const;
       })));
       await current(() => page.getByRole("button", { name: "Cancel", exact: true }).click());
       await current(() => addressField(recipes.addressFields[0][1]).waitFor({ state: "hidden", timeout: 10_000 }));
-      return values.every(([, value]) => value === null) ? null : Object.fromEntries(values);
+      if (values.every(([, value]) => value === null)) return null;
+      const address = UcpathContactAddressFieldsSchema.safeParse(Object.fromEntries(values));
+      if (!address.success) throw new UcpathContactRefusedError("unreadable-contact-row", { cause: address.error });
+      return address.data;
     }
 
     return {

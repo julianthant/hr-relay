@@ -35,7 +35,7 @@ function harness(initial = page) {
   const points: DataPoint[] = [];
   const driver = createDeterministicUcpathPersonOrgDriver(undefined, undefined, port);
   const ctx = { ...common, driver, recordData: (value: DataPoint | readonly DataPoint[]) => {
-    if (Array.isArray(value)) points.push(...value); else points.push(value as DataPoint);
+    if ("direction" in value) points.push(value); else points.push(...value);
   } };
   return { port, points, ctx };
 }
