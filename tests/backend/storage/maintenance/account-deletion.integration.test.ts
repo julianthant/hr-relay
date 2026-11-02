@@ -4,12 +4,12 @@ import { composeDashboardApplication } from "../../../../src/backend/app/composi
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
 import assert from "node:assert/strict";
-import nativeFs, { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import nativeFs, { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, onTestFinished, vi } from "vitest";
-import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
+import { AutomaticShutdownBackupError, backupRegisteredPeopleAtCleanShutdown, composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -18,6 +18,7 @@ import * as accountDeletion from "../../../../src/backend/storage/maintenance/ac
 import { fixedLayoutEntries } from "../../../../src/backend/storage/maintenance/fixed-layout.js";
 import { ProfileVerifierDocumentSchema } from "../../../../src/models/profiles/profile.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { AuthorityBackupRequestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 
@@ -76,7 +77,7 @@ it("deletes only the confirmed logged-out account, including native key and loca
   } finally { await f.close(); }
 });
 
-for (const change of ["none", "unknown-member"] as const) it(`resumes interrupted erasure at startup with ${change}`, async () => {
+for (const change of ["none", "unknown-member", "shutdown-backup"] as const) it(`resumes interrupted erasure at startup with ${change}`, async () => {
   const f = await fixture(), original = nativeFs.unlinkSync;
   let stopped = false;
   const spy = vi.spyOn(nativeFs, "unlinkSync").mockImplementation(path => {
@@ -89,6 +90,13 @@ for (const change of ["none", "unknown-member"] as const) it(`resumes interrupte
     const journal = join(f.workspace, ".tracker", "control", "account-deletion.json");
     const plan = accountDeletion.AccountDeletionSchema.parse(JSON.parse(readFileSync(journal, "utf8"))); assert.equal(plan.pending, true);
     assert.throws(() => f.machine.readProfileRegistry(), /account-deletion-pending/u);
+    if (change === "shutdown-backup") {
+      await f.runtime.close(); f.machine.release();
+      await assert.rejects(backupRegisteredPeopleAtCleanShutdown(f.workspace, f.lifetime), error => error instanceof AutomaticShutdownBackupError
+        && error.cause instanceof Error && error.cause.message === "runtime-control: account-deletion-pending");
+      f.lifetime.assertHeld();
+      assert.equal(existsSync(journal), true); assert.equal(existsSync(f.root), true);
+    }
     if (change === "unknown-member") {
       const unknown = join(f.root, "unknown.txt"); writeFileSync(unknown, "unowned", { mode: 0o600 });
       await assert.rejects(f.restart(), error => error instanceof Error && error.cause instanceof Error && error.cause.message === "account-deletion-membership-changed");
@@ -100,7 +108,9 @@ for (const change of ["none", "unknown-member"] as const) it(`resumes interrupte
   } finally { spy.mockRestore(); syncBuiltinESMExports(); await f.close(); }
 });
 
-it("serves confirmed account deletion through the guarded dashboard route and signals an empty machine", async () => {
+for (const empty of [true, false]) it(empty
+  ? "serves confirmed account deletion through the guarded dashboard route and signals an empty machine"
+  : "backs up the remaining account after confirmed deletion through the guarded dashboard route", async () => {
   const f = await fixture();
   onTestFinished(() => f.close());
   let deletionError: unknown;
@@ -110,6 +120,8 @@ it("serves confirmed account deletion through the guarded dashboard route and si
     catch (error) { deletionError = error; throw error; }
   });
   onTestFinished(() => { deletion.mockRestore(); });
+  const backups = vi.spyOn(AuthorityBackupService.prototype, "request");
+  onTestFinished(() => { backups.mockRestore(); });
   await f.runtime.close();
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
   const application = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation,
@@ -119,7 +131,7 @@ it("serves confirmed account deletion through the guarded dashboard route and si
   const post = (path: string, body: unknown, cookie?: string, origin = base) => fetch(`${base}/api/v1/profile/${path}`, {
     method: "POST", headers: { origin, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body),
   });
-  for (const email of ["fixture@ucsd.edu", "other@ucsd.edu"]) {
+  for (const email of empty ? ["fixture@ucsd.edu", "other@ucsd.edu"] : ["fixture@ucsd.edu"]) {
     const login = await post("sign-in", { email, password: "disposable-fixture-password" });
     assert.equal(PublicProfileStateSchema.parse(await login.json()).state, "active");
     const cookie = login.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
@@ -129,10 +141,18 @@ it("serves confirmed account deletion through the guarded dashboard route and si
     const response = await post("delete-account", { confirmed: true }, cookie);
     assert.ifError(deletionError);
     assert.equal(response.status, 200);
-    assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "signed-out", signUpRequired: email === "other@ucsd.edu" });
+    assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "signed-out", signUpRequired: empty && email === "other@ucsd.edu" });
     assert.equal((await post("delete-account", { confirmed: true }, cookie)).status, 409);
   }
-  assert.deepEqual(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`)).json()), { state: "signed-out", signUpRequired: true });
+  assert.deepEqual(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`)).json()), { state: "signed-out", signUpRequired: empty });
+  await application.stop();
+  assert.equal(backups.mock.calls.length, empty ? 0 : 1);
+  assert.equal(existsSync(f.root), false);
+  assert.equal(existsSync(f.otherRoot), !empty);
+  if (!empty) {
+    assert.equal(AuthorityBackupRequestSchema.parse(backups.mock.calls[0]?.[0]).trigger, "graceful-drain");
+    assert.equal(readdirSync(join(f.otherRoot, "backups", "authority")).filter(name => name.endsWith(".shutdown.sqlite.manifest.json")).length, 1);
+  }
 });
 
 it("refuses deletion before effects when a shared installation upgrade backup retains the person", async () => {
