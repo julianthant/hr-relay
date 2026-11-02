@@ -4,7 +4,7 @@ import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun } from "../../../../src/backend/runtime/execution/run-executor.js";
-import { PersonLookupResultSchema } from "../../../../src/workflows/person-lookup/workflow.js";
+import { PersonLookupResultSchema } from "../../../../src/models/workflows/person-lookup/result.js";
 import { RUN_ID, WORKFLOW_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../../../support/helpers/phase1f-executor-harness.js";
 

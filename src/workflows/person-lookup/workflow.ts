@@ -1,4 +1,5 @@
-import { z } from "zod";
+import type { z } from "zod";
+import { PersonLookupResultSchema } from "../../models/workflows/person-lookup/result.js";
 import { defineWorkflow, defineStepEntries } from "../../workflow-kit/workflow-definition.js";
 import { requireFact, defineWorkflowStep } from "../../workflow-kit/workflow.js";
 import { CANONICAL_FIELDS } from "../../models/fields/registry.js";
@@ -11,9 +12,9 @@ import { SearchPersonMatch } from "../../models/systems/ucpath/search-person-mat
 import { CrmReadOnboardingResults } from "../../models/systems/crm/read-onboarding-results.js";
 import { CrmVerifyOnboardingRecord } from "../../models/systems/crm/verify-onboarding-record.js";
 import { CrmSearchOnboardingRecords } from "../../models/systems/crm/search-onboarding-records.js";
-import { CrmReadOnboardingDates, ReadOnboardingDatesOutputSchema } from "../../models/systems/crm/read-onboarding-dates.js";
+import { CrmReadOnboardingDates } from "../../models/systems/crm/read-onboarding-dates.js";
 import { ReadResolvedIdentity } from "../../models/workflows/person-lookup/read-resolved-identity.js";
-import { ReadActiveStatus, ActiveStatusOutcomeSchema } from "../../models/workflows/person-lookup/read-active-status.js";
+import { ReadActiveStatus } from "../../models/workflows/person-lookup/read-active-status.js";
 import { derivePersonLookupOutcome } from "../../rules/matching/person-lookup.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 
@@ -24,8 +25,6 @@ const lookupMethodDisplay = { cases: [
 ] } as const;
 
 export { PersonLookupInput, PersonLookupCanonicalInput };
-export const PersonLookupResultSchema = z.strictObject({ activeStatus: ActiveStatusOutcomeSchema,
-  crmDates: z.discriminatedUnion("state", [z.strictObject({ state: z.literal("included"), dates: ReadOnboardingDatesOutputSchema }), z.strictObject({ state: z.literal("not-requested") })]) });
 export const personLookupIntake = defineIntakeProjection(PersonLookupInput, { emplId: CANONICAL_FIELDS.eid, name: CANONICAL_FIELDS.fullName });
 export function crmQuery(input: z.output<typeof PersonLookupInput>, person?: z.output<typeof SearchPersonOrg.output>, match?: z.output<typeof SearchPersonMatch.output>) {
   const name = input.mode === "match" ? personLookupTitle(input) : "name" in input ? input.name : person?.selection.selected?.name;

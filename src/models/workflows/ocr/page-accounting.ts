@@ -1,9 +1,11 @@
 import { z } from "zod";
 import { AdmittedExtractionSchema, admitOcrExtraction, type AdmittedExtraction } from "../../ocr/extraction.js";
+import { OcrFormTypeSchema, type OcrFormType } from "../../ocr/form-registry.js";
 import { childRunOutcomeSchema } from "../../workflow/graph.js";
 import { FingerprintSchema, ItemIdSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
+import { deriveItemId } from "../../../rules/identity/logical-item.js";
 import { OcrPageInputSchema, OcrSourceManifestSchema, ocrExtractionId, ocrPageInputs,
   type OcrPageInput, type OcrSourceManifest } from "./source-manifest.js";
 
@@ -48,22 +50,27 @@ export function bindOcrPageReading(input: OcrPageInput, candidate: unknown): Ocr
 export function bindManualOcrPageReading(input: OcrPageInput, actorId: string, candidate: unknown): OcrPageReading {
   const admission = admitOcrExtraction(candidate);
   if (!admission.admitted) throw new Error(`Manual OCR source reading refused: ${admission.problems.join("; ")}`);
-  if (admission.extraction.source.kind !== "operator" || admission.extraction.source.actorId !== actorId) {
+  return bindCanonicalManualOcrReading(input, actorId, admission.extraction);
+}
+
+export function bindCanonicalManualOcrReading(input: OcrPageInput, actorId: string, extraction: AdmittedExtraction): OcrPageReading {
+  if (extraction.source.kind !== "operator" || extraction.source.actorId !== actorId) {
     throw new Error("Manual OCR reading requires the asserting operator's provenance");
   }
-  return deepFreeze(OcrPageReadingSchema.parse({ input, extractionId: ocrExtractionId(input), extraction: admission.extraction }));
+  return deepFreeze(OcrPageReadingSchema.parse({ input, extractionId: ocrExtractionId(input), extraction }));
 }
 
 export const OcrPageOutcomeSchema = childRunOutcomeSchema(OcrPageReadingSchema);
 export type OcrPageOutcome = z.infer<typeof OcrPageOutcomeSchema>;
 
 export const OcrPageAccountingSchema = z.strictObject({
+  formType: OcrFormTypeSchema,
   manifest: OcrSourceManifestSchema,
   readingId: ItemIdSchema,
   outcomes: z.array(OcrPageOutcomeSchema).min(1),
 }).superRefine((accounting, context) => {
   if (!OcrSourceManifestSchema.safeParse(accounting.manifest).success || !ItemIdSchema.safeParse(accounting.readingId).success) return;
-  const requests = ocrPageInputs(accounting.manifest, accounting.readingId);
+  const requests = ocrPageInputs(accounting.manifest, accounting.readingId, accounting.formType);
   if (accounting.outcomes.length !== requests.length) {
     context.addIssue({ code: "custom", message: "OCR accounting requires one retained outcome per original page" });
   }
@@ -81,10 +88,9 @@ export const OcrPageAccountingSchema = z.strictObject({
 export type OcrPageAccounting = z.infer<typeof OcrPageAccountingSchema>;
 
 export function ocrExtractionItemId(input: OcrPageInput) {
-  const hash = ocrExtractionId(input);
-  return ItemIdSchema.parse(`${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`);
+  return ItemIdSchema.parse(deriveItemId("ocr-page", ocrExtractionId(input)));
 }
 
-export function accountOcrPages(manifest: OcrSourceManifest, readingId: z.input<typeof ItemIdSchema>, outcomes: readonly OcrPageOutcome[]): OcrPageAccounting {
-  return deepFreeze(OcrPageAccountingSchema.parse({ manifest, readingId, outcomes }));
+export function accountOcrPages(manifest: OcrSourceManifest, readingId: z.input<typeof ItemIdSchema>, outcomes: readonly OcrPageOutcome[], formType: OcrFormType = "emergency-contact"): OcrPageAccounting {
+  return deepFreeze(OcrPageAccountingSchema.parse({ formType, manifest, readingId, outcomes }));
 }

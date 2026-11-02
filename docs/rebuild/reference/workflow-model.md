@@ -90,7 +90,9 @@ They remain outside the operator registry. Separations retains
 harnesses for `identity-check`, `kronos-timecard`, `kuali-extraction`, `kuali-finalization`, and
 `ucpath-transaction`. Its `job-summary` group has no harness folder.
 The `workflow-layout` guard in `tests/architecture/workflow-kit/workflow-layout.test.ts` checks
-registered and retained modules against their role, owning composition, and declared groups.
+registered and retained modules against their role, owning composition, and declared groups. The
+test-only OCR inventory includes its unregistered definitions and retained harnesses in these source
+audits without admitting them to production.
 Scenario-path helpers derive potential addresses; they do not prove scenario files or execution.
 
 ### 1.3 Projections

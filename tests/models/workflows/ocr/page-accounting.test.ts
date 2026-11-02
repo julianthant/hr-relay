@@ -74,10 +74,11 @@ describe("OCR source-bound page processing", () => {
   it("refuses missing, repeated, reordered, foreign or rebound child results", () => {
     const { manifest, inputs } = sourceFixture();
     const outcomes = inputs.map(input => donePage(input));
+    assert.equal(OcrPageAccountingSchema.safeParse({ formType: "emergency-contact", manifest, readingId: READING_ID, outcomes }).success, true);
     for (const wrong of [[outcomes[0]], [outcomes[0], outcomes[0]], [...outcomes].reverse(),
       [outcomes[0], { ...outcomes[1], runId: outcomes[0].runId }],
       [outcomes[0], { ...outcomes[1], output: outcomes[0].state === "done" ? outcomes[0].output : null }]]) {
-      assert.equal(OcrPageAccountingSchema.safeParse({ manifest, readingId: READING_ID, outcomes: wrong }).success, false);
+      assert.equal(OcrPageAccountingSchema.safeParse({ formType: "emergency-contact", manifest, readingId: READING_ID, outcomes: wrong }).success, false);
     }
     assert.throws(() => bindOcrPageReading(inputs[1], admittedPage(inputs[0])), /exact source request/);
   });
@@ -88,9 +89,9 @@ describe("OCR source-bound page processing", () => {
     assert.throws(() => bindOcrPageReading(inputs[0], { ...reading.extraction, pageFingerprint: "f".repeat(64) }), /canonical admitted/);
     assert.equal(OcrPageReadingSchema.safeParse({ ...reading, extractionId: "f".repeat(64) }).success, false);
     assert.equal(OcrPageReadingSchema.safeParse({ ...reading, input: { ...reading.input, sourcePage: 0 } }).success, false);
-    assert.equal(OcrPageAccountingSchema.safeParse({ manifest: { ...manifest, fingerprint: "f".repeat(64) },
+    assert.equal(OcrPageAccountingSchema.safeParse({ formType: "emergency-contact", manifest: { ...manifest, fingerprint: "f".repeat(64) },
       readingId: READING_ID, outcomes: inputs.map(input => donePage(input)) }).success, false);
-    assert.equal(OcrPageAccountingSchema.safeParse({ manifest, readingId: "invalid", outcomes: inputs.map(input => donePage(input)) }).success, false);
+    assert.equal(OcrPageAccountingSchema.safeParse({ formType: "emergency-contact", manifest, readingId: "invalid", outcomes: inputs.map(input => donePage(input)) }).success, false);
     assert.throws(() => bindOcrPageReading(inputs[0], { ...reading.extraction,
       record: { ...reading.extraction.record, answers: [] } }));
     assert.equal(reading.extraction.readAt, READ_AT);

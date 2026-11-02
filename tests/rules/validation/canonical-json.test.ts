@@ -1,3 +1,4 @@
+import { PersonLookupResultSchema } from "../../../src/models/workflows/person-lookup/result.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe,it } from "vitest";
@@ -8,7 +9,6 @@ import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import {
 PersonLookupCanonicalInput,
-PersonLookupResultSchema,
 } from "../../../src/workflows/person-lookup/workflow.js";
 
 function nodeSha256(text: string): string {
