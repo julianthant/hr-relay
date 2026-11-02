@@ -12,7 +12,7 @@ import { bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/p
 import { buildOcrSourceManifest, ocrPageInputs } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { ExtractPdfPages, type ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
-import { defineServiceStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
+import { defineServiceStore, defineTaskStoreRegistry, type RegisteredTaskStore } from "../../../../src/workflow-kit/task-registry.js";
 import { UNREGISTERED_OCR_MODULES, UNREGISTERED_OCR_STORES } from "../../fixtures/ocr/unregistered-workflows.js";
 import { submittedPage, READING_ID } from "../../fixtures/ocr/source-pages.js";
 import { canonicalChildExecution } from "./canonical-child-execution.js";
@@ -26,13 +26,13 @@ export function createOcrReviewWorld() {
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number }> = {}) {
       const actorId = options.actorId ?? "local-operator";
-      let rendered: z.output<typeof ExtractPdfPagesOutputSchema> | undefined;
+      const rendered: { value?: z.output<typeof ExtractPdfPagesOutputSchema> } = {};
       const render = defineTask(ExtractPdfPages, { sessions: [], async run({ ctx }) {
-        assert.ok(rendered);
-        ctx.recordData([{ direction: "read", field: "pageCount", value: rendered.pageCount }]);
-        return rendered;
+        assert.ok(rendered.value);
+        ctx.recordData([{ direction: "read", field: "pageCount", value: rendered.value.pageCount }]);
+        return rendered.value;
       } });
-      const entries = [...taskStoreRegistry.stores.filter(store => store.namespace !== "extraction"),
+      const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => store.namespace !== "extraction"),
         defineServiceStore("extraction", { render }), ...UNREGISTERED_OCR_STORES];
       const tasks = entries.flatMap(store => Object.values(store.tasks));
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
@@ -51,8 +51,8 @@ export function createOcrReviewWorld() {
         bytes: new TextEncoder().encode("%PDF-1.7\nSynthetic renderer fixture\n%%EOF") });
       const pageBytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGvwAAAAASUVORK5CYII=", "base64");
       const image = await artifacts.put(pageBytes, { mediaType: "image/png" });
-      rendered = { pageCount: options.pageCount ?? 1, pages: Array.from({ length: options.pageCount ?? 1 }, (_, index) => ({ sourcePage: index + 1, image })) };
-      const manifest = buildOcrSourceManifest(upload.artifact, rendered);
+      rendered.value = { pageCount: options.pageCount ?? 1, pages: Array.from({ length: options.pageCount ?? 1 }, (_, index) => ({ sourcePage: index + 1, image })) };
+      const manifest = buildOcrSourceManifest(upload.artifact, rendered.value);
       const readings = ocrPageInputs(manifest, READING_ID).map(page => {
         const original = submittedPage(page, "Example, Avery", options.record === true ? "emergency-contact" : "blank");
         const valid = { ...original, source: { kind: "operator" as const, actorId } };

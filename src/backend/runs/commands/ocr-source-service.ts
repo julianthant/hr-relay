@@ -75,7 +75,7 @@ export function createOcrSourceService(input: Readonly<{
         return lease;
       } catch (error) {
         try { await lease.dispose(); }
-        catch (closeError) { throw new AggregateError([error, closeError], "ocr-source-lease-closure-unproved", { cause: error }); }
+        catch (closeError) { throw new AggregateError([error, closeError], "ocr-source-lease-closure-unproved", { cause: closeError }); }
         throw error;
       }
     },

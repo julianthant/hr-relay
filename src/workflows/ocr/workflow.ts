@@ -1,6 +1,6 @@
 import { defineCanonicalInput } from "../../models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
-import { OCR_INPUT_EXAMPLE, OcrInputSchema } from "../../models/workflows/ocr/input.js";
+import { OCR_INPUT_EXAMPLE, OcrCanonicalInputSchema, OcrInputSchema } from "../../models/workflows/ocr/input.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { ocrSourcePagesDefinition } from "./steps/source-pages/step.js";
@@ -14,7 +14,7 @@ export const ocrWorkflow = defineWorkflow({
   icon: "FileScan",
   category: "documents",
   input: OcrInputSchema,
-  canonicalInput: defineCanonicalInput(OcrInputSchema, OcrInputSchema, [OCR_INPUT_EXAMPLE]),
+  canonicalInput: defineCanonicalInput(OcrInputSchema, OcrCanonicalInputSchema, [OCR_INPUT_EXAMPLE]),
   inputSubject: "document",
   surface: { shape: "single" },
   enqueue: "reject-active",

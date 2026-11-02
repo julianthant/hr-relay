@@ -17,6 +17,7 @@ export const OcrInputSchema = z.strictObject({
     z.strictObject({ kind: z.literal("manual"), actorId: z.string().min(1), assertions: z.array(ManualOcrAssertionSchema).min(1) }),
   ]),
 });
+export const OcrCanonicalInputSchema = OcrInputSchema.extend({ approval: OcrInputSchema.shape.approval.removeDefault() });
 export const OCR_INPUT_EXAMPLE = OcrInputSchema.parse({
   document: OCR_PAGE_EXAMPLE.page.document, readingId: OCR_PAGE_EXAMPLE.page.readingId,
   formType: "emergency-contact", roster: null, reading: { kind: "subscription" } });

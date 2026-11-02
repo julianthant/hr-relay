@@ -34,7 +34,7 @@ it("closes prepared source bytes when person authority changes during verificati
   let current = true, disposed = false;
   const sources = createOcrSourceService({ database: f.database, reader: f.canonical.lifecycle, clock: f.clock,
     artifacts: f.artifacts, assertCurrent: () => { if (!current) throw new OcrSourceRefusedError(); },
-    artifactReader: { verify: f.artifactReader.verify, prepare: async (ref, signal) => {
+    artifactReader: { verify: ref => f.artifactReader.verify(ref), prepare: async (ref, signal) => {
       const lease = await f.artifactReader.prepare(ref, signal);
       current = false;
       return { ...lease, dispose: async () => { await lease.dispose(); disposed = true; } };
