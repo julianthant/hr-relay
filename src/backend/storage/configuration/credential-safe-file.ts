@@ -410,6 +410,9 @@ export function withPrivateFileLock<T>(directory: string, name: string, body: (h
     proof?.locks.add(held);
     try { held.assertHeld(); outcome = { kind: "value", value: body(held) }; }
     catch (error) { outcome = { kind: "error", error }; }
+    if (outcome.kind === "error" && hasUnprovedSourceClosure(outcome.error)) {
+      retainUnprovedSourceOwners(outcome.error, { directory: held }); throw outcome.error;
+    }
     proof?.locks.delete(held);
     try {
       held.assertHeld();

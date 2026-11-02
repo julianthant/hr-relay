@@ -1,12 +1,11 @@
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import type { ChildProcess } from "node:child_process";
-import { appendRecoveryNotification } from "../../runs/lifecycle/startup-crash-recovery.js";
-import { RunRecordService, requireLifecycleApplied } from "../../runs/lifecycle/run-record-service.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
 import { CanonicalCrashRecoveryRequestSchema, RunClaimTokenSchema } from "../../../models/run/worker.js";
 import { privatePathRejects } from "../private-path.js";
 import { clearOperationProofSlots, revalidateOperationProof, outermostOperationProof, withOperationProof } from "../configuration/credential-safe-file.js";
-import { assertOfflineMaintenanceForProcessRoot, type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
+import { type InstallationLease, type VerifiedRelocationActivationIntent } from "../admission/installation.js";
+import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock, offlineMaintenanceWorkspace } from "../admission/lifetime-lock.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { authoritySourceDatabaseIdentity, type AuthorityBackupExpectedSource } from "./database-identity.js";
@@ -63,7 +62,7 @@ import { deriveStableUuid, lifecycleCommandId } from "../../../rules/identity/id
 import { createTimelineRepository, timelineEventFromRow, TimelineRecordError } from "./timeline-repository.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import { CommandIdentityConflictError, AuthorityCommandAuditRecordSchema, AuthorityCommandRecordSchema, StoredAuthorityCommandRecordSchema, BulkParentCommandRecordSchema, BulkRunCommandAcceptanceRecordSchema, CommandAuditRecordSchema, CommandRequestSchema, StorageRelocationCommandRequestSchema, RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
-import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
+import { assertCredentialStoreOwner, stoppedLogoutOwnsCredentialCommand } from "../configuration/credential-store.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
@@ -266,6 +265,11 @@ type WriteIntentRepository = Readonly<{
   listByRun(runId: string): readonly z.infer<typeof WriteIntentRecordSchema>[];
   // Dry-run attempt and outbox evidence join through the run's intent rows because they have no run ID.
   countDryRunEvidenceByRun(runId: string): z.infer<typeof DryRunWriteSafetyCountsSchema>;
+}>;
+
+export type PendingLogoutServices = Readonly<{
+  browserClosure: ProfileBrowserClosure;
+  recover(database: AuthorityDatabase, operation: LogoutOperation, lifetime: RuntimeLifetimeLock): void;
 }>;
 
 export interface AuthorityWriteCommitHooks {
@@ -1850,6 +1854,7 @@ export class AuthorityDatabase implements Disposable {
       readAppSettings(this.#database);
       this.#database.exec("COMMIT");
       this.#credentialCommandIds = commandId => {
+        if (purpose === "stopped-logout-settlement") return stoppedLogoutOwnsCredentialCommand(this.#admission, commandId);
         if (credentials === undefined) throw new CredentialContextRequiredError();
         assertCredentialStoreOwner(credentials, this.#admission);
         return credentials.ownsCommandId(commandId);
@@ -2307,13 +2312,12 @@ export class AuthorityDatabase implements Disposable {
       || observed.authorityContentFingerprint !== operation.settlement?.after) throw new Error("profile-logout-completion-source-changed");
   }
 
-  async #completePendingLogout(admission: RuntimeAdmission): Promise<void> {
+  async #completePendingLogout(admission: RuntimeAdmission, profileBrowserClosure: ProfileBrowserClosure): Promise<void> {
     try {
       if (this.#logoutCompletion === undefined) {
         const path = join(admission.stateRoot, "state.db"), operation = admission.assertPendingLogoutSettlementDatabase(path);
         if (operation.settlement?.phase !== "done") throw new Error("profile-logout-settlement-incomplete");
         const { assertCredentialCopyResourcesClosed, probeStoppedProfileBrowsersClosed, enumerateProfileCredentialMembership } = await import("../maintenance/profile-inventory.js");
-        const { profileBrowserClosure } = await import("../../storage/browser-roots.js");
         assertCredentialCopyResourcesClosed(AuthorityDatabase.readProfileMaintenanceInventory(admission));
         await probeStoppedProfileBrowsersClosed(admission, this.#clock, profileBrowserClosure);
         const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
@@ -2335,12 +2339,12 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
-  #logoutContext(admission: RuntimeAdmission, restore: OfflineMaintenanceOperation) {
+  #logoutContext(admission: RuntimeAdmission, restore: OfflineMaintenanceOperation, profileBrowserClosure: ProfileBrowserClosure) {
     let disposed = false;
     return Object.freeze({ admission, restore, facts: AuthorityDatabase.readProfileMaintenanceInventory(admission),
       complete: async (): Promise<void> => {
         if (disposed) throw new Error("profile-logout-context-released");
-        await this.#completePendingLogout(admission);
+        await this.#completePendingLogout(admission, profileBrowserClosure);
       },
       dispose: (): void => {
         if (disposed) return;
@@ -2364,7 +2368,7 @@ export class AuthorityDatabase implements Disposable {
     finally { this.#logoutPublication = undefined; }
   }
 
-  static async resumePendingLogout(machine: RuntimeAdmission, input: LogoutOperation, clock: Clock = systemClock) {
+  static async resumePendingLogout(machine: RuntimeAdmission, input: LogoutOperation, services: PendingLogoutServices, clock: Clock = systemClock) {
     const operation = LogoutOperationSchema.parse(input), lifetime = machine.lifetime;
     machine.assertColdPendingLogout(operation);
     if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("profile-logout-cold-controller-required");
@@ -2384,7 +2388,7 @@ export class AuthorityDatabase implements Disposable {
       database = new AuthorityDatabase(copy, { path: snapshot.path, busyTimeoutMs: 250, migrationOwner: "profile-logout-inspection", openMode: "storage-doctor-read-only-no-migrate" }, clock,
         undefined, undefined, undefined, undefined, "stopped-logout-inspection");
       database.#coldLogout = { machine, operationId: operation.operationId, admission, restore, sourcePath: path, owner, inspection };
-      const stopped = await database.settlePendingLogout(machine, operation, []);
+      const stopped = await database.settlePendingLogout(machine, operation, [], services);
       return stopped;
     } catch (error) {
       const failure = hasUnprovedSourceClosure(error) ? error : retainAuthoritySourceClosure([error], { admission: { machine, owner, admission, copy }, database, snapshot, restore });
@@ -2394,8 +2398,9 @@ export class AuthorityDatabase implements Disposable {
   }
 
   async settlePendingLogout(machine: RuntimeAdmission, input: LogoutOperation,
-    exits: readonly Readonly<{ member: WorkerPoolMember; processId: number; leaseGeneration: number; valid(): boolean }>[]) {
+    exits: readonly Readonly<{ member: WorkerPoolMember; processId: number; leaseGeneration: number; valid(): boolean }>[], services: PendingLogoutServices) {
     const operation = LogoutOperationSchema.parse(input), lifetime = machine.lifetime, cold = this.#coldLogout;
+    const profileBrowserClosure = services.browserClosure;
     const path = cold?.sourcePath ?? this.#path;
     const matchesMember = (slot: z.infer<typeof WorkerSlotRecordSchema>, member: WorkerPoolMember) => slot.workerId === member.workerId
       && slot.workflow === member.workflowId && slot.ordinal === member.ordinal && slot.poolIndex === member.poolIndex && slot.membershipRevision === member.membershipRevision;
@@ -2440,7 +2445,6 @@ export class AuthorityDatabase implements Disposable {
       database = new AuthorityDatabase(copyAdmission, { path: snapshot.path, busyTimeoutMs: 250, migrationOwner: "profile-logout-inspection", openMode: "storage-doctor-read-only-no-migrate" }, this.#clock,
         undefined, undefined, undefined, undefined, "stopped-logout-inspection");
       const { probeStoppedProfileBrowsersClosed } = await import("../maintenance/profile-inventory.js");
-      const { profileBrowserClosure } = await import("../../storage/browser-roots.js");
       await probeStoppedProfileBrowsersClosed(admission, this.#clock, profileBrowserClosure);
       admission.assertPendingLogoutSettlementDatabase(path);
       if (inspectNativeAuthority(database.#database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint !== copied.authorityContentFingerprint
@@ -2479,7 +2483,7 @@ export class AuthorityDatabase implements Disposable {
           if (identity.workerLifetime.leaseGeneration !== worker.leaseGeneration || identity.workerLifetime.membershipRevision !== worker.member.membershipRevision) throw new Error("profile-logout-run-generation-changed");
           return [CanonicalCrashRecoveryRequestSchema.parse({ commandId: lifecycleCommandId("logout-crash", { operationId: operation.operationId,
             runId: run.envelope.runId, version: run.version, ...identity }), runId: run.envelope.runId, expectedVersion: run.version,
-            claim, ...identity, now: stoppedAt })];
+            claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration }, ...identity, now: stoppedAt })];
         });
         snapshot.assertUnchanged();
         this.#publishPendingLogout(admission, LogoutOperationSchema.parse({ ...operation, settlement: { phase: "prepared", stoppedAt,
@@ -2502,31 +2506,14 @@ export class AuthorityDatabase implements Disposable {
       if (copied.authorityContentFingerprint !== settlement.before && copied.authorityContentFingerprint !== settlement.after) throw new Error("profile-logout-settlement-source-changed");
       if (settlement.phase === "done") {
         if (copied.authorityContentFingerprint !== settlement.after) throw new Error("profile-logout-settlement-source-changed");
-        return this.#logoutContext(admission, restore);
+        return this.#logoutContext(admission, restore, profileBrowserClosure);
       }
       const clock = capturedInstantClock(settlement.stoppedAt);
       database = new AuthorityDatabase(admission, { path, busyTimeoutMs: 250, migrationOwner: "profile-logout-settlement", openMode: "read-write" }, clock,
         undefined, undefined, undefined, undefined, "stopped-logout-settlement");
       database.#logoutBatch = { admission };
-      let sequence = 0;
-      const lifecycle = new RunRecordService({ database, clock, lifecycleEventProcessId: settlement.processId,
-        ids: { uuid: () => deriveStableUuid(`logout:${prepared.operationId}`, String(sequence++)) },
-        publishQueued: () => { throw new Error("profile-logout-cannot-enqueue"); } });
-      database.withAuthorityTransaction(() => {
-        for (const request of settlement.requests) {
-          const run = requireLifecycleApplied(lifecycle.recoverCrash(request, lifetime));
-          appendRecoveryNotification(database!.authority, run.lifecycle.state === "parked-write" ? "RUN_CRASH_WRITE_UNRESOLVED" : "RUN_INTERRUPTED_BY_CRASH",
-            { runId: request.runId, version: request.expectedVersion }, settlement.stoppedAt, request.runId);
-        }
-        for (const worker of settlement.workers) {
-          const slot = database!.authority.workerSlots.get(worker.member.workerId), lease = database!.authority.workerLeases.get(worker.member.workerId);
-          if (slot === undefined || lease === undefined || lease.processId !== worker.processId || lease.leaseGeneration !== worker.leaseGeneration
-            || !matchesMember(slot, worker.member)) throw new Error("profile-logout-exit-source-changed");
-          for (const released of database!.settleInterruptedWorker(lifetime, worker.member.workerId, worker.leaseGeneration, settlement.stoppedAt)) {
-            appendRecoveryNotification(database!.authority, "RUN_CRASH_RESOURCES_RELEASED", released, settlement.stoppedAt);
-          }
-        }
-      });
+      const sourceDatabase = database;
+      database.withAuthorityTransaction(() => services.recover(sourceDatabase, prepared, lifetime));
       database.#logoutBatch = undefined;
       database.close();
       const committed = admission.assertPendingLogoutSettlementDatabase(path), expected = committed.settlement;
@@ -2534,7 +2521,7 @@ export class AuthorityDatabase implements Disposable {
       if (expected?.phase !== "commit-intent" || expected.after !== readback.authorityContentFingerprint) throw new Error("profile-logout-settlement-readback-failed");
       database.#publishPendingLogout(admission, LogoutOperationSchema.parse({ ...committed, settlement: { ...expected, phase: "done" } }));
       database = undefined;
-      return this.#logoutContext(admission, restore);
+      return this.#logoutContext(admission, restore, profileBrowserClosure);
     } catch (error) {
       const failure = hasUnprovedSourceClosure(error) ? error : retainAuthoritySourceClosure([error], { database: { original: this, temporary: database }, admission: { admission, copyAdmission }, snapshot, restore });
       this.#admission.retainSourceClosure(failure); admission?.retainSourceClosure(failure);

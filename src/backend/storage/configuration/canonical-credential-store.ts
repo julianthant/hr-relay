@@ -5,6 +5,7 @@ import { z } from "zod";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { DuoCredentialRecordSchema } from "../../../models/config/duo-credential-store.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { encodePrivate } from "../../../rules/validation/private-equal.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import type { SignUpOperation } from "../../../models/profiles/profile.js";
 import type { ProfilePublicationRead, StoppedControlProfileInventory } from "../admission/installation.js";
@@ -561,6 +562,33 @@ export function captureStoppedIncompleteCredentials(admissionInput: RuntimeAdmis
   }
 }
 
+export function readStoppedLogoutProtectedRecord(admissionInput: RuntimeAdmission): CanonicalCredentialRecord {
+  const admission = requireRuntimeAdmission(admissionInput), path = join(admission.stateRoot, "state.db");
+  const current = () => { admission.assertPendingLogoutSettlementDatabase(path); };
+  current();
+  const paths = canonicalPaths(admission);
+  try {
+    if (readPrivateFile(paths.operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
+    const source = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
+    if (source === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    const head = ActiveHead.parse(parse(source.bytes));
+    if (head.installationId !== paths.binding.installationId || head.profileId !== paths.binding.profileId) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    const key = authenticateHead(head);
+    inspectCanonicalNamespace(paths, head, key, new Map(), current);
+    current();
+    const file = readPrivateFile(paths.records.protected, { label: "protected.json", maxBytes });
+    if (file === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    const record = open(head, key, "protected", file.bytes);
+    const after = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
+    if (record === undefined || after === undefined || !after.bytes.equals(source.bytes)
+      || after.identity.device !== source.identity.device || after.identity.inode !== source.identity.inode) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    current(); return record;
+  } catch (error) {
+    if (hasUnprovedSourceClosure(error)) { admission.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission }); }
+    throw error;
+  }
+}
+
 export const CanonicalCredentialConversionPlanSchema = z.strictObject({ operation: CreateOperation, digest: Digest });
 export type CanonicalCredentialConversionPlan = Readonly<z.infer<typeof CanonicalCredentialConversionPlanSchema>>;
 
@@ -672,7 +700,7 @@ export function prepareStoppedCanonicalCredentials(admission: RuntimeAdmission, 
       || oldKey.keyId !== source.key.keyId) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
     const secret = Buffer.from(oldKey.key, "base64");
     if (secret.length !== 32 || secret.toString("base64") !== oldKey.key) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-    const priorDigest = metadata.success && metadata.data.legacyWitness === true ? digest(Buffer.from(`${canonicalJsonStringify(oldKey)}\n`)) : digest(old.bytes);
+    const priorDigest = metadata.success && metadata.data.legacyWitness === true ? digest(encodePrivate(oldKey)) : digest(old.bytes);
     if (priorDigest !== source.key.file.digest) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
     const duo = records.duo.value === null ? { credentials: [] } : DuoCredentialRecordSchema.parse(records.duo.value);
     if (duo.credentials.length !== 0) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_COUNTER_UNPROVED");

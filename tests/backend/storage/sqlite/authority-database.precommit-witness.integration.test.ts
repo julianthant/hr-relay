@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { withPrivateFileLock } from "../../../../src/backend/storage/configuration/credential-safe-file.js";
+import { CanonicalCredentialHeadSchema, createCanonicalCredentials } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
+import { DuoCredentialRecordSchema } from "../../../../src/models/config/duo-credential-store.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { NOTIFICATION } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
@@ -55,10 +58,10 @@ const changes: readonly [string, (fixture: ProfileFixture) => () => void][] = [
     fs.chmodSync(path, 0o600);
     return () => {};
   }],
-  ["credential key", f => rewrite(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`))],
-  ["erasure journal", f => addFile(join(f.machine.stateRoot, "machine", "erasures"), `${f.admission.profileBinding.profileId}.json`)],
-  ["erasure anchor", f => addFile(join(f.machine.stateRoot, "machine", "erasures"), `${f.admission.profileBinding.profileId}.json.authority`)],
-  ["Duo membership", f => addFile(join(f.machine.stateRoot, "machine", "duo-credentials"), "unexpected.json")],
+  ["registry control", f => rewrite(join(f.workspace, ".tracker", "control", "profile-registry.json"))],
+  ["verifier evidence", f => rewrite(join(f.machine.stateRoot, "machine", "profile-verifiers.json"))],
+  ["verifier pepper", f => rewrite(join(f.machine.stateRoot, "machine", "profile-pepper"))],
+  ["registry version", f => rewrite(join(f.machine.stateRoot, "machine", "profile-registry-version.json"))],
   ["operations entry", f => addFile(join(f.machine.stateRoot, "machine", "operations"), "unexpected.json")],
   ["receipts entry", f => addFile(join(f.workspace, ".tracker", "control", "relocation-receipts"), "unexpected.json")],
   ["journal appearance", f => addFile(join(f.workspace, ".tracker", "control"), "journal.json")],
@@ -77,6 +80,40 @@ const changes: readonly [string, (fixture: ProfileFixture) => () => void][] = [
 ];
 
 for (const mode of ["transaction", "read snapshot"] as const) {
+  for (const kind of ["head", "Duo"] as const) it(`keeps authenticated ${kind} publication independent of ${mode} commit`, async () => {
+    const f = await createBoundProfileFixture();
+    const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "independent-credential-test" });
+    const owner = createCanonicalCredentials(f.admission), id = f.admission.profileBinding.profileId;
+    const headPath = join(f.machine.stateRoot, "machine", "credential-keys", `${id}.json`);
+    const duoPath = join(f.machine.stateRoot, "machine", "duo-credentials", `${id}.json`);
+    try {
+      const beforeHead = fs.readFileSync(headPath), beforeDuo = fs.readFileSync(duoPath);
+      const prior = owner.readRecord("duo"); assert.ok(prior);
+      const credential = DuoCredentialRecordSchema.parse(prior.value).credentials.find(entry => entry.state === "ready"); assert.ok(credential);
+      const requestId = randomUUID(), generation = database.getMeta().authorityGeneration;
+      const work = () => {
+        if (mode === "transaction") database.authority.notifications.create(NOTIFICATION);
+        if (kind === "head") owner.reserveDuoCounter(credential.credentialId, requestId);
+        else owner.replaceRecord("duo", prior.revision, prior.value);
+      };
+      if (mode === "transaction") database.withAuthorityTransaction(work);
+      else database.withAuthorityReadSnapshot(work);
+      assert.equal(database.getMeta().authorityGeneration, generation + (mode === "transaction" ? 1 : 0));
+      assert.equal(database.authority.notifications.get(NOTIFICATION.notificationId) !== undefined, mode === "transaction");
+      if (kind === "head") {
+        assert.notDeepEqual(fs.readFileSync(headPath), beforeHead);
+        assert.deepEqual(fs.readFileSync(duoPath), beforeDuo);
+        assert.deepEqual(owner.readRecord("duo"), prior);
+        const head = CanonicalCredentialHeadSchema.parse(JSON.parse(fs.readFileSync(headPath, "utf8"))); assert.equal(head.state, "active");
+        assert.ok(head.counters.some(counter => counter.credentialId === credential.credentialId && counter.requests.some(request => request.requestId === requestId)));
+      } else {
+        assert.deepEqual(fs.readFileSync(headPath), beforeHead);
+        assert.notDeepEqual(fs.readFileSync(duoPath), beforeDuo);
+        assert.deepEqual(owner.readRecord("duo"), { revision: prior.revision + 1, value: prior.value });
+      }
+    } finally { database.close(); await f.close(); }
+  });
+
   for (const [name, change] of changes) it(`refuses changed ${name} before ${mode} commit`, async () => {
     const f = await createBoundProfileFixture();
     const database = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "precommit-test" });

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-import { lstatSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe,it, vi } from "vitest";
 import { buildIntakeManifest } from "../../../../src/models/intake/manifest.js";
@@ -75,7 +75,7 @@ describe("native imported-artifact contracts", () => {
   });
 });
 
-it("clones seeded profile state without sharing writes or a live canonical path", async () => {
+it("creates fresh profile state without sharing writes or a live canonical path", async () => {
   const fixtures = createProfileFixtureSet();
   const held: BoundProfileStorageFixture[] = [];
   const databases: AuthorityDatabase[] = [];
@@ -83,15 +83,17 @@ it("clones seeded profile state without sharing writes or a live canonical path"
     const first = await fixtures.create(); held.push(first);
     const peer = await fixtures.create(); held.push(peer);
     assert.notEqual(peer.path, first.path);
-    const originalInode = lstatSync(first.path).ino;
+    const originalBinding = first.admission.profileBinding;
     const database = AuthorityDatabase.open({ path: first.path, busyTimeoutMs: 250, migrationOwner: "clone-isolation" });
     databases.push(database);
     database.authority.notifications.create({ ...NOTIFICATION, trigger: "backfill-gap", links: [] });
     database.close();
     await first.close();
     const next = await fixtures.create(); held.push(next);
-    assert.equal(next.path, first.path);
-    assert.notEqual(lstatSync(next.path).ino, originalInode);
+    assert.notEqual(next.path, first.path);
+    assert.equal(existsSync(first.path), false);
+    assert.notEqual(next.admission.profileBinding.installationId, originalBinding.installationId);
+    assert.notEqual(next.admission.profileBinding.profileId, originalBinding.profileId);
     await first.close();
     next.admission.assertLive();
     for (const profile of [next, peer]) {
@@ -107,11 +109,11 @@ it("clones seeded profile state without sharing writes or a live canonical path"
   }
 });
 
-it("refuses a cross-device clone before deleting the previous profile", async () => {
+it("keeps a held profile untouched while creating a fresh profile on an independent path", async () => {
   const fixtures = createProfileFixtureSet();
   const first = await fixtures.create();
   const inode = lstatSync(first.path).ino;
-  await first.close();
+  let next: BoundProfileStorageFixture | undefined;
   const stat = fs.statSync;
   try {
     vi.spyOn(fs, "statSync").mockImplementation((path, options) => {
@@ -120,10 +122,14 @@ it("refuses a cross-device clone before deleting the previous profile", async ()
       return result;
     });
     syncBuiltinESMExports();
-    await assert.rejects(() => fixtures.create(), /fixture-clone-device-mismatch/u);
+    next = await fixtures.create();
+    assert.notEqual(next.path, first.path);
+    assert.notEqual(next.admission.profileBinding.installationId, first.admission.profileBinding.installationId);
+    assert.notEqual(next.admission.profileBinding.profileId, first.admission.profileBinding.profileId);
     assert.equal(lstatSync(first.path).ino, inode);
   } finally {
     vi.restoreAllMocks(); syncBuiltinESMExports();
+    await next?.close(); await first.close();
     await fixtures.close();
   }
 });

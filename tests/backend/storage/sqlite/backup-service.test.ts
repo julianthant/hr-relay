@@ -11,7 +11,8 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/commands/co
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { acquireRecoveryRuntimeRestore } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { inspectPendingRelocationStatus, OldBuildRuntimeArtifactsError } from "../../../../src/backend/storage/admission/installation.js";
+import { inspectPendingRelocationStatus } from "../../../../src/backend/storage/admission/installation.js";
+import { OldBuildRuntimeArtifactsError } from "../../../../src/backend/storage/admission/process-root.js";
 import { backupStoppedAuthority,upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";

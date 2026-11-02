@@ -102,6 +102,7 @@ it("retains the exact source failure through repeated close attempts and ignores
   held.lock.retainSourceClosure(new Error("safe projection wrapper", { cause: failure }));
   for (let attempt = 0; attempt < 2; attempt++) await assert.rejects(held.lock.close(), error => error === failure);
   assert.throws(() => held.lock.assertRuntimeAvailable(), error => error === failure);
+  assert.throws(() => held.lock.assertAdmissionOperation(undefined, held.workspace), error => error === failure);
   assert.throws(() => held.lock.beginOfflineMaintenance(held.workspace), error => error === failure);
   held.lock.assertHeld(); assert.equal(held.closes(), 0);
 });
@@ -114,7 +115,11 @@ for (const drain of ["child", "maintenance"] as const) it(`retains a source fail
     Object.defineProperty(child, "send", { value: (_message: unknown, _handle: unknown, sent: (error: Error | null) => void) => sent(null) });
     await held.lock.share(child); finish = () => { child.emit("close", 0, null); };
   } else {
-    const operation = held.lock.beginOfflineMaintenance(held.workspace); finish = () => operation.release();
+    const operation = held.lock.beginOfflineMaintenance(held.workspace);
+    finish = () => {
+      assert.throws(() => operation.release(), error => error === failure);
+      assert.equal(isOfflineMaintenanceOperationActive(operation), true);
+    };
   }
   const closing = held.lock.close(); await Promise.resolve();
   held.lock.retainSourceClosure(failure); finish();

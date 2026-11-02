@@ -20,7 +20,7 @@ it("admits a completed schema-3 relocation without rewriting its authenticated r
   const { workspace, pair, lifetime } = await fixture();
   const initial = adoptSynthetic(workspace, pair, lifetime); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "synthetic installation-lease copy source", { mode: 0o600 });
-  writeFileSync(join(pair.artifactRoot, "a.artifact"), "retained artifact");
+  writeFileSync(join(pair.artifactRoot, "a.artifact"), "{retained artifact");
   const lease = acquireInstallation(workspace, "exclusive", lifetime), held = restore(workspace, lifetime);
   const destination = { stateRoot: join(dirname(workspace), "relocated-state"), artifactRoot: join(dirname(workspace), "relocated-artifacts") };
   let completed!: RelocationCompletionReceipt;
@@ -43,18 +43,27 @@ it("admits a completed schema-3 relocation without rewriting its authenticated r
   const { toGeneration: _to, completedAt: _at, evidence: _evidence, ...binding } = historical;
   const digest = createHash("sha256").update("hrauto:runtime-relocation:v1\0").update(canonicalJsonStringify(binding)).digest("hex");
   function bindWitness(path: string): void {
-    if (statSync(path).isDirectory()) { for (const name of readdirSync(path)) bindWitness(join(path, name)); return; }
-    const bytes = readFileSync(path, 'utf8');
-    if (!bytes.startsWith('{')) return;
-    const value = z.record(z.string(), z.unknown()).parse(JSON.parse(bytes));
-    if (!('bindingDigest' in value)) return;
+    const value = z.record(z.string(), z.unknown()).parse(JSON.parse(readFileSync(path, 'utf8')));
+    assert.equal(typeof value.bindingDigest, 'string');
     value.bindingDigest = digest;
     const mode = statSync(path).mode & 0o777;
     chmodSync(path, 0o600);
     try { writeFileSync(path, canonicalJsonStringify(value)); } finally { chmodSync(path, mode); }
   }
-  for (const retention of historical.retentions) {
-    bindWitness(retention.source); bindWitness(retention.retained);
+  assert.equal(historical.retentions.length, 1);
+  const retention = historical.retentions[0];
+  assert.equal(retention.role, 'state');
+  assert.equal(retention.strategy, 'lock-shell');
+  const retainedArtifacts = join(retention.retained, relative(pair.stateRoot, pair.artifactRoot));
+  const witnesses = [join(pair.stateRoot, '.runtime-source-fence.json'), join(pair.stateRoot, 'state.db'),
+    pair.artifactRoot, join(retention.retained, '.runtime-source-fence.json'), join(retainedArtifacts, '.runtime-source-fence.json')];
+  const retainedBefore = storageTree(retention.retained);
+  for (const path of witnesses) bindWitness(path);
+  const retainedAfter = storageTree(retention.retained);
+  assert.deepEqual(Object.keys(retainedAfter), Object.keys(retainedBefore));
+  const retainedWitnesses = new Set(witnesses.map(path => relative(retention.retained, path)));
+  for (const [path, bytes] of Object.entries(retainedBefore)) {
+    if (!retainedWitnesses.has(path)) assert.equal(retainedAfter[path], bytes, path);
   }
   writeFileSync(receiptPath, canonicalJsonStringify(historical));
   const historicalBytes = readFileSync(receiptPath);

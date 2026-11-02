@@ -1,4 +1,5 @@
 import { BrowserRootsSchema, type BrowserRootsDocument } from "../browser-roots.js";
+import { lstatMaybe, assertNoSymlinkComponents, assertNoOldBuildRuntimeArtifacts } from "./process-root.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { emailKey, passwordMatches } from "../configuration/synthetic-verifier.js";
 import type { RuntimeAdmission } from "./admission.js";
@@ -9,8 +10,7 @@ import { assertStoppedBackupClosure, type StoppedBackupClosure } from "../mainte
 import { FlatStartCleanIntentSchema, assertFlatStartCleanCredentials, assertFlatStartCleanFiles, flatStartCleanPlan, readFlatStartCleanSource, type FlatStartCleanIntent } from "../maintenance/flat-start-clean.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
 import { replacePrivateFile, privatePathRejects, writePrivateStage, fsyncPath } from "../private-path.js";
-import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { assertOfflineMaintenanceOperation, OfflineMaintenanceOperationUnavailableError, offlineMaintenanceWorkspace, isOfflineMaintenanceOperationActive, type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
+import { assertOfflineMaintenanceOperation, OfflineMaintenanceOperationUnavailableError, isOfflineMaintenanceOperationActive, type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
 import { ProfileStorageRelocationUnsupportedError, requireRuntimeAdmission } from "./admission-identity.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
 import { createProfileVerifiers, preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
@@ -26,11 +26,12 @@ import {
   closeSync, constants, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
   readdirSync, realpathSync, renameSync, rmSync, rmdirSync, unlinkSync, writeFileSync,
 } from "node:fs";
-import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { readProcessCustodyFile } from "../sqlite/runtime-process-locks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { encodePrivate } from "../../../rules/validation/private-equal.js";
 import { storageRelocationDesiredDigest } from "../../../rules/commands/commands.js";
 import { NonNegativeIntSchema } from "../../../rules/identity/ids.js";
 import { systemClock } from "../../../rules/time/clock.js";
@@ -435,26 +436,6 @@ function verifyManagedEntries(journal: RelocationJournal, evidence: VerifiedRelo
   }
 }
 function fixedLockRoot(workspace: string): string { return resolve(workspace, rebuildRuntimeIsolation.processLockRoot); }
-export class OldBuildRuntimeArtifactsError extends Error {
-  readonly code = "RUNTIME_OLD_BUILD_ARTIFACTS";
-  constructor() { super(ERROR_CATALOG.RUNTIME_OLD_BUILD_ARTIFACTS.text); this.name = "OldBuildRuntimeArtifactsError"; }
-}
-
-export function assertNoOldBuildRuntimeArtifacts(workspace: string): void {
-  const root = fixedLockRoot(workspace), info = lstatMaybe(root);
-  if (info === undefined) return;
-  assertNoSymlinkComponents(root);
-  privateDirectory(root);
-  if (readdirSync(root).length !== 0) throw new OldBuildRuntimeArtifactsError();
-}
-
-export function assertOfflineMaintenanceForProcessRoot(operation: OfflineMaintenanceOperation, processLockRoot: string): void {
-  const workspace = offlineMaintenanceWorkspace(operation);
-  if (processLockRoot !== fixedLockRoot(workspace)) fail("offline-maintenance-workspace-mismatch");
-  assertOfflineMaintenanceOperation(operation, workspace);
-  assertNoOldBuildRuntimeArtifacts(workspace);
-}
-
 function assertRestoreHeld(workspace: string, operation: OfflineMaintenanceOperation | undefined): void {
   if (operation === undefined) fail("offline-maintenance-unissued");
   assertOfflineMaintenanceOperation(operation, workspace);
@@ -490,13 +471,6 @@ function privateDirectory(path: string): void {
 function dataDirectory(path: string): void {
   const stat = lstatSync(path);
   if (!stat.isDirectory() || privatePathRejects(path, stat, "owner-write-only")) fail(`unsafe data root ${path}`);
-}
-function lstatMaybe(path: string): ReturnType<typeof lstatSync> | undefined {
-  try { return lstatSync(path); }
-  catch (error) {
-    if (typeof error === "object" && error !== null && Reflect.get(error, "code") === "ENOENT") return undefined;
-    throw error;
-  }
 }
 function privateFile(path: string): void {
   const stat = lstatSync(path);
@@ -542,22 +516,6 @@ function atomicJson(path: string, value: unknown, parentKind: "control" | "data"
     throw cleanupFailure.error;
   }
   if (primary !== undefined) throw primary.error;
-}
-function assertNoSymlinkComponents(path: string): void {
-  const proof = outermostOperationProof();
-  const existing = proof?.slots.get("symlink-free");
-  const proven = existing instanceof Set ? existing as Set<string> : new Set<string>();
-  if (proof !== undefined && existing !== proven) proof.slots.set("symlink-free", proven);
-  if (proven.has(path)) return;
-  let component = parse(path).root;
-  const checked: string[] = [];
-  for (const part of relative(component, path).split(/[\\/]/u)) {
-    component = join(component, part);
-    checked.push(component);
-    if (proven.has(component)) continue;
-    if (lstatMaybe(component)?.isSymbolicLink()) fail(`symlink in root path ${component}`);
-  }
-  for (const item of checked) proven.add(item);
 }
 function preflightRoot(path: string): void {
   assertNoSymlinkComponents(path);
@@ -1168,7 +1126,7 @@ function assertProfileCredentialKeyMembership(locator: RuntimeLocator, heads: re
     if (raw.schemaVersion === 2 && raw.legacyWitness === true) {
       const metadata = z.strictObject({ schemaVersion: z.literal(2), installationId: z.uuid(), profileId: z.uuid(), keyId: z.uuid(), keyDigest: DigestSchema, legacyWitness: z.literal(true) }).parse(raw);
       const { legacyWitness: _legacyWitness, ...native } = metadata;
-      bytes = Buffer.from(`${canonicalJsonStringify(credentialKeyCustody.read(native))}\n`);
+      bytes = Buffer.from(encodePrivate(credentialKeyCustody.read(native)));
     }
     if (file.identity.device !== anchor.file.device || file.identity.inode !== anchor.file.inode
       || createHash("sha256").update(bytes).digest("hex") !== anchor.file.digest) fail("profile-credential-key-unowned");
@@ -1207,6 +1165,7 @@ function readMachineRegistry(control: string, locator: RuntimeLocator, recoverPu
       return document;
     }
     if (intent.kind === "onboarding-finish") assertOnboardingFinishPublicationDocument(locator, intent);
+    if (intent.kind === "incomplete-profile-draft") prepareIncompleteProfileDraft(control, locator, intent);
     if (intent.kind === "draft-abort") {
       const operation = intent.capture.operation;
       if (document.activeProfileId !== null || document.revision !== intent.prior.revision || document.sessionGeneration !== intent.prior.generation
@@ -1454,7 +1413,7 @@ function captureProfileRegistryWitness(control: string, locator: RuntimeLocator)
   const machine = join(locator.stateRoot, "machine");
   const operations = join(machine, "operations");
   const receipts = join(control, RECEIPTS);
-  const directories = [operations, receipts, join(machine, "erasures"), join(machine, "credential-keys"), join(machine, "duo-credentials")];
+  const directories = [operations, receipts];
   const roots = [control, locator.stateRoot, locator.artifactRoot, machine, ...directories];
   for (const directory of roots) assertNoSymlinkComponents(directory);
   const membership = profileRegistryStatWitness(control, locator, directories);
@@ -1738,7 +1697,10 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
     if (document.installationId !== locator.installationId || continuity.installationId !== locator.installationId) fail("profile-registry-installation-mismatch");
     if (lstatMaybe(join(control, "profile-publication.json"))) {
       const file = readPrivateFile(join(control, "profile-publication.json"), { label: "lock", maxBytes: 1_048_576 });
-      if (file === undefined || !ProfilePublicationSchema.safeParse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes))).success) fail("profile-control-upgrade-pending-conversion-unsupported");
+      if (file === undefined) fail("profile-control-upgrade-pending-conversion-unsupported");
+      const intent = ProfilePublicationSchema.safeParse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
+      if (!intent.success) fail("profile-control-upgrade-pending-conversion-unsupported");
+      if (intent.data.kind === "incomplete-profile-draft") prepareIncompleteProfileDraft(control, locator, intent.data);
     }
     if (lstatMaybe(join(control, "journal.json"))) {
       const file = readPrivateFile(join(control, "journal.json"), { label: "lock", maxBytes: 1_048_576 });
@@ -1801,7 +1763,12 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       const marker = lstatMaybe(join(machine, "profile-registry-version.json")) === undefined ? undefined
         : readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() }));
       if (marker?.schemaVersion === 7) {
-        readMachineRegistry(control, priorLocator, false);
+        const pending = lstatMaybe(join(control, "profile-publication.json")) === undefined ? undefined
+          : readProfileEvidence(join(control, "profile-publication.json"), ProfilePublicationSchema);
+        if (pending?.kind === "profile") {
+          const source = readProfilePublicationSource(control, priorLocator);
+          prepareProfileRegistryPublication(control, priorLocator, source.path, source.document, source.witness, pending);
+        } else readMachineRegistry(control, priorLocator, false);
         for (const entry of profileOperationInventory(priorLocator.stateRoot)) {
           const operation = readProfileEvidence(join(machine, "operations", `${entry.operationId}.json`), ProfileOperationSchema);
           if (operation.kind !== "logout" || operation.phase === "complete") continue;
@@ -1993,6 +1960,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
               || canonicalJsonStringify(row.registration.onboardingCompletion) !== canonicalJsonStringify(profileOnboardingCompletion(operation))) fail("profile-signup-intent-mismatch");
             return;
           }
+          assertCanonicalProfileBinding(join(locator.stateRoot, "profiles", operation.profileId, "state.db"),
+            { installationId: locator.installationId, profileId: operation.profileId });
           const verifierOwner = createProfileVerifiers(locator.stateRoot), prepared = verifierOwner.prepare(operation.profileId, captured.email, captured.password),
             verifier = verifyPreparedProfileVerifier(prepared, locator.stateRoot, operation.profileId, operation.emailKey),
             verifierPath = join(locator.stateRoot, "machine", "profile-verifiers.json"), priorVerifiers = readStrict(verifierPath, ProfileVerifierDocumentSchema);

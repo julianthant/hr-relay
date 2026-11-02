@@ -1,4 +1,4 @@
-import { assertOfflineMaintenanceForProcessRoot } from "../admission/installation.js";
+import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySourceClosure } from "../source-closure.js";
 import { type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { probeRestoreProfileBrowsersClosed, type ProfileBrowserClosure } from "../maintenance/profile-inventory.js";

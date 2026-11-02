@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   compileWorkflow,
   composeWorkflowModule,
+  type WorkflowModule,
 } from "../../../workflow-kit/workflow-definition.js";
 import { workflowProjections } from "../../../workflow-kit/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -22,7 +23,41 @@ import {
 import { taskStoreRegistry } from "./task-registry.js";
 import { personLookupWorkflow } from "../../../workflows/person-lookup/workflow.js";
 import { separationsWorkflow } from "../../../workflows/separations/workflow.js";
+import { createWorkflowDescriptorRegistry } from "../../../workflows/descriptor-registry.js";
 
+export function createWorkflowRegistry<PublicModule extends WorkflowModule>(
+  publicEntries: readonly PublicModule[],
+  childOnlyEntries: readonly WorkflowModule[],
+) {
+  const publicModules = Object.freeze([...publicEntries]);
+  const modules = new Map([...publicModules, ...childOnlyEntries].map(module => [String(module.descriptor.id), module]));
+  const descriptors = createWorkflowDescriptorRegistry(
+    publicModules.map(module => module.descriptor),
+    childOnlyEntries.map(module => module.descriptor),
+  );
+  const publicRegistry = Object.fromEntries(publicModules.map(module => [module.descriptor.id, module]));
+  Object.setPrototypeOf(publicRegistry, null);
+  return Object.freeze({
+    publicModules,
+    descriptors: descriptors.descriptors,
+    publicRegistry: Object.freeze(publicRegistry),
+    moduleOf(workflowId: string): PublicModule {
+      const module = publicModules.find(candidate => candidate.descriptor.id === workflowId);
+      if (module === undefined) {
+        throw new Error(
+          `workflow ${workflowId} is not registered; registered: ${publicModules.map(candidate => String(candidate.descriptor.id)).join(", ")}`,
+        );
+      }
+      return module;
+    },
+    childModuleOf(parentId: string, workflowId: string): WorkflowModule {
+      const descriptor = descriptors.resolveChild(parentId, workflowId);
+      const module = modules.get(workflowId);
+      if (module === undefined || module.descriptor !== descriptor) throw new Error(`workflow ${workflowId} module does not match its admitted descriptor`);
+      return module;
+    },
+  });
+}
 
 export const personLookupModule = composeWorkflowModule(
   compileWorkflow(personLookupWorkflow),
@@ -32,29 +67,21 @@ export const separationsModule = composeWorkflowModule(
   compileWorkflow(separationsWorkflow),
   taskStoreRegistry.stores,
 );
-export const WORKFLOW_MODULES = Object.freeze([
+const registry = createWorkflowRegistry([
   personLookupModule,
   separationsModule,
-]);
+], []);
 
-/** The registered module for one workflow id, or a loud refusal naming the registry. */
-export function workflowModuleOf(workflowId: string): (typeof WORKFLOW_MODULES)[number] {
-  const module = WORKFLOW_MODULES.find((candidate) => String(candidate.descriptor.id) === workflowId);
-  if (module === undefined) {
-    throw new Error(
-      `workflow ${workflowId} is not registered; registered: ${WORKFLOW_MODULES.map((candidate) => String(candidate.descriptor.id)).join(", ")}`,
-    );
-  }
-  return module;
-}
+export const WORKFLOW_MODULES = registry.publicModules;
 
-export const DESCRIPTORS: readonly AnyWorkflowDescriptor[] = Object.freeze(
-  WORKFLOW_MODULES.map((module) => module.descriptor),
-);
+/** Resolve a public workflow, or refuse with its registered alternatives. */
+export const workflowModuleOf = registry.moduleOf;
 
-export const SERVER_REGISTRY = Object.freeze(Object.fromEntries(
-  WORKFLOW_MODULES.map((module) => [module.descriptor.id, module]),
-));
+export const childWorkflowModuleOf = registry.childModuleOf;
+
+export const DESCRIPTORS: readonly AnyWorkflowDescriptor[] = registry.descriptors;
+
+export const SERVER_REGISTRY = registry.publicRegistry;
 
 
 export const PENDING_IMPL_BINDINGS_PATH = "src/backend/app/registries/pending-impl-bindings.json";

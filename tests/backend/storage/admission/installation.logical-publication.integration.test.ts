@@ -17,7 +17,7 @@ for (const mutation of ["old-revision", "skipped-revision", "operation-content"]
     let originalIntent: Buffer | undefined, originalRegistry: Buffer | undefined;
     try {
       const before = f.machine.readProfileRegistry(), rename = fs.renameSync;
-      const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 1000 });
+      const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 1000, migrationOwner: "profile-session-test" });
       let source: ReturnType<typeof database.capturePendingLogoutSource>;
       try { source = database.capturePendingLogoutSource(); } finally { database.close(); }
       let interrupted = false;

@@ -73,8 +73,8 @@ function protectedUcpathSettingsCommand(
       protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
       writeId,
       entries: {
-        ucpathUserId: { set: "synthetic-ucpath-user" },
-        ucpathPassword: { set: "synthetic-ucpath-password" },
+        ucpathUserId: { set: "fixture@ucsd.edu" },
+        ucpathPassword: { set: "disposable-fixture-password" },
       },
     },
   });

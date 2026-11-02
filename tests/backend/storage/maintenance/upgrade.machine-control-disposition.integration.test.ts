@@ -97,12 +97,18 @@ function assertCanonicalCredentialConversion(f: Awaited<ReturnType<typeof priorF
   }
   const receipt = z.looseObject({ schemaVersion: z.literal(3), retained: z.array(z.looseObject({ name: z.string() })), backups: z.array(z.strictObject({ profileId: z.uuid(), directory: z.string(), verifiedBackup: z.strictObject({ manifest: AuthorityBackupManifestSchema, manifestSha256: z.string() }) })), credentials: z.array(z.strictObject({ profileId: z.uuid(),
     plan: z.looseObject({ digest: z.string(), operation: z.looseObject({ priorHead: z.unknown(),
-      files: z.array(z.looseObject({ kind: z.enum(["protected", "duo", "chatgpt"]), prior: z.unknown() })) }) }) })) })
+      files: z.array(z.looseObject({ kind: z.enum(["protected", "duo", "chatgpt"]), prior: z.unknown(), bytes: z.string() })) }) }) })) })
     .parse(JSON.parse(readFileSync(join(directory, `${id}.receipt.json`), "utf8")));
   const source = receipt.credentials.find(row => row.profileId === f.profileId); assert.ok(source);
   assert.equal(createHash("sha256").update(canonicalJsonStringify(source.plan.operation)).digest("hex"), source.plan.digest);
   assert.deepEqual(source.plan.operation.priorHead, f.priorHead);
-  for (const kind of ["protected", "duo", "chatgpt"] as const) assert.deepEqual(source.plan.operation.files.find(row => row.kind === kind)?.prior, f.priorFiles[kind]);
+  for (const kind of ["protected", "duo", "chatgpt"] as const) {
+    const file: (typeof source.plan.operation.files)[number] | undefined = source.plan.operation.files.find(row => row.kind === kind); assert.ok(file);
+    assert.deepEqual(file.prior, f.priorFiles[kind]);
+    const path = kind === "duo" ? join(f.machineRoot, "duo-credentials", `${f.profileId}.json`)
+      : join(f.profileRoot, "credentials", kind === "protected" ? "protected.json" : "chatgpt-account.json");
+    assert.deepEqual(readFileSync(path), Buffer.from(file.bytes, "base64"));
+  }
 
   assert.deepEqual(receipt.retained.map(row => row.name).sort(), [...retainedNames].sort());
   assert.equal(receipt.backups.length, 1);
@@ -170,15 +176,21 @@ function assertCanonicalCredentialConversion(f: Awaited<ReturnType<typeof priorF
 }
 
 it("converts only stopped machine-control format while keeping an incomplete historical profile held", async () => {
+  const started = performance.now();
   const f = await priorFormatFixture(), original = sourceBytes(f);
+  const created = performance.now();
+  console.info("stopped-control timing", { phase: "fixture", milliseconds: Math.round(created - started) });
   const controlBytes = readFileSync(f.controlPath), markerBytes = readFileSync(f.markerPath);
   let maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const plan = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+  const planned = performance.now();
+  console.info("stopped-control timing", { phase: "plan", milliseconds: Math.round(planned - created) });
   assert.deepEqual(plan, { state: "planned", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
   assert.equal(readFileSync(f.controlPath).equals(controlBytes), true); assert.equal(readFileSync(f.markerPath).equals(markerBytes), true);
   maintenance.release();
   maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+  console.info("stopped-control timing", { phase: "conversion", milliseconds: Math.round(performance.now() - planned) });
   assert.equal(upgraded.state, "upgraded"); assert.equal(upgraded.runtimeAccess, "onboarding-incomplete"); assert.equal(upgraded.profileCount, 1);
   assert.equal(typeof upgraded.receiptId, "string");
   const backup = join(f.workspace, ".tracker", "control", "profile-control-upgrades");
@@ -210,17 +222,18 @@ it("converts only stopped machine-control format while keeping an incomplete his
 
 it("converts stopped schema2 only with authenticated empty suspect membership and preserves Duo and source bytes", async () => {
   const f = await priorFormatFixture(2), original = sourceBytes(f);
-  const prior = z.looseObject({ duo: z.array(z.unknown()) }).parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
+  const prior = z.looseObject({ duo: z.array(z.looseObject({ profileId: z.uuid() })) }).parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   let primary: { error: unknown } | undefined;
   try {
     assert.throws(() => RuntimeAdmission.acquireMachine(f.workspace, "exclusive", f.lifetime));
     const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
     assert.equal(result.state, "upgraded"); assert.equal(result.runtimeAccess, "onboarding-incomplete");
-    const current = z.looseObject({ schemaVersion: z.literal(6), completedRestores: z.array(z.unknown()) })
+    const current = z.looseObject({ schemaVersion: z.literal(6), operations: z.array(z.unknown()), completedRestores: z.array(z.unknown()) })
       .parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
-    assert.deepEqual(current.completedRestores, []);
-    assert.equal(prior.duo.length, 1);
+    assert.deepEqual(current.operations, []); assert.deepEqual(current.completedRestores, []);
+    for (const name of ["credentials", "erasures", "duo"]) assert.equal(Object.hasOwn(current, name), false);
+    assert.deepEqual(maintenance.readProfileRegistry().profiles.map(row => row.profileId).sort(), prior.duo.map(row => row.profileId).sort());
     assert.deepEqual(JSON.parse(readFileSync(f.markerPath, "utf8")), { schemaVersion: 7 });
     assertCanonicalCredentialConversion(f, result.receiptId, maintenance);
     for (const source of original) assert.deepEqual(readFileSync(source.path), source.bytes);
@@ -401,7 +414,7 @@ for (const change of ["bytes", "same-byte-inode"] as const) it(`holds the actual
     rename(source, destination);
   });
   syncBuiltinESMExports();
-  let maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   try { await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory)); }
   finally { fault.mockRestore(); syncBuiltinESMExports(); maintenance.release(); }
   assert.equal(fired, true);
@@ -424,13 +437,16 @@ for (const change of ["bytes", "same-byte-inode"] as const) it(`holds the actual
   }
   const held = storageTree(f.workspace);
   try {
-    maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-    for (const plan of [true, false]) await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan, hostFacts }, systemClock, composeStoppedControlCredentialInventory));
+    for (const plan of [true, false]) await assert.rejects(async () => {
+      const candidate = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+      try { await upgradeStoppedMachineControl(candidate, { plan, hostFacts }, systemClock, composeStoppedControlCredentialInventory); }
+      finally { candidate.release(); }
+    }, { message: "runtime-control: profile-control-upgrade-publication-uncertain" });
     assert.deepEqual(storageTree(f.workspace), held);
     for (const row of saved) assert.deepEqual(readFileSync(join(directory, row.name)), row.bytes);
     const database = before.find(row => row.path === f.databasePath); assert.ok(database);
     assert.deepEqual(readFileSync(f.databasePath), database.bytes);
-  } finally { maintenance.release(); await f.close(); }
+  } finally { await f.close(); }
 });
 
 const retainedStoppedControlSetupOwners = new Set<object>();
