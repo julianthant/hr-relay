@@ -115,7 +115,7 @@ describe("secrets single source", () => {
       content.replace('if (selector === "cli" || selector === "test-target-document-number") return selector;', 'return "cli";'),
       content.replace('from "../../../models/config/secrets.js"', 'from "../../../models/config/forged-secrets.js"'),
       content.replace("const runCli =", "assertNoMigratedEnvironmentKeys = () => undefined; const runCli ="),
-      content.replace('import { assertNoMigratedEnvironmentKeys }', 'import { assertNoMigratedEnvironmentKeys as forged }'),
+      content.replace('assertNoMigratedEnvironmentKeys,workerBootstrapEnvironment', 'assertNoMigratedEnvironmentKeys as forged,workerBootstrapEnvironment'),
       content.replace('await runCli(admission, () => {', 'await runCli(admission); await runCli(admission, () => {'),
       content.replace('bootDiagnostics ? acquireExclusiveRuntimeAdmission(workspace, rootLifetime())', 'bootDiagnostics ? acquireEntrypointAdmission(workspace, requested, rootLifetime())'),
       content.replace('}, lifetime);', '}, undefined);'),
