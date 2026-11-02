@@ -332,7 +332,7 @@ function authenticateContinuationRetryOwner(repositories: AuthorityRepositories,
     || !validateRunContinuation(repositories, current.envelope).some(source => source.envelope.runId === run.envelope.parent?.runId)) {
     throw new Error("delegation-continuation-owner-unavailable");
   }
-  const issue = repositories.lifecycleJournal.findContinuationIssue(owner.runId);
+  const issue = repositories.lifecycleJournal.findContinuationIssue(owner.runId, owner.version);
   const source = repositories.commands.get(sourceCommandId);
   if (issue?.result.kind !== "run" || issue.result.appliedVersion !== owner.version || source === undefined) throw new Error("delegation-continuation-source-unavailable");
   if (issue.request.operation === "retry") {

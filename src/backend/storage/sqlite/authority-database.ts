@@ -205,7 +205,7 @@ type RunLifecycleJournalRepository = Readonly<{
   getCommand(commandId: string): z.infer<typeof AuthorityCommandRecordSchema> | undefined;
   insertAudit(input: unknown): ImmutableInsertResult<z.infer<typeof RunLifecycleCommandAuditRecordSchema>>;
   findAuditByCommand(commandId: string): z.infer<typeof AuthorityCommandAuditRecordSchema> | undefined;
-  findContinuationIssue(runId: string): z.infer<typeof RunLifecycleCommandAuditRecordSchema> | undefined;
+  findContinuationIssue(runId: string, appliedVersion?: number): z.infer<typeof RunLifecycleCommandAuditRecordSchema> | undefined;
   findRunOrigin(runId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   findCancellation(runId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   listDelegationInvocations(parentRunId: string): readonly z.infer<typeof RunLifecycleCommandRecordSchema>[];
@@ -4843,13 +4843,15 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       lifecycleJournal: Object.freeze({
-        findContinuationIssue: (runId: string) => {
+        findContinuationIssue: (runId: string, appliedVersion?: number) => {
+          const version = z.number().int().positive().optional().parse(appliedVersion) ?? null;
           const row = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
             AND json_extract(request_json,'$.operation') IN ('create','retry','resume')
             AND json_extract(outcome_json,'$.result.kind')='run'
             AND json_extract(outcome_json,'$.result.runId')=?
             AND json_type(outcome_json,'$.result.continuation')='object'
-            ORDER BY CAST(json_extract(outcome_json,'$.result.appliedVersion') AS INTEGER) DESC LIMIT 1`).get(RunIdSchema.parse(runId));
+            AND (? IS NULL OR json_extract(outcome_json,'$.result.appliedVersion')=?)
+            ORDER BY CAST(json_extract(outcome_json,'$.result.appliedVersion') AS INTEGER) DESC LIMIT 1`).get(RunIdSchema.parse(runId), version, version);
           if (row === undefined) return undefined;
           const command = RunLifecycleCommandRecordSchema.parse(commandFromRow(row));
           const audit = this.authority.lifecycleJournal.findAuditByCommand(command.commandId);

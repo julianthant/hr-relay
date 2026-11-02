@@ -406,8 +406,10 @@ write-recovery authority and are never made resumable by these commands.
 Retry and dashboard Rerun accept failed sources only. Restart is refused. Retry takes the item's
 next authority-allocated attempt; Resume keeps the current attempt. Both retain completed results
 through exact server-issued continuation coordinates. Each source pins run, version, attempt and a
-digest of input and immutable execution identity. Queue priority is excluded from that digest and
-keeps its separate command authority. Retained source bytes, issuance, checkpoints and gate evidence
+digest of input and immutable execution identity. Queue priority and the gate scheduling cursor
+`startAt` are excluded from that digest and keep their separate command authority. Current-envelope
+validation uses the latest issuance; child replacement authority binds the exact retained issuance
+version that created it, even after another parent Pause/Resume. Retained source bytes, issuance, checkpoints and gate evidence
 are revalidated before reuse; missing evidence fails closed. A changed runtime fingerprint refuses
 Retry. Authenticated delegated replacements retain their original invocation and configuration
 snapshot even after startup activates an equivalent current snapshot.
