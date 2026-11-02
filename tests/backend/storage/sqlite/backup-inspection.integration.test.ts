@@ -9,7 +9,7 @@ import { detachBoundFixtureWorkers, stopSyntheticDatabaseWorkers } from "../../.
 import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { default as assert } from "node:assert/strict";
-import { existsSync, readFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -206,6 +206,8 @@ it("backs up with a verified empty registry without an OS census or a second nat
   const f = await fixture(), operation = f.admission.acquireOfflineMaintenance();
   const query = vi.spyOn(profileProcessQuery, "spawnSync").mockImplementation(() => { throw new Error("current-owner-proof-must-not-query-os"); });
   try {
+    const independent = [join(f.stateRoot, ".env"), join(f.stateRoot, "settings.json")];
+    for (const path of independent) writeFileSync(path, "malformed disposable independent settings", { mode: 0o600 });
     assert.deepEqual(createBrowserRoots(f.admission).inventory().roots, []);
     const closure = await prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, f.clock, f.processLockRoot);
     const native = vi.spyOn(profileBrowserClosure, "probeClosed").mockRejectedValue(new Error("backup-must-not-launch-browser"));
@@ -215,6 +217,7 @@ it("backs up with a verified empty registry without an OS census or a second nat
       assert.equal(report.state, "verified"); assert.equal(native.mock.calls.length, 0); assert.equal(query.mock.calls.length, 0);
       assert.deepEqual(createBrowserRoots(f.admission).inventory().roots, []);
       assert.deepEqual(readFileSync(f.path), before);
+      for (const path of independent) assert.equal(readFileSync(path, "utf8"), "malformed disposable independent settings");
     } finally { native.mockRestore(); }
   } finally { query.mockRestore(); operation.release(); await _afterEachFixture0(); }
 });

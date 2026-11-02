@@ -178,7 +178,7 @@ function stoppedBackupBrowserCensus(admission: RuntimeAdmission, operation: Offl
     const binding = admission.captureBrowserRegistryContext(), rows = createBrowserRoots(admission).inventory().roots.filter(row => row.profileId === binding.profileId);
     if (rows.some(row => row.launch.state !== "closed" || row.native !== undefined)) throw new StorageBackupClosureUnprovedError();
     let physical: ReturnType<typeof restoreBrowserCensus>;
-    try { physical = restoreBrowserCensus(admission); }
+    try { physical = restoreBrowserCensus(admission, "browser-roots"); }
     catch (error) { if (hasUnprovedSourceClosure(error)) throw error; throw new StorageBackupClosureUnprovedError(error); }
     const present = retained.filter(row => lstatSync(row.profileDirectory, { throwIfNoEntry: false }) !== undefined);
     if (rows.length !== present.length || rows.some(row => !present.some(profile => profile.profileDirectory === join(binding.machineRoot, row.directory)))) throw new StorageBackupClosureUnprovedError();
@@ -267,7 +267,7 @@ function unreadableRestoreSqlite(error: unknown): boolean {
     && "errcode" in error && typeof error.errcode === "number" && [11, 26].includes(error.errcode & 0xff);
 }
 
-function restoreBrowserCensus(admission: RuntimeAdmission) {
+function restoreBrowserCensus(admission: RuntimeAdmission, scope: "browser-roots" | "profile-root") {
   if (process.platform !== "darwin") throw new ProfileRestoreBrowserCustodyUnprovedError();
   const binding = admission.captureBrowserRegistryContext();
   const rows = createBrowserRoots(admission).inventory().roots.filter(row => row.profileId === binding.profileId);
@@ -299,10 +299,12 @@ function restoreBrowserCensus(admission: RuntimeAdmission) {
     inspect(path);
     profiles.push({ profileRoot, profileDirectory: path, cleanupCompleted: false });
   };
-  for (const entry of children(admission.stateRoot)) {
-    if (entry.isFile() && ["state.db", "state.db-wal", "state.db-shm", "state.db-journal"].includes(entry.name)) continue;
-    if (!entry.isDirectory() || !["browsers", "credentials", "backups", "artifacts", "logs", "scratch"].includes(entry.name)) throw new ProfileRestoreBrowserCustodyUnprovedError();
-  }
+  if (scope === "profile-root") {
+    for (const entry of children(admission.stateRoot)) {
+      if (entry.isFile() && ["state.db", "state.db-wal", "state.db-shm", "state.db-journal"].includes(entry.name)) continue;
+      if (!entry.isDirectory() || !["browsers", "credentials", "backups", "artifacts", "logs", "scratch"].includes(entry.name)) throw new ProfileRestoreBrowserCustodyUnprovedError();
+    }
+  } else inspect(admission.stateRoot);
   for (const profileRoot of roots) if (lstatSync(profileRoot, { throwIfNoEntry: false }) !== undefined) for (const entry of children(profileRoot)) {
     if (!entry.isDirectory()) throw new ProfileRestoreBrowserCustodyUnprovedError();
     const name = entry.name, path = join(profileRoot, name);
@@ -331,10 +333,10 @@ async function probeUnreadableRestoreBrowsersClosed(admission: RuntimeAdmission,
   };
   try {
     assertHeld();
-    const census = restoreBrowserCensus(admission);
+    const census = restoreBrowserCensus(admission, "profile-root");
     await browserClosure.probeClosed(census.profiles, { launchTimeoutMs: 5_000, closeProofMs: 3_000 }, clock, new AbortController().signal, admission);
     assertHeld();
-    if (JSON.stringify(restoreBrowserCensus(admission)) !== JSON.stringify(census)) throw new ProfileRestoreBrowserCustodyUnprovedError();
+    if (JSON.stringify(restoreBrowserCensus(admission, "profile-root")) !== JSON.stringify(census)) throw new ProfileRestoreBrowserCustodyUnprovedError();
   } catch (error) {
     if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: { admission, operation }, restore });
     primary = { error };
