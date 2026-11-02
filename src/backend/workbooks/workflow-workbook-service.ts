@@ -1,7 +1,7 @@
-import type { z } from "zod";
+import { z } from "zod";
 import { SavedWorkbookSchema, EditableWorkbookSchema, type EditableWorkbook } from "../../models/dashboard/workbooks.js";
 import { importSpreadsheet } from "../../models/dashboard/workbook-import.js";
-import { WorkflowWorkbookCommandSchema, WorkflowWorkbookResultSchema } from "../../models/workbooks/workflow-workbook.js";
+import { WorkflowWorkbookCommandSchema, WorkflowWorkbookResultSchema } from "../../models/processing/workbooks/read-result.js";
 import { RunIdSchema } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
@@ -38,24 +38,28 @@ export function createWorkflowWorkbookService(deps: Readonly<{
         document = EditableWorkbookSchema.parse({ name: table.name, themes: [], hasFormulas: false, sheets: [{
           id: `${marker}sheet`, name: table.name, hidden: [], width: table.columns.length, headerRow: 1,
           rows: [{ id: `${marker}header`, cells: table.columns.map(value => ({ value })) },
-            ...table.rows.map(row => ({ id: `${marker}${row.id}`, cells: row.values.map(value => ({ value, ...(typeof value === "string" ? { numFmt: "@" } : {}) })) }))],
+            ...table.rows.map(row => ({ id: `${marker}row:${row.id}`, cells: row.values.map(value => ({ value, ...(typeof value === "string" ? { numFmt: "@" } : {}) })) }))],
         }] });
       } else {
         if (command.source.artifact.bytes > 20 * 1024 * 1024) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-        const chunks: Buffer[] = [];
+        const chunks: Uint8Array[] = [];
         let size = 0;
         for await (const chunk of await deps.artifacts.open(command.source.artifact)) {
-          const bytes = Buffer.from(chunk);
+          const parsed = z.instanceof(Uint8Array).safeParse(chunk);
+          if (!parsed.success) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT", { cause: parsed.error });
+          const bytes = parsed.data;
           size += bytes.length;
           if (size > 20 * 1024 * 1024) throw new WorkbookLibraryError("WORKBOOK_INVALID");
           chunks.push(bytes);
         }
-        if (size !== command.source.artifact.bytes) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        if (size !== command.source.artifact.bytes) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
         const bytes = Uint8Array.from(Buffer.concat(chunks));
-        const imported = await importSpreadsheet(command.source.name, bytes.buffer);
-        document = EditableWorkbookSchema.parse({ ...imported, sheets: imported.sheets.map((sheet, index) => ({ ...sheet,
-          id: `${marker}sheet-${index}`, rows: sheet.rows.map((row, ordinal) => ({ ...row, id: `${marker}sheet-${index}:row-${ordinal}` })),
-        })) });
+        try {
+          const imported = await importSpreadsheet(command.source.name, bytes.buffer);
+          document = EditableWorkbookSchema.parse({ ...imported, sheets: imported.sheets.map((sheet, index) => ({ ...sheet,
+            id: `${marker}sheet-${index}`, rows: sheet.rows.map((row, ordinal) => ({ ...row, id: `${marker}sheet-${index}:row-${ordinal}` })),
+          })) });
+        } catch (cause) { throw new WorkbookLibraryError("WORKBOOK_INVALID", { cause }); }
       }
       signal.throwIfAborted();
       const now = deps.clock.now().toISOString();

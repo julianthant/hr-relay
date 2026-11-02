@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { ArtifactRefSchema } from "../artifacts/artifacts.js";
-import { WorkbookIdSchema } from "../dashboard/workbooks.js";
-import { defineTaskContract } from "../task/task-contract.js";
-import { taskId } from "../../rules/identity/ids.js";
+import { ArtifactRefSchema } from "../../artifacts/artifacts.js";
+import { WorkbookIdSchema } from "../../dashboard/workbooks.js";
+import { defineTaskContract } from "../../task/task-contract.js";
+import { taskId } from "../../../rules/identity/ids.js";
 
 const text = z.string().min(1);
 export const WorkbookTableSchema = z.strictObject({

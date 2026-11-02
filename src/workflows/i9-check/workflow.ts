@@ -19,7 +19,7 @@ export const i9CheckWorkflow = defineWorkflow({
   identity: { matchKey: input => `${input.ocrRunId}:${input.recordId}` },
   presentation: { title: input => input.person.name, subtitle: () => "I-9 retention check" },
   surface: { shape: "operation-member" }, surfaces: {}, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
-  role: defineWorkflowRole({ kind: "standalone" }), scenarios: ["i9-check/person"],
+  role: defineWorkflowRole({ kind: "composition" }), scenarios: ["i9-check/person"],
   details: [
     { key: "outcome", label: "UCPath", source: { kind: "result", fieldPath: "row.foundInUcpath" }, display: "text" },
     { key: "action", label: "Retention action", source: { kind: "result", fieldPath: "row.action" }, display: "text" },

@@ -1,5 +1,5 @@
 import { defineTask } from "../../../../workflow-kit/task.js";
-import { ReadWorkbookResult, WorkflowWorkbookCommandSchema, WorkflowWorkbookResultSchema } from "../../../../models/workbooks/workflow-workbook.js";
+import { ReadWorkbookResult, WorkflowWorkbookCommandSchema, WorkflowWorkbookResultSchema } from "../../../../models/processing/workbooks/read-result.js";
 import { deriveSchemaHash, schemaBoundValueSchema } from "../../../../models/validation/schema-bound-value.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 

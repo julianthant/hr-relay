@@ -26,7 +26,7 @@ const descriptor = i9CheckModule.descriptor;
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
 
-it("admits I-9 only as a declared child and limits it to read-only UCPath operations", () => {
+it("i9-check/person — admits I-9 only as a declared child and limits it to read-only UCPath operations", () => {
   expect(CHILD_WORKFLOW_MODULES).toContain(i9CheckModule);
   expect(() => workflowModuleOf("i9-check")).toThrow(/not registered/u);
   expect(descriptor.surfaces).toEqual({});

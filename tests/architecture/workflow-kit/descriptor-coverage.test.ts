@@ -203,7 +203,7 @@ describe("descriptor coverage", () => {
     for (const module of roleSpecimens) {
       if (module.role.kind !== "chunk-harness") continue;
       const role = module.role;
-      const owner = WORKFLOW_MODULES.find(candidate => candidate.descriptor.id === role.of);
+      const owner = [...WORKFLOW_MODULES, ...CHILD_WORKFLOW_MODULES].find(candidate => candidate.descriptor.id === role.of);
       assert.ok(owner !== undefined, `${String(module.descriptor.id)} requires its registered composition`);
       assert.equal(owner.role.kind, "composition");
       assert.ok(

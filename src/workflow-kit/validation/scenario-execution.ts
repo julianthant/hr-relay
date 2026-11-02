@@ -13,13 +13,14 @@ export const INTEGRATION_WALK_FILE_PATTERN = /^tests\/scenario\/[a-z0-9-]+\.walk
 export const DASHBOARD_SCENARIO_FILE_PATTERN =
   /^tests\/scenario\/dashboard\/[a-z0-9-]+\/[a-z0-9-]+\.scenario\.test\.ts$/u;
 
+const INTEGRATION_SCENARIO_FILES = [
+  "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts",
+  "tests/workflows/i9-check/workflow.integration.test.ts",
+  "tests/backend/workbooks/workflow-workbook-service.integration.test.ts",
+] as const;
 export const ExecutableScenarioSpecSchema = z.strictObject({
   scenarioId: ScenarioIdSchema,
-  file: z.union([z.string().regex(GRAPH_SCENARIO_FILE_PATTERN), z.enum([
-    "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts",
-    "tests/workflows/i9-check/workflow.integration.test.ts",
-    "tests/backend/workbooks/workflow-workbook-service.integration.test.ts",
-  ])]),
+  file: z.union([z.string().regex(GRAPH_SCENARIO_FILE_PATTERN), z.enum(INTEGRATION_SCENARIO_FILES)]),
 });
 
 /** Production scenario ids are registered here; contracts and descriptors may reference only these, and a lane separately proves each row is a real `it(...)` in its file. */
@@ -336,7 +337,7 @@ export function auditScenarioCorpusLayout(
   }
 
   for (const { file, itTitles } of files) {
-    const isGraphScenario = GRAPH_SCENARIO_FILE_PATTERN.test(file) || file === "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts";
+    const isGraphScenario = GRAPH_SCENARIO_FILE_PATTERN.test(file) || INTEGRATION_SCENARIO_FILES.some(registered => registered === file);
     const isWalk = INTEGRATION_WALK_FILE_PATTERN.test(file);
     const isDashboardScenario = DASHBOARD_SCENARIO_FILE_PATTERN.test(file);
     if (!isGraphScenario && !isWalk && !isDashboardScenario) {

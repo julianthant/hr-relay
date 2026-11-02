@@ -1,5 +1,5 @@
 import type { I9CheckRow } from "../../models/workflows/i9-check/check.js";
-import { WorkbookTableSchema } from "../../models/workbooks/workflow-workbook.js";
+import { WorkbookTableSchema } from "../../models/processing/workbooks/read-result.js";
 
 export function i9CheckWorkbookTable(rows: readonly I9CheckRow[]) {
   return WorkbookTableSchema.parse({ name: "I-9 Check", columns: [

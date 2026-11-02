@@ -1,5 +1,5 @@
 import type { ProviderAdapter } from "../../../workflow-kit/providers.js";
-import { WorkflowWorkbookCommandSchema, WorkflowWorkbookResultSchema } from "../../../models/workbooks/workflow-workbook.js";
+import { WorkflowWorkbookCommandSchema, WorkflowWorkbookResultSchema } from "../../../models/processing/workbooks/read-result.js";
 import { deriveSchemaHash, schemaBoundValueSchema } from "../../../models/validation/schema-bound-value.js";
 import { createWorkflowWorkbookService } from "../../workbooks/workflow-workbook-service.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";

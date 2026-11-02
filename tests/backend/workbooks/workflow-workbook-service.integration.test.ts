@@ -7,7 +7,7 @@ import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION } from "../
 import { createWorkflowWorkbookService } from "../../../src/backend/workbooks/workflow-workbook-service.js";
 import { WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { ArtifactRefSchema } from "../../../src/models/artifacts/artifacts.js";
-import { WorkflowWorkbookCommandSchema, type WorkflowWorkbookCommand } from "../../../src/models/workbooks/workflow-workbook.js";
+import { WorkflowWorkbookCommandSchema, type WorkflowWorkbookCommand } from "../../../src/models/processing/workbooks/read-result.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { i9CheckWorkbookTable } from "../../../src/rules/i9-check/workbook.js";
 import { i9MatchOutcome, i9RetentionRow } from "../../../src/rules/i9-check/retention.js";
@@ -15,11 +15,12 @@ import { i9Candidate, i9CheckInput } from "../../support/fixtures/i9-check.js";
 import { createWorkbookLibraryAdapter } from "../../../src/backend/processing/providers/workbook-library-adapter.js";
 import { createProviderClient } from "../../../src/backend/processing/providers/provider-client.js";
 import { readWorkbookResultTask } from "../../../src/backend/processing/workbooks/tasks/read-result.js";
-import { ReadWorkbookResult } from "../../../src/models/workbooks/workflow-workbook.js";
+import { ReadWorkbookResult } from "../../../src/models/processing/workbooks/read-result.js";
 import { createTaskProvenanceCollector } from "../../../src/backend/runs/provenance/task-provenance.js";
 import { compileFixtureWorkflow } from "../../support/fixtures/workflow-definition-fixtures.js";
 import { createSearchWorkflowDefinitionFixtures } from "../../support/helpers/search-workflow-definition-fixtures.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 
 const databases: DatabaseSync[] = [];
 afterEach(() => { for (const database of databases.splice(0)) database.close(); });
@@ -60,8 +61,8 @@ it("appends once to a linked workbook and preserves earlier rows and unrelated s
   const f = fixture(), first = saved(await f.service.publish(runId, command(), signal));
   const original = f.repository.read(first.libraryId); expect(original).toBeDefined();
   if (original === undefined) throw new Error("Missing fixture workbook");
-  original.workbook.sheets.push({ id: "other", name: "Other", width: 1, hidden: [], rows: [{ id: "note", cells: [{ value: "Preserve me" }] }] });
-  const before = f.repository.save({ ...original, version: 2 }, 1);
+  const other = { id: "other", name: "Other", width: 1, hidden: [], rows: [{ id: "note", cells: [{ value: "Preserve me" }] }] };
+  const before = f.repository.save({ ...original, version: 2, workbook: { ...original.workbook, sheets: [...original.workbook.sheets, other] } }, 1);
   const appended = WorkflowWorkbookCommandSchema.parse({ ...command(), target: { kind: "append", libraryId: first.libraryId, expectedVersion: 2, sheetId: before.workbook.sheets[0].id } });
   const result = await f.service.publish(nextRun, appended, signal);
   expect(result).toMatchObject({ state: "saved", version: 3 });
@@ -100,6 +101,11 @@ it("imports XLSX values, text IDs, styles and dates as new workbooks and new lin
   expect(replacement).toMatchObject({ state: "saved", libraryId: imported.libraryId, version: 2 });
   expect(await f.service.publish(nextRun, replace, signal)).toEqual(replacement);
   expect(f.repository.history(imported.libraryId)).toHaveLength(2);
+  const concurrentRun = "00000000-0000-4000-8000-000000000004";
+  const create = { operationKey: "download", source, target: { kind: "create", name: "Concurrent.xlsx" } };
+  const attempts = await Promise.all([f.service.publish(concurrentRun, create, signal), f.service.publish(concurrentRun, create, signal)]);
+  expect(attempts[0]).toEqual(attempts[1]);
+  expect(f.repository.history(saved(attempts[0]).libraryId)).toHaveLength(1);
 });
 it("does not publish cancelled work and rolls back a failed history publication", async () => {
   const f = fixture();
@@ -109,15 +115,26 @@ it("does not publish cancelled work and rolls back a failed history publication"
   await expect(f.service.publish(runId, command(), signal)).rejects.toBeInstanceOf(WorkbookLibraryError);
   expect(f.repository.list()).toHaveLength(0);
 });
+it("reports malformed XLSX as invalid before any library mutation", async () => {
+  const bytes = Buffer.from("Not an XLSX archive"), f = fixture(bytes);
+  const artifact = ArtifactRefSchema.parse({ id: "00000000-0000-4000-8000-000000000003", sha256: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.length,
+    mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const input = WorkflowWorkbookCommandSchema.parse({ operationKey: "invalid", source: { kind: "xlsx", name: "Invalid.xlsx", artifact }, target: { kind: "create", name: "Invalid" } });
+  const adapter = createWorkbookLibraryAdapter({ ...f, runId });
+  const outcome = await adapter.invoke({ capability: "workbooks.library", payload: { schemaHash: deriveSchemaHash(WorkflowWorkbookCommandSchema, "output"), value: input } },
+    { signal, requestId: randomUUID(), deadlineMonotonicMs: 60_000 });
+  expect(outcome.response).toMatchObject({ state: "produced", value: { value: { state: "refused", code: "WORKBOOK_INVALID" } } });
+  expect(f.repository.list()).toHaveLength(0);
+});
 
-it("publishes through the actual declared-provider client and records complete task provenance", async () => {
+it("workbooks/publish — publishes through the actual declared-provider client and records complete task provenance", async () => {
   const f = fixture(), { fixtureWorkflow } = createSearchWorkflowDefinitionFixtures();
   const { descriptor } = compileFixtureWorkflow(fixtureWorkflow("workbook-fixture", ({ task, result }) => {
     const publication = task({ id: "publish", contract: ReadWorkbookResult, replay: "always-rerun" }, [], () => command());
     return { steps: [[{ key: "output", label: "Output" }, [publication]]], result: result(ReadWorkbookResult.output, [publication], ({ outputs }) => outputs.publish) };
   }));
   const execution = { runId, traceId: "fx-000000-0001", attempt: 1, workflowId: descriptor.id, nodeId: "publish", taskId: ReadWorkbookResult.id };
-  const client = createProviderClient("workbooks.library", { execution, configSnapshot: CONFIG_SNAPSHOT,
+  const client = createProviderClient("workbooks.library", { execution: { runId, attempt: 1, nodeId: "publish", taskId: ReadWorkbookResult.id }, configSnapshot: CONFIG_SNAPSHOT,
     configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint,
     runSignal: signal, adapters: { "workbooks.library": createWorkbookLibraryAdapter({ ...f, runId }) }, clock: f.clock,
     idFactory: { next: randomUUID }, deadlineScheduler: { schedule: () => ({ cancel: () => undefined }) },
