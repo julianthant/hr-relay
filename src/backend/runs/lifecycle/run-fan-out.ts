@@ -161,7 +161,7 @@ export function fanOutQueuedRuns(
       configFingerprint: envelope.configFingerprint, configSnapshotId: envelope.configSnapshotId,
       shape: envelope.shape, priority: envelope.priority, dryRun: envelope.dryRun, recovery: envelope.recovery,
       browserMode: envelope.browserMode, captureBrowserScreenshots: envelope.captureBrowserScreenshots,
-      stepOmissions: envelope.stepOmissions, sourceBound: envelope.sourceBound,
+      stepOmissions: envelope.stepOmissions, sourceBound: envelope.sourceBound, continuation: envelope.continuation,
       retryOf: entry.retryOf, appVersion: envelope.appVersion, sessionId: envelope.session.sessionId,
       input: { raw: entry.rawInput, parsed: entry.parsedInput, ingressSchemaHash: envelope.ingressSchemaHash },
       runtimeConfig,

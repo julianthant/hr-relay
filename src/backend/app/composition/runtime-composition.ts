@@ -5,6 +5,7 @@ import { TEST_DATA_USAGE } from "../../runs/provenance/test-data-usage.js";
 import type { WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
 
 export interface RunningDashboard {
+  readonly shutdownRequested?: Promise<void>;
   readonly port: number;
   readonly failure?: Promise<never>;
   stop(): Promise<void>;
@@ -185,7 +186,7 @@ async function ownDashboardUntilShutdown(
       requestShutdown();
     });
     ready?.();
-    await (running.failure === undefined ? shutdownRequested : Promise.race([shutdownRequested, running.failure]));
+    await Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
   } catch (error) { failures.push(error); }
   try { await running.stop(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
   try { dispose?.(); } catch (error) { if (!failures.includes(error)) failures.push(error); }

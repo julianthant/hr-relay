@@ -1,3 +1,4 @@
+import { AuthenticatedRunContinuation, validateRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash,randomUUID } from "node:crypto";
 import { existsSync,lstatSync,statSync } from "node:fs";
@@ -327,6 +328,8 @@ type DeletedRunRepository = Readonly<{
 type CanonicalRunClaimOutcome = RunClaimOutcome | Readonly<{ state: "refused"; refusal: RunRecordRefusal }>;
 
 type RunRepository = Readonly<{
+  admission(): Readonly<{ state: "open" } | { state: "draining"; commandId: string }>;
+
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
 
   assertDeletionAllowed(input: unknown): void;
@@ -366,6 +369,7 @@ type RunRepository = Readonly<{
   requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string; cancellationSource?: Readonly<{ commandId: string; rootRunId: string }> }>): RunUpdateOutcome;
   advanceRevision(input: Readonly<{ runId: string; expectedVersion: number; now: string }>): RunUpdateOutcome;
 
+  setPause(input: unknown): RunUpdateOutcome;
   bumpPriority(input: unknown): RunUpdateOutcome;
 
   injectCheckpointPatches(input: unknown): RunUpdateOutcome;
@@ -2316,7 +2320,7 @@ export class AuthorityDatabase implements Disposable {
       if (record === undefined || !("startupLogout" in record) || record.startupLogout === undefined
         || canonicalJsonStringify(record.startupLogout.operation) !== canonicalJsonStringify(operation)) return undefined;
       const settlement = operation.settlement;
-      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10].includes(record.fromSchemaVersion)
+      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10, 11].includes(record.fromSchemaVersion)
         || settlement === undefined || record.startupLogout.postimage !== authorityContentFingerprint(database, record.recordKey)) throw new Error("profile-startup-logout-postimage-changed");
       const backup = verifyBackup(admission, record.backup.manifestPath);
       if (backup.manifest.sha256 !== record.backup.sha256 || backup.manifest.authorityContentFingerprint !== record.upgradeId
@@ -3787,6 +3791,8 @@ export class AuthorityDatabase implements Disposable {
     current: RunRecord,
   ): void {
     const envelope = current.envelope;
+    if (canonicalJsonStringify(result.continuation ?? null) !== canonicalJsonStringify(envelope.continuation ?? null)) throw new Error("terminal-continuation-binding-mismatch");
+    validateRunContinuation(this.authority, envelope);
     if (result.runId !== envelope.runId
       || result.workflowId !== envelope.workflow
       || result.attempt !== envelope.attempt
@@ -3801,16 +3807,20 @@ export class AuthorityDatabase implements Disposable {
   #assertStoredTerminalDependencies(result: RunResultRecord, current: RunRecord, depth = 0, visited = new Set<string>()): void {
     if (depth > 16 || visited.has(result.runId)) throw new Error("terminal-child-dependency-cycle-or-depth");
     visited.add(result.runId);
+    const continuation = current.envelope.continuation === undefined ? undefined : AuthenticatedRunContinuation.authenticate(this.authority, current.envelope);
     const invocations = this.authority.lifecycleJournal.listDelegationInvocations(current.envelope.runId);
     const receipts = result.dependencies.filter(dependency => dependency.state === "child-resolved" || dependency.state === "delegation-resolved");
-    const receiptIds = receipts.map(dependency => dependency.state === "delegation-resolved" ? dependency.invocationCommandId
+    const receiptIds = receipts.filter(dependency => dependency.parentRunId === current.envelope.runId).map(dependency => dependency.state === "delegation-resolved" ? dependency.invocationCommandId
       : lifecycleCommandId("delegation-invocation", { runId: current.envelope.runId, attempt: current.envelope.attempt, nodeId: dependency.nodeId }));
     if (canonicalJsonStringify(invocations.map(command => command.commandId).sort()) !== canonicalJsonStringify([...receiptIds].sort())) {
       throw new Error("terminal-delegation-receipt-set-mismatch");
     }
     for (const dependency of result.dependencies) {
       if (dependency.state === "child-resolved" || dependency.state === "delegation-resolved") {
-        const evidence = readDelegationEvidence(this.authority, current.envelope.runId, dependency.nodeId);
+        const evidence = dependency.parentRunId === current.envelope.runId
+          ? readDelegationEvidence(this.authority, current.envelope.runId, dependency.nodeId)
+          : continuation?.delegation(String(dependency.nodeId), String(dependency.edgeId));
+        if (evidence === undefined || evidence.parentRunId !== dependency.parentRunId) throw new Error("terminal-continuation-delegation-unavailable");
         if (canonicalJsonStringify(terminalDelegationDependencyRecord(evidence)) !== canonicalJsonStringify(dependency)
           || delegationJoinDisposition(evidence.manifest, evidence.children.map(member => member.run.lifecycle.state === "terminal"
             ? member.run.lifecycle.outcome : "active")) !== "satisfied") throw new Error("terminal-delegation-dependency-canonical-mismatch");
@@ -5486,6 +5496,7 @@ export class AuthorityDatabase implements Disposable {
       return { state: "refused", refusal: { reason: "runtime-stale" } };
     }
     return this.withAuthorityTransaction((): CanonicalRunClaimOutcome => {
+      if (this.#runAdmission().state !== "open") return { state: "idle" };
       const slot = this.authority.workerSlots.get(request.workerId);
       const lease = this.authority.workerLeases.get(request.workerId);
       if (slot === undefined || slot.retiredAt !== null || slot.workflow !== request.workflow
@@ -5536,9 +5547,9 @@ export class AuthorityDatabase implements Disposable {
         throw new Error("worker-claim-membership-unavailable");
       }
       const candidates = eligible === undefined
-        ? this.#database.prepare(`SELECT * FROM runs WHERE workflow=? AND state='queued'
+        ? this.#database.prepare(`SELECT * FROM runs WHERE workflow=? AND state='queued' AND pause_state IS NULL
           ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id`).all(request.workflow)
-        : this.#database.prepare(`SELECT * FROM runs WHERE state='queued'
+        : this.#database.prepare(`SELECT * FROM runs WHERE state='queued' AND pause_state IS NULL
           ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END,created_at,id`).all();
       let current: RunRecord | undefined;
       let nextEligibleAt: string | undefined;
@@ -5587,6 +5598,10 @@ export class AuthorityDatabase implements Disposable {
       }
       if (canonical) this.#lifecycleHooks?.afterClaimSelection?.();
       admit?.(current);
+      const selected = this.#readRunRow(current.envelope.runId);
+      if (this.#runAdmission().state !== "open" || selected?.pause !== undefined || selected?.version !== current.version) {
+        return canonical ? { state: "refused", refusal: { reason: "none-eligible" } } : { state: "idle" };
+      }
       const claimed = RunRecordSchema.parse({
         ...current,
         lifecycle: {
@@ -5605,8 +5620,19 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  #runAdmission(): Readonly<{ state: "open" } | { state: "draining"; commandId: string }> {
+    const generation = this.authority.runtimeConfig.get()?.generation;
+    const row = z.strictObject({ commandId: z.uuid() }).optional().parse(this.#database.prepare(`SELECT id AS commandId FROM commands
+      WHERE family='application' AND state IN ('executing','succeeded')
+      AND json_extract(request_json,'$.type')='pause-all-and-quit'
+      AND json_extract(request_json,'$.payload.confirmed')=1
+      AND json_extract(request_json,'$.target.runtimeGeneration')=? ORDER BY created_at,id LIMIT 1`).get(generation ?? 0));
+    return row === undefined ? { state: "open" } : { state: "draining", commandId: row.commandId };
+  }
+
   #buildRunRepository(): RunRepository {
     return Object.freeze({
+      admission: () => this.#runAdmission(),
       enqueue: (input: unknown) => {
         const record = RunRecordSchema.parse(input);
         if (record.lifecycle.state !== "queued") {
@@ -5889,6 +5915,20 @@ export class AuthorityDatabase implements Disposable {
           undefined,
           (current) => RunRecordSchema.parse({ ...current, displayName: request.displayName }),
         );
+      },
+      setPause: (input: unknown) => {
+        const request = z.strictObject({ runId: RunIdSchema, expectedVersion: z.number().int().positive(),
+          now: IsoInstantSchema, claim: RunClaimTokenSchema.optional(),
+          pause: RunRecordSchema.shape.pause, continuation: RunRecordSchema.shape.envelope.shape.continuation, acknowledge: z.boolean().optional(),
+        }).parse(input);
+        return this.#mutateRun(request.runId, request.expectedVersion, request.now, request.claim, current => {
+          if (current.lifecycle.state === "terminal" || current.lifecycle.state === "parked-write") throw new Error("run-pause-invalid-state");
+          if (request.acknowledge && (request.claim === undefined || current.pause?.state !== "requested")) throw new Error("run-pause-claim-required");
+          if (request.pause?.state === "paused" && runClaim(current) !== undefined && !request.acknowledge) throw new Error("run-pause-acknowledgment-required");
+          return RunRecordSchema.parse({ ...current, pause: request.pause,
+            ...(request.continuation === undefined ? {} : { envelope: { ...current.envelope, continuation: request.continuation } }),
+            ...(request.acknowledge ? { lifecycle: { state: "queued", requeuedFrom: "recovery" } } : {}) });
+        });
       },
       bumpPriority: (input: unknown) => {
         const request = RunPriorityBumpRequestSchema.parse(input);

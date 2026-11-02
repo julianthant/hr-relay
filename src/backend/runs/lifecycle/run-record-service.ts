@@ -1,3 +1,4 @@
+import { captureRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
 import { CanonicalCrashRecoveryRequestSchema } from "../../../models/run/worker.js";
 import { deriveWriteAuthorityReason } from "../../../rules/write-safety/write-safety.js";
 import { assertWorkerResetParkedWrite } from "../../storage/sqlite/worker-control.js";
@@ -85,7 +86,7 @@ export type RunPurgeOutcome =
 
 /** Worker capability never includes command-family transition. */
 export type WorkerRunLifecyclePort = Pick<RunRecordService,
-  "claimNext" | "renewClaim" | "workerTransition" | "terminalize" | "requeue" | "admitDelegation" | "assertCurrentExecution">;
+  "claimNext" | "renewClaim" | "workerTransition" | "acknowledgePause" | "terminalize" | "requeue" | "admitDelegation" | "assertCurrentExecution">;
 
 export interface RunContinuationPort {
   transition(input: z.input<typeof CanonicalWriteResolutionTransitionRequestSchema>): RunMutationOutcome | RunExistence;
@@ -93,6 +94,7 @@ export interface RunContinuationPort {
 
 export function workerRunLifecyclePort(service: RunRecordService): WorkerRunLifecyclePort {
   return Object.freeze({
+    acknowledgePause: service.acknowledgePause.bind(service),
     claimNext: service.claimNext.bind(service), renewClaim: service.renewClaim.bind(service),
     workerTransition: service.workerTransition.bind(service), terminalize: service.terminalize.bind(service),
     requeue: service.requeue.bind(service),
@@ -254,6 +256,7 @@ export class RunRecordService {
       const journal = this.inspectJournal(repositories, "create", request, { kind: "none" });
       if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
       if (journal.state === "replay") return this.replayRun(journal.result);
+      if (repositories.runs.admission().state !== "open") return refused({ reason: "policy-refused" });
       if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
       if (!runSettingsAvailable(repositories, request)) return refused({ reason: "runtime-stale" });
       const runId = RunIdSchema.parse(this.dependencies.ids.uuid());
@@ -580,6 +583,64 @@ export class RunRecordService {
       if (outcome.state === "lost") return refused({ reason: "lost" });
       this.recordJournal(repositories, journal.command, journalRun(outcome.run));
       return { state: "applied", run: outcome.run };
+    });
+  }
+
+  pause(input: unknown): RunMutationOutcome | RunExistence {
+    return this.changePause(input, "pause");
+  }
+
+  resumePaused(input: unknown): RunMutationOutcome | RunExistence {
+    return this.changePause(input, "resume");
+  }
+
+  private changePause(input: unknown, operation: "pause" | "resume"): RunMutationOutcome | RunExistence {
+    const request = z.strictObject({ commandId: CommandIdSchema, runId: RunIdSchema,
+      expectedVersion: z.number().int().positive() }).parse(input);
+    return this.dependencies.database.withAuthorityTransaction(repositories => {
+      const journal = this.inspectJournal(repositories, operation, request, { kind: "version", expectedVersion: request.expectedVersion });
+      if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
+      if (journal.state === "replay") return this.replayRun(journal.result);
+      const source = this.read(request.runId);
+      if (source.state !== "present") return source;
+      const current = source.run;
+      if (current.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: current.version });
+      if (source.disposition !== "live" || current.lifecycle.state === "terminal" || current.lifecycle.state === "parked-write"
+        || current.cancelRequested === true) return refused({ reason: "invalid-state" });
+      if (operation === "resume" && repositories.runs.admission().state !== "open") return refused({ reason: "policy-refused" });
+      if (operation === "resume" && current.pause?.state !== "paused") return refused({ reason: "invalid-state" });
+      if (operation === "pause" && current.pause !== undefined) {
+        this.recordJournal(repositories, journal.command, journalRun(current));
+        return { state: "applied" as const, run: current };
+      }
+      const now = this.dependencies.clock.now().toISOString();
+      const result = repositories.runs.setPause({ ...request, now,
+        ...(operation === "resume" ? { continuation: captureRunContinuation(repositories, current) } : {}),
+        pause: operation === "resume" ? undefined : runClaim(current) === undefined
+          ? { state: "paused", requestedAt: now, pausedAt: now, commandId: request.commandId }
+          : { state: "requested", requestedAt: now, commandId: request.commandId } });
+      if (result.state === "conflict") return refused({ reason: "conflict", currentVersion: result.currentVersion });
+      this.recordJournal(repositories, journal.command, journalRun(result.run));
+      return { state: "applied" as const, run: result.run };
+    });
+  }
+
+  acknowledgePause(input: unknown): RunMutationOutcome {
+    const request = z.strictObject({ commandId: CommandIdSchema, runId: RunIdSchema,
+      claim: z.strictObject({ workerId: z.uuid(), claimGeneration: z.number().int().positive() }) }).parse(input);
+    return this.dependencies.database.withAuthorityTransaction(repositories => {
+      const journal = this.inspectJournal(repositories, "acknowledge-pause", request, { kind: "claim", ...request.claim });
+      if (journal.state === "divergent") return refused({ reason: "replay-divergent" });
+      if (journal.state === "replay") return this.replayRun(journal.result);
+      const source = this.read(request.runId);
+      if (source.state !== "present" || source.run.pause?.state !== "requested") return refused({ reason: "invalid-state" });
+      this.assertCurrentExecution({ runId: request.runId, claim: request.claim });
+      const now = this.dependencies.clock.now().toISOString();
+      const result = repositories.runs.setPause({ ...request, expectedVersion: source.run.version, now, acknowledge: true,
+        pause: { ...source.run.pause, state: "paused", pausedAt: now } });
+      if (result.state === "conflict") return refused({ reason: "lost" });
+      this.recordJournal(repositories, journal.command, journalRun(result.run));
+      return { state: "applied" as const, run: result.run };
     });
   }
 
@@ -968,7 +1029,8 @@ export class RunRecordService {
       if (source.state === "absent") return source;
       const { run } = source;
       if (run.version !== request.expectedVersion) return refused({ reason: "conflict", currentVersion: run.version });
-      if (source.disposition !== "live" || run.lifecycle.state !== "terminal") return refused({ reason: "invalid-state" });
+      if (repositories.runs.admission().state !== "open") return refused({ reason: "policy-refused" });
+      if (source.disposition !== "live" || run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed" || restart) return refused({ reason: "invalid-state" });
       if (repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return refused({ reason: "policy-refused" });
       if (run.envelope.parent !== undefined && restart) return refused({ reason: "policy-refused" });
       const delegation = run.envelope.parent === undefined ? undefined : prepareDelegationRetry(repositories, run, request);
@@ -993,7 +1055,7 @@ export class RunRecordService {
       delete envelope.sourceBound;
       const next = RunRecordSchema.parse({
         envelope: { ...selectNewRunIdentity(repositories, envelope), runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
-          retryOf: run.envelope.runId, enqueuedAt: now,
+          retryOf: run.envelope.runId, enqueuedAt: now, continuation: captureRunContinuation(repositories, run),
           ...(restart ? { recovery: "restart-from-start" } : {}),
         },
         input: run.input, lifecycle: { state: "queued" }, claimGeneration: 0,

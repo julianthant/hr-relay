@@ -12,6 +12,7 @@ import {
 import { WIRE_ERROR_BODY } from "./errors.js";
 import { createDashboardTransport, type FetchLike } from "./transport.js";
 
+export type { ApplicationLifecycle } from "../../models/dashboard/application-lifecycle.js";
 export { DashboardClientError } from "./errors.js";
 export { applyDashboardDayPatch } from "./queries/day-state.js";
 export type { SubscriptionState } from "./subscriptions/subscription.js";

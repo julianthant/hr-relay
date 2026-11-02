@@ -26,6 +26,7 @@ export class CommandIdentityConflictError extends Error {
 }
 
 export const CommandFamilySchema = z.enum([
+  "application",
   "assistant-model-preference",
   "failure-resolution",
   "workflow-batch",
@@ -39,6 +40,8 @@ export const CommandFamilySchema = z.enum([
 ]);
 
 export const CommandActionSchema = z.enum([
+  "pause-all",
+  "pause-all-and-quit",
   "check-parked-write",
   "set-assistant-model-preference",
   "annotate-failure",
@@ -62,6 +65,8 @@ export const CommandActionSchema = z.enum([
   "apply-settings",
   "apply-protected-settings",
   "retry",
+  "pause",
+  "resume",
   "restart",
   "cancel",
   "bump",
@@ -275,9 +280,16 @@ export function deriveSettingsCommandFingerprint(command: unknown): string {
   ));
 }
 
+export const ApplicationCommandRequestSchema = z.discriminatedUnion("type", [
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("application"), type: z.literal("pause-all"),
+    target: z.strictObject({ runtimeGeneration: PositiveIntSchema }), payload: z.strictObject({ targets: z.array(RunVersionTargetSchema) }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("application"), type: z.literal("pause-all-and-quit"),
+    target: z.strictObject({ runtimeGeneration: PositiveIntSchema }), payload: z.strictObject({ confirmed: z.literal(true), targets: z.array(RunVersionTargetSchema) }) }),
+]);
+
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
   /** `retry` is Resume from checkpoints and `restart` is Restart from start: both mint the item's next attempt. */
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "restart", "cancel", "bump"]), target: RunVersionTargetSchema }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "restart", "pause", "resume", "cancel", "bump"]), target: RunVersionTargetSchema }),
   /** Delete means delete: a terminal queue run and every row it owns leave authority. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("delete"), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
@@ -314,6 +326,7 @@ export const FailureResolutionCommandSchema = z.strictObject({ ...CommandEnvelop
   target: FailureResolutionTargetSchema, payload: FailureResolutionActionSchema });
 export type FailureResolutionCommand = z.infer<typeof FailureResolutionCommandSchema>;
 export const CommandRequestSchema = z.union([
+  ApplicationCommandRequestSchema,
   AssistantModelPreferenceCommandRequestSchema,
   FailureResolutionCommandSchema,
   WorkflowBatchCommandRequestSchema,
@@ -329,6 +342,7 @@ export const CommandRequestSchema = z.union([
 ]);
 
 export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
+  z.strictObject({ family: z.literal("application"), runtimeGeneration: PositiveIntSchema }),
   z.strictObject({ family: z.literal("assistant-model-preference"), profileId: z.uuid(), revision: PositiveIntSchema }),
   z.strictObject({family:z.literal("failure-resolution"), runId:RunIdSchema, failureId:FailureResolutionTargetSchema.shape.failureId}),
   z.strictObject({ family: z.literal("workflow-batch"), batchId: RunSessionIdSchema }),
@@ -511,6 +525,9 @@ export const RunLifecycleCommandOperationSchema = z.enum([
   "recover-crash",
   "renew-claim",
   "worker-transition",
+  "pause",
+  "resume",
+  "acknowledge-pause",
   "worker-admission",
   "worker-standing-recovery",
   "worker-verification-admission",
@@ -586,7 +603,7 @@ export const AuthorityCommandAuditRecordSchema = z.union([
 export const BulkRunCommandRequestSchema = z.strictObject({
   ...CommandEnvelopeFields,
   family: z.literal("run"),
-  type: z.enum(["retry", "cancel", "bump"]),
+  type: z.enum(["retry", "pause", "resume", "cancel", "bump"]),
   bulkCommandId: CommandIdSchema,
   targets: z.array(RunVersionTargetSchema).min(1),
   mode: z.enum(["all-or-none", "best-effort"]),
@@ -683,7 +700,7 @@ export const BulkRunCommandResponseSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("vector"),
     bulkCommandId: CommandIdSchema,
-    type: z.enum(["retry", "cancel", "bump"]),
+    type: z.enum(["retry", "pause", "resume", "cancel", "bump"]),
     requestedCount: PositiveIntSchema,
     results: z.array(BulkRunCommandOutcomeSchema).min(1),
   }),
@@ -715,6 +732,8 @@ export function commandEffectIsWeaker(stated: CommandEffectClass, actual: Comman
 }
 
 export const COMMAND_EFFECT_BY_ACTION = {
+  "pause-all": "local-write",
+  "pause-all-and-quit": "destructive",
   "check-parked-write": "local-write",
   "set-assistant-model-preference": "local-write",
   "annotate-failure": "local-write",
@@ -737,6 +756,8 @@ export const COMMAND_EFFECT_BY_ACTION = {
   "reopen-browser": "local-write",
   "apply-settings": "local-write",
   "apply-protected-settings": "destructive",
+  pause: "local-write",
+  resume: "external-submit",
   retry: "external-submit",
   restart: "external-submit",
   cancel: "destructive",
@@ -754,6 +775,8 @@ export const COMMAND_EFFECT_BY_ACTION = {
 } as const satisfies Record<z.infer<typeof CommandActionSchema>, CommandEffectClass>;
 
 export const COMMAND_ASSISTANT_METADATA = {
+  "pause-all": "Pause current work",
+  "pause-all-and-quit": "Pause current work and quit after explicit confirmation",
   "check-parked-write": "Read target state while keeping an uncertain write held",
   "set-assistant-model-preference": "Persist the selected profile model preference",
   "annotate-failure": "Resolve a recorded failure",
@@ -776,6 +799,8 @@ export const COMMAND_ASSISTANT_METADATA = {
   "reopen-browser": "Reopen an owned browser",
   "apply-settings": "Save ordinary settings",
   "apply-protected-settings": "Save protected settings through operator entry",
+  pause: "Pause a run after its current step",
+  resume: "Continue a paused run",
   retry: "Resume an eligible run",
   restart: "Restart an eligible run",
   cancel: "Cancel an eligible run",
@@ -806,6 +831,7 @@ export const CommandFamilySpecSchema = z.strictObject({
 });
 
 const COMMAND_ACTIONS_BY_FAMILY = {
+  application: ["pause-all", "pause-all-and-quit"],
   "assistant-model-preference": ["set-assistant-model-preference"],
   "failure-resolution": ["annotate-failure"],
   "workflow-batch": ["set-batch-grouping"],
@@ -813,7 +839,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"],
   settings: ["apply-settings", "apply-protected-settings"],
-  run: ["retry", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"],
+  run: ["retry", "pause", "resume", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"],
 } as const satisfies Record<z.infer<typeof CommandFamilySchema>, readonly z.infer<typeof CommandActionSchema>[]>;
@@ -847,6 +873,7 @@ export const CommandFamilyRegistrySchema = z.array(CommandFamilySpecSchema).supe
 });
 
 export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.parse([
+  { family: "application", actions: ["pause-all", "pause-all-and-quit"] },
   { family: "assistant-model-preference", actions: ["set-assistant-model-preference"] },
   { family: "failure-resolution", actions: ["annotate-failure"] },
   { family: "workflow-batch", actions: ["set-batch-grouping"] },
@@ -854,7 +881,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"] },
   { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
-  { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"] },
+  { family: "run", actions: ["retry", "pause", "resume", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"] },
 ].map((entry) => ({

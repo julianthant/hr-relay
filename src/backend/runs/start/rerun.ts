@@ -1,3 +1,4 @@
+import { captureRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { RerunPlanRefusalCode } from "../../../models/run/rerun.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -72,10 +73,10 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   if (run.envelope.workflow !== descriptor.id) throw new RerunRefusedError("schema-mismatch", "Rerun source workflow changed");
   const older = run.envelope.contractFingerprint !== descriptor.contractFingerprint || run.envelope.descriptorVersion !== descriptor.version;
   // Use the same authority disposition predicate as RunRecordService.read.
-  if (run.lifecycle.state !== "terminal" || !["done", "failed", "interrupted"].includes(run.lifecycle.outcome)
+  if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed"
     || repositories.writeIntents.listAttemptingByItem({ workflowId: descriptor.id, itemId: run.envelope.itemId }).length > 0
     || repositories.writeIntents.listByRun(source.runId).some((intent) => intent.status === "parked")) {
-    throw new RerunRefusedError("invalid-state", "Rerun requires a successful, failed or interrupted source without uncertain writes");
+    throw new RerunRefusedError("invalid-state", "Rerun requires a failed source without uncertain writes");
   }
   if (older && repositories.writeIntents.listByRun(source.runId).some(intent => intent.status === "committed"
     && !descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction" && node.commit.uses.id === intent.taskId
@@ -153,9 +154,11 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   const selected = new Set(source.selectedStepKeys);
   const protectedBindings = retainedRunProtectedBindings(run);
   const nodes = new Set(descriptor.timeline.filter((step) => selected.has(step.key)).flatMap((step) => step.nodes.map((node) => String(node.id))));
+  const continuation = captureRunContinuation(repositories, run);
   const warnings: RepeatWarning[] = [];
   for (const node of descriptorRuntimeNodes(descriptor)) {
     if (node.kind !== "transaction" || !nodes.has(String(node.id))) continue;
+    if (continuation.checkpoints.some(row => row.nodeId === node.id)) continue;
     const outputs: Record<string, JsonValue> = {};
     for (const dependency of node.dependsOn) {
       const checkpoint = latest.get(String(dependency));

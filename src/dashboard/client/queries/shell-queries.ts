@@ -1,3 +1,4 @@
+import { ApplicationLifecycleSchema, type ApplicationLifecycle } from "../../../models/dashboard/application-lifecycle.js";
 import { CalendarQuerySchema, CalendarWireSchema, type CalendarQuery, type CalendarWire } from "../../../models/dashboard/calendar.js";
 import { protocolError } from "../errors.js";
 import { FrontendBootstrapWireSchema,type FrontendBootstrapWire } from "../../../models/dashboard/bootstrap.js";
@@ -12,6 +13,7 @@ import type { DashboardTransport } from "../transport.js";
 
 
 export interface ShellQueries {
+  applicationLifecycle(): Promise<ApplicationLifecycle>;
 
   calendar(query: CalendarQuery): Promise<CalendarWire>;
 
@@ -22,6 +24,7 @@ export interface ShellQueries {
 }
 
 export function createShellQueries(transport: DashboardTransport): ShellQueries { return Object.freeze({
+    async applicationLifecycle() { return parseOrThrow(ApplicationLifecycleSchema, "GET /api/v1/application-lifecycle", await transport.requestJson("/api/v1/application-lifecycle")); },
 
     async calendar(input: CalendarQuery): Promise<CalendarWire> {
       const query = CalendarQuerySchema.parse(input);

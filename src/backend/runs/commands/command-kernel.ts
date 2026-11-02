@@ -1,3 +1,4 @@
+import { captureRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
 import { notificationMatchesCollection,type NotificationCollectionOperation,type NotificationRecord } from "../../../models/notifications/notifications.js";
 import { AssistantActionManifestSchema } from "../../../models/profiles/assistant-permissions.js";
 import { startSupersedeTargets } from "../../../models/run/start-supersede.js";
@@ -64,6 +65,7 @@ import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
 /* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
 
 const PHASE1_ACTIVE = {
+  application: ["pause-all", "pause-all-and-quit"],
   'assistant-model-preference': ['set-assistant-model-preference'],
   "failure-resolution": ["annotate-failure"],
   "workflow-batch": ["set-batch-grouping"],
@@ -81,6 +83,8 @@ const PHASE1_ACTIVE = {
     "reopen-browser",
   ],
   run: [
+    "pause",
+    "resume",
     "retry",
 
     "restart",
@@ -268,6 +272,7 @@ export interface RunConfigIdentity {
 
 export interface CommandKernelDependencies {
   readonly preflight?: PreflightAdmission;
+  readonly applicationQuitAvailable?: boolean;
   readonly authority: CommandAuthority;
   readonly lifecycle: RunRecordService;
   readonly clock: Clock;
@@ -544,7 +549,8 @@ function executeStartRun(
     descriptor,
     {
       commandId: request.commandId, actorId: request.requestedBy,
-      ...(plan.rerun === undefined ? {} : { sourceBound: { ...plan.rerun, confirmationCommandId: request.commandId } }),
+      ...(plan.rerun === undefined ? {} : { sourceBound: { ...plan.rerun, confirmationCommandId: request.commandId },
+        continuation: captureRunContinuation(repositories, requireRun(repositories, request, plan.rerun.source.runId)) }),
       workflow: plan.workflowId,
       descriptorVersion: plan.descriptorVersion,
       contractFingerprint: plan.descriptorFingerprint,
@@ -605,7 +611,7 @@ function executeRetry(
       + "a parked unknown write uses recheck-write/resolve-write-absent, never generic retry",
     );
   }
-  if (!isTerminalRunState(current.lifecycle)) {
+  if (!isTerminalRunState(current.lifecycle) || current.lifecycle.state !== "terminal" || current.lifecycle.outcome !== "failed" || request.type === "restart") {
     reject(
       request,
       "invalid-state",
@@ -2365,7 +2371,29 @@ function dispatchActive(
       const target = { family: "workflow-batch", batchId: batch.sessionId };
       return applied(request, [target], [{ target, before: batch.version, after: updated.version }]);
     }
+    case "application": {
+      if (request.type === "pause-all-and-quit" && dependencies.applicationQuitAvailable !== true) reject(request, "capability-unavailable", "Application quit host is unavailable.");
+      if (request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", "Application commands require the dashboard operator.");
+      if (repositories.runtimeConfig.get()?.generation !== request.target.runtimeGeneration) reject(request, "runtime-stale", "Application runtime changed.");
+      const active = repositories.runs.listPage({ offset: 0, limit: 10000 }).filter(run => run.lifecycle.state !== "terminal");
+      if (active.length === 10000 || new Set(request.payload.targets.map(target => target.runId)).size !== request.payload.targets.length
+        || active.length !== request.payload.targets.length
+        || active.some(run => !request.payload.targets.some(target => target.runId === run.envelope.runId && target.expectedVersion === run.version))) {
+        reject(request, "policy-refused", "Active run membership changed; reload before pausing all.");
+      }
+      if (active.some(run => run.lifecycle.state === "parked-write")) reject(request, "invalid-state", "Resolve UNKNOWN writes before quitting.");
+      const changes: VersionChange[] = [];
+      for (const run of active) {
+        const next = lifecycleRun(request, dependencies.lifecycle.pause({
+          commandId: lifecycleCommandId("application-pause", { commandId: request.commandId, runId: run.envelope.runId }),
+          runId: run.envelope.runId, expectedVersion: run.version,
+        }));
+        changes.push({ target: runTarget(run.envelope.runId), before: run.version, after: next.version });
+      }
+      return applied(request, [{ family: "application", runtimeGeneration: request.target.runtimeGeneration }], changes);
+    }
     case "start":
+      if (repositories.runs.admission().state !== "open") reject(request, "policy-refused", "Relay is pausing work to quit.");
       repositories.runtimeConfig.requireSettingsCurrent();
       return executeStartRun(dependencies, repositories, request, now);
     case "worker-browser":
@@ -2377,6 +2405,15 @@ function dispatchActive(
       return executeResolveGate(dependencies, repositories, request, now);
     case "run": {
       switch (request.type) {
+        case "pause":
+        case "resume": {
+          const current = requireRun(repositories, request, request.target.runId);
+          const next = lifecycleRun(request, dependencies.lifecycle[request.type === "pause" ? "pause" : "resumePaused"]({
+            commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
+            ...request.target,
+          }));
+          return applied(request, [runTarget(next.envelope.runId)], [{ target: runTarget(next.envelope.runId), before: current.version, after: next.version }]);
+        }
         case "retry":
         case "restart":
           repositories.runtimeConfig.requireSettingsCurrent();
@@ -2572,7 +2609,7 @@ export function executeSettingsCommand(
 
 export function createCommandKernel(dependencies: CommandKernelDependencies): CommandKernel {
   const availability = () => commandAssistantAvailability((family, action) => {
-    if (family === "assistant-model-preference") return false;
+    if (family === "assistant-model-preference" || family === "application") return false;
     if (DEFERRED_ARM_KEYS.has(`${family}/${action}`)) return false;
     if (family === "settings") return dependencies.settings !== undefined;
     if (family === "failure-resolution") return dependencies.failureResolution?.capability().state === "available";

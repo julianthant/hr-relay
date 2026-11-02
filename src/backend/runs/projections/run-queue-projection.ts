@@ -1183,6 +1183,12 @@ export class RunQueueProjection {
       resolvedInstances: Object.entries(queued.resolvedInstance).map(([system, instance]) => ({ system, instance })),
 
       dryRun: authority.envelope.dryRun,
+      ...(authority.pause === undefined ? {} : { pause: authority.pause }),
+      pauseControl: { expectedVersion: authority.version,
+        state: authority.lifecycle.state === "terminal" || authority.lifecycle.state === "parked-write" ? "unavailable"
+          : authority.pause?.state === "requested" ? "pause-pending" : authority.pause?.state === "paused" ? "paused" : "running",
+        ...(authority.lifecycle.state === "terminal" || authority.lifecycle.state === "parked-write" || authority.pause?.state === "requested"
+          ? {} : { command: authority.pause?.state === "paused" ? "resume" : "pause" }) },
 
       priority: authority.envelope.priority,
       runNumber: this.#runNumber(authority),
@@ -1220,6 +1226,12 @@ export class RunQueueProjection {
         status,
         rowRevision: authority.version,
         dryRun: authority.envelope.dryRun,
+      ...(authority.pause === undefined ? {} : { pause: authority.pause }),
+      pauseControl: { expectedVersion: authority.version,
+        state: authority.lifecycle.state === "terminal" || authority.lifecycle.state === "parked-write" ? "unavailable"
+          : authority.pause?.state === "requested" ? "pause-pending" : authority.pause?.state === "paused" ? "paused" : "running",
+        ...(authority.lifecycle.state === "terminal" || authority.lifecycle.state === "parked-write" || authority.pause?.state === "requested"
+          ? {} : { command: authority.pause?.state === "paused" ? "resume" : "pause" }) },
         isChild: authority.envelope.parent !== undefined,
         parkedWrite: authority.lifecycle.state === "parked-write",
 

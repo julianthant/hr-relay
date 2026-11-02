@@ -18,6 +18,7 @@ function runRecordScalarColumns(record: RunRecord) {
     batch_id: record.sessionId ?? null,
     parent_id: envelope.parent?.runId ?? null,
     state: record.lifecycle.state,
+    pause_state: record.pause?.state ?? null,
     outcome: record.lifecycle.state === "terminal" ? record.lifecycle.outcome : null,
     priority: envelope.priority,
     not_before: record.lifecycle.state === "queued" ? record.lifecycle.notBefore ?? null : null,

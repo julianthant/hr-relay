@@ -153,7 +153,7 @@ export function queueRowActions(
 ): ActionDescriptorWire[] {
   if (policy === undefined) return [];
   const rerun = !facts.isChild && !facts.parkedWrite
-    && ["done", "failed", "partial"].includes(facts.status)
+    && facts.status === "failed"
     && (policyEnables(policy, "retry", facts) || policyEnables(policy, "restart", facts))
     ? [ActionDescriptorWireSchema.parse({ key: "rerun", label: "Rerun", kind: "navigation",
       navigate: { kind: "rerun", expectedVersion: facts.rowRevision },
