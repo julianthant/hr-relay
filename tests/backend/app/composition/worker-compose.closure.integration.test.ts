@@ -105,8 +105,8 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
       const expectedLease = beforeLaunch;
       const lease = withReadonlyAuthoritySnapshot(f.path, database => {
         const row = database.prepare("SELECT payload_json FROM worker_leases WHERE worker_id=?").get(expectedLease.workerId);
-        assert.ok(row); assert.equal(typeof row.payload_json, "string");
-        return WorkerLeaseRecordSchema.parse(JSON.parse(String(row.payload_json)));
+        assert.ok(row && typeof row.payload_json === "string");
+        return WorkerLeaseRecordSchema.parse(JSON.parse(row.payload_json));
       });
       assert.notEqual(lease.lifecycle.state, "stopped"); assert.deepEqual(lease, expectedLease);
       const registry = BrowserRootsSchema.parse(JSON.parse(readFileSync(registryPath, "utf8")));
