@@ -361,6 +361,12 @@ function personLookupResultLeaves(scope: EvidenceValueScope): unknown[] {
 }
 
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...[
+    "recordId", "recordUrl", "requestedEmail", "personalEmail", "workEmail", "recordFirstName", "recordLastName",
+    "department", "recruitmentNumber", "fields.positionNumber", "fields.firstName", "fields.lastName", "fields.middleName",
+    "fields.ssn", "fields.address", "fields.addressLine2", "fields.city", "fields.state", "fields.postalCode", "fields.wage",
+    "fields.dob", "fields.phone", "fields.email", "fields.appointment", "fields.effectiveDate", "fields.expectedJobEndDate",
+  ].map(path => ({ scope: taskOutput("crm/read-hire-data"), path, classification: "direct-identifier", transform: "digest" })),
   /* person-lookup ingress */
   ...[PERSON_LOOKUP_INPUT,
     ...["person-lookup-searching", "person-lookup-cross-verify", "person-lookup-active-status", "person-lookup-crm-dates"].map(workflowInput),

@@ -1,4 +1,5 @@
 import type { CrmDiscoveredRecord } from "../../../../models/systems/crm/search-onboarding-records.js";
+import { CrmHireDataSchema, type CrmHireData } from "../../../../models/systems/crm/read-hire-data.js";
 import {
   ReadOnboardingDatesOutputSchema,
   type ReadOnboardingDatesOutput,
@@ -16,6 +17,7 @@ import type { CrmOnboardingDriver } from "../../../../models/ui/crm-onboarding.j
 
 export function createDeterministicCrmOnboardingDriver(input: Readonly<{
   record: ReadOnboardingRecordOutput;
+  hireData?: CrmHireData;
   discovery?: readonly CrmDiscoveredRecord[];
   dates: ReadOnboardingDatesOutput;
   recordObservedEid?: string;
@@ -32,6 +34,10 @@ export function createDeterministicCrmOnboardingDriver(input: Readonly<{
     : EidSchema.parse(input.datesObservedEid);
   const driver: CrmOnboardingDriver = {
     system: "crm" as const,
+    async readHireData() {
+      if (input.hireData === undefined) throw new Error("CRM fixture requires explicit hire data");
+      return CrmHireDataSchema.parse(input.hireData);
+    },
     async searchOnboardingRecords() {
       if (input.discovery !== undefined) return [...input.discovery];
       throw new Error("CRM fixture requires explicit discovery records");
