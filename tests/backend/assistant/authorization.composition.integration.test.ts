@@ -121,6 +121,7 @@ it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s aut
       assert.equal(error.cause, cause);
       return cause;
     };
+    let retainedPrimary: Error | undefined;
     try {
       assert.ok(dashboard);
       await assert.rejects(dashboard.stop(), error => {
@@ -130,6 +131,7 @@ it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s aut
         const inner: unknown = error.errors[0];
         assert.equal(error.cause, inner);
         const primary = assertClosureRefusal(inner, "profile-worker-lifetime-unavailable");
+        retainedPrimary = primary;
         assert.ok(inner instanceof RuntimeCustodyUncertainError);
         assert.equal(inner.cause, primary);
         assert.equal(inner.errors[0], primary);
@@ -145,7 +147,12 @@ it.each(["unchanged", "revoked", "expired", "manifest"] as const)("checks %s aut
       });
     } catch (error) { failures.push(error); }
     try {
-      await assert.rejects(runtime.close(), error => { assertClosureRefusal(error, "profile-resource-closure-unproved"); return true; });
+      assert.ok(retainedPrimary);
+      await assert.rejects(runtime.close(), error => {
+        const cause = assertClosureRefusal(error, "profile-worker-lifetime-unavailable");
+        assert.equal(cause, retainedPrimary);
+        return true;
+      });
     } catch (error) { failures.push(error); }
     try {
       assert.ok(ownedSupervisor);
