@@ -34,8 +34,12 @@ import { systemClock } from "../../../src/rules/time/clock.js";
 import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture, historicalIncompleteProfileFields } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 
 async function historicalPrematureFixture() {
+  const started = performance.now();
   const fixture = await createHistoricalIncompleteProfileFixture();
+  const created = performance.now();
+  console.info("historical-withdrawal timing", { phase: "fixture", milliseconds: Math.round(created - started) });
   await convertHistoricalIncompleteProfileFixture(fixture);
+  console.info("historical-withdrawal timing", { phase: "conversion", milliseconds: Math.round(performance.now() - created) });
   return { ...fixture, root: fixture.workspace, fields: historicalIncompleteProfileFields,
     keyBytes: readFileSync(fixture.keyPath), protectedBytes: readFileSync(fixture.protectedPath), databaseBytes: readFileSync(fixture.databasePath) };
 }
