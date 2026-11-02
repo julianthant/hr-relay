@@ -587,7 +587,9 @@ settlement. Only the scoped remover can delete that profile, and it expires when
 Unknown files, ownership changes, unsafe paths and unproved closure hold the operation.
 
 `runtime/browser/native-browser.ts` owns Playwright launch and page/context closure. Probes run
-asynchronously under the registry owner. The stopped control converter records
+asynchronously under the registry owner. Read-only stopped inventory without a preparing receipt
+must prove an empty browser census; a nonempty census requires recorded native preparation.
+Unsupported credential envelopes refuse before preparation publishes its receipt. The stopped control converter records
 its preparing receipt before probing, then captures credential copies and verifies its SQLite backup
 before publishing browser registry, control and marker. Current control requires the external registry;
 ordinary startup does not reconstruct it. An ordinary profile drain checks actual resource and registry

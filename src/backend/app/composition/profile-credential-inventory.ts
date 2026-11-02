@@ -2,7 +2,7 @@
 import { inspectStoppedCanonicalConversion } from "../../storage/configuration/canonical-credential-store.js";
 import { prepareStoppedCredentialConversion, releaseStoppedCredentialConversion, type StoppedCredentialCopyInspection } from "../../storage/configuration/credential-conversion.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
-import { createBrowserRoots, profileBrowserClosure } from "../../storage/browser-roots.js";
+import { createBrowserRoots, planStoppedBrowserRoots, profileBrowserClosure } from "../../storage/browser-roots.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { assertRetainedProfileBrowserRoot, inventoryFileIdentity, enumerateProfileCredentialMembership, assertCredentialCopyResourcesClosed, retainedBrowserProfiles, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
 
@@ -241,7 +241,7 @@ export function composeStoppedControlCredentialInventory(input: Readonly<{ claim
           : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
         const config = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
           { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
-        const browserPlan = source.browserPlan();
+        const browserPlan = source.browserPlan() ?? planStoppedBrowserRoots(admission, input.claim, 1, input.clock);
         if (browserPlan.roots.some(row => row.profileId === source.binding.profileId && (row.launch.state !== "closed" || row.native?.phase !== "observed"))) throw new Error("profile-control-upgrade-browser-closure-unproved");
         const membership = enumerateProfileCredentialMembership(admission, facts, config.paths.browserProfileRoot, profileBrowserClosure, undefined, stages);
         const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path));

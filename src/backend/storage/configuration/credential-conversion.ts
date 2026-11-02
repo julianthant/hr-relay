@@ -11,7 +11,7 @@ import { ChatGptCredentialRecordSchema } from "./chatgpt-credential-repository.j
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { encodePrivate } from "../../../rules/validation/private-equal.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import type { StoppedControlProfileInventory } from "../admission/installation.js";
+import { requireStoppedControlProfileInventory, type StoppedControlProfileInventory } from "../admission/installation.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
 
 const RevisionSchema = z.number().int().safe().positive();
@@ -136,6 +136,14 @@ function decryptSource(metadata: Readonly<{ nonce: string; tag: string; cipherte
   const decipher = createDecipheriv("aes-256-gcm", key, nonce);
   decipher.setAAD(aad); decipher.setAuthTag(tag);
   return decodeSource(Buffer.concat([decipher.update(ciphertext), decipher.final()]));
+}
+
+export function assertStoppedCredentialSourceFormat(claim: StoppedControlProfileInventory): void {
+  const source = requireStoppedControlProfileInventory(claim);
+  source.assertHeld();
+  if (source.credentialFormat !== "legacy") return;
+  try { ProtectedEnvelope.parse(decodeSource(sourceFile(join(source.stateRoot, "credentials", "protected.json")).bytes)); }
+  catch (error) { throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED", { cause: error }); }
 }
 
 export function inspectStoppedCredentialSource(admission: RuntimeAdmission, claim: StoppedControlProfileInventory) {
