@@ -19,9 +19,7 @@ it.each([false, true])("checks every registered ready person before any upgrade 
   const first = randomUUID(), second = randomUUID(), pending = randomUUID(), events: string[] = [];
   let upgraded = false;
   const release = vi.fn(() => { events.push("release"); });
-  const owner = { requiresFlatStoreMigration: () => false, readProfileRegistry: () => ({ profiles: [
-    { profileId: first, lifecycle: "ready" }, { profileId: pending, lifecycle: "applying" }, { profileId: second, lifecycle: "ready" },
-  ] }), release };
+  const owner = { requiresFlatStoreMigration: () => false, readStartupProfileIds: () => [first, second], release };
   // @ts-expect-error This pure orchestration test replaces the native admission boundary.
   const acquire = vi.spyOn(RuntimeAdmission, "acquireStoppedMachineControlMaintenance").mockReturnValue(owner);
   // @ts-expect-error Only the schema result is consumed at this orchestration boundary.

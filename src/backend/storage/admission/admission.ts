@@ -129,6 +129,7 @@ type AdmissionScope = "profile-layout" | "profile-maintenance" | "flat-backup" |
   | "adoption-initialization" | "profile-initialization" | "profile-upgrade" | "profile-ready-upgrade" | "profile" | "profile-settlement" | "profile-pending-logout-inventory" | "stopped-control-inventory" | "stopped-incomplete-profile-inventory";
 
 type ReadyProfileUpgrade = Readonly<{ purpose: "manual" | "startup" | "layout"; sourcePath: string; processLockRoot: string; sourceSchemaVersion: 6 | 8 | 9 | 10 | 11; copyPath?: string;
+  capture: ReturnType<InstallationLease["captureStoppedProfileUpgrade"]>;
   qualification: { current: Readonly<{ kind: "inspection" }> | Readonly<{ kind: "qualified"; sourceFingerprint: string }> | Readonly<{ kind: "revoked" }> } }>;
 
 /** A lifetime-bound, path-specific authority to open this installation's physical storage. */
@@ -235,17 +236,18 @@ export class RuntimeAdmission {
     clock: Clock | undefined, hostFacts: HostConfigFacts | undefined, purpose: "manual" | "startup" | "layout" = "manual"): Promise<RuntimeAdmission> {
     const lease = this.#exclusiveInstallationLease();
     if (profileId === undefined || restore === undefined || clock === undefined || hostFacts === undefined) throw new Error("profile-stopped-upgrade-runtime-claim-required");
-    const claim = this.#captureProfileAccess(profileId);
-    if (claim.phase !== "runtime") throw new Error("profile-stopped-upgrade-runtime-claim-required");
-    claim.verify("issue");
+    const id = z.uuid().parse(profileId);
+    const claim = purpose === "manual" ? this.#captureProfileAccess(id) : undefined;
+    if (claim !== undefined && claim.phase !== "runtime") throw new Error("profile-stopped-upgrade-runtime-claim-required");
+    claim?.verify("issue");
     const context = lease.readInstallationContext();
     const processLockRoot = resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot);
     lease.assertFixedProcessLockRoot(context.workspace, processLockRoot);
     lease.assertOfflineMaintenance(restore);
     assertOfflineMaintenanceForProcessRoot(restore, processLockRoot);
-    const root = join(this.#stateRoot, "profiles", claim.profileId), artifacts = join(root, "artifacts");
+    const root = join(this.#stateRoot, "profiles", id), artifacts = join(root, "artifacts");
     const path = join(root, "state.db");
-    const binding = { installationId: this.locator.installationId, profileId: claim.profileId };
+    const binding = { installationId: this.locator.installationId, profileId: id };
     const observed = readProfileDatabaseBinding(path);
     if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION)) throw new Error("profile-stopped-upgrade-bound-required");
     if (purpose === "layout" && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("fixed-layout-current-schema-required");
@@ -254,7 +256,7 @@ export class RuntimeAdmission {
     noSymlinkAncestry(root, ancestry);
     noSymlinkAncestry(artifacts, ancestry);
     const physical = lstatSync(path);
-    const capture = lease.captureStoppedProfileUpgrade(claim.profileId);
+    const capture = lease.captureStoppedProfileUpgrade(id, purpose);
     const qualification: ReadyProfileUpgrade["qualification"] = { current: { kind: "inspection" } };
     const assertHeld = () => {
       if (qualification.current.kind === "revoked") throw new Error("profile-stopped-upgrade-source-changed");
@@ -262,7 +264,7 @@ export class RuntimeAdmission {
         this.assertLive();
         lease.assertFixedProcessLockRoot(context.workspace, processLockRoot);
         assertOfflineMaintenanceForProcessRoot(restore, processLockRoot);
-        claim.verify("issue");
+        claim?.verify("issue");
         capture.assertHeld();
         if (!noSymlinkAncestry(root, ancestry) || !noSymlinkAncestry(artifacts, ancestry)) throw new Error("profile-stopped-upgrade-root-changed");
         const current = lstatSync(path, { throwIfNoEntry: false });
@@ -273,7 +275,7 @@ export class RuntimeAdmission {
     assertHeld();
     const admission = new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release() {} },
       root, artifacts, [path], "profile-ready-upgrade", "exclusive", this.#locator, binding, this, undefined,
-      { purpose, sourcePath: path, processLockRoot, sourceSchemaVersion: observed.schemaVersion, qualification });
+      { purpose, sourcePath: path, processLockRoot, sourceSchemaVersion: observed.schemaVersion, qualification, capture });
     const assertUnpublishedSource = () => {
       assertHeld();
       const current = lstatSync(path);
@@ -355,6 +357,25 @@ export class RuntimeAdmission {
     if (this.#readyUpgrade === undefined || this.#readyUpgrade.copyPath !== undefined || this.#profileParent !== machine
       || this.#readyUpgrade.purpose !== purpose) throw new Error("profile-stopped-upgrade-owner-required");
     this.assertStoppedProfileUpgrade(this.#readyUpgrade.sourcePath, this.#readyUpgrade.processLockRoot);
+  }
+  preservesUnfinishedProfileState(): boolean {
+    this.assertLive();
+    return this.#readyUpgrade?.purpose === "startup" || this.#readyUpgrade?.purpose === "layout";
+  }
+  stoppedUpgradeLogout(): LogoutOperation | undefined {
+    this.assertLive();
+    return this.#readyUpgrade !== undefined && this.#readyUpgrade.purpose !== "manual" && this.#readyUpgrade.copyPath === undefined ? this.#readyUpgrade.capture.logout : undefined;
+  }
+  async completeStartupUpgradeLogout(): Promise<void> {
+    const operation = this.stoppedUpgradeLogout(), upgrade = this.#readyUpgrade;
+    if (operation?.settlement === undefined || upgrade?.purpose !== "startup") return;
+    const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+    const { verifyStoppedBackupManifestAtPath } = await import("../sqlite/backup-service.js");
+    const next = AuthorityDatabase.convertStartupUpgradeLogout(this, operation, verifyStoppedBackupManifestAtPath);
+    if (next === undefined) return;
+    upgrade.capture.settleLogout(next, () => {
+      if (canonicalJsonStringify(AuthorityDatabase.convertStartupUpgradeLogout(this, operation, verifyStoppedBackupManifestAtPath)) !== canonicalJsonStringify(next)) throw new Error("profile-startup-logout-source-changed");
+    });
   }
   assertProfileMigration(path: string, sourceVersion: number, sourceFingerprint?: string): "ready" | "setup" {
     if (this.#readyUpgrade !== undefined) {
@@ -525,6 +546,9 @@ export class RuntimeAdmission {
       throw new Error("profile-machine-authority-required");
     }
     return (this.#authority as InstallationLease).readProfileRegistry();
+  }
+  readStartupProfileIds(): readonly string[] {
+    return this.#exclusiveInstallationLease().readStartupProfileIds();
   }
   assertBrowserRegistryCustody(): void {
     this.assertLive(); assertSourceClosuresProved(this.#sourceFailures);

@@ -6,8 +6,9 @@ import { dirname,join } from "node:path";
 import { afterEach,it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { hash } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
-import { assertFixedLayoutEntries,assertFixedLayoutMove,createFixedLayoutDirectory,FixedLayoutActivationSchema,fixedLayoutBindingEntries,fixedLayoutEntries,FixedLayoutIntentSchema,fixedLayoutOutputPaths,fixedLayoutSettingsUpdate,fixedLayoutSourceFence,readFixedLayoutIntent } from "../../../../src/backend/storage/maintenance/fixed-layout.js";
+import { assertFixedLayoutEntries,assertFixedLayoutMove,createFixedLayoutDirectory,FixedLayoutActivationSchema,fixedLayoutBindingEntries,fixedLayoutEntries,FixedLayoutIntentSchema,fixedLayoutOutputPaths,fixedLayoutSnapshot,fixedLayoutSettingsUpdate,fixedLayoutSourceFence,readFixedLayoutIntent } from "../../../../src/backend/storage/maintenance/fixed-layout.js";
 import { authenticateSavedSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
+import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { derivePersistedSettingsFingerprint } from "../../../../src/models/config/settings.js";
 
 const roots: string[] = [];
@@ -140,7 +141,7 @@ it("records the exact saved default-browser rewrite with its ordinary command an
   const intent = FixedLayoutActivationSchema.parse({ profileId, sourceRoot, authorityPath: join(targetRoot, "state.db"),
     backupFileName: `authority-g3-1-${randomUUID()}.sqlite`, backupSha256: "a".repeat(64), backupManifestSha256: "b".repeat(64),
     preAuthorityGeneration: 3, preAuthorityContentFingerprint: "c".repeat(64), settingsRevision: 2, settingsFingerprint: derivePersistedSettingsFingerprint(settings),
-    priorActive: { generation: 2, settingsRevision: 2, settingsFingerprint: derivePersistedSettingsFingerprint(settings), configSnapshotId: randomUUID(), configFingerprint: before.fingerprint, activatedAt: capturedAt },
+    browserSnapshots: [], priorActive: { generation: 2, settingsRevision: 2, settingsFingerprint: derivePersistedSettingsFingerprint(settings), configSnapshotId: randomUUID(), configFingerprint: before.fingerprint, activatedAt: capturedAt },
     settingsUpdate: { commandId: randomUUID(), auditId: randomUUID(), previousBrowserRoot: settings.paths.browserProfileRoot, outputPaths: { downloadsDir } },
     snapshot: { configSnapshotId: randomUUID(), revision: 3, fingerprint: after.fingerprint, config: after.config, provenance: after.provenance, capturedAt, capturedBy: "local-operator" } });
   const update = fixedLayoutSettingsUpdate(intent, settings);
@@ -171,4 +172,21 @@ it("creates missing fixed workspace parents privately and refuses a linked paren
   assert.equal(lstatSync(workspace).mode & 0o7777, 0o700);
   symlinkSync(join(f.root, "Library"), join(f.root, "alias"));
   assert.throws(() => createFixedLayoutDirectory(join(f.root, "alias", "Relay")), /symbolic link/u);
+});
+
+
+it("clones browser configuration paths for the moved root while retaining history and all other settings", () => {
+  const f = fixture(), external = join(f.root, "reports"), capturedAt = "2026-11-01T12:00:00.000Z";
+  const resolved = resolveConfigWithProvenance({ actor: { label: "Retained" }, paths: { reportsDir: external } }, { primaryDisplay: null }, undefined,
+    { stateRoot: f.source, artifactRoot: join(f.source, "artifacts") });
+  const source = ConfigSnapshotRecordSchema.parse({ configSnapshotId: randomUUID(), revision: 3, capturedAt, capturedBy: "local-operator",
+    fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance });
+  const before = JSON.stringify(source);
+  const moved = fixedLayoutSnapshot(source, f.source, f.target, { configSnapshotId: randomUUID(), capturedAt, capturedBy: "local-operator" });
+  assert.equal(JSON.stringify(source), before); assert.notEqual(moved.configSnapshotId, source.configSnapshotId);
+  assert.equal(moved.config.paths.stateRoot, f.target); assert.equal(moved.config.paths.artifactRoot, join(f.target, "artifacts"));
+  assert.equal(moved.config.paths.browserProfileRoot, join(f.target, "browsers")); assert.equal(moved.config.paths.reportsDir, external);
+  const { paths: _oldPaths, ...oldConfig } = source.config, { paths: _newPaths, ...newConfig } = moved.config;
+  assert.deepEqual(newConfig, oldConfig); assert.deepEqual(moved.provenance, source.provenance); assert.equal(moved.revision, source.revision);
+  assert.throws(() => fixedLayoutSnapshot(source, f.target, f.source, { configSnapshotId: randomUUID(), capturedAt, capturedBy: "local-operator" }), /source-snapshot-mismatch/u);
 });

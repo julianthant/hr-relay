@@ -446,9 +446,16 @@ Its source fingerprint is privately bound before issuance and checked again insi
 transaction with the actual verified backup. Readback binds the exact source version and current destination. Unrelated business rows, Settings, terminal assistant records and audits remain unchanged; only the declared editor records, retired automatic grants and pending automatic proposals are retired, alongside schema metadata and the appended upgrade record. Already-current READY
 inspection never reclaims diagnostics. Unproved source closure or rollback retains restore custody
 and the original failures. `upgradeProfileAtStartup` uses this same engine before HTTP, account or
-ordinary profile composition. It requires stopped native/process/browser resources while preserving
-queued runs, unresolved write fences and pending artifact rows exactly; the stricter manual and
-credential-copy paths continue to require retired durable work.
+ordinary profile composition. Launch order is self-repair (when available), schema upgrade, then recovery on the current format.
+The startup issuer captures registered ready/cancelling people and pending sign-up databases with
+exact operation, credential and file evidence; ordinary runtime issuance remains strict. Stored
+unfinished worker/browser/control/auth leases, interrupted runs, pending sign-up/logout, queued
+runs, unresolved write fences, checkpoints and pending artifacts carry forward unchanged. Actual
+native browser closure, exclusive lifetime/process custody, source binding and a verified backup
+remain mandatory before mutation. Migration grants no runtime access and never resumes or submits
+work; parked UNKNOWN writes stay parked. The stricter manual and credential-copy paths continue
+to require retired durable work. Future Pause/Resume behavior must retain the last completed step;
+crash recovery fails interrupted work with rerun from that step and preserves mid-submit uncertainty.
 A changed source fails with `source-changed: re-plan upgrade`. Recovery, backups, and restores remain
 explicit operations in their storage owners; ordinary shutdown does not create a backup.
 
@@ -457,10 +464,11 @@ explicit operations in their storage owners; ordinary shutdown does not create a
 Bootstrap holds the lifetime listener before the supported forward conversion. The finite source
 reader admits only the known default pair at generation zero. Existing stopped machine-control and
 flat-store conversion run through their current owners. Supported registered schemas 8–10 then receive
-the automatic backed-up W11a upgrade before current-only layout qualification. Every registered READY person needs a
-verified current SQL backup and genuine native closure before paths change. Current-only layout source admissions preserve ordinary output files unchanged and cannot authorize schema migration; manual upgrade and credential-copy admissions retain their strict copy refusal. Layout requires retired
-durable work; the automatic SQL upgrade preserves queued and unresolved work without moving paths. Pending operations,
-unsupported source layouts, unknown members, unsafe links, and conflicting installations refuse.
+the automatic backed-up W11a upgrade before current-only layout qualification. Registered ready/cancelling people and initialized pending sign-ups need a verified current SQL backup and genuine native closure before paths change.
+Current-only layout source admissions preserve unfinished durable work and ordinary output files and
+cannot authorize schema migration; manual upgrade and credential-copy admissions retain their strict
+retirement and copy refusals. Unsupported source layouts, unknown members, unsafe links, unresolved
+atomic publication prefixes and conflicting installations refuse.
 
 `maintenance/fixed-layout.ts` owns strict journal schemas, tree membership, exact binding-prefix
 classification, and bounded person activation claims. The external `.tracker/fixed-layout.json`
@@ -471,10 +479,13 @@ The lifetime owner consumes an issued installation publication proof and transfe
 listener after source admissions and operations close. It never releases and reacquires the port.
 
 Configuring startup issues only exact-person layout admissions. One SQLite transaction publishes the
-planned active configuration, rewrites retained current browser-session paths, and records any saved
+planned active configuration, rewrites retained browser-session paths and binds them to equivalent
+new configuration snapshots, and records any saved
 browser-root/default-output changes through ordinary command, audit, and settings repositories.
 External output choices stay unchanged, while output paths inside the moved tree rebind to the same relative folders. Effective defaults become explicit settings; other history,
-credentials, keys, counters, unresolved writes, and snapshots remain preserved. Publication is checked
+credentials, keys, counters, unresolved writes, and original snapshots remain preserved. A never-initialized
+pending sign-up receives only the ordinary empty-overrides settings initialization, with journaled
+command/audit identities. Publication is checked
 against the verified pre-move backup. A failed or interrupted publication resumes from its exact
 recorded state on the next startup; normal admission waits for completion. Completed layout evidence
 does not compare later mutable person data with the migration snapshot.
@@ -534,13 +545,19 @@ instead of reading the map directly.
 
 ### Profile storage admission
 
-Dashboard startup inspects every registered READY person under genuine exclusive installation and
+Dashboard startup inspects registered ready/cancelling people and initialized pending sign-ups under genuine exclusive installation and
 maintenance ownership before ordinary admission, HTTP or credential consumers. Supported SQLite
 schemas 8–10 receive a verified same-person backup and the stopped forward migration, followed by
 current-schema health readback. Current stores are inspected without another backup. Missing,
 corrupt, foreign and future databases refuse with `STORAGE_PROFILE_UPGRADE_REFUSED`; they never
-initialize empty storage. Pending setup and logout remain owned by their existing continuation
-protocols. Sign-in only authenticates a current person and never schedules an app restart or upgrade.
+initialize empty storage. Only a genuinely not-yet-created sign-up with its planned credential
+operation and no key/database is left for ordinary setup creation. Pending setup and logout remain
+owned by their existing continuation protocols after upgrade and layout conversion. A pending logout
+settlement is matched to the verified pre-upgrade image, with its continuation recorded atomically
+in the upgrade journal. Before-image commit intent becomes prepared on the new image; an already
+committed result keeps its result and request identities. Publication resumes from the current
+verified image if startup stops between the SQL commit and operation publication. Layout continuation
+uses its exact completed activation plan and verified backup in the same way. Sign-in only authenticates a current person and never schedules an app restart or upgrade.
 
 The migration purpose binds immutable person/installation IDs, exact source and sidecar evidence,
 canonical credential-head metadata and source fingerprints. It cannot read credentials or grant
@@ -557,7 +574,8 @@ Worker bootstrap acquires genuine machine admission, captures selection and take
 
 Logout retains all three canonical records and native key. Its current operation records original session epoch and source identity captured by the already-opened native database owner before cancellation or selection revocation. Actual durable cancellation requests precede logout intent. The exact metadata prefixes normalize selection clear and cancelling state; stale epochs, another person or substituted source refuse. After child/account/native-database closure, the controller owns one stopped settlement operation. Its prepared→commit-intent→done evidence captures requests/time/IDs once and brackets one native SQL transaction with exact before/after images. Recovery reuses existing canonical receipts and preserves UNKNOWN fences; any third image holds. Native writer close precedes ready-row publication and operation removal. Stopped inspection copies come only from the fixed-source snapshot factory; generic copy delegation is refused. No credentials are erased or restored by logout.
 
-Cold continuation requires an immutable pending-operation/source observation captured during genuine one-shot native startup. A second composition on the same live controller cannot manufacture that fact. After new-controller closure proofs, readonly source snapshots and the same stopped settlement protocol handle exact metadata/SQL prefixes. Old ordinary handles remain revoked; stopped access grants no general epoch bypass or credential effects.
+Cold continuation requires an immutable pending-operation/source observation captured during genuine one-shot native startup. The observation is retained by the root lifetime across maintenance leases and its verified fixed-layout transfer.
+A second composition on the same live controller cannot manufacture that fact. After new-controller closure proofs, readonly source snapshots and the same stopped settlement protocol handle exact metadata/SQL prefixes. Old ordinary handles remain revoked; stopped access grants no general epoch bypass or credential effects.
 
 Settled worker reservation IDs retain allocation provenance. Closure authenticates the exact origin,
 revision and canonical retirement command. Remove-worker retirement requires

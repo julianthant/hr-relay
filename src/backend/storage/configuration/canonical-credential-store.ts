@@ -130,6 +130,7 @@ const EraseFile = z.strictObject({ kind: z.enum(kinds), digest: Digest, device: 
 const ErasePlan = Binding.extend({ schemaVersion: z.literal(1), kind: z.literal("erase"), operationId: z.uuid(),
   priorHead: ActiveHead, priorHeadFile: EraseFile.omit({ kind: true }), head: ErasedHeadBody, files: z.array(EraseFile).length(3) });
 const EraseOperation = ErasePlan.extend({ head: ErasedHead });
+export const CanonicalCredentialOperationSchema = z.discriminatedUnion("kind", [CreateOperation, EraseOperation]);
 
 function canonicalPaths(admission: RuntimeAdmission) {
   const binding = admission.profileBinding, context = admission.readInstallationContext();

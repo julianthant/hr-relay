@@ -53,7 +53,7 @@ import { lstatSync } from "node:fs";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { recoverFixedLayoutPublication,withDefaultLayoutSource,type FixedLayoutPublication } from "../../storage/admission/installation.js";
 import { file as layoutFile,hash as layoutHash } from "../../storage/maintenance/existing-data-backup-files.js";
-import { activateFixedLayoutProfiles,assertFixedLayoutSourceFence,createFixedLayoutDirectory,fixedLayoutEntries,FixedLayoutIntentSchema,fixedLayoutOutputPaths,readFixedLayoutIntent,type FixedLayoutActivation } from "../../storage/maintenance/fixed-layout.js";
+import { activateFixedLayoutProfiles,assertFixedLayoutSourceFence,createFixedLayoutDirectory,fixedLayoutEntries,FixedLayoutIntentSchema,fixedLayoutOutputPaths,fixedLayoutSnapshot,readFixedLayoutIntent,type FixedLayoutActivation } from "../../storage/maintenance/fixed-layout.js";
 
 
 
@@ -96,19 +96,21 @@ export async function upgradeRegisteredPersonStores(workspace: string, lifetime:
   try {
     const profiles = await withStoppedMachineStorage(workspace, lifetime, async machine => {
       if (machine.requiresFlatStoreMigration()) return [];
-      const registry = machine.readProfileRegistry();
-      return registry.profiles.filter(row => row.lifecycle === "ready").flatMap(row => {
-        const inspection = AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, row.profileId);
-        return inspection.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION ? [] : [row.profileId];
+      return machine.readStartupProfileIds().flatMap(profileId => {
+        const inspection = AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
+        return inspection.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION && !inspection.requiresContinuation ? [] : [profileId];
       });
     });
     for (const profileId of profiles) await withStoppedMachineStorage(workspace, lifetime, async machine => {
       const { upgradeProfileAtStartup } = await import("../../storage/maintenance/upgrade.js");
       const report = await upgradeProfileAtStartup(profileBrowserClosure, machine, profileId, hostFacts, clock);
-      if (report.state !== "upgraded" || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup-upgrade-unproved");
+      if ((report.state !== "upgraded" && report.state !== "already-upgraded") || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup-upgrade-unproved");
     });
     if (profiles.length !== 0) await withStoppedMachineStorage(workspace, lifetime, async machine => {
-      for (const profileId of profiles) if (AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId).schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup-readback-unproved");
+      for (const profileId of profiles) {
+        const inspection = AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId);
+        if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || inspection.requiresContinuation) throw new Error("profile-startup-readback-unproved");
+      }
     });
   } catch (error) { throw new RegisteredPersonUpgradeRefusedError(error); }
 }
@@ -152,10 +154,9 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
       await upgradeRegisteredPersonStores(sourceWorkspace, lifetime, hostFacts, clock);
       return withStoppedMachineStorage(sourceWorkspace, lifetime, async (machine, owned) => {
         const sources: Array<{ admission: RuntimeAdmission; closure: StoppedBackupClosure }> = [], profiles: FixedLayoutActivation[] = [];
-        const registry = machine.readProfileRegistry(), operation = machine.maintenanceOperation();
-        if (registry.profiles.some(row => row.lifecycle !== "ready" || row.credentialState !== "saved")) throw new Error("fixed-layout-ready-people-required");
-        for (const row of registry.profiles) {
-          const admission = await machine.forStoppedProfileLayout(profileBrowserClosure, row.profileId, operation, clock, hostFacts);
+        const operation = machine.maintenanceOperation();
+        for (const profileId of machine.readStartupProfileIds()) {
+          const admission = await machine.forStoppedProfileLayout(profileBrowserClosure, profileId, operation, clock, hostFacts);
           owned.push(admission);
           const processLockRoot = join(sourceWorkspace, rebuildRuntimeIsolation.processLockRoot);
           const closure = await prepareStoppedBackupClosure(profileBrowserClosure, admission, operation, clock, processLockRoot);
@@ -168,25 +169,36 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
           let primary: { error: unknown } | undefined;
           try {
             const saved = readBootSettings(database.authority), priorActive = database.authority.runtimeConfig.get();
-            if (priorActive === undefined) throw new Error("fixed-layout-active-settings-required");
-            const targetRoot = join(targetWorkspace, rebuildRuntimeIsolation.stateRoot, "profiles", row.profileId);
+            const targetRoot = join(targetWorkspace, rebuildRuntimeIsolation.stateRoot, "profiles", profileId);
             const previousBrowserRoot = saved.settings.paths?.browserProfileRoot;
             if (previousBrowserRoot !== undefined && previousBrowserRoot !== join(admission.stateRoot, "browsers")) throw new Error("fixed-layout-custom-browser-root-unsupported");
-            const priorSnapshot = database.authority.configSnapshots.get(priorActive.configSnapshotId);
-            if (priorSnapshot === undefined || priorSnapshot.fingerprint !== priorActive.configFingerprint) throw new Error("fixed-layout-active-snapshot-required");
-            const outputPaths = fixedLayoutOutputPaths(saved.settings, priorSnapshot.config.paths, admission.stateRoot, targetRoot);
+            const priorSnapshot = priorActive === undefined ? undefined : database.authority.configSnapshots.get(priorActive.configSnapshotId);
+            if (priorActive !== undefined && (priorSnapshot === undefined || priorSnapshot.fingerprint !== priorActive.configFingerprint)) throw new Error("fixed-layout-active-snapshot-required");
+            const outputPaths = priorSnapshot === undefined ? {} : fixedLayoutOutputPaths(saved.settings, priorSnapshot.config.paths, admission.stateRoot, targetRoot);
             const settingsUpdate = previousBrowserRoot === undefined && Object.keys(outputPaths).length === 0 ? undefined
               : { commandId: randomUUID(), auditId: randomUUID(), ...(previousBrowserRoot === undefined ? {} : { previousBrowserRoot }), outputPaths };
             const settings = settingsUpdate === undefined ? saved.settings : { ...saved.settings, paths: { ...saved.settings.paths, ...outputPaths,
               ...(previousBrowserRoot === undefined ? {} : { browserProfileRoot: join(targetRoot, "browsers") }) } };
             const resolved = resolveConfigWithProvenance(settings, hostFacts, clock, { stateRoot: targetRoot, artifactRoot: join(targetRoot, "artifacts") });
-            profiles.push({ profileId: row.profileId, sourceRoot: admission.stateRoot, authorityPath: join(targetRoot, "state.db"), backupFileName: manifest.backupFileName,
+            const snapshot = ConfigSnapshotRecordSchema.parse({ configSnapshotId: randomUUID(), revision: saved.revision + (settingsUpdate === undefined ? 0 : 1),
+              config: resolved.config, provenance: resolved.provenance, fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(), capturedBy: LOCAL_OPERATOR_ACTOR_ID });
+            const custody = database.readProfileResourceCustody();
+            const browserSnapshots = [...new Set(custody.browsers.map(browser => browser.configFingerprint))].map(fingerprint => {
+              const source = custody.configSnapshots.find(row => row.fingerprint === fingerprint);
+              if (source === undefined) throw new Error("fixed-layout-browser-snapshot-missing");
+              const moved = fixedLayoutSnapshot(source, admission.stateRoot, targetRoot,
+                { configSnapshotId: randomUUID(), capturedAt: snapshot.capturedAt, capturedBy: snapshot.capturedBy });
+              return { sourceConfigSnapshotId: source.configSnapshotId, sourceFingerprint: fingerprint,
+                snapshot: moved.fingerprint === snapshot.fingerprint && moved.revision === snapshot.revision ? snapshot : moved };
+            });
+            profiles.push({ profileId, sourceRoot: admission.stateRoot, authorityPath: join(targetRoot, "state.db"), backupFileName: manifest.backupFileName,
               backupSha256: manifest.sha256, backupManifestSha256: layoutHash(layoutFile(join(admission.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), "managed data").bytes),
               preAuthorityGeneration: manifest.authorityGeneration, preAuthorityContentFingerprint: manifest.authorityContentFingerprint,
-              settingsRevision: saved.revision, settingsFingerprint: saved.settingsFingerprint, priorActive,
+              settingsRevision: saved.revision, settingsFingerprint: saved.settingsFingerprint, priorActive: priorActive ?? null,
+              ...(priorActive === undefined ? { settingsInitialization: { commandId: randomUUID(), auditId: randomUUID() } } : {}),
+              ...(admission.stoppedUpgradeLogout() === undefined ? {} : { logout: admission.stoppedUpgradeLogout() }),
               ...(settingsUpdate === undefined ? {} : { settingsUpdate }),
-              snapshot: ConfigSnapshotRecordSchema.parse({ configSnapshotId: randomUUID(), revision: saved.revision + (settingsUpdate === undefined ? 0 : 1),
-                config: resolved.config, provenance: resolved.provenance, fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(), capturedBy: LOCAL_OPERATOR_ACTOR_ID }) });
+              snapshot, browserSnapshots });
           } catch (error) { primary = { error }; }
           try { database.close(); } catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { database, admission }); }
           if (primary !== undefined) throw primary.error;

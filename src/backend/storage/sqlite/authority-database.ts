@@ -12,7 +12,7 @@ import type { CredentialStore } from "../../../models/config/credential-store.js
 import { type ActiveRuntimeConfigRecord,type RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
-import { ConfigSnapshotRecordSchema,ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
+import { ConfigSnapshotRecordSchema,type ConfigSnapshotRecord,ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
 import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
 import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
 import { ConfirmationPublicationSchema,confirmationPublicationFromRow,confirmedOperationTimeline,reconstructConfirmedOperation,type ConfirmationPublication } from "../../../models/events/confirmed-operation.js";
@@ -54,11 +54,11 @@ import { type InstallationLease } from "../admission/installation.js";
 import { RuntimeLifetimeLock,offlineMaintenanceWorkspace,type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { inspectArtifactDeletionFile,pendingDiagnosticArtifacts,reclaimDiagnosticStages,removeArtifactDeletionFile } from "../artifacts/content-addressed-artifact-writer.js";
-import { clearOperationProofSlots,outermostOperationProof,revalidateOperationProof,withOperationProof } from "../configuration/credential-safe-file.js";
+import { clearOperationProofSlots,outermostOperationProof,readPrivateFile,revalidateOperationProof,withOperationProof } from "../configuration/credential-safe-file.js";
 import { assertCredentialStoreOwner,stoppedLogoutOwnsCredentialCommand } from "../configuration/credential-store.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
-import { fixedLayoutOutputPaths,fixedLayoutSettingsUpdate,type FixedLayoutActivation } from "../maintenance/fixed-layout.js";
+import { fixedLayoutOutputPaths,fixedLayoutSettingsUpdate,fixedLayoutSnapshot,readFixedLayoutIntent,type FixedLayoutActivation } from "../maintenance/fixed-layout.js";
 import type { ProfileBrowserClosure } from "../maintenance/profile-inventory.js";
 import { privatePathRejects } from "../private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
@@ -214,7 +214,7 @@ type RuntimeConfigRepository = Readonly<{
   hasHistory(): boolean;
   hasAdvancedHistory(): boolean;
   get(): ActiveRuntimeConfigRecord | undefined;
-  initialize(input: unknown): ActiveRuntimeConfigRecord;
+  initialize(input: unknown, identity?: Readonly<{ commandId: string; auditId: string }>): ActiveRuntimeConfigRecord;
   activate(input: unknown): ActiveRuntimeConfigRecord;
   requireActive(input: unknown): RuntimeConfigClaimToken;
   requireSettingsCurrent(): void;
@@ -1130,12 +1130,13 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
   return validated;
 }
 
-function authorityContentFingerprint(database: DatabaseSync): string {
+function authorityContentFingerprint(database: DatabaseSync, excludedUpgradeRecord?: string): string {
   const hash = createHash("sha256");
   const rowSchema = z.record(z.string(), z.union([z.string(), z.number(), z.null()]));
   for (const table of migrationTableNames(readIntPragma(database, "user_version"))) {
     hash.update(canonicalJsonStringify(table));
     for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table)}`).iterate()) {
+      if (table === "database_upgrades" && row.id === excludedUpgradeRecord) continue;
       hash.update(canonicalJsonStringify(rowSchema.parse(row)));
     }
   }
@@ -1145,7 +1146,7 @@ function authorityContentFingerprint(database: DatabaseSync): string {
 const AuthorityRecordFingerprintRowSchema = z.strictObject({ id: z.string(), payload_json: z.string() });
 
 function fixedLayoutUnchangedAuthorityFingerprint(database: DatabaseSync, intent: FixedLayoutActivation, source = false): string {
-  const initialization = intent.settingsUpdate;
+  const initialization = intent.settingsUpdate ?? intent.settingsInitialization;
   const excluded = new Set(["database_states", "settings", "settings_snapshots", "run_search"]);
   const present = new Set(inspectionTableNames(database));
   const hash = createHash("sha256");
@@ -1157,8 +1158,10 @@ function fixedLayoutUnchangedAuthorityFingerprint(database: DatabaseSync, intent
         || table === "command_audits" && record.id === initialization.auditId)) continue;
       if (table === "browser_sessions") {
         const browser = workerBrowserFromRow(record);
-        if (browser.health !== "closed") throw new Error("fixed-layout-browser-not-closed");
-        if (source) record.payload_json = canonicalJsonStringify(fixedLayoutBrowser(browser, intent));
+        if (source) {
+          const moved = fixedLayoutBrowser(browser, intent);
+          record.payload_json = canonicalJsonStringify(moved); record.auth_fingerprint = moved.configFingerprint;
+        }
       }
       hash.update(canonicalJsonStringify(record));
     }
@@ -1171,7 +1174,9 @@ function fixedLayoutBrowser(browser: ReturnType<typeof workerBrowserFromRow>, in
   const suffix = relative(intent.sourceRoot, browser.profileDirectory);
   if (!suffix.startsWith(`browsers${sep}`) && !suffix.startsWith(`scratch${sep}live-smoke${sep}`)) throw new Error("fixed-layout-browser-path-unsupported");
   if (suffix.split(sep).some(part => part === ".." || part === "." || part === "")) throw new Error("fixed-layout-browser-path-invalid");
-  return { ...browser, profileDirectory: join(dirname(intent.authorityPath), suffix) };
+  const snapshot = intent.browserSnapshots.find(row => row.sourceFingerprint === browser.configFingerprint);
+  if (snapshot === undefined) throw new Error("fixed-layout-browser-snapshot-missing");
+  return { ...browser, profileDirectory: join(dirname(intent.authorityPath), suffix), configFingerprint: snapshot.snapshot.fingerprint };
 }
 
 function fixedLayoutChangedAuthorityTables(before: DatabaseSync, after: DatabaseSync): readonly string[] {
@@ -1340,6 +1345,15 @@ function readAuthorityUpgradeRecords(database: DatabaseSync) {
     .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
 }
 
+function convertedLogoutOperation(operation: LogoutOperation, sourceFingerprint: string, currentFingerprint: string): LogoutOperation {
+  const settlement = operation.settlement;
+  if (settlement === undefined) throw new Error("profile-startup-logout-settlement-required");
+  if (settlement.after === sourceFingerprint) return LogoutOperationSchema.parse({ ...operation, settlement: { ...settlement, after: currentFingerprint } });
+  if (settlement.before !== sourceFingerprint) throw new Error("profile-startup-logout-source-changed");
+  const { after: _after, ...prepared } = settlement;
+  return LogoutOperationSchema.parse({ ...operation, settlement: { ...prepared, phase: "prepared", before: currentFingerprint } });
+}
+
 function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission: RuntimeAdmission, path: string, expectedFingerprint?: string, backup?: VerifiedBackup, verifyBackup?: (admission: RuntimeAdmission, manifestPath: string) => VerifiedBackup) {
   requireRuntimeAdmission(admission);
   const version = readIntPragma(database, "user_version");
@@ -1367,6 +1381,8 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
     if (backup.manifest.schemaVersion !== version || backup.manifest.authorityContentFingerprint !== fingerprint
       || backup.manifest.authorityGeneration !== meta.authority_generation) throw new Error("source-changed: upgrade backup differs from source");
     const planDigest = deriveAuthorityUpgradePlanDigest(version, fingerprint);
+    const logout = admission.stoppedUpgradeLogout();
+    if (logout?.settlement !== undefined && fingerprint !== logout.settlement.before && fingerprint !== logout.settlement.after) throw new Error("profile-startup-logout-source-changed");
     for (const migration of SQLITE_MIGRATIONS.filter(item => item.version > version)) {
       for (const [index, statement] of migration.statements.entries()) {
         if (migration.version === 7 && index === 1) {
@@ -1381,6 +1397,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
     const record = AuthorityUpgradeRecordSchema.parse({ recordKey: randomUUID(), upgradeId: fingerprint,
       phase: "settled", fromSchemaVersion: version, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
       planDigest, backup: { manifestPath: backup.manifestPath, sha256: backup.manifest.sha256, authorityGeneration: backup.manifest.authorityGeneration },
+      ...(logout?.settlement === undefined ? {} : { startupLogout: { operation: logout, postimage: authorityContentFingerprint(database) } }),
       by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: clock.now().toISOString() });
     database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
       .run(record.recordKey, record.upgradeId, record.phase, backup.manifest.sha256, canonicalJsonStringify(record), record.recordedAt);
@@ -2122,7 +2139,10 @@ export class AuthorityDatabase implements Disposable {
           admission.assertFixedLayoutDatabase(path);
           {
             const app = fixedLayoutAppSettings(database.#database);
-            if (app === null) throw new Error("fixed-layout-settings-missing");
+            if (app === null) {
+              if (intent.settingsInitialization === undefined || intent.priorActive !== null) throw new Error("fixed-layout-settings-missing");
+              repositories.runtimeConfig.initialize(intent.snapshot, intent.settingsInitialization);
+            } else {
             const update = intent.settingsUpdate === undefined ? undefined : fixedLayoutSettingsUpdate(intent, app.saved?.settings ?? app.initialization.settings.settings);
             if (update !== undefined) repositories.commands.insert(update.request);
             repositories.configSnapshots.insert(intent.snapshot);
@@ -2132,12 +2152,14 @@ export class AuthorityDatabase implements Disposable {
               repositories.commandAudits.insert(update.audit);
               repositories.settingsCurrent.advance(update.current);
             }
+            }
+            for (const entry of intent.browserSnapshots) if (entry.snapshot.configSnapshotId !== intent.snapshot.configSnapshotId) repositories.configSnapshots.insert(entry.snapshot);
           }
           for (const raw of database.#database.prepare("SELECT * FROM browser_sessions ORDER BY id").all()) {
             const browser = workerBrowserFromRow(raw);
-            if (browser.health !== "closed") throw new Error("fixed-layout-browser-not-closed");
-            database.#database.prepare("UPDATE browser_sessions SET payload_json=? WHERE id=?")
-              .run(canonicalJsonStringify(fixedLayoutBrowser(browser, intent)), z.object({ id: z.string() }).parse(raw).id);
+                const moved = fixedLayoutBrowser(browser, intent);
+            database.#database.prepare("UPDATE browser_sessions SET payload_json=?,auth_fingerprint=? WHERE id=?")
+              .run(canonicalJsonStringify(moved), moved.configFingerprint, z.object({ id: z.string() }).parse(raw).id);
           }
         });
       }
@@ -2189,8 +2211,8 @@ export class AuthorityDatabase implements Disposable {
 
   static inspectRegisteredPersonAtStartup(machine: RuntimeAdmission, profileId: string) {
     machine.assertExclusive(); machine.assertOfflineMaintenance(machine.maintenanceOperation());
-    const id = z.uuid().parse(profileId), registry = machine.readProfileRegistry();
-    if (!registry.profiles.some(row => row.profileId === id && row.lifecycle === "ready")) throw new Error("profile-startup-registration-required");
+    const id = z.uuid().parse(profileId);
+    if (!machine.readStartupProfileIds().includes(id)) throw new Error("profile-startup-registration-required");
     const path = join(machine.stateRoot, "profiles", id, "state.db");
     machine.assertStateRoot(path);
     if (!existsSync(path)) throw new Error("profile-startup-database-missing");
@@ -2203,12 +2225,59 @@ export class AuthorityDatabase implements Disposable {
         const inspection = inspectNativeAuthority(database, version);
         machine.assertOfflineMaintenance(machine.maintenanceOperation());
         if (inspection.installationId !== machine.locator.installationId || inspection.profileId !== id) throw new Error("profile-startup-foreign-binding");
-        return inspection;
+        const record = readAuthorityUpgradeRecords(database).at(-1);
+        const continuation = record !== undefined && "startupLogout" in record ? record.startupLogout : undefined;
+        const file = continuation === undefined ? undefined : readPrivateFile(join(machine.stateRoot, "machine", "operations", `${continuation.operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
+        const nativeContinuation = file !== undefined && canonicalJsonStringify(LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)))) === canonicalJsonStringify(continuation?.operation);
+        const context = machine.readInstallationContext();
+        if (context === undefined) throw new Error("profile-startup-installation-required");
+        const layout = readFixedLayoutIntent(context.workspace);
+        const layoutLogout = layout?.phase === "complete" ? layout.profiles.find(plan => plan.profileId === id)?.logout : undefined;
+        const layoutFile = layoutLogout?.settlement === undefined ? undefined : readPrivateFile(join(machine.stateRoot, "machine", "operations", `${layoutLogout.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
+        const layoutContinuation = layoutFile !== undefined && canonicalJsonStringify(LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(layoutFile.bytes)))) === canonicalJsonStringify(layoutLogout);
+        return { ...inspection, requiresContinuation: nativeContinuation || layoutContinuation };
       });
     } catch (error) {
       if (hasUnprovedSourceClosure(error)) { machine.retainSourceClosure(error); throw retainAuthoritySourceClosure([error], { admission: machine }); }
       throw error;
     }
+  }
+
+  static convertStartupUpgradeLogout(admission: RuntimeAdmission, operation: LogoutOperation, verifyBackup: (admission: RuntimeAdmission, path: string) => VerifiedBackup): LogoutOperation | undefined {
+    if (canonicalJsonStringify(admission.stoppedUpgradeLogout()) !== canonicalJsonStringify(operation)) throw new Error("profile-startup-upgrade-required");
+    const context = admission.readInstallationContext();
+    if (context === undefined) throw new Error("profile-startup-installation-required");
+    const layout = readFixedLayoutIntent(context.workspace), plan = layout?.phase === "complete" ? layout.profiles.find(plan => plan.profileId === operation.profileId) : undefined;
+    if (plan?.logout?.settlement !== undefined && canonicalJsonStringify(plan.logout) === canonicalJsonStringify(operation)) {
+      const backupPath = join(admission.stateRoot, "backups", "authority", plan.backupFileName), manifestPath = `${backupPath}.manifest.json`;
+      const backup = verifyBackup(admission, manifestPath);
+      if (backup.manifest.sha256 !== plan.backupSha256 || backup.manifest.authorityContentFingerprint !== plan.preAuthorityContentFingerprint) throw new Error("profile-startup-layout-backup-changed");
+      const database = new AuthorityDatabase(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250,
+        migrationOwner: "startup-layout-continuation", openMode: "storage-doctor-read-only-no-migrate" }, systemClock,
+        undefined, undefined, undefined, undefined, "stopped-layout-source");
+      let result: LogoutOperation | undefined, primary: { error: unknown } | undefined;
+      try {
+        if (database.classifyFixedLayoutActivation(plan, backupPath, true) !== "committed") throw new Error("profile-startup-layout-uncommitted");
+        result = convertedLogoutOperation(operation, plan.preAuthorityContentFingerprint, inspectNativeAuthority(database.#database).authorityContentFingerprint);
+      } catch (error) { primary = { error }; }
+      try { database.close(); }
+      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { database, admission }); }
+      if (primary !== undefined) throw primary.error;
+      if (result === undefined) throw new Error("profile-startup-layout-result-missing");
+      return result;
+    }
+    return withAuthorityDatabaseReadOnly(admission, join(admission.stateRoot, "state.db"), database => {
+      const inspection = inspectNativeAuthority(database), record = readAuthorityUpgradeRecords(database).at(-1);
+      if (record === undefined || !("startupLogout" in record) || record.startupLogout === undefined
+        || canonicalJsonStringify(record.startupLogout.operation) !== canonicalJsonStringify(operation)) return undefined;
+      const settlement = operation.settlement;
+      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10].includes(record.fromSchemaVersion)
+        || settlement === undefined || record.startupLogout.postimage !== authorityContentFingerprint(database, record.recordKey)) throw new Error("profile-startup-logout-postimage-changed");
+      const backup = verifyBackup(admission, record.backup.manifestPath);
+      if (backup.manifest.sha256 !== record.backup.sha256 || backup.manifest.authorityContentFingerprint !== record.upgradeId
+        || record.planDigest !== deriveAuthorityUpgradePlanDigest(record.fromSchemaVersion, record.upgradeId)) throw new Error("profile-startup-logout-backup-changed");
+      return convertedLogoutOperation(operation, record.upgradeId, inspection.authorityContentFingerprint);
+    });
   }
 
   static inspectStoppedUpgrade(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock) {
@@ -2769,9 +2838,9 @@ export class AuthorityDatabase implements Disposable {
     return Object.freeze({ purged: Object.freeze(purged), retainedBytes });
   }
 
-  private classifyFixedLayoutActivation(intent: FixedLayoutActivation, verifiedBackupPath: string): "prestate" | "committed" {
+  private classifyFixedLayoutActivation(intent: FixedLayoutActivation, verifiedBackupPath: string, startup = false): "prestate" | "committed" {
     this.#assertOpen();
-    this.#admission.assertFixedLayoutDatabase(this.#path);
+    if (startup) this.#admission.assertReadOnlyAuthorityDatabase(this.#path); else this.#admission.assertFixedLayoutDatabase(this.#path);
     if (this.#path !== intent.authorityPath || this.#path !== join(this.#admission.stateRoot, "state.db")
       || verifiedBackupPath !== join(this.#admission.stateRoot, "backups", "authority", intent.backupFileName)) throw new Error("fixed-layout-activation-path-mismatch");
     const copy = this.#admission.verifiedReadOnlyCopy(verifiedBackupPath, intent.backupSha256);
@@ -2787,11 +2856,23 @@ export class AuthorityDatabase implements Disposable {
           const baselineApp = fixedLayoutAppSettings(baseline), baselineSettings = baselineApp?.saved ?? initialSettingsFileRecord();
           if (baselineSettings.revision !== intent.settingsRevision || baselineSettings.settingsFingerprint !== intent.settingsFingerprint
             || canonicalJsonStringify(baselineApp?.active ?? null) !== canonicalJsonStringify(intent.priorActive)) throw new Error("fixed-layout-activation-settings-changed");
-          const priorSnapshotRow = baseline.prepare("SELECT payload_json FROM settings_snapshots WHERE id=?").get(intent.priorActive.configSnapshotId);
-          const priorSnapshot = ConfigSnapshotRecordSchema.parse(JSON.parse(z.strictObject({ payload_json: z.string() }).parse(priorSnapshotRow).payload_json));
-          if (priorSnapshot.fingerprint !== intent.priorActive.configFingerprint || priorSnapshot.config.paths.stateRoot !== intent.sourceRoot
-            || priorSnapshot.config.paths.artifactRoot !== join(intent.sourceRoot, "artifacts")) throw new Error("fixed-layout-source-snapshot-mismatch");
-          const outputPaths = fixedLayoutOutputPaths(baselineSettings.settings, priorSnapshot.config.paths, intent.sourceRoot, dirname(intent.authorityPath));
+          let outputPaths: ReturnType<typeof fixedLayoutOutputPaths> = {};
+          if (intent.priorActive !== null) {
+            const priorSnapshotRow = baseline.prepare("SELECT payload_json FROM settings_snapshots WHERE id=?").get(intent.priorActive.configSnapshotId);
+            const priorSnapshot = ConfigSnapshotRecordSchema.parse(JSON.parse(z.strictObject({ payload_json: z.string() }).parse(priorSnapshotRow).payload_json));
+            if (priorSnapshot.fingerprint !== intent.priorActive.configFingerprint || priorSnapshot.config.paths.stateRoot !== intent.sourceRoot
+              || priorSnapshot.config.paths.artifactRoot !== join(intent.sourceRoot, "artifacts")) throw new Error("fixed-layout-source-snapshot-mismatch");
+            outputPaths = fixedLayoutOutputPaths(baselineSettings.settings, priorSnapshot.config.paths, intent.sourceRoot, dirname(intent.authorityPath));
+          } else if (baselineApp !== null || fixedLayoutSettingsSnapshots(baseline).length !== 0 || intent.settingsInitialization === undefined) throw new Error("fixed-layout-initialization-not-fresh");
+          const browserFingerprints = new Set<string>(baseline.prepare("SELECT * FROM browser_sessions").all().map(raw => workerBrowserFromRow(raw).configFingerprint));
+          if (intent.browserSnapshots.length !== browserFingerprints.size || new Set(intent.browserSnapshots.map(row => row.sourceFingerprint)).size !== browserFingerprints.size) throw new Error("fixed-layout-browser-snapshot-membership");
+          for (const entry of intent.browserSnapshots) {
+            const row = baseline.prepare("SELECT payload_json FROM settings_snapshots WHERE id=?").get(entry.sourceConfigSnapshotId);
+            const source = ConfigSnapshotRecordSchema.parse(JSON.parse(z.strictObject({ payload_json: z.string() }).parse(row).payload_json));
+            if (!browserFingerprints.has(entry.sourceFingerprint) || source.fingerprint !== entry.sourceFingerprint
+              || canonicalJsonStringify(entry.snapshot) !== canonicalJsonStringify(fixedLayoutSnapshot(source, intent.sourceRoot, dirname(intent.authorityPath),
+                { configSnapshotId: entry.snapshot.configSnapshotId, capturedAt: intent.snapshot.capturedAt, capturedBy: intent.snapshot.capturedBy }))) throw new Error("fixed-layout-browser-snapshot-changed");
+          }
           if (canonicalJsonStringify(intent.settingsUpdate?.outputPaths ?? {}) !== canonicalJsonStringify(outputPaths)
             || baselineSettings.settings.paths?.browserProfileRoot !== intent.settingsUpdate?.previousBrowserRoot) throw new Error("fixed-layout-output-defaults-changed");
           if (authorityContentFingerprint(this.#database) === authorityContentFingerprint(baseline)) return "prestate";
@@ -2800,12 +2881,14 @@ export class AuthorityDatabase implements Disposable {
             throw new Error(`fixed-layout-unrelated-authority-changed: ${fixedLayoutChangedAuthorityTables(baseline, this.#database).join(",")}`);
           }
           const snapshots = fixedLayoutSettingsSnapshots(this.#database), prior = fixedLayoutSettingsSnapshots(baseline);
-          const added = snapshots.filter(row => FixedLayoutSettingsSnapshotRowSchema.parse(JSON.parse(row)).id === intent.snapshot.configSnapshotId);
-          if (added.length !== 1 || snapshots.length !== prior.length + 1
+          const expectedSnapshots = new Map<string, ConfigSnapshotRecord>([intent.snapshot, ...intent.browserSnapshots.map(entry => entry.snapshot)].map(snapshot => [snapshot.configSnapshotId, snapshot]));
+          const added = snapshots.filter(row => expectedSnapshots.has(FixedLayoutSettingsSnapshotRowSchema.parse(JSON.parse(row)).id));
+          if (added.length !== expectedSnapshots.size || snapshots.length !== prior.length + expectedSnapshots.size
             || canonicalJsonStringify(snapshots.filter(row => !added.includes(row))) !== canonicalJsonStringify(prior)) throw new Error("fixed-layout-snapshot-history-changed");
-          const addedRow = added[0];
-          if (addedRow === undefined || canonicalJsonStringify(ConfigSnapshotRecordSchema.parse(JSON.parse(FixedLayoutSettingsSnapshotRowSchema.parse(JSON.parse(addedRow)).payload_json)))
-            !== canonicalJsonStringify(intent.snapshot)) throw new Error("fixed-layout-snapshot-mismatch");
+          for (const row of added) {
+            const parsed = FixedLayoutSettingsSnapshotRowSchema.parse(JSON.parse(row));
+            if (canonicalJsonStringify(ConfigSnapshotRecordSchema.parse(JSON.parse(parsed.payload_json))) !== canonicalJsonStringify(expectedSnapshots.get(parsed.id))) throw new Error("fixed-layout-snapshot-mismatch");
+          }
           const app = fixedLayoutAppSettings(this.#database);
           const update = intent.settingsUpdate === undefined ? undefined : fixedLayoutSettingsUpdate(intent, baselineSettings.settings);
           if (update !== undefined && (canonicalJsonStringify(this.#readRecord("commands", update.request.commandId, CommandRequestSchema)) !== canonicalJsonStringify(update.request)
@@ -2814,7 +2897,10 @@ export class AuthorityDatabase implements Disposable {
             settingsFingerprint: update?.current.settingsFingerprint ?? intent.settingsFingerprint, configSnapshotId: intent.snapshot.configSnapshotId,
             configFingerprint: intent.snapshot.fingerprint, activatedAt: intent.snapshot.capturedAt };
           if (app === null || canonicalJsonStringify(app.saved) !== canonicalJsonStringify(update?.current ?? baselineApp?.saved ?? null)
-            || canonicalJsonStringify(app.initialization) !== canonicalJsonStringify(baselineApp?.initialization)
+            || canonicalJsonStringify(app.initialization) !== canonicalJsonStringify(intent.settingsInitialization === undefined ? baselineApp?.initialization : {
+              ...intent.settingsInitialization, configSnapshotId: intent.snapshot.configSnapshotId, configFingerprint: intent.snapshot.fingerprint,
+              initializedAt: intent.snapshot.capturedAt, settings: initialSettingsFileRecord(),
+            })
             || canonicalJsonStringify(app.active) !== canonicalJsonStringify(expected)
             || after.authority_generation !== before.authority_generation + 1 || after.updated_at !== intent.snapshot.capturedAt) throw new Error("fixed-layout-activation-state-mismatch");
           return "committed";

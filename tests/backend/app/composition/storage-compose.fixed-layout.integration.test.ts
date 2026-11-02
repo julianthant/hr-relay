@@ -7,10 +7,11 @@ import { existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it,vi } from "vitest";
-import { prepareApplicationDataWorkspace } from "../../../../src/backend/app/composition/storage-compose.js";
+import { prepareApplicationDataWorkspace,upgradeRegisteredPersonStores,composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
+import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
@@ -21,7 +22,7 @@ import { SETTINGS_SCHEMA_HASH,derivePersistedSettingsFingerprint,deriveRawSettin
 import { SettingsCommandRequestSchema,deriveSettingsCommandFingerprint } from "../../../../src/rules/commands/commands.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { boundProfileCredentials,createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { boundProfileCredentials,createBoundProfileFixture,syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import { assertRuntimeLifetimeHeld } from "../../../support/helpers/backend/runtime-lifetime.js";
 
 const hostFacts = { primaryDisplay: null };
@@ -169,4 +170,38 @@ it("leaves the source untouched when its required backup fails", async () => {
     assert.equal(existsSync(join(target, ".tracker", "data")), false);
     assert.equal(existsSync(join(f.profile.workspace, ".tracker", "control", "locator.json")), true);
   } finally { backup.mockRestore(); await lifetime.close(); await f.profile.close(); rmSync(target, { recursive: true, force: true }); }
+});
+
+
+it("moves an unfinished sign-up with no settings activation, preserving its operation and credentials", async () => {
+  const lifetime = await RuntimeLifetimeLock.acquire(0), profile = await createBoundProfileFixture({ pending: "onboarding", lifetime });
+  const draft = profile.draft; assert.ok(draft?.state === "onboarding");
+  const operationPath = join(profile.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
+  const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
+  const credentials = fixedLayoutEntries(join(profile.stateRoot, "credentials"));
+  const target = realpathSync(mkdtempSync(join(tmpdir(), "fixed-layout-pending-signup-")));
+  let machine: RuntimeAdmission | undefined, runtime: ReturnType<typeof composeProfileRuntime> | undefined;
+  try {
+    await profile.closeController();
+    const source = new DatabaseSync(profile.path);
+    try { source.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT"); }
+    finally { source.close(); }
+    await prepareApplicationDataWorkspace(profile.workspace, target, lifetime, hostFacts);
+    await upgradeRegisteredPersonStores(target, lifetime, hostFacts);
+    const stateRoot = join(target, ".tracker", "data", "profiles", operation.profileId);
+    assert.deepEqual(fixedLayoutEntries(join(stateRoot, "credentials")), credentials);
+    const movedOperation = join(target, ".tracker", "data", "machine", "operations", `${operation.operationId}.json`);
+    assert.deepEqual(SignUpOperationSchema.parse(JSON.parse(readFileSync(movedOperation, "utf8"))), operation);
+    assert.equal(readFixedLayoutIntent(target)?.phase, "complete");
+    const database = new DatabaseSync(join(stateRoot, "state.db"), { readOnly: true });
+    try { assert.equal(inspectOpenDatabase(database, 11).profileId, operation.profileId); } finally { database.close(); }
+    machine = acquireEntrypointAdmission(target, "shared", lifetime);
+    assert.equal(machine.readProfileRegistry().profiles.some(row => row.profileId === operation.profileId), false);
+    runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu") });
+    await runtime.session.recoverOnboarding();
+    const resumed = runtime.session.signUp({ firstName: operation.firstName, lastName: operation.lastName, createdAt: operation.createdAt,
+      email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
+    assert.equal(resumed.state, "onboarding");
+    assert.equal("profileId" in resumed ? resumed.profileId : undefined, operation.profileId);
+  } finally { await runtime?.close(); machine?.release(); await lifetime.close(); await profile.close(); rmSync(target, { recursive: true, force: true }); }
 });

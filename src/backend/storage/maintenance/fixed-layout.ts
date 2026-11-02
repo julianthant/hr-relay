@@ -6,6 +6,7 @@ import { SettingsCurrentRecordSchema } from "../../../models/config/settings-cur
 import { SETTINGS_SCHEMA_HASH,derivePersistedSettingsFingerprint,deriveRawSettingsPatchFingerprint,type SettingsFileRecord } from "../../../models/config/settings.js";
 import { ConfigSnapshotRecordSchema,type ConfigSnapshotRecord } from "../../../models/config/snapshot.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { LogoutOperationSchema } from "../../../models/profiles/profile.js";
 import { CommandAuditRecordSchema,SettingsCommandRequestSchema,deriveSettingsCommandFingerprint } from "../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
@@ -95,12 +96,26 @@ export const FixedLayoutActivationSchema = z.strictObject({
   backupSha256: DigestSchema, backupManifestSha256: DigestSchema,
   preAuthorityGeneration: z.number().int().nonnegative(), preAuthorityContentFingerprint: DigestSchema,
   settingsRevision: z.number().int().positive(), settingsFingerprint: DigestSchema,
-  priorActive: ActiveRuntimeConfigRecordSchema, snapshot: ConfigSnapshotRecordSchema,
+  priorActive: ActiveRuntimeConfigRecordSchema.nullable(), snapshot: ConfigSnapshotRecordSchema,
+  settingsInitialization: z.strictObject({ commandId: z.uuid(), auditId: z.uuid() }).optional(),
+  logout: LogoutOperationSchema.optional(),
+  browserSnapshots: z.array(z.strictObject({ sourceConfigSnapshotId: z.uuid(), sourceFingerprint: DigestSchema, snapshot: ConfigSnapshotRecordSchema })),
   settingsUpdate: z.strictObject({ commandId: z.uuid(), auditId: z.uuid(), previousBrowserRoot: z.string().min(1).optional(), outputPaths: OutputPathUpdatesSchema }).optional(),
 }).superRefine((intent, context) => {
   if (intent.snapshot.revision !== intent.settingsRevision + (intent.settingsUpdate === undefined ? 0 : 1)) context.addIssue({ code: "custom", message: "fixed-layout-settings-revision-mismatch" });
+  if ((intent.priorActive === null) !== (intent.settingsInitialization !== undefined)
+    || intent.priorActive === null && (intent.settingsUpdate !== undefined || intent.settingsRevision !== 1)
+    || intent.logout !== undefined && intent.logout.profileId !== intent.profileId) context.addIssue({ code: "custom", message: "fixed-layout-profile-state-mismatch" });
 });
 export type FixedLayoutActivation = z.infer<typeof FixedLayoutActivationSchema>;
+
+export function fixedLayoutSnapshot(source: ConfigSnapshotRecord, sourceRoot: string, targetRoot: string,
+  identity: Pick<z.input<typeof ConfigSnapshotRecordSchema>, "configSnapshotId" | "capturedAt" | "capturedBy">): ConfigSnapshotRecord {
+  if (source.config.paths.stateRoot !== sourceRoot || source.config.paths.artifactRoot !== join(sourceRoot, "artifacts")) throw new Error("fixed-layout-source-snapshot-mismatch");
+  const paths = Object.fromEntries(Object.entries(source.config.paths).map(([key, path]) => [key, movedOutputPath(path, sourceRoot, targetRoot)]));
+  const config = { ...source.config, paths };
+  return ConfigSnapshotRecordSchema.parse({ ...source, ...identity, config, fingerprint: hash(Buffer.from(canonicalJsonStringify(config))) });
+}
 
 export function fixedLayoutSettingsUpdate(intent: FixedLayoutActivation, previous: SettingsFileRecord["settings"]) {
   const update = intent.settingsUpdate;
@@ -291,8 +306,8 @@ function issueFixedLayoutProfile(machine: RuntimeAdmission, operation: OfflineMa
   machine.assertExclusive(); machine.assertOfflineMaintenance(operation);
   const context = machine.readInstallationContext();
   if (context === undefined) throw new Error("fixed-layout-installation-required");
-  const registry = machine.readProfileRegistry(), row = registry.profiles.find(profile => profile.profileId === activation.profileId);
-  if (row?.lifecycle !== "ready" || row.credentialState !== "saved") throw new Error("fixed-layout-ready-person-required");
+  const registry = machine.readProfileRegistry();
+  if (!machine.readStartupProfileIds().includes(activation.profileId)) throw new Error("fixed-layout-registered-person-required");
   const stateRoot = join(machine.stateRoot, "profiles", activation.profileId), artifactRoot = join(stateRoot, "artifacts");
   const binding = { installationId: machine.locator.installationId, profileId: activation.profileId };
   const plan = deepFreeze(FixedLayoutActivationSchema.parse(activation));
@@ -325,9 +340,9 @@ export async function activateFixedLayoutProfiles(machine: RuntimeAdmission): Pr
   machine.assertExclusive();
   const context = machine.readInstallationContext(), operation = machine.maintenanceOperation();
   if (context === undefined) throw new Error("fixed-layout-installation-required");
-  const intent = readFixedLayoutIntent(context.workspace), registry = machine.readProfileRegistry();
+  const intent = readFixedLayoutIntent(context.workspace), profiles = machine.readStartupProfileIds();
   if (intent?.phase !== "configuring" || intent.installationId !== machine.locator.installationId
-    || intent.profiles.length !== registry.profiles.length || registry.profiles.some(row => !intent.profiles.some(plan => plan.profileId === row.profileId))) throw new Error("fixed-layout-profile-membership-mismatch");
+    || intent.profiles.length !== profiles.length || profiles.some(profileId => !intent.profiles.some(plan => plan.profileId === profileId))) throw new Error("fixed-layout-profile-membership-mismatch");
   const { RuntimeAdmission } = await import("../admission/admission.js");
   const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
   const completed = new Map<string, ReturnType<typeof profileAuthorityFileWitnesses>>();

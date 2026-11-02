@@ -231,7 +231,10 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
   const report = (state: StorageUpgradeReport["state"]) => StorageUpgradeReportSchema.parse({ state,
     fromSchemaVersion: initial.schemaVersion, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
   if (input.plan) return report("planned");
-  if (initial.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) return report("already-upgraded");
+  if (initial.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) {
+    await owner.completeStartupUpgradeLogout();
+    return report("already-upgraded");
+  }
   if (![8, 9, 10].includes(initial.schemaVersion)) throw new Error("profile-stopped-upgrade-version-refused");
   if (closure === undefined) throw new StorageBackupClosureUnprovedError();
   const backed = await backupStoppedAuthority(closure, owner, owner.stateRoot, clock, processLockRoot, restore, "schema-migration");
@@ -249,6 +252,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
     || current.installationId !== owner.profileBinding.installationId || current.profileId !== owner.profileBinding.profileId) throw new Error("profile-stopped-upgrade-readback-unproved");
   assertReadyUpgradeInventory(inventory, inspectInventory(), path,
     { kind: "upgraded", sourceFingerprint: initial.authorityContentFingerprint, sourceSchemaVersion: initial.schemaVersion }, verified);
+  await owner.completeStartupUpgradeLogout();
   return report("upgraded");
 }
 
