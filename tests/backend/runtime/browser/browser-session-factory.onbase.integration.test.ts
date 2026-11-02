@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { describe, it } from "vitest";
 import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { PlaywrightWorkerSessionFactory, BrowserProfileAdmissionSchema, OnbaseSessionHeldError, type BrowserSessionFactoryOptions } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
@@ -18,9 +19,9 @@ const input = { workerId: WorkerIdSchema.parse("onbase-worker-1"), workflowId: W
   configFingerprint: FingerprintSchema.parse("a".repeat(64)), acceptDownloads: false, exclusive: true, signal: new AbortController().signal,
   duoCeremony: { withCeremony: async () => { throw new Error("fixture does not authenticate"); } } } as const;
 
-function factoryFor(config: BrowserSessionFactoryOptions["config"], repository: ReturnType<typeof exclusiveLeaseFixture>["repository"],
+function factoryFor({ config, root }: Readonly<{ config: BrowserSessionFactoryOptions["config"]; root: string }>, repository: ReturnType<typeof exclusiveLeaseFixture>["repository"],
   harness: ReturnType<typeof f.fakeLauncher>, options: Partial<BrowserSessionFactoryOptions> = {}) {
-  return new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config,
+  return new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config: { ...config, paths: { ...config.paths, browserProfileRoot: join(root, "profiles") } },
     browserOwner: { profileId: "22222222-2222-4222-8222-222222222222", database: { authority: { exclusiveSessionLeases: repository } } as AuthorityDatabase },
     clock, scheduler, isolation: rebuildRuntimeIsolation, protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-value" }),
     newSessionId: () => "11111111-1111-4111-8111-111111111111", assertCurrent() {}, slotOrdinal: () => 1,
@@ -32,14 +33,14 @@ function factoryFor(config: BrowserSessionFactoryOptions["config"], repository: 
 
 describe("OnBase exclusive browser lifetime", () => {
   it("retains the lease after an unproved context close and refuses another identity session", async () => {
-    await f.withTempRuntime(async ({ config }) => {
+    await f.withTempRuntime(async ({ config, root }) => {
       const { database, repository } = exclusiveLeaseFixture();
       try {
-        const first = await factoryFor(config, repository, f.fakeLauncher({ emitCloseEvent: false })).open(input);
+        const first = await factoryFor({ config, root }, repository, f.fakeLauncher({ emitCloseEvent: false })).open(input);
         await assert.rejects(first.close({ reason: "worker-stop" }), /closure is unproved/u);
         const held = database.prepare("SELECT released_at FROM exclusive_session_leases").get(); assert.ok(held); assert.equal(held.released_at, null);
         const other = f.fakeLauncher();
-        await assert.rejects(factoryFor(config, repository, other, { slotOrdinal: () => 2,
+        await assert.rejects(factoryFor({ config, root }, repository, other, { slotOrdinal: () => 2,
           newSessionId: () => "33333333-3333-4333-8333-333333333333" }).open({ ...input, workerId: WorkerIdSchema.parse("onbase-worker-2"), acquisitionRemainingMs: () => 0 }), OnbaseSessionHeldError);
         assert.equal(other.launches().length, 0);
       } finally { database.close(); }
@@ -47,15 +48,15 @@ describe("OnBase exclusive browser lifetime", () => {
   });
 
   it("cancels a waiting acquisition without launching, releasing or changing its owner's lease", async () => {
-    await f.withTempRuntime(async ({ config }) => {
+    await f.withTempRuntime(async ({ config, root }) => {
       const { database, repository } = exclusiveLeaseFixture();
       try {
-        const first = await factoryFor(config, repository, f.fakeLauncher()).open(input);
+        const first = await factoryFor({ config, root }, repository, f.fakeLauncher()).open(input);
         const before = database.prepare("SELECT * FROM exclusive_session_leases").get(), controller = new AbortController(), other = f.fakeLauncher();
         let scheduled!: () => void;
         const timerStarted = new Promise<void>(resolve => { scheduled = resolve; });
         let cancellations = 0;
-        const waiting = factoryFor(config, repository, other, { slotOrdinal: () => 2, scheduler: { schedule: () => {
+        const waiting = factoryFor({ config, root }, repository, other, { slotOrdinal: () => 2, scheduler: { schedule: () => {
           scheduled(); return { cancel: () => { cancellations++; } };
         } }, newSessionId: () => "33333333-3333-4333-8333-333333333333" }).open({ ...input, workerId: WorkerIdSchema.parse("onbase-worker-2"), signal: controller.signal });
         const rejected = assert.rejects(waiting, /fixture cancellation/u);
@@ -68,42 +69,42 @@ describe("OnBase exclusive browser lifetime", () => {
   });
 
   it("releases after setup fails only when page and context closure are proved", async () => {
-    await f.withTempRuntime(async ({ config }) => {
+    await f.withTempRuntime(async ({ config, root }) => {
       const { database, repository } = exclusiveLeaseFixture(), harness = f.fakeLauncher();
       try {
-        const factory = factoryFor(config, repository, harness, { bindings: { onbase: { system: "onbase",
+        const factory = factoryFor({ config, root }, repository, harness, { bindings: { onbase: { system: "onbase",
           createDriver: () => { throw new Error("fixture driver construction failed"); }, login: async () => "logged-in", verifyAuthenticated: f.verifierFor().verify } } });
         await assert.rejects(factory.open(input), /driver construction failed/u);
         assert.equal(harness.page.closed, true); assert.equal(harness.contextClosed(), true);
         assert.equal(database.prepare("SELECT released_at FROM exclusive_session_leases").get()?.released_at, clock.now().toISOString());
-        const replacement = await factoryFor(config, repository, f.fakeLauncher(), { newSessionId: () => "33333333-3333-4333-8333-333333333333" }).open(input);
+        const replacement = await factoryFor({ config, root }, repository, f.fakeLauncher(), { newSessionId: () => "33333333-3333-4333-8333-333333333333" }).open(input);
         await replacement.close({ reason: "worker-stop" });
       } finally { database.close(); }
     });
   });
 
   it("releases a lease cancelled immediately after acquisition before any native launch", async () => {
-    await f.withTempRuntime(async ({ config }) => {
+    await f.withTempRuntime(async ({ config, root }) => {
       const { database, repository } = exclusiveLeaseFixture(), controller = new AbortController(), harness = f.fakeLauncher();
       try {
         const cancellingRepository = { ...repository, acquire: (request: Parameters<typeof repository.acquire>[0]) => {
           const result = repository.acquire(request); controller.abort(new Error("cancelled after acquisition")); return result;
         } };
-        await assert.rejects(factoryFor(config, cancellingRepository, harness).open({ ...input, signal: controller.signal }), /cancelled after acquisition/u);
+        await assert.rejects(factoryFor({ config, root }, cancellingRepository, harness).open({ ...input, signal: controller.signal }), /cancelled after acquisition/u);
         assert.equal(harness.launches().length, 0);
         assert.equal(database.prepare("SELECT released_at FROM exclusive_session_leases").get()?.released_at, clock.now().toISOString());
       } finally { database.close(); }
     });
   });
   it("does not launch a second identity session until the first has proved closed and released", async () => {
-    await f.withTempRuntime(async ({ config }) => {
+    await f.withTempRuntime(async ({ config, root }) => {
       const { database, repository } = exclusiveLeaseFixture();
       try {
         const bindings: BrowserSystemBindings = { onbase: { system: "onbase", createDriver: () => ({ system: "onbase" }),
           login: async () => "logged-in", verifyAuthenticated: f.verifierFor().verify } };
         const factory = (ordinal: number, sessionId: string, harness: ReturnType<typeof f.fakeLauncher>) => new PlaywrightWorkerSessionFactory({
           ...mockBrowserRootPort(), browserOwner: { profileId: "22222222-2222-4222-8222-222222222222", database: { authority: { exclusiveSessionLeases: repository } } as AuthorityDatabase },
-          config, protectedSecrets: protectedSecretSource({ ucpathUserId: ordinal === 1 ? "Fixture-User" : "fixture-user", ucpathPassword: "fixture-value" }),
+          config: { ...config, paths: { ...config.paths, browserProfileRoot: join(root, "profiles") } }, protectedSecrets: protectedSecretSource({ ucpathUserId: ordinal === 1 ? "Fixture-User" : "fixture-user", ucpathPassword: "fixture-value" }),
           clock, scheduler, isolation: rebuildRuntimeIsolation, assertCurrent() {}, slotOrdinal: () => ordinal, newSessionId: () => sessionId,
           admitProfile: async identity => BrowserProfileAdmissionSchema.parse({ ...identity, profileRevision: 1, resetRequired: false }), bindings, launcher: harness.launcher,
         });
@@ -123,10 +124,10 @@ describe("OnBase exclusive browser lifetime", () => {
   });
 
   it("retains the identity lease after uncertain launch and emits no successful release proof", async () => {
-    await f.withTempRuntime(async ({ config }) => {
+    await f.withTempRuntime(async ({ config, root }) => {
       const { database, repository } = exclusiveLeaseFixture();
       try {
-        const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config,
+        const factory = new PlaywrightWorkerSessionFactory({ ...mockBrowserRootPort(), config: { ...config, paths: { ...config.paths, browserProfileRoot: join(root, "profiles") } },
           browserOwner: { profileId: "22222222-2222-4222-8222-222222222222", database: { authority: { exclusiveSessionLeases: repository } } as AuthorityDatabase },
           clock, scheduler, isolation: rebuildRuntimeIsolation, protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-value" }),
           newSessionId: () => "11111111-1111-4111-8111-111111111111", assertCurrent() {}, slotOrdinal: () => 1,
