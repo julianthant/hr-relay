@@ -107,6 +107,12 @@ describe_m1("the row's accessible name carries the age", () => {
     const row = surface({ status: "running" });
     assert_m1.equal(queueRowAccessibleName_m1(row, NOW), "Jordan Reyes — running");
   });
+  it_m1("announces the recorded pause and its request instead of the underlying worker status", () => {
+    for (const [state, label] of [["paused", "paused"], ["pause-pending", "pausing"]] as const) {
+      const row = surface({ status: "running", pauseControl: { state, expectedVersion: 1 } });
+      assert_m1.equal(queueRowAccessibleName_m1(row, NOW), `Jordan Reyes — ${label}`);
+    }
+  });
 });
 }
 

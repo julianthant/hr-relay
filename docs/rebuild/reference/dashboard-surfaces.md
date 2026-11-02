@@ -612,11 +612,15 @@ operator interface until their canonical assistant binding is implemented.
 
 ### Run pause presentation
 
-Logs exposes per-run Pause and Resume. The queue header has only Pause all; the app quit path opens
-the explicit “Pause all and quit?” confirmation. Requested pause/resume states stay pending until the
-owner supplies recorded completion. No submit is interrupted. Unavailable authority disables
-the controls; unknown closure cannot show a completed pause or clean shutdown. The isolated
-`run-pause` parity fixture changes mock state only. Backend lifecycle wiring is separate.
+Queue footers expose Pause and Resume from served `pauseControl`, preserving their timing, attempt,
+trace and other actions. A recorded pause uses the outline Queued style with a Paused label; requests
+remain Pausing until recorded. Logs marks the corresponding timeline boundary. The queue toolbar
+pauses every run in the application lifecycle snapshot, including runs outside the selected day.
+When every target is paused it offers Resume all, retaining each command outcome. Command-Q opens
+“Pause all and quit?” with Keep working and confirmation, without a run list. A pending quit shows a
+banner until the runtime settles; no submit is interrupted. Unavailable authority disables controls,
+and unknown closure never becomes a completed pause or clean shutdown. Exact command recovery keeps
+the original targets and request identity. Crash-failed rows offer one checkpoint Rerun and Delete.
 
 ### UCPath found transactions presentation
 

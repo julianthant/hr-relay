@@ -111,7 +111,7 @@ registerFixtureStorageRoutes: typeof FixtureStorageRoutesTypes.registerFixtureSt
       manifest: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,
       screenshotBytes: FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES,
     };
-    registerFixtureShellRoutes({ app, profile });
+    registerFixtureShellRoutes({ app, profile, dayWire });
 
     registerFixtureQueueRoutes({ app, dayWire });
 

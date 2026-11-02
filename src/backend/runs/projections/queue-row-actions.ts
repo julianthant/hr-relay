@@ -17,8 +17,10 @@ type QueueStatus = QueueSurfaceWire["status"];
 
 
 export interface QueueRowActionFacts {
+  readonly pauseControl?: QueueSurfaceWire["pauseControl"];
   readonly status: QueueStatus;
   readonly recoverySource?: "failed" | "interrupted";
+  readonly crashed?: boolean;
   /** the CAS target every served command binds to */
   readonly rowRevision: number;
   /** ref workflow-model's envelope flag — decides whether a re-run can touch a real system */
@@ -155,17 +157,22 @@ export function queueRowActions(
   if (policy === undefined) return [];
   const recover = facts.recoverySource !== undefined && !facts.isChild && !facts.parkedWrite
     && policyEnables(policy, "recover-run", facts)
-    ? [ActionDescriptorWireSchema.parse({ key: "recover-run", label: "Recover completed steps", kind: "command",
+    ? [ActionDescriptorWireSchema.parse({ key: "recover-run", label: facts.crashed ? "Rerun" : "Recover completed steps", kind: "command",
       command: "recover-run", expectedVersion: facts.rowRevision, intent: "neutral", icon: "retry", placement: ["footer", "menu"],
       confirm: { title: "Recover completed steps", body: "Continue using authenticated completed steps. Unfinished work runs again. Uncertain writes require their own resolution.",
         confirmLabel: "Recover", tone: "neutral" } })] : [];
-  const rerun = !facts.isChild && !facts.parkedWrite
+  const rerun = (!facts.crashed || recover.length === 0) && !facts.isChild && !facts.parkedWrite
     && ["done", "failed", "partial"].includes(facts.status)
     && (policyEnables(policy, "retry", facts) || policyEnables(policy, "restart", facts))
     ? [ActionDescriptorWireSchema.parse({ key: "rerun", label: "Rerun", kind: "navigation",
       navigate: { kind: "rerun", expectedVersion: facts.rowRevision },
       intent: "primary", icon: "retry", placement: ["footer", "menu", "data"] })] : [];
-  return [...rerun, ...recover, ...SERVED_ORDER
+  const pause = facts.pauseControl?.command;
+  const pauseActions = pause === undefined ? [] : [ActionDescriptorWireSchema.parse({
+    key: pause, kind: "command", command: pause, expectedVersion: facts.pauseControl?.expectedVersion,
+    label: pause === "pause" ? "Pause after this step" : "Resume", intent: "neutral", icon: pause, placement: ["footer"],
+  })];
+  return [...pauseActions, ...rerun, ...recover, ...SERVED_ORDER
     .filter((command) => policyEnables(policy, command, facts) && KERNEL_ADMITS[command](facts))
     .map((command) => ActionDescriptorWireSchema.parse(describe(command, facts)))];
 }

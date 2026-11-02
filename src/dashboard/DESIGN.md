@@ -85,6 +85,9 @@ how a run was created belongs in its information disclosure. Logs group ordered 
 under steps; read/fill observations use aligned label/value rows with shared facts at the heading. Timeline segments are
 categorical and equal width. Duration text carries elapsed time separately from segment width.
 
+Pause and Resume live in the real row footer. Pause all is an icon in the queue toolbar; the quit
+confirmation has no run list. A recorded pause reuses the outline Queued pill with a Paused label.
+
 ## Motion
 
 `dsMotion.base` is a 140ms color/fill/edge transition. `fast` is a 90ms command hover/press,
