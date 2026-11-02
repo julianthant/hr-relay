@@ -46,7 +46,7 @@ export interface DraftDuoPendingCredential {
 export interface DraftDuoCeremonyReceipt {
   readonly credentialId: string;
   readonly requestId: string;
-  readonly mechanism: "fast-duo" | "native-platform";
+  readonly mechanism: "fast-duo" | "native-platform" | "chromium-platform";
   readonly softwareInterceptionDisabled: boolean;
 }
 

@@ -1,4 +1,4 @@
-import { CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
+import { DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
 import { DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
 import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
 /** The ONE typed dashboard client (ref frontend-backend-integration) */
@@ -30,6 +30,7 @@ export interface DashboardClient extends DashboardQueries, DashboardCommands {
   signInProfile(request: ProfileLoginRequest): Promise<PublicProfileState>;
   signUpProfile(request: ProfileSignUpRequest): Promise<PublicProfileState>;
   logOutProfile(): Promise<PublicProfileState>;
+  deleteProfileAccount(request: DeleteProfileAccountRequest): Promise<PublicProfileState>;
   completeProfileOnboarding(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
   cancelProfileOnboardingDuo(request: CancelProfileOnboardingDuoRequest): Promise<PublicProfileState>;
   cancelProfileOnboarding(request: CancelProfileOnboardingRequest): Promise<PublicProfileState>;
@@ -62,6 +63,11 @@ export function createDashboardClient(input: Readonly<{
     async signUpProfile(request: ProfileSignUpRequest) {
       return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/sign-up", {
         method: "POST", body: JSON.stringify(ProfileSignUpRequestSchema.parse(request)),
+      })).body);
+    },
+    async deleteProfileAccount(request) {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/delete-account", {
+        method: "POST", body: JSON.stringify(DeleteProfileAccountRequestSchema.parse(request)),
       })).body);
     },
     async logOutProfile() {
