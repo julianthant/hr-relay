@@ -54,7 +54,9 @@ job can occupy a runner needed by an older run. GitHub orders this queue by when
 waiting, rather than guaranteeing workflow creation-time order, and accepts at most 100 pending
 pipelines. Queue overflow cancels additional arrivals. The merge train remains outside admission.
 The seven required check names remain top-level summaries of the corresponding pipeline results;
-unit also requires a successful pipeline, including timing publication.
+unit always runs, including after cancellation, and also requires a successful complete pipeline,
+including timing publication. This mandatory gate prevents skipped cancellation summaries from
+allowing an incomplete pipeline to merge. Other cancelled summaries and the merge train may stop.
 
 Ready PRs into `staging` run static, privacy, unit, integration and architecture; PRs into `main`
 add parity and release. Path filters select affected suites. Draft pushes run static, privacy and

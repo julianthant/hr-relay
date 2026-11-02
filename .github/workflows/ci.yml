@@ -46,7 +46,7 @@ jobs:
   unit:
     name: unit
     needs: checks
-    if: ${{ !cancelled() }}
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - env:
