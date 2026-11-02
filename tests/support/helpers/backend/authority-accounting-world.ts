@@ -1,4 +1,6 @@
+import { donePage, sourceFixture } from "../../fixtures/ocr/source-pages.js";
 import type { DuoCeremonyLeaseToken } from "../../../../src/workflow-kit/duo-ceremony-lease.js";
+import type { ExclusiveSessionLease } from "../../../../src/models/sessions/exclusive-session-lease.js";
 import { createAssistantAuthorization } from "../../../../src/backend/assistant/authorization.js";
 import { createCommandKernel, executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
@@ -401,16 +403,7 @@ export function createAuthorityAccountingTestWorld() {
     exclusions: [],
   };
 
-  const OCR_EXTRACTION = {
-    formType: "oath",
-    source: { kind: "local-agent", agentId: "claude-code", invocation: "read page1.png" },
-    readAt: "2026-08-07T09:00:00.000Z",
-    sourceSha256: "3f1c0a2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8",
-    sourcePage: 1,
-    pageKind: "emergency-contact",
-    record: null,
-    pageFingerprint: "1".repeat(64),
-  };
+  const OCR_EXTRACTION = donePage(sourceFixture(1).inputs[0]).output;
 
   const DRY_RUN_SCENARIO_RESULT = {
     resultId: UUID_8,
@@ -476,6 +469,7 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     return fixture;
   }
   const duoTokens = new WeakMap<AuthorityDatabase, DuoCeremonyLeaseToken>();
+  const exclusiveTokens = new WeakMap<AuthorityDatabase, ExclusiveSessionLease>();
   const assistantActions = new WeakMap<AuthorityDatabase, { fixture: ReturnType<typeof assistant>; chat: ReturnType<ReturnType<typeof assistant>["authorization"]["createChat"]> }>();
   return [
     { table: "assistant_grants", mutate: db => { assistant(db).grant(); } },
@@ -565,6 +559,23 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
     { table: "worker_leases", prepare: db => { prepareWorkerSlot(db); }, mutate: db => {
       const slot = db.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
       db.authority.workerLeases.start({ ...WORKER_START_REQUEST, workerId: slot.workerId, processId: process.pid });
+    } },
+    { table: "exclusive_session_leases", prepare: db => { prepareRunning(db); }, mutate: db => {
+      const slot = db.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
+      const acquired = db.authority.exclusiveSessionLeases.acquire({ identityKey: HASH_A, workerId: slot.workerId, sessionId: UUID_8, now: NOW });
+      assert.equal(acquired.state, "acquired"); exclusiveTokens.set(db, acquired.lease);
+    }, cleanup: db => {
+      const lease = exclusiveTokens.get(db); assert.ok(lease);
+      assert.notEqual(db.authority.exclusiveSessionLeases.release(lease, NOW).releasedAt, null);
+    } },
+    { table: "exclusive_session_leases", prepare: db => {
+      prepareRunning(db);
+      const slot = db.authority.workerSlots.list(WORKFLOW_ID)[0]; assert.ok(slot);
+      const acquired = db.authority.exclusiveSessionLeases.acquire({ identityKey: HASH_A, workerId: slot.workerId, sessionId: UUID_8, now: NOW });
+      assert.equal(acquired.state, "acquired"); exclusiveTokens.set(db, acquired.lease);
+    }, mutate: db => {
+      const lease = exclusiveTokens.get(db); assert.ok(lease);
+      assert.notEqual(db.authority.exclusiveSessionLeases.release(lease, NOW).releasedAt, null);
     } },
     {
       table: "auth_leases",

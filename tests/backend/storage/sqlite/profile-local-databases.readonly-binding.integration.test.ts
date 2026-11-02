@@ -1,3 +1,4 @@
+import { takeStoppedProfileBackupFixture } from "../../../support/helpers/storage/backup-fixtures.js";
 import { withStoppedProfileMaintenanceSync, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -36,8 +37,8 @@ it("preserves the exact stopped-backup source witness after pending profile init
     const before = witness();
     assert.equal(readProfileDatabaseBinding(f.path).state, "bound");
     assert.deepEqual(witness(), before);
-    const backup = await input(["backup", "--json"]);
-    assert.equal(backup.exitCode, 0, backup.output);
+    const backup = await takeStoppedProfileBackupFixture(f.admission, clock);
+    assert.equal(backup.state, "verified");
     assert.deepEqual(witness(), before);
   } finally { await f.close(); }
 });
@@ -327,13 +328,13 @@ it("takes and disposes a fresh strict snapshot for every ordinary binding read",
   } finally { observer.mockRestore(); await f.close(); }
 });
 
-it.each([9, 10, 11, 12])("accepts only supported bound database version %s", async version => {
+it.each([9, 10, 11, 12, 13, 14, CURRENT_AUTHORITY_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION + 1])("accepts only supported bound database version %s", async version => {
   const f = await createBoundProfileFixture();
   const expectedBinding = f.admission.profileBinding;
   try {
     const raw = new DatabaseSync(f.path);
     try { raw.exec(`PRAGMA user_version=${version}`); } finally { raw.close(); }
-    if (version === 12) assert.throws(() => readProfileDatabaseBinding(f.path), /profile-database-schema-mismatch/u);
+    if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) assert.throws(() => readProfileDatabaseBinding(f.path), /profile-database-schema-mismatch/u);
     else {
       const result = readProfileDatabaseBinding(f.path);
       assert.equal(result.schemaVersion, version);

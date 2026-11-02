@@ -1,9 +1,9 @@
-import { deriveRawSettingsPatchFingerprint } from "../../../src/models/config/settings.js";
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { describe,it } from "vitest";
+import { deriveRawSettingsPatchFingerprint } from "../../../src/models/config/settings.js";
 
 import { checkAssistantAction } from "../../../src/backend/assistant/action-policy.js";
-import type { AssistantApprovalBinding, AssistantDecision } from "../../../src/models/profiles/assistant-permissions.js";
+import type { AssistantApprovalBinding,AssistantDecision } from "../../../src/models/profiles/assistant-permissions.js";
 
 const PROFILE = "11111111-1111-4111-8111-111111111111";
 const OTHER_PROFILE = "99999999-9999-4999-8999-999999999999";
@@ -13,7 +13,6 @@ const INTAKE = "44444444-4444-4444-8444-444444444444";
 const RUN = "55555555-5555-4555-8555-555555555555";
 const NOTIFICATION = "66666666-6666-4666-8666-666666666666";
 const PLAN = "77777777-7777-4777-8777-777777777777";
-const INSTALL = "88888888-8888-4888-8888-888888888888";
 const WRITE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const NOW = "2026-10-18T17:00:00.000Z";
 const HASH_A = "a".repeat(64);
@@ -25,7 +24,6 @@ const ENTRIES = [
   { family: "settings", action: "apply-settings", classification: "local-write", subject: "none" },
   { family: "settings", action: "apply-protected-settings", classification: "destructive", subject: "none" },
   { family: "run", action: "delete", classification: "destructive", subject: "none" },
-  { family: "storage-relocation", action: "plan-storage-relocation", classification: "local-write", subject: "none" },
   { family: "intake", action: "correct-intake-row", classification: "local-write", subject: "none" },
   { family: "intake", action: "inspect-intake", classification: "local-write", subject: "classified" },
   { family: "worker-browser", action: "spawn-worker", classification: "external-submit", subject: "none" },
@@ -81,19 +79,6 @@ function commands() {
       ...envelope, family: "intake", type: "correct-intake-row",
       target: { intakeSessionId: INTAKE, expectedVersion: 1 },
       payload: { sourceRow: 1, field: "rowNote", correctedValue: "synthetic-text" },
-    },
-    storage: {
-      ...envelope, family: "storage-relocation", type: "plan-storage-relocation",
-      target: {
-        installationId: INSTALL, sourceGeneration: 1, expectedRevision: 0,
-        sourcePair: { stateRoot: "/source/state", artifactRoot: "/source/artifacts" },
-      },
-      payload: {
-        writeId: WRITE,
-        desiredPair: { stateRoot: "/target/state", artifactRoot: "/target/artifacts" },
-        desiredDigest: HASH_A,
-        requestFingerprint: HASH_B,
-      },
     },
     secret: {
       ...envelope, family: "settings", type: "apply-protected-settings",
@@ -259,7 +244,7 @@ describe("assistant action policy", () => {
     assert.equal(gateText.includes("alex"), false);
     assert.equal(gateText.includes("activity-person-1"), false);
     assert.equal(gateText.includes(HASH_B), false);
-    const storage = decide(sample.storage);
+    const storage = decide(sample.write);
     assert.equal(storage.state, "approval-required");
     if (storage.state === "approval-required") assert.equal(storage.binding.options.kind, "existing-fingerprint");
   });
@@ -350,13 +335,13 @@ describe("assistant action policy", () => {
     assert.equal(staleSubject.state, "refused");
     if (staleSubject.state === "refused") assert.equal(staleSubject.field, "subject");
     const moved = {
-      ...sample.storage,
+      ...sample.write,
       payload: {
-        ...sample.storage.payload,
-        desiredPair: { stateRoot: "/target/other", artifactRoot: "/target/artifacts" },
+        ...sample.write.payload,
+        patch: { "browser.headless": { set: true } },
       },
     };
-    const stored = bindingOf(decide(sample.storage, { authority: authority("every-action") }));
+    const stored = bindingOf(decide(sample.write, { authority: authority("every-action") }));
     const staleOptions = decide(moved, { authority: authority("every-action"), approval: stored });
     assert.equal(staleOptions.state, "refused");
     if (staleOptions.state === "refused") assert.equal(staleOptions.field, "options");

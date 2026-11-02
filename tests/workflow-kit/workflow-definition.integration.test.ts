@@ -52,7 +52,7 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
         settingsSchemaHash: descriptorSetHash(["settings-schema"]),
         projection: world.projection,
         authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
-        backupSummary: () => "current",
+        automaticRepair: () => ({ state: "none" as const }), backupSummary: () => "current",
         preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
       });
       const start = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows)

@@ -10,7 +10,9 @@ import { createBrowserSessionFactoryFixtures } from "./session-factory-fixtures.
 import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { createBrowserRoots, type BrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions } from "../../../../src/backend/storage/browser-roots.js";
+import { createBrowserRoots,onboardingProfileDirectory, type BrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions } from "../../../../src/backend/storage/browser-roots.js";
+import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import type { SignUpOperation } from "../../../../src/models/profiles/profile.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
 // Consumer tests mock this port; registry authority is exercised by the storage integration tests.
@@ -56,4 +58,14 @@ export async function seedRegisteredBrowserProfiles(fixture: Pick<Awaited<Return
     stopSyntheticDatabaseWorkers({ database, path: fixture.path }); detachBoundFixtureWorkers(database);
     return { profileRoot, paths };
   } finally { database.close(); }
+}
+
+export function seedRegisteredSignupBrowser(machine: RuntimeAdmission, operation: SignUpOperation): void {
+  const draft = operation.onboarding;
+  if (draft === undefined) throw new Error("fixture-onboarding-required");
+  const profileRoot = join(machine.stateRoot, "browsers", "onboarding");
+  const profileDirectory = onboardingProfileDirectory(profileRoot, { ...operation, accountId: draft.accountId, generation: draft.generation });
+  const launch = createBrowserRoots(machine).beginLaunch({ profileId: operation.profileId, profileRoot, profileDirectory,
+    credentialFingerprint: null, owner: { kind: "signup", operationId: operation.operationId, accountId: draft.accountId, providerGeneration: draft.generation } });
+  mkdirSync(profileDirectory, { recursive: true, mode: 0o700 }); launch.opened();
 }

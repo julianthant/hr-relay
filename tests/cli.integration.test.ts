@@ -11,7 +11,7 @@ import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { describe,it } from "vitest";
 import { writeDashboardBuildIdentity } from "../src/backend/app/composition/dashboard/build-identity.js";
-import { rebuildRuntimeIsolation } from "../src/backend/app/config/runtime-isolation.js";
+import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../src/backend/app/config/runtime-isolation.js";
 import { RuntimeLifetimeLock, RuntimeAlreadyRunningError } from "../src/backend/storage/admission/lifetime-lock.js";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -84,9 +84,11 @@ function createScratchRepoRoot(backendPort: number = rebuildRuntimeIsolation.bac
   const isolationSource = readFileSync(isolationPath, "utf8");
   assert.ok(isolationSource.includes(`backendPort: ${String(rebuildRuntimeIsolation.backendPort)}`));
   assert.ok(isolationSource.includes(`lockPort: ${String(rebuildRuntimeIsolation.lockPort)}`));
+  assert.ok(isolationSource.includes("homeDirectory = userInfo().homedir"));
   writeFileSync(isolationPath, isolationSource
     .replace(`backendPort: ${String(rebuildRuntimeIsolation.backendPort)}`, `backendPort: ${String(backendPort)}`)
-    .replace(`lockPort: ${String(rebuildRuntimeIsolation.lockPort)}`, `lockPort: ${String(lockPort)}`));
+    .replace(`lockPort: ${String(rebuildRuntimeIsolation.lockPort)}`, `lockPort: ${String(lockPort)}`)
+    .replace("homeDirectory = userInfo().homedir", `homeDirectory = ${JSON.stringify(join(root, "app-data-home"))}`));
   const isolationSchemaPath = join(root, "src", "models", "config", "define-runtime-isolation.ts");
   const isolationSchemaSource = readFileSync(isolationSchemaPath, "utf8");
   assert.ok(isolationSchemaSource.includes(`backendPort: z.literal(${String(rebuildRuntimeIsolation.backendPort)})`));
@@ -270,9 +272,11 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
         if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
       }
 
-      assert.ok(statSync(join(scratchRoot, rebuildRuntimeIsolation.stateRoot, "machine", "profiles.json")).size > 0,
-        "the child initializes its profile registry under the scratch root");
-      assert.ok(statSync(join(scratchRoot, ".tracker", "control", "installation.json")).size > 0);
+      const appWorkspace = applicationDataWorkspace(join(scratchRoot, "app-data-home"));
+      assert.ok(statSync(join(appWorkspace, rebuildRuntimeIsolation.stateRoot, "machine", "profiles.json")).size > 0,
+        "the child initializes its profile registry under its private app-data home");
+      assert.ok(statSync(join(appWorkspace, ".tracker", "control", "installation.json")).size > 0);
+      assert.equal(existsSync(join(scratchRoot, rebuildRuntimeIsolation.stateRoot)), false);
       assert.equal(readFileSync(join(scratchRoot, ".env"), "utf8"), REFERENCE_ENVIRONMENT);
       const released = await RuntimeLifetimeLock.acquire(lockPort);
       await released.close();

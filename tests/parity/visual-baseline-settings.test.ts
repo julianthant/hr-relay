@@ -517,7 +517,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
   }, async ({ page }, info) => {
     const server = await setup(page, theme, width);
     const gate = Promise.withResolvers<void>();
-    await page.route("**/api/v1/settings/storage-relocation", async route => { await gate.promise; await route.fulfill({ status: 503, json: { state: "error", code: "fixture-unavailable", message: "Synthetic relocation unavailable", retryable: true } }); });
+    await page.route("**/api/v1/settings/editable", async route => { await gate.promise; await route.fulfill({ status: 503, json: { state: "error", code: "fixture-unavailable", message: "Synthetic settings unavailable", retryable: true } }); });
     try {
       await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "paths" });
       await expect(page.getByText("Reading app-data locations…", { exact: true })).toBeVisible();

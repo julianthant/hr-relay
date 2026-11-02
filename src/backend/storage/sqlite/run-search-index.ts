@@ -132,7 +132,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
       version: run.envelope.descriptorVersion, failureCode: failure?.code ?? null,
       evidence: { receipt: exists("run_receipts"), failure: failure !== null, diagnostic: exists("diagnostic_snapshots") } });
   };
-  const validateCoverage = () => {
+  const validateCoverage = (readRun: typeof runRecordFromRow = runRecordFromRow) => {
     const current = publication();
     if (current.state === "invalid") return;
     if (current.state === "building") {
@@ -144,7 +144,7 @@ export function createRunSearchIndex(database: DatabaseSync) {
       : database.prepare("SELECT * FROM run_search ORDER BY run_id").iterate();
     for (const raw of rows) {
       const indexed = FullIndexRowSchema.parse(raw);
-      const run = runRecordFromRow(database.prepare("SELECT * FROM runs WHERE id=?").get(indexed.run_id));
+      const run = readRun(database.prepare("SELECT * FROM runs WHERE id=?").get(indexed.run_id));
       const record = runSearchIndexFromRow(raw, run);
       const declaration = indexed.declaration_json === null ? null : RunSearchDeclarationSchema.parse(JSON.parse(indexed.declaration_json));
       const sources = indexed.actor_source_json === null ? [] : ActorSourcesSchema.parse(JSON.parse(indexed.actor_source_json));

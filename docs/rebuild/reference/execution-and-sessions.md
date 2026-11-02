@@ -44,8 +44,11 @@ boundaries; `browser-session:reset` leaves the browser span open.
 
 `BROWSER_SYSTEM_BINDINGS` in `src/backend/runtime/browser/system-bindings.ts` binds `ucpath`,
 `crm`, `kuali`, and `new-kronos` to drivers, login recipes, and authenticated-application verifiers.
-The factory refuses an absent binding before browser launch. It also refuses an identity-exclusive
-session because the concrete OnBase lease is absent.
+The factory refuses an absent binding before browser launch. OnBase additionally acquires the
+durable identity-session lease for its configured application directory and normalized account.
+The identity is stored as a hash. A held lease has no expiry or worker-death takeover; waiters are
+bounded and cancellation-aware. Exact generation/session release follows proved page/context
+closure. Uncertain launch or closure retains the lease, and worker close proof requires its release.
 
 ### 2.1 Gates and parks
 
@@ -211,7 +214,7 @@ The WebAuthn counter belongs to the credential across sessions. `duo-credential-
 reserves `max(highWater + 1, nowSec)` in its existing encrypted native publication transaction.
 `duo-signing.ts` then produces the Node ECDSA assertion. Failed signing, unknown publication and
 crashes never refund a request ID or count. Signup uses the exact draft scope; ready workflow
-sessions use genuine machine/profile admissions. Standalone Fast Duo retains its local signer.
+sessions use genuine machine/profile admissions. Fast Duo uses the backend signer for both paths.
 
 `fast-duo-extension.ts` stages an allowlisted runtime under the owned browser profile.
 Signup uses `relay-manifest.json`; workflow sessions use `workflow-manifest.json` and the
@@ -225,7 +228,8 @@ hands off to native authentication; failures, cancellation and late replies reje
 binds the actual token to the factory's signing scope. The broker may install and wait before a
 ceremony, but signing and reply require that current unretired token, matching worker/system and
 credential identity, unexpired TTL and current profile/worker ownership. Stop drains pending broker
-work alongside native context closure; either failure retains the profile reservation.
+work before closing its native context, within one shared proof deadline. Native closure is attempted
+even if broker stop fails; either failure retains the profile reservation.
 Explicitly disabled `features.duoWebAuthn` launches Chromium with extensions disabled.
 
 ### 4.3 Acquisition deadline
@@ -292,7 +296,22 @@ observers, and awaits `drainOwnedChildren`. The supervisor uses the ordinary gra
 escalation policy, then observes owned child exits. Failure to observe exit is a shutdown failure.
 Closing the supervisor cancels its timers and returns any remaining live-child evidence for the
 structured fault sink. The dashboard closes its database before releasing its process lock and
-runtime admission. Shutdown does not create a backup.
+runtime admission. After clean resource closure, the held lifetime owns verified person backups and last-three shutdown retention before it can release the listener. Failed closure or backup verification prevents a successful shutdown.
+
+Confirmed application quit and whole-runtime shutdown first hold new-work admission, then request
+pause on every nonterminal run except parked UNKNOWN writes. Active callbacks, including an in-flight
+submit, settle before claim release and worker drainage. Queued, gate and delegation holds retain
+their exact state. Shutdown closure proves stopped resources and unchanged browser and credential
+membership while retaining paused runs and their exact parked write intents; credential-copy and
+logout closure still require settled writes and terminal runs. Settings saves cannot advance
+the runtime generation while update or shutdown admission is held. Startup recovery classifies an
+interrupted read as failed with structured failure evidence; an unfinished submit remains parked
+UNKNOWN and is never automatically retried.
+
+The application lifecycle query reports `installer-unavailable` without an update host and defers
+updates while run, worker, browser, write, Duo, control or artifact owners remain. The tested idle
+installation primitive holds admission before awaiting an injected host and retains the hold on
+failure. There is no production idle/quit installer dispatch or native installer integration.
 
 `src/backend/storage/sqlite/runtime-process-locks.ts` owns acquisition-specific process records
 and OS process-birth checks. Database closure precedes their release.
@@ -584,7 +603,8 @@ root listener. Shutdown retains the controller until active geocode work drains;
 refuses release. There are no geocode election, endpoint or PID files.
 
 `storage/browser-roots.ts` owns the private `machine/browser-roots.json` registry outside person
-SQLite. Its strict bounded document records actual worker or signup ownership and launch generations.
+SQLite. Reads and publications share the registry mutex, so readers inspect only settled publications.
+Its strict bounded document records actual worker or signup ownership and launch generations.
 Each launch and native acquisition records intent before Chromium starts. A fresh full-Chromium
 probe must acquire and close the exact profile before reuse or removal; saved closed/observed states
 do not authorize effects. One row remains excluded through native closure, the awaited effect and
@@ -744,6 +764,6 @@ continue to retain custody.
 ## Not built yet
 
 - Wiring-base work connects the approved dashboard controls and session views to served worker and browser authority through the shared client.
-- OnBase needs a concrete driver, verified login recipe, and identity-exclusive session lease whose release follows proven browser closure.
+- OnBase's concrete driver and login binding require live operator acceptance; fixture retrieval semantics do not establish live selector validity.
 - Unbound browser systems need their driver and verified login binding before a workflow can use them.
 - A workflow that declares `session:"fresh"` needs its node-ordering proof in addition to the manager's close-before-open tests.

@@ -4,9 +4,11 @@ import {
 AUTHORITY_TABLE_REGISTRY,
 AuthorityTableNameSchema,
 AuthorityTableRegistrySchema,
+AuthorityUpgradeRecordSchema,
 ProjectionTableNameSchema,
 auditAuthorityTableRegistry,
 } from "../../../src/models/config/authority.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/rules/identity/ids.js";
 
 describe("authority classification and command families", () => {
   it("classifies every table exactly once and freezes the registry", () => {
@@ -20,4 +22,24 @@ describe("authority classification and command families", () => {
       { ...AUTHORITY_TABLE_REGISTRY[0], classification: "projection" },
     ]).success, false);
   });
+});
+
+it("accepts the fresh pause-capable authority baseline and refuses unsupported versions", () => {
+  const baseline = {
+    recordKey: "2fb8e9f6-65a8-4b44-a644-2c134f63bade",
+    upgradeId: "fresh",
+    phase: "baseline",
+    fromSchemaVersion: 0,
+    toSchemaVersion: 15,
+    by: LOCAL_OPERATOR_ACTOR_ID,
+    recordedAt: "2026-11-02T00:00:00.000Z",
+  };
+  assert.deepEqual(AuthorityUpgradeRecordSchema.parse(baseline), baseline);
+  assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 12 }).success, true);
+  assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 13 }).success, true);
+  assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 14 }).success, true);
+  for (const toSchemaVersion of [0, 16, 15.5]) {
+    assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion }).success, false);
+  }
+  assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, fromSchemaVersion: 11 }).success, false);
 });

@@ -1,3 +1,4 @@
+import { RunContinuationSchema } from "./continuation.js";
 import { DryRunCoverageSchema, DryRunStepSchema } from "../workflow/dry-run.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
 import { DeclaredActionIdentitySchema, OperationInputLineageSchema } from "../workflow/operation-action-identity.js";
@@ -213,6 +214,7 @@ export function createRunTerminalEvidenceResult(run: RunRecord, evidence: RunTer
     : run.lifecycle.outcome !== value.outcome || run.version < value.appliedVersion) throw new Error("terminal-evidence-outcome-mismatch");
   const dependencies: RunResultRecord["dependencies"] = [];
   return RunResultRecordSchema.parse({
+    ...(run.envelope.continuation === undefined ? {} : { continuation: run.envelope.continuation }),
     runId: run.envelope.runId, attempt: run.envelope.attempt, workflowId: run.envelope.workflow,
     descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint,
     configFingerprint: run.envelope.configFingerprint, configSnapshotId: run.envelope.configSnapshotId,
@@ -249,6 +251,7 @@ export function deriveCheckpointProvenanceDigest(provenance: unknown): Fingerpri
 }
 
 export const RunResultRecordSchema = z.strictObject({
+  continuation: RunContinuationSchema.optional(),
   runId: RunIdSchema,
   attempt: PositiveIntSchema,
   workflowId: WorkflowIdSchema,
@@ -353,7 +356,7 @@ export const RunResultRecordSchema = z.strictObject({
     });
   }
   for (const [index, dependency] of record.dependencies.entries()) {
-    if ((dependency.state === "child-resolved" || dependency.state === "delegation-resolved") && dependency.parentRunId !== record.runId) {
+    if ((dependency.state === "child-resolved" || dependency.state === "delegation-resolved") && dependency.parentRunId !== record.runId && !record.continuation?.sources.some(source => source.runId === dependency.parentRunId)) {
       context.addIssue({ code: "custom", path: ["dependencies", index], message: "child terminal dependency belongs to a different parent run" });
     }
   }

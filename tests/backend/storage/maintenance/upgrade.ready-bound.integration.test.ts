@@ -1,43 +1,51 @@
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
-import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
+import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
+import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";
 import assert from "node:assert/strict";
-import { randomUUID, createHash } from "node:crypto";
-import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, mkdirSync, readdirSync, rmdirSync } from "node:fs";
+import { createHash,randomUUID } from "node:crypto";
+import { copyFileSync,existsSync,mkdirSync,readFileSync,readdirSync,renameSync,rmdirSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { it, vi } from "vitest";
-import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
-import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { upgradeReadyProfileStorage, backupStoppedAuthority } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
-import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { it,vi } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { SettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { readSettings, readBootSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
-import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
-import { migrationTableNames, SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { FingerprintSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
-import { systemClock } from "../../../../src/rules/time/clock.js";
-import { createProfileVerifiers } from "../../../../src/backend/storage/configuration/verifier-store.js";
-import { InstanceSelectionSchema } from "../../../../src/models/run/envelope.js";
-import { RunRecordService, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { selectActiveRunSettings, selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
-import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
-import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
+import { RunRecordService,requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { selectActiveRunSettings,selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { readBootSettings,readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
+import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createProfileVerifiers } from "../../../../src/backend/storage/configuration/verifier-store.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { backupStoppedAuthority,upgradeProfileAtStartup,upgradeReadyProfileStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
+import { AuthorityDatabase,inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
+import { InstanceSelectionSchema } from "../../../../src/models/run/envelope.js";
+import { SettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { FingerprintSchema,IsoInstantSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
+import { systemClock } from "../../../../src/rules/time/clock.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { boundProfileCredentials,createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { update as artifactUpdate } from "../../../support/helpers/database-foundation/fixtures.js";
+import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
+import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 
 const hostFacts = { primaryDisplay: null };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 = 8) {
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 = 8, extractionEvidence = false) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
@@ -80,6 +88,11 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
         resolvedInstance, input: QUEUED_RUN.input, priority: "bulk", shape: "single", dryRun: true,
         runtimeConfig: selectRunRuntime(database.authority) }));
       assert.equal(run.lifecycle.state, "queued");
+      const ref = await createContentAddressedArtifactWriter({ admission: profile.admission }).put(Buffer.from("retained upgrade artifact"), { mediaType: "application/octet-stream" });
+      database.authority.artifactOutbox.insert({ ...artifactUpdate(), sourceRunId: run.envelope.runId,
+        payload: { schemaHash: "a".repeat(64), value: { artifact: ref } } });
+      mkdirSync(join(profile.stateRoot, "files"), { mode: 0o700 });
+      writeFileSync(join(profile.stateRoot, "files", "upgrade-proof.txt"), "ordinary person output", { mode: 0o600 });
     }
   } finally { database.close(); }
   const row = profile.machine.readProfileRegistry().profiles.find(value => value.profileId === binding.profileId);
@@ -94,12 +107,23 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
+    removeSchema15RunPause(raw);
+    if (sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(raw);
+    if (sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(raw);
     if (sourceVersion < 10) {
       const editorDdl = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE TABLE explorer_overrides \([\s\S]*?\n\) STRICT;/u)?.[0];
       assert.ok(editorDdl);
       raw.exec(editorDdl);
     }
     if (sourceVersion < 9) raw.exec("DROP TABLE assistant_model_preference");
+    if (extractionEvidence) {
+      const extraction = donePage(sourceFixture(1).inputs[0]).output.extraction;
+      const id = `${extraction.sourceSha256}#${extraction.sourcePage}#${extraction.formType}`;
+      raw.prepare(`INSERT INTO artifacts (id,kind,version,form_type,source_sha256,source_page,page_kind,page_fingerprint,source_kind,payload_json,created_at)
+        VALUES (?,'extracted',1,?,?,?,?,?,?,?,?)`).run(id, extraction.formType, extraction.sourceSha256, extraction.sourcePage,
+        extraction.pageKind, extraction.pageFingerprint, extraction.source.kind, JSON.stringify(sourceVersion < 12 ? extraction : { binding: 'unbound-source', extractionId: id, extraction }), extraction.readAt);
+    }
+    if (sourceVersion < 12) restorePreReadingArtifactRetention(raw);
     raw.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(sourceVersion);
     raw.exec(`PRAGMA user_version=${sourceVersion}; COMMIT`);
     const prior = inspectNativeAuthority(raw, sourceVersion);
@@ -135,6 +159,7 @@ it("upgrades a genuinely READY bound profile with unchanged historical rows, cre
     const after = rawEight(f.path);
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows);
     }
@@ -233,6 +258,33 @@ it("refuses a genuine canonical queued run despite stopped global process roles"
       { message: "credential-maintenance-custody-unproved" });
     assert.deepEqual(storageTree(f.stateRoot), before);
     assert.deepEqual(rawEight(f.path), rows);
+  } finally { await f.close(); }
+});
+
+it.each([8, 11, 12, 13, 14] as const)("automatically upgrades schema %s with queued work intact instead of retiring its durable state", async sourceVersion => {
+  const f = await readyBoundEight("queued", sourceVersion);
+  try {
+    const before = rawEight(f.path);
+    assert.ok((before.runs?.length ?? 0) > 0); assert.ok((before.artifacts?.length ?? 0) > 0);
+    assert.throws(() => runRecordFromRow(before.runs?.[0]), /native schema/u);
+    const artifactDirectory = join(f.stateRoot, "artifacts"), artifactNames = readdirSync(artifactDirectory);
+    assert.equal(artifactNames.length, 1); const artifactName = artifactNames[0]; assert.ok(artifactName);
+    const artifactBytes = readFileSync(join(artifactDirectory, artifactName)), outputBytes = readFileSync(join(f.stateRoot, "files", "upgrade-proof.txt"));
+    assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
+    const backupDirectory = join(f.stateRoot, "backups", "authority");
+    const manifests = readdirSync(backupDirectory).filter(name => name.endsWith(".manifest.json"))
+      .map(name => AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(backupDirectory, name), "utf8"))));
+    assert.ok(manifests.some(manifest => manifest.schemaVersion === sourceVersion && manifest.verification.schemaVersion === sourceVersion));
+    const after = rawEight(f.path);
+    for (const [table, rows] of Object.entries(before)) {
+      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, pause_state: null })));
+      else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else assert.deepEqual(after[table], rows);
+    }
+    assert.equal(after.database_upgrades?.length, (before.database_upgrades?.length ?? 0) + 1);
+    assert.deepEqual(readFileSync(join(artifactDirectory, artifactName)), artifactBytes);
+    assert.deepEqual(readFileSync(join(f.stateRoot, "files", "upgrade-proof.txt")), outputBytes);
   } finally { await f.close(); }
 });
 
@@ -423,20 +475,101 @@ it("revokes READY custody on exact artifact-root ancestry substitution", async (
   }
 });
 
-it.each([9, 10] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
+it.each([9, 10, 11, 12, 13, 14] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
   const f = await readyBoundEight("idle", sourceVersion);
   try {
     const before = rawEight(f.path);
     const result = await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock);
     assert.deepEqual(result, { state: "upgraded", fromSchemaVersion: sourceVersion, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" });
+    const upgraded = new DatabaseSync(f.path, { readOnly: true });
+    try {
+      assert.ok(upgraded.prepare("PRAGMA table_info(runs)").all().some(column => column.name === "pause_state"));
+      assert.equal(upgraded.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE type='trigger' AND name IN ('run_pause_insert','run_pause_update')").get()?.count, 2);
+    } finally { upgraded.close(); }
     const after = rawEight(f.path);
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows);
     }
     const fresh = f.machine.admitProfile(f.binding.profileId);
     try { assert.equal(fresh.profileMaintenanceSchemaVersion(), CURRENT_AUTHORITY_SCHEMA_VERSION); }
     finally { fresh.release(); }
+  } finally { await f.close(); }
+});
+
+it.each([11, 12] as const)('upgrades populated schema %s workbooks without replacing masters or claiming automatic revisions were operator versions', async version => {
+  const f = await readyBoundEight('idle', version);
+  const at = '2026-01-01T00:00:00.000Z';
+  const first = { libraryId: 'migration-workbook', version: 1, createdAt: at, savedAt: at,
+    workbook: { libraryId: 'migration-workbook', name: 'Before.xlsx', themes: [], hasFormulas: false,
+      sheets: [{ id: 'sheet', name: 'People', width: 1, hidden: [], rows: [{ id: 'row', cells: [{ value: 'original' }] }] }] } };
+  const second = { ...first, version: 2, workbook: { ...first.workbook, name: 'Master.xlsx' } };
+  const raw = new DatabaseSync(f.path);
+  try {
+    raw.prepare('INSERT INTO workbook_library(id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(second.libraryId, 2, at, at, JSON.stringify(second));
+    for (const record of [first, second]) raw.prepare('INSERT INTO workbook_library_history(workbook_id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(record.libraryId, record.version, at, at, JSON.stringify(record));
+    assert.equal(inspectNativeAuthority(raw, version).schemaVersion, version);
+  } finally { raw.close(); }
+  try {
+    assert.equal((await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock)).state, 'upgraded');
+    const admission = f.machine.admitProfile(f.claim);
+    try {
+      const database = AuthorityDatabase.open(admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: 'workbook-upgrade-proof' }, systemClock, undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: f.stateRoot }));
+      try {
+        assert.deepEqual(database.authority.workbooks.read(first.libraryId), second);
+        assert.deepEqual(database.authority.workbooks.creation(first.libraryId), first);
+        assert.deepEqual(database.authority.workbooks.versions(first.libraryId).map(({ name, provenance }) => ({ name, provenance })), [
+          { name: 'Saved revision 1', provenance: 'migration' }, { name: 'Saved revision 2', provenance: 'migration' }]);
+        assert.equal(database.authority.workbooks.metadata(first.libraryId).typeId, 'general');
+        assert.equal(inspectAuthorityBackupReadOnly(admission, f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+      } finally { database.close(); }
+    } finally { admission.release(); }
+  } finally { await f.close(); }
+});
+
+it("backs up schema-11 extraction evidence before conversion and retains both source states after restart", async () => {
+  const f = await readyBoundEight("idle", 11, true);
+  try {
+    const extraction = donePage(sourceFixture(1).inputs[0]).output.extraction;
+    const id = `${extraction.sourceSha256}#${extraction.sourcePage}#${extraction.formType}`;
+    const before = rawEight(f.path).artifacts;
+    assert.equal(before?.length, 1);
+    await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock);
+    const restore = f.acquireRestore();
+    try {
+      const stopped = await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, restore, systemClock, hostFacts);
+      try {
+        const directory = join(f.stateRoot, "backups", "authority");
+        const manifests = readdirSync(directory).filter(name => name.endsWith(".manifest.json"));
+        assert.equal(manifests.length, 1);
+        const backup = verifyStoppedBackupManifestAtPath(stopped, join(directory, manifests[0]));
+        assert.equal(backup.manifest.schemaVersion, 11);
+        const raw = new DatabaseSync(backup.backupPath, { readOnly: true });
+        try { assert.deepEqual(raw.prepare("SELECT * FROM artifacts").all(), before); }
+        finally { raw.close(); }
+      } finally { stopped.release(); }
+    } finally { restore.release(); }
+    const admission = f.machine.admitProfile(f.claim);
+    try {
+      const credentials = createCredentialStore({ admission, stateRoot: f.stateRoot });
+      const database = AuthorityDatabase.open(admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
+        undefined, undefined, undefined, credentials);
+      try {
+        assert.deepEqual(database.authority.ocrExtractions.get(id), { binding: "unbound-source", extractionId: id, extraction });
+        const reading = donePage(sourceFixture(1).inputs[0]).output;
+        assert.equal(database.authority.ocrExtractions.insert(reading).state, "inserted");
+        assert.deepEqual(database.authority.ocrExtractions.findBySource(extraction.sourceSha256).map(record => record.binding).sort(),
+          ["source-bound", "unbound-source"]);
+      } finally { database.close(); }
+    } finally { admission.release(); }
+    const restarted = f.machine.admitProfile(f.claim);
+    try {
+      const database = AuthorityDatabase.open(restarted, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
+        undefined, undefined, undefined, createCredentialStore({ admission: restarted, stateRoot: f.stateRoot }));
+      try { assert.equal(database.authority.ocrExtractions.findBySource(extraction.sourceSha256).length, 2); }
+      finally { database.close(); }
+    } finally { restarted.release(); }
   } finally { await f.close(); }
 });

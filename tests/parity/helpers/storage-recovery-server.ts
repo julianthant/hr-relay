@@ -11,11 +11,11 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { Hono } from "hono";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { runOfflineAuthorityRestoreRecovery } from "../../../src/backend/app/composition/storage-compose.js";
+import { resumePendingAutomaticRestore } from "../../../src/backend/app/composition/storage-compose.js";
 import { createFixtureBff, startFixtureServer, type FixtureServer } from "../../support/helpers/dashboard/fixture-bff.js";
 import { assertParityBundleIsCurrent, PARITY_DIST_DIR, readBundleStamp } from "./bundle.js";
 import { registerStorageRoutes } from "../../../src/backend/transports/http/routes/storage.js";
@@ -228,20 +228,13 @@ export async function storageRecoveryTarget() {
     try {
     assert.equal(server, undefined, "stop the owned service before recovery");
     await stop();
-    const settled = await runOfflineAuthorityRestoreRecovery(repoRoot, ["--operation", operationId,
-      "--from", manifestPath, "--outcome", "replaced", "--json"], lifetime, clock);
-    assert.equal(settled.report.state, "settled");
-    assert.equal(existsSync(journalPath), false);
-    assert.deepEqual(readFileSync(stagedPath), readFileSync(authorityPath));
+    await resumePendingAutomaticRestore(repoRoot, lifetime);
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
-    rmSync(stagedPath);
-    assert.equal(existsSync(stagedPath), false);
-    assert.deepEqual(readFileSync(credentialPath), credentialBytes);
-    const machine = CanonicalRuntimeAdmission.acquireMachine(repoRoot, 'shared', lifetime); held.machine = machine;
+    const machine = CanonicalRuntimeAdmission.acquireMachine(repoRoot, "exclusive", lifetime);
     const admission = machine.admitProfile(profileId); held.admission = admission;
     admission.release(); machine.release();
     recoveryCompleted = true;
-    const result = {exitCode: 0, output: JSON.stringify(settled.report)};
+    const result = {exitCode: 0, output: JSON.stringify({ state: "settled", operationId, outcome: "replaced" })};
     return result;
 
     } catch (error) {

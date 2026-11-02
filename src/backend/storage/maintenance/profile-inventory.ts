@@ -1,27 +1,29 @@
-import { configuredBrowserRoots, retainedBrowserProfiles, assertCredentialCopyResourcesClosed, type BrowserProfileCustody } from "./profile-custody.js";
-import { createBrowserRoots } from "../browser-roots.js";
-import { privatePathRejects } from "../private-path.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { InstallationLease } from "../admission/installation.js";
-import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
-import { offlineMaintenanceWorkspace, type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
-import { BrowserSystemIdSchema, type BrowserSystemId } from "../../../rules/identity/ids.js";
-import { initialSettingsFileRecord } from "../../../models/config/settings.js";
-import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { CredentialLockRecordSchema, readPrivateFile } from "../configuration/credential-safe-file.js";
-import { lstatSync, opendirSync, readdirSync, type Dirent } from "node:fs";
-import { basename, join, relative, resolve, sep } from "node:path";
-import { observeRuntimeLockSnapshot, inspectRuntimeProcessOrphans } from "../sqlite/runtime-process-locks.js";
-import { type RuntimeAdmission } from "../admission/admission.js";
-import type { Clock } from "../../../rules/time/clock.js";
-import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { proveProfileRootsUnused } from "./process-closure.js";
-import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
-import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { resolveConfigWithProvenance } from "../../app/config/resolve.js";
+import { createHash } from "node:crypto";
+import { existsSync,readFileSync,lstatSync,opendirSync,readdirSync,type Dirent } from "node:fs";
+import { basename,join,relative,resolve,sep } from "node:path";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
+import { initialSettingsFileRecord } from "../../../models/config/settings.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { SignUpOperationSchema } from "../../../models/profiles/profile.js";
+import { BrowserSystemIdSchema,type BrowserSystemId } from "../../../rules/identity/ids.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { resolveConfigWithProvenance } from "../../app/config/resolve.js";
+import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
+import { type RuntimeAdmission } from "../admission/admission.js";
+import type { InstallationLease } from "../admission/installation.js";
+import { offlineMaintenanceWorkspace,type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
+import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
+import { createBrowserRoots } from "../browser-roots.js";
+import { CredentialLockRecordSchema,readPrivateFile } from "../configuration/credential-safe-file.js";
+import { privatePathRejects } from "../private-path.js";
+import { AuthoritySourceClosureUnprovedError,hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
+import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { verifyStoppedBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { countProfileCredentialLoginRows } from "../sqlite/profile-local-databases.js";
+import { inspectRuntimeProcessOrphans,observeRuntimeLockSnapshot } from "../sqlite/runtime-process-locks.js";
+import { proveProfileRootsUnused } from "./process-closure.js";
+import { assertCredentialCopyResourcesClosed,configuredBrowserRoots,retainedBrowserProfiles,type BrowserProfileCustody } from "./profile-custody.js";
 
 type CredentialMembershipCustody = Pick<ReturnType<AuthorityDatabase["readProfileResourceCustody"]>, "slots" | "reservations" | "verificationProfiles" | "browsers" | "configSnapshots" | "controls" | "artifactReferences" | "upgrades">;
 
@@ -63,7 +65,27 @@ function stoppedBrowserFacts(admission: RuntimeAdmission, clock: Clock, processL
 }
 
 export async function probeStoppedProfileBrowsersClosed(admission: RuntimeAdmission, clock: Clock, browserClosure: ProfileBrowserClosure, processLockRoot?: string): Promise<void> {
-  await probeRetainedBrowsersClosed({admission,...stoppedBrowserFacts(admission,clock,processLockRoot),clock,browserClosure,signal:new AbortController().signal});
+  const { custody, config } = stoppedBrowserFacts(admission, clock, processLockRoot);
+  await browserClosure.probeClosed(stoppedBrowserProfiles(admission, custody, config.paths.browserProfileRoot, browserClosure),
+    { launchTimeoutMs: config.timeouts.sessionAcquireMs, closeProofMs: config.browser.closeProofMs }, clock, new AbortController().signal, admission);
+  admission.assertLive();
+}
+
+function stoppedBrowserProfiles(admission: RuntimeAdmission, custody: BrowserProfileCustody, savedBrowserRoot: string,
+  browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">): RetainedBrowserProfile[] {
+  const profiles = retainedBrowserProfiles(admission.stateRoot, custody, savedBrowserRoot, browserClosure);
+  if (!admission.preservesUnfinishedProfileState()) return profiles;
+  const binding = admission.captureBrowserRegistryContext();
+  for (const row of createBrowserRoots(admission).inventory().roots) {
+    if (row.profileId !== binding.profileId || row.owner.kind !== "signup") continue;
+    const file = readPrivateFile(join(binding.machineRoot, "machine", "operations", `${row.owner.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
+    if (file === undefined) throw new Error("profile-inventory-browser-membership-unavailable");
+    const operation = SignUpOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+    if (operation.operationId !== row.owner.operationId || operation.profileId !== row.profileId || operation.onboarding?.accountId !== row.owner.accountId
+      || operation.onboarding.generation !== row.owner.providerGeneration) throw new Error("profile-inventory-browser-membership-unavailable");
+    profiles.push({ profileRoot: join(binding.machineRoot, row.profileRoot), profileDirectory: join(binding.machineRoot, row.directory), cleanupCompleted: false });
+  }
+  return profiles;
 }
 
 const stoppedBackupClosureBrand: unique symbol = Symbol("stopped-backup-closure");
@@ -148,7 +170,7 @@ function stoppedBackupBrowserCensus(admission: RuntimeAdmission, operation: Offl
   let retain = false;
   try {
     const { custody, config } = stoppedBrowserFacts(admission, clock, processLockRoot);
-    const retained = retainedBrowserProfiles(admission.stateRoot, custody, config.paths.browserProfileRoot, layout);
+    const retained = stoppedBrowserProfiles(admission, custody, config.paths.browserProfileRoot, layout);
     const binding = admission.captureBrowserRegistryContext(), rows = createBrowserRoots(admission).inventory().roots.filter(row => row.profileId === binding.profileId);
     if (rows.some(row => row.launch.state !== "closed" || row.native !== undefined)) throw new StorageBackupClosureUnprovedError();
     let physical: ReturnType<typeof restoreBrowserCensus>;
@@ -247,7 +269,6 @@ function unreadableRestoreSqlite(error: unknown): boolean {
 }
 
 function restoreBrowserCensus(admission: RuntimeAdmission, scope: "browser-roots" | "profile-root") {
-  if (process.platform !== "darwin") throw new ProfileRestoreBrowserCustodyUnprovedError();
   const binding = admission.captureBrowserRegistryContext();
   const rows = createBrowserRoots(admission).inventory().roots.filter(row => row.profileId === binding.profileId);
   const roots = [...new Set([join(admission.stateRoot, "browsers"), ...rows.map(row => join(binding.machineRoot, row.profileRoot))])];
@@ -281,7 +302,7 @@ function restoreBrowserCensus(admission: RuntimeAdmission, scope: "browser-roots
   if (scope === "profile-root") {
     for (const entry of children(admission.stateRoot)) {
       if (entry.isFile() && ["state.db", "state.db-wal", "state.db-shm", "state.db-journal"].includes(entry.name)) continue;
-      if (!entry.isDirectory() || !["browsers", "credentials", "backups", "artifacts", "logs", "scratch"].includes(entry.name)) throw new ProfileRestoreBrowserCustodyUnprovedError();
+      if (!entry.isDirectory() || !["browsers", "credentials", "backups", "artifacts", "logs", "scratch", "files"].includes(entry.name)) throw new ProfileRestoreBrowserCustodyUnprovedError();
     }
   } else inspect(admission.stateRoot);
   for (const profileRoot of roots) if (lstatSync(profileRoot, { throwIfNoEntry: false }) !== undefined) for (const entry of children(profileRoot)) {
@@ -299,12 +320,21 @@ function restoreBrowserCensus(admission: RuntimeAdmission, scope: "browser-roots
   return { identities, profiles, membership: rows.map(({ launch: _launch, native: _native, ...row }) => row) };
 }
 
-async function probeUnreadableRestoreBrowsersClosed(admission: RuntimeAdmission, processLockRoot: string,
+export function restoreBrowserMembershipDigest(admission: RuntimeAdmission): string {
+  return createHash("sha256").update(canonicalJsonStringify(restoreBrowserCensus(admission, "browser-roots").membership)).digest("hex");
+}
+
+export async function probeAutomaticRestoreBrowsersClosed(admission: RuntimeAdmission, processLockRoot: string,
   restore: OfflineMaintenanceOperation, clock: Clock, browserClosure: ProfileBrowserClosure): Promise<void> {
+  await probeUnreadableRestoreBrowsersClosed(admission, processLockRoot, restore, clock, browserClosure, "browser-roots");
+}
+
+async function probeUnreadableRestoreBrowsersClosed(admission: RuntimeAdmission, processLockRoot: string,
+  restore: OfflineMaintenanceOperation, clock: Clock, browserClosure: ProfileBrowserClosure, scope: "profile-root" | "browser-roots" = "profile-root"): Promise<void> {
   const operation = restore;
   let primary: { error: unknown } | undefined;
   const assertHeld = () => {
-    admission.assertStoppedProfile(operation);
+    admission.assertExclusive(); admission.assertOfflineMaintenance(operation);
     const context = admission.readInstallationContext();
     if (context === undefined) throw new ProfileRestoreBrowserCustodyUnprovedError();
     admission.assertFixedProcessLockRoot(context.workspace, processLockRoot);
@@ -312,10 +342,11 @@ async function probeUnreadableRestoreBrowsersClosed(admission: RuntimeAdmission,
   };
   try {
     assertHeld();
-    const census = restoreBrowserCensus(admission, "profile-root");
+    if (process.platform !== "darwin") throw new ProfileRestoreBrowserCustodyUnprovedError();
+    const census = restoreBrowserCensus(admission, scope);
     await browserClosure.probeClosed(census.profiles, { launchTimeoutMs: 5_000, closeProofMs: 3_000 }, clock, new AbortController().signal, admission);
     assertHeld();
-    if (JSON.stringify(restoreBrowserCensus(admission, "profile-root")) !== JSON.stringify(census)) throw new ProfileRestoreBrowserCustodyUnprovedError();
+    if (JSON.stringify(restoreBrowserCensus(admission, scope)) !== JSON.stringify(census)) throw new ProfileRestoreBrowserCustodyUnprovedError();
   } catch (error) {
     if (error instanceof AuthoritySourceClosureUnprovedError) throw retainAuthoritySourceClosure([error], { admission: { admission, operation }, restore });
     primary = { error };
@@ -335,11 +366,13 @@ export function enumerateProfileCredentialMembership<Custody extends CredentialM
   admission.assertLive();
   const root = admission.stateRoot, flat = admission.profileMaintenanceSchemaVersion() === 6;
   if (admission.artifactRoot !== join(root, "artifacts")) throw new Error("profile-inventory-artifact-root-unavailable");
-  const restores = flat ? [] : admission.readCompletedRestores();
-  const suspects = restores.flatMap(row => [{ path: join(root, row.suspect.relativePath), sha256: row.suspect.file.sha256,
-    companion: false }, ...row.companions.map(companion => ({ path: `${join(root, row.suspect.relativePath)}${companion.suffix}`,
-      sha256: companion.file.sha256, companion: true }))]);
-  return enumerateCredentialMembership(root, flat, custody, savedBrowserRoot, path => admission.assertStateRoot(path), suspects, browserClosure, ownedWriter, ownedCredentialStages);
+  const directory = join(root, "backups", "suspects");
+  const suspects = !existsSync(directory) ? [] : readdirSync(directory).sort().map(name => {
+    if (!/^suspect-\d+-[0-9a-f-]{36}\.sqlite(?:-(?:wal|shm))?$/u.test(name)) throw new Error("profile-inventory-suspect-unowned");
+    const path = join(directory, name); inventoryFileIdentity(path);
+    return { path, sha256: createHash("sha256").update(readFileSync(path)).digest("hex"), companion: /-(?:wal|shm)$/u.test(name) };
+  });
+  return enumerateCredentialMembership(root, flat, custody, savedBrowserRoot, path => admission.assertStateRoot(path), suspects, browserClosure, ownedWriter, ownedCredentialStages, admission.preservesUnfinishedProfileState());
 }
 
 export function enumerateFlatBackupRecoveryMembership<Custody extends CredentialMembershipCustody>(root: string, custody: Custody, browserClosure: ProfileBrowserClosure) {
@@ -351,14 +384,14 @@ export function enumerateFlatBackupRecoveryMembership<Custody extends Credential
 function enumerateCredentialMembership<Custody extends CredentialMembershipCustody>(root: string, flat: boolean, custody: Custody,
   savedBrowserRoot: string, assertPath: (path: string) => void,
   suspects: readonly Readonly<{ path: string; sha256: string; companion: boolean }>[],
-  browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>, ownedCredentialStages: readonly string[] = []) {
+  browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>, ownedCredentialStages: readonly string[] = [], startupUpgrade = false) {
     const profiles = retainedBrowserProfiles(root, custody, savedBrowserRoot, browserClosure);
     const browserRootPaths = [...new Set([...configuredBrowserRoots(root, custody, savedBrowserRoot), ...profiles.map(profile => profile.profileRoot)])];
     for (const path of browserRootPaths) assertPath(path);
     if (browserRootPaths.some(path => browserRootPaths.some(other => other !== path && path.startsWith(`${other}${sep}`)))) throw new Error("profile-inventory-browser-root-ambiguous");
     const identities: ReturnType<typeof inventoryFileIdentity>[] = [], copies: string[] = [], loginDataPaths: string[] = [], unsupported: string[] = [];
     const backupPaths: string[] = [], manifests: string[] = [];
-    if (custody.browsers.some(browser => browser.health !== "closed")) throw new Error("profile-inventory-browser-closure-unproved");
+    if (!startupUpgrade && custody.browsers.some(browser => browser.health !== "closed")) throw new Error("profile-inventory-browser-closure-unproved");
     const browserRoots = new Set(profiles.map(profile => profile.profileDirectory));
     const visit = (path: string): void => {
       assertPath(path);
@@ -459,28 +492,39 @@ export function credentialCopyProcessCustody(input: Readonly<{ machine: RuntimeA
 export function readStoppedProfileUpgradeInventory(input: Readonly<{
   machine: RuntimeAdmission; admission: RuntimeAdmission; clock: Clock; hostFacts: HostConfigFacts; browserClosure: ProfileBrowserClosure;
 }>) {
+  return readStoppedProfileInventory(input, input.admission.assertReadyStoppedProfileUpgradeOwner(input.machine));
+}
+export function readStoppedProfileLayoutInventory(input: Parameters<typeof readStoppedProfileUpgradeInventory>[0]) {
+  return readStoppedProfileInventory(input, "layout");
+}
+function readStoppedProfileInventory(input: Parameters<typeof readStoppedProfileUpgradeInventory>[0], purpose: "manual" | "startup" | "layout") {
   const { machine, admission } = input;
-  admission.assertReadyStoppedProfileUpgradeOwner(machine);
+  const assertOwner = () => {
+    if (purpose === "layout") admission.assertReadyStoppedProfileLayoutOwner(machine);
+    else if (admission.assertReadyStoppedProfileUpgradeOwner(machine) !== purpose) throw new Error("profile-stopped-upgrade-purpose-changed");
+  };
+  assertOwner();
   const operation = machine.maintenanceOperation();
   machine.assertOfflineMaintenance(operation);
   const context = machine.readInstallationContext();
   if (context === undefined) throw new Error("profile-stopped-upgrade-installation-required");
   assertOfflineMaintenanceForProcessRoot(operation, resolve(context.workspace, rebuildRuntimeIsolation.processLockRoot));
   const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);
-  assertCredentialCopyResourcesClosed(facts);
-  if (facts.settingsAuthority.state !== "initialized") throw new Error("profile-stopped-upgrade-settings-required");
-  const settings = facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
+  if (purpose === "manual") assertCredentialCopyResourcesClosed(facts);
+  if (facts.settingsAuthority.state !== "initialized" && purpose === "manual") throw new Error("profile-stopped-upgrade-settings-required");
+  const settings = facts.settingsAuthority.state === "never-initialized" ? initialSettingsFileRecord().settings
+    : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
   const probeConfig = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
     { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
   const savedBrowserRoot = probeConfig.paths.browserProfileRoot;
   const membership = enumerateProfileCredentialMembership(admission, facts, savedBrowserRoot, input.browserClosure);
-  if (membership.unsupported.length !== 0) throw new Error("profile-stopped-upgrade-copy-custody-unproved");
+  if (purpose === "manual" && membership.unsupported.length !== 0) throw new Error("profile-stopped-upgrade-copy-custody-unproved");
   const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path));
   if (membership.backupPaths.length !== backups.length || membership.backupPaths.some(path => !backups.some(backup => backup.backupPath === path))
     || backups.some(backup => backup.manifest.installationId !== admission.profileBinding.installationId
       || backup.manifest.profileId !== admission.profileBinding.profileId)) throw new Error("profile-stopped-upgrade-backup-membership-unproved");
   const login = countProfileCredentialLoginRows(membership.loginDataPaths);
   if (login === "unreadable" || typeof login === "number" && login > 0) throw new Error("profile-stopped-upgrade-login-copy-present");
-  admission.assertReadyStoppedProfileUpgradeOwner(machine);
+  assertOwner();
   return Object.freeze({ operationId: operation.operationId, facts, membership, backups });
 }

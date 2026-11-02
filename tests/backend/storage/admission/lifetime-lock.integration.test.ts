@@ -1,24 +1,23 @@
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
-import { testProcessImport } from "../../../support/compiled-process.js";
-import { createAdmissionChildFixtures } from "../../../support/helpers/storage/admission-child-fixtures.js";
 import assert from "node:assert/strict";
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { execFile,spawn,type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs";
+import { access,lstat,mkdtemp,readdir,readFile,realpath,rm,writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
-import { access, lstat, mkdtemp, realpath, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { it,vi } from "vitest";
 import { z } from "zod";
-import { it, vi } from "vitest";
-import { acquireRuntimeLifetimeLock, RuntimeAlreadyRunningError, RuntimeLifetimeLock, RuntimeLifetimeLockReleasedError, WorkerRuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
-import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { resumePendingAutomaticRestore } from "../../../../src/backend/app/composition/storage-compose.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { runOfflineAuthorityRestoreRecovery } from "../../../../src/backend/app/composition/storage-compose.js";
-import { runOfflineStorageRelocation } from "../../../../src/backend/app/composition/storage/relocate.js";
+import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { acquireRuntimeLifetimeLock,RuntimeAlreadyRunningError,RuntimeLifetimeLock,RuntimeLifetimeLockReleasedError,WorkerRuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { runOfflineQueuedRunCancellation } from "../../../../src/backend/storage/maintenance/cancel-queued-runs.js";
+import { testProcessImport } from "../../../support/compiled-process.js";
+import { createAdmissionChildFixtures } from "../../../support/helpers/storage/admission-child-fixtures.js";
 import { scaledMs } from "../../../support/time-scale.js";
 
 const ReadySchema = z.strictObject({ kind: z.literal("held"), port: z.number().int().positive(), workerPid: z.number().int().positive() });
@@ -131,8 +130,8 @@ it("uses the configured singleton port for production parents and refuses busy r
   try {
     const config = z.object({ rebuild: z.object({ lockPort: z.number().int().positive() }) }).parse(JSON.parse(
       await readFile(new URL("../../../../config/runtime-isolation.json", import.meta.url), "utf8")));
-    for (const args of [["cli", "dashboard"], ["cli", "dashboard", "--prod"], ["cli", "storage", "backup"],
-      ["cli", "storage", "restore"], ["cli", "storage", "recover-restore"], ["cli", "storage", "relocate"],
+    for (const args of [["cli", "dashboard"], ["cli", "dashboard", "--prod"],
+      ["cli", "storage", "upgrade"],
       ["cli", "storage", "cancel-queued-runs"], ["test-target-document-number"]]) {
       await assert.rejects(runSecureEnvironmentBootstrap(args, {
         acquireLifetimeLock: port => { assert.equal(port, config.rebuild.lockPort); return acquireRuntimeLifetimeLock(lock.port); },
@@ -490,11 +489,9 @@ for (const capability of ["foreign-workspace", "retained-child"] as const) it(`r
     const mutations = [vi.spyOn(fs, "mkdirSync"), vi.spyOn(fs, "openSync"), vi.spyOn(fs, "writeFileSync"),
       vi.spyOn(fs, "unlinkSync"), vi.spyOn(fs, "renameSync"), vi.spyOn(fs, "linkSync")];
     syncBuiltinESMExports();
-    const operationId = "11111111-1111-4111-8111-111111111111";
     const writers: (() => unknown)[] = [
       () => RuntimeAdmission.acquireStoppedMachineControlMaintenance(directory, lock),
-      () => runOfflineAuthorityRestoreRecovery(directory, ["--operation", operationId, "--from", join(directory, "backup.json"), "--outcome", "unchanged"], lock),
-      () => runOfflineStorageRelocation({ workspace: directory, lifetime: lock, command: { kind: "resume", id: operationId, json: true } }),
+      () => resumePendingAutomaticRestore(directory, lock),
       () => runOfflineQueuedRunCancellation(profileBrowserClosure, directory, ["--apply", "--capture", "a".repeat(64)], lock),
     ];
     for (const writer of writers) {

@@ -2,19 +2,19 @@ import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/p
 import { testProcessImport } from "../../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
-import nativeFs, { cpSync, lstatSync, chmodSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import nativeFs, { lstatSync, chmodSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, it, vi } from "vitest";
-import { acquireStorageBackupEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { prepareStorageBackupCommand, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { acquireFlatArchiveFixture } from "../../../support/helpers/storage/flat-archive-admission.js";
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { backupFlatStorage } from "../../../../src/backend/storage/maintenance/existing-data-backup.js";
 import { SourceRecordSchema, StorageBackupSchema, retainedStorageBackup, hash } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { readNative6RunRecord } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -39,8 +39,8 @@ function oldArtifactSnapshot(root: string) {
 
 type Fixture = Awaited<ReturnType<typeof createHistoricalFlatProfileFixture>>;
 async function backup(f: Fixture) {
-  const admission = await acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime);
-  try { return await composeStorageCommand(rebuildRuntimeIsolation, ["backup", "--json"], systemClock, f.workspace, admission); }
+  const admission = await acquireFlatArchiveFixture(f.workspace, f.lifetime);
+  try { const closure = await prepareStoppedBackupClosure(profileBrowserClosure, admission, admission.maintenanceOperation(), systemClock, f.processLockRoot); return await backupFlatStorage(closure, admission, systemClock); }
   finally { admission.release(); }
 }
 function receiptRoot(f: Fixture) {
@@ -57,7 +57,7 @@ it("archives raw native6 bytes without login or person adoption and excludes pre
   const f = await createHistoricalFlatProfileFixture({ closedBrowser: true });
   const paths = [f.databasePath, f.protectedPath, f.artifact, f.reportPath, f.browserPreferencesPath];
   for (const path of [f.databasePath, f.artifact, f.reportPath]) chmodSync(path, 0o644);
-  const admission = await acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime);
+  const admission = await acquireFlatArchiveFixture(f.workspace, f.lifetime);
   const installationId = admission.locator.installationId;
   try {
     assert.equal(admission.isFlatBackup(), true);
@@ -70,17 +70,17 @@ it("archives raw native6 bytes without login or person adoption and excludes pre
     assert.throws(() => admission.assertProfileMigration(f.databasePath, 6), /profile-initialization-authority-required/u);
     assert.throws(() => AuthorityDatabase.upgradeStopped(admission, f.databasePath, f.processLockRoot, systemClock), /flat-backup-upgrade-refused/u);
     const preparation = vi.spyOn(profileBrowserClosure, "probeClosed");
-    let prepared: Awaited<ReturnType<typeof prepareStorageBackupCommand>>;
+    let closure: Awaited<ReturnType<typeof prepareStoppedBackupClosure>>;
     try {
-      prepared = await prepareStorageBackupCommand(rebuildRuntimeIsolation, ["--json"], systemClock, f.workspace, admission);
+      closure = await prepareStoppedBackupClosure(profileBrowserClosure, admission, admission.maintenanceOperation(), systemClock, f.processLockRoot);
       assert.equal(preparation.mock.calls.length, 1);
       assert.deepEqual(preparation.mock.calls[0]?.[0].map(profile => profile.profileDirectory), [join(f.stateRoot, "browsers", "w1", "ucpath")]);
     } finally { preparation.mockRestore(); }
     const before = paths.map(path => ({ bytes: readFileSync(path), stat: statSync(path) }));
     const sourceBefore = [oldArtifactSnapshot(f.stateRoot), oldArtifactSnapshot(join(f.workspace, "data"))];
     const native = vi.spyOn(profileBrowserClosure, "probeClosed");
-    let outcome: Awaited<ReturnType<typeof prepared.run>>;
-    try { outcome = await prepared.run(); assert.equal(native.mock.calls.length, 0); }
+    let report: Awaited<ReturnType<typeof backupFlatStorage>>;
+    try { report = await backupFlatStorage(closure, admission, systemClock); assert.equal(native.mock.calls.length, 0); }
     finally { native.mockRestore(); }
     for (const [index, path] of paths.entries()) {
       assert.deepEqual(readFileSync(path), before[index]?.bytes);
@@ -88,8 +88,7 @@ it("archives raw native6 bytes without login or person adoption and excludes pre
       assert.equal(statSync(path).mode, before[index]?.stat.mode);
     }
     assert.deepEqual([oldArtifactSnapshot(f.stateRoot), oldArtifactSnapshot(join(f.workspace, "data"))], sourceBefore);
-    assert.equal(outcome.exitCode, 0);
-    const report = JSON.parse(outcome.output) as { kind: string; archive: { backupPath: string; backupDigest: string; operationId: string; fileCount: number; byteSize: number } };
+
     assert.equal(report.kind, "flat-archive");
     const root = dirname(report.archive.backupPath);
     const record = StorageBackupSchema.parse(JSON.parse(readFileSync(report.archive.backupPath, "utf8")));
@@ -129,8 +128,9 @@ it("archives raw native6 bytes without login or person adoption and excludes pre
     assert.equal(report.archive.byteSize, record.files.reduce((total, entry) => total + entry.size, 0));
     assert.equal(existsSync(join(f.stateRoot, "backups")), false);
     const firstBackup = oldArtifactSnapshot(root), sourceRecord = readFileSync(join(root, "source.json"));
+    admission.maintenanceOperation().release();
     assert.throws(() => admission.assertLive(), { code: "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE" });
-    await assert.rejects(prepared.run(), { code: "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE" });
+    await assert.rejects(backupFlatStorage(closure, admission, systemClock), { code: "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE" });
     assert.deepEqual([oldArtifactSnapshot(f.stateRoot), oldArtifactSnapshot(join(f.workspace, "data"))], sourceBefore);
     assert.deepEqual(oldArtifactSnapshot(root), firstBackup);
     assert.deepEqual(readFileSync(join(root, "source.json")), sourceRecord);
@@ -145,7 +145,7 @@ for (const options of [{ unknownWrite: true, closedBrowser: false, unretiredWork
     try {
       if (options.unknownWrite) {
         assert.equal(database.prepare("SELECT state FROM runs").get()?.state, "parked-write");
-        const run = runRecordFromRow(database.prepare("SELECT * FROM runs").get());
+        const run = readNative6RunRecord(database, database.prepare("SELECT * FROM runs").get());
         assert.equal(run.lifecycle.state, "parked-write"); assert.ok(run.lifecycle.state === "parked-write");
         assert.equal(run.lifecycle.code, "unknown");
         assert.equal(database.prepare("SELECT status FROM write_intents").get()?.status, "parked");
@@ -157,11 +157,11 @@ for (const options of [{ unknownWrite: true, closedBrowser: false, unretiredWork
       }
     } finally { database.close(); }
     const before = readFileSync(f.databasePath), credentials = readFileSync(f.protectedPath);
-    const admission = await acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime);
+    const admission = await acquireFlatArchiveFixture(f.workspace, f.lifetime);
     try {
-      const prepared = await prepareStorageBackupCommand(rebuildRuntimeIsolation, ["--json"], systemClock, f.workspace, admission);
-      const outcome = await prepared.run();
-      assert.equal(outcome.exitCode, 0);
+      const closure = await prepareStoppedBackupClosure(profileBrowserClosure, admission, admission.maintenanceOperation(), systemClock, f.processLockRoot);
+      const outcome = await backupFlatStorage(closure, admission, systemClock);
+      assert.equal(outcome.kind, "flat-archive");
       const root = receiptRoot(f);
       assert.deepEqual(readFileSync(join(root, "files", "profile", "state.db")), before);
       assert.deepEqual(readFileSync(f.databasePath), before);
@@ -183,7 +183,7 @@ it("archives genuinely never-initialized native6 settings without creating setti
   const before = readFileSync(f.databasePath);
   try {
     const outcome = await backup(f);
-    assert.equal(outcome.exitCode, 0);
+    assert.equal(outcome.kind, "flat-archive");
     assert.deepEqual(readFileSync(f.databasePath), before);
     assert.deepEqual(readFileSync(join(receiptRoot(f), "files", "profile", "state.db")), before);
     untouched(f);
@@ -196,11 +196,11 @@ it.each(["server", "workers", "geocode"] as const)("refuses active %s process cu
     ...(name === "workers" ? { admission: { kind: "unbound-worker" as const, authorityPath: f.databasePath } } : {}) });
   try {
     const before = oldArtifactSnapshot(f.processLockRoot);
-    await assert.rejects(acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
+    await assert.rejects(acquireFlatArchiveFixture(f.workspace, f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
     assert.deepEqual(oldArtifactSnapshot(f.processLockRoot), before);
     lock.release();
     const released = oldArtifactSnapshot(f.processLockRoot);
-    await assert.rejects(acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
+    await assert.rejects(acquireFlatArchiveFixture(f.workspace, f.lifetime), { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
     assert.deepEqual(oldArtifactSnapshot(f.processLockRoot), released);
     assert.equal(existsSync(join(f.stateRoot, "backups")), false); untouched(f);
   } finally { lock.release(); await f.close(); }
@@ -266,8 +266,8 @@ it("reuses immutable archive bytes after identical source replacement between cl
     renameSync(replacement, f.reportPath);
     assert.notEqual(statSync(f.reportPath).ino, before.ino);
     const repeated = await backup(f);
-    assert.equal(repeated.exitCode, 0);
-    assert.equal(repeated.output, first.output);
+    assert.equal(repeated.kind, "flat-archive");
+    assert.deepEqual(repeated, first);
     assert.deepEqual(oldArtifactSnapshot(root), archive);
     untouched(f);
   } finally { await f.close(); }
@@ -285,7 +285,7 @@ it("resumes only an exact interrupted raw copy prefix without creating a SQLite 
     try { await assert.rejects(backup(f), /fixture interrupted flat backup/u); }
     finally { spy.mockRestore(); syncBuiltinESMExports(); }
     assert.ok(copied); const inode = statSync(copied).ino, before = readFileSync(f.databasePath);
-    const completed = await backup(f); assert.equal(completed.exitCode, 0);
+    const completed = await backup(f); assert.equal(completed.kind, "flat-archive");
     assert.equal(statSync(copied).ino, inode); assert.deepEqual(readFileSync(f.databasePath), before);
     assert.equal(existsSync(join(f.stateRoot, "backups")), false); untouched(f);
   } finally { await f.close(); }
@@ -307,7 +307,7 @@ it("refuses a foreign managed-file owner without certifying a backup", async () 
 
 for (const change of ["database-identity", "artifact-root-identity", "sidecar-membership"] as const) {
   it(`revokes held backup admission after ${change} drift`, async () => {
-    const f = await createHistoricalFlatProfileFixture(), admission = await acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime);
+    const f = await createHistoricalFlatProfileFixture(), admission = await acquireFlatArchiveFixture(f.workspace, f.lifetime);
     try {
       if (change === "database-identity") { const path = `${f.databasePath}.new`; writeFileSync(path, readFileSync(f.databasePath), { mode: statSync(f.databasePath).mode & 0o7777 }); renameSync(path, f.databasePath); }
       if (change === "artifact-root-identity") {
@@ -325,12 +325,12 @@ for (const change of ["database-identity", "artifact-root-identity", "sidecar-me
 }
 
 it("completes only a proved empty installation backup allocation", async () => {
-  const f = await createHistoricalFlatProfileFixture(), admission = await acquireStorageBackupEntrypointAdmission(f.workspace, f.lifetime);
+  const f = await createHistoricalFlatProfileFixture(), admission = await acquireFlatArchiveFixture(f.workspace, f.lifetime);
   const root = join(f.workspace, ".tracker", "control", "storage-backups", admission.locator.installationId);
   try { mkdirSync(root, { recursive: true, mode: 0o700 }); }
   finally { admission.release(); }
   try {
-    assert.equal((await backup(f)).exitCode, 0); assert.equal(existsSync(join(root, "backup.json")), true); untouched(f);
+    assert.equal((await backup(f)).kind, "flat-archive"); assert.equal(existsSync(join(root, "backup.json")), true); untouched(f);
   } finally { await f.close(); }
 });
 
@@ -361,23 +361,3 @@ for (const entry of ["src/backend/storage/maintenance/existing-data-backup.ts", 
     assert.equal(child.stdout, "fresh-import-complete");
   });
 }
-
-it("runs the actual backup bootstrap in a fresh flat fixture process", async () => {
-  const f = await createHistoricalFlatProfileFixture();
-  try {
-    cpSync(join(process.cwd(), "src"), join(f.workspace, "src"), { recursive: true });
-    mkdirSync(join(f.workspace, "scripts/dev"), { recursive: true });
-    cpSync(join(process.cwd(), "scripts/dev/secure-env-bootstrap.ts"), join(f.workspace, "scripts/dev/secure-env-bootstrap.ts"));
-    mkdirSync(join(f.workspace, "config"));
-    for (const name of ["runtime-isolation.json", "test-data.json", "dashboard-workflow-sources.json"]) cpSync(join(process.cwd(), "config", name), join(f.workspace, "config", name));
-    symlinkSync(dirname(dirname(fileURLToPath(import.meta.resolve("tsx/package.json")))), join(f.workspace, "node_modules"));
-    const source = [f.databasePath, f.protectedPath, f.artifact, f.reportPath].map(path => ({ path, bytes: readFileSync(path), inode: statSync(path).ino }));
-    const child = spawnSync(process.execPath, ["--import", testProcessImport(), "scripts/dev/secure-env-bootstrap.ts", "cli", "storage", "backup", "--json"], { cwd: f.workspace, encoding: "utf8", timeout: 20_000 });
-    assert.equal(child.status, 0, `${child.error?.message ?? ""}\n${child.stdout}\n${child.stderr}`);
-    const result = JSON.parse(child.stdout) as { kind: string; archive: { backupPath: string } };
-    assert.equal(result.kind, "flat-archive");
-    assert.equal(existsSync(result.archive.backupPath), true);
-    for (const entry of source) { assert.deepEqual(readFileSync(entry.path), entry.bytes); assert.equal(statSync(entry.path).ino, entry.inode); }
-    assert.equal(existsSync(join(f.stateRoot, "machine")), false); assert.equal(existsSync(join(f.stateRoot, "profiles")), false);
-  } finally { await f.close(); }
-});

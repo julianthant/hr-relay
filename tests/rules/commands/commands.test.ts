@@ -1,6 +1,6 @@
-import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from "../../../src/models/dashboard/assistant.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
+import { ASSISTANT_DEFAULT_EFFORT,ASSISTANT_DEFAULT_MODEL } from "../../../src/models/dashboard/assistant.js";
 import {
 BulkRunCommandRequestSchema,
 COMMAND_EFFECT_BY_ACTION,
@@ -21,6 +21,8 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
     family: "assistant-model-preference", type: "set-assistant-model-preference", target: { profileId: UUID_1, epoch: 1, expectedRevision: 0 },
     payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: ASSISTANT_DEFAULT_EFFORT } },
   ...COMMAND_FIXTURES,
+  { commandId: UUID_3, requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
+    family: "run", type: "recover-run", target: { runId: UUID_1, expectedVersion: 1 } },
   { commandId: UUID_3, requestedAt: NOW, requestedBy: "local-operator", source: "run-detail", family: "worker-browser", type: "check-parked-write",
     target: { workerId: "separations-worker-1", workflowId: "separations", expectedVersion: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 },
       membershipRevision: 1, processId: 42, startedAt: NOW, installationId: UUID_1, profileId: UUID_2, itemId: UUID_1,
@@ -106,9 +108,12 @@ describe("authority classification and command families", () => {
       "check-parked-write": "local-write",
       "apply-settings": "local-write",
       "apply-protected-settings": "destructive",
-      "plan-storage-relocation": "local-write",
-      "cancel-storage-relocation": "local-write",
+      pause: "local-write",
+      resume: "external-submit",
+      "pause-all": "local-write",
+      "pause-all-and-quit": "destructive",
       retry: "external-submit",
+      "recover-run": "external-submit",
       restart: "external-submit",
       cancel: "destructive",
       bump: "local-write",
@@ -154,6 +159,16 @@ describe("authority classification and command families", () => {
     assert.equal(RunDisplayNameSchema.safeParse("e\u0301").success, false);
     assert.equal(RunDisplayNameSchema.safeParse(`valid\u0000name`).success, false);
     assert.equal(RunDisplayNameSchema.safeParse("x".repeat(121)).success, false);
+  });
+
+  it("requires exact runtime admission and explicit confirmation for application quit", () => {
+    const quit = CommandRequestSchema.parse(COMMAND_FIXTURES.find(fixture =>
+      (fixture as { type: string }).type === "pause-all-and-quit"));
+    assert.equal(quit.family, "application");
+    assert.equal(CommandRequestSchema.safeParse({ ...quit, target: { runtimeGeneration: 0 } }).success, false);
+    assert.equal(CommandRequestSchema.safeParse({ ...quit, target: {} }).success, false);
+    assert.equal(CommandRequestSchema.safeParse({ ...quit, payload: { confirmed: false, targets: [] } }).success, false);
+    assert.equal(CommandRequestSchema.safeParse({ ...quit, payload: { targets: [] } }).success, false);
   });
 
   it("rejects malformed envelopes and untyped gate/notification arms", () => {
@@ -242,4 +257,15 @@ describe("explicit notification no-change results", () => {
     }
     assert.equal(CommandAuditRecordSchema.safeParse({ ...audit, request: CURRENT_COMMAND_FIXTURES.find(value => CommandRequestSchema.parse(value).family !== "notification") }).success, false);
   });
+});
+
+
+it.each(["plan-storage-relocation", "cancel-storage-relocation"])("refuses the removed %s command", type => {
+  const result = CommandRequestSchema.safeParse({ commandId: "11111111-1111-4111-8111-111111111111",
+    requestedAt: "2026-11-01T12:00:00.000Z", requestedBy: "local-operator", source: "settings-surface",
+    family: "storage-relocation", type, target: { installationId: "22222222-2222-4222-8222-222222222222",
+      sourceGeneration: 0, sourcePair: { stateRoot: "/isolated/state", artifactRoot: "/isolated/state/artifacts" }, expectedRevision: 0 },
+    payload: { writeId: "33333333-3333-4333-8333-333333333333", desiredPair: { stateRoot: "/isolated/other", artifactRoot: "/isolated/other/artifacts" },
+      desiredDigest: "a".repeat(64), requestFingerprint: "b".repeat(64) } });
+  assert.equal(result.success, false);
 });

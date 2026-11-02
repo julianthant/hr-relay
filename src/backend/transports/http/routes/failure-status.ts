@@ -1,22 +1,20 @@
-import { StartupCrashRecoveryRefusedError } from "../../../runs/lifecycle/startup-crash-recovery.js";
+import { ERROR_CATALOG,createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
+import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
 import { AssistantAuthorizationError } from "../../../assistant/authorization.js";
-import { ERROR_CATALOG, createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
+import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
+import { StartupCrashRecoveryRefusedError } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ActivityPopulationError } from "../../../runs/queries/activity-population.js";
 import { ActivitySnapshotError } from "../../../runs/queries/activity-selection.js";
-import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
 import { ProtectedSubjectDisplayRefusedError } from "../../../runs/start/protected-input.js";
-import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
 import { RerunRefusedError } from "../../../runs/start/rerun.js";
-import { ProfileUpgradeUnavailableError } from "../../../profiles/profile-session.js";
-import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
-import { ProfileUpgradeSourceRefusalError } from "../../../storage/admission/admission.js";
-import { ProfileBrowserRootRefusalError, ProfileStorageRelocationUnsupportedError } from "../../../storage/admission/admission-identity.js";
+import { ProfileBrowserRootRefusalError } from "../../../storage/admission/admission-identity.js";
+import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
 
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";
-import { LogDisplayRefusedError, LogIdentityRefusedError, DashboardReadFailedError, DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, ProjectionDegradedError, RequestIdentityRefusedError, SectionUnavailableError, TargetNotFoundError } from "../../../runs/commands/refusals.js";
-import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
+import { DashboardReadFailedError,DiagnosticBundleBytesMissingError,DiagnosticBundleCorruptError,LogDisplayRefusedError,LogIdentityRefusedError,ProjectionDegradedError,RequestIdentityRefusedError,SectionUnavailableError,TargetNotFoundError } from "../../../runs/commands/refusals.js";
 import { errorText } from "../../../runs/lifecycle/support.js";
+import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
 
 export type WireError = z.infer<typeof WireErrorSchema>;
 
@@ -28,18 +26,17 @@ export function wireError(code: string, message: string, retryable: boolean): Wi
 export function failureStatus(
   error: unknown,
 ): { status: 400 | 403 | 404 | 409 | 500; body: Record<string, unknown> } {
-  if (error instanceof ProfileUpgradeUnavailableError) return { status: 500, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof StartupCrashRecoveryRefusedError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof AssistantAuthorizationError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof z.ZodError) {
     return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };
   }
   const message = errorText(error);
-  if (error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError || error instanceof ProfileStorageRelocationUnsupportedError || error instanceof ProfileUpgradeSourceRefusalError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
+  if (error instanceof ProfileSessionRefusedError || error instanceof ProfileBrowserRootRefusalError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof DashboardReadFailedError) return { status: 500, body: wireError("DASHBOARD_READ_FAILED", ERROR_CATALOG.DASHBOARD_READ_FAILED.text, false) };
   if (error instanceof ActivitySnapshotError) return { status: 409, body: wireError(error.code, message, false) };
   if (error instanceof ActivityPopulationError) return { status: error.code === "ACTIVITY_POPULATION_RANGE_INVALID" || error.code === "ACTIVITY_POPULATION_BROWSE_INVALID" ? 400 : error.code === "ACTIVITY_POPULATION_SOURCE_MISMATCH" ? 500 : 409, body: wireError(error.code, message, false) };
-  if (error instanceof WorkbookLibraryError) return { status: error.code === "WORKBOOK_NOT_FOUND" ? 404 : error.code === "WORKBOOK_INVALID" ? 400 : error.code === "WORKBOOK_VERSION_CONFLICT" || error.code === "WORKBOOK_INTAKE_SOURCE_CONFLICT" ? 409 : 500, body: wireError(error.code, message, false) };
+  if (error instanceof WorkbookLibraryError) return { status: error.code === "WORKBOOK_NOT_FOUND" || error.code === "WORKBOOK_REVISION_UNAVAILABLE" ? 404 : error.code === "WORKBOOK_INVALID" ? 400 : error.code === "WORKBOOK_OPERATION_CONFLICT" || error.code === "WORKBOOK_VERSION_CONFLICT" || error.code === "WORKBOOK_INTAKE_SOURCE_CONFLICT" || error.code === "WORKBOOK_METADATA_UNSUPPORTED" ? 409 : 500, body: wireError(error.code, message, false) };
   if (error instanceof ProtectedSubjectDisplayRefusedError) return { status: 409, body: wireError(error.code, message, false) };
   if (error instanceof PreflightAdmissionRefusal) return { status: 409, body: wireError(`PREFLIGHT_${error.reason.toUpperCase().replaceAll("-", "_")}`, message, false) };
   if (error instanceof TargetNotFoundError) {

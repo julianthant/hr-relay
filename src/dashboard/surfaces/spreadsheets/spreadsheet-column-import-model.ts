@@ -1,4 +1,5 @@
-import { cellText, columnName, type EditableSheet, type EditableWorkbook } from './spreadsheet-editor-model.js';
+import { columnName } from './spreadsheet-editor-model.js';
+import { cellText, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { fieldForSpreadsheetHeader, spreadsheetField, spreadsheetValueMatches, suggestSpreadsheetField } from './spreadsheet-fields-model.js';
 
 export function spreadsheetHeaderRow(sheet: EditableSheet): number {

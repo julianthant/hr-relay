@@ -1,6 +1,6 @@
 import { finished } from "node:stream/promises";
 
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createServer,type IncomingMessage,type Server,type ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { z } from "zod";
 import type { DashboardApp } from "./routes/api.js";
@@ -30,7 +30,6 @@ export interface DashboardHttpServer {
 
 export interface DashboardHttpListener extends DashboardHttpServer {
   mount(app: DashboardApp, accepts: (request: Request) => boolean): DashboardHttpMount;
-  committedResponse(response: Response): Promise<void>;
 }
 
 function toWebRequest(req: IncomingMessage, hostname: string, port: number, signal: AbortSignal): Request {
@@ -227,7 +226,6 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
     failures: unknown[]; closing?: Promise<void> };
   type Transfer = { cancellation: RequestCancellation; response: ServerResponse; mount?: Mount };
   const active = new Map<Promise<void>, Transfer>();
-  const commitments = new WeakMap<Response, { resolve(): void; reject(error: unknown): void }>();
   let selected: Mount | undefined;
   let closing = false;
   const retainedObserverFailures: AggregateError[] = [];
@@ -249,7 +247,6 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
     const responseClosed = (): void => { if (!res.writableFinished) disconnect(); };
     res.once("close", responseClosed);
     res.once("error", disconnect);
-    let response: Response | undefined;
     const transfer = (async (): Promise<void> => {
       const request = toWebRequest(req, hostname, boundPort, requestAbort.signal);
       if (closing) throw new DashboardShutdownError();
@@ -267,7 +264,7 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
       if (closing) throw cancellation.reason ?? new DashboardShutdownError();
       const mount = selected;
       if (mount?.state === "open" && mount.accepts(request)) ownership.mount = mount;
-      response = await (ownership.mount?.app ?? deps.app).fetch(request);
+      const response = await (ownership.mount?.app ?? deps.app).fetch(request);
       await pipeResponse(response, res, cancellation);
     })().catch((error: unknown) => {
       if (error instanceof DashboardShutdownError && error === cancellation.reason) return;
@@ -302,16 +299,6 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
       active.delete(task);
     });
     active.set(task, ownership);
-    void task.then(() => {
-      if (response === undefined) return;
-      const commitment = commitments.get(response);
-      if (commitment === undefined) return;
-      commitments.delete(response);
-      if (req.complete && req.readableEnded && res.writableFinished && cancellation.reason === undefined) commitment.resolve();
-      else commitment.reject(new DashboardResponseClosedError("dashboard request and response commitment unproved"));
-    }, (error: unknown) => {
-      if (response !== undefined) { commitments.get(response)?.reject(error); commitments.delete(response); }
-    });
     void task.catch((error: unknown) => {
       if (!res.destroyed) res.destroy(asError(error));
     });
@@ -353,10 +340,6 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
 
   return Object.freeze({
     port: boundPort,
-    committedResponse(response: Response): Promise<void> {
-      if (closing || commitments.has(response)) throw new Error("dashboard response commitment unavailable");
-      return new Promise<void>((resolve, reject) => { commitments.set(response, { resolve, reject }); });
-    },
     mount: (app: DashboardApp, accepts: (request: Request) => boolean): DashboardHttpMount => {
       if (closing || selected !== undefined) throw new Error("dashboard HTTP mount unavailable");
       const mount: Mount = { app, accepts, state: "open", failures: [] };

@@ -246,7 +246,7 @@ it("real ingress, two real workers and Chromium: read-only claims, exact control
     const oldMachine = machine, oldProfile = profile, oldToken = token, oldContext = profile.selectedContext(token);
     phase = 'first-stop';
     await runtime.stop(); runtime=undefined; database=undefined;
-    assert.throws(() => oldProfile.assertCurrent(oldToken), { message: "runtime-admission: missing or released admission" });
+    assert.throws(() => oldProfile.assertCurrent(oldToken), (error: unknown) => error instanceof ProfileSessionRefusedError && error.code === "PROFILE_SESSION_STALE");
     assert.throws(() => oldContext.settings.read(), (error: unknown) => error instanceof ProfileSessionRefusedError && error.code === "PROFILE_SESSION_STALE");
     oldMachine.release(); machine=undefined;
     assert.throws(() => oldMachine.assertLive(), /runtime-admission: missing or released admission/u);

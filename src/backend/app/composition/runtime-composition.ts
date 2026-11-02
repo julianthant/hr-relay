@@ -5,6 +5,7 @@ import { TEST_DATA_USAGE } from "../../runs/provenance/test-data-usage.js";
 import type { WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
 
 export interface RunningDashboard {
+  readonly shutdownRequested?: Promise<void>;
   readonly port: number;
   readonly failure?: Promise<never>;
   stop(): Promise<void>;
@@ -142,8 +143,6 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  explain diagnostics --boot [--json]  inspect the stopped boot fault spool without opening the database",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page",
     "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces; exit 0 = authority healthy + reconciliation healthy + protected authority readable; backup reported, not gated)",
-    "  storage backup [--json]  write a verified person SQLite backup or stopped flat native6 byte archive",
-    "  storage restore --from <manifest.json> [--json]  quarantine the suspect authority and swap in ONE named verified backup",
     ...TEST_DATA_USAGE.map((line) => `  ${line}`),
   ].join("\n");
 }
@@ -186,7 +185,7 @@ async function ownDashboardUntilShutdown(
       requestShutdown();
     });
     ready?.();
-    await (running.failure === undefined ? shutdownRequested : Promise.race([shutdownRequested, running.failure]));
+    await Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
   } catch (error) { failures.push(error); }
   try { await running.stop(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
   try { dispose?.(); } catch (error) { if (!failures.includes(error)) failures.push(error); }

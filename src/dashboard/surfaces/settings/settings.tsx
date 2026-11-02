@@ -1,29 +1,29 @@
-import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
-import { useViewState } from "../../app/navigation/view-route-model.js";
-import type { EditableWorkbook } from "../spreadsheets/spreadsheet-editor-model.js";
-import "./settings-data.css";
-import "./hub-settings.css";
-import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
-import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
-import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
-import { ArrowLeft, ArrowUp, Check, CircleAlert, Database, Folder, Gauge, Hand, History, MessagesSquare, Monitor, Search, Settings as SettingsIcon, Sparkles, Table2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft,ArrowUp,Check,CircleAlert,Database,Folder,Gauge,Hand,History,MessagesSquare,Monitor,Search,Settings as SettingsIcon,Sparkles,Table2 } from "lucide-react";
+import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import type { FrontendBootstrapWire } from "../../../models/dashboard/bootstrap.js";
+import { EditableSettingsSectionIdSchema } from "../../../models/dashboard/settings-editor.js";
 import { SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID } from "../../../models/dashboard/settings.js";
-import { Banner, Button, Dialog, DialogContent, DialogFooter, DsBodyScope, IconButton, SearchInput, SectionLabel, StatusDot, TakeoverFrame, dsFocus, dsMotion, dsIcon, dsSurface, dsText } from "../../ds/ui.js";
+import { useViewState } from "../../app/navigation/view-route-model.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
+import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import { plural } from "../shared/status/format.js";
-import type { SettingsSaveListener, SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
+import type { EditableWorkbook } from "../../../rules/spreadsheets/workbook-io.js";
+import { SpreadsheetsSettings } from "../spreadsheets/spreadsheets.js";
+import type { SettingsSaveListener,SettingsSaveProblemListener } from "./editor/settings-attempt-model.js";
+import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
 import { useEditableSettings } from "./editor/settings-editor-model.js";
 import { EditableSettingsSection } from "./editor/settings-editor.js";
-import { RoutesSection } from "./routes/settings-routes.js";
+import "./hub-settings.css";
 import { KeyboardSection } from "./navigation/settings-keyboard.js";
+import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./navigation/settings-search-model.js";
+import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
 import { PreflightSection } from "./preflight/settings-preflight.js";
-import { SETTINGS_DATA_SECTION_IDS, SETTINGS_GEAR_ID, SETTINGS_KEYBOARD_SECTION_ID, SETTINGS_PREFLIGHT_SECTION_ID, buildSettingsNav, resolveSettingsSection, type SettingsNavEntry, type SettingsNavIcon, type SettingsSection } from "./settings-model.js";
-import { storageNeedsAttention, type StorageHealthSummary } from "./storage/storage-settings-model.js";
+import { RoutesSection } from "./routes/settings-routes.js";
+import "./settings-data.css";
+import { SETTINGS_DATA_SECTION_IDS,SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
+import { storageNeedsAttention,type StorageHealthSummary } from "./storage/storage-settings-model.js";
 import { StorageSection } from "./storage/storage-settings.js";
-import { searchSettings, settingsSearchIndex, type SettingsSearchResult } from "./navigation/settings-search-model.js";
-import { SettingsSearchTargetContext, useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
 
 
 export type { SettingsSection,StorageHealthSummary };
@@ -199,11 +199,11 @@ export function SettingsPage({
   const [searchVisit, setSearchVisit] = useState(0);
   const navSearch = useRef<HTMLInputElement>(null);
   const searchResults = useRef<HTMLDivElement>(null);
-  const index = useMemo(() => settingsSearchIndex(groups, settingsDocument, editor.relocationEditor.read.state === "available"), [groups, settingsDocument, editor.relocationEditor.read.state]);
+  const index = useMemo(() => settingsSearchIndex(groups, settingsDocument, editor.editor.state === "loaded"), [groups, settingsDocument, editor.editor.state]);
   const results = useMemo(() => searchSettings(index, navQuery), [index, navQuery]);
   const selectedResult = index.find(result => result.target === searchTarget && result.entry.id === activeId);
   const target = selectedResult?.target;
-  const pathTargetLoading = activeId === "paths" && (searchTarget === "paths.stateRoot" || searchTarget === "paths.artifactRoot") && editor.relocationEditor.read.state === "loading";
+  const pathTargetLoading = activeId === "paths" && (searchTarget === "paths.stateRoot" || searchTarget === "paths.artifactRoot") && editor.editor.state === "loading";
   const searchContext = useMemo(() => ({ target, visit: searchVisit }), [target, searchVisit]);
   const content = useRef<HTMLDivElement>(null);
   const scrollPositions = useRef(new Map<string, number>());
@@ -218,9 +218,8 @@ export function SettingsPage({
   useSettingsSearchArrival(content, target, searchVisit, activeId, selectedResult?.label);
   const settingsEntries = groups.filter(group => group.id === "personal" || group.id === "advanced").flatMap(group => group.entries);
   const activeSettingsEditorSection = activeId !== undefined && (settingsEntries.some(entry => entry.id === activeId) || activeId === "performance");
-  const totalDirty = (workbookDraft.dirty ? 1 : 0) + editor.dirtyCount + editor.protectedEditor.dirtyCount + editor.relocationEditor.dirtyCount;
-  const relocationUncertain = editor.relocationEditor.uncertain;
-  const hasDirtyDraft = totalDirty > 0 || relocationUncertain;
+  const totalDirty = (workbookDraft.dirty ? 1 : 0) + editor.dirtyCount + editor.protectedEditor.dirtyCount;
+  const hasDirtyDraft = totalDirty > 0;
 
   useEffect(() => {
     if (!hasDirtyDraft) return undefined;
@@ -255,7 +254,6 @@ export function SettingsPage({
     setWorkbookDraft({ document: null, dirty: false });
     editor.discard();
     editor.protectedEditor.discard();
-    editor.relocationEditor.discard();
     setPendingExit(undefined);
     pendingExit();
   };
@@ -282,7 +280,7 @@ export function SettingsPage({
         }}>
           {results.length > 0 && <span className="sr-only" role="status">{plural(results.length, "setting")} found</span>}
           {results.map(result => <SearchResultLink key={result.id} result={result} active={result.entry.id === activeId && result.target === searchTarget} onSelect={() => { setSearchVisit(visit => visit + 1); onSection(result.entry.id, result.target); }} />)}
-          {results.length === 0 && <p role="status" className="text-caption text-ui-muted px-3">{editor.editor.state === "loading" || editor.relocationEditor.read.state === "loading" ? "Reading settings…" : editor.editor.state === "failed" ? "Settings fields unavailable" : "No settings found"}</p>}
+          {results.length === 0 && <p role="status" className="text-caption text-ui-muted px-3">{editor.editor.state === "loading" ? "Reading settings…" : editor.editor.state === "failed" ? "Settings fields unavailable" : "No settings found"}</p>}
         </div> : groups.map(group => <div key={group.id} className="settings-nav-group"><span>{group.heading}</span>{group.entries.map(entry => <SectionButton key={entry.id} entry={entry} active={entry.id === activeId} onClick={() => onSection(entry.id)} />)}</div>)}
       </nav>
 
@@ -354,14 +352,12 @@ export function SettingsPage({
               target.focus();
             }
           }}
-          title={relocationUncertain ? "Leave with an unconfirmed plan?" : "Discard unsaved settings?"}
-          description={relocationUncertain
-            ? `You have ${plural(totalDirty, "local edit")}. Leaving Settings discards local drafts and this browser's exact retry attempt. A submitted relocation plan may already be recorded. It does not mean folders moved; check the plan when you return.`
-            : `You have ${plural(totalDirty, "unsaved change")}. Leaving Settings discards local drafts and any pending retry identity. A write already submitted may still be stored.`}
+          title="Discard unsaved settings?"
+          description={`You have ${plural(totalDirty, "unsaved change")}. Leaving Settings discards local drafts and any pending retry identity. A write already submitted may still be stored.`}
         >
           <DialogFooter>
             <Button variant="secondary" onClick={() => setPendingExit(undefined)}>Keep editing</Button>
-            <Button variant="danger" disabled={editor.relocationEditor.saving} onClick={discardAndExit}>{relocationUncertain ? "Leave Settings" : "Discard changes"}</Button>
+            <Button variant="danger" onClick={discardAndExit}>Discard changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

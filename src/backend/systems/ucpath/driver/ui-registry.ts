@@ -1,3 +1,18 @@
+import {
+  UCPATH_SS_SMART_HR_FINDINGS_LIST_READY,
+  UCPATH_SS_SMART_HR_FINDINGS_DETAIL_READY,
+  UCPATH_SS_SMART_HR_RESULT_TRANSACTION_ID,
+  UCPATH_SS_SMART_HR_RESULT_EID,
+  UCPATH_SS_SMART_HR_RESULT_NAME,
+  UCPATH_SS_SMART_HR_RESULT_DRILL_IN,
+  UCPATH_SS_SMART_HR_RESULT_COUNTER,
+  UCPATH_SS_SMART_HR_RESULTS_VIEW_ALL,
+  UCPATH_SS_SMART_HR_DETAIL_REQUESTED,
+  UCPATH_SS_SMART_HR_DETAIL_NAME,
+  UCPATH_SS_SMART_HR_DETAIL_ACTION,
+  UCPATH_SS_SMART_HR_DETAIL_START_DATE,
+  UCPATH_SS_SMART_HR_RETURN_TO_LIST,
+} from "../../../../models/ui/ucpath-transaction-findings.js";
 import { z } from "zod";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import {
@@ -312,6 +327,55 @@ function terminationVerification(scenario: string, legacyKey: string) {
     portMapRows: [{ system: "ucpath" as const, legacyKey }],
   };
 }
+
+const pendingFindingsProvenance = {
+  status: "pending-live-verification",
+  source: { kind: "operator-supplied-anchor-observation", observedAt: "2026-11-02" },
+  matchCount: "unconfirmed", visibility: "unconfirmed",
+} as const;
+const PendingFindingsProvenanceSchema = z.strictObject({
+  status: z.literal("pending-live-verification"),
+  source: z.strictObject({ kind: z.literal("operator-supplied-anchor-observation"), observedAt: DateOnlySchema }),
+  matchCount: z.literal("unconfirmed"), visibility: z.literal("unconfirmed"),
+});
+const PendingFindingLocatorSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("css"), selector: z.string().min(1) }),
+  z.strictObject({ kind: z.literal("role"), role: z.literal("link"), name: z.string().min(1), exact: z.literal(true) }),
+  z.strictObject({ kind: z.literal("indexed-css"), selectorPrefix: z.string().min(1), selectorSuffix: z.string().min(1) }),
+  z.strictObject({ kind: z.literal("text-pattern"), pattern: z.string().min(1) }),
+]);
+
+// Supplied anchors are candidates; no live match-count or visibility certification was captured.
+export const UCPATH_PENDING_FINDINGS_RECIPES = deepFreeze(z.strictObject({
+  provenance: PendingFindingsProvenanceSchema,
+  elements: z.array(z.strictObject({
+    id: ElementIdSchema, label: z.string().min(1), locator: PendingFindingLocatorSchema,
+    provenance: PendingFindingsProvenanceSchema,
+  })).length(11),
+  states: z.array(z.strictObject({
+    id: PageStateIdSchema, element: ElementIdSchema, timeoutMs: z.literal(45_000),
+    provenance: PendingFindingsProvenanceSchema,
+  })).length(2),
+}).parse({
+  provenance: pendingFindingsProvenance,
+  elements: [
+  { id: UCPATH_SS_SMART_HR_RESULT_TRANSACTION_ID, label: "Finding transaction ID", locator: { kind: "indexed-css", selectorPrefix: '[id="PTS_CFG_CL_RSLT_NUI_SRCH0$11$$', selectorSuffix: '"]' } },
+  { id: UCPATH_SS_SMART_HR_RESULT_EID, label: "Finding employee ID", locator: { kind: "indexed-css", selectorPrefix: '[id="PTS_CFG_CL_RSLT_NUI_SRCH3$14$$', selectorSuffix: '"]' } },
+  { id: UCPATH_SS_SMART_HR_RESULT_NAME, label: "Finding employee name", locator: { kind: "indexed-css", selectorPrefix: '[id="PTS_CFG_CL_RSLT_NUI_SRCH2$13$$', selectorSuffix: '"]' } },
+  { id: UCPATH_SS_SMART_HR_RESULT_DRILL_IN, label: "Finding drill-in", locator: { kind: "indexed-css", selectorPrefix: '[id="PTS_CFG_CL_RSLT_PTS_DRILLIN$40$$', selectorSuffix: '"]' } },
+  { id: UCPATH_SS_SMART_HR_RESULT_COUNTER, label: "Finding result counter", locator: { kind: "text-pattern", pattern: "^\\d+-\\d+ of \\d+$" } },
+  { id: UCPATH_SS_SMART_HR_RESULTS_VIEW_ALL, label: "Finding View All", locator: { kind: "role", role: "link", name: "View All", exact: true } },
+  { id: UCPATH_SS_SMART_HR_DETAIL_REQUESTED, label: "Finding Requested", locator: { kind: "css", selector: "#UC_SS_TRANSACT_DTTM_CREATED" } },
+  { id: UCPATH_SS_SMART_HR_DETAIL_NAME, label: "Finding detail name", locator: { kind: "css", selector: '[id="NAME$span$0"]' } },
+  { id: UCPATH_SS_SMART_HR_DETAIL_ACTION, label: "Finding detail action", locator: { kind: "css", selector: '[id="UC_SS_TBH_VW_ACTION$0"]' } },
+  { id: UCPATH_SS_SMART_HR_DETAIL_START_DATE, label: "Finding detail Start Date", locator: { kind: "css", selector: '[id="UC_SS_TBH_VW_START_DT$0"]' } },
+  { id: UCPATH_SS_SMART_HR_RETURN_TO_LIST, label: "Finding return to list", locator: { kind: "css", selector: '[id="#ICList"]' } },
+].map(({ id, label, locator }) => ({ id, label, locator, provenance: pendingFindingsProvenance })),
+  states: [
+    { id: UCPATH_SS_SMART_HR_FINDINGS_LIST_READY, element: UCPATH_SS_SMART_HR_RESULT_COUNTER, timeoutMs: 45_000, provenance: pendingFindingsProvenance },
+    { id: UCPATH_SS_SMART_HR_FINDINGS_DETAIL_READY, element: UCPATH_SS_SMART_HR_DETAIL_REQUESTED, timeoutMs: 45_000, provenance: pendingFindingsProvenance },
+  ],
+}));
 
 export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
   system: "ucpath",
@@ -1435,3 +1499,27 @@ export const UCPATH_PENDING_READ_RECIPES = Object.freeze(z.strictObject({
   results: 'table[id^="l0PERSON$"] span[id^="EMPLID$"]', dialog: '[id="#ICOK"]', dialogMessage: "[id^=ptModContainer], [id^=ptMod], [role=dialog], .ps-modal", nextResult: 'a[id*="hnext"], a[id*="PSNEXT"]', mask: "#pt_modalMask, .ps_modalmask",
   startDate: '[id="PER_INST_EMP_VW_LAST_HIRE_DT$0"]', terminationDate: '[id="PER_INST_EMP_VW_TERMINATION_DT$0"]', terminationReason: '[id="PER_INST_EMP_VW_DESCR$0"]',
 }));
+
+// Candidate recipes remain outside the verified registry until live read-only acceptance.
+export const UCPATH_PENDING_CONTACT_RECIPES = deepFreeze({
+  status: "pending-live-verification",
+  path: "/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1",
+  displayedEid: "#PERSON_NPC_VW_EMPLID",
+  displayedName: "#PERSON_NAME_NAME",
+  names: 'input[id^="EMERGENCY_CNTCT_CONTACT_NAME$"]',
+  viewToggle: '[id="$ICField2$hviewall$0"]',
+  counter: '[id="$ICField2$hrow$0"]',
+  busy: "#WAIT_win0",
+  rowFields: {
+    name: "EMERGENCY_CNTCT_CONTACT_NAME",
+    relationship: "EMERGENCY_CNTCT_RELATIONSHIP",
+    primary: "EMERGENCY_CNTCT_PRIMARY_CONTACT",
+    phone: "EMERGENCY_CNTCT_PHONE",
+    sameAddressAsEmployee: "EMERGENCY_CNTCT_SAME_ADDRESS_EMPL",
+    editAddress: "DERIVED_ADDR_UPDATE_ADDRESS",
+  },
+  addressFields: [
+    ["address1", "Address 1"], ["address2", "Address 2"], ["city", "City"],
+    ["state", "State"], ["postalCode", "Postal"], ["country", "Country"],
+  ] as const,
+});

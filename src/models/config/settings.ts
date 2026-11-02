@@ -1,14 +1,14 @@
 import { z } from "zod";
+import { CommandIdSchema,FingerprintSchema,PositiveIntSchema } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-import { CommandIdSchema, FingerprintSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { deriveSchemaHash } from "../validation/schema-bound-value.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
+import { deriveSchemaHash } from "../validation/schema-bound-value.js";
 import { SETTINGS_CATALOG } from "./catalog.js";
 import {
-  CONFIG_ROUTE_SCHEMAS,
-  EditableSettingsOverrideSchema,
-  type EditableSettingsOverride,
+CONFIG_ROUTE_SCHEMAS,
+EditableSettingsOverrideSchema,
+type EditableSettingsOverride,
 } from "./schema.js";
 
 /** The exact settings-patch schema this build accepts at the command boundary. */
@@ -40,7 +40,7 @@ function isOrdinarySettingsPath(path: string): boolean {
 
 export function isRetiredSettingsPath(path: string): boolean {
   const parts = path.split(".");
-  return path === "paths.duoCredential" || parts.length === 3 && parts[0] === "urls" && parts[2] === "test"
+  return path === "paths.duoCredential" || path === "paths.browserProfileRoot" || parts.length === 3 && parts[0] === "urls" && parts[2] === "test"
     && Object.hasOwn(CONFIG_ROUTE_SCHEMAS, parts[1] ?? "");
 }
 

@@ -1,3 +1,4 @@
+import { UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON } from "../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { sourceBoundReadContract } from "./source-bound-read-fixtures.js";
 
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
@@ -287,6 +288,7 @@ export interface WriteFixtureWorld {
   subjectReadThrows?: Error;
   /** Throw only after the probe has recorded its observation. */
   probeThrowsAfterRecord?: Error;
+  probeWait?: Promise<void>;
   /** Mutation control: author one unclassified point and require a loud refusal. */
   recordUndeclaredProbeField: boolean;
   /** Mutation control: author one unclassified commit point after the click. */
@@ -339,11 +341,14 @@ export interface WriteFixtureRegistry {
   readonly world: WriteFixtureWorld;
 }
 
-export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRegistry {
+export function buildWriteFixtureRegistry(world: WriteFixtureWorld, commitContract: Omit<typeof WriteFixtureCommit, "input"> & {
+  readonly input: z.ZodType<{ eid: z.output<typeof EidSchema>; memo?: string | undefined }>;
+} = WriteFixtureCommit, options: Readonly<{ completeActions?: boolean }> = {}): TaskStoreRegistry {
   const probe = defineTask(writeFixtureDriverDeclaration, WriteFixtureProbe, {
     sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
     async run({ input, ctx }) {
       world.events.push("probe");
+      await world.probeWait;
       const next = world.probeResults.shift();
       if (next === undefined) {
         throw new Error("write fixture probe was invoked with no queued result; the test under-provisioned it");
@@ -365,10 +370,12 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRe
   });
   const prepare = defineTask(writeFixtureDriverDeclaration, WriteFixturePrepare, {
     sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
-    async run({ ctx }) {
+    async run({ input, ctx }) {
       world.events.push("prepare");
       world.onPrepare?.();
-      await ctx.driver.prepare("ucpath.write-fixture.eid-input");
+      if (options.completeActions === true) await runDeclaredAction({ id: "fill-eid", kind: "typed", targetId: "ucpath.write-fixture.eid-input" },
+        async () => { await ctx.driver.prepare("ucpath.write-fixture.eid-input"); return input.eid; }, value => value);
+      else await ctx.driver.prepare("ucpath.write-fixture.eid-input");
       const staged = { staged: true as const, stagedPageState: WRITE_FIXTURE_STAGED_STATE };
       ctx.recordData([
         { direction: "write", field: "staged", value: staged.staged },
@@ -377,7 +384,7 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRe
       return staged;
     },
   });
-  const commit = defineTask(writeFixtureDriverDeclaration, WriteFixtureCommit, {
+  const commit = defineTask(writeFixtureDriverDeclaration, commitContract, {
     sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
     async run({ ctx }) {
       if (world.commitThrows !== undefined) throw world.commitThrows;
@@ -401,7 +408,9 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRe
       if (world.commitRecordsBeforeClick) {
         ctx.recordData({ direction: "read", field: "preClickPageState", value: "ready-to-submit" });
       }
-      await ctx.driver.commit("ucpath.write-fixture.save", ctx.mutation);
+      if (options.completeActions === true) await runDeclaredAction({ id: "save", kind: "clicked", targetId: UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON },
+        () => ctx.driver.commit(UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON, ctx.mutation));
+      else await ctx.driver.commit("ucpath.write-fixture.save", ctx.mutation);
       await world.afterCommitClickBeforeTaskSettlement?.();
       const proof = WriteFixtureProofSchema.parse(world.commitOutput);
       ctx.recordData({ direction: "write", field: "transactionId", value: proof.transactionId });
@@ -426,6 +435,10 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRe
         { direction: "read", field: "state", value: verdict.state },
         { direction: "read", field: "eid", value: input.eid },
       ]);
+      if (options.completeActions === true) return await runDeclaredAction({ id: "verify-saved", kind: "verified", targetId: "verify-saved" }, async () => {
+        if (verdict.state !== "present") throw new Error("write fixture saved transaction was not verified present");
+        return verdict;
+      });
       return verdict;
     },
   });

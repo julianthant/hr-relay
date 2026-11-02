@@ -1183,6 +1183,12 @@ export class RunQueueProjection {
       resolvedInstances: Object.entries(queued.resolvedInstance).map(([system, instance]) => ({ system, instance })),
 
       dryRun: authority.envelope.dryRun,
+      ...(authority.pause === undefined ? {} : { pause: authority.pause }),
+      pauseControl: { expectedVersion: authority.version,
+        state: authority.lifecycle.state === "terminal" || authority.lifecycle.state === "parked-write" ? "unavailable"
+          : authority.pause?.state === "requested" ? "pause-pending" : authority.pause?.state === "paused" ? "paused" : "running",
+        ...(authority.lifecycle.state === "terminal" || authority.lifecycle.state === "parked-write" || authority.pause?.state === "requested"
+          ? {} : { command: authority.pause?.state === "paused" ? "resume" : "pause" }) },
 
       priority: authority.envelope.priority,
       runNumber: this.#runNumber(authority),
@@ -1218,6 +1224,8 @@ export class RunQueueProjection {
 
       actions: queueRowActions(descriptor?.actions, {
         status,
+        ...(authority.lifecycle.state === "terminal" && (authority.lifecycle.outcome === "failed" || authority.lifecycle.outcome === "interrupted")
+          ? { recoverySource: authority.lifecycle.outcome } : {}),
         rowRevision: authority.version,
         dryRun: authority.envelope.dryRun,
         isChild: authority.envelope.parent !== undefined,

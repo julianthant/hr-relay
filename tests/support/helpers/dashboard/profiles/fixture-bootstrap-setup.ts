@@ -23,7 +23,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
     projectionGeneration: 1,
     actor: { id: "local-operator", label: "Local operator" },
     serverClock: { now: FIXTURE_NOW, zone: "America/Los_Angeles" },
-    storage: { authority: "healthy", backup: "current", checkedAt: at(0) },
+    storage: { authority: "healthy", automaticRepair: { state: "none" }, backup: "current", checkedAt: at(0) },
     workflows: [{
       id: WORKFLOW_ID,
       code: personLookupDescriptor.code,

@@ -13,6 +13,7 @@ Relay refuses uncertain writes and reports completion only from validated extern
 | Permanent keys, intent generations, atomic settlement, and authenticated resolution | `src/backend/storage/sqlite/authority-database.ts`, `migrations.ts`, and `write-commit-contracts.ts` in that folder |
 | Negative recovery evidence | `src/rules/write-safety/write-safety.ts` |
 | Crash recovery and typed operator resolution | `src/backend/runtime/writes/write-recovery.ts` |
+| Durable recovery activity, action notes and required read captures | `src/backend/runtime/writes/recovery-activity.ts`, `src/models/run/recovery-activity.ts` |
 | Resolution target identity | `src/backend/runtime/writes/write-resolution-binding.ts` |
 | No generic retry or cancellation over an unresolved write | `src/backend/runs/commands/command-kernel.ts` |
 | Immutable terminal evidence receipt | `src/backend/runs/provenance/evidence-receipt.ts`, `src/backend/runs/trust/receipt-service.ts` |
@@ -95,6 +96,17 @@ A source-bound rerun can carry exact server-owned repeat authorization. Ordinary
 
 `executeTransaction` checks the source warning set against the current node, task, system, natural-business-key digest, and completion evidence. Missing or stale acknowledgment refuses. A newly discovered relevant completion requires acknowledgment rather than silently becoming prior-work reuse.
 
+Explicit `run/recover-run` and same-run Resume may carry authenticated continuation; ordinary Rerun
+does not capture one. The separate recovery planner validates retained transaction inputs and exact
+settlement proof before admission. For a continuation, the sequencer first reads that exact node through `readRunCheckpoint`, which authenticates
+the durable owner, issuance, retained sources and checkpoint digest. Only a returned predecessor checkpoint
+suppresses repeat authorization for that node. Own-run repeat checkpoints retain their occurrence key.
+Predecessor replay still requires the current natural key's
+settled durable proof, no unresolved sibling occurrence, and matching descriptor, implementation,
+transaction, output and proof schemas. It returns the retained settlement without another probe,
+prepare, submit, intent or checkpoint. Missing or unsupported continuation evidence grants no repeat
+or replay authority; ordinary source-bound repetition keeps its existing consent checks.
+
 `repeatOccurrenceKey` in `src/models/run/rerun.ts` derives one occurrence key from the business digest, consumed confirmation command, and transaction node. The intent retains its `occurrence` provenance. The sequencer queries all intents for the business digest and refuses a different unresolved occurrence. A new occurrence cannot bypass an `attempting`, `parked`, or other unresolved sibling.
 
 A selected repeat reaches fresh prepare, binding, fence, commit, and verification. `isFreshOccurrenceProof` in `src/backend/runtime/gates/repeat-proof.ts` rejects an earlier receipt as proof of the new occurrence. Recovery and operator-requested rechecks apply the same check. Generic business-key absence cannot settle a repeat occurrence, and an old confirmation cannot authorize another click.
@@ -145,9 +157,24 @@ Commit `recordData` batches are validated and timestamped at the call but delive
 Required captures follow the owned-run probe and prepare and surround submit. A failed post-submit capture
 still reaches saved-effect verification, then refuses settlement and parks the original held attempt
 even when proof is valid. Missing required capture cannot create a transaction checkpoint or
-confirmed-operation history; resolution stays on the typed parked-write path. Standalone recovery
-and held-only diagnostic checks do not yet have required probe capture: their action-note scope
-and retained-run activity authority remain prerequisites.
+confirmed-operation history; resolution stays on the typed parked-write path.
+
+Standalone recovery and held-only diagnostic checks open a durable recovery activity before their
+read probe. It binds the exact run, attempt, trace, node, intent generation and original write attempt,
+with actual start and end instants. Only that operation's live scope admits its action notes outside
+the ordinary run window. Required probe captures bind the retained run and descriptor fingerprint.
+The scope remains open until the actual callback settles, sessions close and the canonical action
+notes drain in occurrence order. Notes retain their action timestamps; they do not rewrite run times
+or grant submission, settlement or retry authority. Declared action binding requires the retained
+display snapshot; runs without one record ordinary actions and captures without invented attribution.
+Cancellation and deadlines stop new action notes
+while cleanup waits for the callback. The scope seals before its durable end append; a crash-open
+record cannot reopen it. Start/end evidence is protected from ordinary timeline expiry. Failed open
+records no recovery notes or captures, and activity, note or capture persistence failure refuses the
+check or recovery rather than becoming an ordinary unknown probe result. This path persists directly
+through native authority; ordinary worker logging retains its existing emergency fault spool.
+Unproved browser or retained-configuration cleanup remains fatal to the worker control, including
+when probe, note drain or activity-end persistence also fails. It cannot become a swallowed refusal.
 
 `captureProof` wraps verifier task lookup, input binding, span setup, execution, required step capture, verdict parsing, and proof parsing within `PostFenceWriteFailure`. `parkAfterFence` persists intent uncertainty before the executor returns `parked-write`. Its closed codes are `unknown`, `ambiguous`, `present-proof-invalid`, `binding-invalid`, and `operator-required`.
 
@@ -268,6 +295,19 @@ Before Kuali finalization, `ucpath/verify-termination-filing-present` always re-
 
 HTTP 200, `Ok`, and a success banner are not landing proof. `kuali/verify-separation-finalization` reloads the document, checks its identity, and compares every stored field exactly. Unsupported payload encodings are not guessed. The reload comparison covers all twelve fields even where payload assertions are narrower.
 
+## OnBase Emergency Contact import
+
+The child-only OnBase workflow extracts one verified source PDF page, probes for that exact page,
+then stages the Employee Lookup keyset form. Preparation and commit read back the employee,
+required keywords, document type and single-page upload queue. The write sequencer fences one
+Import action; dry runs stop after preparation.
+
+`onbase/match-import` and `onbase/verify-import` require exact retrieval filters, a fresh complete
+result census, matching employee/document metadata and the downloaded PDF digest. A success
+banner cannot prove completion. Uncertain submission stays parked with operator-only negative
+recovery; no indexing delay authorizes another Import. Retrieval selectors and the probe-to-fence
+budget still require live operator acceptance before activation.
+
 ## Verification ownership
 
 [Guards and tests](guards-and-tests.md) owns the verification commands and guard inventory. Current architecture tests cover write-safety contracts, transaction pairing, subject-before-fence ordering, permanent-key dedupe, stabilized negative settlement, atomic write settlement, and identity authority before both commit and terminal sinks. Driver boundary tests restrict capability minting and commit implementation ownership.
@@ -277,7 +317,7 @@ The corresponding runtime tests exercise preview, parked resolution, proof verif
 ## Not built yet
 
 - Artifact subject observation remains a refusal in `buildBindingProof`; the first artifact-writing workflow needs its implemented observation arm.
-- OnBase and ServiceNow have no commit contracts; their first writing workflows need positive proof and justified recovery policies.
+- ServiceNow has no commit contract; its first writing workflow needs positive proof and a justified recovery policy.
 - Onboarding has no hire commit/probe contract; its workflow needs a stable pre-hire business identity and evidence-qualified duplicate probe.
 - Separation workflow cutover still requires operator-approved controlled-write evidence for each write, safe target disposition, and measured probe-to-fence budgets.
 - Kuali finalization's configured stabilized policy still needs its own controlled-write propagation confirmation before production reliance.

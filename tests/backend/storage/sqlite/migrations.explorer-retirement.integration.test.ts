@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
-import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, auditMigrationTableCoverage, migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { inspectNativeAuthority, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityTableNameSchema } from "../../../../src/models/config/authority.js";
 
@@ -73,7 +73,7 @@ it.each([
   } finally { database.close(); }
 });
 
-function inspectionDatabase(version: 9 | 10 | 11) {
+function inspectionDatabase(version: 9 | 10 | 11 | 12 | 13 | 14 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION) {
   const database = new DatabaseSync(":memory:");
   database.exec("PRAGMA foreign_keys=ON");
   for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= version)) for (const statement of migration.statements) database.exec(statement);
@@ -83,13 +83,13 @@ function inspectionDatabase(version: 9 | 10 | 11) {
   return database;
 }
 
-it.each([9, 10, 11] as const)("keeps historical table vocabulary inside exact stopped schema %s inspection", version => {
+it.each([9, 10, 11, 12, 13, 14] as const)("keeps historical table vocabulary inside exact stopped schema %s inspection", version => {
   const database = inspectionDatabase(version);
   try {
     const inspection = inspectNativeAuthority(database, version);
     assert.equal(inspection.tables.some(table => table.name === "explorer_overrides"), version < 10);
     assert.equal(AuthorityTableNameSchema.safeParse("explorer_overrides").success, false);
-    if (version < 11) assert.throws(() => inspectNormalAuthority(database), /normal-authority-schema-mismatch/u);
+    if (version < CURRENT_AUTHORITY_SCHEMA_VERSION) assert.throws(() => inspectNormalAuthority(database), /normal-authority-schema-mismatch/u);
     else assert.deepEqual(inspectNormalAuthority(database), inspection);
   } finally { database.close(); }
 });
@@ -100,4 +100,13 @@ it.each(["CREATE TABLE unexpected_table (id TEXT)", "ALTER TABLE explorer_overri
     database.exec(statement);
     assert.throws(() => inspectNativeAuthority(database, 9), /authority-native-schema-shape-mismatch/u);
   } finally { database.close(); }
+});
+
+it("admits only the current schema for ordinary inspection", () => {
+  const database = inspectionDatabase(CURRENT_AUTHORITY_SCHEMA_VERSION);
+  try {
+    assert.equal(database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").get()?.count, 43);
+    assert.deepEqual(inspectNormalAuthority(database), inspectNativeAuthority(database, CURRENT_AUTHORITY_SCHEMA_VERSION));
+  }
+  finally { database.close(); }
 });

@@ -113,6 +113,22 @@ describe("redaction surface scan — the declaration audit", () => {
     }
   });
 
+  it("limits operator-authored manual version names to their written local retention exception", () => {
+    const surface = REDACTION_SURFACES.find(surface => surface.id === 'durable/workbook-operation');
+    const entry = SURFACE_LEAF_ORIGINS.find(entry => entry.surface === 'durable/workbook-operation' && entry.path === 'change.name');
+    assert.ok(surface); assert.ok(entry);
+    assert.equal(entry.origin, 'operator-authored');
+    assert.match(entry.exception ?? '', /data-intake-and-edit-data\.md/u);
+    const { exception: _exception, ...withoutException } = entry;
+    const missing = auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS.map(candidate => candidate === entry ? withoutException : candidate));
+    assert.equal(missing.length, 1);
+    assert.match(missing[0] ?? '', /change\.name.*written exception/u);
+    for (const egress of ['process-egress', 'os-notification'] as const) {
+      const violations = auditSurfaceOrigins(REDACTION_SURFACES.map(candidate => candidate === surface ? { ...candidate, egress } : candidate), SURFACE_LEAF_ORIGINS);
+      assert.ok(violations.some(problem => problem.includes('change.name') && problem.includes('may not carry at all')));
+    }
+  });
+
   it("retains observed object keys in real collector addresses without treating them as authored text", () => {
     const points: RecordedDataPoint[] = [];
     const execution = { runId: UUID_1, traceId: "pl-180000-aaaa", attempt: 1, workflowId: "person-lookup", nodeId: "searching", taskId: SearchPersonOrg.id };
@@ -278,7 +294,9 @@ describe("redaction surface scan — the declaration audit", () => {
   });
 
   it("holds exact membership for current operation, action, display and notification leaves", () => {
+    assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === "wire/bootstrap" && entry.path === "storage.automaticRepair.message")?.origin, "repository-authored");
     const currentLeaves = [
+      "wire/bootstrap|storage.automaticRepair.message",
       "wire/activity-population|population[].title",
       "wire/activity-population-selected|browse.identity.browse.query",
       "wire/activity-population-selected|browse.rows[].title",
@@ -331,13 +349,23 @@ describe("redaction surface scan — the declaration audit", () => {
     const module = "src/models/dashboard/workbooks.ts";
     const surfaces = REDACTION_SURFACES.filter(surface => surface.module === module);
     assert.deepEqual(surfaces.map(surface => surface.id).sort(), [
-      "durable/editable-workbook", "durable/saved-workbook", "request/workbook-create", "request/workbook-intake",
-      "request/workbook-save", "wire/editable-workbook", "wire/intake-command-result", "wire/saved-workbook",
-      "wire/workbook-history", "wire/workbook-intake", "wire/workbook-list",
+      "durable/editable-workbook", "durable/saved-workbook", "durable/workbook-operation", "request/workbook-create", "request/workbook-intake",
+      "request/workbook-operation", "request/workbook-reference", "request/workbook-save", "wire/editable-workbook", "wire/intake-command-result", "wire/saved-workbook",
+      "wire/workbook-history", "wire/workbook-intake", "wire/workbook-list", "wire/workbook-metadata", "wire/workbook-named-version",
+      "wire/workbook-operation-receipt", "wire/workbook-reference", "wire/workbook-type",
     ]);
     assert.equal(SURFACE_MODULE_DISPOSITIONS.find(entry => entry.module === module)?.state, "audited");
     const origins = SURFACE_LEAF_ORIGINS.filter(entry => surfaces.some(surface => surface.id === entry.surface));
     assert.ok(origins.length > 100);
+    for (const [surface, path] of [
+      ['durable/workbook-operation', 'change.workbook.sheets[].rows[].cells[].value'],
+      ['request/workbook-operation', 'values'],
+      ['wire/workbook-operation-receipt', 'changes[].oldValue'],
+      ['wire/workbook-operation-receipt', 'changes[].newValue'],
+      ['wire/workbook-reference', 'rows[].matches[].values'],
+      ['request/workbook-reference', 'keys[]'],
+      ['wire/workbook-type', 'fields[]'],
+    ] as const) assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path)?.origin, 'captured-hr-value');
     for (const omitted of origins) {
       const remaining = SURFACE_LEAF_ORIGINS.filter(entry => entry !== omitted);
       assert.equal(remaining.length, SURFACE_LEAF_ORIGINS.length - 1);

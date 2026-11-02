@@ -1,8 +1,8 @@
-import { createErrorCatalogFailure, formatErrorCatalogFailure, type ErrorCatalogMessage } from "../../../models/failures/error-catalog.js";
-import { BulkRunCommandRequestSchema, CommandRequestSchema, type BulkRunCommandRequest, type BulkRunCommandOutcome, type BulkRunCommandResponse, type CommandRequest, type CommandResult } from "../../../rules/commands/commands.js";
+import { createErrorCatalogFailure,formatErrorCatalogFailure,type ErrorCatalogMessage } from "../../../models/failures/error-catalog.js";
 import { deriveBulkChildCommand } from "../../../rules/commands/command-groups.js";
+import { BulkRunCommandRequestSchema,CommandRequestSchema,type BulkRunCommandOutcome,type BulkRunCommandRequest,type BulkRunCommandResponse,type CommandRequest,type CommandResult } from "../../../rules/commands/commands.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { checkedBulkCommandResult, checkedCommandResult, type SharedCommands } from "../../client/commands/shared-commands.js";
+import { checkedBulkCommandResult,checkedCommandResult,type SharedCommands } from "../../client/commands/shared-commands.js";
 import { DashboardClientError } from "../../client/errors.js";
 import { beforeEffectRefusal } from "./command-result.js";
 
@@ -70,6 +70,7 @@ function sameScope(left: CommandExecutionScope | undefined, right: CommandExecut
 function lockKey(request: CommandRequest): string {
   let identity: readonly unknown[];
   switch (request.family) {
+    case "application": identity = [request.target.runtimeGeneration]; break;
     case 'assistant-model-preference': identity = [request.target.profileId]; break;
     case "run": identity = [request.target.runId]; break;
     case "gate": identity = [request.target.runId, request.target.gateId]; break;
@@ -77,7 +78,6 @@ function lockKey(request: CommandRequest): string {
     case "intake": identity = [request.target.intakeSessionId]; break;
     case "worker-browser": identity = "workflowId" in request.target ? [request.target.workflowId] : [request.target.workerId]; break;
     case "settings": identity = []; break;
-    case "storage-relocation": identity = [request.target.installationId]; break;
     case "notification": identity = "members" in request.target ? ["collection", request.target.actorId] : [request.target.notificationId, request.target.actorId]; break;
     case "workflow-batch": identity = [request.target.batchId]; break;
     case "failure-resolution": identity = [request.target.runId, request.target.failureId]; break;

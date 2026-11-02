@@ -61,6 +61,10 @@ export function reconcileStartupCrash(input: RecoveryInput): void {
   reconcileInterruptedRuns(input, input.lock);
 }
 
+export function reconcileStoppedStartupCrash(input: RecoveryInput): void {
+  reconcileInterruptedRuns(input, input.lock, undefined, true);
+}
+
 export function reconcileExitedWorker(input: RecoveryInput & {
   workerId: string; leaseGeneration: number;
 }): void {
@@ -68,12 +72,13 @@ export function reconcileExitedWorker(input: RecoveryInput & {
 }
 
 function reconcileInterruptedRuns(input: RecoveryInput, lock: RuntimeLifetimeLock,
-  worker?: Readonly<{ workerId: string; leaseGeneration: number }>): void {
+  worker?: Readonly<{ workerId: string; leaseGeneration: number }>, stopped = false): void {
   const { machine, admission, database, lifecycle, clock } = input;
   const notify = (code: CleanupCode, identity: unknown, runId?: string) => appendRecoveryNotification(database.authority, code, identity, clock.now().toISOString(), runId);
 
   try {
-    admission.assertProfileRuntime(); machine.assertLive();
+    if (stopped) admission.assertStoppedProfile(admission.maintenanceOperation()); else admission.assertProfileRuntime();
+    machine.assertLive();
     if (!(lock instanceof RuntimeLifetimeLock)) throw new Error("crash-recovery-lock-required");
     lock.assertHeld();
     if (machine.lifetime !== lock || admission.lifetime !== lock) throw new Error("crash-recovery-controller-mismatch");
@@ -89,7 +94,7 @@ function reconcileInterruptedRuns(input: RecoveryInput, lock: RuntimeLifetimeLoc
             runId: run.envelope.runId, expectedVersion: run.version, claim: { workerId: claim.workerId, claimGeneration: claim.claimGeneration },
             ...identity, now: clock.now().toISOString() }, lock));
           notify(result.lifecycle.state === "parked-write" ? "RUN_CRASH_WRITE_UNRESOLVED" : "RUN_INTERRUPTED_BY_CRASH", { runId: run.envelope.runId, version: run.version }, run.envelope.runId);
-        } else if (worker === undefined && run.lifecycle.state === "queued" && run.claimGeneration === 0
+        } else if (worker === undefined && run.lifecycle.state === "queued" && run.pause === undefined && run.claimGeneration === 0
           && localDatePart(new Date(run.envelope.enqueuedAt)) < clock.todayLocal()) {
           database.assertPristineQueuedRun(run.envelope.runId, run.version);
           requireLifecycleApplied(lifecycle.transition({ commandId: lifecycleCommandId("startup-stale-queue", { runId: run.envelope.runId, version: run.version }),

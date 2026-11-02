@@ -1,32 +1,32 @@
-import { DatabaseSync } from "node:sqlite";
-import { createHash, randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
-import { once, on } from "node:events";
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createHash,randomUUID } from "node:crypto";
+import { on,once } from "node:events";
+import { existsSync,mkdirSync,readFileSync,realpathSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { join,sep } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { testProcessImport } from "../compiled-process.js";
-import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
+import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsApplyInputSchema } from "../../../src/models/config/protected-settings.js";
 import { LogoutSettlementSchema } from "../../../src/models/profiles/profile.js";
-import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/models/config/protected-settings.js";
-import { createBoundProfileFixture } from "./admission-fixture.js";
-import { credentialKeychainTestEnvironment, FakeKeyringEntry } from "./credential-keychain-fake.js";
+import { testProcessImport } from "../compiled-process.js";
 import { scaledMs } from "../time-scale.js";
+import { createBoundProfileFixture } from "./admission-fixture.js";
+import { credentialKeychainTestEnvironment,FakeKeyringEntry } from "./credential-keychain-fake.js";
 
 export type CredentialSourceRetentionCase = "readonly-native-close" | "worker-native-open" | "writer-close" | "duo-read-first" | "duo-read-second" | "stopped-head-close"
-  | "protected-source" | "chatgpt-source" | "account-projection" | "stopped-control-snapshot-disposal" | "setup-protected-close" | "authenticated-upgrade-key-close" | "authenticated-upgrade-service-inspection"
-  | "authenticated-upgrade-binding-consume" | "authenticated-upgrade-unproved-close" | "authenticated-upgrade-closed-publication-refusal"
+  | "protected-source" | "chatgpt-source" | "account-projection" | "stopped-control-snapshot-disposal" | "setup-protected-close" | "startup-upgrade-key-close" | "startup-upgrade-service-inspection"
+  | "startup-upgrade-binding-inspection" | "startup-upgrade-unproved-close" | "startup-upgrade-closed-publication-refusal"
   | "browser-root-native-success" | "browser-root-busy" | "browser-root-close-unproved" | "browser-root-stage-close" | "browser-root-observed-publication" | "browser-root-rm-refusal";
 const retainedChildren = new Set<object>();
 
 export async function runCredentialSourceRetentionCase(scenario: CredentialSourceRetentionCase): Promise<void> {
   const profile = await createBoundProfileFixture({ sharedMachine: true });
-  const setupNonce = scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("authenticated-upgrade-") || scenario.startsWith("browser-root-") ? randomUUID() : undefined;
+  const setupNonce = scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("startup-upgrade-") || scenario.startsWith("browser-root-") ? randomUUID() : undefined;
   const setupWorkspace = setupNonce === undefined ? undefined : join(profile.workspace, `.${scenario}-${setupNonce}`);
   if (setupWorkspace !== undefined) mkdirSync(setupWorkspace, { mode: 0o700 });
   const child = fork(fileURLToPath(new URL("../processes/credential-source-retention-worker.ts", import.meta.url)),
@@ -59,7 +59,7 @@ export async function runCredentialSourceRetentionCase(scenario: CredentialSourc
         assert.equal(message.ownedWorkspace.startsWith(`${realpathSync(tmpdir())}${sep}incomplete-publication-`), true);
         ownedWorkspaces.add(message.ownedWorkspace);
       } else if ("ownedSnapshot" in message) {
-        assert.equal(scenario.startsWith("authenticated-upgrade-") || setupWorkspace === undefined, true);
+        assert.equal(scenario.startsWith("startup-upgrade-") || setupWorkspace === undefined, true);
         assert.equal(realpathSync(message.ownedSnapshot), message.ownedSnapshot);
         assert.equal(message.ownedSnapshot.startsWith(`${realpathSync(tmpdir())}${sep}relay-readonly-authority-`), true);
         ownedSnapshots.add(message.ownedSnapshot);

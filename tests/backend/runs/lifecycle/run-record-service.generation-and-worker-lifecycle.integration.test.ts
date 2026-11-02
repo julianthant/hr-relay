@@ -1,3 +1,4 @@
+import { RunContinuationRefusedError } from "../../../../src/backend/storage/sqlite/run-continuation.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { runClaim } from "../../../../src/models/run/record.js";
@@ -69,7 +70,15 @@ describe("canonical run-record service", () => {
       contractFingerprint: personLookupDescriptor.contractFingerprint,
     }));
     if (sourceResult.state !== "applied") throw new Error("coverage create refused");
-    const source = sourceResult.run;
+    let source = sourceResult.run;
+    const paused = measure("pause", 1, () => service.pause({ commandId: commandId(), runId: source.envelope.runId, expectedVersion: source.version }));
+    if (paused.state !== "applied") throw new Error("coverage pause refused");
+    const resumed = measure("resumePaused", 1, () => service.resumePaused({ commandId: commandId(), runId: source.envelope.runId, expectedVersion: paused.run.version }));
+    if (resumed.state !== "applied") throw new Error("coverage resume refused");
+    source = resumed.run;
+    assert.deepEqual(measure("continueDelegations", 0, () => service.continueDelegations(source, commandId())), []);
+    assert.deepEqual(measure("acknowledgePause", 0, () => service.acknowledgePause({ commandId: commandId(), runId: source.envelope.runId,
+      claim: { workerId: WORKER_ID, claimGeneration: 1 } })), { state: "refused", refusal: { reason: "invalid-state" } });
     assert.deepEqual(measure("withRunTreeSnapshot", 0, () => service.withRunTreeSnapshot([source.envelope.runId], runs => runs.map(run => run.envelope.runId))), [source.envelope.runId]);
     measure("read", 0, () => service.read(source.envelope.runId));
     measure("list", 0, () => service.list({ disposition: "live", limit: 10 }));
@@ -162,6 +171,12 @@ describe("canonical run-record service", () => {
       personLookupDescriptor,
     ));
     if (terminalized.state !== "applied") throw new Error("coverage terminalize refused");
+    const directRecoveryCommandId = commandId();
+    measure("recover", 0, () => assert.throws(() => service.recover({ commandId: directRecoveryCommandId,
+      runId: terminalized.run.envelope.runId, expectedVersion: terminalized.run.version, runtimeConfig }, personLookupDescriptor),
+      RunContinuationRefusedError));
+    assert.equal(database.authority.lifecycleJournal.getCommand(directRecoveryCommandId), undefined);
+    assert.deepEqual(database.authority.runs.get(terminalized.run.envelope.runId), terminalized.run);
 
     const recoverable = created(service, { ...request, commandId: commandId(), matchKey: "coverage-requeue" });
     const recoveryClaim = service.claimNext({
@@ -229,7 +244,7 @@ describe("worker lifecycle service capability", () => {
   it("separates command authority and stable nested identities", async () => {
     const { service } = await fixture();
     assert.deepEqual(Object.keys(workerRunLifecyclePort(service)).sort(),
-      ["admitDelegation", "assertCurrentExecution", "claimNext", "renewClaim", "requeue", "terminalize", "workerTransition"].sort());
+      ["acknowledgePause", "admitDelegation", "assertCurrentExecution", "claimNext", "renewClaim", "requeue", "terminalize", "workerTransition"].sort());
     assert.deepEqual(Object.keys(runContinuationPort(service)), ["transition"]);
     assert.equal(lifecycleCommandId("worker", UUID_1), lifecycleCommandId("worker", UUID_1));
     assert.notEqual(lifecycleCommandId("worker", UUID_1), lifecycleCommandId("continuation", UUID_1));

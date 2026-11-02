@@ -1,24 +1,25 @@
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
-import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
-import { act, createElement, useState } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, it, vi } from 'vitest';
+import { act,createElement,useState } from 'react';
+import { createRoot,type Root } from 'react-dom/client';
+import { afterEach,beforeEach,it,vi } from 'vitest';
+import { ViewNavigationContext,type ViewRoute } from '../../../../src/dashboard/app/navigation/view-route-model.js';
+import { createDashboardClient,type DashboardClient } from '../../../../src/dashboard/client/index.js';
 import { ToastProvider } from '../../../../src/dashboard/ds/ui.js';
-import { MeasurementFreeResizeObserver } from '../../../support/helpers/settings-storage-doctor-fixtures.js';
-import { SpreadsheetsSettings } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheets.js';
-import { newEditableWorkbook, type EditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
-import { createDashboardClient, type DashboardClient } from '../../../../src/dashboard/client/index.js';
 import { DashboardClientProvider } from '../../../../src/dashboard/state/client-context.js';
-import { ViewNavigationContext, type ViewRoute } from '../../../../src/dashboard/app/navigation/view-route-model.js';
-import { SavedWorkbookSchema, WorkbookCreateRequestSchema, encodeSavedWorkbook, decodeEditableWorkbook, type SavedWorkbook } from '../../../../src/models/dashboard/workbooks.js';
-import { importSpreadsheetInWorker, exportSpreadsheetInWorker } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js';
-vi.mock('../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js', () => ({ importSpreadsheetInWorker: vi.fn(), exportSheetInWorker: vi.fn(), exportSpreadsheetInWorker: vi.fn() }));
-import { StorageHealthSummaryWireSchema } from '../../../../src/models/dashboard/bootstrap.js';
-import { SettingsPage } from '../../../../src/dashboard/surfaces/settings/settings.js';
-import { FixtureCommandBinding } from '../../../support/helpers/dashboard/command-binding.js';
-import { FIXTURE_EDITABLE_SETTINGS, FIXTURE_STORAGE_RELOCATION } from '../../../parity/helpers/fixture-settings.js';
 import { useSpreadsheetWiringAdapter } from '../../../../src/dashboard/state/spreadsheet-wiring-adapter.js';
+import { SettingsPage } from '../../../../src/dashboard/surfaces/settings/settings.js';
+import { newEditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { type EditableWorkbook } from '../../../../src/rules/spreadsheets/workbook-io.js';
+import { exportSpreadsheetInWorker,importSpreadsheetInWorker } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js';
+import { SpreadsheetsSettings } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheets.js';
+import { StorageHealthSummaryWireSchema } from '../../../../src/models/dashboard/bootstrap.js';
+import { SavedWorkbookSchema,WorkbookCreateRequestSchema,decodeEditableWorkbook,encodeSavedWorkbook,type SavedWorkbook } from '../../../../src/models/dashboard/workbooks.js';
+import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
+import { FIXTURE_EDITABLE_SETTINGS } from '../../../parity/helpers/fixture-settings.js';
+import { FixtureCommandBinding } from '../../../support/helpers/dashboard/command-binding.js';
+import { MeasurementFreeResizeObserver } from '../../../support/helpers/settings-storage-doctor-fixtures.js';
+vi.mock('../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js', () => ({ importSpreadsheetInWorker: vi.fn(), exportSheetInWorker: vi.fn(), exportSpreadsheetInWorker: vi.fn() }));
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 let root: Root | undefined;
 beforeEach(() => { vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver); });
@@ -46,7 +47,6 @@ function world() {
   const clientOptions: Parameters<typeof createDashboardClient>[0] = { baseUrl: 'http://spreadsheets.test', fetchImpl: async (url, init) => {
     const path = new URL(String(url)).pathname; const method = init?.method ?? 'GET'; const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined; calls.push({ path, method, body });
     if (path.endsWith('/settings/editable')) return Response.json(FIXTURE_EDITABLE_SETTINGS);
-    if (path.endsWith('/settings/storage-relocation')) return Response.json(FIXTURE_STORAGE_RELOCATION);
     if (method === 'POST') {
       await postGate;
       if (outcome === 'lost') throw new Error('lost response');
@@ -186,7 +186,7 @@ async function settingsPage(client: DashboardClient) {
     const [route, setRoute] = useState<ViewRoute>({ spreadsheet: 'served-book' });
     return createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: 'local-operator', nowIso: '2026-10-16T12:00:00Z', children:
       createElement(ViewNavigationContext.Provider, { value: { view: route, start: false, setStart() {}, update(patch) { setRoute(previous => ({ ...previous, ...patch })); } }, children: createElement('div', null, createElement(Probe), shown ? createElement(SettingsPage, {
-        onClose() {}, storage: StorageHealthSummaryWireSchema.parse({ authority: 'healthy', backup: 'current', checkedAt: '2026-10-16T12:00:00Z' }), sections: [], workflowLabels: new Map(), section: 'spreadsheets', actorId: 'local-operator', descriptorFingerprint: 'd'.repeat(64), preflight: [], onSection() {}, onExitGuardChange(guard) { exitGuard = guard; }
+        onClose() {}, storage: StorageHealthSummaryWireSchema.parse({ authority: 'healthy', automaticRepair: { state: "none" }, backup: 'current', checkedAt: '2026-10-16T12:00:00Z' }), sections: [], workflowLabels: new Map(), section: 'spreadsheets', actorId: 'local-operator', descriptorFingerprint: 'd'.repeat(64), preflight: [], onSection() {}, onExitGuardChange(guard) { exitGuard = guard; }
       }) : null) }) }) });
   }
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);

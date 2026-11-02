@@ -21,6 +21,9 @@ const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
   "/api/v1/start-plans": { guard: "operatorMutationIngressGuard" },
   "/api/v1/rerun-warnings": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/workbooks/types": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/workbooks/:libraryId/operations": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/workbooks/:libraryId/sync": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/:libraryId/save": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/:libraryId/intake": { guard: "operatorMutationIngressGuard" },
   "/api/v1/intake/files": { guard: "operatorOpaqueIngressGuard" },
@@ -101,7 +104,7 @@ describe("operator mutation admission", () => {
 
   it("admits the public profile routes before request-body effects", () => {
     const publicSource = readFileSync(resolve(REPO_ROOT, "src/backend/app/composition/dashboard/compose.ts"), "utf8");
-    const table = Object.fromEntries(["sign-in", "sign-up", "logout", "onboarding/duo/browser", "onboarding/duo/portal", "onboarding/duo/start", "onboarding/duo/confirm",
+    const table = Object.fromEntries(["sign-in", "sign-up", "logout", "delete-account", "onboarding/duo/browser", "onboarding/duo/portal", "onboarding/duo/start", "onboarding/duo/confirm",
       "onboarding/duo/cancel", "onboarding/cancel", "onboarding/complete"].map(path => [`/api/v1/profile/${path}`, { guard: "operatorMutationIngressGuard" as const }]));
     assert.deepEqual(auditOperatorMutationAdmission(publicSource, table).violations, []);
   });
@@ -146,8 +149,8 @@ describe("operator mutation admission", () => {
 
 
 it("audits imported registrations at the call site and detects relocated unguarded mutations", () => {
-  const entry = "/route-proof/api.ts";
-  const child = "/route-proof/child.ts";
+  const entry = resolve("/route-proof/api.ts");
+  const child = resolve("/route-proof/child.ts");
   const root = `import { attachChild } from "./child.js";
     export function createDashboardApp() {
       app.use("/guarded", operatorMutationIngressGuard);

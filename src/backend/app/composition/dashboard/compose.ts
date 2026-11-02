@@ -1,121 +1,137 @@
-import { createNativeBrowserProbe } from "../../../runtime/browser/native-browser.js";
-import { profileBrowserClosure } from "../../../runtime/browser/profile-browser-closure.js";
-import { assertPrivateProfilePath, createBrowserRoots } from "../../../storage/browser-roots.js";
-import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
+import { createApplicationLifecycle, type ApplicationUpdateHost } from "../../../runs/lifecycle/application-lifecycle.js";
+import { DeleteProfileAccountRequestSchema } from "../../../../models/profiles/public-profile.js";
+import { Hono, type Context } from "hono";
+import { readAutomaticRepairNotice } from "../../../storage/maintenance/automatic-repair-notice.js";
+import { backupRegisteredPeopleAtCleanShutdown } from "../storage-compose.js";
+import { randomUUID } from "node:crypto";
+import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
+import { hostConfigFacts } from "../../../../models/config/host-display.js";
+import { ConfigSchema } from "../../../../models/config/schema.js";
+import { ASSISTANT_DEFAULT_EFFORT,ASSISTANT_DEFAULT_MODEL,AssistantModelPreferenceSchema,AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
 import { createAssistantWorkflowStarts } from "../../../assistant/workflow-start.js";
-import { readProfileDatabaseBinding } from "../../../storage/sqlite/profile-local-databases.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../storage/sqlite/migrations.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
-import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
-import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../../../storage/source-closure.js";
-import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
-import { createAssistantService } from "../../../assistant/service.js";
-import { assistantSurfaceCoverage, createProductionAssistantTools } from "../../../assistant/tools.js";
-import { assistantKnowledgeArtifact, loadProductionAssistantContext } from "../../../assistant/context.js";
-import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
-import { createChatGptOcrPageReader, CHATGPT_OCR_MODEL } from "../../../processing/providers/chatgpt-ocr-adapter.js";
+import { assertPrivateProfilePath,createBrowserRoots } from "../../../storage/browser-roots.js";
+import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
+
+import { notificationSourceEventOf,notificationWireOf } from "../../../../models/dashboard/projection.js";
+import { EVENT_STREAM_RETENTION_DAYS } from "../../../../models/events/retention.js";
 import { admitOcrExtraction } from "../../../../models/ocr/extraction.js";
 import { buildExtractionInstruction } from "../../../../models/ocr/instruction.js";
-import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
-import { failureStatus } from "../../../transports/http/routes/failure-status.js";
-import { randomUUID } from "node:crypto";
-import { RuntimeAdmission, acquireSharedRuntimeAdmission, acquireExclusiveRuntimeAdmission, ProfileUpgradeSourceRefusalError } from "../../../storage/admission/admission.js";
-import { upgradeReadyProfileStorage } from "../../../storage/maintenance/upgrade.js";
-import { Hono } from "hono";
-import { ProfileLoginRequestSchema, ProfileSignUpRequestSchema, ProfileOnboardingStateSchema, CompleteProfileOnboardingRequestSchema,
-  CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema,
-  CancelProfileOnboardingDuoRequestSchema, PublicProfileStateSchema, type PublicProfileState } from "../../../../models/profiles/public-profile.js";
-import { ConfigSchema } from "../../../../models/config/schema.js";
-import { ensureChildDirectory } from "../../../storage/configuration/credential-safe-file.js";
-import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
-import type { ProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo.js";
-import { consumeAuthenticatedProfileUpgrade, type ActiveProfileSession, type AuthenticatedProfileUpgrade, type ProfileUpgradeRequired } from "../../../profiles/profile-session.js";
-import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
-import { operatorMutationIngressGuard } from "../../../transports/http/routes/operator-mutation-ingress.js";
-import { staticBundleHandler, openStaticBundle } from "../../../transports/http/static-bundle.js";
-import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
-import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
-import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
-import { withEmergencyTimelineWriter, importEmergencyFaults } from "../../../logs/emergency-faults.js";
-import { WorkerRetirementProofSchema, workerPoolMember } from "../../../../models/run/worker-slot.js";
-import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
-import { workerProfileDirectory } from "../../../runtime/browser/browser-session-factory.js";
-import type { DashboardBuildCommand } from "./build-identity.js";
-import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
-import { composeRuntimePreflight, type RuntimePreflight } from "../../preflight/runtime-admission.js";
-import type { RuntimePreflightRunnerFactory } from "../../preflight/runtime-runners.js";
-import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
-import { createWorkerBrowserChannel } from "../../../runtime/workers/worker-browser-channel.js";
+import {
+CancelProfileOnboardingDuoRequestSchema,
+CancelProfileOnboardingRequestSchema,
+CompleteProfileOnboardingRequestSchema,
+ConfirmProfileOnboardingDuoRequestSchema,
+ProfileLoginRequestSchema,
+ProfileOnboardingStateSchema,
+ProfileSignUpRequestSchema,
+PublicProfileStateSchema,
+StartProfileOnboardingDuoRequestSchema,
+type PublicProfileState
+} from "../../../../models/profiles/public-profile.js";
 import { WorkerControlRefusal } from "../../../../models/run/worker-control.js";
-import { notificationSourceEventOf, notificationWireOf } from "../../../../models/dashboard/projection.js";
-import { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
-import { notificationDisplayContext } from "../../../runs/queries/notification-display.js";
-import { composeShell } from "./shell.js";
-import { composeActivity } from "./activity.js";
-import { composeQueueSummaries } from "./queue-summaries.js";
-import { composeExplorer } from "./explorer.js";
-import { composeSettings } from "./settings.js";
-import { composeStorage } from "./storage.js";
-import { composeIntake } from "./intake.js";
+import { WorkerRetirementProofSchema,workerPoolMember } from "../../../../models/run/worker-slot.js";
+import { ActorIdSchema } from "../../../../rules/identity/ids.js";
+import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
+import { localDatePart,runtimeTimeZone,systemClock } from "../../../../rules/time/clock.js";
+import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
+import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
+import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
+import { assistantKnowledgeArtifact,loadProductionAssistantContext } from "../../../assistant/context.js";
+import { createAssistantService } from "../../../assistant/service.js";
+import { assistantSurfaceCoverage,createProductionAssistantTools } from "../../../assistant/tools.js";
+import { importEmergencyFaults,withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
+import { CHATGPT_OCR_MODEL,createChatGptOcrPageReader } from "../../../processing/providers/chatgpt-ocr-adapter.js";
+import type { ProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo.js";
+import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
+import { type ActiveProfileSession } from "../../../profiles/profile-session.js";
+import { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
+
 import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-projection.js";
+import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
+import { notificationDisplayContext } from "../../../runs/queries/notification-display.js";
+import { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
+import { workerProfileDirectory } from "../../../runtime/browser/browser-session-factory.js";
+import { createNativeBrowserProbe } from "../../../runtime/browser/native-browser.js";
+import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
+import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
+import { createWorkerBrowserChannel } from "../../../runtime/workers/worker-browser-channel.js";
+import { RuntimeAdmission } from "../../../storage/admission/admission.js";
+import { ensureChildDirectory } from "../../../storage/configuration/credential-safe-file.js";
+import { failureStatus } from "../../../transports/http/routes/failure-status.js";
+import { operatorMutationIngressGuard } from "../../../transports/http/routes/operator-mutation-ingress.js";
+import { openStaticBundle,staticBundleHandler } from "../../../transports/http/static-bundle.js";
+
+import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
+import { composeRuntimePreflight,type RuntimePreflight } from "../../preflight/runtime-admission.js";
+import type { RuntimePreflightRunnerFactory } from "../../preflight/runtime-runners.js";
+import { composeActivity } from "./activity.js";
+import type { DashboardBuildCommand } from "./build-identity.js";
+import { composeDataQueries } from "./data.js";
+import { composeExplorer } from "./explorer.js";
 import { composeFailureResolution } from "./failure-resolution.js";
-import { localDatePart, runtimeTimeZone, systemClock } from "../../../../rules/time/clock.js";
-import { EVENT_STREAM_RETENTION_DAYS } from "../../../../models/events/retention.js";
+import { composeIntake } from "./intake.js";
+import { createTrustNotifications } from "./notifications.js";
+import { composeQueueSummaries } from "./queue-summaries.js";
 import { createOperatorProjection } from "./queue.js";
 import { createOperatorRunDetail } from "./run-detail.js";
-import { createTrustNotifications } from "./notifications.js";
+import { composeSettings } from "./settings.js";
+import { composeShell } from "./shell.js";
+import { composeStorage } from "./storage.js";
 import { createTrustReadDependencies } from "./trust.js";
-import { composeDataQueries } from "./data.js";
 export { dataOriginViewsOf } from "./run-detail-descriptors.js";
-import { ActorIdSchema, FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
-import { hostConfigFacts } from "../../../../models/config/host-display.js";
+
 import { spawn as spawnChildProcess } from "node:child_process";
-import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
-import { readFileSync, realpathSync, lstatSync, rmdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { lstatSync,readFileSync,realpathSync,rmdirSync } from "node:fs";
+import { join,resolve } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../../../models/config/define-runtime-isolation.js";
-import { descriptorSetHash, DESCRIPTORS, INTAKE_PROJECTIONS, SERVER_REGISTRY } from "../../registries/workflow-registry.js";
-import { stepProofDescriptorOf } from "../../registries/step-proof-modules.js";
-import { createCommandKernel, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor, type WorkerRuntimeContext } from "../../../runs/commands/command-kernel.js";
-import { createWorkerPoolRuntimeExecutor } from "../../../runtime/workers/worker-loop.js";
-import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
-import { isLiveWorker } from "../../../../models/run/worker.js";
-import { createDashboardWorkerProcessSupervisor, type DashboardWorkerProcessSupervisor, type DashboardWorkerSupervisorDependencies, type WorkerCliLaunchSpec, type WorkerProcessSpawner } from "../../../runtime/workers/worker-supervisor.js";
-import { RunRecordService, runContinuationPort } from "../../../runs/lifecycle/run-record-service.js";
-import { createStorageRelocationPlanReader } from "../../../storage/maintenance/storage-relocation-plans.js";
-import { createWriteResolutionExecutor } from "../../../runtime/writes/write-recovery.js";
-import type { Clock } from "../../../../rules/time/clock.js";
-import { composeProfileAssistantAuthorization, composeProfileRuntime, RuntimeCustodyUncertainError } from "../storage-compose.js";
-import { systemIdFactory, type IdFactory } from "../../../../rules/identity/identifiers.js";
-import { assertNoMigratedEnvironmentKeys, hostAwareResolutionEnvironment, workerBootstrapEnvironment } from "../../../../models/config/secrets.js";
-import { probePrimaryDisplay } from "../../host/primary-display.js";
+import { assertNoMigratedEnvironmentKeys,hostAwareResolutionEnvironment,workerBootstrapEnvironment } from "../../../../models/config/secrets.js";
+import { BackupServiceStateWireSchema,type BackupServiceStateWire } from "../../../../models/dashboard/storage.js";
 import { createPreflightAuthority } from "../../../../models/preflight/preflight.js";
-import { BackupServiceStateWireSchema, type BackupServiceStateWire } from "../../../../models/dashboard/storage.js";
-import { AuthorityDatabase, AuthorityHealthPreflightRunner, summarizeBackupHealth } from "../../../storage/sqlite/index.js";
-import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
-import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
-import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
-import { createNoteTimelineWriter, type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
+import { isLiveWorker } from "../../../../models/run/worker.js";
+import { systemIdFactory,type IdFactory } from "../../../../rules/identity/identifiers.js";
+import { FingerprintSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
+import type { Clock } from "../../../../rules/time/clock.js";
 import { createRunLogStreamStore } from "../../../logs/run-log-stream.js";
-import { RunLogsStreamHub } from "../../../transports/http/subscriptions/run-logs-stream.js";
+import { createCommandKernel,type WorkerPoolRuntimeAdoption,type WorkerRuntimeContext,type WriteResolutionExecutor } from "../../../runs/commands/command-kernel.js";
+import { RunRecordService,runContinuationPort } from "../../../runs/lifecycle/run-record-service.js";
+import type { MonotonicDeadlineScheduler } from "../../../runtime/scheduling/deadline-scheduler.js";
+import { createWorkerPoolRuntimeExecutor } from "../../../runtime/workers/worker-loop.js";
+import { createDashboardWorkerProcessSupervisor,type DashboardWorkerProcessSupervisor,type DashboardWorkerSupervisorDependencies,type WorkerCliLaunchSpec,type WorkerProcessSpawner } from "../../../runtime/workers/worker-supervisor.js";
+import { createWriteResolutionExecutor } from "../../../runtime/writes/write-recovery.js";
+import { requireRuntimeAdmission } from "../../../storage/admission/admission-identity.js";
+import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { createContentAddressedArtifactWriter } from "../../../storage/artifacts/content-addressed-artifact-writer.js";
 import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
+import { createNoteTimelineWriter,type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
+import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
+import { AuthorityDatabase,AuthorityHealthPreflightRunner,summarizeBackupHealth } from "../../../storage/sqlite/index.js";
+import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
+import { RunLogsStreamHub } from "../../../transports/http/subscriptions/run-logs-stream.js";
+import { probePrimaryDisplay } from "../../host/primary-display.js";
+import { stepProofDescriptorOf } from "../../registries/step-proof-modules.js";
+import { DESCRIPTORS,INTAKE_PROJECTIONS,SERVER_REGISTRY,descriptorSetHash } from "../../registries/workflow-registry.js";
+import { RuntimeCustodyUncertainError,composeProfileAssistantAuthorization,composeProfileRuntime } from "../storage-compose.js";
+
 import { createIntakeParser } from "../../../processing/spreadsheet/intake-parser.js";
-import { activeSettingsRuntimeIdentity, readBootSettings } from "../../../runtime/settings/settings-runtime.js";
 import { createDashboardCommandService } from "../../../runs/commands/command-service.js";
-import { createRunWorkerCapacity } from "../../../runs/commands/run-worker-capacity.js";
 import { runQueuedSpanEvent } from "../../../runs/commands/run-queued-span.js";
+import { createRunWorkerCapacity } from "../../../runs/commands/run-worker-capacity.js";
 import { createStartPlanService } from "../../../runs/commands/start-plan-service.js";
-import { createDashboardApp } from "../../../transports/http/routes/api.js";
-import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/request-identity.js";
-import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
-import { dispatchMountedRequest, startDashboardHttpServer, type DashboardHttpServer, type DashboardHttpListener } from "../../../transports/http/http-server.js";
 import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
+import { activeSettingsRuntimeIdentity,readBootSettings } from "../../../runtime/settings/settings-runtime.js";
+import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
+import { dispatchMountedRequest,startDashboardHttpServer,type DashboardHttpListener,type DashboardHttpServer } from "../../../transports/http/http-server.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/request-identity.js";
+import { createDashboardApp } from "../../../transports/http/routes/api.js";
+
 import { createDashboardPreflightRunners } from "../../preflight/dashboard-runners.js";
 
 export interface DashboardRuntime {
+  readonly shutdownRequested?: Promise<void>;
   readonly assistantAuthorization?: ReturnType<typeof composeProfileAssistantAuthorization>;
   readonly port: number;
   readonly noteWriter: NoteTimelineWriter;
@@ -128,6 +144,8 @@ export const DashboardFrontendModeSchema = z.enum(["vite-dev", "built-bundle"]);
 export type DashboardFrontendMode = z.infer<typeof DashboardFrontendModeSchema>;
 
 export interface DashboardComposeInput {
+  readonly requestApplicationQuit?: () => void;
+  readonly updateHost?: ApplicationUpdateHost;
   readonly lifetimeLock: RuntimeLifetimeLock;
   readonly onboardingDuo?: ProfileOnboardingDuoProvider;
   readonly admission?: RuntimeAdmission;
@@ -590,14 +608,9 @@ async function composeDashboardRuntimeStartup(
   const { persistedSettings, resolved } = bootConfig;
   const protectedSettingsAuthority = context.credentials;
   const protectedSecrets = { read: () => { assertCurrent(); const result = context.protectedSecrets.read(); assertCurrent(); return result; } };
-  const storageRelocationPlans: ReturnType<typeof createStorageRelocationPlanReader> = {
-    read: () => { assertCurrent(); return createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot }).read(); },
-    project: repositories => { assertCurrent(); return createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot }).project(repositories); },
-    validate: request => { assertCurrent(); createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot }).validate(request); },
-  };
   const settingsBoundary = composeSettings({ database, hostFacts, clock, active: activeSettingsRuntimeIdentity,
     environment: env, credentials: protectedSettingsAuthority,
-    runtimeStoragePair, storageRelocationPlans,
+    runtimeStoragePair,
     resolveSettings: settings => { assertCurrent(); const result = context.resolveSettings(settings); assertCurrent(); return result; }, assertCurrent });
 
   const now = clock.now().toISOString();
@@ -630,7 +643,7 @@ async function composeDashboardRuntimeStartup(
   const backupDirectory = join(stateRoot, "backups", "authority");
   const backupServiceState: BackupServiceStateWire = BackupServiceStateWireSchema.parse({
     state: "never-run",
-    reason: "backups are written only on operator command (npm run cli -- storage backup)",
+    reason: "verified backups run after clean shutdown; the last three shutdown backups are retained",
   });
 
   const readBackupSummary = (): ReturnType<typeof summarizeBackupHealth> => {
@@ -658,7 +671,7 @@ async function composeDashboardRuntimeStartup(
   const runtimePreflight = composeRuntimePreflight({ duo: createDuoCredentialStore(admission, clock), admission, credentials: context.credentials, database, clock, repoRoot, isolation: input.isolation,
     descriptors, descriptorSetHash: setHash, protectedSecrets, environment: env,
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
-  const lifecycle = new RunRecordService({ database, clock, ids,
+  const lifecycle = new RunRecordService({ database, clock, ids, resolveDescriptor: descriptors.resolve,
     admitQueuedRun: run => runtimePreflight.admission.assertReady(runtimePreflight.runScope(run.envelope)),
     publishQueued: (run, publication) => {
       if (publication === undefined) throw new Error("queued run is missing its publication context");
@@ -833,7 +846,16 @@ async function composeDashboardRuntimeStartup(
 
   const workflowSources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredWorkflowSources);
 
+  let resolveQuit: () => void = () => undefined;
+  const shutdownRequested = new Promise<void>(resolve => { resolveQuit = resolve; });
+  const applicationLifecycle = createApplicationLifecycle({ database,
+    requestQuit: input.requestApplicationQuit ?? resolveQuit,
+    ...(input.updateHost === undefined ? {} : { updateHost: input.updateHost }),
+    onFailure: reportSupervisorFault,
+  });
+  startupCleanups.push(() => applicationLifecycle.dispose());
   const kernel = createCommandKernel({
+    applicationQuitAvailable: true,
     preflight: runtimePreflight.admission,
     assistantSurface: () => { if (assistantSurface === undefined) throw new Error("assistant-surface-unavailable"); return assistantSurface; },
     workflowSources,
@@ -876,7 +898,6 @@ async function composeDashboardRuntimeStartup(
       if (database.authority.assistantAuthorization.actionByCommand(command.commandId) === undefined) return;
         assistantAuthorization.assertEffect(command.commandId, command);
     },
-    storageRelocationPlans,
   });
 
   const assistantAuthorization = composeProfileAssistantAuthorization(profile.runtime, profile.token, kernel, clock);
@@ -884,6 +905,7 @@ async function composeDashboardRuntimeStartup(
 
 
   const commands = createDashboardCommandService({
+    quitAccepted: applicationLifecycle.quitAccepted,
     kernel,
     projection,
     startWorkerCapacity: createRunWorkerCapacity({ kernel, authority: database.authority,
@@ -918,6 +940,7 @@ async function composeDashboardRuntimeStartup(
     runtime: () => { assertCurrent(); return knowledge.policy; },
     modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
     readModelPreference: () => captureSelectedModel().view,
+    readPermission: () => assistantAuthorization.permission(),
     verifySelectedModel: async signal => {
       const captured = captureSelectedModel();
       await chatGptAccount.verifyAssistantCapability(captured.view.preference, captured.assertPreferenceCurrent, signal);
@@ -941,7 +964,7 @@ async function composeDashboardRuntimeStartup(
         checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
       }), notificationSourceEventOf(publication.notification, { actorId: publication.notification.actorId, notificationId: publication.notification.notificationId, adopted: false, event: publication.event })),
     })) },
-    preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary,
+    preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary, automaticRepair: () => readAutomaticRepairNotice(admission),
   });
   const { hub } = shell;
   startupCleanups.push(requiredClosure(() => hub.close()));
@@ -993,6 +1016,7 @@ async function composeDashboardRuntimeStartup(
         assertCurrent(); const result = work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk }); assertCurrent(); return result; }),
     },
     startPlans,
+    applicationLifecycle,
     intake,
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
@@ -1027,7 +1051,7 @@ async function composeDashboardRuntimeStartup(
   const detach = (): Promise<void> => {
     detaching ??= (async () => {
       const failures: unknown[] = [];
-      try { profile.runtime.beginClose(); }
+      try { profile.runtime.beginClose("shutdown"); }
       catch (error) { custody.failedClosures.push(error); failures.push(error); }
       const transportClosure = (async () => {
         try { await server.close(); transportClosed = true; } catch (error) { failures.push(error); }
@@ -1052,6 +1076,7 @@ async function composeDashboardRuntimeStartup(
   };
   return Object.freeze({
     assistantAuthorization,
+    shutdownRequested,
     port: server.port,
     notificationStatus: notificationObserver.status,
     noteWriter,
@@ -1060,104 +1085,18 @@ async function composeDashboardRuntimeStartup(
       const failures: unknown[] = [];
       try { await detach(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
-      try { await profile.runtime.close(); }
+      try { await profile.runtime.close("shutdown"); }
       catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
-      if (input.applicationTransport === undefined) {
-        try { machineAdmission.release(); }
-        catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
-      }
     },
   });
 }
 
 
-export async function composeDashboardApplication(input: DashboardComposeInput): Promise<Readonly<{ port: number; failure: Promise<never>; stop(): Promise<void> }>> {
+export async function composeDashboardApplication(input: DashboardComposeInput): Promise<Readonly<{ port: number; shutdownRequested: Promise<void>; stop(): Promise<void> }>> {
+  let resolveApplicationQuit: () => void = () => undefined;
+  const shutdownRequested = new Promise<void>(resolve => { resolveApplicationQuit = resolve; });
   input.lifetimeLock.assertHeld();
-  const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
-  assertNoMigratedEnvironmentKeys(env);
-  const initial = requireRuntimeAdmission(input.admission);
-  if (initial.lifetime !== input.lifetimeLock) throw new Error("runtime-lifetime-admission-mismatch");
-  const context = initial.readInstallationContext();
-  if (context === undefined) throw new ProfileSessionRefusedError("PROFILE_UPGRADE_UNAVAILABLE");
-  const clock = input.clock ?? systemClock;
-  let current: Awaited<ReturnType<typeof composeDashboardApplicationInstance>> | undefined;
-  let handoff: Promise<void> | undefined;
-  let exclusiveOwner: RuntimeAdmission | undefined;
-  let stopping: Promise<void> | undefined;
-  let shutdownRequested = false;
-  let terminalFailure: RuntimeCustodyUncertainError | undefined;
-  let fail: (error: RuntimeCustodyUncertainError) => void = () => { throw new Error("profile-upgrade-failure-owner-unavailable"); };
-  const failure = new Promise<never>((_resolve, reject) => { fail = reject; });
-  void failure.catch(() => undefined);
-  const schedule = (authorization: AuthenticatedProfileUpgrade, committed: Promise<void>): void => {
-    if (handoff !== undefined || shutdownRequested) throw new ProfileSessionRefusedError("PROFILE_UPGRADE_UNAVAILABLE");
-    handoff = (async () => {
-      await committed;
-      if (current === undefined) throw new Error("profile-upgrade-application-owner-unavailable");
-      const port = current.port, facts = current.hostFacts;
-      await current.stop();
-      if (shutdownRequested) return;
-      const exclusive = acquireExclusiveRuntimeAdmission(context.workspace, input.lifetimeLock);
-      exclusiveOwner = exclusive;
-      try {
-        const profileId = consumeAuthenticatedProfileUpgrade(authorization, exclusive);
-        const sourceVersion = readProfileDatabaseBinding(join(exclusive.stateRoot, "profiles", profileId, "state.db")).schemaVersion;
-        const report = await upgradeReadyProfileStorage(profileBrowserClosure, exclusive, profileId, { plan: false, hostFacts: facts }, clock);
-        if (report.state !== "upgraded" || report.fromSchemaVersion !== sourceVersion || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-upgrade-readback-unproved");
-      } catch (error) {
-        if (hasUnprovedSourceClosure(error)) {
-          exclusive.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission: exclusive });
-        } else {
-          try { exclusive.release(); exclusiveOwner = undefined; }
-          catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
-        }
-        throw error;
-      }
-      exclusive.release();
-      exclusiveOwner = undefined;
-      if (shutdownRequested) return;
-      const shared = acquireSharedRuntimeAdmission(context.workspace, input.lifetimeLock);
-      try { current = await composeDashboardApplicationInstance({ ...input, admission: shared, env }, schedule, port); }
-      catch (error) {
-        if (error instanceof RuntimeCustodyUncertainError) throw error;
-        try { shared.release(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
-        throw error;
-      }
-    })().catch((error: unknown) => {
-      terminalFailure = new RuntimeCustodyUncertainError([error]);
-      fail(terminalFailure);
-    });
-    const operation = handoff;
-    void operation.then(() => { if (terminalFailure === undefined && handoff === operation) handoff = undefined; });
-  };
-  current = await composeDashboardApplicationInstance({ ...input, env }, schedule);
-  const port = current.port;
-  return Object.freeze({ port, failure, stop(): Promise<void> {
-    if (stopping !== undefined) return stopping;
-    shutdownRequested = true;
-    const owner = current;
-    const immediateClosure = owner?.stop();
-    void immediateClosure?.catch(() => undefined);
-    stopping = (async () => {
-      await handoff;
-      const failures: unknown[] = terminalFailure === undefined ? [] : [terminalFailure];
-      if (exclusiveOwner !== undefined && terminalFailure === undefined) {
-        failures.push(new RuntimeCustodyUncertainError([new Error("profile-upgrade-exclusive-custody-retained")]));
-      }
-      try { await immediateClosure; } catch (error) { if (!failures.includes(error)) failures.push(error); }
-      if (current !== owner) {
-        try { await current?.stop(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
-      }
-      if (failures.length === 1) throw failures[0];
-      if (failures.length > 1) throw new RuntimeCustodyUncertainError(failures);
-    })();
-    return stopping;
-  } });
-}
-
-async function composeDashboardApplicationInstance(input: DashboardComposeInput,
-  scheduleUpgrade: (authorization: AuthenticatedProfileUpgrade, committed: Promise<void>) => void,
-  bindPort?: number): Promise<Readonly<{ port: number; hostFacts: ReturnType<typeof hostConfigFacts>; stop(): Promise<void> }>> {
+  if (requireRuntimeAdmission(input.admission).lifetime !== input.lifetimeLock) throw new Error("runtime-lifetime-admission-mismatch");
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const machine = requireRuntimeAdmission(input.admission), clock = input.clock ?? systemClock;
@@ -1166,7 +1105,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   const repoRoot = input.repoRoot ?? process.cwd();
   const frontend = DashboardFrontendModeSchema.default("vite-dev").parse(input.frontend);
   const bundle = frontend === "built-bundle" ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot, input.frontendBuildScript) : undefined;
-  const { profile: profileRuntime, facts } = await (async () => {
+  const profileRuntime = await (async () => {
     const facts = hostConfigFacts(env);
     let onboardingDuo = input.onboardingDuo;
     if (onboardingDuo === undefined) {
@@ -1183,20 +1122,19 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
       throw error;
     }
-    return { profile, facts };
+    return profile;
   })();
   const app = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
   type Selection = { sessionId: string; token: string; profileId: string; epoch: number; runtime: DashboardRuntime };
   let selection: Selection | undefined;
   let onboardingSelection: { sessionId: string; token: string; operationId: string; profileId: string } | undefined;
   let completedDraft: { operationId: string; sessionId: string } | undefined;
-  let pending: { sessionId: string; operationId: string; profileId: string; runtime: DashboardRuntime } | undefined;
+  let pending: { sessionId: string; operationId: string; profileId: string; runtime: DashboardRuntime; deleting: boolean } | undefined;
   let transitioning = false;
-  let upgradePending = false;
   const retainedFailures: unknown[] = [];
   const cookieName = "relay-profile-session";
   const onboardingCookieName = "relay-profile-onboarding";
-  let registeredPort: number = bindPort ?? input.backendPortOverride ?? input.isolation.backendPort;
+  let registeredPort: number = input.backendPortOverride ?? input.isolation.backendPort;
   const cookieOf = (request: Request, name = cookieName): string | undefined => {
     const cookies = request.headers.get("cookie")?.split(";").map(value => value.trim()).filter(value => value.startsWith(`${name}=`));
     if (cookies?.length !== 1) return undefined;
@@ -1229,7 +1167,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
     return (path.startsWith("/api/") && !path.startsWith("/api/v1/profile/")) || path.startsWith("/events") || path.startsWith("/artifacts");
   };
   const publicFailure = (error: Error) => {
-    if (error instanceof ProfileSessionRefusedError || error instanceof ProfileUpgradeSourceRefusalError) return { status: 409 as const,
+    if (error instanceof ProfileSessionRefusedError) return { status: 409 as const,
       body: PublicProfileStateSchema.parse({ state: "refused", code: error.code }) };
     const mapped = failureStatus(error);
     if (mapped.status === 500) retainedFailures.push(error);
@@ -1246,7 +1184,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       return c.json(profileRuntime.session.readOnboarding(onboardingSelection.token, onboardingSelection.operationId));
     }
     if (selection === undefined) return c.json(PublicProfileStateSchema.parse(pending !== undefined && cookieOf(c.req.raw) === pending.sessionId
-      ? { state: "cancelling", operationId: pending.operationId } : { state: "signed-out" }));
+      ? { state: "cancelling", operationId: pending.operationId } : { state: "signed-out", signUpRequired: machine.readProfileRegistry().profiles.length === 0 }));
     const active = current(c.req.raw);
     return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: active.profileId, epoch: active.epoch,
       duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.duoState }));
@@ -1254,6 +1192,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   app.use("/api/v1/profile/sign-in", operatorMutationIngressGuard);
   app.use("/api/v1/profile/sign-up", operatorMutationIngressGuard);
   app.use("/api/v1/profile/logout", operatorMutationIngressGuard);
+  app.use("/api/v1/profile/delete-account", operatorMutationIngressGuard);
   app.use("/api/v1/profile/onboarding/*", operatorMutationIngressGuard);
   const mountActive = async (result: ActiveProfileSession): Promise<PublicProfileState> => {
     const guarded = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
@@ -1267,14 +1206,14 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
     guarded.onError((error, c) => { const failure = publicFailure(error); return c.json(failure.body, failure.status); });
     let selectedApp: ReturnType<typeof createDashboardApp> | undefined;
     guarded.all("*", c => { if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); return dispatchMountedRequest(selectedApp, c.req.raw); });
-    const runtime = await composeDashboardRuntime({ ...input, profile: { runtime: profileRuntime, token: result.token },
+    const runtime = await composeDashboardRuntime({ ...input, requestApplicationQuit: resolveApplicationQuit, profile: { runtime: profileRuntime, token: result.token },
       applicationTransport: { listener: { ...listener, mount: (activeApp, accepts) => { selectedApp = activeApp; return listener.mount(guarded, accepts); } }, accepts: selectedPath } });
     selection = { sessionId: randomUUID(), token: result.token, profileId: result.profileId, epoch: result.epoch, runtime };
     const row = machine.readProfileRegistry().profiles.find(value => value.profileId === result.profileId);
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
   };
-  const activate = async (request: Request, signup: boolean): Promise<PublicProfileState | ProfileUpgradeRequired> => {
+  const activate = async (request: Request, signup: boolean): Promise<PublicProfileState> => {
     if (transitioning || selection !== undefined || pending !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
     transitioning = true;
     try {
@@ -1289,7 +1228,6 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       })();
       if (result.state === "signed-out") return result;
       if (result.state === "cancelling" && result.operationId !== undefined) return { state: "cancelling" as const, operationId: result.operationId };
-      if (result.state === "refused" && "upgrade" in result) { upgradePending = true; return result; }
       if (result.state === "onboarding") {
         onboardingSelection = { sessionId: randomUUID(), token: result.token, operationId: result.operationId, profileId: result.profileId };
         const { token: _token, ...state } = result;
@@ -1297,28 +1235,23 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       }
       if (result.state !== "active") return { state: "refused" as const, code: result.code };
       return mountActive(result);
-    } finally { if (!upgradePending) transitioning = false; }
+    } finally { transitioning = false; }
   };
   const admitProfile = async (signup: boolean, request: Request) => {
     const activated = await activate(request, signup);
     const result = PublicProfileStateSchema.parse(activated.state === "refused" ? { state: activated.state, code: activated.code } : activated);
-    return { result, session: result.state === "active" ? selection : undefined,
-      upgrade: activated.state === "refused" && "upgrade" in activated ? activated.upgrade : undefined };
+    return { result, session: result.state === "active" ? selection : undefined };
   };
   app.post("/api/v1/profile/sign-in", async c => {
     const admitted = await admitProfile(false, c.req.raw);
     if (admitted.session !== undefined) c.header("set-cookie", `${cookieName}=${admitted.session.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
-    const response = c.json(admitted.result);
-    if (admitted.upgrade !== undefined) scheduleUpgrade(admitted.upgrade, listener.committedResponse(response));
-    return response;
+    return c.json(admitted.result);
   });
   app.post("/api/v1/profile/sign-up", async c => {
     const admitted = await admitProfile(true, c.req.raw);
     if (admitted.session !== undefined) c.header("set-cookie", `${cookieName}=${admitted.session.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
     if (admitted.result.state === "onboarding" && onboardingSelection !== undefined) c.header("set-cookie", `${onboardingCookieName}=${onboardingSelection.sessionId}; HttpOnly; SameSite=Strict; Path=/api/v1/profile`);
-    const response = c.json(admitted.result);
-    if (admitted.upgrade !== undefined) scheduleUpgrade(admitted.upgrade, listener.committedResponse(response));
-    return response;
+    return c.json(admitted.result);
   });
   app.post("/api/v1/profile/onboarding/duo/browser", async c => {
     const request = CompleteProfileOnboardingRequestSchema.parse(await c.req.json()), draft = currentOnboarding(c.req.raw, request.operationId);
@@ -1369,7 +1302,8 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       return c.json(result);
     } finally { transitioning = false; }
   });
-  app.post("/api/v1/profile/logout", async c => {
+  const endSession = async (c: Context, deleting: boolean) => {
+    if (deleting) DeleteProfileAccountRequestSchema.parse(await c.req.json());
     const active = selection === undefined ? undefined : current(c.req.raw);
     if (active === undefined && (pending === undefined || cookieOf(c.req.raw) !== pending.sessionId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     if (transitioning) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
@@ -1379,25 +1313,28 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       if (active !== undefined) {
         const result = profileRuntime.session.logOut(active.token, { at: clock.now().toISOString() });
         if (result.state !== "cancelling" || result.operationId === undefined) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
-        pending = { sessionId: active.sessionId, operationId: result.operationId, profileId: active.profileId, runtime: active.runtime };
+        pending = { sessionId: active.sessionId, operationId: result.operationId, profileId: active.profileId, runtime: active.runtime, deleting };
         selection = undefined;
       }
       const operation = pending;
-      if (operation === undefined) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
+      if (operation === undefined || operation.deleting !== deleting) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
       await operation.runtime.detach();
       await profileRuntime.awaitClosurePreparation(operation.profileId);
       const result = profileRuntime.session.resumeLogout(operation.operationId);
       if (result.state !== "signed-out") return c.json(PublicProfileStateSchema.parse(result.state === "refused"
         ? { state: "refused", code: result.code } : { state: "cancelling", operationId: operation.operationId }));
+      if (operation.deleting) profileRuntime.session.deleteLoggedOutAccount(operation.operationId);
       pending = undefined;
       c.header("set-cookie", `${cookieName}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
-      return c.json(PublicProfileStateSchema.parse({ state: "signed-out" }));
+      return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: machine.readProfileRegistry().profiles.length === 0 }));
     } finally { transitioning = false; }
-  });
+  };
+  app.post("/api/v1/profile/logout", c => endSession(c, false));
+  app.post("/api/v1/profile/delete-account", c => endSession(c, true));
   if (bundle !== undefined) app.use("*", staticBundleHandler(bundle));
   app.notFound(c => c.json(PublicProfileStateSchema.parse({ state: "refused", code: "PROFILE_SESSION_STALE" }), 401));
   const listener = await (async () => {
-    try { return await startDashboardHttpServer({ app, port: bindPort ?? input.backendPortOverride ?? input.isolation.backendPort }); }
+    try { return await startDashboardHttpServer({ app, port: input.backendPortOverride ?? input.isolation.backendPort }); }
     catch (error) {
       try { await profileRuntime?.close(); } catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
       throw error;
@@ -1405,11 +1342,11 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
   })();
   registeredPort = listener.port;
   let stopping: Promise<void> | undefined;
-  return Object.freeze({ port: listener.port, hostFacts: facts, stop(): Promise<void> {
+  return Object.freeze({ port: listener.port, shutdownRequested, stop(): Promise<void> {
     if (stopping !== undefined) return stopping;
     transitioning = true;
     const failures: unknown[] = [];
-    try { profileRuntime?.beginClose(); } catch (error) { failures.push(error); }
+    try { profileRuntime?.beginClose("shutdown"); } catch (error) { failures.push(error); }
     const transportClosure = listener.close();
     stopping = (async () => {
       try { await transportClosure; } catch (error) { failures.push(error); }
@@ -1420,8 +1357,8 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       }
       try { await profileRuntime?.session.closeOnboarding(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
-      try { await profileRuntime?.close(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
-      try { machine.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      try { await profileRuntime?.close("shutdown"); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      try { machine.release(); await backupRegisteredPeopleAtCleanShutdown(installation.workspace, input.lifetimeLock, clock); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
     })();
     return stopping;
   } });

@@ -329,7 +329,9 @@ still requires the real signed-in account with available plan use and the existi
 permission and currentness checks. After explicit verification settles, the current binding refreshes
 the served account once. Superseded requests cannot publish into another conversation.
 
-Chat files retains its composer and uses version-bound workbook registration and reads. The model,
+Chat files retains its composer and uses version-bound workbook registration and reads. Attachment
+open/download reads its exact CAS revision through the shared client's revision lookup, independent
+of operator named versions. The model,
 effort, approval and voice controls remain unavailable; setup uses the existing composer, with no new
 component. The explicit parity composition supplies approved mock conversations and sample workflow
 scenes; product failures never select those producers. Chat titles and drafts are local to the mounted
@@ -349,8 +351,7 @@ unknown and cannot be automatically retried. Changing the selection invalidates 
 Settings is a full-height takeover with its own navigation rail, search, guarded Back to dashboard,
 and body content. The rail remains available while served fields load/fail. Search targets the exact
 field/disclosure, supports keyboard traversal, and announces missing targets. Section scroll positions
-are retained within the mounted page. Unsaved drafts and uncertain relocation attempts participate
-in exit and unload guards.
+are retained within the mounted page. Unsaved and uncertain settings drafts participate in exit and unload guards.
 
 | Group | Section IDs and displayed pages |
 | --- | --- |
@@ -404,8 +405,7 @@ after toast expiry. Blur never retries a failed/uncertain attempt. Text fields k
 while unsaved date/folder choices revert within their field.
 
 Paths retains native pickers for ordinary document, download, and report folders. Runtime state
-and evidence roots are read-only; no relocation action is offered. Recorded pending plans are
-explicitly unapplied. Performance and Routes retain their existing metadata/authority, and missing
+and evidence roots are read-only; no location-changing action is offered. Performance and Routes retain their existing metadata/authority, and missing
 served values remain unavailable.
 
 ### Preflight and storage
@@ -427,7 +427,7 @@ The result is a diagnostic only and never contributes to readiness reports or ad
 
 Storage displays health and doctor reports through its typed client. Authority availability differs
 from backup age. Storage excludes run-history presentation. Recovery actions require their exact
-served admission; ordinary startup/Settings rendering does not perform a repair or backup.
+served admission. Startup completes automatic repair before ordinary runtime admission; Settings rendering performs no repair or backup. A read-only notice identifies restored person data and its backup time.
 
 ### Keyboard
 
@@ -454,13 +454,15 @@ edits and library save/reopen; warnings use that location. Rows created without 
 labelled with their current row. Inserted columns have a null source coordinate.
 
 Editable XLSX imports include hidden and filtered rows. Worksheet/table filter rules are not imported.
-Unsupported Excel table `colorFilter` metadata is removed only from a private parsing copy; original
+Excel table filter metadata is removed only from a private parsing copy; original
 bytes stay unchanged. Standard worksheet dimensions retain selected trailing blank rows and columns;
 malformed ranges or worksheet references refuse, and declared extents count toward the workbook size limit.
 Values, supported fills, number formats, hyperlink URLs/text and rich-text runs survive library
-save, reopen and XLSX export, while malformed table XML refuses import. The ExcelJS importer drops
-hyperlink tooltips; XLSX export emits tooltips already stored in a workbook. Editing a cell clears
-its old rich text and hyperlink metadata. Formulas remain imported as their stored results.
+save, reopen and XLSX export, while malformed table XML refuses import. The shared browser-safe
+`rules/spreadsheets/workbook-io.ts` boundary uses `@shbernal/ts-xlsx` and retains hyperlink tooltips.
+Editing a cell clears its old rich text and hyperlink metadata. Formulas import their stored results
+and retain a presence flag. Master edits, keyed writes and Sync refuse formula-bearing workbooks
+or metadata the editable model cannot preserve, including table structures and non-cell styles.
 `spreadsheet-fields-model.ts` reuses canonical intake field IDs and namespaces roster-only IDs.
 Canonical value checks use the intake field coercers and schemas without rewriting stored values.
 Roster-only fields remain tracker text; workflow-specific transaction rules belong to execution admission.
@@ -644,12 +646,10 @@ outcomes retain their confirmation row.
 
 ### Fixed app-data and maintenance presentation
 
-Paths shows runtime state and evidence roots read-only; there is no folder relocation picker,
-plan action, or shell-command copy control. Copy buttons copy the displayed paths. Existing pending plans are explicitly unapplied.
-Folders groups the existing document, download, and report pickers. Backup and restore sits below App data. Backup and Restore have unavailable, pending,
-verified-backup, blocked, and confirmation presentations. Restore never implies credentials roll
-back or unresolved writes disappear. The `fixed-backup` fixture has no file effects. Maintenance
-authority, stopped restore, and verified backup selection are wired separately.
+Paths shows runtime state and evidence roots read-only. Copy buttons copy the displayed paths.
+Folders groups the document, download, and report pickers. Backup and Restore controls and the
+backup picker are absent. The `fixed-backup` fixture demonstrates fixed paths, folder read failures,
+clipboard failures, and ordinary folder controls without file effects.
 
 ### Two-method Duo sign-up presentation
 

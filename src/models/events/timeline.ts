@@ -6,6 +6,7 @@ import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, NodeIdSchema, Positi
   WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, TraceIdSchema, WriteAttemptIdSchema, FailureIdSchema, CommandIdSchema, ActorIdSchema } from "../../rules/identity/ids.js";
 import { LedgerEntryPayloadSchema } from "../../rules/runs/ledger.js";
 import { NoteWireSchema, SpanEventWireSchema } from "./types.js";
+import { RecoveryActivitySchema } from "../run/recovery-activity.js";
 
 /** A reference preserves the original observation; replay never rewrites its clock. */
 export const TimelineCheckpointReferenceSchema = z.strictObject({
@@ -46,6 +47,8 @@ export const DebugEventSchema = z.strictObject({
 export type DebugEvent = z.infer<typeof DebugEventSchema>;
 
 export const TimelinePayloadSchema = z.discriminatedUnion("kind", [
+  RecoveryActivitySchema.extend({ kind: z.literal("recovery-activity-started") }),
+  RecoveryActivitySchema.extend({ kind: z.literal("recovery-activity-ended"), endedAt: IsoInstantSchema }),
   z.strictObject({
     kind: z.literal("write-parked"), runId: RunIdSchema, workflow: WorkflowIdSchema,
     attempt: PositiveIntSchema, traceId: TraceIdSchema, nodeId: NodeIdSchema,
@@ -98,6 +101,13 @@ export const TimelineAppendSchema = z.strictObject({
 }).superRefine((record, context) => {
   const payload = record.payload;
   if (payload.kind === "debug") return;
+  if (payload.kind === "recovery-activity-started" || payload.kind === "recovery-activity-ended") {
+    const at = payload.kind === "recovery-activity-started" ? payload.openedAt : payload.endedAt;
+    if (record.occurredAt !== at || record.recordedAt !== at || Date.parse(at) < Date.parse(payload.openedAt)
+      || (payload.kind === "recovery-activity-started" && record.eventId !== payload.activityId)) {
+      context.addIssue({ code: "custom", message: "recovery activity must bind its actual operation time and identity" });
+    }
+  }
   const runId = payload.kind === "note" ? ("runId" in payload.note ? payload.note.runId : undefined) : payload.kind === "span"
     ? ("runId" in payload.event ? payload.event.runId : undefined)
     : payload.kind === "operation-confirmed" ? payload.facts.runId : payload.runId;

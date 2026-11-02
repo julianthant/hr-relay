@@ -1,10 +1,10 @@
-import type { ChildProcess } from "node:child_process";
+import { Entry } from "@napi-rs/keyring";
 import assert from "node:assert/strict";
-import type { RuntimeAdmission as RuntimeAdmissionType } from "../../../src/backend/storage/admission/admission.js";
+import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-import { dirname, join, sep } from "node:path";
-import { Entry } from "@napi-rs/keyring";
+import { dirname,join,sep } from "node:path";
+import type { RuntimeAdmission as RuntimeAdmissionType } from "../../../src/backend/storage/admission/admission.js";
 import { FakeKeyringEntry } from "../helpers/credential-keychain-fake.js";
 
 const actualEntry: unknown = Entry;
@@ -13,7 +13,7 @@ if (actualEntry !== FakeKeyringEntry || process.env.RELAY_TEST_KEYCHAIN === unde
 if (!process.connected || process.send === undefined) throw new Error("retention-worker-ipc-required");
 const { z } = await import("zod");
 const [port, workspace, profileId, scenario, crashNonce] = z.tuple([z.coerce.number().int().positive().max(65535), z.string().min(1), z.uuid(),
-  z.enum(["readonly-native-close", "worker-native-open", "writer-close", "duo-read-first", "duo-read-second", "stopped-head-close", "protected-source", "chatgpt-source", "account-projection", "stopped-control-snapshot-disposal", "setup-protected-close", "authenticated-upgrade-key-close", "authenticated-upgrade-service-inspection", "authenticated-upgrade-binding-consume", "authenticated-upgrade-unproved-close", "authenticated-upgrade-closed-publication-refusal", "protected-crash-before", "protected-crash-after", "logout-prepared", "logout-commit-intent", "logout-after-commit", "logout-done", "logout-ready", "logout-unlink", "logout-writer-close", "logout-third-image", "logout-resume", "logout-unknown-copy", "logout-live-process", "logout-browser-root", "logout-key-replacement", "logout-snapshot-disposal", "logout-process-observation", "logout-seed", "logout-seed-unknown", "logout-unknown", "logout-browser-busy", "logout-browser-unproved", "logout-process-root-copy", "logout-exited-process", "logout-exit-only", "browser-root-native-success", "browser-root-busy", "browser-root-close-unproved", "browser-root-stage-close", "browser-root-observed-publication", "browser-root-rm-refusal", "browser-root-unknown-seed", "browser-root-unknown-resume"]), z.uuid().optional()]).parse(process.argv.slice(2));
+  z.enum(["readonly-native-close", "worker-native-open", "writer-close", "duo-read-first", "duo-read-second", "stopped-head-close", "protected-source", "chatgpt-source", "account-projection", "stopped-control-snapshot-disposal", "setup-protected-close", "startup-upgrade-key-close", "startup-upgrade-service-inspection", "startup-upgrade-binding-inspection", "startup-upgrade-unproved-close", "startup-upgrade-closed-publication-refusal", "protected-crash-before", "protected-crash-after", "logout-prepared", "logout-commit-intent", "logout-after-commit", "logout-done", "logout-ready", "logout-unlink", "logout-writer-close", "logout-third-image", "logout-resume", "logout-unknown-copy", "logout-live-process", "logout-browser-root", "logout-key-replacement", "logout-snapshot-disposal", "logout-process-observation", "logout-seed", "logout-seed-unknown", "logout-unknown", "logout-browser-busy", "logout-browser-unproved", "logout-process-root-copy", "logout-exited-process", "logout-exit-only", "browser-root-native-success", "browser-root-busy", "browser-root-close-unproved", "browser-root-stage-close", "browser-root-observed-publication", "browser-root-rm-refusal", "browser-root-unknown-seed", "browser-root-unknown-resume"]), z.uuid().optional()]).parse(process.argv.slice(2));
 const { WorkerRuntimeLifetimeLock, isOfflineMaintenanceOperationActive } = await import("../../../src/backend/storage/admission/lifetime-lock.js");
 const { acquireSharedRuntimeAdmission, RuntimeAdmission } = await import("../../../src/backend/storage/admission/admission.js");
 const { createCanonicalCredentials, captureStoppedCanonicalCredentialHead } = await import("../../../src/backend/storage/configuration/canonical-credential-store.js");
@@ -345,16 +345,16 @@ try {
   if (scenario.startsWith("browser-root-")) {
     const { runBrowserRootRetentionCase } = await import("./browser-root-retention.js");
     await runBrowserRootRetentionCase({ scenario, workspace, nonce: z.uuid().parse(crashNonce) });
-  } else if (scenario.startsWith("authenticated-upgrade-")) {
-    const { runAuthenticatedUpgradeRetentionCase } = await import("./authenticated-upgrade-retention-cases.js");
-    await runAuthenticatedUpgradeRetentionCase({ scenario, workspace, nonce: z.uuid().parse(crashNonce) });
+  } else if (scenario.startsWith("startup-upgrade-")) {
+    const { runStartupUpgradeRetentionCase } = await import("./startup-upgrade-retention-cases.js");
+    await runStartupUpgradeRetentionCase({ scenario, workspace, nonce: z.uuid().parse(crashNonce) });
   } else if (scenario === "worker-native-open") await runWorkerNativeOpening();
   else if (scenario === "setup-protected-close") await runSetupProtectedClose();
   else if (scenario === "stopped-head-close") await runStoppedHead();
   else if (scenario === "stopped-control-snapshot-disposal") await runStoppedSnapshot();
   else await runCurrent();
   lifetime.assertHeld();
-  process.send({ scenario, assertionsComplete: true, ...(scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("authenticated-upgrade-") || scenario.startsWith("browser-root-") ? { nonce: z.uuid().parse(crashNonce) } : {}),
+  process.send({ scenario, assertionsComplete: true, ...(scenario === "worker-native-open" || scenario === "setup-protected-close" || scenario.startsWith("startup-upgrade-") || scenario.startsWith("browser-root-") ? { nonce: z.uuid().parse(crashNonce) } : {}),
     ...(scenario === "browser-root-unknown-seed" ? { keychain: FakeKeyringEntry.snapshot() } : {}) });
 } catch (error) {
   const name = error instanceof Error && ["AssertionError", "TypeError", "RangeError", "SyntaxError"].includes(error.name) ? error.name : "Error";

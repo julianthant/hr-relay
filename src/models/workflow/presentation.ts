@@ -60,7 +60,7 @@ export const EnqueuePolicySchema = z.enum(["reject-active", "supersede-active", 
 export type EnqueuePolicy = z.infer<typeof EnqueuePolicySchema>;
 
 export const CommandActionIdSchema = z.enum([
-  "retry", "restart", "cancel", "bump", "rename", "delete",
+  "retry", "restart", "recover-run", "cancel", "bump", "rename", "delete",
   "edit-checkpoint", "recheck-write", "resolve-write-absent",
 ]);
 export const NavigationActionIdSchema = z.enum(["open-review", "open-evidence"]);
@@ -86,7 +86,7 @@ export type WorkflowActionPolicy = z.infer<typeof WorkflowActionPolicySchema>;
 /** The action set every ordinary workflow gets; a descriptor opts into more, never fewer by accident, and the narrowing that keeps `delete` safe is the kernel's own. */
 export const STANDARD_WORKFLOW_ACTIONS: WorkflowActionPolicy = Object.freeze(
   WorkflowActionPolicySchema.parse({
-    enabled: ["retry", "restart", "cancel", "bump", "rename", "delete"],
+    enabled: ["retry", "restart", "recover-run", "cancel", "bump", "rename", "delete"],
   }),
 );
 
@@ -241,7 +241,8 @@ export const NodePurposeSpecSchema = z.strictObject({
 export type NodePurposeSpec = z.infer<typeof NodePurposeSpecSchema>;
 
 /** Sinks are a closed infrastructure registry, deliberately keyed by sink kind, never by workflow. */
-export const ArtifactSinkIdSchema = z.enum(["xlsx-retention"]);
+export const ArtifactSinkIdSchema = z.enum(["xlsx-retention", "documents-file"]);
+export const ArtifactSinkKeySchema = z.union([z.literal("xlsx-retention"), z.string().regex(/^documents-file-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u)]);
 export type ArtifactSinkId = z.infer<typeof ArtifactSinkIdSchema>;
 
 export const DurableArtifactProjectionSpecRuntimeSchema = z.strictObject({

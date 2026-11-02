@@ -6,8 +6,8 @@ task starts at the repository root.
 ## Invariants
 
 - A long-lived CLI command owns and awaits shutdown. Keep signal handlers installed throughout
-  the drain, retain the lifetime listener through worker shutdown, and propagate a failed stop. Shutdown does not imply
-  a backup: backups are explicit-only.
+  the drain, retain the lifetime listener through worker shutdown, and propagate a failed stop. After clean resource closure, create verified person backups and retain the last three shutdown
+  backups before releasing the lifetime listener; pre-erase and pre-upgrade backups stay protected.
 - Acquire the genuine root lifetime before installation effects and retain that same capability
   through admissions, composition and recovery. Inherited workers receive it over actual IPC.
   Prior fixed mutex cleanup runs only during the root's first workspace initialization; synchronous
@@ -24,7 +24,10 @@ task starts at the repository root.
 - Run resources first admit exact run membership through RunRecordService.read, then bind evidence
   to the immutable run/digest and retained capture metadata. Never reconstruct evidence from current
   inputs or infer purge from a deadline; preserve safe download headers.
-- Boot/upgrade follows the current authority contract; ordinary startup never converts an incompatible database.
+- Boot upgrades supported registered person databases under stopped exclusive custody with a verified
+  backup before mutation. Startup repairs corrupt or unsettled same-person authority only from a verified
+  backup preserving current write evidence and credentials; missing, foreign, future or unprovable authority
+  stops admission. Ordinary readers accept only the current schema.
 
 Before changing a seam, read the relevant
 `docs/rebuild/reference/frontend-backend-integration.md`, `dashboard-surfaces.md`, and

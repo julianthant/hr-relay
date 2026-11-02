@@ -9,6 +9,7 @@ import type { BrowserAction } from "../../systems/browser-shared/action-notes.js
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import { DeclaredActionOccurrenceSchema } from "../../../rules/workflow/task-provenance.js";
 import { assertNoteWithinRunScope } from "../../../models/run/note-scope.js";
+import type { RecoveryActivity } from "../../../models/run/recovery-activity.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { TaskRunNoteKindSchema, taskRunNoteMessage, type TaskRunNoteKind } from "../../../models/run/task-note.js";
 import { randomUUID } from "node:crypto";
@@ -137,6 +138,7 @@ export interface NoteTimelineWriterDeps {
   readonly repository: Pick<TimelineRepository, "append">;
   readonly clock: Clock;
   readonly pid?: number;
+  readonly recoveryActivity?: Readonly<{ activity: RecoveryActivity; assertOpen(): void }>;
 
 }
 
@@ -178,7 +180,9 @@ export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTime
         || traceId !== authority.envelope.traceId) {
         throw new Error(`run note identity does not match authority for run ${authority.envelope.runId}`);
       }
-      assertNoteWithinRunScope(authority, { runId, workflow: ingress.workflow, at });
+      deps.recoveryActivity?.assertOpen();
+      assertNoteWithinRunScope(authority, { runId, workflow: ingress.workflow, at,
+        attempt, traceId, spanPath: ingress.address.spanPath }, deps.recoveryActivity?.activity);
     }
     const fields: NoteFieldWire[] = [];
     let invalidFieldCount = 0;
@@ -199,6 +203,7 @@ export function createNoteTimelineWriter(deps: NoteTimelineWriterDeps): NoteTime
     const note = NoteWireSchema.parse({
       diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
       ...ingress.address,
+      ...(deps.recoveryActivity === undefined ? {} : { recoveryActivityId: deps.recoveryActivity.activity.activityId }),
       ts: occurredAt ?? at.toISOString(),
       workflow: ingress.workflow,
       pid,

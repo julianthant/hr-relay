@@ -109,7 +109,7 @@ export const SignUpDuoAttemptSchema = z.strictObject({
   expiresAt: IsoInstantSchema, state: z.enum(["pending", "complete", "unknown", "closed"]),
   scope: DuoEnrollmentScopeSchema.optional(),
   ceremony: z.strictObject({ credentialId: z.string().min(1), requestId: z.string().min(1),
-    mechanism: z.enum(["fast-duo", "native-platform"]), softwareInterceptionDisabled: z.boolean() }).optional(),
+    mechanism: z.enum(["fast-duo", "native-platform", "chromium-platform"]), softwareInterceptionDisabled: z.boolean() }).optional(),
   portal: z.strictObject({ credentialId: z.string().min(1), requestId: z.string().min(1),
     acceptance: z.enum(["portal-accepted", "exact-credential-request"]) }).optional(),
   operatorConfirmedAt: IsoInstantSchema.optional(),
@@ -175,7 +175,7 @@ export function assertFinishedProfileOnboarding(operation: SignUpOperation): voi
     if (attempt?.state !== "complete" || attempt.scope?.accountId !== draft.accountId || attempt.providerClosedAt === undefined
       || attempt.ceremony === undefined || attempt.portal !== undefined && attempt.ceremony.credentialId !== attempt.portal.credentialId
       || (method === "key" ? attempt.ceremony.mechanism !== "fast-duo" || attempt.operatorConfirmedAt === undefined && attempt.portal?.acceptance !== "exact-credential-request"
-        : attempt.portal?.acceptance !== "portal-accepted" || attempt.ceremony.mechanism !== "native-platform" || !attempt.ceremony.softwareInterceptionDisabled || attempt.operatorConfirmedAt === undefined)) {
+        : attempt.portal?.acceptance !== "portal-accepted" || (attempt.ceremony.mechanism !== "native-platform" && attempt.ceremony.mechanism !== "chromium-platform") || !attempt.ceremony.softwareInterceptionDisabled || attempt.operatorConfirmedAt === undefined)) {
       throw new Error("profile-onboarding-incomplete");
     }
   }

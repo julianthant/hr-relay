@@ -1,3 +1,4 @@
+import { ContinuationRetryOwnerSchema } from "./delegation-contracts.js";
 import { RunClaimTokenSchema } from "../../../models/run/worker.js";
 import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
 
@@ -58,6 +59,22 @@ import {
 } from "./run-terminal-contracts.js";
 
 export { WorkerClaimLifetimeSchema } from "../../../models/run/worker.js";
+
+export class ApplicationAdmissionRefusedError extends Error {
+  readonly code = "APPLICATION_ADMISSION_REFUSED";
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ApplicationAdmissionRefusedError";
+  }
+}
+
+export const ApplicationAdmissionRequestSchema = z.strictObject({ commandId: CommandIdSchema,
+  runtimeGeneration: PositiveIntSchema, reason: z.enum(["update", "shutdown"]) });
+
+export const CanonicalPauseRequestSchema = z.strictObject({ commandId: CommandIdSchema, runId: RunIdSchema,
+  expectedVersion: PositiveIntSchema });
+export const CanonicalAcknowledgePauseRequestSchema = z.strictObject({ commandId: CommandIdSchema, runId: RunIdSchema,
+  claim: RunClaimTokenSchema });
 
 export const RunClaimRequestSchema = z.strictObject({
   workerLifetime: WorkerClaimLifetimeSchema.optional(),
@@ -196,6 +213,7 @@ export const CanonicalCreateRunRequestSchema = z.strictObject({
   retryOf: RunEnvelopeSchema.shape.retryOf,
   recovery: RunEnvelopeSchema.shape.recovery,
   sourceBound: RunEnvelopeSchema.shape.sourceBound,
+  continuation: RunEnvelopeSchema.shape.continuation,
   input: RunInputStorageSchema,
   sessionId: RunRecordSchema.shape.sessionId,
   appVersion: RunRecordSchema.shape.appVersion,
@@ -313,6 +331,15 @@ export const CanonicalRequeueRequestSchema = z.strictObject({
 });
 
 export const CanonicalRetrySourceRequestSchema = z.strictObject({
+  continuationOwner: ContinuationRetryOwnerSchema.optional(),
+  sourceCommandId: CommandIdSchema.optional(),
+  ...CanonicalVersionIdentityFields,
+  runtimeConfig: RuntimeConfigClaimTokenSchema,
+  appVersion: RunRecordSchema.shape.appVersion,
+});
+
+export const CanonicalRecoverRunRequestSchema = z.strictObject({
+  continuationOwner: ContinuationRetryOwnerSchema.optional(),
   sourceCommandId: CommandIdSchema.optional(),
   ...CanonicalVersionIdentityFields,
   runtimeConfig: RuntimeConfigClaimTokenSchema,

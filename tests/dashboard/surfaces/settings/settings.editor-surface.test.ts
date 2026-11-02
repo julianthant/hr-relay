@@ -1,24 +1,24 @@
+import { FIXTURE_EDITABLE_SETTINGS } from "../../../parity/helpers/fixture-settings.js";
 import { FixtureCommandBinding } from "../../../support/helpers/dashboard/command-binding.js";
 import { syntheticSettingsAuthority } from "../../../support/helpers/dashboard/settings-harness.js";
-import { FIXTURE_EDITABLE_SETTINGS, FIXTURE_STORAGE_RELOCATION } from "../../../parity/helpers/fixture-settings.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act,createElement } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it,vi } from "vitest";
-import { createDashboardClient, type DashboardClient } from "../../../../src/dashboard/client/index.js";
+import { createDashboardClient,type DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { settingInput } from "../../../../src/dashboard/surfaces/settings/editor/settings-draft-model.js";
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings/editor/settings-editor-model.js";
 import { SettingsPage } from "../../../../src/dashboard/surfaces/settings/settings.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../src/models/failures/error-catalog.js";
 import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../src/models/failures/error-catalog.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 const DOCUMENT = FIXTURE_EDITABLE_SETTINGS;
 
-const STORAGE = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-08-28T17:00:00.000Z" });
+const STORAGE = StorageHealthSummaryWireSchema.parse({ authority: "healthy", automaticRepair: { state: "none" }, backup: "current", checkedAt: "2026-08-28T17:00:00.000Z" });
 let root: Root | undefined;
 let host: HTMLElement | undefined;
 const authorities: Awaited<ReturnType<typeof syntheticSettingsAuthority>>[] = [];
@@ -40,7 +40,6 @@ async function settingsClient(applied: unknown[], mode: "confirmed" | "held" | "
   const responseReady = mode === "held" ? new Promise<void>(resolve => { release = resolve; }) : Promise.resolve();
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
     if (url.endsWith("/settings/editable")) return new Response(JSON.stringify(stored ? authority.read() : DOCUMENT), { status: 200 });
-    if (url.endsWith("/settings/storage-relocation")) return new Response(JSON.stringify(FIXTURE_STORAGE_RELOCATION), { status: 200 });
     if (url.endsWith("/commands") && typeof init?.body === "string") {
       const request: unknown = JSON.parse(init.body);
       applied.push(request);
@@ -264,7 +263,6 @@ it("publishes a failed refresh while retaining the verified document and unsaved
   let fail = false;
   let controller: ReturnType<typeof useEditableSettings> | undefined;
   const client = { editableSettings: () => fail ? Promise.reject(new Error("synthetic read failure")) : Promise.resolve(DOCUMENT),
-    storageRelocationPlans: () => Promise.reject(new Error("synthetic no relocation")),
   } as unknown as DashboardClient;
   function Surface() { controller = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) }); return null; }
   host = document.createElement("div"); document.body.append(host);
@@ -287,7 +285,6 @@ for (const section of ["general", "paths", "routes", "performance"]) for (const 
   it(`renders the catalog body in the ${section} failed part after a ${mode} initial read`, async () => {
     vi.useFakeTimers();
     const client = { editableSettings: () => mode === "hung" ? new Promise(() => {}) : Promise.reject(new Error("private fixture error")),
-      storageRelocationPlans: () => Promise.resolve(FIXTURE_STORAGE_RELOCATION),
     } as unknown as DashboardClient;
     const dom = await mountSettingsPage(client, section);
     if (mode === "hung") await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });

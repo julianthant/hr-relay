@@ -606,7 +606,17 @@ it("binds stopped profile inspection to its selected epoch and exact native oper
     finally { second.release(); }
     createProfileRegistry(f.machine).advanceSession(null);
     const signedOut=f.machine.acquireOfflineMaintenance();
-    try { assert.throws(()=>f.machine.admitStoppedProfile(id,signedOut), /profile-session-not-current/u); }
+    try {
+      assert.throws(()=>f.machine.admitStoppedProfile(id,signedOut), /profile-session-not-current/u);
+      const backup=f.machine.admitStoppedProfileBackup(id,signedOut);
+      try {
+        backup.assertReadOnlyAuthorityDatabase(f.path);
+        assert.throws(()=>backup.assertWritable(), /profile-settlement-runtime-refused/u);
+        assert.throws(()=>backup.assertProfileRuntime(), /profile-bound-authority-required/u);
+        signedOut.release();
+        assert.throws(()=>backup.assertReadOnlyAuthorityDatabase(f.path), /offline-maintenance-unissued/u);
+      } finally { backup.release(); }
+    }
     finally { signedOut.release(); }
     assert.deepEqual(readFileSync(f.path),before);
   } finally { stopped.release(); first.release(); await f.close(); }
@@ -618,6 +628,7 @@ it("refuses stopped setup selection before creating or opening an authority data
   try {
     assert.equal(existsSync(f.path),false);
     assert.throws(()=>f.machine.admitStoppedProfile(f.admission.profileBinding.profileId,operation), /profile-onboarding-incomplete/u);
+    assert.throws(()=>f.machine.admitStoppedProfileBackup(f.admission.profileBinding.profileId,operation), /profile-onboarding-incomplete/u);
     assert.equal(existsSync(f.path),false);
   } finally { operation.release(); await f.close(); }
 });

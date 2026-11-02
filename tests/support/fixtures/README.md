@@ -18,6 +18,8 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 
 | Module | Concept |
 | --- | --- |
+| `helpers/exclusive-session-leases.ts` | deferred isolated SQLite authority for exclusive browser-session lease tests |
+| `helpers/browser/fake-onbase-page.ts` | synthetic OnBase import/retrieval page with exact filters and saved-PDF evidence |
 | `fixtures/child-execution-build-manifest.ts` | build manifest for the owned child execution process fixture |
 | `fixtures/child-execution-workflows.ts` | canonical child workflow definitions for lifecycle and crash tests |
 | `fixtures/child-execution-write-workflow.ts` | child write workflow with durable attempting and UNKNOWN controls |
@@ -63,6 +65,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/integration/settings-runtime-corruption-fixtures.ts` | settings runtime corruption fixtures |
 | `fixtures/integration/source-bound-fixtures.ts` | source bound fixtures |
 | `fixtures/ledger-projection-fixtures.ts` | ledger projection fixtures |
+| `fixtures/named-file-output-workflow.ts` | shared named file output contract and descriptor for native publication and receipt coverage |
 | `fixtures/operator-command-fixtures.ts` | operator command fixtures |
 | `fixtures/phase1c-contract-fixtures.ts` | phase1c contract fixtures |
 | `fixtures/phase1f-run-fixtures.ts` | phase1f run fixtures |
@@ -100,6 +103,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/backend/trust-authority-fixture.ts` | trust authority fixture |
 | `helpers/browser/fake-login-page.ts` | fake login page |
 | `helpers/canonical-run-reader.ts` | canonical run reader |
+| `helpers/ucpath-findings-page.ts` | synthetic Smart HR list/detail navigation, identity, pagination and refusal evidence shared by findings and lifecycle checks |
 | `helpers/assistant-coupled-server.ts` | served synthetic assistant browser proof and owned cleanup |
 | `helpers/assistant-coupled-world.ts` | coupled assistant account transport, canonical authority and pure planner fixtures |
 | `helpers/chatgpt-account-fixtures.ts` | synthetic ChatGPT account fixtures |

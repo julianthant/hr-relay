@@ -33,7 +33,9 @@ export interface StartPlanServiceDeps {
   readonly authority: {
     withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
   };
-  readonly authorityRead: StartPlannerDeps["authority"];
+  readonly authorityRead: StartPlannerDeps["authority"] & Readonly<{
+    authority: Readonly<{ runs: Pick<AuthorityRepositories["runs"], "admission"> }>;
+  }>;
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   readonly clock: Clock;
   readonly ids: IdFactory;
@@ -50,11 +52,16 @@ export interface StartPlanService {
 }
 
 export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanService {
+  const assertAdmission = (runs: Pick<AuthorityRepositories["runs"], "admission"> = deps.authorityRead.authority.runs) => {
+    if (runs.admission().state !== "open") throw new RerunRefusedError("invalid-state", "Relay is pausing work to quit.");
+  };
   const scopeFor = (input: unknown) => {
     const ingress = StartPlanIngressSchema.parse(input);
+    assertAdmission();
     const descriptor = deps.descriptors.resolve(ingress.workflowId);
     if (descriptor === undefined) throw new TargetNotFoundError("Preflight workflow is not registered.");
     const identity = deps.authority.withAuthorityTransaction(repositories => {
+      assertAdmission(repositories.runs);
       repositories.runtimeConfig.requireSettingsCurrent();
       return selectNewRunIdentity(repositories, deps);
     });
@@ -71,6 +78,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
       }));
     },
     async prepare(input: unknown, signal: AbortSignal): Promise<void> {
+      assertAdmission();
       if (deps.preflight === undefined) return;
       const scope = scopeFor(input);
       await deps.preflight.prepare(scope, signal);
@@ -78,6 +86,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
     },
     plan(input: unknown): StartPlanWire {
       const ingress = StartPlanIngressSchema.parse(input);
+      assertAdmission();
       if (deps.preflight !== undefined) deps.preflight.assertReady(scopeFor(input));
       const descriptor = deps.descriptors.resolve(ingress.workflowId);
       if (descriptor === undefined) {
@@ -148,6 +157,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
       );
       if (deps.recovery !== undefined) record = StartPlanRecordSchema.parse({ ...record, recovery: deps.recovery });
       const stored = deps.authority.withAuthorityTransaction((repositories) => {
+        assertAdmission(repositories.runs);
         const selected=selectNewRunIdentity(repositories,record);
         record=StartPlanRecordSchema.parse({...record,...selected});
         repositories.runtimeConfig.requireSettingsCurrent();

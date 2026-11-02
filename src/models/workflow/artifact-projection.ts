@@ -2,10 +2,10 @@
 import { z } from "zod";
 import { canonicalJsonStringify, JsonValueSchema, type JsonObject, type JsonValue } from "../../rules/validation/canonical-json.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
-import { FingerprintSchema, NodeIdSchema } from "../../rules/identity/ids.js";
+import { FingerprintSchema, NodeIdSchema, RunIdSchema } from "../../rules/identity/ids.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import {
-  ArtifactSinkIdSchema,
+  ArtifactSinkKeySchema,
   DurableArtifactProjectionSpecRuntimeSchema,
 } from "./presentation.js";
 
@@ -17,7 +17,7 @@ export const ArtifactProjectionKeyValueSchema = z.strictObject({
 
 export const DerivedArtifactProjectionRowSchema = z.strictObject({
   projectionId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u),
-  sinkId: ArtifactSinkIdSchema,
+  sinkId: ArtifactSinkKeySchema,
   stableKeyFingerprint: FingerprintSchema,
   /** The declared key values in `keyFields` order — the sink's row identity. */
   keyValues: z.array(ArtifactProjectionKeyValueSchema).min(1),
@@ -45,6 +45,7 @@ export function deriveArtifactProjectionRows(input: Readonly<{
   specs: readonly unknown[];
   nodeId: string;
   outputValue: unknown;
+  runId?: string;
 }>): readonly DerivedArtifactProjectionRow[] {
   const nodeId = NodeIdSchema.parse(input.nodeId);
   const outputValue = JsonValueSchema.parse(input.outputValue);
@@ -72,7 +73,7 @@ export function deriveArtifactProjectionRows(input: Readonly<{
     });
     rows.push(DerivedArtifactProjectionRowSchema.parse({
       projectionId: spec.id,
-      sinkId: spec.sink,
+      sinkId: spec.sink === "documents-file" ? `documents-file-${RunIdSchema.parse(input.runId)}` : spec.sink,
       stableKeyFingerprint: FingerprintSchema.parse(sha256Hex(
         `hrauto:artifact-projection:v1\0${canonicalJsonStringify({ projectionId: spec.id, keyValues })}`,
       )),

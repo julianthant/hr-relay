@@ -1,9 +1,11 @@
+import type { ExclusiveSessionLease } from "../../../models/sessions/exclusive-session-lease.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { createNativeBrowserProbe, BrowserLaunchUncertainError, chromiumProfileInUse, DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, closeContextWithProof, observeContextLifecycle, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
 import { BrowserProfileStillClosingError, BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { privatePathRejects } from "../../storage/private-path.js";
 import type { BrowserRoots, BrowserRootLaunch, BrowserRootLaunchInput } from "../../storage/browser-roots.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
-import { retainAuthoritySourceClosure } from "../../storage/source-closure.js";
+import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { provisionWorkflowDuo } from "./workflow-duo-provider.js";
 import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
@@ -195,11 +197,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     const browserMode = browserModeFor(input.browserMode, config.browser.headless);
     const instance = RuntimeInstanceSchema.parse(input.instance);
     const binding = bindingFor(this.#bindings, system);
-    if (input.exclusive) {
-      throw new Error(
-        `${system} requested an identity-exclusive session; the exclusive OnBase lease is not landed in this factory`,
-      );
-    }
+    if ((binding.exclusive === true) !== input.exclusive) throw new Error("browser-session-exclusivity-mismatch");
     if (input.signal.aborted) throw new Error(`${system} browser session open was cancelled before launch`);
 
     const profileDirectory = workerProfileDirectory({
@@ -214,15 +212,38 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
     assertFastDuoReady(config, this.#options.duo);
-    profileReservations.add(profileDirectory);
-    const rootOwner = this.#rootInput(workerId, profileDirectory, signInFingerprint);
-    if (resetRequired) {
-      profileReservations.delete(profileDirectory);
-      await this.#unusedProfile(rootOwner, async unused => { assertCurrent(); unused.remove(); });
+    const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
+    const exclusiveLease = input.exclusive ? await this.#acquireExclusiveSession({ workerId, sessionId, system, instance,
+      signal: input.signal, assertCurrent, ...(input.acquisitionRemainingMs === undefined ? {} : { remainingMs: input.acquisitionRemainingMs }) }) : undefined;
+    let launchStarted = false;
+    let reserved = false;
+    let context: BrowserContext;
+    try {
+      input.signal.throwIfAborted(); assertCurrent();
+      if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
       profileReservations.add(profileDirectory);
+      reserved = true;
+      const rootOwner = this.#rootInput(workerId, profileDirectory, signInFingerprint);
+      if (resetRequired) {
+        profileReservations.delete(profileDirectory);
+        reserved = false;
+        await this.#unusedProfile(rootOwner, async unused => { assertCurrent(); unused.remove(); });
+        profileReservations.add(profileDirectory);
+        reserved = true;
+      }
+      input.signal.throwIfAborted(); assertCurrent();
+      launchStarted = true;
+      context = await this.#launchProfile(rootOwner, browserMode, input.acceptDownloads, system);
+    } catch (error) {
+      if (!launchStarted && !hasUnprovedSourceClosure(error)) {
+        if (reserved) profileReservations.delete(profileDirectory);
+        if (exclusiveLease !== undefined) {
+          try { this.#options.browserOwner.database.authority.exclusiveSessionLeases.release(exclusiveLease, this.#options.clock.now().toISOString()); }
+          catch (releaseError) { throw new AggregateError([error, releaseError], "exclusive session prelaunch cleanup failed", { cause: releaseError }); }
+        }
+      }
+      throw error;
     }
-    assertCurrent();
-    const context = await this.#launchProfile(rootOwner, browserMode, input.acceptDownloads, system);
 
     const lifecycle = observeContextLifecycle(context);
     let signingToken: DuoCeremonyLeaseToken | undefined;
@@ -275,7 +296,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       page.on("framenavigated", navigated);
       page.on("frameattached", frameChanged);
       page.on("framedetached", frameChanged);
-      const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
+      let closeProof: BrowserSessionCloseProof | undefined;
+      let profileReleased = false;
       const emit = (phase: DebugEvent["phase"], code?: string): void => { assertCurrent(); this.#options.onDebug?.(workerId, { phase, correlationId: sessionId, ...(code === undefined ? {} : { code }) }); };
       const label = `worker ${workerId} ${system} session`;
       const resource: WorkerBrowserResource = {
@@ -402,12 +424,19 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
           emit("reset");
         },
         close: async (closeInput): Promise<BrowserSessionCloseProof> => {
+          if (closeProof !== undefined) return closeProof;
           detach();
-          await this.#closeWithProof(context, lifecycle, system, closeInput.reason);
-          this.#releaseProfile(profileDirectory);
+          if (!profileReleased) {
+            await this.#closeWithProof(context, lifecycle, system, closeInput.reason);
+            this.#releaseProfile(profileDirectory);
+            profileReleased = true;
+          }
           diagnostics.dispose();
+          if (exclusiveLease !== undefined) this.#options.browserOwner.database.authority.exclusiveSessionLeases.release(exclusiveLease, this.#options.clock.now().toISOString());
+          closeProof = Object.freeze({ sessionId, system, pagesClosed: true, contextClosed: true,
+            ...(exclusiveLease === undefined ? {} : { exclusiveLeaseReleased: true }) });
           if (observeEvent().state === "current") emit("released");
-          return Object.freeze({ sessionId, system, pagesClosed: true, contextClosed: true });
+          return closeProof;
         },
       };
       return Object.freeze(resource);
@@ -417,6 +446,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       try {
         await this.#closeWithProof(context, lifecycle, system, "login-failed");
         this.#releaseProfile(profileDirectory);
+        if (exclusiveLease !== undefined) this.#options.browserOwner.database.authority.exclusiveSessionLeases.release(exclusiveLease, this.#options.clock.now().toISOString());
       } catch (closeError) {
         throw new BrowserSessionClosureUnprovedError(
           [error, closeError],
@@ -541,6 +571,35 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     );
   }
 
+  async #acquireExclusiveSession(input: Readonly<{ workerId: WorkerId; sessionId: string; system: BrowserSystemId; instance: RuntimeInstance;
+    signal: AbortSignal; assertCurrent: () => void; remainingMs?: () => number }>): Promise<ExclusiveSessionLease> {
+    const entry = new URL(resolveSystemEntryUrl(this.#options.config, input.system, input.instance, `${input.system} identity lease`));
+    const account = requireSecret("ucpathUserId", this.#options.protectedSecrets).trim().toLocaleLowerCase("en-US");
+    if (account.length === 0) throw new Error("onbase-session-identity-unavailable");
+    const identityKey = sha256Hex(canonicalJsonStringify({ application: new URL(".", entry).href, account }));
+    const deadline = this.#options.clock.monotonicMs() + this.#options.config.timeouts.sessionAcquireMs;
+    for (;;) {
+      input.signal.throwIfAborted(); input.assertCurrent();
+      const outcome = this.#options.browserOwner.database.authority.exclusiveSessionLeases.acquire({ identityKey,
+        workerId: input.workerId, sessionId: input.sessionId, now: this.#options.clock.now().toISOString() });
+      if (outcome.state === "acquired") return outcome.lease;
+      const remaining = Math.min(deadline - this.#options.clock.monotonicMs(), input.remainingMs?.() ?? Infinity);
+      if (remaining <= 0) throw new OnbaseSessionHeldError();
+      await new Promise<void>((resolve, reject) => {
+        const timer = this.#options.scheduler.schedule(this.#options.clock.monotonicMs() + Math.min(200, remaining), () => {
+          input.signal.removeEventListener("abort", aborted); resolve();
+        });
+        const aborted = () => {
+          timer.cancel();
+          const cause: unknown = input.signal.reason;
+          reject(cause instanceof Error ? cause : new Error("onbase-session-acquisition-cancelled", { cause }));
+        };
+        input.signal.addEventListener("abort", aborted, { once: true });
+        if (input.signal.aborted) { input.signal.removeEventListener("abort", aborted); aborted(); }
+      });
+    }
+  }
+
   async #closeWithProof(
     context: BrowserContext,
     lifecycle: ContextLifecycle,
@@ -552,18 +611,20 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     const errors: unknown[] = [];
     try { if (launch === undefined) throw new ProfileCustodyUnavailableError(); launch.closing(); }
     catch (error) { errors.push(error); }
+    const deadline = this.#options.clock.monotonicMs() + this.#options.config.browser.closeProofMs;
     let timer: ReturnType<BrowserDeadlineScheduler["schedule"]> | undefined;
     const brokerClose = duo === undefined ? undefined : Promise.race([duo.stop(), new Promise<never>((_resolve, reject) => {
-      timer = this.#options.scheduler.schedule(this.#options.clock.monotonicMs() + this.#options.config.browser.closeProofMs,
+      timer = this.#options.scheduler.schedule(deadline,
         () => reject(new Error("duo-broker-close-unproved")));
     })]);
-    const results = await Promise.allSettled([
-      ...(brokerClose === undefined ? [] : [brokerClose]),
-      closeContextWithProof({ clock: this.#options.clock, scheduler: this.#options.scheduler,
-        closeProofMs: this.#options.config.browser.closeProofMs }, context, lifecycle, system, reason),
-    ]);
+    if (brokerClose !== undefined) {
+      try { await brokerClose; } catch (error) { errors.push(error); }
+    }
     timer?.cancel();
-    for (const result of results) if (result.status === "rejected") { const reason: unknown = result.reason; errors.push(reason); }
+    try {
+      await closeContextWithProof({ clock: this.#options.clock, scheduler: this.#options.scheduler,
+        closeProofMs: Math.max(0, deadline - this.#options.clock.monotonicMs()) }, context, lifecycle, system, reason);
+    } catch (error) { errors.push(error); }
     if (errors.length > 0) {
       const failure = retainAuthoritySourceClosure(errors, { directory: { context, owned, launch } });
       try { if (launch !== undefined) launch.uncertain(failure); }
@@ -615,4 +676,9 @@ function readSsoCredentials(source: ProtectedSecretSource): SsoCredentials {
     userId: requireSecret("ucpathUserId", source),
     password: requireSecret("ucpathPassword", source),
   };
+}
+
+export class OnbaseSessionHeldError extends Error {
+  readonly code = "ONBASE_SESSION_HELD";
+  constructor() { super(ERROR_CATALOG.ONBASE_SESSION_HELD.text); this.name = "OnbaseSessionHeldError"; }
 }

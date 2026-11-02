@@ -5,6 +5,7 @@ import { createProductionAssistantTools } from "../../../src/backend/assistant/t
 import { assistantKnowledgeArtifact, createAssistantContext } from "../../../src/backend/assistant/context.js";
 import { AssistantRequestSchema, AssistantResultSchema } from "../../../src/models/dashboard/assistant.js";
 import { type AssistantFunctionContext } from "../../../src/backend/assistant/service.js";
+import { createAssistantAuthorization } from "../../../src/backend/assistant/authorization.js";
 
 
 
@@ -96,6 +97,33 @@ it("does not turn the displayed default into a grant, and requires genuine token
   assert.equal(permission.type, "apply-settings"); if (permission.type !== "apply-settings") throw new Error("settings required");
   const before = f.database.getMeta().authorityGeneration;
   assert.throws(() => f.execute({ ...permission, payload: { ...permission.payload, assistantPermission: { clear: true } } }));
+  assert.equal(f.database.getMeta().authorityGeneration, before);
+});
+
+it("reads the exact person grant and Settings revisions without granting or dispatching", async () => {
+  const f = await fixture(), before = f.database.getMeta().authorityGeneration;
+  const initial = f.authorization.permission();
+  assert.deepEqual(initial, { profileId: f.active.profileId, epoch: f.context.profileEpoch, mode: "every-action",
+    state: "grant-required", policyRevision: 0, settingsRevision: 1, settingsSchemaHash: SETTINGS_SCHEMA_HASH });
+  assert.equal(f.database.getMeta().authorityGeneration, before);
+  assert.equal(f.database.authority.assistantAuthorization.grant(), undefined);
+  assert.equal(f.grant("every-action").state, "applied");
+  const granted = f.database.getMeta().authorityGeneration;
+  assert.deepEqual(f.authorization.permission(), { ...initial, state: "granted", policyRevision: 1, settingsRevision: 2 });
+  assert.equal(f.database.getMeta().authorityGeneration, granted);
+  const foreign = createAssistantAuthorization({ database: f.database, kernel: f.kernel, clock: f.clock,
+    current: () => ({ profileId: randomUUID(), epoch: f.context.profileEpoch }) });
+  assert.throws(() => foreign.permission(), /assistant-permission-authority-invalid/u);
+  createProfileRegistry(f.machine).advanceSession(null);
+  assert.throws(() => f.authorization.permission());
+});
+
+it("refuses permission readback when its captured session epoch changes", async () => {
+  const f = await fixture(); let reads = 0;
+  const authorization = createAssistantAuthorization({ database: f.database, kernel: f.kernel, clock: f.clock,
+    current: () => ({ profileId: f.active.profileId, epoch: f.context.profileEpoch + reads++ }) });
+  const before = f.database.getMeta().authorityGeneration;
+  assert.throws(() => authorization.permission(), /assistant-permission-owner-changed/u);
   assert.equal(f.database.getMeta().authorityGeneration, before);
 });
 
@@ -368,4 +396,24 @@ it.each(["confirm", "cancel"] as const)("keeps stale collection confirmation ref
     assert.equal(f.database.authority.commandAudits.findByCommand(action.command.commandId), undefined);
     assert.deepEqual(f.database.authority.notifications.listByActor("local-operator"), rows);
   });
+});
+
+it("keeps checkpoint recovery operator-only even when a manifest classifies the command", async () => {
+  const f = await fixture();
+  assert.equal(f.grant("every-action").state, "applied");
+  const chat = f.authorization.createChat();
+  const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: f.clock.now().toISOString(),
+    requestedBy: "local-operator", source: "dashboard", family: "run", type: "recover-run",
+    target: { runId: randomUUID(), expectedVersion: 1 } });
+  assert.ok(f.kernel.assistantAvailability().some(entry => entry.family === "run" && entry.action === "recover-run" && entry.availability === "unavailable"));
+  const manifest = f.kernel.assistantManifest();
+  assert.ok(manifest.entries.every(entry => entry.family !== "run" || entry.action !== "recover-run"));
+  f.kernel.assistantManifest = () => ({ ...manifest, entries: [...manifest.entries,
+    { family: "run", action: "recover-run", classification: "external-submit", subject: "classified" }] });
+  const generation = f.database.getMeta().authorityGeneration;
+  assert.throws(() => f.authorization.prepare(chat, command), /assistant-command-values-unbound/u);
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  assert.equal(f.database.authority.commands.get(command.commandId), undefined);
+  assert.equal(f.database.authority.commandAudits.findByCommand(command.commandId), undefined);
+  assert.equal(f.database.authority.assistantAuthorization.actionByCommand(command.commandId), undefined);
 });

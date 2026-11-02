@@ -137,7 +137,7 @@ function options(root: string) {
 }
 
 describe("read-only storage recovery truth", () => {
-  it("reports interruption separately from healthy integrity and preserves all recovery bytes", async () => {
+  it("reports an unowned restore stage as unavailable despite healthy integrity and preserves all recovery bytes", async () => {
     const profile = await createBoundProfileFixture();
     const f = { ...profile, root: profile.stateRoot, clock: systemClock };
     try {
@@ -147,7 +147,8 @@ describe("read-only storage recovery truth", () => {
       const before = snapshot(f.root);
       const report = await doctorAuthorityStorage(f.admission, options(f.root), f.clock, boundProfileCredentials(f.admission));
       assert.equal(report.authority.state, "healthy");
-      assert.equal(report.recovery.state, "interrupted");
+      assert.equal(report.recovery.state, "unavailable");
+      assert.ok(report.recovery.findings.some(row => row.marker === "unowned-recovery-entry" && row.state === "unavailable"));
       const wire = await buildStorageDoctor({ admission: f.admission, credentials: boundProfileCredentials(f.admission), doctorOptions: options(f.root), clock: f.clock,
         serviceState: () => ({state: "never-run", reason: "Explicit backups only"}) });
       assert.deepEqual(wire.recovery, report.recovery);

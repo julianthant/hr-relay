@@ -7,6 +7,7 @@ import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../.
 import { valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { isFreshOccurrenceProof } from "../gates/repeat-proof.js";
 import { readRunCheckpoint } from "../checkpoints/run-checkpoint-reader.js";
+import { transactionCheckpointProvenance } from "../../runs/provenance/task-provenance.js";
 import { decideDurableIntent } from "../policies/durable-intent.js";
 import { runMandatorySavedVerification, completeProtectedWrite } from "./mandatory-saved-verification.js";
 
@@ -55,7 +56,6 @@ import {
   resolveTaskImplFingerprint,
 } from "../../../workflow-kit/validation/build-manifest.js";
 import {
-  FactProvenanceSchema,
   RunCheckpointRecordSchema,
   type RunCheckpointRecord,
 } from "../../../models/workflow/checkpoint.js";
@@ -519,6 +519,7 @@ export async function executeIdempotencyProbe(
     signal: AbortSignal;
     screenshotOwner?: Readonly<{ nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>;
     onRecord?: (taskId: TaskId, batch: BoundedTaskRecordBatch) => void;
+    onTaskSignal?: (signal: AbortSignal) => void;
     actionBinderForInput?: (taskId: string, parsedInput: unknown) => BrowserActionBinder;
     confirmedForInput?: (taskId: string, parsedInput: unknown) => ConfirmedTaskActions | undefined;
   }>,
@@ -553,6 +554,7 @@ export async function executeIdempotencyProbe(
   const proofSchema = commitContract.writeSafety.completion.proofSchema;
   const raw = await deps.sessions.withDriver(need, input.instance, input.signal, async (driver, captureScreenshot) => {
     const invocation = beginBoundedTask(deps, probeRef.taskId, input.signal, (innerSignal, recordData) => {
+      input.onTaskSignal?.(innerSignal);
       const run = RunnableTaskSchema.parse(probeTask.impl.run);
       const confirmed = input.confirmedForInput?.(probeRef.taskId, probeInput);
       return withBrowserActionBinding(input.actionBinderForInput?.(probeRef.taskId, probeInput), () => run({
@@ -803,14 +805,7 @@ function buildTransactionCheckpoint(
 ): RunCheckpointRecord {
   const envelope = identity.run.envelope;
   const instant = IsoInstantSchema.parse(writtenAt);
-  const source = proofSource === "operator-attestation" ? "operator" : "live";
-  const provenance = ["disposition", "proofSource", "proof", "output"].map((path) =>
-    FactProvenanceSchema.parse({
-      path,
-      source,
-      observedAt: instant,
-      originalObservedAt: instant,
-    }));
+  const provenance = transactionCheckpointProvenance(outcome, instant);
   return RunCheckpointRecordSchema.parse({
     workflowId: identity.descriptor.id,
     itemId: envelope.itemId,
@@ -1185,8 +1180,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       descriptorVersion: context.descriptor.version,
       contractFingerprint: context.descriptor.contractFingerprint,
       implFingerprint: resolveImplFingerprint(commitContract.id),
-      provenance: ["disposition", "proofSource", "proof", "output"].map((path) =>
-        FactProvenanceSchema.parse({ path, source: "live", observedAt: now, originalObservedAt: now })),
+      provenance: transactionCheckpointProvenance(outcome, now),
       writtenAt: now,
     });
     deps.authority.withAuthorityTransaction((repositories) => {
@@ -1338,6 +1332,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       throw new Error(
         `transaction node "${context.node.id}" stored proof is bound to a different proof schema; refusing to replay`,
       );
+    }
+    if (outcome.output.schemaHash !== deriveSchemaHash(commitContract.output, "output")) {
+      throw new Error(`transaction node "${context.node.id}" stored output is bound to a different output schema; refusing to replay`);
     }
     const proof = completion.proofSchema.parse(outcome.proof.value);
     const output = commitContract.output.parse(outcome.output.value);
@@ -1770,7 +1767,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
     const naturalKey = IdempotencyKeySchema.parse(keyRaw);
     const businessKeyDigest = deriveIdempotencyKeyDigest(system, naturalKey);
-    const sourceBound = envelope.sourceBound;
+    const storedCheckpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id));
+    const sourceBound = envelope.continuation !== undefined && storedCheckpoint !== undefined && storedCheckpoint.runId !== envelope.runId
+      ? undefined : envelope.sourceBound;
     const repeatBindings = sourceBound?.protectedBindings ?? retainedRunProtectedBindings(run);
     const consent = sourceBound?.warnings.filter((warning) => warning.nodeId === node.id
       && warning.taskId === commitContract.id && warning.system === system && warning.businessKeyDigest === businessKeyDigest);
@@ -1802,7 +1801,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
 
 
-    const storedCheckpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id));
     if (storedCheckpoint !== undefined && (sourceBound === undefined || storedCheckpoint.runId === envelope.runId)) {
 
       assertReplayMatchesFreshFacts(context, commitContract, storedCheckpoint, system, key, keyDigest);

@@ -1,28 +1,24 @@
-import * as filesystem from "node:fs/promises";
-import * as artifactReaders from "../../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
-import * as explorerComposition from "../../../../../src/backend/app/composition/dashboard/explorer.js";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { copyFileSync, readFileSync } from "node:fs";
+import { copyFileSync,readFileSync } from "node:fs";
+import * as filesystem from "node:fs/promises";
 import { join } from "node:path";
-import { it, vi } from "vitest";
-import * as streams from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
-import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
-import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../../../src/backend/app/composition/storage-compose.js";
-import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { RuntimeAlreadyRunningError, RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
-import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import { it,vi } from "vitest";
 import * as accounts from "../../../../../src/backend/accounts/chatgpt-account-service.js";
+import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
+import * as explorerComposition from "../../../../../src/backend/app/composition/dashboard/explorer.js";
+import { composeProfileRuntime,RuntimeCustodyUncertainError } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
 import * as kernel from "../../../../../src/backend/runs/commands/command-kernel.js";
-import { ProfileStorageRelocationUnsupportedError } from "../../../../../src/backend/storage/admission/admission-identity.js";
-import { failureStatus } from "../../../../../src/backend/transports/http/routes/failure-status.js";
-import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
-import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest, storageRelocationRequestFingerprint } from "../../../../../src/rules/commands/commands.js";
-import { NonNegativeIntSchema } from "../../../../../src/rules/identity/ids.js";
+import { RuntimeAlreadyRunningError,RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
+import * as artifactReaders from "../../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
+import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
+import * as streams from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
-import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
+import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
+import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
+import { SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/settings.js";
 
 vi.mock("node:fs/promises", async importOriginal => ({ ...await importOriginal<typeof import("node:fs/promises")>() }));
 
@@ -63,31 +59,17 @@ it("starts the actual dashboard from the same token-owned context and proves res
     const context = f.runtime.selectedContext(f.active.token);
     assert.equal(context.database.getMeta().profileId, f.active.profileId);
     assert.equal(context.admission.stateRoot, f.stateRoot);
-    const plans = kernelFactory.mock.calls[0]?.[0].storageRelocationPlans; assert.ok(plans);
-    const target = { installationId: f.machine.locator.installationId, sourceGeneration: NonNegativeIntSchema.parse(f.machine.locator.generation),
-      sourcePair: { stateRoot: f.machine.locator.stateRoot, artifactRoot: f.machine.locator.artifactRoot }, expectedRevision: NonNegativeIntSchema.parse(0) };
-    const desiredPair = { stateRoot: join(f.workspace, "moved-state"), artifactRoot: join(f.workspace, "moved-artifacts") };
-    const draft = StorageRelocationCommandRequestSchema.parse({ family: "storage-relocation", type: "plan-storage-relocation",
-      commandId: randomUUID(), requestedAt: f.clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", target,
-      payload: { writeId: randomUUID(), desiredPair, desiredDigest: storageRelocationDesiredDigest(target, desiredPair), requestFingerprint: "0".repeat(64) } });
-    const request = StorageRelocationCommandRequestSchema.parse({ ...draft, payload: { ...draft.payload, requestFingerprint: storageRelocationRequestFingerprint(draft) } });
-    const before = context.database.getMeta().authorityGeneration;
-    const transaction = vi.spyOn(context.database, "withAuthorityTransaction");
-    for (const operation of [() => plans.read(), () => plans.project(context.database.authority), () => plans.validate(request)]) {
-      assert.throws(operation, error => {
-        assert.ok(error instanceof ProfileStorageRelocationUnsupportedError);
-        assert.deepEqual(failureStatus(error), { status: 409, body: { state: "error", code: error.code,
-          message: ERROR_CATALOG[error.code].text, retryable: false } });
-        return true;
-      });
-    }
-    assert.equal(transaction.mock.calls.length, 0); transaction.mockRestore();
-    assert.equal(context.database.getMeta().authorityGeneration, before);
-    assert.equal(context.database.authority.commands.get(request.commandId), undefined);
+    const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(dashboard.port)}` });
+    const readPermission = client.assistantPermission?.bind(client); assert.ok(readPermission);
+    assert.deepEqual(await readPermission(), { profileId: f.active.profileId, epoch: context.profileEpoch,
+      mode: "every-action", state: "grant-required", policyRevision: 0,
+      settingsRevision: context.settings.read().record.revision, settingsSchemaHash: SETTINGS_SCHEMA_HASH });
+    assert.equal(context.database.authority.assistantAuthorization.grant(), undefined);
     assert.throws(() => f.runtime.bindSupervisor(f.active.token, { memberEvidence: () => undefined, drainOwnedChildren: async () => undefined }), /owner-mismatch/u);
     await dashboard.stop(); dashboard = undefined;
     assert.throws(() => context.database.getMeta(), /closed/u);
     assert.throws(() => context.admission.assertLive());
+    f.machine.assertLive(); f.machine.release();
     assert.throws(() => f.machine.assertLive());
   } finally { kernelFactory.mockRestore(); if (dashboard !== undefined) await dashboard.stop(); await f.close(); }
 });

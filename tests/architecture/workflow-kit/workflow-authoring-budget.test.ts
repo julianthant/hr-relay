@@ -873,7 +873,7 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
   });
 
   it("arm (c): retained mock literals stay exact and served or sibling additions remain forbidden", () => {
-    assert.equal(Object.values(RETAINED_MOCK_LITERALS).flat().length, 42);
+    assert.equal(Object.values(RETAINED_MOCK_LITERALS).flat().length, 73);
 
     assert.deepEqual(auditWorkflowAuthoringBudget(repositoryInputs(tree)), []);
     for (const path of ["src/dashboard/client/queries/day-queries.ts", "src/dashboard/surfaces/workflows/mocks/new-sibling.ts", "src/dashboard/surfaces/workflows/mocks/workflow-mock-run.tsx", ...Object.keys(RETAINED_MOCK_LITERALS)]) {

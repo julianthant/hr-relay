@@ -1,13 +1,17 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { z } from "zod";
 import { isDirectExecution } from "./scope-files.js";
 
 // Storage closure, backup and restore proofs refuse off macOS, so these files run on macOS runners.
 export const MACOS_FILES: readonly string[] = [
-  "tests/backend/app/composition/dashboard/compose.authenticated-upgrade.integration.test.ts",
+  "tests/backend/storage/maintenance/account-deletion.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",
+  "tests/backend/app/composition/worker/artifact-output.integration.test.ts",
+  "tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts",
   "tests/backend/app/composition/profile-credential-inventory.integration.test.ts",
   "tests/backend/app/composition/storage-compose.integration.test.ts",
-  "tests/backend/app/composition/storage/relocate.integration.test.ts",
   "tests/backend/profiles/profile-session.incomplete-publication.integration.test.ts",
   "tests/backend/profiles/profile-session.credential-migration.integration.test.ts",
   "tests/backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts",
@@ -16,7 +20,6 @@ export const MACOS_FILES: readonly string[] = [
   "tests/backend/storage/admission/admission.profile-upgrade.integration.test.ts",
   "tests/backend/storage/admission/bootstrap-admission.flat-start-clean.integration.test.ts",
   "tests/backend/storage/admission/bootstrap-admission.integration.test.ts",
-  "tests/backend/storage/admission/installation.historical-relocation-upgrade.integration.test.ts",
   "tests/backend/storage/admission/installation.logical-publication.integration.test.ts",
   "tests/backend/storage/configuration/chatgpt-credential-repository.maintenance.integration.test.ts",
   "tests/backend/storage/configuration/credential-key-custody.integration.test.ts",
@@ -36,7 +39,8 @@ export const MACOS_FILES: readonly string[] = [
   "tests/backend/storage/sqlite/profile-local-databases.readonly-binding.integration.test.ts",
   "tests/backend/storage/sqlite/readonly-authority-snapshot.integration.test.ts",
   "tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts",
-  "tests/scripts/dev/secure-env-bootstrap.backup.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.fixed-layout.integration.test.ts",
+  "tests/backend/storage/maintenance/fixed-layout.test.ts",
 ];
 
 // Native browser process proofs run on macOS one at a time, without competing files.
@@ -48,13 +52,19 @@ export const SERIAL_FILES: readonly string[] = [
   "tests/backend/runtime/workers/worker-supervisor.integration.test.ts",
 ];
 
+// The padded-receipt upgrade exceeds its budget beside other storage fixtures.
+export const SERIAL_STORAGE_FILES: readonly string[] = [
+  "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
+];
+
 export type CiProject = "unit" | "integration" | "architecture";
-export type CiRunner = "ubuntu" | "macos" | "serial";
+export type CiRunner = "ubuntu" | "macos" | "serial" | "storage";
 export type CiDurations = Readonly<Record<string, number>>;
 
 const DURATIONS_PATH = "scripts/test/ci-durations.json";
+const ciDurationsSchema = z.record(z.string().startsWith("tests/"), z.number().nonnegative());
 const projectOf = (file: string): CiProject => file.endsWith(".integration.test.ts") ? "integration" : "unit";
-const isSerial = (file: string) => SERIAL_FILES.includes(file);
+const isSingleWorker = (file: string) => SERIAL_FILES.includes(file) || SERIAL_STORAGE_FILES.includes(file);
 
 // Greedy longest-first packing: each file goes to the job with the least measured work so far.
 export function balance(files: readonly string[], jobs: number, weight: (file: string) => number): string[][] {
@@ -72,20 +82,28 @@ export function selectCiFiles(listed: readonly string[], project: CiProject, run
   const macos = [...MACOS_FILES, ...SERIAL_FILES];
   const missing = macos.filter(file => projectOf(file) === project && !listed.includes(file));
   if (missing.length > 0) throw new Error(`CI file lists name files Vitest does not list: ${missing.join(", ")}`);
-  const known = Object.values(durations).sort((a, b) => a - b);
-  const seconds = (file: string) => durations[file] ?? known[Math.floor(known.length / 2)] ?? 1;
+  const known = Object.values(durations).filter(seconds => seconds > 0).sort((a, b) => a - b);
+  const seconds = (file: string) => Math.max(0.1, durations[file] ?? known[Math.floor(known.length / 2)] ?? 1);
   if (runner === "ubuntu") return balance(listed.filter(file => !macos.includes(file)), jobs, seconds)[job - 1] ?? [];
   // Serial proofs run alone; other files share two workers, so they count half their time.
-  const bin = balance(macos, jobs, file => isSerial(file) ? seconds(file) : seconds(file) / 2)[job - 1] ?? [];
-  return bin.filter(file => projectOf(file) === project && isSerial(file) === (runner === "serial"));
+  const bin = balance(macos, jobs, file => isSingleWorker(file) ? seconds(file) : seconds(file) / 2)[job - 1] ?? [];
+  const selected = runner === "serial" ? SERIAL_FILES : runner === "storage" ? SERIAL_STORAGE_FILES
+    : MACOS_FILES.filter(file => !SERIAL_STORAGE_FILES.includes(file));
+  return bin.filter(file => projectOf(file) === project && selected.includes(file));
 }
 
-type VitestReport = { testResults: { name: string; startTime: number; endTime: number }[] };
+const vitestReportSchema = z.object({ testResults: z.array(z.object({
+  name: z.string(), startTime: z.number().nonnegative(), endTime: z.number().nonnegative(),
+})) });
 
 // Vitest JSON reports (`--reporter=json`) record each file's absolute path, start and end time.
-export function durationsFromReports(reports: readonly VitestReport[]): Record<string, number> {
-  const entries = reports.flatMap(report => report.testResults.map(({ name, startTime, endTime }) =>
-    [name.slice(name.lastIndexOf("/tests/") + 1), Math.round((endTime - startTime) / 100) / 10] as const));
+export function durationsFromReports(reports: readonly unknown[]): Record<string, number> {
+  const entries = reports.flatMap(report => vitestReportSchema.parse(report).testResults.map(({ name, startTime, endTime }) => {
+    const normalized = name.replaceAll("\\", "/");
+    const root = normalized.lastIndexOf("/tests/");
+    if (root < 0 || endTime < startTime) throw new Error(`Invalid CI timing for ${normalized}`);
+    return [normalized.slice(root + 1), Math.round((endTime - startTime) / 100) / 10] as const;
+  }));
   return Object.fromEntries(entries.sort(([a], [b]) => a.localeCompare(b)));
 }
 
@@ -94,14 +112,14 @@ if (isDirectExecution(import.meta.url)) {
   if (command === "durations") {
     const dir = args[0] ?? ".";
     const reports = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter(file => file.endsWith(".json"))
-      .map(file => JSON.parse(readFileSync(join(dir, file), "utf8")) as VitestReport);
-    const merged: Record<string, number> = { ...(JSON.parse(readFileSync(DURATIONS_PATH, "utf8")) as CiDurations), ...durationsFromReports(reports) };
+      .map(file => JSON.parse(readFileSync(join(dir, file), "utf8")) as unknown);
+    const merged = { ...ciDurationsSchema.parse(JSON.parse(readFileSync(DURATIONS_PATH, "utf8"))), ...durationsFromReports(reports) };
     writeFileSync(DURATIONS_PATH, JSON.stringify(Object.fromEntries(Object.entries(merged).sort(([a], [b]) => a.localeCompare(b))), null, 2) + "\n");
   } else {
     const [project, runner, listing, slice] = args as [CiProject, CiRunner, string, string];
     const [job, jobs] = slice.split("/").map(Number) as [number, number];
     const listed = (JSON.parse(readFileSync(listing, "utf8")) as { file: string }[]).map(({ file }) => relative(process.cwd(), file));
-    const durations = JSON.parse(readFileSync(DURATIONS_PATH, "utf8")) as CiDurations;
+    const durations = ciDurationsSchema.parse(JSON.parse(readFileSync(DURATIONS_PATH, "utf8")));
     const files = selectCiFiles(listed, project, runner, job, jobs, durations);
     process.stdout.write(files.map(file => file + "\0").join(""));
   }

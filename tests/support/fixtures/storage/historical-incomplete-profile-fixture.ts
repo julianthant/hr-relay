@@ -1,6 +1,8 @@
+import { removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "./historical-run-schema.js";
+import { restorePreReadingArtifactRetention } from "./pre-reading-artifact-retention.js";
 import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
-import { createWorkbookLibraryRepository } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
-import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { restoreEmptyPreMasterWorkbookFixture } from "../../helpers/workbooks/pre-master-schema.js";
+import { SavedWorkbookSchema, encodeSavedWorkbook } from "../../../../src/models/dashboard/workbooks.js";
 import { DatabaseSync } from "node:sqlite";
 import { inspectOpenDatabase } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
@@ -31,7 +33,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../helpers/admission-fixture.js";
 
-export async function createHistoricalRegisteredProfileFixture(options: { sourceVersion: 8 | 9 | 10; workspace?: string; lifetime?: RuntimeLifetimeLock }) {
+export async function createHistoricalRegisteredProfileFixture(options: { sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14; workspace?: string; lifetime?: RuntimeLifetimeLock }) {
   assert.equal(Entry, FakeKeyringEntry, "historical fixture requires the actual fake keychain before backend imports");
   const lifetime = options.lifetime ?? await RuntimeLifetimeLock.acquire(0);
   const fixture = await createBoundProfileFixture({ pending: "onboarding", lifetime, ...(options.workspace === undefined ? {} : { workspace: options.workspace }) });
@@ -73,12 +75,16 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
   let failure: { error: unknown } | undefined;
   try {
     database.exec("PRAGMA foreign_keys=ON; BEGIN EXCLUSIVE");
+    if (options.sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(database);
+    if (options.sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(database);
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     if (options.sourceVersion < 10) {
       const editor = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE TABLE explorer_overrides \([\s\S]*?\n\) STRICT;/u)?.[0];
       assert.ok(editor); database.exec(editor);
     }
     if (options.sourceVersion < 9) database.exec("DROP TABLE assistant_model_preference");
+    removeSchema15RunPause(database);
+    if (options.sourceVersion < 12) restorePreReadingArtifactRetention(database);
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(options.sourceVersion);
     database.exec(`PRAGMA user_version=${options.sourceVersion}; COMMIT`);
     inspectOpenDatabase(database, options.sourceVersion);
@@ -137,20 +143,24 @@ function historicalAuthorityArchive(profileRoot: string, binding: { installation
       .run(version, primary.authorityGeneration, createdAt);
     database.exec(`PRAGMA user_version=${version}; PRAGMA application_id=${AUTHORITY_APPLICATION_ID}`);
     if (copyValue !== undefined) {
-      const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => {
-        database.exec("BEGIN");
-        try { const result = work(); database.exec("COMMIT"); return result.result; }
-        catch (error) {
-          try { database.exec("ROLLBACK"); }
-          catch (cleanup) {
-            const retained = retainAuthoritySourceClosure([error, cleanup], { database, admission: { lifetime } });
-            lifetime.retainSourceClosure(retained); throw retained;
-          }
-          throw error;
+      const libraryId = randomUUID();
+      const saved = SavedWorkbookSchema.parse({ libraryId, version: 1, createdAt, savedAt: createdAt,
+        workbook: { libraryId, name: "Synthetic historical copy.xlsx", themes: [], hasFormulas: false,
+          sheets: [{ id: "sheet", name: "Synthetic", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: copyValue }] }] }] } });
+      const values = [saved.libraryId, saved.version, saved.createdAt, saved.savedAt, JSON.stringify(encodeSavedWorkbook(saved))];
+      database.exec('BEGIN');
+      try {
+        database.prepare('INSERT INTO workbook_library(id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(...values);
+        database.prepare('INSERT INTO workbook_library_history(workbook_id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(...values);
+        database.exec('COMMIT');
+      } catch (error) {
+        try { database.exec('ROLLBACK'); }
+        catch (cleanup) {
+          const retained = retainAuthoritySourceClosure([error, cleanup], { database, admission: { lifetime } });
+          lifetime.retainSourceClosure(retained); throw retained;
         }
-      } });
-      createWorkbookLibraryService({ repository, clock: systemClock }).create({ name: "Synthetic historical copy.xlsx", themes: [], hasFormulas: false,
-        sheets: [{ id: "sheet", name: "Synthetic", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: copyValue }] }] }] });
+        throw error;
+      }
     }
     inspection = inspectOpenDatabase(database, version);
   } catch (error) { failure = { error }; }
@@ -256,7 +266,7 @@ export async function createHistoricalIncompleteProfileFixture(options: { keyFor
   const keyStat = statSync(keyPath), controlPath = join(root, ".tracker", "control", "profile-registry.json");
   const control = JSON.parse(readFileSync(controlPath, "utf8")) as Record<string, unknown>;
   fixtureJson(controlPath, { ...control, schemaVersion: 4, digest: createHash("sha256").update(canonicalJsonStringify(registry)).digest("hex"),
-    revision: registry.revision, generation: registry.sessionGeneration, operations: [],
+    revision: registry.revision, generation: registry.sessionGeneration, operations: [], completedRestores: [],
     erasures: [{ profileId: draft.profileId, originOperationId: operation.operationId, head: { state: "never-erased", epoch: 0 },
       credentialKey: { keyId: head.key.keyId, binding: { installationId, profileId: draft.profileId },
         file: { device: keyStat.dev, inode: keyStat.ino, digest: createHash("sha256").update(keyBytes).digest("hex") } } }],

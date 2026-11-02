@@ -1,13 +1,14 @@
 import { createHash } from "node:crypto";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { WORKBOOK_LIBRARY_MIGRATION } from "./workbook-library-repository.js";
+import { EXCLUSIVE_SESSION_LEASE_MIGRATION } from "./exclusive-session-leases.js";
+import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION } from "./workbook-library-repository.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 11;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 15;
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
@@ -768,11 +769,34 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     `DELETE FROM assistant_grants
       WHERE json_extract(payload_json,'$.policy.mode') IN ('before-submits','without-asking')`,
   ] },
+  { version: 12, statements: [
+    "DROP TRIGGER artifacts_extracted_immutable",
+    `UPDATE artifacts SET payload_json=json_object('binding','unbound-source','extractionId',id,'extraction',json(payload_json))
+      WHERE kind='extracted'`,
+    `CREATE TRIGGER artifacts_extracted_immutable BEFORE UPDATE ON artifacts
+      WHEN OLD.kind='extracted'
+      BEGIN SELECT RAISE(ABORT,'artifacts-extracted-immutable'); END`,
+    "DROP TRIGGER artifacts_retained",
+    `CREATE TRIGGER artifacts_retained BEFORE DELETE ON artifacts
+      WHEN OLD.kind IN ('generated','extracted') OR (OLD.kind='imported' AND json_type(OLD.payload_json,'$.submittedJson')='text')
+      BEGIN SELECT RAISE(ABORT,'artifact-evidence-retained'); END`,
+  ] },
+  { version: 13, statements: WORKBOOK_MASTER_MIGRATION.statements },
+  EXCLUSIVE_SESSION_LEASE_MIGRATION,
+  { version: 15, statements: [
+    "ALTER TABLE runs ADD COLUMN pause_state TEXT CHECK(pause_state IS NULL OR pause_state IN ('requested','paused'))",
+    `CREATE TRIGGER run_pause_insert BEFORE INSERT ON runs
+      WHEN NEW.pause_state IS NOT json_extract(NEW.lifecycle_json,'$.pause.state')
+      BEGIN SELECT RAISE(ABORT,'run-pause-authority-mismatch'); END`,
+    `CREATE TRIGGER run_pause_update BEFORE UPDATE ON runs
+      WHEN NEW.pause_state IS NOT json_extract(NEW.lifecycle_json,'$.pause.state')
+      BEGIN SELECT RAISE(ABORT,'run-pause-authority-mismatch'); END`,
+  ] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
-  toSchemaVersion: 8 | 9 | 10 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
-  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10)
+  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14)
     || !isSupportedStoppedAuthoritySchemaVersion(fromSchemaVersion) || fromSchemaVersion < 7 || fromSchemaVersion >= toSchemaVersion)) throw new Error('authority-upgrade-plan-target-unsupported');
   const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
   return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,
@@ -783,14 +807,17 @@ export function migrationTableNames(version: number): readonly (AuthorityTableNa
   return [...(version < 10 ? ["explorer_overrides" as const] : []), ...AuthorityTableNameSchema.options.filter(name => (version >= 4
     || (name !== "workbook_library" && name !== "workbook_library_history"))
     && (version >= 8 || !name.startsWith("assistant_"))
-    && (version >= 9 || name !== "assistant_model_preference"))];
+    && (version >= 9 || name !== "assistant_model_preference")
+    && (version >= 14 || name !== "exclusive_session_leases")
+    && (version >= 13 || !["workbook_creations", "workbook_types", "workbook_operations"].includes(name)))];
 }
 
 export function auditMigrationTableCoverage(): readonly string[] {
   const statements = [...SQLITE_MIGRATIONS[0].statements, ...WORKBOOK_LIBRARY_MIGRATION.statements, ...SQLITE_MIGRATIONS.filter(migration => migration.version >= 8).flatMap(migration => migration.statements)];
   const names = new Set<string>();
-  for (const statement of statements) for (const match of statement.matchAll(/(CREATE|DROP) TABLE ([a-z_]+)/gu)) {
-    if (match[1] === "CREATE") names.add(match[2]);
+  for (const statement of statements) for (const match of statement.matchAll(/(CREATE|DROP) TABLE ([a-z_]+)|ALTER TABLE ([a-z_]+) RENAME TO ([a-z_]+)/gu)) {
+    if (match[3]) { names.delete(match[3]); names.add(match[4]); }
+    else if (match[1] === "CREATE") names.add(match[2]);
     else names.delete(match[2]);
   }
   const registered = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);

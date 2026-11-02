@@ -63,7 +63,7 @@ const changes: readonly [string, (fixture: ProfileFixture) => () => void][] = [
   ["verifier pepper", f => rewrite(join(f.machine.stateRoot, "machine", "profile-pepper"))],
   ["registry version", f => rewrite(join(f.machine.stateRoot, "machine", "profile-registry-version.json"))],
   ["operations entry", f => addFile(join(f.machine.stateRoot, "machine", "operations"), "unexpected.json")],
-  ["receipts entry", f => addFile(join(f.workspace, ".tracker", "control", "relocation-receipts"), "unexpected.json")],
+  ["layout journal appearance", f => addFile(join(f.workspace, ".tracker"), "fixed-layout.json")],
   ["journal appearance", f => addFile(join(f.workspace, ".tracker", "control"), "journal.json")],
   ["control upgrade", f => addFile(join(f.workspace, ".tracker", "control"), "profile-control-upgrade.json")],
   ["device recertification", f => addFile(join(f.workspace, ".tracker", "control"), "device-recertification.json")],

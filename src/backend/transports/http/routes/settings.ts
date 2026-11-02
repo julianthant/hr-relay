@@ -1,12 +1,11 @@
-import { buildSettingsFacts } from "../../../runs/queries/settings.js";
 import { buildSettingsEditor } from "../../../runs/queries/settings-editor.js";
+import { buildSettingsFacts } from "../../../runs/queries/settings.js";
 
-import type { DashboardApp } from "./api-types.js";
-import type { SettingsRouteDeps } from "./settings-types.js";
-import { StorageRelocationPlanViewSchema } from "../../../../rules/commands/commands.js";
-import { NativePathPickerRequestSchema, NativePathPickerResponseSchema } from "../../../../models/dashboard/native-path-picker.js";
+import { NativePathPickerRequestSchema,NativePathPickerResponseSchema } from "../../../../models/dashboard/native-path-picker.js";
 import { InvalidNativePickerHintError } from "../native-path-picker.js";
+import type { DashboardApp } from "./api-types.js";
 import { wireError } from "./failure-status.js";
+import type { SettingsRouteDeps } from "./settings-types.js";
 
 export function registerSettingsRoutes(app: DashboardApp, deps: SettingsRouteDeps): void {
   // Compatibility facts and workflow capabilities are read-only.
@@ -14,11 +13,6 @@ export function registerSettingsRoutes(app: DashboardApp, deps: SettingsRouteDep
 
   // values, provenance and editability are server-owned; this route has no mutation arm.
   app.get("/api/v1/settings/editable", (c) => c.json(buildSettingsEditor(deps.settingsEditor)));
-
-  app.get("/api/v1/settings/storage-relocation", (c) => {
-    if (deps.storageRelocationPlans === undefined) return c.json({ state: "error", code: "STORAGE_RELOCATION_UNAVAILABLE", message: "Storage relocation plan reader is unavailable", retryable: false }, 503);
-    return c.json(StorageRelocationPlanViewSchema.parse(deps.storageRelocationPlans.read()));
-  });
 
   app.post("/api/v1/settings/path-picker", async (c) => {
     const request = NativePathPickerRequestSchema.parse(await c.req.json());

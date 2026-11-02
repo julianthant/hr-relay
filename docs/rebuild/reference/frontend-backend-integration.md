@@ -5,6 +5,18 @@ configuration, Settings, inbox and cross-date search with local workflow produce
 route can exist without being mounted by the product. The tables below describe both the present
 producer and the requirements for replacing it.
 
+Run and item Pause/Resume, exact-membership Pause all, and confirmed Pause all and quit use the
+canonical typed command facade. The application lifecycle query supplies runtime generation,
+current target versions and update availability. Application pause commands refresh every affected
+run in the served projection before quit notification. Queue producers retain the orthogonal pause
+state and available pause command. Ordinary Rerun accepts done, failed and interrupted sources and
+starts fresh; native Retry and Restart retain their lifecycle semantics. A separate server-authored
+Recover completed steps action composes `run/recover-run` through the same client and confirmation
+flow. The server derives its checkpoint recovery plan from an exact failed or interrupted source.
+Readback verifies the new item attempt while the source remains unchanged. Incompatible contracts,
+uncertain writes and unavailable retained evidence show the named recovery refusal. Host updater installation has no
+production dispatch; its absence remains explicit in the lifecycle query.
+
 ## Client facade and boundaries
 
 `src/dashboard/client/index.ts` assembles `DashboardClient` from `queries.ts`, `commands.ts`, and
@@ -32,6 +44,13 @@ use existing components. Served Explorer timelines come from registered backend 
 selected `profileId`, `epoch`, `revision` and canonical preference. The response uses `no-store`;
 missing, corrupt or refused authority returns a coded unavailable response rather than a browser
 default. The authenticated selected-profile composition owns the view.
+
+`GET /api/v1/assistant/permission` uses the same typed client and selected-person authorization.
+Its strict view binds the person, session epoch, policy revision, and current Settings revision/schema.
+It distinguishes `grant-required` from `granted` and exposes only `every-action`. The read creates
+no grant or action, uses `no-store`, and refuses revoked, changed or invalid authority. Permission
+grants still require the existing explicit operator Settings command; workflow proposals still
+require their separate confirmation. The served Settings permission control is not yet bound to this read.
 
 The composer recognizes the canonical setup command constants from `models/dashboard/assistant.ts`.
 A model read uses that served view. A model set goes through the existing `CommandExecutor` and
@@ -115,7 +134,7 @@ resolved at its owning contract before workflow execution.
 | Replace extraction or a reading step with manual input | PDF `ocrMode` selects extraction or manual review without disabling delegation. Typed manual reading values belong to a specific workflow/step/field; form-fill/save/submit actions stay included. | Persist the mode, typed values, operator provenance and schema/revision with the accepted plan. Manual OCR starts with blank predefined records; delegated OCR still needs explicit immutable approval, while standalone OCR has no downstream approval and its Records stay editable after completion; persisting those edits needs a revision-bound backend contract. The normal Read document checkbox controls extraction and its included count. Validate identity, required fields, page bindings and downstream data; manually entered assertions never substitute for a submit receipt or permission. Reuse the owning intake/start contracts before admitting served manual capabilities. Existing served Person Lookup/Separations descriptors are unchanged by the preview. | `workflow-manual-input.test.ts`, `workflow-mock-model.test.ts`; `workflow-manual-input.test.ts`, `ocr-launch-plan.test.ts`, `ocr-direct.test.ts`, `ocr-card-layout.test.ts` and `workflow-mocks.test.ts`. Preview field keys and aliases are presentation contracts, not admitted backend DTOs. |
 | Import, read and update a roster | Worker import → choose header/columns → optional canonical field bindings → register copy. Workflow readers use field IDs, not display labels or column positions. | Preserve source/header/column provenance, mapping revision and stable row identity. Persist only selected data. Refuse duplicate bindings; show canonical value issues while retaining original library cells. Workflow execution validates rows through canonical coercers and the workflow schema; invalid typed patches refuse atomically. A workflow roster update needs the owning workflow's confirmed outcome and required approval; reconcile unknown outcomes before retry. Durable library storage and workflow write authority remain backend work. | `hr-gpt-polish.test.ts`, `spreadsheet-column-import.test.ts`, `spreadsheet-fields.test.ts`, `spreadsheet-history.test.ts`; `tests/parity/spreadsheet-xlsx-compatibility.test.ts` covers the real worker, mapping, excluded sheet, edit and XLSX export. |
 | Confirm a completed action | Guarded local approval, discard/restore, launch/rerun and deletion → existing shared success toast. Refused actions return no success notification; messages contain no entered field values. | Replace local completion with exact matching command acknowledgment/readback. Preserve pending, refused and uncertain arms; an optimistic click cannot certify success. | `workflow-review-actions.test.ts`; `ocr-launch-plan.test.ts` and `ocr-direct.test.ts`. |
-| Save a setting | Effective/default/override metadata → typed edit → revision-bound save after typing settles (700 ms ordinary, 1200 ms credentials) or focus leaves the field → matching readback. Moving within a composite field does not flush; invalid drafts keep inline validation. Paths retain their native picker and reviewed location plan. | No Unsaved changes text. Only matching acknowledgment plus readback emits the shared value-free saved toast. Refusal emits a danger toast; conflict or uncertainty emits a warning toast. Retain drafts and exact retry identity; blur never automatically retries a failed attempt. Persisted and active revisions stay distinct; save feedback survives toast expiry. Protected values follow existing backend authority. | `settings-save-feedback.test.ts`, `settings-editor-surface.test.ts`, `settings-protected-surface.test.ts`, `settings-relocation-surface.test.ts`; `tests/parity/settings-save-toasts.test.ts`. |
+| Save a setting | Effective/default/override metadata → typed edit → revision-bound save after typing settles (700 ms ordinary, 1200 ms credentials) or focus leaves the field → matching readback. Moving within a composite field does not flush; invalid drafts keep inline validation. Ordinary folders retain native pickers; app-data paths are read-only. | No Unsaved changes text. Only matching acknowledgment plus readback emits the shared value-free saved toast. Refusal emits a danger toast; conflict or uncertainty emits a warning toast. Retain drafts and exact retry identity; blur never automatically retries a failed attempt. Persisted and active revisions stay distinct; save feedback survives toast expiry. Protected values follow existing backend authority. | `settings-save-feedback.test.ts`, `settings-editor-surface.test.ts`, `settings-protected-surface.test.ts`, `settings.paths-surface.test.ts`; `tests/parity/settings-save-toasts.test.ts`. |
 | Connect ChatGPT | Continue invokes the account port directly; show verified account state and acknowledged sign-out. | OAuth, consent, eligibility and secure token persistence are backend responsibilities. A logged-in identity alone does not establish subscription-based OCR eligibility. Keep expired, unavailable and usage-limit states distinct. | `chatgpt-account.test.ts` and the ChatGPT account browser specs. Check official eligibility before replacing the preview adapter. |
 | Manage a worker and keep an idle browser alive | Resource state → add/pause/resume/stop/remove command. A white five-minute ring requests refresh only while idle and every resource is ready. | Refresh the owned physical browser session, not the dashboard page. Backend checks session identity, ownership/generation and busy/replaced refusal. Rearm only after matching acknowledgment; use/unavailability/unmount cancels the timer. No uncertain/refused automatic resubmission. | `session-preview-command-model.served.test.ts`, `session-idle-model.test.ts` and the Sessions parity controls. Pending controls hydrate from native operations after remount; use, another control, replacement, unavailable authority or unmount cancels the ring. Only all exact physical acknowledgments rearm it. |
 | Inspect readiness | Served Preflight/storage checks with scope/fingerprint/time → rerun → remedy navigation. | Retain completed geometry during rerun; acknowledge the checked identity/time. A remedy navigates, never repairs merely by rendering. Missing checks remain explicit. | `settings-status-sections.test.ts`, `settings-storage-doctor.test.ts`; Preflight browser spec. |
@@ -146,13 +165,14 @@ field membership and discriminated states. The client checks identity as well as
 | Lazy run sections and rerun values | `queries/detail-queries.ts`, `queries/rerun-queries.ts` | `data.ts`, `trust.ts`: `GET /api/v1/runs/:runId/:section`; `data.ts`: `/rerun-values` |
 | Verified diagnostic bytes | `queries/detail-queries.ts` | `trust.ts`: `GET /api/v1/diagnostic-bundles/:bundleId`, `/manifest`, `/attachments/:artifactId`; verified artifact URL `/artifacts/v1/:artifactId` |
 | ChatGPT account | `queries/chatgpt-account-queries.ts` | `chatgpt-account.ts`: `GET /api/v1/settings/chatgpt-account`, `/sign-in/:attemptId`; `POST /sign-in`, `/sign-in/:attemptId/cancel`, `/sign-out` under the account path |
-| Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/facts`, `/editable`, `/storage-relocation`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
+| Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/facts`, `/editable`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
 | Preflight | `queries/preflight-queries.ts`, `queries/chatgpt-account-queries.ts` | `settings-preflight.ts`: `GET /api/v1/preflight`, `POST /api/v1/preflight/rerun`; explicit diagnostic through the existing `chatgpt-account.ts`: `POST /api/v1/settings/chatgpt-account/test-ocr` |
 | Storage doctor | `queries/storage-queries.ts` | `storage.ts`: `GET /api/v1/storage/doctor/latest`, `/api/v1/storage/doctor` |
 | Notifications | `queries/notification-queries.ts` | `notifications.ts`: `GET /api/v1/notifications`, `/status`, `/:notificationId/target` |
 | Analytics | `queries/activity-queries.ts` | `activity.ts`: `GET /api/v1/reports/activity`, `/api/v1/reports/activity.csv`, `/api/v1/reports/activity/population`, `/api/v1/reports/activity/population/selected`, `/api/v1/reports/activity/population.csv` |
 | Explorer | `queries/explorer-queries.ts` | `explorer.ts`: read-only `GET /api/v1/explorer` |
 | Intake | `queries/intake-queries.ts` | `intake.ts`: `POST /api/v1/intake/files`, `GET /api/v1/intake/:sessionId` |
+| Workbook revisions | `queries/workbook-library-queries.ts` | `workbooks.ts`: read-only `GET /api/v1/workbooks/:libraryId/revisions/:version`; exact CAS revision for attachment open/download, independent of named-version history |
 | Commands | `commands/shared-commands.ts` | `commands.ts`: `POST /api/v1/commands`, `/api/v1/commands/bulk` |
 | Day events | `subscriptions/subscription.ts` | `shell.ts`: `GET /events/v1?topics=dashboard-day:<day>` |
 
@@ -296,13 +316,17 @@ or coverage floor changes merely to make wiring pass.
 [execution and sessions](execution-and-sessions.md), and [clock, configuration, and secrets](clock-config-secrets.md)
 own their backend policies.
 
-## Authenticated local storage upgrade handoff
+## Launch-time person storage upgrade
 
-The existing profile sign-in endpoint reports `PROFILE_UPGRADE_STARTING` through its ordinary refused/code presentation for an authenticated READY native7 profile. It issues no session cookie. The HTTP owner proves both request-body completion and actual response finish/transfer settlement before the whole-app owner fences and drains its own public/selected transport and profile resources. The handoff never closes a listener from inside its still-admitted initiating transfer.
+Dashboard bootstrap upgrades supported registered READY person databases before shared runtime
+admission, HTTP listeners, notification producers or account providers. The same lifetime listener
+retains stopped exclusive custody through source inspection, verified backup, migration and current
+readback. A failed upgrade prevents the public shell from starting and reports
+`STORAGE_PROFILE_UPGRADE_REFUSED`; uncertain native closure retains its actual resource owners.
 
-After proved old profile/server/shared-admission closure, the same whole-app owner reacquires exclusive installation custody, once-consumes and revalidates the authenticated identity witness, then invokes the existing backed-up READY upgrade service with a fresh registered claim. Strict readback and exclusive release precede a new shared public shell on the same loopback port. The operator signs in afresh afterward. No second endpoint, UI component, executor, startup migration or server-lock exemption exists.
-
-The long-lived CLI awaits the actual replacement owner's failure/stop lifetime; bootstrap does not release its stale original admission after application ownership has transferred. Ordinary stop fences synchronously and retains its cached outcome. Transfer, closure, exclusive acquisition, revalidation, upgrade or restart failure remains terminal and visible, retaining every owner whose closure is unproved; no automatic retry follows uncertain mutation.
+Sign-in authenticates a current profile through the ordinary endpoint and session cookie. It does
+not dispatch storage maintenance or restart the app. Pending onboarding and logout continue through
+their existing recovery boundaries.
 
 ### Profile onboarding boundary
 

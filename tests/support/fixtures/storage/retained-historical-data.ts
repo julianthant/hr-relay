@@ -56,7 +56,8 @@ export function retainedHistoricalData(f: { databasePath: string; profileRoot: s
       configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint },
       lifecycle: unknownWrite ? { state: "parked-write", writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, parkedAt: at, code: "unknown", message: "Historical outcome remains unknown" }
         : { state: "terminal", outcome: "interrupted", endedAt: at }, version: 5, updatedAt: at });
-    const columns = runRecordColumns(run), keys = Object.keys(columns);
+    const columns = Object.fromEntries(Object.entries(runRecordColumns(run)).filter(([name]) => name !== "pause_state"));
+    const keys = Object.keys(columns);
     raw.prepare(`INSERT INTO runs (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`).run(...Object.values(columns));
     if (unknownWrite) {
       const attempt = WriteAttemptRecordSchema.parse({ ...ledger.attempt, outcome: { state: "parked", code: "unknown", message: "Historical outcome remains unknown", authorityReason: reason } });

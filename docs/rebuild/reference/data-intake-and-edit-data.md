@@ -143,11 +143,13 @@ outcomes remain separate from the original review seed in a derived result check
 approval. Before registration,
 intake must bind `sourceRunId` to the actual run and manual assertions to the authenticated operator.
 The definitions and mini-stores are audited through a test-only inventory; neither public nor child
-production registries contain them. No reading versions or review revisions are persisted here.
+production registries contain them. Their task outputs have no production persistence binding; review revisions are not persisted.
 
-The native `artifacts` table stores `imported`, `extracted`, and `generated` rows. `AuthorityDatabase.authority.ocrExtractions` stores admitted OCR records under `${sourceSha256}#${sourcePage}#${formType}`. An identical whole-record replay returns `existing`; different content at that key throws. Producer or timestamp changes can therefore conflict even when answer fingerprints agree.
+The native `artifacts` table stores `imported`, `extracted`, and `generated` rows. `AuthorityDatabase.authority.ocrExtractions.insert` accepts only a validated `OcrPageReading` and stores its exact source-bound `extractionId`, full page input and admitted extraction. Reusing the same reading identity and content returns `existing`; changing any content at that identity refuses with `ocr-extraction-replay-conflict`. A deliberate reread uses a new `readingId` and appends a separate extraction. `get(extractionId)` reads exactly that version. `findBySource(imageSha256)` returns every retained version in page/ID order, never a selected latest reading.
 
-`src/backend/storage/sqlite/extracted-artifact-row.ts` checks record/column identity on document queries. `artifacts_extracted_immutable` in `migrations.ts` refuses updates. Storage does not publish task output to review.
+`src/models/ocr/stored-extraction.ts` owns the current stored evidence union. `source-bound` retains original-PDF, rendered-image, manifest and reading identities. `unbound-source` preserves an extraction and its original artifact ID when those bindings were never recorded; it cannot supply missing PDF or reading provenance. New repository inserts cannot create unbound evidence. Migration 12 wraps existing extraction payloads in that explicit state without changing their extraction content or artifact identity. The stopped upgrade validates the source format and verifies a backup before conversion; ordinary readers accept only the current envelope.
+
+`src/backend/storage/sqlite/extracted-artifact-row.ts` checks every stored extraction against its native columns. `artifacts_extracted_immutable`, `artifacts_no_replace` and `artifacts_retained` protect updates, replacement and deletion. The existing artifact authority, inspection, backup and deletion inventories retain both evidence states. Storage does not publish task output to review or authenticate a production OCR caller.
 
 The `review` and `people` section names and review-record schemas exist. `buildRunSection` in `src/backend/runs/queries/run-sections.ts` currently throws `SectionUnavailableError` for them. There is no served OCR acceptance/correction/child-dispatch flow.
 
@@ -159,11 +161,21 @@ The `review` and `people` section names and review-record schemas exist. `buildR
 
 `normalization/read-contact-advice` applies deterministic relationship, phone, country, state, and ZIP rules. Optional geocoding uses Census before Nominatim for US-shaped addresses, otherwise Nominatim. It records city/state/ZIP advice and observation provenance; it does not offer street-line replacements. Its output includes `normalized`, `relationshipCanonical`, `changes`, and `complete`, `ambiguous`, or `advisory-unavailable` disposition. Ambiguity takes precedence when unresolved fields remain. No AI normalization arm exists. This read task does not approve or submit the advised values.
 
-### 4.6 Workbook projections
+### 4.6 Artifact projections
 
 `DurableArtifactProjectionSpec` in `src/models/workflow/artifact-projection.ts` declares a producing node/path, record schema, stable key fields, sink, and blocking behavior. The workflow factory validates declarations. The executor commits a checkpoint and derived update rows together, then blocks on its injected projector. Missing wiring or projection failure is a node failure, not a successful run or a dedicated parked-projection state. No registered workflow currently declares `artifactProjections`.
 
-`createArtifactSinkProjector` in `src/backend/storage/artifacts/artifact-sink-projector.ts` resolves pending updates through `artifactOutbox`, `artifactSinkHeads`, and `generatedArtifacts` repositories over the native artifact store. It acquires an exclusive destination lock, checks update order and publication generation, and skips already-projected updates. Head advancement and acknowledgment commit together after file publication. Failed publication remains `failed` or `conflict` and propagates.
+`createArtifactSinkProjector` in `src/backend/storage/artifacts/artifact-sink-projector.ts` resolves pending updates through `artifactOutbox`, `artifactSinkHeads`, and `generatedArtifacts` repositories over the native artifact store. It acquires an exclusive destination lock, checks update order and publication generation, and skips already-projected updates. Head advancement and acknowledgment commit together after file publication. Failed publication remains `failed` or `conflict` and propagates. Lock and descriptor closure failures
+retain actual custody and block worker admission release.
+
+`named-file-output-sink.ts` publishes one named artifact for a run through the closed `documents-file`
+sink kind. Its durable sink key includes the original run ID. `worker/artifact-output.ts` composes the
+projector and resolves the configured documents directory from the source run's retained, verified
+configuration snapshot. `namedArtifactOutput` validates the task's artifact reference and single safe
+filename. The sink verifies retained bytes, syncs a private stage, records preparation, and atomically
+links to an absent destination before head/ack settlement. Existing files, directories and symlinks
+refuse; even byte-identical unowned destinations are collisions. A run cannot register a second named
+output. The zip's folder membership belongs to the producing workflow; publication preserves its bytes.
 
 `createXlsxRetentionSink` in `xlsx-retention-sink.ts` owns the four-column layout `stableKey`, `keyValues`, `record`, `projectedAt`. It upserts by stable key and verifies the current head and retained bytes before writing. Existing unowned files, missing recorded files, symbolic-link destinations, and changed bytes refuse. A head-hash conflict preserves the operator file and writes the intended update beside it as `.pending-<outboxId>.xlsx`.
 
@@ -256,7 +268,7 @@ These rules identify the enforcing seam rather than relying on presentation alon
 6. `defineIntakeProjection` requires the canonical schema object at every mapped leaf; `intakeProjectionRegistry` requires the descriptor's input schema object.
 7. `admitOcrExtraction` checks every declared field and typed absence without granting weaker admission to a producer.
 8. `groupStack` matches exact name keys across the supplied stack and keeps unidentified, duplicate, incomplete, and wrong-form pages visible.
-9. `imported-artifacts.ts` and native triggers hold submitted import content immutable; OCR insertion refuses a different whole reading at an existing page/form key.
+9. `imported-artifacts.ts` and native triggers hold submitted import content immutable; OCR insertion refuses a different whole reading at an existing extraction ID.
 10. `artifact-sink-projector.ts` and `xlsx-retention-sink.ts` serialize publication and refuse unowned or changed workbook bytes.
 11. `rerunDiff` compares stable-item membership separately from changed input hashes.
 12. `data.ts` serves checkpoint values for reading; the start planner admits new Rerun values without mutating the source.
@@ -276,3 +288,54 @@ Its 42 rows bind EID and department, with a supplied effective-date constant. Th
 - Saved-mapping persistence, visible reuse, and commands for constants and unbinding targets.
 - Workflow declarations and operator workbook columns for retention projections, including I-9 consumers.
 - Dashboard connections for Intake, OCR, Records, and Rerun values through the existing component set and shared client/models.
+
+## Saved workbook reference data
+
+`backend/workbooks/` owns the persisted library. Every workbook has a served type; unclassified
+imports use General workbook until the operator assigns a keyed type. Types retain canonical field
+IDs, a key field and an optional default workbook. A run's requested item keys resolve against a
+single immutable wire snapshot of the selected/default workbook, type and live revision. Dates in
+these snapshots are tagged ISO values. Workbook rows do not become run items through this API.
+Key matching retains nonempty strings exactly and compares finite numeric cells by their stable string value. It does not pad numeric keys or coerce booleans, dates, blanks or null. Numeric/string collisions stay ambiguous; snapshots retain original typed cell values.
+
+The live `version` is a CAS revision. Named versions are explicit operator snapshots; saves, run
+patches and manual Sync do not create versions. Existing saved revisions retain their data with
+migration provenance. The immutable creation record independently proves workflow publication replay.
+Operator-approved manual named-version retention preserves the operator-entered version name in local durable workbook authority and its operation journal only; it grants no process or OS notification egress.
+
+Read-only revision lookup reconstructs the exact CAS revision for chat attachment open/download.
+It starts from immutable creation or a retained migration snapshot, then replays applied journal
+requests with the immutable type fields and cell ownership rules. Operation digests, identities,
+receipts and resulting revisions must agree. Missing proof returns `WORKBOOK_REVISION_UNAVAILABLE`;
+corrupt evidence returns `WORKBOOK_STORAGE_CORRUPT`. Reads neither create named versions nor use
+the current master in place of an older requested revision.
+
+All content writers first persist operation identity, digest and admission sequence, then settle the
+oldest pending operation for that workbook in a short transaction. The master, cell ownership and
+receipt journal commit together. Conflicts settle as resolve-required receipts without partial writes.
+Prospective content that exceeds the schema's limits settles refused/invalid without changing
+the master or ownership; the queue then continues with its next operation.
+Run patches address canonical fields and stable keys, and fill only empty cells or unchanged Relay
+fills. Operator edits, including clears, retain ownership tombstones. Explicit row selections must
+recheck current key membership and CAS revision. The journal retains source identity, key, old/new
+cell values, time and sequence; reusing an operation ID with different input refuses.
+
+Workbook-scoped HTTP commands retain the operator loopback/JSON guards. Operator source identity
+and time are server-owned. Manual Sync downloads/parses before admission, rechecks the expected
+revision, and reconciles owned fields by unique keys. It preserves Relay fills and operator edits to
+those fields, including cell metadata. Without an authenticated SharePoint download port Sync returns
+`WORKBOOK_SYNC_UNAVAILABLE`. Workflow start snapshot retention, run-bound writer composition and
+Logs row-resolution dispatch remain integrations owned by Runs; this library API does not dispatch them.
+
+`rules/spreadsheets/workbook-io.ts` owns library XLSX/CSV import/export, using browser-safe
+`@shbernal/ts-xlsx` for XLSX and the existing CSV parser/writer. Downloads omit selected hidden columns; the intake export retains and marks
+them, using saved document and ZIP timestamps. Formula inputs retain cached values and the formula
+presence flag; exported copies contain values. Theme/fill, rich text, links, number formats, typed dates,
+worksheet dimensions and named structural refusals remain part of this boundary. Import records
+unsupported metadata through namespace-aware OOXML admission. Master edits, keyed writes and Sync
+refuse formula-bearing workbooks or unsupported metadata with `WORKBOOK_METADATA_UNSUPPORTED`.
+standalone Excel error cells also carry this flag because their display text loses the error type.
+Clearing an incoming flag cannot bypass the stored master's refusal. The default Calibri font and
+document creation/modification timestamps are admitted; edits use the library's saved timestamps.
+Other document properties, table structures, non-cell styles and opaque package parts are refused
+for master mutation. Export creates an explicit value copy and never overwrites the source file.

@@ -18,6 +18,7 @@ export async function claimWithPreflight(input: Readonly<{
     if (input.signal.aborted) throw input.signal.reason;
     try {
       return input.claim(run => {
+        if (run.pause !== undefined) throw new PreflightAdmissionRefusal("stale", "Paused work cannot prepare or acquire a claim.");
         const scope = input.preflight.runScope(run.envelope);
         try { input.preflight.admission.assertReady(scope); }
         catch (error) {

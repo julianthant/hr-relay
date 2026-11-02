@@ -1,5 +1,5 @@
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { existsSync, lstatSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { workerSlotFromRow } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { workerPoolMember } from "../../../../src/models/run/worker-slot.js";
 import { WorkerLeaseRecordSchema } from "../../../../src/models/run/worker.js";
@@ -27,6 +27,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { ATOMIC_WRITE_COMMIT, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 const world = createStorageRestoreTestWorld();
+const { repairAutomatically } = world;
 const { composeStorageCommand, attemptingDrillPaths, cleanup } = world;
 afterEach(cleanup);
 
@@ -69,8 +70,13 @@ it.each([false, true])("restore confirmation evidence survives recovery accounti
   assert.equal(committed.version, before.version + 1); assert.equal(committed.attemptId, before.attemptId);
   assert.equal(committed.outcome, "committed"); assert.equal(committed.checkpoint, true);
   assert.equal(backupAfterCommit ? manifestPath !== beforeManifestPath : manifestPath === beforeManifestPath, true);
-  const restore = await composeStorageCommand(rebuildRuntimeIsolation,
-    ["restore", "--from", manifestPath, "--json"], CLOCK, p.repoRoot);
+  if (!backupAfterCommit) {
+    const bytes = readFileSync(p.authorityPath);
+    await assert.rejects(repairAutomatically(p, CLOCK), /automatic-repair-verified-backup-missing/u);
+    assert.deepEqual(readFileSync(p.authorityPath), bytes); assert.deepEqual(inspect(p.authorityPath), committed);
+    return;
+  }
+  const restore = await repairAutomatically(p, CLOCK);
   assert.equal(restore.exitCode, 0, restore.output);
   const restoredReport = z.object({ suspectFileName: z.string() }).parse(JSON.parse(restore.output));
   p.renewAfterRestore();

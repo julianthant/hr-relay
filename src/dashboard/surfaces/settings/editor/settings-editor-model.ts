@@ -1,27 +1,26 @@
-import { SettingsReadSuperseded, useSettingsRead } from "../../../state/settings-read-model.js";
-import { readWithDeadline } from "../../../client/read-deadline.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback,useEffect,useEffectEvent,useMemo,useRef,useState,useSyncExternalStore } from "react";
+import { deriveSettingsPatchFingerprint } from "../../../../models/config/settings.js";
+import { EditableSettingsWireSchema,type EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
+import { createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
+import { SettingsCommandRequestSchema } from "../../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
-import { SettingsCommandRequestSchema } from "../../../../rules/commands/commands.js";
-import { deriveSettingsPatchFingerprint } from "../../../../models/config/settings.js";
-import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
-import { settingTitle } from "../settings-presentation.js";
-import { routePresentation } from "../routes/settings-routes-model.js";
-import { useSettingsClient } from "./settings-client.js";
-import type { CommandExecutionOptions, CommandExecutionScope } from "../../../app/commands/command-executor.js";
+import type { CommandExecutionOptions,CommandExecutionScope } from "../../../app/commands/command-executor.js";
+import { readWithDeadline } from "../../../client/read-deadline.js";
 import { useDashboardCommandBinding } from "../../../state/client-context.js";
+import { SettingsReadSuperseded,useSettingsRead } from "../../../state/settings-read-model.js";
 import { useSettingsPreflight } from "../preflight/settings-preflight-model.js";
 import { useProtectedSettings } from "../providers/settings-protected-model.js";
-import { useStorageRelocation } from "../general/settings-relocation-model.js";
-import { checkedSettingsResult, commandSaveState, settingsScopeRecoveryState, ordinaryReadbackState, settingsSaveNotice, settingsSaveProblem, type SettingsSaveListener, type SettingsSaveProblemListener, type OrdinarySettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
-import { blurredSettingsPath, type SettingsBlurEvent } from "./settings-autosave-model.js";
-import { coupledSettingsLeaves, draftError, patchFromSettingsDraft, settingInput, settingsLeaves, type SettingsDraft, type SettingsDraftInput } from "./settings-draft-model.js";
+import { routePresentation } from "../routes/settings-routes-model.js";
+import { settingTitle } from "../settings-presentation.js";
+import { checkedSettingsResult,commandSaveState,ordinaryReadbackState,settingsSaveNotice,settingsSaveProblem,settingsScopeRecoveryState,type OrdinarySettingsAttempt,type SettingsSaveListener,type SettingsSaveProblemListener,type SettingsSaveState } from "./settings-attempt-model.js";
+import { blurredSettingsPath,type SettingsBlurEvent } from "./settings-autosave-model.js";
+import { useSettingsClient } from "./settings-client.js";
+import { coupledSettingsLeaves,draftError,patchFromSettingsDraft,settingInput,settingsLeaves,type SettingsDraft,type SettingsDraftInput } from "./settings-draft-model.js";
 
 export type EditableSettingsState = { readonly state: "loading" } | { readonly state: "failed"; readonly message: string } | { readonly state: "loaded"; readonly document: EditableSettingsWire };
-export type { SettingsSaveState } from "./settings-attempt-model.js";
 export type { PreflightRerunState } from "../preflight/settings-preflight-model.js";
+export type { SettingsSaveState } from "./settings-attempt-model.js";
 
 /** One ordinary atomic draft, independent protected draft, no browser-persisted values or attempts. */
 export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener }>) {
@@ -87,7 +86,6 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     return () => { active = false; };
   }, [refresh, resource, setEditor]);
   const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readReady && readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, readCurrent: () => refresh(false), acceptReadback: document => { if (generation.current !== request) return; acceptedRequest.current = request; resource.accept(document); setEditor({ state: "loaded", document }); setReadProblem(undefined); }, onSaved: input.onSaved, onSaveProblem: input.onSaveProblem });
-  const relocationEditor = useStorageRelocation({ actorId: input.actorId, descriptorFingerprint: input.descriptorFingerprint, onSaved: input.onSaved });
   const leaves = editor.state === "loaded" ? settingsLeaves(editor.document) : [];
   const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
     const leaf = leaves.find(candidate => candidate.path === path);
@@ -197,7 +195,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   };
   const reload = (): void => { void refresh().catch(() => undefined); };
   const visibleSave = pending.current !== undefined && attemptScope.current !== binding?.scope ? settingsScopeRecoveryState() : save.state === "idle" && retained?.outcome !== undefined ? commandSaveState(retained.outcome) : save;
-  return Object.freeze({ editor, refreshing: observation.state === "loading", draft, errors, save: visibleSave, preflight, protectedEditor, relocationEditor, leaves, readProblem,
+  return Object.freeze({ editor, refreshing: observation.state === "loading", draft, errors, save: visibleSave, preflight, protectedEditor, leaves, readProblem,
     dirtyCount: Object.keys(draft).length, locked: !readReady || readProblem !== undefined || save.state === "saving" || pending.current !== undefined,
     update, reset, clear, discard, submit, retry, reload, rerunPreflight, onFieldBlur });
 }

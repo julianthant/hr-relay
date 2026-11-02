@@ -1,6 +1,6 @@
 import { AssistantModelPreferenceRecordSchema } from "../../../models/dashboard/assistant.js";
 import { AssistantGrantRecordSchema, AssistantChatRecordSchema, AssistantActionRecordSchema } from "../../../models/profiles/assistant-authorization.js";
-import { SavedWorkbookSchema } from "../../../models/dashboard/workbooks.js";
+import { SavedWorkbookSchema, WorkbookTypeSchema, WorkbookOperationSchema } from "../../../models/dashboard/workbooks.js";
 import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
 import { NativeCommandRequestSchema, NativeCommandAuditSchema } from "./command-record-row.js";
 import { WorkerSlotRecordSchema } from "../../../models/run/worker-slot.js";
@@ -10,13 +10,14 @@ import { NotificationHealthSchema } from "./notification-publications.js";
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
 import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../../models/artifacts/generated-artifact.js";
 import { ImportedArtifactSchema } from "../../../models/intake/imported-artifact.js";
+import { ExclusiveSessionLeaseSchema } from "../../../models/sessions/exclusive-session-lease.js";
 import { z } from "zod";
 import { DuoCeremonyLeaseRecordSchema } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { RunSessionRecordSchema } from "../../../models/run/session.js";
 import { DeletedRunRecordSchema } from "../../../models/run/deleted-run.js";
 import { WorkerPoolRecordSchema } from "../../../models/run/worker-pool.js";
 import { AuthorityUpgradeRecordSchema, type AuthorityTableName } from "../../../models/config/authority.js";
-import { AdmittedExtractionSchema } from "../../../models/ocr/extraction.js";
+import { StoredOcrExtractionSchema } from "../../../models/ocr/stored-extraction.js";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
 import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
@@ -70,14 +71,18 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   worker_controls: WorkerControlRecordSchema,
   browser_sessions: WorkerBrowserObservationSchema,
   auth_leases: DuoCeremonyLeaseRecordSchema,
+  exclusive_session_leases: ExclusiveSessionLeaseSchema,
   notifications: NotificationRecordSchema,
   notification_states: NotificationHealthSchema,
-  artifacts: z.union([ImportedArtifactSchema, AdmittedExtractionSchema, GeneratedArtifactSchema]),
+  artifacts: z.union([ImportedArtifactSchema, StoredOcrExtractionSchema, GeneratedArtifactSchema]),
   timeline_events: TimelineEventRecordSchema,
   diagnostic_snapshots: DiagnosticBundleSchema,
   diagnostic_files: DiagnosticAttachmentStorageRecordSchema,
   dryrun_results: DryRunScenarioResultSchema,
   run_search: RunSearchIndexRecordSchema,
+  workbook_creations: SavedWorkbookSchema,
+  workbook_types: WorkbookTypeSchema,
+  workbook_operations: WorkbookOperationSchema,
   workbook_library: SavedWorkbookSchema,
   workbook_library_history: SavedWorkbookSchema,
 } satisfies Record<Exclude<AuthorityTableName, "database_states">, z.ZodType>);

@@ -814,7 +814,7 @@ export function auditSoleRunnerInvocation(
       if (ts.isIfStatement(node) && ts.isBlock(node.parent) && ts.isTryStatement(node.parent.parent) && compact(node.expression) === '!bootDiagnostics&&!(entrypoint==="cli"&&(entrypointArgs[0]==="storage"||entrypointArgs[0]==="test-data"))'
         && compact(node.thenStatement) === '{(dependencies.assertEnvironment??(()=>assertNoMigratedEnvironmentKeys()))();}' && node.elseStatement === undefined) keyRefusal += 1;
       if (ts.isVariableDeclaration(node) && node.name.getText(source) === "admission" && node.initializer !== undefined
-        && compact(node.initializer) === 'await(dependencies.acquireAdmission??((requested)=>entrypoint==="cli"&&entrypointArgs[0]==="worker"?RuntimeAdmission.acquireWorker(workspace,workerLifetime()):bootDiagnostics?acquireExclusiveRuntimeAdmission(workspace,rootLifetime()):entrypoint==="cli"&&entrypointArgs[0]==="dashboard"?acquireDashboardEntrypointAdmission(profileBrowserClosure,workspace,requested,rootLifetime()):storageCommand==="backup"?acquireStorageBackupEntrypointAdmission(workspace,rootLifetime()):acquireEntrypointAdmission(workspace,requested,rootLifetime())))(mode,lifetime.lock)') mainAdmission += 1;
+        && compact(node.initializer) === 'await(dependencies.acquireAdmission??((requested)=>entrypoint==="cli"&&entrypointArgs[0]==="worker"?RuntimeAdmission.acquireWorker(workspace,workerLifetime()):bootDiagnostics?acquireExclusiveRuntimeAdmission(workspace,rootLifetime()):entrypoint==="cli"&&entrypointArgs[0]==="dashboard"?acquireDashboardEntrypointAdmission(profileBrowserClosure,workspace,requested,rootLifetime()):acquireEntrypointAdmission(workspace,requested,rootLifetime())))(mode,lifetime.lock)') mainAdmission += 1;
       ts.forEachChild(node, topology);
     };
     topology(source);
@@ -829,7 +829,7 @@ export function auditSoleRunnerInvocation(
       && ts.isStringLiteral(statement.moduleSpecifier) && resolvedModule(path, statement.moduleSpecifier.text) === "src/backend/storage/admission/admission.ts"
       && statement.importClause?.namedBindings !== undefined && ts.isNamedImports(statement.importClause.namedBindings)
       && statement.importClause.namedBindings.elements.some(element => !element.isTypeOnly && element.name.text === "acquireExclusiveRuntimeAdmission" && element.propertyName === undefined));
-    if (admissionCalls.length !== 1 || runtimeAdmissionCalls.length !== 3 || machineAdmissions.length !== 2 || exclusiveAdmission.length !== 1
+    if (admissionCalls.length !== 1 || runtimeAdmissionCalls.length !== 2 || machineAdmissions.length !== 1 || exclusiveAdmission.length !== 1
       || keyRefusal !== 1 || mainAdmission !== 1 || !selectorValid || admittedCall === undefined || !exclusiveImport) {
       violations.push(`${path}: secure environment bootstrap requires canonical key refusal, exact storage/test-data exemptions, strict selector and canonical runtime admission`);
     }

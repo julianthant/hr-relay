@@ -2,17 +2,17 @@ import { default as assert } from "node:assert/strict";
 import { it } from "vitest";
 import { z } from "zod";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { executeSettingsCommand, type CommandAuthority } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { executeSettingsCommand,type CommandAuthority } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { type AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { type CredentialStore } from "../../../../src/models/config/credential-store.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, ProtectedStoreRecordSchema, type ProtectedStoreRecord } from "../../../../src/models/config/protected-settings.js";
-import { ActiveRuntimeConfigActivationSchema, ActiveRuntimeConfigRecordSchema } from "../../../../src/models/config/runtime-generation.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH,ProtectedSettingsApplyInputSchema,ProtectedStoreRecordSchema,type ProtectedStoreRecord } from "../../../../src/models/config/protected-settings.js";
+import { ActiveRuntimeConfigActivationSchema,ActiveRuntimeConfigRecordSchema } from "../../../../src/models/config/runtime-generation.js";
 import { SettingsCurrentRecordSchema } from "../../../../src/models/config/settings-current.js";
-import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
+import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint,initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
-import { CommandAuditRecordSchema, CommandRequestSchema, SettingsCommandRequestSchema, type CommandRequest } from "../../../../src/rules/commands/commands.js";
+import { CommandAuditRecordSchema,CommandRequestSchema,SettingsCommandRequestSchema,type CommandRequest } from "../../../../src/rules/commands/commands.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
 {
@@ -29,11 +29,13 @@ function fixture(failAt?: "audit" | "insert") {
   let privateCommits = 0;
   let privateRecord: ProtectedStoreRecord | undefined;
   let nextId = 1;
+  let admission: "open" | "draining" = "open";
   const clock = manualClock(new Date(NOW));
   const authority: CommandAuthority = { withAuthorityTransaction: (work) => {
     const state: State = { commands: new Map(durable.commands), audits: new Map(durable.audits),
       snapshots: new Map(durable.snapshots), current: durable.current, active: durable.active };
     const repositories = {
+      runs: { admission: () => ({ state: admission }) },
       commands: {
         assertIdentity(input: unknown) { const command = CommandRequestSchema.parse(input);
           const existing = state.commands.get(command.commandId);
@@ -93,8 +95,32 @@ function fixture(failAt?: "audit" | "insert") {
   };
   return { execute, ordinary, authority, durable: () => durable,
     privateCommits: () => privateCommits,
+    holdAdmission: () => { admission = "draining"; },
     loseCurrent: () => { durable.current = undefined; } };
 }
+
+it("refuses ordinary settings changes while application admission is held", () => {
+  const f = fixture();
+  f.holdAdmission();
+  const result = f.execute(f.ordinary());
+  assert.equal(result.state, "rejected");
+  if (result.state === "rejected") assert.equal(result.code, "not-editable");
+  assert.equal(f.durable().current, undefined);
+  assert.equal(f.durable().active, undefined);
+  assert.equal(f.durable().snapshots.size, 0);
+  assert.equal(f.privateCommits(), 0);
+});
+
+it("refuses browser-root selection before journaling settings or touching credentials", () => {
+  const f = fixture(), patch = { "paths.browserProfileRoot": { set: "/unselected-authority" } };
+  const result = f.execute({ ...f.ordinary(), payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
+  assert.equal(result.state, "rejected");
+  if (result.state !== "rejected") throw new Error("browser-root command should refuse");
+  assert.equal(result.code, "not-editable");
+  assert.equal(f.durable().commands.size, 0); assert.equal(f.durable().audits.size, 0);
+  assert.equal(f.durable().snapshots.size, 0); assert.equal(f.durable().current, undefined);
+  assert.equal(f.privateCommits(), 0);
+});
 
 it("applies the first ordinary save before its own journal row becomes history; stale and missing authority refuse", () => {
   const f = fixture();

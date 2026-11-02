@@ -281,7 +281,7 @@ const BOOTSTRAP = {
   wireVersion: 1, appVersion: "1.0.0", descriptorHash: HASH_A, settingsSchemaHash: HASH_B, protectedSchemaHash: HASH_A,
   projectionGeneration: 1, actor: { id: "local-operator", label: "Local operator" },
   serverClock: { now: NOW, zone: "America/Los_Angeles" },
-  storage: { authority: "healthy", backup: "current", checkedAt: NOW }, workflows: [],
+  storage: { authority: "healthy", automaticRepair: { state: "none" }, backup: "current", checkedAt: NOW }, workflows: [],
   systemInstances: [], settingsSections: [], featureAvailability: [],
 };
 const DAY = {
@@ -1123,6 +1123,8 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/models/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrObservations",
   "src/models/ui/ucpath-smart-hr-termination.ts:UcpathSmartHrTerminationDriver",
 
+  "src/models/ui/ucpath-emergency-contact.ts:UcpathEmergencyContactDriver",
+  "src/models/ui/ucpath-emergency-contact.ts:UcpathContactObservations",
   "src/models/ui/ucpath-driver.ts:UcpathStoreDriver",
   "src/models/task/task-contract.ts:ReadTaskContract",
   "src/models/task/task-contract.ts:PrepareTaskContract",

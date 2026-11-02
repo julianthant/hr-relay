@@ -1,12 +1,12 @@
 import { ChatGptResourceClosureUnprovedError } from '../../../src/backend/accounts/chatgpt-account-service.js';
-import { ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema } from '../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema, AssistantPermissionViewSchema } from '../../../src/models/dashboard/assistant.js';
 import { boundProfileCredentials, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { composeSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { projectSyntheticAssistantInput, bindSyntheticAssistantFunctions, syntheticAssistantResponse, completedAssistantStream } from "../../support/helpers/assistant-function-fixtures.js";
 import { AssistantCitationSchema, type AssistantInferenceRequest } from "../../../src/models/dashboard/assistant.js";
 import assert from "node:assert/strict";
-import ExcelJS from "exceljs";
+import { Workbook, readXlsx, writeXlsx } from "@shbernal/ts-xlsx";
 import { it, vi } from "vitest";
 import { z } from "zod";
 import { flow } from "../../../src/workflow-kit/flow.js";
@@ -70,10 +70,10 @@ it("explains with byte-verified citations and prepares a bound dry proposal thro
 it("projects actual synthetic workbook credential cells before the inference/read loop", async () => {
   const f = fixture(), account = await chatGptFixture();
   const canaries = ["CANARY_WORKBOOK_PASSWORD", "CANARY_TRACKER_NOTE", "902-48-1357"];
-  const workbook = new ExcelJS.Workbook(), sheet = workbook.addWorksheet("Synthetic");
+  const workbook = new Workbook(), sheet = workbook.addWorksheet("Synthetic");
   sheet.addRow(["subjectRef", "displayName", "employeeId", "password", "trackerNote", "ssn"]);
   sheet.addRow([selected.subjectRef, selected.displayName, selected.employeeId, ...canaries]);
-  const restored = new ExcelJS.Workbook(); await restored.xlsx.load(await workbook.xlsx.writeBuffer());
+  const restored = readXlsx(writeXlsx(workbook));
   const row = restored.getWorksheet("Synthetic")!.getRow(2);
   const raw = { subjectRef: row.getCell(1).text, displayName: row.getCell(2).text, employeeId: row.getCell(3).text,
     password: row.getCell(4).text, trackerNote: row.getCell(5).text, ssn: row.getCell(6).text };
@@ -517,6 +517,18 @@ it('reads only a strict served preference view and never supplies a missing auth
   assert.throws(() => f.service().modelPreference());
   const failure = new Error('corrupt preference authority');
   assert.throws(() => createAssistantService({ ...f.options, readModelPreference: () => { throw failure; } }).modelPreference(), error => error === failure);
+  assert.equal(f.calls(), 0);
+});
+
+it("requires a served permission reader and performs no inference when reading it", () => {
+  const f = fixture();
+  const view = AssistantPermissionViewSchema.parse({ profileId: UUID_4, epoch: 1, state: "grant-required", mode: "every-action",
+    policyRevision: 0, settingsRevision: 1, settingsSchemaHash: "a".repeat(64) });
+  const service = createAssistantService({ ...f.options, readPermission: () => view });
+  assert.deepEqual(service.permission(), view);
+  assert.throws(() => f.service().permission(), /assistant-permission-unavailable/u);
+  const failure = new Error("corrupt permission authority");
+  assert.throws(() => createAssistantService({ ...f.options, readPermission: () => { throw failure; } }).permission(), error => error === failure);
   assert.equal(f.calls(), 0);
 });
 

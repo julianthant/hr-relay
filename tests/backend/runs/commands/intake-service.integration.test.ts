@@ -1,5 +1,5 @@
 import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
-import Excel from "exceljs";
+import { readXlsx } from "@shbernal/ts-xlsx";
 import { composeIntake } from "../../../../src/backend/app/composition/dashboard/intake.js";
 import { readArtifactBytes } from "../../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
@@ -740,9 +740,9 @@ describe("saved workbook intake bridge", () => {
     assert.equal(result.session.headerRowIndex, 0); assert.deepEqual(result.session.bindings, []);
     assert.deepEqual(result.session.columns.map(column => column.samples), [["10456712"], ["2026-07-01"]]);
     const bytes = await readArtifactBytes(() => h.artifacts.open(result.session.artifact));
-    const preserved = new Excel.Workbook();
-    await preserved.xlsx.load(Uint8Array.from(bytes).buffer);
-    assert.deepEqual(preserved.worksheets[0].getCell('A2').value, { text: '10456712', hyperlink: 'https://example.com/employee' });
+    const preserved = readXlsx(Uint8Array.from(bytes));
+    assert.equal(preserved.worksheets[0].getCell('A2').value, '10456712');
+    assert.equal(preserved.worksheets[0].hyperlinkAt('A2')?.target, 'https://example.com/employee');
     assert.equal(preserved.worksheets[0].getCell('B2').numFmt, 'mm/dd/yyyy');
     assert.deepEqual(preserved.worksheets[1].getCell('A2').value, { richText: [{ text: 'Example ', font: { bold: true } }, { text: 'Person' }] });
     const zip = await JSZip.loadAsync(bytes);
@@ -787,7 +787,10 @@ describe("saved workbook intake bridge", () => {
       await assert.rejects(restartedBridge(first.libraryId, { ...request, expectedVersion: second.version }), { code: "WORKBOOK_INTAKE_SOURCE_CONFLICT" });
       assert.equal(reopened.getMeta().authorityGeneration, beforeConflict);
       assert.equal(reopened.authority.intakeSessions.findActiveBySource(result.session.artifact.sha256).length, 1);
-      assert.deepEqual(restartedLibrary.history(first.libraryId)[0].workbook, first.workbook);
+      assert.deepEqual(restartedLibrary.revision(first.libraryId, 1), first);
+      assert.deepEqual(reopened.authority.workbooks.creation(first.libraryId), first);
+      assert.deepEqual(restartedLibrary.read(first.libraryId), second);
+      assert.deepEqual(restartedLibrary.history(first.libraryId), []);
     }
     finally { reopened.close(); }
   });
