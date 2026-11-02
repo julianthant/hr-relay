@@ -54,13 +54,15 @@ async function fixture(f?: Awaited<ReturnType<typeof createBoundProfileFixture>>
 }
 
 for (const state of ["earlier", "current", "future", "unknown"] as const)
-  it(`ordinary drain preserves browser roots with ${state} session evidence without native acquisition`, async () => {
-    const f = await fixture();
-    const path = join(f.machine.stateRoot, "machine", "browser-roots.json");
+  it(`ordinary drain checks ${state} session evidence without native acquisition`, async () => {
+    const base = await createBoundProfileFixture();
+    const path = join(base.machine.stateRoot, "machine", "browser-roots.json");
+    let f: Awaited<ReturnType<typeof fixture>> | undefined;
     let original: Buffer | undefined;
     const launch = vi.spyOn(DEFAULT_BROWSER_LAUNCHER, "launch").mockImplementation(async () => { throw new Error("ordinary drain must not acquire a browser"); });
     try {
-      const seeded = await seedRegisteredBrowserProfiles(f, f.clock, ["crm"]);
+      const seeded = await seedRegisteredBrowserProfiles(base, manualClock(new Date("2026-10-21T12:00:00.000Z")), ["crm"]);
+      f = await fixture(base);
       original = readFileSync(path);
       const document = BrowserRootsSchema.parse(JSON.parse(original.toString("utf8")));
       const row = document.roots[0]; assert.ok(row); assert.equal(document.roots.length, 1);
@@ -80,7 +82,7 @@ for (const state of ["earlier", "current", "future", "unknown"] as const)
     } finally {
       launch.mockRestore();
       if (original !== undefined) writeFileSync(path, original, { mode: 0o600 });
-      await f.cleanup();
+      if (f === undefined) await base.close(); else await f.cleanup();
     }
   });
 
