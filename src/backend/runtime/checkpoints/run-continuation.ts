@@ -22,6 +22,11 @@ export function continuationEvidenceDigest(value: unknown) {
   return FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(value)));
 }
 
+function sourceIdentityDigest(run: RunRecord) {
+  const { continuation: _continuation, ...envelope } = run.envelope;
+  return continuationEvidenceDigest({ envelope, input: run.input });
+}
+
 export function validateRunContinuation(repositories: ContinuationRepositories, envelope: RunEnvelope): readonly RunRecord[] {
   const continuation = envelope.continuation;
   if (continuation === undefined) return [];
@@ -34,10 +39,11 @@ export function validateRunContinuation(repositories: ContinuationRepositories, 
   return continuation.sources.map(source => {
     const run = repositories.runs.get(source.runId);
     if (run === undefined || source.runId !== envelope.runId && run.version !== source.version
+      || sourceIdentityDigest(run) !== source.identityDigest
       || run.envelope.attempt !== source.attempt || run.envelope.workflow !== envelope.workflow
       || run.envelope.itemId !== envelope.itemId || run.envelope.descriptorVersion !== envelope.descriptorVersion
       || run.envelope.contractFingerprint !== envelope.contractFingerprint
-      || run.envelope.configFingerprint !== envelope.configFingerprint || run.envelope.configSnapshotId !== envelope.configSnapshotId
+      || run.envelope.configFingerprint !== envelope.configFingerprint
       || run.envelope.dryRun !== envelope.dryRun
       || source.runId !== envelope.runId && (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed")) {
       throw new RunContinuationRefusedError("run-continuation-source-unavailable");
@@ -49,7 +55,8 @@ export function validateRunContinuation(repositories: ContinuationRepositories, 
 export function captureRunContinuation(repositories: ContinuationRepositories, run: RunRecord) {
   validateRunContinuation(repositories, run.envelope);
   const sources = new Map(run.envelope.continuation?.sources.map(source => [source.runId, source]));
-  sources.set(run.envelope.runId, { runId: run.envelope.runId, version: run.version, attempt: run.envelope.attempt });
+  sources.set(run.envelope.runId, { runId: run.envelope.runId, version: run.version, attempt: run.envelope.attempt,
+    identityDigest: sourceIdentityDigest(run) });
   const checkpoints = new Map(run.envelope.continuation?.checkpoints.map(row => [row.nodeId, row]));
   for (const row of repositories.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId)
     .filter(row => row.runId === run.envelope.runId && row.attempt === run.envelope.attempt)

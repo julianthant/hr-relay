@@ -1043,6 +1043,10 @@ export class RunRecordService {
         return refused({ reason: "schema-mismatch", digest: run.envelope.contractFingerprint });
       }
       if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
+      if (request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint) return refused({ reason: "runtime-stale" });
+      const continuation = captureRunContinuation(repositories, run);
+      if (descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction"
+        && continuation.checkpoints.some(row => row.nodeId === node.id))) return refused({ reason: "policy-refused" });
       if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,
       }).some((entry) => entry.lifecycle.state !== "terminal")) return refused({ reason: "policy-refused" });
@@ -1057,7 +1061,7 @@ export class RunRecordService {
       delete envelope.sourceBound;
       const next = RunRecordSchema.parse({
         envelope: { ...selectNewRunIdentity(repositories, envelope), runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
-          retryOf: run.envelope.runId, enqueuedAt: now, continuation: captureRunContinuation(repositories, run),
+          retryOf: run.envelope.runId, enqueuedAt: now, continuation,
           ...(restart ? { recovery: "restart-from-start" } : {}),
         },
         input: run.input, lifecycle: { state: "queued" }, claimGeneration: 0,

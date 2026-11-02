@@ -168,7 +168,9 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   const warnings: RepeatWarning[] = [];
   for (const node of descriptorRuntimeNodes(descriptor)) {
     if (node.kind !== "transaction" || !nodes.has(String(node.id))) continue;
-    if (continuation.checkpoints.some(row => row.nodeId === node.id)) continue;
+    if (continuation.checkpoints.some(row => row.nodeId === node.id)) {
+      throw new RerunRefusedError("invalid-state", "Saved transaction continuation is unavailable until strict write replay is supported.");
+    }
     const outputs: Record<string, JsonValue> = {};
     for (const dependency of node.dependsOn) {
       const checkpoint = latest.get(String(dependency));

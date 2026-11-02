@@ -5684,7 +5684,7 @@ export class AuthorityDatabase implements Disposable {
             }
             return Object.freeze({ state: "existing" as const, record: existing });
           }
-
+          if (this.#runAdmission().state !== "open") throw new Error("application-admission-draining");
           const next = this.#nextItemAttempt(record.envelope.workflow, record.envelope.itemId);
           if (record.envelope.attempt < next) {
             throw new Error(

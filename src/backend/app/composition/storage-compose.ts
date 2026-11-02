@@ -416,7 +416,12 @@ export function composeProfileActivity(input: Readonly<{
       if (requestedProfileId !== profileId) throw new Error("profile-resource-owner-mismatch");
       if (drain !== undefined) return;
       shutdown = true;
-      input.database.withAuthorityTransaction(() => {
+      input.database.withAuthorityTransaction(repositories => {
+        if (repositories.runs.admission().state === "open") {
+          const runtime = repositories.runtimeConfig.get();
+          if (runtime === undefined) throw new Error("application-runtime-unavailable");
+          repositories.runs.holdAdmission({ commandId: randomUUID(), runtimeGeneration: runtime.generation, reason: "shutdown" });
+        }
         for (const run of input.database.readProfileResourceCustody().runs) {
           if (run.lifecycle.state === "terminal" || run.lifecycle.state === "parked-write") continue;
           requireLifecycleApplied(input.lifecycle.pause({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version }));

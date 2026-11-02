@@ -24,6 +24,9 @@ it("holds durable current-runtime admission before awaiting an idle installer an
   await assert.rejects(installing, /fixture installer failed/u);
   assert.equal(f.database.authority.runs.admission().state, "draining");
   const active = f.database.authority.runtimeConfig.get(); assert.ok(active);
+  assert.notEqual(f.save({ "timeouts.taskMs": { set: 90_000 } }).state, "applied");
+  assert.deepEqual(f.database.authority.runtimeConfig.get(), active);
+  assert.equal(f.database.authority.runs.admission().state, "draining");
   f.database.authority.runtimeConfig.activate({ settingsRevision: active.settingsRevision, settingsFingerprint: active.settingsFingerprint,
     configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint, activatedAt: f.clock.now().toISOString() });
   assert.equal(f.database.authority.runs.admission().state, "open");
