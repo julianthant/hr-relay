@@ -24,7 +24,7 @@ describe("current and stopped predecessor backup formats", () => {
     }
   });
 
-  it.each([7, 8, 9, 10, 11, 12, CURRENT_AUTHORITY_SCHEMA_VERSION])("accepts registered schema %i with matching observed binding", schemaVersion => {
+  it.each([7, 8, 9, 10, 11, 12, 13, CURRENT_AUTHORITY_SCHEMA_VERSION])("accepts registered schema %i with matching observed binding", schemaVersion => {
     const candidate = { ...manifest, schemaVersion, verification: { ...manifest.verification, schemaVersion } };
     expect(AuthorityBackupManifestSchema.parse(candidate)).toEqual(candidate);
     expect(AuthorityBackupManifestSchema.safeParse({ ...candidate, manifestVersion: 3 }).success).toBe(false);

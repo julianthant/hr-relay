@@ -65,6 +65,7 @@ export function assertStoppedProfileResourcesClosed(facts: ReturnType<AuthorityD
     || facts.slots.some(slot => slot.retiredAt === null && !facts.leases.some(lease => lease.workerId === slot.workerId))
     || facts.leases.some(lease => !facts.slots.some(slot => slot.workerId === lease.workerId))
     || facts.leases.some(lease => lease.lifecycle.state !== "stopped") || facts.browsers.some(browser => browser.health !== "closed")
+    || facts.exclusiveSessionLeases.some(lease => lease.releasedAt === null)
     || facts.duoLeases.some(lease => lease.state === "held") || facts.controls.some(control => control.auditedAt === undefined)) throw new Error("credential-maintenance-custody-unproved");
 }
 
