@@ -504,7 +504,7 @@ it("backs up schema-11 extraction evidence before conversion and retains both so
     } finally { restore.release(); }
     const admission = f.machine.admitProfile(f.claim);
     try {
-      const credentials = boundProfileCredentials(admission);
+      const credentials = createCredentialStore({ admission, stateRoot: f.stateRoot });
       const database = AuthorityDatabase.open(admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
         undefined, undefined, undefined, credentials);
       try {
@@ -518,7 +518,7 @@ it("backs up schema-11 extraction evidence before conversion and retains both so
     const restarted = f.machine.admitProfile(f.claim);
     try {
       const database = AuthorityDatabase.open(restarted, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
-        undefined, undefined, undefined, boundProfileCredentials(restarted));
+        undefined, undefined, undefined, createCredentialStore({ admission: restarted, stateRoot: f.stateRoot }));
       try { assert.equal(database.authority.ocrExtractions.findBySource(extraction.sourceSha256).length, 2); }
       finally { database.close(); }
     } finally { restarted.release(); }

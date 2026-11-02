@@ -41,7 +41,7 @@ it("converts every supported source layout to explicit unbound evidence without 
       assert.equal(inspectNormalAuthority(database).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       const row = database.prepare("SELECT * FROM artifacts").get();
       assert.ok(row);
-      assert.deepEqual({ ...row, payload_json: before.payload_json }, before);
+      assert.deepEqual({ ...row, payload_json: before.payload_json }, { ...before });
       assert.deepEqual(extractedArtifactFromRow(row), { binding: "unbound-source", extractionId: id, extraction });
       assert.throws(() => database.exec("UPDATE artifacts SET payload_json='{}'"), /artifacts-extracted-immutable/u);
       assert.throws(() => database.exec("DELETE FROM artifacts"), /artifact-evidence-retained/u);
