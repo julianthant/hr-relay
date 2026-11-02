@@ -321,7 +321,10 @@ export function composeProfileRuntime(input: Readonly<{
       entry.preparation = { state: "ready" };
     })();
     entry.preparation = { state: "pending", completion };
-    void completion.catch(error => { entry.preparation = { state: "failed", error }; });
+    void completion.catch(error => {
+      if (hasUnprovedSourceClosure(error)) { machine.retainSourceClosure(error); entry.admission.retainSourceClosure(error); }
+      entry.preparation = { state: "failed", error };
+    });
   };
   const prepareColdLogout = (inputOperation: LogoutOperation): void => {
     if (resources.get(inputOperation.profileId)?.ordinary?.logout !== undefined) return;
@@ -424,6 +427,7 @@ export function composeProfileRuntime(input: Readonly<{
         return;
       }
       if (entry.context !== undefined && entry.state !== "closed") {
+        if (entry.preparation?.state === "failed") throw new RuntimeCustodyUncertainError([entry.preparation.error]);
         if (entry.preparation?.state !== "ready") throw new RuntimeCustodyUncertainError([new Error("profile-account-closure-unproved")]);
         try { entry.context.database.close(); }
         catch (error) { throw new RuntimeCustodyUncertainError([error]); }
@@ -529,6 +533,7 @@ export function composeProfileRuntime(input: Readonly<{
           try { await ordinary.preparation.completion; }
           catch (error) { throw new RuntimeCustodyUncertainError([error]); }
         }
+        if (ordinary.preparation?.state === "failed") throw new RuntimeCustodyUncertainError([ordinary.preparation.error]);
         if (ordinary.preparation?.state !== "ready") throw new RuntimeCustodyUncertainError([new Error("profile-resource-closure-unproved")]);
         try { ordinary.context.database.close(); ordinary.state = "closed"; }
         catch (error) { throw new RuntimeCustodyUncertainError([error]); }

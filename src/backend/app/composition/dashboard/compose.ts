@@ -6,7 +6,7 @@ import { profileBrowserClosure } from "../../../runtime/browser/native-profile-p
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
-import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
+import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../../../storage/source-closure.js";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
 import { createAssistantService } from "../../../assistant/service.js";
 import { assistantSurfaceCoverage, createProductionAssistantTools } from "../../../assistant/tools.js";
@@ -1061,7 +1061,9 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
         const report = await upgradeReadyProfileStorage(profileBrowserClosure, exclusive, profileId, { plan: false, hostFacts: facts }, clock);
         if (report.state !== "upgraded" || report.fromSchemaVersion !== sourceVersion || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-upgrade-readback-unproved");
       } catch (error) {
-        if (!(error instanceof AuthoritySourceClosureUnprovedError)) {
+        if (hasUnprovedSourceClosure(error)) {
+          exclusive.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission: exclusive });
+        } else {
           try { exclusive.release(); exclusiveOwner = undefined; }
           catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
         }

@@ -203,57 +203,62 @@ export class RuntimeAdmission {
     if (lease.mode === "shared") lease.lifetime.assertRuntimeAvailable();
   }
   captureProfileUpgradeHandoff(profileId: string): Readonly<{ consume(next: RuntimeAdmission): string }> | undefined {
-    const claim = this.#captureProfileAccess(profileId);
-    this.assertLive();
-    if (this.#scope !== "installation") throw new Error("profile-upgrade-handoff-installation-required");
-    claim.verify("issue");
-    const path = join(this.#stateRoot, "profiles", profileId, "state.db");
-    const ancestry = new Map<string, DirectoryIdentity>();
-    noSymlinkAncestry(dirname(path), ancestry);
-    const observed = readProfileDatabaseBinding(path);
-    if (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10) return undefined;
-    if (this.#mode !== "shared") throw new Error("profile-upgrade-handoff-shared-required");
-    if (claim.phase !== "runtime") throw new ProfileUpgradeSourceRefusalError();
-    if (observed.state !== "bound" || observed.binding.installationId !== this.locator.installationId
-      || observed.binding.profileId !== claim.profileId) throw new Error("profile-upgrade-handoff-binding-refused");
-    const lease = this.#authority as InstallationLease;
-    assertInstallationLease(lease);
-    const capture = lease.captureProfileUpgradeHandoff(profileId);
-    const source = () => ["", "-wal", "-shm", "-journal"].map(suffix => {
-      const filePath = path + suffix;
-      const file = lstatSync(filePath, { bigint: true, throwIfNoEntry: false });
-      if (file === undefined) return { suffix, absent: true };
-      if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1n || privatePathRejects(filePath, file, "group-write")) throw new Error("profile-upgrade-handoff-source-unsafe");
-      const identity = (value: BigIntStats) => [value.dev, value.ino, value.size, value.mode, value.uid, value.nlink, value.mtimeNs, value.ctimeNs].join(":");
-      const expected = identity(file);
-      const descriptor = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
-      let result: { suffix: string; identity: string; digest: string } | undefined;
-      let primary: { error: unknown } | undefined;
-      try {
-        if (identity(fstatSync(descriptor, { bigint: true })) !== expected) throw new Error("profile-upgrade-handoff-source-changed");
-        const hash = createHash("sha256"), buffer = Buffer.allocUnsafe(64 * 1024);
-        let length: number;
-        while ((length = readSync(descriptor, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, length));
-        if (identity(fstatSync(descriptor, { bigint: true })) !== expected || identity(lstatSync(filePath, { bigint: true })) !== expected) throw new Error("profile-upgrade-handoff-source-changed");
-        result = { suffix, identity: expected, digest: hash.digest("hex") };
-      } catch (error) { primary = { error }; }
-      try { closeSync(descriptor); }
-      catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
-        { descriptor: { descriptor, identity: file } }); }
-      if (primary !== undefined) throw primary.error;
-      if (result === undefined) throw new Error("profile-upgrade-handoff-source-result-missing");
-      return result;
-    });
-    const before = canonicalJsonStringify(source());
-    return Object.freeze({ consume(next: RuntimeAdmission): string {
-      const nextLease = next.#exclusiveInstallationLease();
-      capture.consume(nextLease);
-      if (!noSymlinkAncestry(dirname(path), ancestry)) throw new Error("profile-upgrade-handoff-source-changed");
-      if (canonicalJsonStringify(source()) !== before) throw new Error("profile-upgrade-handoff-source-changed");
-      const current = next.#captureProfileAccess(profileId);
-      if (current.phase !== "runtime") throw new Error("profile-upgrade-handoff-runtime-claim-required");
-      return current.profileId;
-    } });
+    try {
+      const claim = this.#captureProfileAccess(profileId);
+      this.assertLive();
+      if (this.#scope !== "installation") throw new Error("profile-upgrade-handoff-installation-required");
+      claim.verify("issue");
+      const path = join(this.#stateRoot, "profiles", profileId, "state.db");
+      const ancestry = new Map<string, DirectoryIdentity>();
+      noSymlinkAncestry(dirname(path), ancestry);
+      const observed = readProfileDatabaseBinding(path);
+      if (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10) return undefined;
+      if (this.#mode !== "shared") throw new Error("profile-upgrade-handoff-shared-required");
+      if (claim.phase !== "runtime") throw new ProfileUpgradeSourceRefusalError();
+      if (observed.state !== "bound" || observed.binding.installationId !== this.locator.installationId
+        || observed.binding.profileId !== claim.profileId) throw new Error("profile-upgrade-handoff-binding-refused");
+      const lease = this.#authority as InstallationLease;
+      assertInstallationLease(lease);
+      const capture = lease.captureProfileUpgradeHandoff(profileId);
+      const source = () => ["", "-wal", "-shm", "-journal"].map(suffix => {
+        const filePath = path + suffix;
+        const file = lstatSync(filePath, { bigint: true, throwIfNoEntry: false });
+        if (file === undefined) return { suffix, absent: true };
+        if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1n || privatePathRejects(filePath, file, "group-write")) throw new Error("profile-upgrade-handoff-source-unsafe");
+        const identity = (value: BigIntStats) => [value.dev, value.ino, value.size, value.mode, value.uid, value.nlink, value.mtimeNs, value.ctimeNs].join(":");
+        const expected = identity(file);
+        const descriptor = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+        let result: { suffix: string; identity: string; digest: string } | undefined;
+        let primary: { error: unknown } | undefined;
+        try {
+          if (identity(fstatSync(descriptor, { bigint: true })) !== expected) throw new Error("profile-upgrade-handoff-source-changed");
+          const hash = createHash("sha256"), buffer = Buffer.allocUnsafe(64 * 1024);
+          let length: number;
+          while ((length = readSync(descriptor, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, length));
+          if (identity(fstatSync(descriptor, { bigint: true })) !== expected || identity(lstatSync(filePath, { bigint: true })) !== expected) throw new Error("profile-upgrade-handoff-source-changed");
+          result = { suffix, identity: expected, digest: hash.digest("hex") };
+        } catch (error) { primary = { error }; }
+        try { closeSync(descriptor); }
+        catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+          { descriptor: { descriptor, identity: file } }); }
+        if (primary !== undefined) throw primary.error;
+        if (result === undefined) throw new Error("profile-upgrade-handoff-source-result-missing");
+        return result;
+      });
+      const before = canonicalJsonStringify(source());
+      return Object.freeze({ consume(next: RuntimeAdmission): string {
+        const nextLease = next.#exclusiveInstallationLease();
+        capture.consume(nextLease);
+        if (!noSymlinkAncestry(dirname(path), ancestry)) throw new Error("profile-upgrade-handoff-source-changed");
+        if (canonicalJsonStringify(source()) !== before) throw new Error("profile-upgrade-handoff-source-changed");
+        const current = next.#captureProfileAccess(profileId);
+        if (current.phase !== "runtime") throw new Error("profile-upgrade-handoff-runtime-claim-required");
+        return current.profileId;
+      } });
+    } catch (error) {
+      if (hasUnprovedSourceClosure(error)) { this.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission: this }); }
+      throw error;
+    }
   }
   forStoppedProfileUpgrade(): RuntimeAdmission;
   forStoppedProfileUpgrade(browserClosure: ProfileBrowserClosure, profileId: string, restore: OfflineMaintenanceOperation, clock: Clock, hostFacts: HostConfigFacts): Promise<RuntimeAdmission>;
