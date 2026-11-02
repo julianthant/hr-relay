@@ -23,7 +23,6 @@ export const MACOS_FILES: readonly string[] = [
   "tests/backend/storage/configuration/credential-store.storage-restore-drill.integration.test.ts",
   "tests/backend/storage/maintenance/cancel-queued-runs.integration.test.ts",
   "tests/backend/storage/maintenance/existing-data-backup.flat-storage.integration.test.ts",
-  "tests/backend/storage/maintenance/existing-data-backup-files.test.ts",
   "tests/backend/storage/maintenance/upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.ready-bound.integration.test.ts",
