@@ -1439,7 +1439,7 @@ function captureProfileRegistryWitness(control: string, locator: RuntimeLocator)
   const machine = join(locator.stateRoot, "machine");
   const operations = join(machine, "operations");
   const receipts = join(control, RECEIPTS);
-  const directories = [operations, receipts, join(machine, "erasures"), join(machine, "credential-keys"), join(machine, "duo-credentials")];
+  const directories = [operations, receipts];
   const roots = [control, locator.stateRoot, locator.artifactRoot, machine, ...directories];
   for (const directory of roots) assertNoSymlinkComponents(directory);
   const membership = profileRegistryStatWitness(control, locator, directories);
