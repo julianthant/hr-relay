@@ -112,6 +112,7 @@ it("real ingress, two real workers and Chromium: read-only claims, exact control
   const diagnostics = () => output.join("") + JSON.stringify({ leases: database?.authority.workerLeases.listLive(), runs: runIds.map(runId => ({
     state: database?.authority.runs.get(runId)?.lifecycle.state ?? "absent",
     failureCodes: database?.authority.failures.listByRun(runId).map(failure => failure.code) ?? [],
+    failureSummaries: database?.authority.failures.listByRun(runId).map(failure => failure.summary) ?? [],
   })), duoLease: database?.authority.duoCeremonyLeases.get(FIXTURE_DUO_CREDENTIAL_KEY),
   browsers: [1, 2].map(index => database?.authority.workerControls.browsers(worker(index)).map(({ system, health }) => ({ system, health }))),
   traces: readdirSync(root).filter(name => /^browser-\d+\.jsonl$/u.test(name)).map(name => readFileSync(join(root, name), "utf8").trim().split("\n")) });

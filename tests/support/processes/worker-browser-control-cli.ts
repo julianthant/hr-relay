@@ -103,13 +103,13 @@ try {
     protectedSecrets,
     bindings: { crm: binding("crm"), ucpath: binding("ucpath") },
     launcher: { launch: async input => {
-      trace({ event: "launch-start", profileDirectory: input.profileDirectory });
+      trace({ event: "launch-start", profileDirectory: input.profileDirectory, nativeOnly: input.nativeOnly === true });
       const context = input.nativeOnly === true ? await DEFAULT_BROWSER_LAUNCHER.launch(input) : await chromium.launchPersistentContext(input.profileDirectory, { channel: 'chromium', headless: input.headless,
         viewport: input.viewport, acceptDownloads: input.acceptDownloads, downloadsPath: input.downloadsPath,
         args: [`--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`] });
       contexts.add(context); trace({ event: "open", profileDirectory: input.profileDirectory });
       context.on("close", () => { contexts.delete(context); trace({ event: "close", profileDirectory: input.profileDirectory }); });
-      if (input.nativeOnly !== true) await context.route("**/*", async route => { trace({ event: "fixture-request", url: route.request().url() });
+      await context.route("**/*", async route => { trace({ event: "fixture-request", url: route.request().url() });
         await route.fulfill({ contentType: "text/html", body: '<!doctype html><title>Isolated session fixture</title><main data-authenticated>Fixture account</main>' }); });
       return context;
     } },
