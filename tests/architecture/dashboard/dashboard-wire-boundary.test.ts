@@ -6,6 +6,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { builtinModules } from "node:module";
 import { join, resolve } from "node:path";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { REPO_ROOT, repoRelative, walkFiles } from "../support/helpers/guard-files.js";
 
 const { RETAINED_MOCK_SITES, retainedLiteralSite, RETAINED_MOCK_LITERALS } = createRetainedDashboardMockFixtures();
@@ -295,9 +296,9 @@ describe("dashboard wire boundary (ref frontend-backend-integration)", () => {
   });
 
   it("bounds retained fixture literals exactly and refuses served or sibling workflow branches", () => {
-    const ids = WORKFLOW_DESCRIPTORS.map(descriptor => String(descriptor.id));
+    const ids = [...WORKFLOW_DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor)].map(descriptor => String(descriptor.id));
     const sources = new Map(files.map(file => [repoRelative(file), readFileSync(file, "utf8")]));
-    expect(Object.values(RETAINED_MOCK_LITERALS).flat()).toHaveLength(27);
+    expect(Object.values(RETAINED_MOCK_LITERALS).flat()).toHaveLength(32);
     expect(workflowLiteralIssues(sources, ids)).toEqual([]);
     for (const path of ["src/dashboard/client/queries/day-queries.ts", "src/dashboard/surfaces/workflows/mocks/new-sibling.ts", "src/dashboard/surfaces/workflows/mocks/workflow-mock-run.tsx", ...Object.keys(RETAINED_MOCK_LITERALS)]) {
       const changed = new Map(sources);
@@ -314,7 +315,7 @@ describe("dashboard wire boundary (ref frontend-backend-integration)", () => {
   });
 
   it("branches on no concrete workflow id anywhere under src/dashboard", () => {
-    const ids = WORKFLOW_DESCRIPTORS.map((descriptor) => String(descriptor.id));
+    const ids = [...WORKFLOW_DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor)].map(descriptor => String(descriptor.id));
     expect(ids.length).toBeGreaterThan(0);
     const sources = new Map(files.map(file => [repoRelative(file), readFileSync(file, "utf8")]));
     const violations = workflowLiteralIssues(sources, ids);

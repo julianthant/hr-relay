@@ -9,6 +9,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import {
   DESCRIPTORS,
+  CHILD_ONLY_WORKFLOW_MODULES,
   INTAKE_PROJECTIONS,
   SERVER_REGISTRY,
   WORKFLOW_MODULES,
@@ -66,7 +67,7 @@ import {
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 import { workflowSourcePath } from "../../../src/workflow-kit/validation/source-layout.js";
 
-const ALL: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, fixtureDescriptor];
+const ALL: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), fixtureDescriptor];
 
 /** Roots a descriptor module may VALUE-import. Type-only imports are exempt (§1.4 #6). */
 
@@ -142,7 +143,7 @@ describe("descriptor coverage", () => {
 
 
   it("declares one role per module, every chunk harness naming a registered composition", () => {
-    const roleSpecimens = [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES];
+    const roleSpecimens = [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES];
     assert.deepEqual(auditWorkflowModuleRoles(roleSpecimens), []);
     for (const module of roleSpecimens) {
       assert.ok(
@@ -188,7 +189,7 @@ describe("descriptor coverage", () => {
 
   // A harness role names both its composition and the step that owns its address.
   it("refuses a chunk harness whose step its composition does not declare", () => {
-    const roleSpecimens = [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES];
+    const roleSpecimens = [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES];
     const harness = STEP_PROOF_MODULES[0];
     const composition = WORKFLOW_MODULES.find((module) => harness?.role.kind === "chunk-harness" && module.descriptor.id === harness.role.of);
     if (harness === undefined || composition === undefined) {
@@ -203,7 +204,7 @@ describe("descriptor coverage", () => {
     for (const module of roleSpecimens) {
       if (module.role.kind !== "chunk-harness") continue;
       const role = module.role;
-      const owner = WORKFLOW_MODULES.find(candidate => candidate.descriptor.id === role.of);
+      const owner = [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES].find(candidate => candidate.descriptor.id === role.of);
       assert.ok(owner !== undefined, `${String(module.descriptor.id)} requires its registered composition`);
       assert.equal(owner.role.kind, "composition");
       assert.ok(
@@ -350,7 +351,7 @@ describe("descriptor coverage", () => {
   });
 
   it("keeps every descriptor module's value-import closure bundle-safe", () => {
-    for (const module of [...WORKFLOW_MODULES, ...UNREGISTERED_OCR_MODULES]) {
+    for (const module of [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...UNREGISTERED_OCR_MODULES]) {
 
       const entry = workflowSourcePath(String(module.descriptor.id), module.role);
       assert.deepEqual(bundleViolations(entry), [], entry);

@@ -95,16 +95,17 @@ export const WORKFLOW_IDS_BY_CODE = workflowCodeRegistry(DESCRIPTORS);
 
 
 export function auditImplBindings(bindings: PendingImplBindings): readonly string[] {
+  const allModules = [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES];
   const violations: string[] = [
-    ...auditWorkflowModuleBindings(WORKFLOW_MODULES),
-    ...auditWorkflowModuleRoles(WORKFLOW_MODULES),
-    ...auditWorkflowCodes(DESCRIPTORS),
+    ...auditWorkflowModuleBindings(allModules),
+    ...auditWorkflowModuleRoles(allModules),
+    ...auditWorkflowCodes(allModules.map(module => module.descriptor)),
   ];
   const bound = new Set(boundTaskIds());
   const pending = new Map(bindings.tasks.map((entry) => [String(entry.taskId), entry]));
   const used = new Set<string>();
 
-  for (const descriptor of DESCRIPTORS) {
+  for (const { descriptor } of allModules) {
     for (const contract of workflowProjections(descriptor).contracts) {
       const id = String(contract.id);
       used.add(id);

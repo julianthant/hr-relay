@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
 
-import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { workflowScenarioFolder, workflowSourceFolder, workflowSourcePath } from "../../../src/workflow-kit/validation/source-layout.js";
 import { gitVisibleFilesIn, REPO_ROOT } from "../support/helpers/guard-files.js";
@@ -473,7 +473,7 @@ const PRE_CANONICAL_SCENARIOS: readonly PreCanonicalScenarioEntry[] = [];
 
 const ARTIFACT_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [];
 
-function auditedWorkflowSources(modules: readonly WorkflowModule[] = [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES]): readonly RegisteredWorkflowSource[] {
+function auditedWorkflowSources(modules: readonly WorkflowModule[] = [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES]): readonly RegisteredWorkflowSource[] {
   return modules.map((module) => {
     const id = String(module.descriptor.id);
     return {
@@ -544,7 +544,7 @@ function cleanFixtureFiles(): Record<string, string> {
     "tests/scenario/dashboard/combo/world.ts": "export const WORLD = 1;\n",
     "tests/scenario/intake-extraction.scenario.test.ts": "export const INTAKE = 1;\n",
     "tests/scenario/combo-supplement.md": "# additional combo proof\n",
-    "tests/scenario/i9-lookup.md": "# an unregistered candidate\n",
+    "tests/scenario/unregistered-lookup.md": "# an unregistered candidate\n",
   };
 }
 
@@ -837,7 +837,7 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
     assert.ok(tree.sources.size > 500, `source scan resolved only ${tree.sources.size} files`);
     assert.ok(tree.artifactFiles.length > 10, `artifact scan resolved only ${tree.artifactFiles.length} files`);
     const registered = auditedWorkflowSources();
-    assert.equal(registered.length, WORKFLOW_MODULES.length + STEP_PROOF_MODULES.length,
+    assert.equal(registered.length, WORKFLOW_MODULES.length + CHILD_ONLY_WORKFLOW_MODULES.length + STEP_PROOF_MODULES.length,
       "operator workflows and retained step proofs must stay in the scan");
 
     const scannedWorkflowFiles = [...tree.sources.keys()]
@@ -872,7 +872,7 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
   });
 
   it("arm (c): retained mock literals stay exact and served or sibling additions remain forbidden", () => {
-    assert.equal(Object.values(RETAINED_MOCK_LITERALS).flat().length, 27);
+    assert.equal(Object.values(RETAINED_MOCK_LITERALS).flat().length, 32);
     assert.deepEqual(auditWorkflowAuthoringBudget(repositoryInputs(tree)), []);
     for (const path of ["src/dashboard/client/queries/day-queries.ts", "src/dashboard/surfaces/workflows/mocks/new-sibling.ts", "src/dashboard/surfaces/workflows/mocks/workflow-mock-run.tsx", ...Object.keys(RETAINED_MOCK_LITERALS)]) {
       const sources = new Map(tree.sources);
@@ -914,7 +914,7 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
       attributeWorkflowArtifact("tests/scenario/separations-supplement.md", workflows),
       "separations",
     );
-    assert.equal(attributeWorkflowArtifact("tests/scenario/i9-lookup.md", workflows), undefined);
+    assert.equal(attributeWorkflowArtifact("tests/scenario/unregistered-lookup.md", workflows), undefined);
     assert.equal(attributeWorkflowArtifact("src/workflows/descriptor-registry.ts", workflows), undefined);
     // Inside `src/workflows/` the harness id is NOT in the path: only the
     // registered FOLDER can say whose budget a file beside its workflow.ts is.

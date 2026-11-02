@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, it } from "vitest";
 
-import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { auditWorkflowModuleRoles, type WorkflowRoleView } from "../../../src/workflow-kit/validation/workflow-module-audit.js";
 import { defineWorkflowRole, type WorkflowModuleRole } from "../../../src/workflow-kit/validation/module-role.js";
@@ -401,7 +401,7 @@ function writeFixtureTree(files: Record<string, string>): string {
 }
 
 function registeredLayoutModules(): readonly WorkflowLayoutModule[] {
-  return [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES, ...UNREGISTERED_OCR_MODULES].map((module) => ({
+  return [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES, ...UNREGISTERED_OCR_MODULES].map((module) => ({
     id: String(module.descriptor.id),
     role: module.role,
     timelineDeclared: module.descriptor.timelineDeclared,
@@ -472,7 +472,7 @@ describe("workflow-layout — the src/workflows/ tree IS the rail and the timeli
   }
 
   it("arm (c): the registry's role audit is wired over the real modules and refuses a shared step", () => {
-    assert.deepEqual(auditWorkflowModuleRoles([...WORKFLOW_MODULES, ...STEP_PROOF_MODULES]), []);
+    assert.deepEqual(auditWorkflowModuleRoles([...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES]), []);
 
     const composition = WORKFLOW_MODULES.find(({ role }) => role.kind === "composition");
     const harnesses = STEP_PROOF_MODULES.filter(({ role }) => role.kind === "chunk-harness");

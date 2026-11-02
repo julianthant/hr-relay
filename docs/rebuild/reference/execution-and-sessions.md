@@ -189,6 +189,7 @@ runs its ceremony and verifies inside the Duo lease before returning `logged-in`
 | `src/backend/systems/crm/session.ts` | Non-empty Salesforce `sid` session cookie. |
 | `src/backend/systems/new-kronos/session.ts` | Non-empty WFD `kronosAuthToken` cookie, polled up to 80 times at 250 ms intervals after landing. |
 | `src/backend/systems/kuali/session.ts` | Rendered Kuali Build application chrome. The recipe has no verified authentication-only cookie and records that weaker marker. |
+| `src/backend/systems/i9/login.ts` | Exact I-9 Complete application origin, visible Search Options control, and absent TritON form. UCOP launch and campus selection join the shared backend Fast Duo ceremony. Training dismissal must complete before application proof. No authentication-only cookie is claimed. |
 
 `verifyUcsdAuthenticatedApplication` in
 `src/backend/systems/browser-shared/ucsd-sso.ts` combines the positive observation with absence
