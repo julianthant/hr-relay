@@ -26,12 +26,23 @@ function factoryFor({ config, root }: Readonly<{ config: BrowserSessionFactoryOp
     clock, scheduler, isolation: rebuildRuntimeIsolation, protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-value" }),
     newSessionId: () => "11111111-1111-4111-8111-111111111111", assertCurrent() {}, slotOrdinal: () => 1,
     admitProfile: async identity => BrowserProfileAdmissionSchema.parse({ ...identity, profileRevision: 1, resetRequired: false }),
-    bindings: { onbase: { system: "onbase", createDriver: () => ({ system: "onbase" }), login: async () => "logged-in", verifyAuthenticated: f.verifierFor().verify } },
+    bindings: { onbase: { system: "onbase", exclusive: true, createDriver: () => ({ system: "onbase" }), login: async () => "logged-in", verifyAuthenticated: f.verifierFor().verify } },
     launcher: harness.launcher, ...options,
   });
 }
 
 describe("OnBase exclusive browser lifetime", () => {
+  it("refuses a nonexclusive request before acquiring or launching the registered exclusive binding", async () => {
+    await f.withTempRuntime(async ({ config, root }) => {
+      const { database, repository } = exclusiveLeaseFixture(), harness = f.fakeLauncher();
+      try {
+        await assert.rejects(factoryFor({ config, root }, repository, harness).open({ ...input, exclusive: false }), /browser-session-exclusivity-mismatch/u);
+        assert.equal(harness.launches().length, 0);
+        assert.equal(database.prepare("SELECT COUNT(*) AS count FROM exclusive_session_leases").get()?.count, 0);
+      } finally { database.close(); }
+    });
+  });
+
   it("retains the lease after an unproved context close and refuses another identity session", async () => {
     await f.withTempRuntime(async ({ config, root }) => {
       const { database, repository } = exclusiveLeaseFixture();
@@ -72,7 +83,7 @@ describe("OnBase exclusive browser lifetime", () => {
     await f.withTempRuntime(async ({ config, root }) => {
       const { database, repository } = exclusiveLeaseFixture(), harness = f.fakeLauncher();
       try {
-        const factory = factoryFor({ config, root }, repository, harness, { bindings: { onbase: { system: "onbase",
+        const factory = factoryFor({ config, root }, repository, harness, { bindings: { onbase: { system: "onbase", exclusive: true,
           createDriver: () => { throw new Error("fixture driver construction failed"); }, login: async () => "logged-in", verifyAuthenticated: f.verifierFor().verify } } });
         await assert.rejects(factory.open(input), /driver construction failed/u);
         assert.equal(harness.page.closed, true); assert.equal(harness.contextClosed(), true);
@@ -100,7 +111,7 @@ describe("OnBase exclusive browser lifetime", () => {
     await f.withTempRuntime(async ({ config, root }) => {
       const { database, repository } = exclusiveLeaseFixture();
       try {
-        const bindings: BrowserSystemBindings = { onbase: { system: "onbase", createDriver: () => ({ system: "onbase" }),
+        const bindings: BrowserSystemBindings = { onbase: { system: "onbase", exclusive: true, createDriver: () => ({ system: "onbase" }),
           login: async () => "logged-in", verifyAuthenticated: f.verifierFor().verify } };
         const factory = (ordinal: number, sessionId: string, harness: ReturnType<typeof f.fakeLauncher>) => new PlaywrightWorkerSessionFactory({
           ...mockBrowserRootPort(), browserOwner: { profileId: "22222222-2222-4222-8222-222222222222", database: { authority: { exclusiveSessionLeases: repository } } as AuthorityDatabase },
@@ -132,7 +143,7 @@ describe("OnBase exclusive browser lifetime", () => {
           clock, scheduler, isolation: rebuildRuntimeIsolation, protectedSecrets: protectedSecretSource({ ucpathUserId: "fixture-user", ucpathPassword: "fixture-value" }),
           newSessionId: () => "11111111-1111-4111-8111-111111111111", assertCurrent() {}, slotOrdinal: () => 1,
           admitProfile: async identity => BrowserProfileAdmissionSchema.parse({ ...identity, profileRevision: 1, resetRequired: false }),
-          bindings: { onbase: { system: "onbase", createDriver: () => ({ system: "onbase" }), login: async () => "logged-in", verifyAuthenticated: f.verifierFor().verify } },
+          bindings: { onbase: { system: "onbase", exclusive: true, createDriver: () => ({ system: "onbase" }), login: async () => "logged-in", verifyAuthenticated: f.verifierFor().verify } },
           launcher: { launch: async () => { throw new Error("launch acknowledgement lost"); } },
         });
         await assert.rejects(factory.open(input), /closure is unproved/u);

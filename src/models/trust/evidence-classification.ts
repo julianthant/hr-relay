@@ -360,7 +360,46 @@ function personLookupResultLeaves(scope: EvidenceValueScope): unknown[] {
   ];
 }
 
+function onbaseTargetLeaves(scope: EvidenceValueScope): unknown[] {
+  return [
+    ...person(scope, "ucpathId", "fallback.lastName", "fallback.firstName", "fallback.middleName", "fallback.suffix"),
+    ...open(scope, "sourcePage", "document.bytes", "document.mediaType", "fallback.departmentName", "fallback.departmentCode",
+      "fallback.viceChancellor", "fallback.viceChancellorCode"),
+    ...["document.id", "document.sha256", "pageSha256"].map(path => ({ scope, path, classification: "direct-identifier", transform: "drop" })),
+  ];
+}
+
+function onbaseSavedLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  const at = (path: string): string => prefix.length === 0 ? path : `${prefix}.${path}`;
+  return [
+    ...person(scope, at("ucpathId")),
+    ...open(scope, at("documentType"), at("documentName"), at("source")),
+    { scope, path: at("documentId"), classification: "direct-identifier", transform: "digest" },
+    { scope, path: at("pageSha256"), classification: "direct-identifier", transform: "drop" },
+  ];
+}
+
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...["onbase", "onbase-source-page", "onbase-import-document"].flatMap(id => onbaseTargetLeaves(workflowInput(id))),
+  ...onbaseTargetLeaves(taskOutput("onbase/read-source-page")),
+  ...onbaseTargetLeaves(workflowResult("onbase-source-page")),
+  ...[workflowResult("onbase"), workflowResult("onbase-import-document"), taskOutput("onbase/upload-import")].flatMap(scope => [
+    ...onbaseSavedLeaves(scope, "savedDocument"),
+    ...open(scope, "disposition"),
+  ]),
+  ...onbaseSavedLeaves(writeProof("onbase/upload-import")),
+  ...person(taskOutput("onbase/stage-import"), "observedEid", "keywords.ucpathId", "keywords.lastName", "keywords.firstName"),
+  ...open(taskOutput("onbase/stage-import"), "stagedPageState", "keywords.documentName", "keywords.departmentName", "keywords.departmentCode",
+    "keywords.viceChancellor", "keywords.viceChancellorCode"),
+  { scope: taskOutput("onbase/stage-import"), path: "pageSha256", classification: "direct-identifier", transform: "drop" },
+  ...[taskOutput("onbase/match-import"), taskOutput("onbase/verify-import")].flatMap(scope => [
+    ...onbaseSavedLeaves(scope, "proof"),
+    ...open(scope, "state", "reason", "matches", "observedAt", "evidence.source", "evidence.sourceState", "evidence.observedAt"),
+    ...population(scope, "evidence"),
+    ...["queryDigest", "evidence.idempotencyKeyDigest", "evidence.queryDigest", "evidence.evidenceRef"].map(path => ({
+      scope, path, classification: "direct-identifier", transform: "drop",
+    })),
+  ]),
   ...open(taskOutput("workflow:i9-check/read-match-outcome"), "shouldLookup"),
   ...[taskOutput("workflow:i9-check/read-match-outcome"), taskOutput("workflow:i9-check/read-retention-row"), workflowResult("i9-check"), workflowResult("i9-check-roster-match"), workflowResult("i9-check-person-match"), workflowResult("i9-check-person-lookup")].flatMap(scope => [
     ...open(scope, "identity.status", "identity.candidateCount", "identity.reason"),

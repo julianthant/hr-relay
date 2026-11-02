@@ -17,7 +17,7 @@ describe("OnBase child-only workflow registration", () => {
     assert.throws(() => childWorkflowModuleOf("person-lookup", "onbase"), /does not declare delegation/u);
     assert.deepEqual(onbaseModule.descriptor.surfaces, {});
     assert.ok(onbaseModule.stores.includes(onbaseStore));
-    assert.equal(onbaseStore.session.exclusive, true); assert.ok(BROWSER_SYSTEM_BINDINGS.onbase);
+    assert.equal(onbaseStore.session.exclusive, true); assert.equal(BROWSER_SYSTEM_BINDINGS.onbase?.exclusive, true);
     assert.equal(onbaseStore.tasks.commitImport.contract, OnbaseCommitImport);
     assert.deepEqual(onbaseModule.descriptor.timeline.map(step => step.key), ["source-page", "import-document"]);
     for (const proof of [onbaseSourcePageModule, onbaseImportDocumentModule]) {

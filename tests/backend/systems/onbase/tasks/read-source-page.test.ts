@@ -9,6 +9,8 @@ import { createOnbaseDriver } from "../../../../../src/backend/systems/onbase/dr
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { taskFailer } from "../../../../../src/workflow-kit/task.js";
 import { fakeOnbasePage } from "../../../../support/helpers/browser/fake-onbase-page.js";
+import { redactObservedDataPoints } from "../../../../../src/backend/logs/observed-data.js";
+import { RecordedDataPointSchema } from "../../../../../src/rules/workflow/task-provenance.js";
 
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 async function documentBytes() {
@@ -34,7 +36,14 @@ describe("selected OnBase PDF page", () => {
     const bytes = await documentBytes(), fixture = fakeOnbasePage(), driver = createOnbaseDriver(() => undefined, fixture.page, manualClock(new Date("2026-11-02T12:00:00Z")));
     const input = OnbaseInputSchema.parse({ ...ONBASE_EXAMPLE_INPUT, sourcePage: 2, document: { ...ONBASE_EXAMPLE_INPUT.document, sha256: hash(bytes), bytes: bytes.length } });
     const invoke = (body: Uint8Array | string) => readSourcePageTask.impl.run({ input, ctx: { driver, signal: new AbortController().signal,
-      log: { info() {}, warn() {}, debug() {} }, recordData() {}, captureScreenshot: async () => undefined, fail: taskFailer(readSourcePageTask.contract),
+      log: { info() {}, warn() {}, debug() {} }, recordData(pointInput) {
+        const points = Array.isArray(pointInput) ? pointInput : [pointInput];
+        const redacted = redactObservedDataPoints(readSourcePageTask.contract.id, points.map(point => RecordedDataPointSchema.parse({ ...point,
+          execution: { runId: "22222222-2222-4222-8222-222222222222", traceId: "ob-120000-2222", attempt: 1,
+            workflowId: "onbase", nodeId: "source-page", taskId: readSourcePageTask.contract.id }, recordedAt: "2026-11-02T12:00:00.000Z",
+        })));
+        assert.equal(redacted.length, points.length);
+      }, captureScreenshot: async () => undefined, fail: taskFailer(readSourcePageTask.contract),
       artifacts: { open: async () => Readable.from([body]), put: async () => { throw new Error("unexpected storage"); } },
     } });
     const output = await invoke(bytes);

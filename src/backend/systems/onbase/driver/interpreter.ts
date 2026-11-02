@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Locator, Page } from "playwright";
 import { z } from "zod";
 import { OnbaseImportError, OnbaseImportVerdictSchema, OnbaseKeywordsSchema, OnbasePreparedSchema, OnbaseTargetSchema,
-  ONBASE_DISPLAYED_EID, ONBASE_DOCUMENT_NAME, ONBASE_DOCUMENT_TYPE, ONBASE_IMPORT_BUTTON, onbaseImportKey, type OnbaseTarget } from "../../../../models/systems/onbase/import-document.js";
+  ONBASE_DISPLAYED_EID, ONBASE_DOCUMENT_NAME, ONBASE_DOCUMENT_TYPE, ONBASE_IMPORT_BUTTON, ONBASE_IMPORT_STAGED, onbaseImportKey, type OnbaseTarget } from "../../../../models/systems/onbase/import-document.js";
 import type { OnbaseDriver } from "../../../../models/ui/onbase.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
@@ -101,7 +101,11 @@ export function createOnbaseDriver(assertCurrent: () => void, page: Page, clock:
       await run(() => dialog.waitFor({ state: "hidden", timeout: CONTROL_MS }));
       const lastName = await run(() => ui.keyword(form, "Last Name").elementHandle());
       if (lastName === null) throw new OnbaseImportError("keyset-autofill-unproved");
-      await run(() => page.waitForFunction(element => element instanceof HTMLInputElement && element.value.trim().length > 0, lastName, { timeout: CONTROL_MS }));
+      try {
+        const frame = await run(() => lastName.ownerFrame());
+        if (frame === null) throw new OnbaseImportError("keyset-autofill-unproved");
+        await run(() => frame.waitForFunction(element => element instanceof HTMLInputElement && element.value.trim().length > 0, lastName, { timeout: CONTROL_MS }));
+      } finally { await lastName.dispose(); }
       await run(() => ui.keyword(form, "Document Name").fill(ONBASE_DOCUMENT_NAME, { timeout: CONTROL_MS }));
       const values = await keywords();
       if (values.ucpathId !== target.ucpathId) throw new OnbaseImportError("selected-employee-mismatch");
@@ -110,7 +114,7 @@ export function createOnbaseDriver(assertCurrent: () => void, page: Page, clock:
       await run(() => ui.importButton(form).and(ui.enabled(form)).waitFor({ state: "visible", timeout: CONTROL_MS }));
       prepared = { key: onbaseImportKey(target), keywords: values };
       recordBrowserAction("typed", "onbase.import.keywords");
-      return OnbasePreparedSchema.parse({ observedEid: values.ucpathId, pageSha256: target.pageSha256, keywords: values });
+      return OnbasePreparedSchema.parse({ stagedPageState: ONBASE_IMPORT_STAGED, observedEid: values.ucpathId, pageSha256: target.pageSha256, keywords: values });
     },
     async commitImport(input, capability) {
       current(); assertMintedMutationCapability(capability); requireApp();

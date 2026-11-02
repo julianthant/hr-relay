@@ -1108,7 +1108,7 @@ export class WorkerSessionManager {
       if (proof.pagesClosed !== true || proof.contextClosed !== true) {
         throw new Error(`${resource.system} close proof is missing page/context closure`);
       }
-      if (resource.exclusive !== exclusive || (resource.system === "onbase") !== exclusive) {
+      if (resource.exclusive !== exclusive) {
         throw new Error(`${resource.system} close proof has inconsistent session exclusivity`);
       }
       if (exclusive && proof.exclusiveLeaseReleased !== true) {

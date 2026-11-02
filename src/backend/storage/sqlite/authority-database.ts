@@ -2257,7 +2257,7 @@ export class AuthorityDatabase implements Disposable {
         const version = readIntPragma(database, "user_version");
         if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("profile-startup-foreign-application");
         if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup schema is newer than supported");
-        if (![8, 9, 10, 11, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)) throw new Error("profile-startup-unsupported-schema");
+        if (![8, 9, 10, 11, 12, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)) throw new Error("profile-startup-unsupported-schema");
         const inspection = inspectNativeAuthority(database, version);
         machine.assertOfflineMaintenance(machine.maintenanceOperation());
         if (inspection.installationId !== machine.locator.installationId || inspection.profileId !== id) throw new Error("profile-startup-foreign-binding");

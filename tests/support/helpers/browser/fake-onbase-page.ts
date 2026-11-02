@@ -66,7 +66,17 @@ export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stall
       }
     }
     async setInputFiles(file: { name: string; buffer: Buffer }) { queued.push(file); actions.push("upload"); }
-    async elementHandle() { return new FixtureInput(await this.inputValue()); }
+    async elementHandle() {
+      return Object.assign(new FixtureInput(await this.inputValue()), {
+        ownerFrame: async () => ({
+          waitForFunction: async (callback: (element: { value: string }) => boolean, element: { value: string }) => {
+            actions.push(`wait:${this.scope}:${this.name}`);
+            assert.equal(runInNewContext(`(${callback.toString()})(element)`, { HTMLInputElement: FixtureInput, element }), true);
+          },
+        }),
+        dispose: async () => { actions.push(`dispose:${this.scope}:${this.name}`); },
+      });
+    }
     async innerText() { return `${saved.length + (options.incomplete ? 1 : 0)} documents found`; }
     async allTextContents() {
       if (this.name.startsWith("selected:")) { const selected = fields.get(`${this.scope}:${this.name.slice(9)}`); return selected === undefined ? [] : [selected]; }
@@ -86,7 +96,7 @@ export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stall
       getByRole: (role: string, input?: { name: string }) => new Locator(input?.name ?? role, selector.includes("ReverseKeyset") ? "lookup" : selector.includes("frmViewer") ? "viewer" : "form"),
       locator: (text: string) => new Locator(text, "form"),
     }),
-    async waitForFunction(callback: (element: { value: string }) => boolean, element: { value: string }) { assert.equal(runInNewContext(`(${callback.toString()})(element)`, { HTMLInputElement: FixtureInput, element }), true); },
+    async waitForFunction(callback: (element: { value: string }) => boolean, element: { value: string }) { assert.equal(runInNewContext(`(${callback.toString()})(element)`, { HTMLInputElement: class ParentInput {}, element }), true); },
     context: () => ({ request: { async get(href: string) {
       const id = new URL(href).searchParams.get("id"), row = saved.find(value => value.id === id); assert.ok(row); actions.push(`download:${id}`);
       if (options.changeDuringDownload) fields.set("form:UCPath ID", "10800001");

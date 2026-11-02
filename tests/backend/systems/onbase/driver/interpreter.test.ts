@@ -19,7 +19,11 @@ const world = (options: Parameters<typeof fakeOnbasePage>[0] = {}) => {
 describe("OnBase semantic import driver", () => {
   it("onbase/prepare — clears queue residue, uses the lookup modal, verifies every keyword and stages one page without a save", async () => {
     const f = world({ queue: 2 });
-    assert.equal((await f.driver.prepareImport(target)).observedEid, target.ucpathId);
+    const staged = await f.driver.prepareImport(target);
+    assert.equal(staged.observedEid, target.ucpathId);
+    assert.equal(Reflect.get(staged, "stagedPageState"), "onbase.import.staged");
+    assert.ok(f.actions.includes("wait:form:Last Name"));
+    assert.ok(f.actions.includes("dispose:form:Last Name"));
     assert.equal(await f.driver.read(ONBASE_DISPLAYED_EID), target.ucpathId);
     assert.equal(f.queued.length, 1); assert.deepEqual(f.queued[0]?.buffer, bytes);
     assert.equal(f.actions.filter(action => action === "click:Remove").length, 2);

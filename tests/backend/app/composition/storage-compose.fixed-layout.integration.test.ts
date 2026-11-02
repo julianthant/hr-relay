@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { it,vi } from "vitest";
+import { it,onTestFailed,vi } from "vitest";
 import { z } from "zod";
 import { prepareApplicationDataWorkspace,upgradeRegisteredPersonStores,composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -91,6 +91,8 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 |
 }
 
 it.each([[false, CURRENT_AUTHORITY_SCHEMA_VERSION], [true, CURRENT_AUTHORITY_SCHEMA_VERSION], [false, 11], [true, 11], [false, 10], [false, 12]] as const)("converts the stopped default layout, retains identities/settings/key inodes, and keeps one listener (saved browser: %s, schema: %s)", async (explicitBrowser, sourceVersion) => {
+  let phase = "predecessor";
+  onTestFailed(() => { console.error(JSON.stringify({ event: "fixed-layout-failure", phase, explicitBrowser, sourceVersion })); });
   const f = await predecessor(explicitBrowser, sourceVersion), target = realpathSync(mkdtempSync(join(tmpdir(), "relay-fixed-target-")));
   const lifetime = await RuntimeLifetimeLock.acquire(0), port = lifetime.port;
   const activate = AuthorityDatabase.publishFixedLayoutActivation.bind(AuthorityDatabase);
@@ -106,6 +108,7 @@ it.each([[false, CURRENT_AUTHORITY_SCHEMA_VERSION], [true, CURRENT_AUTHORITY_SCH
   let machine: RuntimeAdmission | undefined, profile: RuntimeAdmission | undefined, database: AuthorityDatabase | undefined;
   try {
     if (explicitBrowser) {
+      phase = "stopped-browser-closure";
       const stopped = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.profile.workspace, lifetime);
       const source = await stopped.forStoppedProfileLayout(profileBrowserClosure, f.before.binding.profileId, stopped.maintenanceOperation(), systemClock, hostFacts);
       try {
@@ -117,7 +120,9 @@ it.each([[false, CURRENT_AUTHORITY_SCHEMA_VERSION], [true, CURRENT_AUTHORITY_SCH
     const locatorPath = join(f.profile.workspace, ".tracker", "control", "locator.json");
     writeFileSync(locatorPath, JSON.stringify({ schemaVersion: 2, installationId: f.before.binding.installationId, generation: 0, stateRootGeneration: 0, artifactRootGeneration: 0,
       stateRoot: join(f.profile.workspace, ".tracker", "data"), artifactRoot: join(f.profile.workspace, ".tracker", "data", "artifacts") }));
+    phase = "prepare-workspace";
     await prepareApplicationDataWorkspace(f.profile.workspace, target, lifetime, hostFacts);
+    phase = "readback";
     assert.equal(lifetime.port, port); lifetime.assertWorkspace(target);
     await assertRuntimeLifetimeHeld(lifetime);
     assert.equal(readFixedLayoutIntent(target)?.phase, "complete");
@@ -162,8 +167,10 @@ it.each([[false, CURRENT_AUTHORITY_SCHEMA_VERSION], [true, CURRENT_AUTHORITY_SCH
       try { await assert.rejects(prepareApplicationDataWorkspace(f.profile.workspace, target, lifetime, hostFacts), /fixed-layout-two-installations-present/u); }
       finally { writeFileSync(journalPath, journal, { mode: 0o600 }); }
     }
+    phase = "replay-workspace";
     await prepareApplicationDataWorkspace(f.profile.workspace, target, lifetime, hostFacts);
     assert.equal(readFixedLayoutIntent(target)?.phase, "complete");
+    phase = "cleanup";
   } finally { publication.mockRestore(); database?.close(); profile?.release(); machine?.release(); await lifetime.close(); await f.profile.close(); rmSync(target, { recursive: true, force: true }); }
 });
 

@@ -2,13 +2,14 @@ import { z } from "zod";
 import { ArtifactRefSchema } from "../../artifacts/artifacts.js";
 import { ERROR_CATALOG } from "../../failures/error-catalog.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../task/task-contract.js";
-import { EidSchema, ElementIdSchema, FingerprintSchema, ObservationIdSchema, TaskIdSchema, taskId } from "../../../rules/identity/ids.js";
+import { EidSchema, ElementIdSchema, FingerprintSchema, ObservationIdSchema, PageStateIdSchema, TaskIdSchema, taskId } from "../../../rules/identity/ids.js";
 import { probeVerdictSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 
 export const ONBASE_DOCUMENT_TYPE = "X_HR_Emergency Contact";
 export const ONBASE_DOCUMENT_NAME = "EMERGENCY CONTACT INFORMATION";
 export const ONBASE_DISPLAYED_EID = ObservationIdSchema.parse("onbase.import.displayed-eid");
 export const ONBASE_IMPORT_BUTTON = ElementIdSchema.parse("onbase.import.save");
+export const ONBASE_IMPORT_STAGED = PageStateIdSchema.parse("onbase.import.staged");
 const text = z.string().trim().min(1);
 export const OnbaseInputSchema = z.strictObject({
   ucpathId: EidSchema,
@@ -22,7 +23,7 @@ export const OnbaseTargetSchema = OnbaseInputSchema.extend({ pageSha256: Fingerp
 export type OnbaseTarget = z.output<typeof OnbaseTargetSchema>;
 export const OnbaseKeywordsSchema = z.strictObject({ ucpathId: EidSchema, lastName: text, firstName: text,
   documentName: z.literal(ONBASE_DOCUMENT_NAME), departmentName: text, departmentCode: text, viceChancellor: text, viceChancellorCode: text });
-export const OnbasePreparedSchema = z.strictObject({ observedEid: EidSchema, pageSha256: FingerprintSchema, keywords: OnbaseKeywordsSchema });
+export const OnbasePreparedSchema = z.strictObject({ stagedPageState: z.literal(ONBASE_IMPORT_STAGED), observedEid: EidSchema, pageSha256: FingerprintSchema, keywords: OnbaseKeywordsSchema });
 export type OnbasePrepared = z.output<typeof OnbasePreparedSchema>;
 export const OnbaseSavedDocumentSchema = z.strictObject({
   documentId: z.string().regex(/^[1-9]\d*$/u), ucpathId: EidSchema, documentType: z.literal(ONBASE_DOCUMENT_TYPE),
@@ -51,7 +52,7 @@ export const OnbaseReadSourcePage = defineTaskContract({
 export const OnbasePrepareImport = defineTaskContract({
   id: taskId("onbase/stage-import"), title: "Prepare Emergency Contact import", effect: "prepare", input: OnbaseTargetSchema, output: OnbasePreparedSchema,
   errorCodes: errors, subject, checkpoint: "in-memory-only", scenarios: ["onbase/prepare", "onbase/keyset-miss", "onbase/identity-mismatch"],
-  example: { observedEid: "10800000", pageSha256: "2".repeat(64), keywords: { ucpathId: "10800000", lastName: "Example", firstName: "Person",
+  example: { stagedPageState: ONBASE_IMPORT_STAGED, observedEid: "10800000", pageSha256: "2".repeat(64), keywords: { ucpathId: "10800000", lastName: "Example", firstName: "Person",
     documentName: ONBASE_DOCUMENT_NAME, departmentName: "Example Department", departmentCode: "000001", viceChancellor: "Example Division", viceChancellorCode: "EX" } },
 });
 export const OnbaseMatchImport = defineTaskContract({

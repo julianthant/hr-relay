@@ -197,7 +197,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     const browserMode = browserModeFor(input.browserMode, config.browser.headless);
     const instance = RuntimeInstanceSchema.parse(input.instance);
     const binding = bindingFor(this.#bindings, system);
-    if ((system === "onbase") !== input.exclusive) throw new Error("browser-session-exclusivity-mismatch");
+    if ((binding.exclusive === true) !== input.exclusive) throw new Error("browser-session-exclusivity-mismatch");
     if (input.signal.aborted) throw new Error(`${system} browser session open was cancelled before launch`);
 
     const profileDirectory = workerProfileDirectory({
@@ -213,7 +213,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
     assertFastDuoReady(config, this.#options.duo);
     const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
-    const exclusiveLease = input.exclusive ? await this.#acquireExclusiveSession({ workerId, sessionId, instance,
+    const exclusiveLease = input.exclusive ? await this.#acquireExclusiveSession({ workerId, sessionId, system, instance,
       signal: input.signal, assertCurrent, ...(input.acquisitionRemainingMs === undefined ? {} : { remainingMs: input.acquisitionRemainingMs }) }) : undefined;
     let launchStarted = false;
     let reserved = false;
@@ -571,9 +571,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     );
   }
 
-  async #acquireExclusiveSession(input: Readonly<{ workerId: WorkerId; sessionId: string; instance: RuntimeInstance;
+  async #acquireExclusiveSession(input: Readonly<{ workerId: WorkerId; sessionId: string; system: BrowserSystemId; instance: RuntimeInstance;
     signal: AbortSignal; assertCurrent: () => void; remainingMs?: () => number }>): Promise<ExclusiveSessionLease> {
-    const entry = new URL(resolveSystemEntryUrl(this.#options.config, "onbase", input.instance, "OnBase identity lease"));
+    const entry = new URL(resolveSystemEntryUrl(this.#options.config, input.system, input.instance, `${input.system} identity lease`));
     const account = requireSecret("ucpathUserId", this.#options.protectedSecrets).trim().toLocaleLowerCase("en-US");
     if (account.length === 0) throw new Error("onbase-session-identity-unavailable");
     const identityKey = sha256Hex(canonicalJsonStringify({ application: new URL(".", entry).href, account }));
