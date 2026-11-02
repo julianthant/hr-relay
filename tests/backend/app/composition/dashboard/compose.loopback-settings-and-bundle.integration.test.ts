@@ -99,7 +99,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       clock.now().toISOString(),
       protectedRevision,
       writeId,
-      "first-synthetic-protected-value",
+      "disposable-fixture-password",
     ));
     assert.equal(first.state, "applied");
     if (first.state === "applied") assert.equal(first.revision, protectedRevision + 1);
@@ -124,7 +124,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.equal(resumedProtectedSettings.state, "available");
     if (resumedProtectedSettings.state !== "available") throw new Error("fixture-protected-settings-unavailable");
     const resumedProtectedRevision = resumedProtectedSettings.readback.revision;
-    assert.equal(resumedProtectedRevision, protectedRevision + 2);
+    assert.equal(resumedProtectedRevision, protectedRevision + 1);
     const committedBytes = readFileSync(protectedPath);
     const reused = await restartedClient.executeCommand(protectedSettingsCommand(
       "55555555-5555-4555-8555-555555555555",

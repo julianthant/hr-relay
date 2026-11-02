@@ -101,7 +101,7 @@ describe("strict config resolution", () => {
     assert.equal(resolveConfigWithProvenance(saved, hostConfigFacts({}), CLOCK).config.urls.crm.prod.entry, crm.entry);
     assert.equal(SettingsPatchSchema.safeParse({ "urls.crm.prod": { set: { entry: crm.entry } } }).success, false);
     assert.equal(SettingsPatchSchema.safeParse({ "urls.crm.test": { set: { entry: crm.entry } } }).success, true);
-    assert.throws(() => mergeSettingsPatch({}, { "urls.crm.test": { set: { entry: crm.entry } } }), /retired test routes/u);
+    assert.throws(() => mergeSettingsPatch({}, { "urls.crm.test": { set: { entry: crm.entry } } }), /retired settings cannot be edited/u);
   });
 
   it("applies settings over defaults with complete value-free provenance", () => {

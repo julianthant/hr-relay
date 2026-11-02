@@ -1,5 +1,4 @@
 import { testProcessImport } from "../../../support/compiled-process.js";
-import { writePrivateStage } from "../../../../src/backend/storage/private-path.js";
 import { assertRuntimeLifetimeHeld } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { once } from "node:events";
@@ -15,8 +14,9 @@ import { createDashboardPortTestWorld } from "../../../support/helpers/backend/d
 import { createWorkerSupervisionTestWorld, type Harness } from "../../../support/helpers/backend/worker-supervision-world.js";
 import { default as assert } from "node:assert/strict";
 import { spawn as spawn_m1, type ChildProcess } from "node:child_process";
-import { generateKeyPairSync, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { CanonicalCredentialHeadSchema } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { dirname, join as join_m1 } from "node:path";
 import { it } from "vitest";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
@@ -154,15 +154,14 @@ it("retires a real worker only after its opened Chromium profile closes, custody
   try {
     runtime = await composeDashboardRuntime({ lifetimeLock: profile.lifetime, ...profile.dashboardInput, preflightRunnerFactory: healthyRuntimePreflightRunners, isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {}, repoRoot: root,
       workerProcess: { launch: { environment: {}, command: process.execPath, prefixArgs: ["--import", testProcessImport(), join_m1(process.cwd(), "tests/support/processes/worker-browser-control-cli.ts"), root], cwd: process.cwd() }, spawn: spawnWorker, birth: { pollMs: 25, timeoutMs: 20_000 }, faultSink: line => output.push(line) } });
-    const duoDirectory = join_m1(root, `physical-duo-${randomUUID()}`);
-    mkdirSync(duoDirectory, { mode: 0o700 });
-    const duoCredential = join_m1(duoDirectory, 'credential.json');
-    const generated = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
-    writePrivateStage(duoCredential, Buffer.from(JSON.stringify({ rpId: 'duosecurity.com', credentialId: Buffer.from(randomUUID()).toString('base64'),
-      privateKey: generated.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'), signCount: 0, transport: 'internal' })));
-    assert.equal(statSync(duoDirectory).mode & 0o777, 0o700);
+    const binding = profile.dashboardInput.profile.runtime.selectedContext(profile.dashboardInput.profile.token).admission.profileBinding;
+    const duoCredential = join_m1(root, rebuildRuntimeIsolation.stateRoot, "machine", "duo-credentials", `${binding.profileId}.json`);
+    const head = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(join_m1(root, rebuildRuntimeIsolation.stateRoot, "machine", "credential-keys", `${binding.profileId}.json`), "utf8")));
+    assert.equal(head.state, "active");
+    assert.equal(head.installationId, binding.installationId); assert.equal(head.profileId, binding.profileId);
+    assert.equal(statSync(dirname(duoCredential)).mode & 0o777, 0o700);
     assert.equal(statSync(duoCredential).mode & 0o777, 0o600);
-    const origin = `http://127.0.0.1:${String(runtime.port)}`, patch = { "daemon.idleRepollMs": { set: 100 }, "browser.headless": { set: true }, 'paths.duoCredential': { set: duoCredential }, 'paths.duoExtensionDir': { set: join_m1(process.cwd(), 'fast-duo') } };
+    const origin = `http://127.0.0.1:${String(runtime.port)}`, patch = { "daemon.idleRepollMs": { set: 100 }, "browser.headless": { set: true }, 'paths.duoExtensionDir': { set: join_m1(process.cwd(), 'fast-duo') } };
     const settings = await fetch(`${origin}/api/v1/commands`, { method: "POST", headers: { "content-type": "application/json", origin }, body: JSON.stringify({ commandId: randomUUID(), family: "settings", type: "apply-settings", target: { expectedRevision: world.readRuntimeSettingsRevision(profile) }, source: "dashboard", requestedBy: "local-operator", requestedAt: systemClock.now().toISOString(), payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }) });
     assert.equal(CommandResultSchema.parse(await settings.json()).state, "applied");
     const db = profile.openDatabase({ path: join_m1(profile.stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "native-retirement-proof" }, systemClock); database = db;
@@ -214,7 +213,7 @@ it("retires a real worker only after its opened Chromium profile closes, custody
     const activeSnapshot = db.authority.configSnapshots.get(active.configSnapshotId); assert.ok(activeSnapshot);
     assert.equal(activeSnapshot.fingerprint, active.configFingerprint);
     assert.equal(activeSnapshot.config.features.duoWebAuthn, true);
-    assert.equal(activeSnapshot.config.paths.duoCredential, duoCredential);
+    assert.equal(activeSnapshot.config.paths.duoCredential, join_m1(profile.stateRoot, "credentials", "duo-webauthn.json"));
     assert.equal(activeSnapshot.config.paths.duoExtensionDir, join_m1(process.cwd(), 'fast-duo'));
     const runId = randomUUID(), at = systemClock.now().toISOString();
     runIds.push(runId);
