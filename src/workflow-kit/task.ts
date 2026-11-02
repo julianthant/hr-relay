@@ -342,9 +342,6 @@ function validateTaskBinding(
     }
     if (contract.effect !== "read") throw new Error(`${contract.id} headless task must be read-only`);
     if (sessions.length !== 0) throw new Error(`${contract.id} headless task must be sessionless`);
-    if (namespace.startsWith("workflow:") && contract.artifacts !== undefined) {
-      throw new Error(`${contract.id} workflow mini-store cannot declare artifacts`);
-    }
   }
   const screenshots: unknown = Reflect.get(implInput, "screenshots");
   if (screenshots !== undefined && (screenshots !== "task" || !browser.success || contract.effect !== "read")) {

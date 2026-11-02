@@ -1,4 +1,3 @@
-import { testProcessImport } from "../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -6,8 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath,pathToFileURL } from "node:url";
 import { describe,it } from "vitest";
-import { runSecureEnvironmentBootstrap as runBootstrap, secureEnvironmentEntrypoint } from "../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
+import { runSecureEnvironmentBootstrap as runBootstrap,secureEnvironmentEntrypoint } from "../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
 import { acquireRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { testProcessImport } from "../../support/compiled-process.js";
 
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 
@@ -31,22 +31,6 @@ describe("secure environment bootstrap", () => {
         acquireAdmission: () => { throw new Error("invalid boot flags must refuse before admission"); },
       }), /diagnostic-boot-does-not-have-timeline-cursors/u);
     } finally { process.argv.splice(0, process.argv.length, ...original); }
-  });
-
-  it("shows the exact pending recovery operation without normal or provider admission", async () => {
-    const operationId = "11111111-1111-4111-8111-111111111111";
-    const output: string[] = [];
-    const originalWrite = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (value: string) => { output.push(value); return true; };
-    try {
-      await runSecureEnvironmentBootstrap(["cli", "storage", "relocate", "--status"], {
-        acquireAdmission: () => { throw new Error("status must not acquire normal installation admission"); },
-        assertEnvironment: () => { throw new Error("status must not read provider environment"); },
-        inspectRelocationStatus: () => ({ operationId, phase: "fenced", fromGeneration: 0 }),
-        runRelocation: () => { throw new Error("status must not resume operation"); },
-      });
-      assert.deepEqual(output, [`storage relocate: fenced operation ${operationId}; run storage relocate --resume ${operationId}\n`]);
-    } finally { process.stdout.write = originalWrite; }
   });
 
   it("validates the exact production bundle before authority and provider admission", async () => {
@@ -144,7 +128,7 @@ describe("secure environment bootstrap", () => {
   });
 
   it.each([
-    ["storage", "doctor"], ["storage", "backup"], ["storage", "upgrade"], ["storage", "restore"],
+    ["storage", "doctor"], ["storage", "upgrade"],
 
     ["test-data", "check"], ["test-data", "migrate"],
   ])("isolates %s %s from provider environment admission", async (command, operation) => {
@@ -160,10 +144,9 @@ describe("secure environment bootstrap", () => {
   });
 
   it.each([
-    // Stopped-authority backups require exclusive custody.
-    ["backup", "exclusive"], ["doctor", "shared"], ["transactions", "shared"],
+    ["doctor", "shared"], ["transactions", "shared"],
     ["help", "shared"], ["--help", "shared"], ["-h", "shared"],
-    ["upgrade", "exclusive"], ["restore", "exclusive"], ["repair", "exclusive"],
+    ["upgrade", "exclusive"], ["repair-span-root", "exclusive"],
   ] as const)("holds %s admission in %s mode for the full CLI lifetime", async (operation, expectedMode) => {
     let finish: (() => void) | undefined;
     const running = new Promise<void>((resolve) => { finish = resolve; });
@@ -181,51 +164,6 @@ describe("secure environment bootstrap", () => {
     } finally { finish?.(); }
     await launch;
     assert.throws(() => held?.assertLive(), /released admission/u);
-  });
-
-  it("dispatches exact relocation recovery before normal installation or provider admission", async () => {
-    const operationId = "11111111-1111-4111-8111-111111111111";
-    const events: string[] = [];
-    const originalWrite = process.stdout.write.bind(process.stdout);
-    const output: string[] = [];
-    process.stdout.write = (value: string) => { output.push(value); return true; };
-    try {
-      await runSecureEnvironmentBootstrap(["cli", "storage", "relocate", "--resume", operationId, "--json"], {
-        acquireAdmission: () => { throw new Error("normal admission must not precede recovery"); },
-        assertEnvironment: () => { throw new Error("relocation must not read provider environment"); },
-        runCli: () => { throw new Error("relocation must not enter ordinary CLI composition"); },
-        runRelocation: async ({ args, admission }) => {
-          assert.equal(admission, undefined);
-          assert.deepEqual(args, ["--resume", operationId, "--json"]);
-          events.push("recovery");
-          return { operationId, generation: 2 };
-        },
-      });
-      assert.deepEqual(events, ["recovery"]);
-      assert.deepEqual(output, [`{"operationId":"${operationId}","generation":2}\n`]);
-    } finally { process.stdout.write = originalWrite; }
-  });
-
-  it("keeps the exact planned relocation admission held through the offline runner", async () => {
-    const commandId = "22222222-2222-4222-8222-222222222222";
-    const originalWrite = process.stdout.write.bind(process.stdout);
-    process.stdout.write = () => true;
-    let held: RuntimeAdmission | undefined;
-    try {
-      await runSecureEnvironmentBootstrap(["cli", "storage", "relocate", "--plan", commandId], {
-        acquireAdmission: (mode) => { assert.equal(mode, "exclusive"); held = syntheticAdmission(); return held; },
-        assertEnvironment: () => { throw new Error("relocation must not read provider environment"); },
-        runRelocation: async ({ args, admission }) => {
-          assert.deepEqual(args, ["--plan", commandId]);
-          assert.equal(admission, held);
-          admission?.assertLive();
-          await Promise.resolve();
-          admission?.assertLive();
-          return { operationId: commandId, generation: 1 };
-        },
-      });
-      assert.throws(() => held?.assertLive(), /released admission/u);
-    } finally { process.stdout.write = originalWrite; }
   });
 
   it("does not start the CLI when its module is executed directly", () => {

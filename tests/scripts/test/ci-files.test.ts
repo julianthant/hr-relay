@@ -8,7 +8,7 @@ import { balance, durationsFromReports, MACOS_FILES, SERIAL_FILES, SERIAL_STORAG
 
 const portable = ["a", "b", "c", "d", "e"].map(name => `tests/backend/${name}.integration.test.ts`);
 const integration = [...portable, ...MACOS_FILES, ...SERIAL_FILES].filter(file => file.endsWith(".integration.test.ts"));
-const unit = ["tests/models/portable.test.ts", "tests/backend/storage/sqlite/backup-service.test.ts"];
+const unit = ["tests/models/portable.test.ts", ...MACOS_FILES.filter(file => file.endsWith(".test.ts") && !file.endsWith(".integration.test.ts"))];
 const durations = { [portable[0] ?? ""]: 50, [SERIAL_FILES[0] ?? ""]: 200 };
 
 const run = (listed: readonly string[], project: "unit" | "integration", runner: "ubuntu" | "macos" | "serial" | "storage", jobs: number) =>

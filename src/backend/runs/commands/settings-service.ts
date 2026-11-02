@@ -1,17 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { sha256Hex } from "../../../rules/validation/sha256.js";
-import type { SettingsApplicationExecutor, SettingsCommand } from "./command-kernel.js";
-import { ProtectedSettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../rules/commands/commands.js";
-import { ResolvedConfigSchema, type ResolvedConfig } from "../../app/config/resolve.js";
-import type { CredentialStore } from "../../../models/config/credential-store.js";
-import { ProtectedSettingsApplyInputSchema, protectedSettingsReadback } from "../../../models/config/protected-settings.js";
-import { SETTINGS_SCHEMA_HASH, SettingsApplyRefusalSchema, deriveRawSettingsPatchFingerprint, derivePersistedSettingsFingerprint, mergeSettingsPatch, containsRetiredSettingsPatch, type SettingsFileRecord } from "../../../models/config/settings.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { z } from "zod";
-import { OrdinaryPathValidationError, validateOrdinaryPathChanges } from "./ordinary-path-validator.js";
+import type { CredentialStore } from "../../../models/config/credential-store.js";
+import { ProtectedSettingsApplyInputSchema,protectedSettingsReadback } from "../../../models/config/protected-settings.js";
+import { SETTINGS_SCHEMA_HASH,SettingsApplyRefusalSchema,containsRetiredSettingsPatch,derivePersistedSettingsFingerprint,deriveRawSettingsPatchFingerprint,mergeSettingsPatch,type SettingsFileRecord } from "../../../models/config/settings.js";
+import { ProtectedSettingsCommandRequestSchema,deriveSettingsCommandFingerprint } from "../../../rules/commands/commands.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { ResolvedConfigSchema,type ResolvedConfig } from "../../app/config/resolve.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import type { SettingsApplicationExecutor,SettingsCommand } from "./command-kernel.js";
+import { OrdinaryPathValidationError,validateOrdinaryPathChanges } from "./ordinary-path-validator.js";
 
-const VALIDATED_PATHS = new Set(["paths.browserProfileRoot", "paths.duoExtensionDir"]);
+const VALIDATED_PATHS = new Set(["paths.duoExtensionDir"]);
 
 function protectedInput(command: SettingsCommand) {
   const request = ProtectedSettingsCommandRequestSchema.parse(command);

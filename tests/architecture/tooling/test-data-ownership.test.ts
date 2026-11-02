@@ -1,12 +1,12 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { describe, it } from "vitest";
+import { existsSync,readFileSync,realpathSync } from "node:fs";
+import { dirname,join,relative,resolve } from "node:path";
 import ts from "typescript";
-import { TEST_DATA_CONFIG_PATH, TEST_DATA_LOCAL_CONFIG_PATH, TEST_DATA_LOCAL_EXAMPLE_PATH } from "../../../src/models/config/test-data.js";
-import { gitVisibleFiles, REPO_ROOT } from "../support/helpers/guard-files.js";
+import { describe,it } from "vitest";
+import { TEST_DATA_CONFIG_PATH,TEST_DATA_LOCAL_CONFIG_PATH,TEST_DATA_LOCAL_EXAMPLE_PATH } from "../../../src/models/config/test-data.js";
+import { gitVisibleFiles,REPO_ROOT } from "../support/helpers/guard-files.js";
 
 function isUnitTest(path: string): boolean {
   return path.startsWith("tests/") && /\.test\.(?:ts|js)$/u.test(path)
@@ -15,6 +15,7 @@ function isUnitTest(path: string): boolean {
 }
 const ARCHITECTURE_HELPERS_ROOT = /^tests\/architecture\/(?:support|[^/]+)\/helpers\//u;
 const SHARED_RESOURCE_HARNESSES = new Set([
+  "tests/support/helpers/backend/storage-restore-world.ts",
   'tests/support/helpers/backend/dashboard-port-world.ts',
   "tests/support/helpers/credential-persistence-fixtures.ts",
   "tests/support/helpers/credential-source-retention.ts",
@@ -63,6 +64,7 @@ function importsOf(path: string) {
 }
 
 const DEFERRED_CAPABILITIES = [
+  { importer: "tests/support/helpers/backend/storage-restore-world.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/credential-source-retention.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/support/helpers/credential-source-retention.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: 'tests/support/helpers/backend/dashboard-port-world.ts', module: 'src/backend/storage/configuration/credential-store.js', symbol: 'createCredentialStore' },
@@ -83,7 +85,7 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "authenticateDocument" },
   { importer: "tests/support/fixtures/storage/historical-incomplete-profile-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
 ] as const;
-const RETENTION_CASES_MODULES = ["tests/support/processes/authenticated-upgrade-retention-cases.js", "tests/support/processes/browser-root-retention.js"];
+const RETENTION_CASES_MODULES = ["tests/support/processes/startup-upgrade-retention-cases.js", "tests/support/processes/browser-root-retention.js"];
 const RETENTION_CASES_OWNER = "tests/support/processes/credential-source-retention-worker.ts";
 const PROCESS_ENTRYPOINTS = [
   { file: "credential-source-retention-worker.ts", consumers: ["tests/support/helpers/credential-source-retention.ts"] },
@@ -363,7 +365,7 @@ describe("test-data ownership", () => {
       assert.equal(importsOf(RETENTION_CASES_OWNER).filter(({ resolved }) => resolved === module).length, 1);
       assert.equal(processImportViolations("tests/support/helpers/violation.ts", `import "../processes/${module.split("/").at(-1) ?? ""}";`).length, 1);
     }
-    assert.equal(processImportViolations("tests/support/helpers/violation.ts", 'import "../processes/authenticated-upgrade-retention-cases.js";').length, 1);
+    assert.equal(processImportViolations("tests/support/helpers/violation.ts", 'import "../processes/startup-upgrade-retention-cases.js";').length, 1);
     assert.deepEqual(files.filter((path) => path !== "tests/architecture/tooling/test-data-ownership.test.ts").flatMap((path) => processImportViolations(path, readFileSync(join(REPO_ROOT, path), "utf8"))), []);
     for (const entry of PROCESS_ENTRYPOINTS) {
       const consumers = files.filter((path) => path !== "tests/architecture/tooling/test-data-ownership.test.ts" && !path.startsWith("tests/support/processes/")

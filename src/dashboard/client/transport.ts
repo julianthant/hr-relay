@@ -1,8 +1,8 @@
 /** The ONE transport implementation (ref frontend-backend-integration ): nothing outside `src/dashboard/client/**` may call `fetch` or open an event stream.
  * The */
-import { CHATGPT_COMPLETION_READ_DEADLINE_MS, SETTINGS_READ_DEADLINE_MS, STORAGE_DOCTOR_DEADLINE_MS, readWithDeadline } from "./read-deadline.js";
 import type { ErrorCatalogCode } from "../../models/failures/error-catalog.js";
-import { httpError, networkError } from "./errors.js";
+import { httpError,networkError } from "./errors.js";
+import { CHATGPT_COMPLETION_READ_DEADLINE_MS,SETTINGS_READ_DEADLINE_MS,STORAGE_DOCTOR_DEADLINE_MS,readWithDeadline } from "./read-deadline.js";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -95,7 +95,7 @@ export function createDashboardTransport(input: Readonly<{
       : route === "/api/v1/storage/doctor" || route === "/api/v1/storage/doctor/latest" ? "STORAGE_DOCTOR_FAILED"
       : route === "/api/v1/settings/chatgpt-account" || accountCompletion ? "CHATGPT_AUTH_UNAVAILABLE"
       : route === "/api/v1/preflight" ? "PREFLIGHT_READ_UNAVAILABLE"
-      : route === "/api/v1/settings/editable" || route === "/api/v1/settings/storage-relocation" || route === "/api/v1/settings/facts" ? "SETTINGS_INITIAL_READ_UNAVAILABLE"
+      : route === "/api/v1/settings/editable" || route === "/api/v1/settings/facts" ? "SETTINGS_INITIAL_READ_UNAVAILABLE"
       : route?.startsWith("/api/v1/workbooks") || route === "/api/v1/explorer" || route?.startsWith("/api/v1/reports/activity") ? "DASHBOARD_READ_FAILED" : undefined;
     if (code === undefined || accountCompletion && init?.signal !== undefined) return sendUnbounded(path, init);
     return readWithDeadline(signal => sendUnbounded(path, { ...init, signal }), code,

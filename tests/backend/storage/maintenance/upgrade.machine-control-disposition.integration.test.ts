@@ -25,6 +25,7 @@ import { it, vi } from "vitest";
 import { z } from "zod";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { releaseStoppedMachineControlUpgrade, upgradeStoppedMachineControl } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { composeStoppedControlCredentialInventory } from "../../../../src/backend/app/composition/profile-credential-inventory.js";
 import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
@@ -198,8 +199,8 @@ it("converts only stopped machine-control format while keeping an incomplete his
   assert.equal(readFileSync(join(backup, `${upgraded.receiptId}.control.before.json`)).equals(controlBytes), true);
   assert.equal(readFileSync(join(backup, `${upgraded.receiptId}.marker.before.json`)).equals(markerBytes), true);
   assert.equal(readdirSync(backup).filter(name => name.endsWith(".receipt.json")).length, 1);
-  assert.equal(z.looseObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.controlPath, "utf8"))).schemaVersion, 6);
-  assert.equal(z.strictObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.markerPath, "utf8"))).schemaVersion, 7);
+  assert.equal(z.looseObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.controlPath, "utf8"))).schemaVersion, 7);
+  assert.equal(z.strictObject({ schemaVersion: z.number() }).parse(JSON.parse(readFileSync(f.markerPath, "utf8"))).schemaVersion, 8);
   assertCanonicalCredentialConversion(f, upgraded.receiptId, maintenance);
   maintenance.release();
   maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
@@ -230,12 +231,12 @@ it("converts stopped schema2 only with authenticated empty suspect membership an
     assert.throws(() => RuntimeAdmission.acquireMachine(f.workspace, "exclusive", f.lifetime));
     const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
     assert.equal(result.state, "upgraded"); assert.equal(result.runtimeAccess, "onboarding-incomplete");
-    const current = z.looseObject({ schemaVersion: z.literal(6), operations: z.array(z.unknown()), completedRestores: z.array(z.unknown()) })
+    const current = z.looseObject({ schemaVersion: z.literal(7), operations: z.array(z.unknown()) })
       .parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
-    assert.deepEqual(current.operations, []); assert.deepEqual(current.completedRestores, []);
-    for (const name of ["credentials", "erasures", "duo"]) assert.equal(Object.hasOwn(current, name), false);
+    assert.deepEqual(current.operations, []);
+    for (const name of ["credentials", "erasures", "duo", "completedRestores"]) assert.equal(Object.hasOwn(current, name), false);
     assert.deepEqual(maintenance.readProfileRegistry().profiles.map(row => row.profileId).sort(), prior.duo.map(row => row.profileId).sort());
-    assert.deepEqual(JSON.parse(readFileSync(f.markerPath, "utf8")), { schemaVersion: 7 });
+    assert.deepEqual(JSON.parse(readFileSync(f.markerPath, "utf8")), { schemaVersion: 8 });
     assertCanonicalCredentialConversion(f, result.receiptId, maintenance);
     for (const source of original) assert.deepEqual(readFileSync(source.path), source.bytes);
   } catch (error) { primary = { error }; }
@@ -552,13 +553,11 @@ async function offlineCanonicalPredecessor() {
   const controlRoot = join(workspace, ".tracker", "control"), backupRoot = join(controlRoot, "profile-control-upgrades");
   const json = (path: string) => z.record(z.string(), z.unknown()).parse(JSON.parse(readFileSync(path, "utf8")));
   const write = (path: string, value: unknown) => writeFileSync(path, JSON.stringify(value), { mode: 0o600 });
-  const locatorPath = join(controlRoot, "locator.json"), locator = json(locatorPath);
-  const artifactRoot = target(z.string().parse(locator.artifactRoot));
-  write(locatorPath, { ...locator, stateRoot, artifactRoot });
+  const artifactRoot = join(workspace, rebuildRuntimeIsolation.artifactRoot);
   write(join(controlRoot, "installation.json"), { ...json(join(controlRoot, "installation.json")), workspace });
   for (const root of [stateRoot, artifactRoot]) write(join(root, ".runtime-owner.json"), { ...json(join(root, ".runtime-owner.json")), workspace });
   // Offline historical construction from closed generated data; the original seed stays unchanged.
-  write(target(seed.controlPath), { ...json(target(seed.controlPath)), schemaVersion: 5 });
+  write(target(seed.controlPath), { ...json(target(seed.controlPath)), schemaVersion: 5, completedRestores: [] });
   write(target(seed.markerPath), { schemaVersion: 6 });
   nativeFs.unlinkSync(join(machineRoot, "browser-roots.json"));
   const receiptPath = join(backupRoot, `${operationId}.receipt.json`);
@@ -586,6 +585,11 @@ for (const padding of [0, 16 * 1024 * 1024]) it(`converts an offline canonical5 
   const f = await offlineCanonicalPredecessor();
   if (padding !== 0) writeFileSync(f.receiptPath, Buffer.concat([readFileSync(f.receiptPath), Buffer.alloc(padding, " ")]), { mode: 0o600 });
   const retained = storageTree(f.backupRoot), keys = FakeKeyringEntry.snapshot();
+  const parse = JSON.parse; let largeParses = 0;
+  const parseSpy = vi.spyOn(JSON, "parse").mockImplementation((value, reviver) => {
+    if (value.length >= 16 * 1024 * 1024) largeParses++;
+    const result: unknown = parse(value, reviver); return result;
+  });
   try {
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
     try {
@@ -600,8 +604,39 @@ for (const padding of [0, 16 * 1024 * 1024]) it(`converts an offline canonical5 
       assert.deepEqual(receipt.credentials, []);
       for (const row of f.preserved) assert.deepEqual(readFileSync(row.path), row.bytes);
       assert.deepEqual(FakeKeyringEntry.snapshot(), keys); f.assertSeedUnchanged();
+      assert.equal(largeParses, padding === 0 ? 0 : 2, "retained receipt bytes are verified at capture and final publication");
     } finally { maintenance.release(); }
-  } finally { await f.close(); }
+  } finally {
+    parseSpy.mockRestore();
+    await f.close();
+  }
+});
+
+for (const change of ["receipt-in-place", "authority-replacement"] as const) it(`refuses retained ${change} after its stopped proof is warm`, async () => {
+  const f = await offlineCanonicalPredecessor();
+  const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  const restore = maintenance.maintenanceOperation(), control = maintenance.beginStoppedMachineControlUpgrade(restore);
+  let undo: (() => void) | undefined;
+  try {
+    await control.prepareBrowserInventory(false, createNativeBrowserProbe);
+    control.profileInventory(f.seed.profileId);
+    if (change === "receipt-in-place") {
+      const bytes = readFileSync(f.receiptPath);
+      undo = () => writeFileSync(f.receiptPath, bytes, { mode: 0o600 });
+      nativeFs.appendFileSync(f.receiptPath, " ");
+    } else {
+      const path = join(f.backupRoot, f.backup.directory, f.backup.verifiedBackup.manifest.backupFileName);
+      const held = join(f.workspace, "retained-authority.test-owned"), bytes = readFileSync(path);
+      renameSync(path, held);
+      undo = () => { nativeFs.rmSync(path); renameSync(held, path); };
+      writeFileSync(path, bytes, { mode: 0o600, flag: "wx" });
+    }
+    assert.throws(() => control.profileInventory(f.seed.profileId), /profile-control-upgrade-retained-changed/u);
+  } finally {
+    undo?.();
+    releaseStoppedMachineControlUpgrade(control, restore, false, { admission: maintenance });
+    maintenance.release(); await f.close();
+  }
 });
 
 for (const change of ["operation-prefix", "malformed-receipt", "manifest-digest"] as const) it(`holds an offline canonical5 ${change} before intent or Chrome effects`, async () => {

@@ -80,7 +80,7 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
     settingsSchemaHash: descriptorSetHash_m0(["settings-schema"]),
     projection: world.projection,
     authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
-    backupSummary: () => "current",
+    automaticRepair: () => ({ state: "none" as const }), backupSummary: () => "current",
     preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
   };
 }
@@ -222,7 +222,7 @@ function depsOf(
       if (!storage.authorityReachable) throw new Error("authority database is unreadable");
       return { schemaVersion: 13, authorityGeneration: 4 };
     },
-    backupSummary: () => storage.backup,
+    automaticRepair: () => ({ state: "none" as const }), backupSummary: () => storage.backup,
     preflightReport: () => PreflightReportSchema.parse({
       configFingerprint: "a".repeat(64),
       checkedAt: AT.toISOString(),
@@ -393,8 +393,8 @@ describe("bootstrap storage summary", () => {
 
       const wire = buildBootstrap(depsOf(world, { authorityReachable: false, backup: "stale" }));
       assert.deepEqual(
-        { authority: wire.storage.authority, backup: wire.storage.backup },
-        { authority: "unavailable", backup: "stale" },
+        { authority: wire.storage.authority, automaticRepair: wire.storage.automaticRepair, backup: wire.storage.backup },
+        { authority: "unavailable", automaticRepair: { state: "none" }, backup: "stale" },
       );
     } finally {
       await world.dispose();

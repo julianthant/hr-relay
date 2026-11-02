@@ -1,36 +1,36 @@
-import { spreadsheetValueMatches } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js";
-import { REVIEWED_CATCH_DEFAULTS } from "./helpers/reviewed-catch-defaults.js";
-import { createHash } from "node:crypto";
-import { existsSync, globSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { createHash } from "node:crypto";
+import { existsSync,globSync,mkdirSync,readFileSync,rmSync,writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname,join,relative } from "node:path";
+import { describe,it } from "vitest";
 import inventory from "../../../docs/rebuild/guard-inventory.json" with { type: "json" };
-import vitestConfig, {
-  REBUILD_ARCHITECTURE_TEST_INCLUDE,
-  REBUILD_ARCHITECTURE_TEST_EXCLUDE,
-  REBUILD_COVERAGE_EXCLUSIONS,
-  REBUILD_COVERAGE_FLOORS,
-  REBUILD_TEST_PROJECTS,
-  REBUILD_TEST_REPORTERS,
-  REBUILD_UNIT_TEST_EXCLUDE,
-  REBUILD_UNIT_TEST_INCLUDE,
-  REBUILD_INTEGRATION_TEST_INCLUDE,
-  REBUILD_INTEGRATION_TEST_EXCLUDE,
-  REBUILD_PERF_TEST_INCLUDE,
-  REBUILD_PERF_TEST_EXCLUDE,
-  REBUILD_LOCAL_TEST_INCLUDE,
-  REBUILD_LOCAL_TEST_EXCLUDE,
-} from "../../../vitest.config.js";
-import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 import { projectOwnershipViolations } from "../../../scripts/test/project-policy.js";
+import { spreadsheetValueMatches } from "../../../src/dashboard/surfaces/spreadsheets/spreadsheet-fields-model.js";
+import vitestConfig,{
+REBUILD_ARCHITECTURE_TEST_EXCLUDE,
+REBUILD_ARCHITECTURE_TEST_INCLUDE,
+REBUILD_COVERAGE_EXCLUSIONS,
+REBUILD_COVERAGE_FLOORS,
+REBUILD_INTEGRATION_TEST_EXCLUDE,
+REBUILD_INTEGRATION_TEST_INCLUDE,
+REBUILD_LOCAL_TEST_EXCLUDE,
+REBUILD_LOCAL_TEST_INCLUDE,
+REBUILD_PERF_TEST_EXCLUDE,
+REBUILD_PERF_TEST_INCLUDE,
+REBUILD_TEST_PROJECTS,
+REBUILD_TEST_REPORTERS,
+REBUILD_UNIT_TEST_EXCLUDE,
+REBUILD_UNIT_TEST_INCLUDE,
+} from "../../../vitest.config.js";
+import { REPO_ROOT,walkFiles } from "../support/helpers/guard-files.js";
 import {
-  auditFailLoudCatchDefaults,
-  auditRebuildRatchetArm,
-  rebuildRatchetFixture,
-  REQUIRED_REBUILD_RATCHET_NAMES,
+auditFailLoudCatchDefaults,
+auditRebuildRatchetArm,
+rebuildRatchetFixture,
+REQUIRED_REBUILD_RATCHET_NAMES,
 } from "./helpers/ratchet-arms.js";
+import { REVIEWED_CATCH_DEFAULTS } from "./helpers/reviewed-catch-defaults.js";
 
 const ARCHITECTURE_ROOT = join(REPO_ROOT, inventory.architectureRoot);
 const packageJson = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
@@ -468,7 +468,6 @@ describe("reviewed architecture guard manifest", () => {
       "src/backend/runs/lifecycle/archive-terminal-runs.ts",
       "src/backend/runs/archive/archive-version-changes.ts",
       "src/backend/storage/sqlite/run-lifecycle-storage.ts",
-      "src/backend/storage/maintenance/storage-relocation-plans.ts",
     ];
     const thresholds = vitestConfig.test?.coverage?.thresholds as Record<string, unknown> | undefined;
     assert.ok(thresholds);

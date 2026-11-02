@@ -1,38 +1,40 @@
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
-import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import assert from "node:assert/strict";
-import { randomUUID, createHash } from "node:crypto";
-import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, mkdirSync, readdirSync, rmdirSync } from "node:fs";
+import { createHash,randomUUID } from "node:crypto";
+import { copyFileSync,existsSync,mkdirSync,readFileSync,readdirSync,renameSync,rmdirSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { it, vi } from "vitest";
-import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
-import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
-import { AuthorityDatabase, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { upgradeReadyProfileStorage, backupStoppedAuthority } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
-import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { it,vi } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { SettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
-import { readSettings, readBootSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
-import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
-import { migrationTableNames, SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { FingerprintSchema, IsoInstantSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
-import { systemClock } from "../../../../src/rules/time/clock.js";
-import { createProfileVerifiers } from "../../../../src/backend/storage/configuration/verifier-store.js";
-import { InstanceSelectionSchema } from "../../../../src/models/run/envelope.js";
-import { RunRecordService, requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { selectActiveRunSettings, selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
-import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
-import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
+import { RunRecordService,requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { selectActiveRunSettings,selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { readBootSettings,readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
+import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createProfileVerifiers } from "../../../../src/backend/storage/configuration/verifier-store.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { backupStoppedAuthority,upgradeProfileAtStartup,upgradeReadyProfileStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
+import { AuthorityDatabase,inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
+import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
+import { InstanceSelectionSchema } from "../../../../src/models/run/envelope.js";
+import { SettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
+import { FingerprintSchema,IsoInstantSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
+import { systemClock } from "../../../../src/rules/time/clock.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { boundProfileCredentials,createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { update as artifactUpdate } from "../../../support/helpers/database-foundation/fixtures.js";
+import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
+import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 const hostFacts = { primaryDisplay: null };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -80,6 +82,11 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
         resolvedInstance, input: QUEUED_RUN.input, priority: "bulk", shape: "single", dryRun: true,
         runtimeConfig: selectRunRuntime(database.authority) }));
       assert.equal(run.lifecycle.state, "queued");
+      const ref = await createContentAddressedArtifactWriter({ admission: profile.admission }).put(Buffer.from("retained upgrade artifact"), { mediaType: "application/octet-stream" });
+      database.authority.artifactOutbox.insert({ ...artifactUpdate(), sourceRunId: run.envelope.runId,
+        payload: { schemaHash: "a".repeat(64), value: { artifact: ref } } });
+      mkdirSync(join(profile.stateRoot, "files"), { mode: 0o700 });
+      writeFileSync(join(profile.stateRoot, "files", "upgrade-proof.txt"), "ordinary person output", { mode: 0o600 });
     }
   } finally { database.close(); }
   const row = profile.machine.readProfileRegistry().profiles.find(value => value.profileId === binding.profileId);
@@ -233,6 +240,27 @@ it("refuses a genuine canonical queued run despite stopped global process roles"
       { message: "credential-maintenance-custody-unproved" });
     assert.deepEqual(storageTree(f.stateRoot), before);
     assert.deepEqual(rawEight(f.path), rows);
+  } finally { await f.close(); }
+});
+
+it("automatically upgrades with queued work intact instead of retiring its durable state", async () => {
+  const f = await readyBoundEight("queued");
+  try {
+    const before = rawEight(f.path);
+    assert.ok((before.runs?.length ?? 0) > 0); assert.ok((before.artifacts?.length ?? 0) > 0);
+    const artifactDirectory = join(f.stateRoot, "artifacts"), artifactNames = readdirSync(artifactDirectory);
+    assert.equal(artifactNames.length, 1); const artifactName = artifactNames[0]; assert.ok(artifactName);
+    const artifactBytes = readFileSync(join(artifactDirectory, artifactName)), outputBytes = readFileSync(join(f.stateRoot, "files", "upgrade-proof.txt"));
+    assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
+    const after = rawEight(f.path);
+    for (const [table, rows] of Object.entries(before)) {
+      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else assert.deepEqual(after[table], rows);
+    }
+    assert.equal(after.database_upgrades?.length, (before.database_upgrades?.length ?? 0) + 1);
+    assert.deepEqual(readFileSync(join(artifactDirectory, artifactName)), artifactBytes);
+    assert.deepEqual(readFileSync(join(f.stateRoot, "files", "upgrade-proof.txt")), outputBytes);
   } finally { await f.close(); }
 });
 

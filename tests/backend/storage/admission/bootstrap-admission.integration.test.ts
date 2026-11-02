@@ -1,36 +1,34 @@
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
-import { testProcessImport } from "../../../support/compiled-process.js";
-import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
-import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
-import { withOfflineMaintenance, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
-import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { once } from "node:events";
-import { z } from "zod";
-import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
-import nativeFirstBootFs from "node:fs";
-import { syncBuiltinESMExports } from "node:module";
-import { retainAuthoritySourceClosure as retainFirstBootSourceClosure } from "../../../../src/backend/storage/source-closure.js";
-import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
-import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { default as assert } from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync as readdirSync_m1, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { spawn,type ChildProcess } from "node:child_process";
+import { once } from "node:events";
+import nativeFirstBootFs,{ copyFileSync,existsSync,mkdtempSync,readFileSync,readdirSync as readdirSync_m1,realpathSync,rmSync,writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
-import { it, vi } from "vitest";
+import { it,vi } from "vitest";
+import { z } from "zod";
 import { composeDashboardRuntime } from "../../../../src/backend/app/composition/dashboard/compose.js";
-import { composeStorageCommand, composeProfileRuntime, runOfflineAuthorityRestoreRecovery } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime,resumePendingAutomaticRestore,restoreNewestPersonBackup } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
+import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { backupStoppedAuthority } from "../../../../src/backend/storage/maintenance/upgrade.js";
+import { retainAuthoritySourceClosure as retainFirstBootSourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
-import { manualClock } from "../../../../src/rules/time/clock.js";
-import { runtimeFixture } from "../../../support/fixtures/preflight/runtime-fixture.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
+import { testProcessImport } from "../../../support/compiled-process.js";
+import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
+import { runtimeFixture } from "../../../support/fixtures/preflight/runtime-fixture.js";
+import { boundProfileCredentials,createBoundProfileFixture,withOfflineMaintenance } from "../../../support/helpers/admission-fixture.js";
+import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { scaledMs } from "../../../support/time-scale.js";
 
 {
@@ -54,10 +52,9 @@ it("serves only the genuine token-owned profile and refuses its later missing ca
       isolation: rebuildRuntimeIsolation, repoRoot: workspace, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0,
       preflightRunnerFactory: healthyRuntimePreflightRunners });
     const response = await fetch(`http://127.0.0.1:${String(dashboard.port)}/api/v1/settings/storage-relocation`);
-    assert.equal(response.status, 409);
-    assert.deepEqual(await response.json(), { state: "error", code: "PROFILE_STORAGE_RELOCATION_UNSUPPORTED",
-      message: ERROR_CATALOG.PROFILE_STORAGE_RELOCATION_UNSUPPORTED.text, retryable: false });
+    assert.equal(response.status, 404);
     await dashboard.stop(); dashboard = undefined; dashboardStopped = true;
+    profile.machine.assertLive(); profile.machine.release();
     const credentialPath = join(profile.stateRoot, "credentials", "protected.json"), credentialBytes = readFileSync(credentialPath);
     rmSync(authorityPath);
     const fresh = acquireEntrypointAdmission(workspace, "exclusive", profile.lifetime); restarted = fresh;
@@ -89,7 +86,7 @@ const _afterEachFixture0 = async () => {
   for (const close of rootClosures.splice(0)) await close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
-it("keeps the owned restoring journal after process death and absent staging until explicit exact stopped settlement", async () => {
+it("keeps the owned restoring journal after process death and absent staging until automatic exact stopped settlement", async () => {
 try {
 
   const profile = await createBoundProfileFixture();
@@ -156,9 +153,7 @@ try {
   assert.deepEqual(readFileSync(journalPath), before);
   rmSync(message.stagedPath);
   assert.throws(() => acquireEntrypointAdmission(workspace, "shared", lifetime), /unfinished restoring/u);
-  const settled = await runOfflineAuthorityRestoreRecovery(workspace, ["--operation", message.operationId,
-    "--from", message.manifestPath, "--outcome", "replaced", "--json"], lifetime);
-  assert.deepEqual(settled.report, { state: "settled", operationId: message.operationId, outcome: "replaced" });
+  await resumePendingAutomaticRestore(workspace, lifetime);
   assert.equal(existsSync(journalPath), false);
   const admission = acquireEntrypointAdmission(workspace, "shared", lifetime);
   const signedOut = admission.admitProfile(message.profileId);
@@ -204,9 +199,8 @@ it("supported single-authority restore re-checks healthy without inventing repai
     AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"preflight-restore"},clock,undefined,undefined,undefined,boundProfileCredentials(admission)).close();
     const backup=await withOfflineMaintenance(admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, admission, operation, clock, join(workspace,rebuildRuntimeIsolation.processLockRoot)).then(closure => backupStoppedAuthority(closure, admission, stateRoot, clock, join(workspace,rebuildRuntimeIsolation.processLockRoot), operation)));
     const manifest=backup.manifests.at(-1);assert.ok(manifest);
-    const path=join(stateRoot,"backups","authority",`${manifest.backupFileName}.manifest.json`);
-    const restored=await composeStorageCommand(rebuildRuntimeIsolation,["restore","--from",path,"--json"],clock,workspace,admission,boundProfileCredentials(admission));
-    assert.equal(restored.exitCode,0,restored.output);
+    const restored=await restoreNewestPersonBackup(admission,admission.acquireOfflineMaintenance(),clock);
+    assert.equal(restored.state,"restored");
     const renewed = profile.renewAfterRestore();
     assert.throws(() => admission.assertLive(), /profile-restore-context-expired|released admission/u);
     const runner=new AuthorityHealthPreflightRunner(renewed.admission,{stateRootTrustAnchor:workspace,stateRoot,authorityPath,

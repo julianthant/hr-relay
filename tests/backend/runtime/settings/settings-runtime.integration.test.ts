@@ -108,7 +108,9 @@ afterEach(_afterEachFixture0);
       assert.equal(f.reads() - before, 1); assert.equal(editor.revision, 1);
       assert.equal(editor.settingsFingerprint, f.initial.settingsFingerprint);
       assert.deepEqual(editor.runtimeStatus, { state: "current", identity: f.active });
-      assert.equal(editor.sections.flatMap((section) => section.leaves).length, 52);
+      const leaves = editor.sections.flatMap((section) => section.leaves);
+      assert.equal(leaves.length, 51);
+      assert.equal(leaves.some(leaf => leaf.path === "paths.browserProfileRoot" || leaf.path === "paths.duoCredential"), false);
     }
     assert.equal(existsSync(join_m0(f.root, "settings")), false);
   });

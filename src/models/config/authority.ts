@@ -2,6 +2,7 @@ import { z } from "zod";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { RunRecordSchema, RunStateSchema } from "../run/record.js";
 import { DeletedRunRecordSchema } from "../run/deleted-run.js";
+import { LogoutOperationSchema } from "../profiles/profile.js";
 import {
   CommandAuditIdSchema,
   CommandIdSchema,
@@ -153,6 +154,7 @@ const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.ext
   upgradeId: FingerprintSchema,
   phase: z.enum(["planned", "committed", "settled"]),
   planDigest: FingerprintSchema,
+  startupLogout: z.strictObject({ operation: LogoutOperationSchema, postimage: FingerprintSchema }).optional(),
   backup: z.strictObject({
     manifestPath: z.string().min(1),
     sha256: FingerprintSchema,

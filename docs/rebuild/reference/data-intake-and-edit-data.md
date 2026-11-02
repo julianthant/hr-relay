@@ -159,11 +159,21 @@ The `review` and `people` section names and review-record schemas exist. `buildR
 
 `normalization/read-contact-advice` applies deterministic relationship, phone, country, state, and ZIP rules. Optional geocoding uses Census before Nominatim for US-shaped addresses, otherwise Nominatim. It records city/state/ZIP advice and observation provenance; it does not offer street-line replacements. Its output includes `normalized`, `relationshipCanonical`, `changes`, and `complete`, `ambiguous`, or `advisory-unavailable` disposition. Ambiguity takes precedence when unresolved fields remain. No AI normalization arm exists. This read task does not approve or submit the advised values.
 
-### 4.6 Workbook projections
+### 4.6 Artifact projections
 
 `DurableArtifactProjectionSpec` in `src/models/workflow/artifact-projection.ts` declares a producing node/path, record schema, stable key fields, sink, and blocking behavior. The workflow factory validates declarations. The executor commits a checkpoint and derived update rows together, then blocks on its injected projector. Missing wiring or projection failure is a node failure, not a successful run or a dedicated parked-projection state. No registered workflow currently declares `artifactProjections`.
 
-`createArtifactSinkProjector` in `src/backend/storage/artifacts/artifact-sink-projector.ts` resolves pending updates through `artifactOutbox`, `artifactSinkHeads`, and `generatedArtifacts` repositories over the native artifact store. It acquires an exclusive destination lock, checks update order and publication generation, and skips already-projected updates. Head advancement and acknowledgment commit together after file publication. Failed publication remains `failed` or `conflict` and propagates.
+`createArtifactSinkProjector` in `src/backend/storage/artifacts/artifact-sink-projector.ts` resolves pending updates through `artifactOutbox`, `artifactSinkHeads`, and `generatedArtifacts` repositories over the native artifact store. It acquires an exclusive destination lock, checks update order and publication generation, and skips already-projected updates. Head advancement and acknowledgment commit together after file publication. Failed publication remains `failed` or `conflict` and propagates. Lock and descriptor closure failures
+retain actual custody and block worker admission release.
+
+`named-file-output-sink.ts` publishes one named artifact for a run through the closed `documents-file`
+sink kind. Its durable sink key includes the original run ID. `worker/artifact-output.ts` composes the
+projector and resolves the configured documents directory from the source run's retained, verified
+configuration snapshot. `namedArtifactOutput` validates the task's artifact reference and single safe
+filename. The sink verifies retained bytes, syncs a private stage, records preparation, and atomically
+links to an absent destination before head/ack settlement. Existing files, directories and symlinks
+refuse; even byte-identical unowned destinations are collisions. A run cannot register a second named
+output. The zip's folder membership belongs to the producing workflow; publication preserves its bytes.
 
 `createXlsxRetentionSink` in `xlsx-retention-sink.ts` owns the four-column layout `stableKey`, `keyValues`, `record`, `projectedAt`. It upserts by stable key and verifies the current head and retained bytes before writing. Existing unowned files, missing recorded files, symbolic-link destinations, and changed bytes refuse. A head-hash conflict preserves the operator file and writes the intended update beside it as `.pending-<outboxId>.xlsx`.
 

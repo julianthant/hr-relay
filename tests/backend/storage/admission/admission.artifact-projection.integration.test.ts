@@ -1,3 +1,4 @@
+import { ArtifactSinkConflictError } from "../../../../src/backend/storage/artifacts/artifact-sink.js";
 import { testWorkerPorts, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { generatedUpdateId,pendingGeneratedUpdateIds } from "../../../../src/backend/logs/generated-artifact-projection.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
@@ -21,7 +22,6 @@ ArtifactSinkBusyError,
 createArtifactSinkProjector,
 } from "../../../../src/backend/storage/artifacts/artifact-sink-projector.js";
 import {
-ArtifactSinkConflictError,
 createXlsxRetentionSink,
 } from "../../../../src/backend/storage/artifacts/xlsx-retention-sink.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";

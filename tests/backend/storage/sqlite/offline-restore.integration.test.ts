@@ -8,14 +8,13 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { restoreFailureDisposition } from "../../../../src/backend/app/composition/storage-compose.js";
 import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { OfflineAuthorityRestoreService, OfflineRestoreFailure } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -24,45 +23,8 @@ const retainedNativeRestoreFixtures = new Set<object>();
 
 {
 
-describe("corruption → degraded → restore → rebuild, through the CLI", () => {
+describe("corruption → degraded → automatic restore → rebuild", () => {
 
-  it("reports post-swap failures without claiming the live authority was untouched", () => {
-    const failure = new OfflineRestoreFailure(
-      "replaced",
-      "offline authority restore failed",
-      new Error("injected post-swap fsync failure"),
-    );
-    assert.deepEqual(restoreFailureDisposition(failure), {
-      heading: "authority restore POST-SWAP FAILURE",
-      authorityLine: "the authority database was replaced; inspect the post-swap failure before restarting runtime",
-    });
-    assert.deepEqual(restoreFailureDisposition(new OfflineRestoreFailure(
-      "companion-state-uncertain",
-      "offline authority restore failed",
-      new Error("rollback fsync failed"),
-    )), {
-      heading: "authority restore COMPANION-STATE FAILURE",
-      authorityLine: "the authority database was not replaced, but live WAL/SHM rollback is unproven; inspect recovery artifacts before restarting runtime",
-    });
-    assert.deepEqual(restoreFailureDisposition(new OfflineRestoreFailure(
-      "authority-state-uncertain",
-      "offline authority restore failed",
-      new Error("swap outcome could not be observed"),
-    )), {
-      heading: "authority restore AUTHORITY-STATE UNCERTAIN",
-      authorityLine: "the authority replacement outcome is unproven; inspect staged/live paths before restarting runtime",
-    });
-    assert.deepEqual(restoreFailureDisposition(new Error("pre-swap refusal")), {
-      heading: "authority restore REFUSED",
-      authorityLine: "the live authority database was not modified",
-    });
-  });
-});
-}
-
-{
-
-describe("native notification recovery", () => {
   it("restores exact inbox, source and health metadata through the real backup/restore boundary", async () => {
     const profile = await createBoundProfileFixture(), admission = profile.admission;
     const root = profile.stateRoot, path = profile.path;

@@ -1,11 +1,12 @@
-import { assertSourceClosuresProved, rememberUnprovedSourceClosure } from "../source-closure.js";
-import { realpathSync } from "node:fs";
-import { randomUUID } from "node:crypto";
-import { resolve as resolvePath } from "node:path";
 import type { ChildProcess } from "node:child_process";
-import { createServer, Server } from "node:net";
+import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
+import { createServer,Server } from "node:net";
+import { resolve as resolvePath } from "node:path";
 import { z } from "zod";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { assertSourceClosuresProved,rememberUnprovedSourceClosure } from "../source-closure.js";
+import type { FixedLayoutPublication } from "./installation.js";
 
 const LockMessageSchema = z.strictObject({ kind: z.literal("runtime-lifetime-lock"), port: z.number().int().positive().max(65535), workspace: z.string().min(1) });
 
@@ -153,6 +154,17 @@ export class RuntimeLifetimeLock {
     if (resolvePath(workspace) !== workspace || realpathSync(workspace) !== workspace) throw new Error("runtime-lifetime-workspace-invalid");
     if (this.#workspace !== undefined && this.#workspace !== workspace) throw new Error("runtime-lifetime-workspace-unproved");
     this.#workspace = workspace;
+  }
+
+  async transferFixedLayout(proof: FixedLayoutPublication): Promise<void> {
+    this.assertSourceCustody();
+    if (this.#closing !== undefined || this.#children.size !== 0 || this.#exclusiveAdmission || this.#exclusiveOperation !== undefined) throw new Error("fixed-layout-resources-unclosed");
+    const { consumeFixedLayoutPublication } = await import("./installation.js");
+    this.assertSourceCustody();
+    if (this.#closing !== undefined || this.#children.size !== 0 || this.#exclusiveAdmission || this.#exclusiveOperation !== undefined) throw new Error("fixed-layout-resources-unclosed");
+    try { this.#workspace = consumeFixedLayoutPublication(proof, this); }
+    catch (error) { this.retainSourceClosure(error); throw error; }
+    this.#startup = undefined;
   }
 
   assertExclusiveWorkspaceTarget(workspace: string): void {
@@ -364,6 +376,8 @@ export class WorkerRuntimeLifetimeLock {
     this.assertHeld();
     if (workspace !== this.#workspace) throw new Error("runtime-lifetime-workspace-unproved");
   }
+
+  get workspace(): string { this.assertHeld(); return this.#workspace; }
 
   close(): Promise<void> {
     try { assertSourceClosuresProved(this.#sourceFailures); } catch (error) { return Promise.reject(error instanceof Error ? error : new Error("runtime source closure unproved", { cause: error })); }

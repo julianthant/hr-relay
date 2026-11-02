@@ -13,6 +13,10 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  STORAGE_AUTOMATIC_BACKUP_FAILED: catalogEntry("The automatic shutdown backup could not be verified. Relay has not completed a clean shutdown.", EmptyParametersSchema),
+  STORAGE_AUTOMATIC_REPAIR_NOTICE_UNAVAILABLE: catalogEntry("The automatic repair notice could not be read. Stored repair evidence has been retained.", EmptyParametersSchema),
+  STORAGE_AUTOMATIC_REPAIR_REFUSED: catalogEntry("Relay could not safely repair saved person data. Your data and unresolved writes have been retained; startup cannot continue.", EmptyParametersSchema),
+  STORAGE_PROFILE_UPGRADE_REFUSED: catalogEntry("Relay could not verify and upgrade its saved person data. Your data has been retained; startup cannot continue.", EmptyParametersSchema),
   DRY_RUN_SAMPLE_UNDECLARED: catalogEntry("Dry-run sample values require declared preview provenance.", EmptyParametersSchema),
   DRY_RUN_SAMPLE_REFUSED: catalogEntry("Dry-run samples cannot authorize a real submission.", EmptyParametersSchema),
   RUNTIME_LIFETIME_LOCK_RELEASED: catalogEntry("Relay runtime authority has closed. Restart Relay before continuing.", EmptyParametersSchema),
@@ -55,7 +59,7 @@ export const ERROR_CATALOG = Object.freeze({
   CREDENTIAL_INITIALIZATION_RETAINED_DUO_KEY_MISMATCH: catalogEntry("A retained Duo credential copy uses a different encryption key. Preserve the profile and its original key before continuing credential conversion.", EmptyParametersSchema),
   RUNTIME_CUSTODY_UNCERTAIN: catalogEntry("Runtime resource closure is unproved. Preserve the current installation and process custody before restarting.", EmptyParametersSchema),
   PROFILE_BROWSER_ROOT_REFUSED: catalogEntry("Browser storage must stay inside the selected profile in an owned directory without links.", EmptyParametersSchema),
-  PROFILE_STORAGE_RELOCATION_UNSUPPORTED: catalogEntry("Storage relocation is unavailable for profile installations. Keep the current installation roots.", EmptyParametersSchema),
+  STORAGE_FIXED_LAYOUT_REFUSED: catalogEntry("Relay could not verify its app data at the fixed location. Your data has been retained; startup cannot continue.", EmptyParametersSchema),
   ASSISTANT_INVALID: catalogEntry("The assistant request or response was invalid.", EmptyParametersSchema),
   ASSISTANT_CONTEXT_UNAVAILABLE: catalogEntry("Verified public source context is unavailable.", EmptyParametersSchema),
   ASSISTANT_CONTEXT_STALE: catalogEntry("The public source context does not match this runtime.", EmptyParametersSchema),
@@ -496,15 +500,7 @@ export const ERROR_CATALOG = Object.freeze({
     "A password change waits for a live sign-in that proves the new password.",
     EmptyParametersSchema,
   ),
-  PROFILE_UPGRADE_STARTING: catalogEntry(
-    "A verified backup and local storage upgrade are starting. Sign in again after Relay restarts.",
-    EmptyParametersSchema,
-  ),
   PROFILE_FLAT_STORE_MIGRATION_FAILED: catalogEntry("Relay could not verify the old store backup and start a clean profile installation. Startup is stopped; remaining data is preserved.", EmptyParametersSchema),
-  PROFILE_UPGRADE_UNAVAILABLE: catalogEntry(
-    "The authenticated storage upgrade could not finish. Storage custody is retained; do not retry the upgrade.",
-    EmptyParametersSchema,
-  ),
   PROFILE_TRANSITION_BLOCKED: catalogEntry(
     "Sign in waits until the other profile is logged out.",
     EmptyParametersSchema,

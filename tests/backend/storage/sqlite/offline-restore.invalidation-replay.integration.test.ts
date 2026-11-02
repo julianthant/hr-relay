@@ -11,7 +11,7 @@ import type { OfflineMaintenanceOperation } from "../../../../src/backend/storag
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { OfflineAuthorityRestoreService, OfflineRestoreFailure, settleInterruptedAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import { OfflineAuthorityRestoreService, OfflineRestoreFailure, resumeAutomaticAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { ProfileRegistryDocumentSchema } from "../../../../src/models/profiles/profile.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
@@ -69,15 +69,15 @@ for (const boundary of ["before", "after"] as const) for (const mutation of ["re
       f.machine.release(); operation = f.lifetime.beginOfflineMaintenance(f.workspace);
       recovery = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, pending.restore.operationId, operation);
       const tampered = storageTree(f.workspace);
-      await assert.rejects(settleInterruptedAuthorityRestore({ admission: recovery.admission, operationId: pending.restore.operationId,
-        manifestPath, outcome: "replaced", processLockRoot, restoreAdmission: operation }), /profile-restore-invalidation-uncertain/u);
+      await assert.rejects(resumeAutomaticAuthorityRestore({ browserClosure: profileBrowserClosure, admission: recovery.admission, operationId: pending.restore.operationId,
+        processLockRoot, restoreAdmission: operation }), /profile-restore-invalidation-uncertain/u);
       assert.deepEqual(storageTree(f.workspace), tampered);
       operation.release(); recovery.admission.release(); operation = undefined; recovery = undefined;
       writeFileSync(journalPath, originalJournal);
       operation = f.lifetime.beginOfflineMaintenance(f.workspace);
       recovery = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, pending.restore.operationId, operation);
-      assert.equal((await settleInterruptedAuthorityRestore({ admission: recovery.admission, operationId: pending.restore.operationId,
-        manifestPath, outcome: "replaced", processLockRoot, restoreAdmission: operation })).state, "settled");
+      assert.equal((await resumeAutomaticAuthorityRestore({ browserClosure: profileBrowserClosure, admission: recovery.admission, operationId: pending.restore.operationId,
+        processLockRoot, restoreAdmission: operation })).state, "settled");
       assert.equal(replacements, 1); assert.equal(existsSync(journalPath), false);
       const settled = ProfileRegistryDocumentSchema.parse(JSON.parse(readFileSync(registryPath, "utf8")));
       assert.equal(settled.revision, before.revision + 1); assert.equal(settled.sessionGeneration, before.sessionGeneration + 1); assert.equal(settled.activeProfileId, null);

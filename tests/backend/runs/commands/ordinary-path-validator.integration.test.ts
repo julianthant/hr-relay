@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import fs,{ chmodSync,mkdirSync,mkdtempSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
+import fs,{ mkdirSync,mkdtempSync,realpathSync,rmSync,writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -34,41 +34,14 @@ function refusal(work: () => void, key: string, reason: string) {
 }
 
 describe("ordinary browser paths", () => {
-  it("requires fresh arbitrary profiles, permits a populated canonical reset, and exempts unchanged values", () => {
+  it("refuses every browser-root change without probing a selected folder", () => {
     const f = fixture();
-    const fresh = join(f.root, "fresh");
-    validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: fresh }), () => join(f.root, "default"));
-    mkdirSync(fresh);
-    chmodSync(fresh, 0o755);
-    validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: fresh }), () => join(f.root, "default"));
-    writeFileSync(join(fresh, "existing"), "synthetic");
-    refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: fresh }),
-      () => join(f.root, "default")), "paths.browserProfileRoot", "fresh-empty-profile-required");
-    validateOrdinaryPathChanges(f.previous, f.previous, () => { throw new Error("default must stay unread"); });
-
-    const defaultRoot = join(f.root, "default");
-    mkdirSync(defaultRoot); writeFileSync(join(defaultRoot, "existing"), "synthetic");
-    const reset = f.candidate({ browserProfileRoot: defaultRoot, duoCredential: join(defaultRoot, "duo-webauthn.json") });
-    // Retained configuration history does not make its credential path editable.
-    validateOrdinaryPathChanges({ ...f.previous, paths: { ...f.previous.paths, duoCredential: reset.paths.duoCredential } },
-      reset, () => defaultRoot);
-  });
-
-  it("rejects writable, symlinked, overlapping, and nonempty arbitrary profile roots", () => {
-    const f = fixture();
-    const writable = join(f.root, "writable"); mkdirSync(writable, { mode: 0o777 }); chmodSync(writable, 0o777);
-    refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: writable }),
-      () => join(f.root, "default")), "paths.browserProfileRoot", "owned-nonwritable-directory-required");
-    const link = join(f.root, "linked"); symlinkSync(f.root, link);
-    refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: link }),
-      () => join(f.root, "default")), "paths.browserProfileRoot", "regular-directory-required");
-    refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: join(link, "child") }),
-      () => join(f.root, "default")), "paths.browserProfileRoot", "symlink-ancestor");
-    const unsafeParent = join(f.root, "unsafe-parent"); mkdirSync(unsafeParent); chmodSync(unsafeParent, 0o777);
-    refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: join(unsafeParent, "child") }),
-      () => join(f.root, "default")), "paths.browserProfileRoot", "unsafe-profile-parent");
-    refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: f.previous.paths.stateRoot }),
-      () => join(f.root, "default")), "paths.browserProfileRoot", "overlaps-runtime-location");
+    const inspect = vi.spyOn(fs, "lstatSync"); syncBuiltinESMExports();
+    for (const path of [join(f.root, "fresh"), join(f.root, "linked"), f.previous.paths.stateRoot, join(f.previous.paths.stateRoot, "browsers")]) {
+      refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: path })), "paths.browserProfileRoot", "fixed-root");
+    }
+    validateOrdinaryPathChanges(f.previous, f.previous);
+    assert.equal(inspect.mock.calls.length, 0);
   });
 
   it("refuses changes to the retired Duo path without reading it and still validates extension assets", () => {
@@ -85,13 +58,11 @@ describe("ordinary browser paths", () => {
   });
 });
 
-it("refuses a missing-profile probe with non-ENOENT failure", () => {
-  const f = fixture(); const profile = join(f.root, "new-profile");
-  validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: profile }), () => join(f.root, "default"));
-  const original = fs.lstatSync;
+it("refuses an extension inspection with non-ENOENT failure", () => {
+  const f = fixture(), extension = join(f.root, "new-extension"), original = fs.lstatSync;
   vi.spyOn(fs, "lstatSync").mockImplementation(((path: unknown, options: unknown) => {
-    if (String(path) === profile) throw Object.assign(new Error("denied"), { code: "EACCES" });
+    if (String(path) === extension) throw Object.assign(new Error("denied"), { code: "EACCES" });
     return original(path as string, options as never);
   })); syncBuiltinESMExports();
-  refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: profile })), "paths.browserProfileRoot", "directory-unavailable");
+  refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ duoExtensionDir: extension })), "paths.duoExtensionDir", "directory-unavailable");
 });

@@ -1,17 +1,15 @@
 import { testProcessImport } from "../../../support/compiled-process.js";
-import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js";
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "vitest";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { acquireRuntimeProcessLock, acquireRuntimeRestoreAdmission, observeProcessIdentity, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { scaledMs } from "../../../support/time-scale.js";
 
-const {CLOCK, composeStorageCommand, drillPaths, attemptingDrillPaths, open, takeBackup, corrupt, pretendAliveIdentity, deadPid, cleanup } = createStorageRestoreTestWorld();
+const {CLOCK, repairAutomatically, drillPaths, attemptingDrillPaths, open, takeBackup, corrupt, pretendAliveIdentity, deadPid, cleanup } = createStorageRestoreTestWorld();
 
 
 afterEach(cleanup);
@@ -47,18 +45,14 @@ function captureOldArtifacts(root: string) {
 async function assertOldBuildRefusal(fixture: Awaited<ReturnType<typeof prepareRestoreFixture>>) {
   const artifacts = captureOldArtifacts(fixture.paths.processLockRoot);
   assert.ok(artifacts.length > 0);
-  const refused = await composeStorageCommand(rebuildRuntimeIsolation,
-    ["restore", "--from", fixture.manifestPath], CLOCK, fixture.paths.repoRoot);
-  assert.equal(refused.exitCode, 1);
-  assert.equal(refused.output, `authority restore REFUSED — ${ERROR_CATALOG.RUNTIME_OLD_BUILD_ARTIFACTS.text}\nthe live authority database was not modified`);
+  await assert.rejects(repairAutomatically(fixture.paths), error => error instanceof Error && "code" in error && error.code === "RUNTIME_OLD_BUILD_ARTIFACTS");
   assert.deepEqual(captureOldArtifacts(fixture.paths.processLockRoot), artifacts);
   assert.deepEqual(readFileSync(fixture.paths.authorityPath), fixture.corrupted);
   assert.equal(existsSync(join(fixture.paths.stateRoot, "backups", "suspects")), false);
 }
 async function assertCurrentRestore(fixture: Awaited<ReturnType<typeof prepareRestoreFixture>>) {
-  const { paths, manifestPath } = fixture;
-  const after = await composeStorageCommand(rebuildRuntimeIsolation,
-    ["restore", "--from", manifestPath], CLOCK, paths.repoRoot);
+  const { paths } = fixture;
+  const after = await repairAutomatically(paths);
   assert.equal(after.exitCode, 0, after.output);
   paths.renewAfterRestore();
   const restored = open(paths);

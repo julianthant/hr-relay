@@ -5,10 +5,12 @@ import { isDirectExecution } from "./scope-files.js";
 
 // Storage closure, backup and restore proofs refuse off macOS, so these files run on macOS runners.
 export const MACOS_FILES: readonly string[] = [
-  "tests/backend/app/composition/dashboard/compose.authenticated-upgrade.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",
+  "tests/backend/app/composition/worker/artifact-output.integration.test.ts",
+  "tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts",
   "tests/backend/app/composition/profile-credential-inventory.integration.test.ts",
   "tests/backend/app/composition/storage-compose.integration.test.ts",
-  "tests/backend/app/composition/storage/relocate.integration.test.ts",
   "tests/backend/profiles/profile-session.incomplete-publication.integration.test.ts",
   "tests/backend/profiles/profile-session.credential-migration.integration.test.ts",
   "tests/backend/profiles/profile-session.onboarding-native-recovery.integration.test.ts",
@@ -17,7 +19,6 @@ export const MACOS_FILES: readonly string[] = [
   "tests/backend/storage/admission/admission.profile-upgrade.integration.test.ts",
   "tests/backend/storage/admission/bootstrap-admission.flat-start-clean.integration.test.ts",
   "tests/backend/storage/admission/bootstrap-admission.integration.test.ts",
-  "tests/backend/storage/admission/installation.historical-relocation-upgrade.integration.test.ts",
   "tests/backend/storage/admission/installation.logical-publication.integration.test.ts",
   "tests/backend/storage/configuration/chatgpt-credential-repository.maintenance.integration.test.ts",
   "tests/backend/storage/configuration/credential-key-custody.integration.test.ts",
@@ -37,7 +38,8 @@ export const MACOS_FILES: readonly string[] = [
   "tests/backend/storage/sqlite/profile-local-databases.readonly-binding.integration.test.ts",
   "tests/backend/storage/sqlite/readonly-authority-snapshot.integration.test.ts",
   "tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts",
-  "tests/scripts/dev/secure-env-bootstrap.backup.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.fixed-layout.integration.test.ts",
+  "tests/backend/storage/maintenance/fixed-layout.test.ts",
 ];
 
 // Native browser process proofs run on macOS one at a time, without competing files.

@@ -19,7 +19,7 @@ The browser application starts at `app/main.tsx` and mounts `DashboardApp` from
 | `surfaces/notifications/` | Bell, inbox, destination models, and local preview producer |
 | `surfaces/settings/` | Settings composition and local styles |
 | `surfaces/settings/editor/` | Served fields, drafts, autosave, protected authority, and command attempts |
-| `surfaces/settings/general/` | General, appearance, ChatGPT account port, performance, path picker, and relocation |
+| `surfaces/settings/general/` | General, appearance, ChatGPT account port, performance, ordinary path pickers, and read-only app-data paths |
 | `surfaces/settings/navigation/` | Settings search and keyboard preferences |
 | `surfaces/settings/preflight/`, `routes/`, `storage/`, `providers/` | Readiness, route display, doctor reports, and protected-value controls |
 | `surfaces/settings/catalog/` | Retained row vocabulary model, without a catalog page |

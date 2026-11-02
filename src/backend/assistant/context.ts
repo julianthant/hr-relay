@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { constants, closeSync, openSync, readSync } from "node:fs";
+import { closeSync,constants,openSync,readSync } from "node:fs";
 import { join } from "node:path";
-import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
 import { SETTINGS_CATALOG } from "../../models/config/catalog.js";
+import { isRetiredSettingsPath } from "../../models/config/settings.js";
 import { AssistantCitationSchema } from "../../models/dashboard/assistant.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 
 export const PUBLIC_ASSISTANT_REPOSITORY_ID = "R_kgDOVOf3Cg";
 const PathSchema = z.string().max(200).regex(/^(?:src\/(?:models|workflow-kit|workflows)\/|docs\/rebuild\/)[A-Za-z0-9_/-]+\.(?:ts|md)$/u)
@@ -55,7 +56,7 @@ const APPLICATION_HELP = {
 } as const;
 export const ASSISTANT_SAFE_KNOWLEDGE: Readonly<Record<string, string>> = Object.freeze({
   ...APPLICATION_HELP,
-  ...Object.fromEntries(SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && row.sensitivity === "ordinary" && row.editability === "operator")
+  ...Object.fromEntries(SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && row.sensitivity === "ordinary" && row.editability === "operator" && !isRetiredSettingsPath(row.key))
     .map(row => [`setting ${row.key}`, `The ordinary setting ${row.key} is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.`])),
 });
 

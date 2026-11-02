@@ -1,6 +1,6 @@
-import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from "../../../src/models/dashboard/assistant.js";
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
+import { ASSISTANT_DEFAULT_EFFORT,ASSISTANT_DEFAULT_MODEL } from "../../../src/models/dashboard/assistant.js";
 import {
 BulkRunCommandRequestSchema,
 COMMAND_EFFECT_BY_ACTION,
@@ -106,8 +106,6 @@ describe("authority classification and command families", () => {
       "check-parked-write": "local-write",
       "apply-settings": "local-write",
       "apply-protected-settings": "destructive",
-      "plan-storage-relocation": "local-write",
-      "cancel-storage-relocation": "local-write",
       retry: "external-submit",
       restart: "external-submit",
       cancel: "destructive",
@@ -242,4 +240,15 @@ describe("explicit notification no-change results", () => {
     }
     assert.equal(CommandAuditRecordSchema.safeParse({ ...audit, request: CURRENT_COMMAND_FIXTURES.find(value => CommandRequestSchema.parse(value).family !== "notification") }).success, false);
   });
+});
+
+
+it.each(["plan-storage-relocation", "cancel-storage-relocation"])("refuses the removed %s command", type => {
+  const result = CommandRequestSchema.safeParse({ commandId: "11111111-1111-4111-8111-111111111111",
+    requestedAt: "2026-11-01T12:00:00.000Z", requestedBy: "local-operator", source: "settings-surface",
+    family: "storage-relocation", type, target: { installationId: "22222222-2222-4222-8222-222222222222",
+      sourceGeneration: 0, sourcePair: { stateRoot: "/isolated/state", artifactRoot: "/isolated/state/artifacts" }, expectedRevision: 0 },
+    payload: { writeId: "33333333-3333-4333-8333-333333333333", desiredPair: { stateRoot: "/isolated/other", artifactRoot: "/isolated/other/artifacts" },
+      desiredDigest: "a".repeat(64), requestFingerprint: "b".repeat(64) } });
+  assert.equal(result.success, false);
 });

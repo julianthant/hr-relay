@@ -8,51 +8,11 @@ import { basename, dirname, join } from "node:path";
 import readXlsxFile from "read-excel-file/node";
 import writeXlsxFile from "write-excel-file/node";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { FingerprintSchema } from "../../../rules/identity/ids.js";
-import type { Fingerprint } from "../../../rules/identity/ids.js";
-import type {
-  ArtifactOutboxStorageRecord,
-  ArtifactSinkHeadRecord,
-} from "../sqlite/storage-records.js";
+import { FingerprintSchema, type Fingerprint } from "../../../rules/identity/ids.js";
+
+import { ArtifactSinkConflictError, type ArtifactSink, type ArtifactSinkProjectionRequest } from "./artifact-sink.js";
 
 const SHEET_HEADER = ["stableKey", "keyValues", "record", "projectedAt"] as const;
-
-export class ArtifactSinkConflictError extends Error {
-  readonly sinkId: string;
-  readonly recordedSha256: string | undefined;
-  readonly actualSha256: string | undefined;
-  readonly preservedPendingPath: string | undefined;
-
-  constructor(input: Readonly<{
-    sinkId: string;
-    message: string;
-    recordedSha256?: string;
-    actualSha256?: string;
-    preservedPendingPath?: string;
-  }>) {
-    super(input.message);
-    this.name = "ArtifactSinkConflictError";
-    this.sinkId = input.sinkId;
-    this.recordedSha256 = input.recordedSha256;
-    this.actualSha256 = input.actualSha256;
-    this.preservedPendingPath = input.preservedPendingPath;
-  }
-}
-
-export interface ArtifactSinkProjectionRequest {
-  readonly row: ArtifactOutboxStorageRecord;
-  readonly head: ArtifactSinkHeadRecord | undefined;
-  readonly previousArtifact: ArtifactRef | undefined;
-  readonly prepare: (artifact: ArtifactRef) => void;
-  readonly assertPrepared: (artifact: ArtifactRef) => void;
-}
-
-export interface ArtifactSink {
-  readonly sinkId: string;
-  writerLockPath(): Promise<string>;
-  /** Applies the row and returns the workbook's new content hash. */
-  project(request: ArtifactSinkProjectionRequest): Promise<Readonly<{ contentSha256: Fingerprint; artifact: ArtifactRef }>>;
-}
 
 function contentSha256(bytes: Uint8Array): Fingerprint {
   return FingerprintSchema.parse(createHash("sha256").update(bytes).digest("hex"));

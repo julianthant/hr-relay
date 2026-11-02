@@ -1,15 +1,14 @@
-import { BackupRestoreControls } from "../general/settings-relocation.js";
-import { useDelayedLoading } from "../../shared/loading/loading-model.js";
-import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
-import { SkeletonText } from "../../shared/loading/loading.js";
 import { ShieldAlert } from "lucide-react";
 import { type ReactNode } from "react";
 import type { StorageDoctorWire } from "../../../../models/dashboard/storage.js";
-import { Badge, Banner, BodySection, Button, Disclosure, FormGroup, PageHeading, ResultRow, StatusDot, dsIcon } from "../../../ds/ui.js";
-import { useStorageDoctor } from "./storage-settings-model.js";
-import { fmtClock, fmtInstantDay } from "../../shared/status/format.js";
-import type { StorageHealthSummary } from "./storage-settings-model.js";
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
+import { Badge,Banner,BodySection,Button,Disclosure,FormGroup,PageHeading,ResultRow,StatusDot,dsIcon } from "../../../ds/ui.js";
+import { useDelayedLoading } from "../../shared/loading/loading-model.js";
+import { SkeletonText } from "../../shared/loading/loading.js";
 import "../../shared/run-evidence/diagnostic-presentation.css";
+import { fmtClock,fmtInstantDay } from "../../shared/status/format.js";
+import type { StorageHealthSummary } from "./storage-settings-model.js";
+import { useStorageDoctor } from "./storage-settings-model.js";
 
 const AUTHORITY_HAZARD = ERROR_CATALOG.STORAGE_AUTHORITY_UNAVAILABLE.text;
 
@@ -18,7 +17,13 @@ export function StorageBanner({ storage, onOpenSettings }: {
   storage: StorageHealthSummary;
   onOpenSettings: () => void;
 }) {
-  if (storage.authority === "healthy") return null;
+  if (storage.authority === "healthy") {
+    if (storage.automaticRepair.state === "none") return null;
+    return <Banner className="shrink-0" tone={storage.automaticRepair.state === "restored" ? "info" : "warning"} shape="band"
+      title={storage.automaticRepair.state === "restored" ? "Person data restored automatically" : "Repair notice unavailable"}>
+      {storage.automaticRepair.state === "restored" ? <>Saved person data was restored from the backup made <time dateTime={storage.automaticRepair.backupTime}>{fmtInstantDay(storage.automaticRepair.backupTime)} {fmtClock(storage.automaticRepair.backupTime)}</time>. Changes after that backup may be missing. Current credentials were kept.</> : storage.automaticRepair.message}
+    </Banner>;
+  }
   return <Banner className="shrink-0" tone="danger" shape="band"
     icon={<ShieldAlert aria-hidden className={dsIcon.lg} />}
     title="Authority storage is unavailable"
@@ -137,7 +142,7 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
         {doctor.state === "running" ? "Running checks…" : doctor.state === "reading" ? "Loading last check…" : report === undefined ? "Run storage checks" : "Run checks again"}
       </Button>
     } />
-    <BodySection title="Backup and Restore"><BackupRestoreControls state="unavailable" /></BodySection>
+    {storage.authority === "healthy" && storage.automaticRepair.state !== "none" && <StorageBanner storage={storage} onOpenSettings={runDoctor} />}
     <BodySection title="Status">
       {doctor.state === "reading" && <span role="status" aria-label="Loading storage checks" className="sr-only">Loading storage checks</span>}
       {authority !== "healthy" && report !== undefined && <p className="diagnostic-status">Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></p>}

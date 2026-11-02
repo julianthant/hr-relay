@@ -14,6 +14,7 @@ declareDriver,
 declareDriverFor,
 defineBrowserStore,
 defineServiceStore,
+defineWorkflowStore,
 defineTaskStoreRegistry,
 } from "../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../src/workflow-kit/task.js";
@@ -156,4 +157,14 @@ describe("task, store, session, and provider registration seams", () => {
       tasks: [{ id: contract.id, effect: "read" }],
     }));
   })
+});
+
+it("allows sessionless workflow tasks to retain artifacts while keeping providers unavailable", () => {
+  const fields = { id: taskId("workflow:person-lookup/read-file-fixture"), title: "Retain file fixture", effect: "read",
+    input: INPUT, output: OUTPUT, errorCodes: ["output-unavailable"] as const, artifacts: "content-addressed", subject: { kind: "none", reason: "pure capability fixture" },
+    scenarios: [SCENARIO], freshness: { defaultMaxAgeMs: 0 }, provenance: { default: "derived" }, example: { value: "fixture" } } as const;
+  const contract = defineTaskContract(fields);
+  const task = defineTask(contract, { sessions: [], async run({ ctx }) { void ctx.artifacts; return { value: "fixture" }; } });
+  assert.doesNotThrow(() => defineWorkflowStore("person-lookup", { retainFile: task }));
+  assert.throws(() => defineTaskContract({ ...fields, id: taskId("workflow:person-lookup/read-provider-fixture"), providers: ["ocr.extract"] as const }), /provider capabilities are legal only for service-store reads/u);
 });

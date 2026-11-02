@@ -1,24 +1,24 @@
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
-import { withOfflineMaintenance, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
-import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { createChatGptAccountService } from "../../../../src/backend/accounts/chatgpt-account-service.js";
-import { createChatGptCredentialRepository, verifyChatGptCredentialStore, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
-import { verifyRelocationLiveReferences } from "../../../../src/backend/storage/maintenance/relocation-inventory.js";
+import { restoreNewestPersonBackup } from "../../../../src/backend/app/composition/storage-compose.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { createChatGptCredentialRepository,verifyChatGptCredentialStore,type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
+import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { DatabaseSync } from "node:sqlite";
+import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { boundProfileCredentials,createBoundProfileFixture,withOfflineMaintenance } from "../../../support/helpers/admission-fixture.js";
 
-it("signed-out credential cleanup remains valid for custody and relocation", async () => {
+it("signed-out credential cleanup preserves current custody", async () => {
   const profile = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const service = createChatGptAccountService({ admission: profile.admission, stateRoot: profile.stateRoot, clock });
   const directories = [join(profile.stateRoot, "credentials"), join(profile.machine.stateRoot, "machine", "credential-keys"),
@@ -36,9 +36,6 @@ it("signed-out credential cleanup remains valid for custody and relocation", asy
     }
     profile.machine.assertExclusive();
     verifyChatGptCredentialStore({ admission: profile.admission, stateRoot: profile.stateRoot });
-    verifyRelocationLiveReferences({ admission: profile.admission, source: { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot },
-      credentials: boundProfileCredentials(profile.admission) });
-    assert.throws(() => profile.admission.assertStorageRelocationSupported(), { code: "PROFILE_STORAGE_RELOCATION_UNSUPPORTED" });
   } finally { await service.close(); await profile.close(); }
 });
 
@@ -55,12 +52,11 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     await repository.withLock(async tx => { tx.replace(original, null); });
     const database = AuthorityDatabase.open(profile.admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "account-maintenance" },
       clock, undefined, undefined, undefined, boundProfileCredentials(profile.admission));
-    let manifest: string;
     try {
       const backup = await new AuthorityBackupService(profile.admission, database, { directory: backupDirectory }, clock).request({
         trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
       const latest = backup.manifests.at(-1); assert.ok(latest);
-      manifest = join(backupDirectory, `${latest.backupFileName}.manifest.json`);
+      assert.equal(existsSync(join(backupDirectory, `${latest.backupFileName}.manifest.json`)), true);
     } finally { database.close(); }
     assert.ok(readdirSync(backupDirectory).every(name => name.endsWith(".sqlite") || name.endsWith(".manifest.json")));
     for (const name of readdirSync(backupDirectory)) assert.equal(readFileSync(join(backupDirectory, name)).includes(Buffer.from("synthetic-before-backup")), false);
@@ -69,16 +65,15 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     const credentialPath = join(stateRoot, "credentials", "chatgpt-account.json"), currentBytes = readFileSync(credentialPath);
     const report = await withOfflineMaintenance(profile.admission, operation => upgradeStorage(profileBrowserClosure, profile.admission, { stateRoot, processLockRoot, plan: false }, clock, operation));
     assert.equal(report.credentials, "unchanged"); assert.equal(readFileSync(credentialPath).equals(currentBytes), true);
-    const damaged = readFileSync(profile.path);
-    damaged.fill(0x5a, 4096, Math.min(damaged.length, 40_960)); writeFileSync(profile.path, damaged);
+    const damaged = new DatabaseSync(profile.path);
+    try { damaged.exec("DROP TABLE run_search"); } finally { damaged.close(); }
     const previous = profile.admission;
     const damagedBytes = readFileSync(profile.path);
     const detachedRoot = realpathSync(mkdtempSync(join(tmpdir(), "standalone-restore-context-")));
     const detachedArtifacts = join(detachedRoot, "artifacts"); mkdirSync(detachedArtifacts, { mode: 0o700 });
     const detached = RuntimeAdmission.syntheticRoots(detachedRoot, detachedArtifacts);
     try {
-      await assert.rejects(composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", manifest], clock,
-        process.cwd(), detached, boundProfileCredentials(previous)), { message: "runtime-admission: exclusive installation authority required" });
+      await withOfflineMaintenance(previous, operation => assert.rejects(restoreNewestPersonBackup(detached, operation, clock), /installation-required/u));
     } finally { detached.release(); rmSync(detachedRoot, { recursive: true, force: true }); }
     assert.equal(readFileSync(profile.path).equals(damagedBytes), true);
     assert.equal(readFileSync(credentialPath).equals(currentBytes), true);
@@ -87,9 +82,8 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     profile.admission.assertFixedProcessLockRoot(profile.workspace, processLockRoot);
     assert.throws(() => profile.admission.assertFixedProcessLockRoot(process.cwd(), processLockRoot));
     assert.throws(() => profile.admission.assertFixedProcessLockRoot(profile.workspace, join(profile.workspace, "foreign-locks")));
-    const restored = await composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", manifest], clock, process.cwd(),
-      previous, boundProfileCredentials(previous));
-    assert.equal(restored.exitCode, 0, restored.output); assert.equal(readFileSync(credentialPath).equals(currentBytes), true);
+    const restored = await withOfflineMaintenance(previous, operation => restoreNewestPersonBackup(previous, operation, clock));
+    assert.equal(restored.state, "restored"); assert.equal(readFileSync(credentialPath).equals(currentBytes), true);
     assert.throws(() => previous.assertProfileRuntime());
     assert.throws(() => repository.read(), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
     profile.renewAfterRestore();
@@ -99,33 +93,4 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     assert.equal(current?.session?.refreshToken, "synthetic-current-refresh");
     assert.equal(readFileSync(credentialPath).equals(currentBytes), true);
   } finally { await profile.close(); }
-});
-
-
-for (const owner of ["missing", "foreign"] as const) it(`refuses ${owner} protected inventory owner before changing current profile bytes`, async () => {
-  const profile = await createBoundProfileFixture(), foreign = await createBoundProfileFixture();
-  const paths = [profile.path, join(profile.stateRoot, "credentials"),
-    join(profile.machine.stateRoot, "machine", "credential-keys"), join(profile.machine.stateRoot, "machine", "erasures"), join(profile.machine.stateRoot, "machine", "credential-operations")];
-  const before = paths.map(path => path === profile.path ? { kind: "file" as const, path, bytes: readFileSync(path) }
-    : { kind: "directory" as const, path, present: existsSync(path), names: existsSync(path) ? readdirSync(path).sort() : [],
-      files: existsSync(path) ? readdirSync(path).sort().map(name => ({ name, bytes: readFileSync(join(path, name)) })) : [] });
-  const failures: unknown[] = [];
-  try {
-    const input = { admission: profile.admission, source: { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot },
-      ...(owner === "foreign" ? { credentials: boundProfileCredentials(foreign.admission) } : {}) };
-    assert.throws(() => verifyRelocationLiveReferences(input), owner === "missing"
-      ? { code: "CREDENTIAL_CONTEXT_REQUIRED" } : { message: "credential-store-owner-mismatch" });
-    for (const entry of before) {
-      if (entry.kind === "file") assert.equal(readFileSync(entry.path).equals(entry.bytes), true);
-      else {
-        assert.equal(existsSync(entry.path), entry.present);
-        assert.deepEqual(existsSync(entry.path) ? readdirSync(entry.path).sort() : [], entry.names);
-        for (const file of entry.files) assert.equal(readFileSync(join(entry.path, file.name)).equals(file.bytes), true);
-      }
-    }
-    profile.admission.assertLive(); foreign.admission.assertLive();
-  } catch (error) { failures.push(error); }
-  try { await profile.close(); } catch (error) { failures.push(error); }
-  try { await foreign.close(); } catch (error) { failures.push(error); }
-  if (failures.length > 0) throw new AggregateError(failures, "inventory fixture failed", { cause: failures[0] });
 });

@@ -1,3 +1,4 @@
+import { composeWorkerArtifactProjector } from "./worker/artifact-output.js";
 import { hasUncertainBrowserLaunch } from "../../runtime/browser/native-browser.js";
 import { createDuoCredentialStore } from "../../storage/configuration/duo-credential-store.js";
 import { createNominatimWorkerAdapter } from "../../processing/providers/nominatim-owner.js";
@@ -586,6 +587,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   });
   // The root initializes at construction; a worker never runs a task before it exists.
   await artifacts.ready;
+  const artifactProjector = composeWorkerArtifactProjector({ admission, database, artifacts, clock });
   const diagnosticService = createDiagnosticCaptureService({
     artifacts,
     authority: database.authority,
@@ -864,6 +866,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         idleCadence: () => withOperationProof(() => resolveConfigWithProvenance(readSettings(database.authority).settings,hostFacts,clock,
           { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.daemon.idleRepollMs),
         artifacts,
+        artifactProjector,
         writeSequencerFor: (sessions, taskDeadlineMs) => createWriteSequencer({
           stores,
           authority: database,

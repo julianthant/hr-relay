@@ -53,7 +53,7 @@ describe("strict config resolution", () => {
   });
 
   it("resolves an admitted storage pair without changing ordinary settings or an older snapshot", () => {
-    const settings = { paths: { browserProfileRoot: "/tmp/profile" }, browser: { headless: false } };
+    const settings = { browser: { headless: false } };
     const ordinaryFingerprint = derivePersistedSettingsFingerprint(settings);
     const oldSnapshot = resolveConfigWithProvenance(settings, hostConfigFacts({}), CLOCK);
     const oldConfig = structuredClone(oldSnapshot.config);
@@ -62,12 +62,13 @@ describe("strict config resolution", () => {
 
     assert.equal(moved.config.paths.stateRoot, pair.stateRoot);
     assert.equal(moved.config.paths.artifactRoot, pair.artifactRoot);
-    assert.equal(moved.config.paths.browserProfileRoot, "/tmp/profile");
+    assert.equal(moved.config.paths.browserProfileRoot, "/tmp/relocated-state/browsers");
+    assert.throws(() => resolveConfigWithProvenance({ ...settings, paths: { browserProfileRoot: "/tmp/profile" } }, hostConfigFacts({}), CLOCK, pair), /fixed-person-browser-root-required/u);
     assert.equal(moved.config.paths.duoCredential, "/tmp/relocated-state/credentials/duo-webauthn.json");
     assert.equal(moved.provenance["paths.duoCredential"], "default");
     assert.equal(moved.provenance["paths.stateRoot"], "default");
     assert.equal(moved.provenance["paths.artifactRoot"], "default");
-    assert.equal(moved.provenance["paths.browserProfileRoot"], "settings");
+    assert.equal(moved.provenance["paths.browserProfileRoot"], "default");
     assert.deepEqual(Object.keys(moved.provenance).sort(), [...configLeafPaths(moved.config)].sort());
     assert.notEqual(moved.fingerprint, oldSnapshot.fingerprint);
     assert.deepEqual(oldSnapshot.config, oldConfig);

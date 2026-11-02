@@ -3,7 +3,7 @@ import ts from "typescript";
 import { cpSync, mkdtempSync, realpathSync, appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { OldBuildRuntimeArtifactsError } from "../../../src/backend/storage/admission/process-root.js";
-import { RuntimeLifetimeLock, RuntimeAlreadyRunningError, isOfflineMaintenanceOperationActive } from "../../../src/backend/storage/admission/lifetime-lock.js";
+import { RuntimeLifetimeLock, RuntimeAlreadyRunningError, OfflineMaintenanceOperationUnavailableError, isOfflineMaintenanceOperationActive } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import * as readonlySnapshots from "../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase as FixtureAuthorityDatabase } from "../../support/helpers/synthetic-database-admission.js";
@@ -355,8 +355,9 @@ function discardTemplate(stateRoot: string): void {
   }
 }
 
-function inspectReplacedAuthority(path: string) {
-  assert.throws(() => admissionFor(path).assertProfileRuntime(), /profile-restore-context-expired/u);
+function inspectFencedAuthority(path: string) {
+  assert.equal(existsSync(join(fixtureFor(path).workspace, ".tracker", "control", "journal.json")), true);
+  assert.throws(() => admissionFor(path).assertProfileRuntime(), OfflineMaintenanceOperationUnavailableError);
   const copy = fixtureFor(path).machine.verifiedReadOnlyCopy(path, createHash("sha256").update(readFileSync(path)).digest("hex"));
   try {
     const inspection = AuthorityDatabase.inspectExistingReadOnly(copy, path);
@@ -2110,7 +2111,7 @@ describe("offline exact-backup restore", () => {
     );
     assert.equal(readFileSync(`${authorityPath}-wal`, "utf8"), "live wal bytes");
     assert.equal(readFileSync(`${authorityPath}-shm`, "utf8"), "live shm bytes");
-    assert.equal(inspectReplacedAuthority(authorityPath).authorityGeneration, liveGeneration);
+    assert.equal(inspectFencedAuthority(authorityPath).authorityGeneration, liveGeneration);
     assert.equal(readdirSync(suspects).length > 0, true);
   });
 
@@ -2181,7 +2182,7 @@ describe("offline exact-backup restore", () => {
     assert.ok(failure.cause instanceof Error);
     assert.equal(failure.cause.message, "injected atomic swap error after rename");
     assert.equal(
-      inspectReplacedAuthority(authorityPath).authorityGeneration,
+      inspectFencedAuthority(authorityPath).authorityGeneration,
       backupGeneration,
     );
   });
@@ -2198,8 +2199,8 @@ describe("offline exact-backup restore", () => {
         copyFile: copyFileSync,
         atomicReplace: (source, destination) => {
           renameSync(source, destination);
-          cleanupPath = `${source}-wal`;
-          writeFileSync(cleanupPath, "staged cleanup bytes");
+          cleanupPath = source;
+          copyFileSync(destination, cleanupPath);
         },
         removePath: (path) => {
           if (path === cleanupPath) throw new Error("injected staged cleanup failure");
@@ -2383,7 +2384,7 @@ describe("offline exact-backup restore", () => {
       restore.restore({ manifestPath }, maintenanceOperation(root)),
       replacedFailure(/post-swap directory fsync failure/u),
     );
-    assert.equal(inspectReplacedAuthority(authorityPath).authorityGeneration, generation);
+    assert.equal(inspectFencedAuthority(authorityPath).authorityGeneration, generation);
   });
 
   it("classifies post-swap report validation failure as authority replaced", async () => {

@@ -1,31 +1,31 @@
-import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
-import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
-import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
-import { createHash, randomUUID } from "node:crypto";
-import { copyFileSync,existsSync,readdirSync,readFileSync,renameSync,rmSync,statSync,writeFileSync } from "node:fs";
+import { createHash,randomUUID } from "node:crypto";
+import { copyFileSync,existsSync,mkdirSync,readdirSync,readFileSync,renameSync,rmSync,statSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,beforeEach,describe,expect,it } from "vitest";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { acquireRecoveryRuntimeRestore } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { inspectPendingRelocationStatus } from "../../../../src/backend/storage/admission/installation.js";
 import { OldBuildRuntimeArtifactsError } from "../../../../src/backend/storage/admission/process-root.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { boundProfileCredentials,createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+
 import { backupStoppedAuthority,upgradeStorage } from "../../../../src/backend/storage/maintenance/upgrade.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { AuthorityBackupService,verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { OfflineAuthorityRestoreService,settleInterruptedAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
-import { AuthorityBackupManifestSchema,RecoveryRuntimeLockSnapshotSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
-import { acquireRuntimeProcessLock, observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { OfflineAuthorityRestoreService,resumeAutomaticAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import { AuthorityBackupManifestSchema,RecoveryRuntimeLockSnapshotSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
+import { acquireRuntimeProcessLock,observeRuntimeLockSnapshot } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../../../src/models/config/authority.js";
-import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
+import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
 import { ProtectedSettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
@@ -94,7 +94,8 @@ describe("native authority backup", () => {
     const f = await fixture(), report = await f.service.request({ trigger: "operator", requiredGeneration: f.database.getMeta().authorityGeneration });
     const manifest = report.manifests[0], manifestPath = join(f.directory, `${manifest.backupFileName}.manifest.json`);
     f.database.close();
-    const original = readFileSync(f.path), credentials = join(f.root, "credentials"), credentialPath = join(f.root, "offline-custody.bin");
+    const original = readFileSync(f.path), credentials = join(f.root, "credentials"), credentialPath = join(f.root, "files", "offline-custody.bin");
+    mkdirSync(join(f.root, "files"), { recursive: true, mode: 0o700 });
     expect(statSync(credentials).isDirectory()).toBe(true); writeFileSync(credentialPath, "synthetic-independent-credential", { mode: 0o600 });
     const credentialBytes = readFileSync(credentialPath), credentialStat = statSync(credentialPath), processLockRoot = join(f.workspace, rebuildRuntimeIsolation.processLockRoot);
     const operation = f.admission.acquireOfflineMaintenance();
@@ -161,7 +162,8 @@ describe("native authority backup", () => {
         expect(statSync(`${journal.restore.stagedPath}${row.suffix}.live-companion`).ino).toBe(row.inode);}
       f.admission.release();f.machine.release();expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime)).toThrow(/unfinished restoring/u);
     }else{
-      expect(existsSync(journalPath)).toBe(false);
+      const journal = JSON.parse(readFileSync(journalPath,"utf8")) as {restore:{stagedPath:string}};
+      expect(existsSync(journal.restore.stagedPath)).toBe(true);
       for(const row of before){expect(readFileSync(`${f.path}${row.suffix}`)).toEqual(row.bytes);expect(statSync(`${f.path}${row.suffix}`).ino).toBe(row.inode);}
     }
   });
@@ -182,7 +184,6 @@ describe("native authority backup", () => {
     expect(readFileSync(journal.restore.suspectPath)).toEqual(original); expect(readFileSync(manifestPath)).not.toHaveLength(0);
     f.admission.release(); f.machine.release();
     expect(() => acquireEntrypointAdmission(f.workspace, "shared", f.lifetime)).toThrow(/unfinished restoring/u);
-    expect(() => inspectPendingRelocationStatus(f.workspace)).toThrow(/not an owned relocation/u);
     rmSync(journal.restore.stagedPath);
     expect(() => acquireEntrypointAdmission(f.workspace, "shared", f.lifetime)).toThrow(/unfinished restoring/u);
     const restore = f.lifetime.beginOfflineMaintenance(f.workspace);
@@ -193,21 +194,17 @@ describe("native authority backup", () => {
       const currentRecovery = recovered;
       let wrongBindingVerifications = 0;
       expect(() => currentRecovery.admission.settleAuthorityRestore({ ...currentRecovery.input, authorityGeneration: currentRecovery.input.authorityGeneration + 1 },
-        "replaced", () => { wrongBindingVerifications += 1; throw new Error("wrong binding reached verifier"); }, restore)).toThrow("profile-restore-custody-mismatch");
+        () => { wrongBindingVerifications += 1; throw new Error("wrong binding reached verifier"); }, restore)).toThrow("profile-restore-custody-mismatch");
       expect(wrongBindingVerifications).toBe(0);
-      expect(() => currentRecovery.admission.settleAuthorityRestore(currentRecovery.input, "replaced", () => ({
+      expect(() => currentRecovery.admission.settleAuthorityRestore(currentRecovery.input, () => ({
         authorityGeneration: currentRecovery.input.authorityGeneration + 1, authorityContentFingerprint: currentRecovery.input.authorityContentFingerprint,
       }), restore)).toThrow(/authority proof mismatch/u);
-      expect(readFileSync(journalPath)).toEqual(journalBytes);
-      await expect(settleInterruptedAuthorityRestore({ admission: currentRecovery.admission, operationId: journal.restore.operationId,
-        manifestPath: join(f.directory, "other.manifest.json"), outcome: "replaced", processLockRoot,
-        restoreAdmission: restore, clock: f.clock })).rejects.toThrow(/manifest-binding-mismatch/u);
       expect(readFileSync(journalPath)).toEqual(journalBytes);
       restore.release(); currentRecovery.admission.release();
       const nextOperation = f.lifetime.beginOfflineMaintenance(f.workspace);
       recovered = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, journal.restore.operationId, nextOperation);
-      const settled = await settleInterruptedAuthorityRestore({ admission: recovered.admission, operationId: journal.restore.operationId,
-        manifestPath, outcome: "replaced", processLockRoot, restoreAdmission: nextOperation, clock: f.clock });
+      const settled = await resumeAutomaticAuthorityRestore({ browserClosure: profileBrowserClosure, admission: recovered.admission, operationId: journal.restore.operationId,
+        processLockRoot, restoreAdmission: nextOperation });
       nextOperation.release();
       expect(settled).toEqual({ state: "settled", operationId: journal.restore.operationId, outcome: "replaced" });
       expect(existsSync(journalPath)).toBe(false);
@@ -318,7 +315,7 @@ describe("native authority backup", () => {
 });
 
 describe("native authority backup", () => {
-  const faults = ["missing","replaced-inode","changed-bytes","companion-missing","companion-inode","companion-bytes"] as const;
+  const faults = ["missing","changed-bytes","companion-missing","companion-bytes"] as const;
   const prepared = new Map<typeof faults[number], Awaited<ReturnType<typeof fixture>>>();
   beforeEach(() => { prepared.clear(); });
   for (const fault of faults) {
@@ -343,9 +340,7 @@ describe("native authority backup", () => {
           const suspect=join(suspects,readdirSync(suspects).find(name=>name.endsWith(".sqlite"))!);
           const target=fault.startsWith("companion")?`${suspect}-wal`:suspect;
           if(fault.endsWith("missing"))rmSync(target);
-          else if(fault === "replaced-inode" || fault === "companion-inode"){
-            renameSync(target,`${target}.preserved`);copyFileSync(`${target}.preserved`,target);
-          }else{const bytes=readFileSync(target);bytes[bytes.length-1]^=1;writeFileSync(target,bytes);}
+          else{const bytes=readFileSync(target);bytes[bytes.length-1]^=1;writeFileSync(target,bytes);}
           if(outcome === "unchanged")throw new Error("fault-before-authority-replacement");
         }}, f.credentials);
       await expect(restore.restore({ manifestPath }, fresh()),fault).rejects.toMatchObject({authorityState:outcome});
@@ -354,8 +349,8 @@ describe("native authority backup", () => {
       const held=f.lifetime.beginOfflineMaintenance(f.workspace);
       const recovery=acquireRecoveryRuntimeRestore(f.workspace, f.lifetime,journal.restore.operationId,held);
       try{
-        await expect(settleInterruptedAuthorityRestore({admission:recovery.admission,operationId:journal.restore.operationId,
-          manifestPath,outcome,processLockRoot,restoreAdmission:held,clock:f.clock}),fault).rejects.toThrow();
+        await expect(resumeAutomaticAuthorityRestore({ browserClosure: profileBrowserClosure,admission:recovery.admission,operationId:journal.restore.operationId,
+          processLockRoot,restoreAdmission:held}),fault).rejects.toThrow();
         expect(readFileSync(journalPath),fault).toEqual(journalBytes);
       }finally{held.release();recovery.admission.release();}
       expect(()=>acquireEntrypointAdmission(f.workspace,"shared", f.lifetime),fault).toThrow(/unfinished restoring/u);

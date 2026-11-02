@@ -1,10 +1,10 @@
 import { lstatSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { AuthorityDatabase } from "../sqlite/authority-database.js";
+import { dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
+import { ProfileBrowserRootRefusalError,requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
-import { ProfileBrowserRootRefusalError, requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { privatePathRejects } from "../private-path.js";
-import type { ProfileBrowserClosure, RetainedBrowserProfile } from "./profile-inventory.js";
+import type { AuthorityDatabase } from "../sqlite/authority-database.js";
+import type { ProfileBrowserClosure,RetainedBrowserProfile } from "./profile-inventory.js";
 
 type CredentialMembershipCustody = ReturnType<AuthorityDatabase["readProfileResourceCustody"]>;
 export type BrowserProfileCustody = Pick<CredentialMembershipCustody, "slots" | "verificationProfiles" | "browsers" | "configSnapshots" | "controls">;
@@ -26,7 +26,7 @@ export function retainedBrowserProfiles(root: string, custody: BrowserProfileCus
     if (slot === undefined) throw new Error("profile-inventory-browser-membership-unavailable");
     const verification = custody.verificationProfiles.find(value => value.workerId === slot.workerId);
     const selectedRoots = verification === undefined
-      ? [...new Set(custody.configSnapshots.filter(snapshot => snapshot.fingerprint === browser.configFingerprint).map(snapshot => snapshot.config.paths.browserProfileRoot))]
+      ? custody.configSnapshots.some(snapshot => snapshot.fingerprint === browser.configFingerprint) ? [join(root, "browsers")] : []
       : [join(root, "scratch", "live-smoke", verification.profileRunId, "browsers")];
     const profileRoot = selectedRoots[0];
     if (profileRoot !== undefined && verification === undefined) assertBrowserRoot(root, profileRoot);
@@ -60,13 +60,16 @@ function assertBrowserRoot(root: string, path: string): void {
   }
 }
 
-export function assertCredentialCopyResourcesClosed(facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) {
+export function assertStoppedProfileResourcesClosed(facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) {
   if (facts.reservations.some(reservation => reservation.state === "pending")
     || facts.slots.some(slot => slot.retiredAt === null && !facts.leases.some(lease => lease.workerId === slot.workerId))
     || facts.leases.some(lease => !facts.slots.some(slot => slot.workerId === lease.workerId))
-    || facts.writeIntents.some(intent => intent.status !== "committed" && intent.status !== "observed-present") || facts.pendingArtifacts.length > 0
     || facts.leases.some(lease => lease.lifecycle.state !== "stopped") || facts.browsers.some(browser => browser.health !== "closed")
-    || facts.duoLeases.some(lease => lease.state === "held") || facts.controls.some(control => control.auditedAt === undefined)
-    || facts.runs.some(run => run.lifecycle.state !== "terminal")) throw new Error("credential-maintenance-custody-unproved");
+    || facts.duoLeases.some(lease => lease.state === "held") || facts.controls.some(control => control.auditedAt === undefined)) throw new Error("credential-maintenance-custody-unproved");
 }
 
+export function assertCredentialCopyResourcesClosed(facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) {
+  assertStoppedProfileResourcesClosed(facts);
+  if (facts.writeIntents.some(intent => intent.status !== "committed" && intent.status !== "observed-present") || facts.pendingArtifacts.length > 0
+    || facts.runs.some(run => run.lifecycle.state !== "terminal")) throw new Error("credential-maintenance-custody-unproved");
+}

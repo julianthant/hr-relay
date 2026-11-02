@@ -149,8 +149,8 @@ export function defineWorkflowStore<
     if (task.contract.effect !== "read" || task.impl.sessions.length !== 0) {
       throw new Error(`${task.contract.id} workflow mini-store task must be a sessionless read`);
     }
-    if (task.contract.artifacts !== undefined || task.contract.providers !== undefined) {
-      throw new Error(`${task.contract.id} workflow mini-store cannot declare artifacts or providers`);
+    if (task.contract.providers !== undefined) {
+      throw new Error(`${task.contract.id} workflow mini-store cannot declare providers`);
     }
   }
   const store = Object.freeze({ kind: "headless", namespace, tasks: Object.freeze({ ...tasks }) });

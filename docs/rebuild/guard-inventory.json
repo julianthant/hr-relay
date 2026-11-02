@@ -668,7 +668,7 @@
       "name": "completed-restore-custody",
       "command": "npm test -- tests/backend/storage/sqlite/offline-restore.profile-continuity.integration.test.ts",
       "owner": "docs/rebuild/reference/clock-config-secrets.md",
-      "invariant": "Reason: settled restore suspects outlive their journal, and the raw public relocation lease bypasses the profile wrapper's unsupported-relocation check. Strict completed history binds exact profile/operation/file identities and complete companions before credential inventory. Raw relocation refuses nonempty history before destination or journal effects; unrelated registry mutations preserve it, and interrupted history publication settles once without accepting divergence."
+      "invariant": "Reason: settled restore suspects outlive their journal. Strict completed history binds exact profile/operation/file identities and complete companions before credential inventory. Unrelated registry mutations preserve that history, and interrupted publication settles once without accepting divergence."
     },
     {
       "name": "public-repository-privacy",
