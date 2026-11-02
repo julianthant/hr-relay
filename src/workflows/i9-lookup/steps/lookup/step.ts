@@ -17,6 +17,6 @@ export const i9LookupStepWorkflow = defineWorkflow({
   identity: i9LookupWorkflow.identity, presentation: i9LookupWorkflow.presentation,
   scenarios: i9LookupWorkflow.scenarios,
   role: defineWorkflowRole({ kind: "chunk-harness", of: "i9-lookup", step: I9_LOOKUP_STEP.key }),
-  steps: ({ result }) => ({ steps: [lookupStep], result: result(I9SignerOutputSchema, [lookup],
+  steps: ({ result }) => ({ steps: [[I9_LOOKUP_STEP, lookupStep[1]]], result: result(I9SignerOutputSchema, [lookup],
     ({ outputs }) => I9SignerOutputSchema.parse(outputs.lookup)) }),
 });
