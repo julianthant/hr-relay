@@ -37,10 +37,6 @@
     }
   ],
   "minimum_chrome_version": "140",
-  "action": {
-    "default_popup": "src/popup.html",
-    "default_title": "Relay Duo setup"
-  },
   "options_ui": {
     "page": "src/options.html",
     "open_in_tab": true

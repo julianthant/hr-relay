@@ -16,7 +16,10 @@ import { FakeKeyringEntry, credentialKeychainTestEnvironment } from "../credenti
 import { acquireEntrypointAdmission } from '../../../../src/backend/storage/admission/bootstrap-admission.js';
 import { registerBoundProfile, unregisterBoundProfile, createBoundProfileFixture, boundProfileCredentials } from "../admission-fixture.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
-import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT, COMMAND_FIXTURES, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
+import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT, COMMAND_FIXTURES, CONFIG_SNAPSHOT, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../../fixtures/phase1c-contract-fixtures.js";
+import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
+import { initialSettingsFileRecord } from "../../../../src/models/config/settings.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { seedAtomicWriteOwner } from "../timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -335,7 +338,11 @@ export function createStorageRestoreTestWorld() {
     runId: string;
   }> {
     database.authority.commands.insert(COMMAND_FIXTURES[0]);
-    seedAtomicWriteOwner(database,HISTORICAL_COMMIT,paths.authorityPath);
+    const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, { primaryDisplay: null }, CLOCK,
+      { stateRoot: paths.stateRoot, artifactRoot: join(paths.stateRoot, "artifacts") });
+    const snapshot = ConfigSnapshotRecordSchema.parse({ ...CONFIG_SNAPSHOT, config: resolved.config, fingerprint: resolved.fingerprint, provenance: resolved.provenance });
+    const commit = { ...HISTORICAL_COMMIT, transaction: { ...HISTORICAL_COMMIT.transaction, configFingerprint: snapshot.fingerprint } };
+    seedAtomicWriteOwner(database, commit, paths.authorityPath, undefined, snapshot);
     const run=database.authority.runs.get(WRITE_INTENT_ATTEMPTING.runId);assert.ok(run);
     const claimGeneration=run.claimGeneration;
     const fenced = fenceWriteFixture(database, {
