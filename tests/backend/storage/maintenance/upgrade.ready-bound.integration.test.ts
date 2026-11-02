@@ -2,7 +2,7 @@ import { removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from 
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
 import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";
-import { corruptLegacyOcrExtraction, historicalOcrExtractions, insertUnboundOcrExtraction } from "../../../support/fixtures/storage/ocr-extractions.js";
+import { insertMalformedLegacyOcrExtraction, historicalOcrExtractions, insertUnboundOcrExtraction } from "../../../support/fixtures/storage/ocr-extractions.js";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { copyFileSync,existsSync,mkdirSync,readFileSync,readdirSync,renameSync,rmdirSync,writeFileSync } from "node:fs";
@@ -579,7 +579,7 @@ it.each(["artifact-id", "source-column", "payload"] as const)("refuses a stopped
   const f = await readyBoundEight("idle", 11, true);
   try {
     const raw = new DatabaseSync(f.path);
-    try { corruptLegacyOcrExtraction(raw, fault); } finally { raw.close(); }
+    try { insertMalformedLegacyOcrExtraction(raw, fault); } finally { raw.close(); }
     const rows = rawEight(f.path), sourceBytes = readFileSync(f.path);
     const before = storageTree(f.stateRoot), machineBefore = storageTree(join(f.machine.stateRoot, "machine"));
     await assert.rejects(upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock),

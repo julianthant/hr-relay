@@ -6,7 +6,7 @@ import { it } from "vitest";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { inspectNativeAuthority, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { extractedArtifactFromRow } from "../../../../src/backend/storage/sqlite/extracted-artifact-row.js";
-import { corruptLegacyOcrExtraction, historicalOcrExtractions, insertUnboundOcrExtraction } from "../../../support/fixtures/storage/ocr-extractions.js";
+import { insertMalformedLegacyOcrExtraction, historicalOcrExtractions, insertUnboundOcrExtraction } from "../../../support/fixtures/storage/ocr-extractions.js";
 import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";
 
 it("converts every supported source layout to explicit unbound evidence without inventing PDF or reading provenance", () => {
@@ -43,7 +43,7 @@ it("converts every supported source layout to explicit unbound evidence without 
       database.exec(`PRAGMA user_version=${CURRENT_AUTHORITY_SCHEMA_VERSION}; COMMIT`);
       assert.equal(inspectNormalAuthority(database).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       const rows = database.prepare("SELECT * FROM artifacts ORDER BY id").all();
-      assert.deepEqual(rows.map((row, index) => ({ ...row, payload_json: before[index]?.payload_json })), before);
+      assert.deepEqual(rows.map((row, index) => ({ ...row, payload_json: before[index]?.payload_json })), before.map(row => ({ ...row })));
       if (version >= 12) assert.deepEqual(rows, before);
       assert.deepEqual(rows.map(extractedArtifactFromRow), [...stored].sort((a, b) => a.extractionId.localeCompare(b.extractionId)));
       assert.equal(stored[3].extraction.record, null);
@@ -63,7 +63,7 @@ it.each(["artifact-id", "source-column", "payload"] as const)("refuses malformed
     database.prepare("INSERT INTO database_states VALUES(?,?,?,?,?,?,?,?)").run(1, 11, 0, extraction.readAt, null, "unbuilt",
       "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222");
     database.exec(`PRAGMA application_id=${AUTHORITY_APPLICATION_ID}; PRAGMA user_version=11`);
-    corruptLegacyOcrExtraction(database, fault);
+    insertMalformedLegacyOcrExtraction(database, fault);
     const before = database.prepare("SELECT * FROM artifacts").all();
     const schema = database.prepare("SELECT name,sql FROM sqlite_master ORDER BY name").all();
     assert.throws(() => inspectNativeAuthority(database, 11), /authority table artifacts failed native record validation/u);
