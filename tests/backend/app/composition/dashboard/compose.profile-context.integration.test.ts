@@ -61,6 +61,7 @@ it("starts the actual dashboard from the same token-owned context and proves res
     await dashboard.stop(); dashboard = undefined;
     assert.throws(() => context.database.getMeta(), /closed/u);
     assert.throws(() => context.admission.assertLive());
+    f.machine.assertLive(); f.machine.release();
     assert.throws(() => f.machine.assertLive());
   } finally { kernelFactory.mockRestore(); if (dashboard !== undefined) await dashboard.stop(); await f.close(); }
 });
