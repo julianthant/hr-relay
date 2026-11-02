@@ -356,6 +356,18 @@ treating the entered employee ID as readback.
 `isUcpathTerminationAction` accepts the supported `TER` and termination-label forms.
 Unmatched values remain unmatched.
 
+### 2.13 UCPath emergency contacts
+
+`contact-tasks.ts` declares contracts for complete contact reads, unambiguous addition preparation
+and fresh saved-effect comparison. The single UCPath driver exposes reads and staging through
+the shared contact-set interpreter. Preparation binds the earlier observed set fingerprint,
+independently checks displayed EID/name and preserves every existing contact. Conflicts and
+unspecified addresses refuse. The interpreter compares saved effects as four-state observations;
+it grants no receipt, write probe, Save or retry authority. Candidate selectors remain pending
+live read-only verification. Task implementations and provenance recording await the owning
+workflow and executable scenarios; the UCPath store advertises no contact tasks. The pending-binding
+inventory tracks only contracts referenced by registered descriptors.
+
 ## 3. Task registration
 
 ### 3.1 Implementation homes
