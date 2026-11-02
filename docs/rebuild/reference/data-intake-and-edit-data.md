@@ -314,8 +314,14 @@ those fields, including cell metadata. Without an authenticated SharePoint downl
 `WORKBOOK_SYNC_UNAVAILABLE`. Workflow start snapshot retention, run-bound writer composition and
 Logs row-resolution dispatch remain integrations owned by Runs; this library API does not dispatch them.
 
-`rules/spreadsheets/workbook-io.ts` owns library XLSX/CSV import/export and dependency-specific
-metadata handling. Downloads omit selected hidden columns; the intake export retains and marks
+`rules/spreadsheets/workbook-io.ts` owns library XLSX/CSV import/export, using browser-safe
+`@shbernal/ts-xlsx` for XLSX and the existing CSV parser/writer. Downloads omit selected hidden columns; the intake export retains and marks
 them, using saved document and ZIP timestamps. Formula inputs retain cached values and the formula
 presence flag; exported copies contain values. Theme/fill, rich text, links, number formats, typed dates,
-worksheet dimensions and named structural refusals remain part of this boundary.
+worksheet dimensions and named structural refusals remain part of this boundary. Import records
+unsupported metadata through namespace-aware OOXML admission. Master edits, keyed writes and Sync
+refuse formula-bearing workbooks or unsupported metadata with `WORKBOOK_METADATA_UNSUPPORTED`;
+clearing an incoming flag cannot bypass the stored master's refusal. The default Calibri font and
+document creation/modification timestamps are admitted; edits use the library's saved timestamps.
+Other document properties, table structures, non-cell styles and opaque package parts are refused
+for master mutation. Export creates an explicit value copy and never overwrites the source file.

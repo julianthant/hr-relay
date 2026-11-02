@@ -23,3 +23,30 @@ it('emits independent XLSX XML metadata, hidden intake columns and deterministic
   const visible = await importWorkbook('visible.xlsx', await writeWorkbookXlsx(workbook, { columns: 'visible' }));
   expect(visible.sheets[0].width).toBe(2); expect(writeWorkbookCsv(workbook.sheets[0])).not.toContain('00123');
 });
+it('marks prefixed worksheet metadata that the editable model cannot carry', async () => {
+  const archive = await JSZip.loadAsync(await writeWorkbookXlsx(workbook));
+  const entry = archive.file('xl/worksheets/sheet1.xml');
+  expect(entry).toBeTruthy();
+  archive.file('xl/worksheets/sheet1.xml', (await entry!.async('string')).replace('</worksheet>', '<x:mergeCells xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><x:mergeCell ref="A1:B1"/></x:mergeCells></worksheet>'));
+  const imported = await importWorkbook('prefixed.xlsx', await archive.generateAsync({ type: 'arraybuffer' }));
+  expect(imported.unsupportedMetadata).toBe(true);
+});
+it('marks prefixed core properties that an edited master would discard', async () => {
+  const archive = await JSZip.loadAsync(await writeWorkbookXlsx(workbook));
+  const entry = archive.file('docProps/core.xml');
+  expect(entry).toBeTruthy();
+  archive.file('docProps/core.xml', (await entry!.async('string')).replace('</cp:coreProperties>', '<meta:title xmlns:meta="http://purl.org/dc/elements/1.1/">Private title</meta:title></cp:coreProperties>'));
+  const imported = await importWorkbook('core.xlsx', await archive.generateAsync({ type: 'arraybuffer' }));
+  expect(imported.unsupportedMetadata).toBe(true);
+});
+it.each([
+  ['foreign element', '<x:dimension xmlns:x="urn:foreign" ref="A1"/>'],
+  ['foreign attribute', '<sheetViews xmlns:x="urn:foreign" x:retained="true"/>'],
+])('marks worksheet metadata with a %s instead of ignoring its namespace', async (_, extra) => {
+  const archive = await JSZip.loadAsync(await writeWorkbookXlsx({ ...workbook, sheets: [{ ...workbook.sheets[0], rows: [{ id: 'one', cells: [{ value: 'plain' }] }], width: 1, hidden: [] }] }));
+  const entry = archive.file('xl/worksheets/sheet1.xml');
+  expect(entry).toBeTruthy();
+  archive.file('xl/worksheets/sheet1.xml', (await entry!.async('string')).replace('</worksheet>', `${extra}</worksheet>`));
+  const imported = await importWorkbook('foreign.xlsx', await archive.generateAsync({ type: 'arraybuffer' }));
+  expect(imported.unsupportedMetadata).toBe(true);
+});

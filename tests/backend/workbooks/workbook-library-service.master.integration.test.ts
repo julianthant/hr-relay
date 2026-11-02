@@ -3,11 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+import { Workbook, writeXlsx } from '@shbernal/ts-xlsx';
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, validateWorkbookLibrary } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { createWorkbookLibraryService } from '../../../src/backend/workbooks/workbook-library-service.js';
 import { encodeSavedWorkbook, type WorkbookOperation } from '../../../src/models/dashboard/workbooks.js';
 import { manualClock } from '../../../src/rules/time/clock.js';
 import { IsoInstantSchema } from '../../../src/rules/identity/ids.js';
+import { importWorkbook } from '../../../src/rules/spreadsheets/workbook-io.js';
 const at = IsoInstantSchema.parse('2026-11-02T00:00:00.000Z');
 const roots: string[] = [], databases: DatabaseSync[] = [];
 afterEach(() => { databases.splice(0).forEach(db => db.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
@@ -53,6 +55,33 @@ it('keeps one master, manual named snapshots and independent immutable creation 
   expect(reopened.repository.read(f.id)?.workbook.sheets[0].rows[1].cells[2].value).toBe('second');
   expect(() => reopened.repository.operation(f.id, f.patch('fill', '001', 'changed'))).toThrow(expect.objectContaining({ code: 'WORKBOOK_OPERATION_CONFLICT' }));
   expect(validateWorkbookLibrary(reopened.database)).toBeGreaterThan(0);
+});
+it.each(['hasFormulas', 'unsupportedMetadata'] as const)('refuses master edits when imported %s cannot be preserved', field => {
+  const f = fixture();
+  const source = f.service.read(f.id).workbook;
+  const saved = f.service.create({ ...source, libraryId: undefined, [field]: true });
+  expect(() => f.service.save(saved.libraryId, saved.version, { ...saved.workbook, name: 'Edited.xlsx', [field]: false }))
+    .toThrow(expect.objectContaining({ code: 'WORKBOOK_METADATA_UNSUPPORTED' }));
+  const result = f.repository.operation(saved.libraryId, f.patch(`blocked-${field}`, '001', 'unsafe'));
+  expect(result).toMatchObject({ state: 'refused', reason: 'metadata-unsupported' });
+  expect(f.service.read(saved.libraryId)).toEqual(saved);
+});
+it('imports the default font and document timestamps and saves an edited master', async () => {
+  const source = new Workbook();
+  source.properties.created = new Date('2026-11-01T00:00:00.000Z');
+  source.properties.modified = new Date(at);
+  source.addWorksheet('People').getCell('A1').value = 'Original';
+  const bytes = writeXlsx(source);
+  const data = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(data).set(bytes);
+  const imported = await importWorkbook('Default.xlsx', data);
+  expect(imported.unsupportedMetadata).not.toBe(true);
+  expect(imported.hasFormulas).toBe(false);
+  const f = open(), saved = f.service.create(imported), edited = structuredClone(saved.workbook);
+  edited.sheets[0].rows[0].cells[0].value = 'Edited';
+  const updated = f.service.save(saved.libraryId, saved.version, edited);
+  expect(updated.version).toBe(saved.version + 1);
+  expect(f.service.read(saved.libraryId).workbook.sheets[0].rows[0].cells[0].value).toBe('Edited');
 });
 it('settles missing and duplicate keys without effects and continues FIFO after resolve-required', () => {
   const f = fixture();

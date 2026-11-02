@@ -54,6 +54,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       const workbook = input(EditableWorkbookSchema, value);
       input(z.number().int().positive(), expectedVersion);
       const current = read(libraryId);
+      if (current.workbook.hasFormulas || current.workbook.unsupportedMetadata || workbook.hasFormulas || workbook.unsupportedMetadata) throw new WorkbookLibraryError("WORKBOOK_METADATA_UNSUPPORTED");
       if (workbook.libraryId !== libraryId) throw new WorkbookLibraryError("WORKBOOK_INVALID");
       return deps.repository.save(input(SavedWorkbookSchema, { ...current, version: expectedVersion + 1, savedAt: deps.clock.now().toISOString(), workbook }), expectedVersion);
     },
@@ -67,6 +68,10 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       const change = input(WorkbookOperatorOperationRequestSchema, value);
       if (!['save', 'metadata', 'version'].includes(change.kind)) throw new WorkbookLibraryError('WORKBOOK_INVALID');
       deps.repository.drain(libraryId);
+      if (change.kind === 'save') {
+        const current = read(libraryId);
+        if (current.workbook.hasFormulas || current.workbook.unsupportedMetadata || change.workbook.hasFormulas || change.workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
+      }
       const replay = deps.repository.journal(libraryId).find(receipt => receipt.operationId === operationId);
       return deps.repository.operation(libraryId, { operationId, source: { kind: 'operator' }, at: replay?.at ?? deps.clock.now().toISOString(), change });
     },
@@ -74,6 +79,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       const runId = input(RunIdSchema, runIdValue), change = input(WorkbookOperatorOperationRequestSchema, value);
       if (change.kind !== 'patch' && change.kind !== 'add') throw new WorkbookLibraryError('WORKBOOK_INVALID');
       deps.repository.drain(libraryId);
+      if (read(libraryId).workbook.hasFormulas || read(libraryId).workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
       const replay = deps.repository.journal(libraryId).find(receipt => receipt.operationId === operationId);
       return deps.repository.operation(libraryId, { operationId, source: { kind: 'run', runId }, at: replay?.at ?? deps.clock.now().toISOString(), change });
     },
@@ -92,6 +98,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       const downloaded = await deps.downloadSharePoint(link, signal);
       const { importWorkbook } = await import('../../rules/spreadsheets/workbook-io.js');
       const workbook = await importWorkbook(downloaded.name, downloaded.bytes);
+      if (record.workbook.hasFormulas || record.workbook.unsupportedMetadata || workbook.hasFormulas || workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
       signal.throwIfAborted();
       return deps.repository.operation(libraryId, { operationId, source: { kind: 'sync', syncId: operationId }, at: deps.clock.now().toISOString(),
         change: { kind: 'sync', expectedVersion: record.version, workbook: encodeSavedWorkbook({ ...record, workbook: { ...workbook, libraryId } }).workbook } });

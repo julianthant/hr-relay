@@ -1,4 +1,4 @@
-import Excel from "exceljs";
+import { Workbook, writeXlsx } from "@shbernal/ts-xlsx";
 import JSZip from "jszip";
 import { InvalidSpreadsheetError } from "read-excel-file/node";
 import assert from "node:assert/strict";
@@ -116,8 +116,8 @@ describe("spreadsheet grid parser", () => {
 });
 
 it.each(["workbook", "relationships"])("refuses well-formed but missing %s sheet structure as malformed input", async part => {
-  const workbook = new Excel.Workbook(); workbook.addWorksheet("Roster").addRow(["Employee ID#"]);
-  const archive = await JSZip.loadAsync(await workbook.xlsx.writeBuffer());
+  const workbook = new Workbook(); workbook.addWorksheet("Roster").addRow(["Employee ID#"]);
+  const archive = await JSZip.loadAsync(writeXlsx(workbook));
   archive.file(part === "workbook" ? "xl/workbook.xml" : "xl/_rels/workbook.xml.rels", part === "workbook"
     ? '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>'
     : '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>');
@@ -127,16 +127,16 @@ it.each(["workbook", "relationships"])("refuses well-formed but missing %s sheet
       { state: "refused", code: "unreadable-file", message: "workbook declares no worksheets" });
   } else await assert.rejects(parseSpreadsheetGrid({ bytes, artifactId: "unlinked-sheets", mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), InvalidSpreadsheetError);
 });
-it("preserves no-sheet and empty-sheet refusals for empty ExcelJS workbooks", async () => {
-  const workbook = new Excel.Workbook();
-  const parse = async () => parseSpreadsheetGrid({ bytes: Buffer.from(await workbook.xlsx.writeBuffer()), artifactId: "empty-xlsx", mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+it("preserves no-sheet and empty-sheet refusals for empty XLSX workbooks", async () => {
+  const workbook = new Workbook();
+  const parse = async () => parseSpreadsheetGrid({ bytes: Buffer.from(writeXlsx(workbook)), artifactId: "empty-xlsx", mediaType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   assert.deepEqual(await parse(), { state: "refused", code: "unreadable-file", message: "workbook declares no worksheets" });
   workbook.addWorksheet("Empty");
   assert.deepEqual(await parse(), { state: "refused", code: "empty-sheet", message: 'worksheet "Empty" has no rows' });
 });
 it("keeps prefixed workbook elements, nonsequential sheet IDs and absolute worksheet targets", async () => {
-  const workbook = new Excel.Workbook(); workbook.addWorksheet("Roster").addRows([["Employee ID#"], ["10800000"]]);
-  const archive = await JSZip.loadAsync(await workbook.xlsx.writeBuffer());
+  const workbook = new Workbook(); workbook.addWorksheet("Roster").addRows([["Employee ID#"], ["10800000"]]);
+  const archive = await JSZip.loadAsync(writeXlsx(workbook));
   const info = archive.file("xl/workbook.xml"); assert.ok(info);
   const relationships = archive.file("xl/_rels/workbook.xml.rels"); assert.ok(relationships);
   archive.file("xl/workbook.xml", (await info.async("string")).replace('sheetId="1"', 'sheetId="7"')

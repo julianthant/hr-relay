@@ -1,12 +1,12 @@
-import type { Fill, RichText } from 'exceljs';
+import { readXlsx, writeXlsx, Workbook, type Fill, type RichTextRun } from '@shbernal/ts-xlsx';
 import type { SaxesTagNS } from 'saxes';
 import { parse } from 'csv-parse/browser/esm/sync';
 import { ERROR_CATALOG } from '../../models/failures/error-catalog.js';
 import type { EditableWorkbook as LibraryWorkbook } from '../../models/dashboard/workbooks.js';
-export type SheetCell = Readonly<{ value: string | number | boolean | Date | null; fill?: Fill; background?: string; numFmt?: string; richText?: RichText[]; hyperlink?: string; tooltip?: string }>;
+export type SheetCell = Readonly<{ value: string | number | boolean | Date | null; fill?: LibraryWorkbook['sheets'][number]['rows'][number]['cells'][number]['fill']; background?: string; numFmt?: string; richText?: LibraryWorkbook['sheets'][number]['rows'][number]['cells'][number]['richText']; hyperlink?: string; tooltip?: string }>;
 export type SheetRow = Readonly<{ id: string; sourceRow?: number; cells: readonly SheetCell[] }>;
 export type EditableSheet = Readonly<{ id: string; name: string; rows: readonly SheetRow[]; width: number; hidden: readonly number[]; headerRow?: number; sourceHeaderRow?: number; columnBindings?: ReadonlyArray<NonNullable<LibraryWorkbook['sheets'][number]['columnBindings']>[number]> }>;
-export type EditableWorkbook = Readonly<{ name: string; libraryId?: string; sheets: readonly EditableSheet[]; themes: LibraryWorkbook['themes']; hasFormulas: boolean }>;
+export type EditableWorkbook = Readonly<{ name: string; libraryId?: string; sheets: readonly EditableSheet[]; themes: LibraryWorkbook['themes']; hasFormulas: boolean; unsupportedMetadata?: boolean }>;
 const MAX_CELLS = 100_000;
 const indexedColors = ['000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF','000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF','800000','008000','000080','808000','800080','008080','C0C0C0','808080','9999FF','993366','FFFFCC','CCFFFF','660066','FF8080','0066CC','CCCCFF','000080','FF00FF','FFFF00','00FFFF','800080','800000','008080','0000FF','00CCFF','CCFFFF','CCFFCC','FFFF99','99CCFF','FF99CC','CC99FF','FFCC99','3366FF','33CCCC','99CC00','FFCC00','FF9900','FF6600','666699','969696','003366','339966','003300','333300','993300','993366','333399','333333'];
 const themeKeys = ['lt1','dk1','lt2','dk2','accent1','accent2','accent3','accent4','accent5','accent6','hlink','folHlink'];
@@ -39,7 +39,7 @@ export function spreadsheetColor(color: Color | undefined, themes: EditableWorkb
   const channels = hue < 1 ? [c,x,0] : hue < 2 ? [x,c,0] : hue < 3 ? [0,c,x] : hue < 4 ? [0,x,c] : hue < 5 ? [x,0,c] : [c,0,x];
   return `#${channels.map(value => Math.round((value + m) * 255).toString(16).padStart(2, '0')).join('')}`;
 }
-function fillBackground(fill: Fill | undefined, themes: EditableWorkbook['themes']): string | undefined {
+function fillBackground(fill: SheetCell['fill'], themes: EditableWorkbook['themes']): string | undefined {
   if (!fill) return undefined;
   if (fill.type === 'pattern') {
     if (fill.pattern === 'none' || fill.pattern === 'gray125') return undefined;
@@ -49,6 +49,28 @@ function fillBackground(fill: Fill | undefined, themes: EditableWorkbook['themes
   }
   const stops = fill.stops.map(stop => `${spreadsheetColor(stop.color, themes)} ${stop.position * 100}%`);
   return fill.gradient === 'angle' ? `linear-gradient(${fill.degree + 90}deg, ${stops.join(',')})` : `radial-gradient(${stops.join(',')})`;
+}
+function fromLibraryFill(fill: Fill | undefined): SheetCell['fill'] {
+  if (!fill) return undefined;
+  if (fill.type === 'pattern') return structuredClone(fill);
+  return fill.gradient === 'linear'
+    ? { type: 'gradient', gradient: 'angle', degree: fill.degree ?? 0, stops: fill.stops.map(stop => structuredClone(stop)) }
+    : { type: 'gradient', gradient: 'path', center: { left: fill.left ?? 0, top: fill.top ?? 0 }, stops: fill.stops.map(stop => structuredClone(stop)) };
+}
+function toLibraryFill(fill: NonNullable<SheetCell['fill']>): Fill {
+  if (fill.type === 'pattern') return structuredClone(fill);
+  return fill.gradient === 'angle'
+    ? { type: 'gradient', gradient: 'linear', degree: fill.degree, stops: structuredClone(fill.stops) }
+    : { type: 'gradient', gradient: 'path', left: fill.center.left, top: fill.center.top, stops: structuredClone(fill.stops) };
+}
+function defaultCellFont(font: unknown): boolean {
+  if (font === undefined) return true;
+  if (!font || typeof font !== 'object') return false;
+  const value = font as Record<string, unknown>;
+  return Object.keys(value).every(key => ['name', 'size', 'family', 'scheme', 'color'].includes(key))
+    && value.name === 'Calibri' && value.size === 11 && value.family === 2 && value.scheme === 'minor'
+    && value.color !== null && typeof value.color === 'object'
+    && Object.keys(value.color).length === 1 && (value.color as Record<string, unknown>).theme === 1;
 }
 export function cellText(cell: SheetCell): string {
   return cell.value instanceof Date ? cell.value.toISOString().slice(0, 10) : cell.value === null ? '' : String(cell.value);
@@ -141,6 +163,108 @@ async function spreadsheetValueInput(data: ArrayBuffer): Promise<{ data: ArrayBu
   }
   return { data: changed ? await archive.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' }) : data, dimensions };
 }
+async function hasUnsupportedMetadata(data: ArrayBuffer): Promise<boolean> {
+  const [{ default: JSZip }, { SaxesParser }] = await Promise.all([import('jszip'), import('saxes')]);
+  const archive = await JSZip.loadAsync(data);
+  const supportedPart = /^(?:\[Content_Types\]\.xml|_rels\/\.rels|docProps\/(?:app|core)\.xml|xl\/(?:workbook\.xml|_rels\/workbook\.xml\.rels|styles\.xml|sharedStrings\.xml|theme\/theme1\.xml|worksheets\/sheet\d+\.xml|worksheets\/_rels\/sheet\d+\.xml\.rels|tables\/table\d+\.xml))$/u;
+  const unsupportedParts = Object.values(archive.files).some(entry => !entry.dir && !supportedPart.test(entry.name));
+  if (unsupportedParts) return true;
+  const workbookElements = new Set(['workbook', 'bookViews', 'workbookView', 'sheets', 'sheet']);
+  const sheetElements = new Set(['worksheet', 'dimension', 'sheetViews', 'sheetView', 'sheetFormatPr', 'cols', 'col', 'sheetData', 'row', 'c', 'v', 'is', 't', 'r', 'rPr', 'rFont', 'b', 'i', 'u', 'strike', 'sz', 'color', 'family', 'scheme', 'vertAlign', 'charset', 'f', 'hyperlinks', 'hyperlink']);
+  const styleElements = new Set(['styleSheet', 'numFmts', 'numFmt', 'fonts', 'font', 'sz', 'color', 'name', 'family', 'scheme', 'b', 'i', 'u', 'strike', 'vertAlign', 'charset', 'fills', 'fill', 'patternFill', 'fgColor', 'bgColor', 'gradientFill', 'stop', 'borders', 'border', 'left', 'right', 'top', 'bottom', 'diagonal', 'cellStyleXfs', 'xf', 'cellXfs', 'cellStyles', 'cellStyle', 'dxfs']);
+  const stringElements = new Set(['sst', 'si', 't', 'r', 'rPr', 'rFont', 'b', 'i', 'u', 'strike', 'sz', 'color', 'family', 'scheme', 'vertAlign', 'charset']);
+  const elementAttributes: Record<string, readonly string[]> = {
+    workbookView: ['activeTab'], sheet: ['name', 'sheetId'], dimension: ['ref'],
+    sheetView: ['workbookViewId', 'tabSelected'], sheetFormatPr: ['defaultRowHeight'],
+    col: ['min', 'max', 'hidden'], row: ['r', 'spans'], c: ['r', 's', 't'],
+    hyperlink: ['ref', 'location', 'tooltip'], sst: ['count', 'uniqueCount'],
+    numFmts: ['count'], numFmt: ['numFmtId', 'formatCode'], fonts: ['count'],
+    sz: ['val'], color: ['rgb', 'theme', 'indexed', 'tint'], name: ['val'], rFont: ['val'],
+    family: ['val'], scheme: ['val'], b: ['val'], i: ['val'], u: ['val'], strike: ['val'],
+    vertAlign: ['val'], charset: ['val'], fills: ['count'], patternFill: ['patternType'],
+    fgColor: ['rgb', 'theme', 'indexed', 'tint'], bgColor: ['rgb', 'theme', 'indexed', 'tint'],
+    gradientFill: ['type', 'degree', 'left', 'right', 'top', 'bottom'], stop: ['position'],
+    borders: ['count'], cellStyleXfs: ['count'], cellXfs: ['count'],
+    xf: ['numFmtId', 'fontId', 'fillId', 'borderId', 'xfId', 'quotePrefix', 'applyNumberFormat', 'applyFont', 'applyFill', 'applyBorder'],
+    cellStyles: ['count'], cellStyle: ['name', 'xfId', 'builtinId'], dxfs: ['count'],
+  };
+  for (const entry of Object.values(archive.files)) {
+    const isWorkbook = entry.name === 'xl/workbook.xml';
+    const isSheet = /^xl\/worksheets\/sheet\d+\.xml$/u.test(entry.name);
+    const isStyles = entry.name === 'xl/styles.xml', isStrings = entry.name === 'xl/sharedStrings.xml';
+    const isCore = entry.name === 'docProps/core.xml', isApp = entry.name === 'docProps/app.xml';
+    if (!isWorkbook && !isSheet && !isStyles && !isStrings && !isCore && !isApp) continue;
+    let unsupported = false;
+    let fontOpen = false;
+    const fontParts: string[] = [];
+    const parents: string[] = [];
+    let propertyText = '';
+    const parser = new SaxesParser({ xmlns: true });
+    parser.on('opentag', tag => {
+      const parent = parents.at(-1);
+      parents.push(tag.local);
+      if (unsupported) return;
+      const contentAttributes = Object.values(tag.attributes).filter(attribute => attribute.uri !== 'http://www.w3.org/2000/xmlns/');
+      if (isCore) {
+        const root = parent === undefined && tag.local === 'coreProperties' && tag.uri === 'http://schemas.openxmlformats.org/package/2006/metadata/core-properties';
+        const stamp = parent === 'coreProperties' && parents.length === 2 && ['created', 'modified'].includes(tag.local) && tag.uri === 'http://purl.org/dc/terms/';
+        if (!root && !stamp) unsupported = true;
+        if (root && contentAttributes.length > 0) unsupported = true;
+        if (stamp) {
+          propertyText = '';
+          if (contentAttributes.length !== 1 || contentAttributes[0].uri !== 'http://www.w3.org/2001/XMLSchema-instance' || contentAttributes[0].local !== 'type') unsupported = true;
+          const [prefix, local] = (contentAttributes[0]?.value ?? '').split(':');
+          if (local !== 'W3CDTF' || parser.resolve(prefix) !== 'http://purl.org/dc/terms/') unsupported = true;
+        }
+        return;
+      }
+      if (isApp) {
+        if (tag.uri !== 'http://schemas.openxmlformats.org/officeDocument/2006/extended-properties'
+          || !(parent === undefined && tag.local === 'Properties' || parent === 'Properties' && parents.length === 2 && tag.local === 'Application')
+          || contentAttributes.length > 0) unsupported = true;
+        return;
+      }
+      if (tag.uri !== 'http://schemas.openxmlformats.org/spreadsheetml/2006/main' || !(isWorkbook ? workbookElements : isSheet ? sheetElements : isStyles ? styleElements : stringElements).has(tag.local)) { unsupported = true; return; }
+      if (contentAttributes.some(attribute => attribute.uri === ''
+        ? !(elementAttributes[tag.local] ?? []).includes(attribute.local)
+        : !(attribute.uri === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships' && attribute.local === 'id' && ['sheet', 'hyperlink'].includes(tag.local))
+          && !(attribute.uri === 'http://www.w3.org/XML/1998/namespace' && attribute.local === 'space' && tag.local === 't'))) unsupported = true;
+      const attributes = Object.values(tag.attributes).filter(attribute => attribute.uri === '' || attribute.uri === 'http://schemas.openxmlformats.org/officeDocument/2006/relationships');
+      const attribute = (name: string) => attributes.find(value => value.local === name)?.value;
+      if (isStyles) {
+        if (tag.local === 'font') fontOpen = true;
+        else if (fontOpen) fontParts.push(`${tag.local}:${attribute('val') ?? attribute('theme') ?? ''}`);
+        if (['fonts', 'borders', 'cellStyleXfs', 'cellStyles'].includes(tag.local) && Number(attribute('count')) > 1) unsupported = true;
+        if (tag.local === 'dxfs' && Number(attribute('count')) !== 0) unsupported = true;
+        if (tag.local === 'xf' && ((attribute('quotePrefix') !== undefined && attribute('quotePrefix') !== '0') || (attribute('xfId') !== undefined && attribute('xfId') !== '0'))) unsupported = true;
+        if (tag.local === 'cellStyle' && (attribute('name') !== 'Normal' || attribute('xfId') !== '0' || attribute('builtinId') !== undefined && attribute('builtinId') !== '0')) unsupported = true;
+        return;
+      }
+      if (isStrings) return;
+      if (isWorkbook) {
+        if (tag.local === 'workbookView' && attributes.some(value => value.local !== 'activeTab' || value.value !== '0')) unsupported = true;
+        if (tag.local === 'sheet' && attributes.some(value => !['name', 'sheetId', 'id'].includes(value.local))) unsupported = true;
+      } else {
+        if (tag.local === 'sheetView' && attributes.some(value => !(value.local === 'workbookViewId' && value.value === '0') && !(value.local === 'tabSelected' && value.value === '1'))) unsupported = true;
+        if (tag.local === 'sheetFormatPr' && attributes.some(value => value.local !== 'defaultRowHeight' || value.value !== '15')) unsupported = true;
+        if (tag.local === 'col' && attributes.some(value => !['min', 'max', 'hidden'].includes(value.local))) unsupported = true;
+        if (tag.local === 'row' && attributes.some(value => !['r', 'spans'].includes(value.local))) unsupported = true;
+        if (tag.local === 'c' && attributes.some(value => !['r', 's', 't'].includes(value.local))) unsupported = true;
+        if (tag.local === 'hyperlink' && (attribute('ref') === undefined || attribute('ref')!.includes(':') || attributes.some(value => !['ref', 'id', 'location', 'tooltip'].includes(value.local)))) unsupported = true;
+      }
+    });
+    parser.on('text', text => { if (isCore && parents.length === 2) propertyText += text; });
+    parser.on('closetag', tag => {
+      if (isStyles && tag.local === 'font') fontOpen = false;
+      if (isCore && ['created', 'modified'].includes(tag.local) && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u.test(propertyText) || !Number.isFinite(Date.parse(propertyText)))) unsupported = true;
+      parents.pop();
+    });
+    parser.write(await entry.async('string')).close();
+    if (isStyles && fontParts.length > 0 && fontParts.slice().sort().join('|') !== ['sz:11', 'color:1', 'name:Calibri', 'family:2', 'scheme:minor'].sort().join('|')) unsupported = true;
+    if (unsupported) return true;
+  }
+  return false;
+}
 export async function importWorkbook(name: string, data: ArrayBuffer): Promise<EditableWorkbook> {
   if (data.byteLength > 20 * 1024 * 1024) throw new Error('SPREADSHEET_TOO_LARGE: maximum file size is 20 MB.');
   if (/\.csv$/i.test(name)) {
@@ -150,35 +274,39 @@ export async function importWorkbook(name: string, data: ArrayBuffer): Promise<E
     return { name, themes: [], hasFormulas: false, sheets: [{ id: 'csv', name: 'Sheet 1', width, hidden: [], rows: values.map((row, index) => ({ id: `row-${index}`, sourceRow: index + 1, cells: Array.from({ length: width }, (_, column) => ({ value: row[column] ?? '' })) })) }] };
   }
   if (!/\.xlsx$/i.test(name)) throw new Error('SPREADSHEET_FORMAT_UNSUPPORTED: choose XLSX or CSV.');
-  const Excel = (await import('exceljs')).default;
-  const workbook = new Excel.Workbook();
   const input = await spreadsheetValueInput(data);
-  await workbook.xlsx.load(input.data, { ignoreNodes: ['autoFilter'] });
-  const themes = workbook.model.themes;
-  let hasFormulas = false, total = 0;
+  const workbook = readXlsx(new Uint8Array(input.data));
+  const themes: EditableWorkbook['themes'] = workbook.themePart?.parts.reduce<Record<string, string>>((parts, part) => {
+    if (part.path.endsWith('.xml') && part.path.includes('/theme/')) parts[part.path.split('/').at(-1)!.replace('.xml', '')] = new TextDecoder().decode(part.bytes);
+    return parts;
+  }, {}) ?? {};
+  let hasFormulas = false, unsupportedStyle = false, total = 0;
   const sheets = workbook.worksheets.map(sheet => {
     const dimension = input.dimensions.get(sheet.name);
     const width = Math.max(1, sheet.columnCount, dimension?.width ?? 0), height = Math.max(1, sheet.rowCount, dimension?.height ?? 0);
     total += width * height;
     if (total > MAX_CELLS) throw new Error('SPREADSHEET_SIZE_UNSUPPORTED: maximum workbook size is 100,000 cells.');
     const rows = Array.from({ length: height }, (_, rowIndex) => ({ id: `${sheet.id}-${rowIndex}`, sourceRow: rowIndex + 1, cells: Array.from({ length: width }, (_, columnIndex): SheetCell => {
-      const cell = sheet.getCell(rowIndex + 1, columnIndex + 1);
+      const cell = sheet.getRow(rowIndex + 1).getCell(columnIndex + 1);
+      if (!defaultCellFont(cell.style.font) || (cell.style.border && Object.keys(cell.style.border).length > 0)
+        || (cell.style.alignment && Object.keys(cell.style.alignment).length > 0)
+        || (cell.style.protection && Object.keys(cell.style.protection).length > 0)
+        || (cell.fill?.type === 'gradient' && cell.fill.gradient === 'path' && (cell.fill.right !== undefined || cell.fill.bottom !== undefined))) unsupportedStyle = true;
       let value = cell.value;
-      const richText = value && typeof value === 'object' && 'richText' in value ? structuredClone(value.richText) : undefined;
-      const link = value && typeof value === 'object' && 'hyperlink' in value ? value : undefined;
+      const richText = value && typeof value === 'object' && 'richText' in value ? value.richText.map(part => structuredClone(part)) : undefined;
+      const link = sheet.hyperlinkAt(cell.address);
       if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
-        if ('formula' in value || 'sharedFormula' in value) { hasFormulas = true; value = value.result ?? null; }
+        if ('formula' in value || 'sharedFormula' in value || 'shareType' in value) { hasFormulas = true; value = value.result ?? null; }
         else if ('richText' in value) value = value.richText.map(part => part.text).join('');
-        else if ('text' in value) value = value.text;
         else if ('error' in value) value = value.error;
       }
-      const fill = cell.fill ? structuredClone(cell.fill) : undefined;
-      return { value: value as SheetCell['value'], fill, background: fillBackground(fill, themes), numFmt: cell.numFmt, ...(richText === undefined ? {} : { richText }), ...(link === undefined ? {} : { hyperlink: link.hyperlink, ...(link.tooltip === undefined ? {} : { tooltip: link.tooltip }) }) };
+      const fill = fromLibraryFill(cell.fill);
+      return { value: value as SheetCell['value'], fill, background: fillBackground(fill, themes), numFmt: cell.numFmt, ...(richText === undefined ? {} : { richText }), ...(link === undefined ? {} : { hyperlink: link.target, ...(link.tooltip === undefined ? {} : { tooltip: link.tooltip }) }) };
     }) }));
-    return { id: String(sheet.id), name: sheet.name, rows, width, hidden: [] };
+    return { id: String(sheet.id), name: sheet.name, rows, width, hidden: Array.from({ length: width }, (_, column) => column).filter(column => sheet.getColumn(column + 1).hidden) };
   });
   if (!sheets.length) throw new Error('SPREADSHEET_HAS_NO_SHEETS');
-  return { name, sheets, themes, hasFormulas };
+  return { name, sheets, themes, hasFormulas, ...(unsupportedStyle || await hasUnsupportedMetadata(data) ? { unsupportedMetadata: true } : {}) };
 }
 export function writeWorkbookCsv(sheet: EditableSheet): string {
   return sheet.rows.map(row => row.cells.filter((_, index) => !sheet.hidden.includes(index)).map(cell => {
@@ -187,33 +315,43 @@ export function writeWorkbookCsv(sheet: EditableSheet): string {
   }).join(',')).join('\r\n');
 }
 export async function writeWorkbookXlsx(document: EditableWorkbook, options: Readonly<{ columns: 'visible' | 'all'; createdAt?: string; modifiedAt?: string }> = { columns: 'visible' }): Promise<ArrayBuffer> {
-  const Excel = (await import('exceljs')).default;
-  const workbook = new Excel.Workbook();
+  const workbook = new Workbook();
   for (const sheet of document.sheets) {
     const target = workbook.addWorksheet(sheet.name);
     sheet.rows.forEach((row, index) => {
       let column = 1;
       row.cells.forEach((cell, source) => {
         if (options.columns === 'visible' && sheet.hidden.includes(source)) return;
-        const next = target.getCell(index + 1, column++);
-        next.value = cell.richText ? { richText: structuredClone(cell.richText) } : cell.hyperlink !== undefined ? { text: String(cell.value), hyperlink: cell.hyperlink, ...(cell.tooltip === undefined ? {} : { tooltip: cell.tooltip }) } : cell.value;
+        const next = target.getRow(index + 1).getCell(column++);
+        next.value = cell.richText ? { richText: structuredClone(cell.richText) as RichTextRun[] } : cell.value;
+        if (cell.hyperlink !== undefined) target.addHyperlink({ ref: next.address, target: cell.hyperlink, ...(cell.tooltip === undefined ? {} : { tooltip: cell.tooltip }) });
         if (cell.numFmt !== undefined) next.numFmt = cell.numFmt;
-        if (cell.fill) next.fill = structuredClone(cell.fill);
+        if (cell.fill) next.fill = toLibraryFill(cell.fill);
       });
     });
     if (options.columns === 'all') for (const column of sheet.hidden) target.getColumn(column + 1).hidden = true;
   }
-  if (options.createdAt) workbook.created = new Date(options.createdAt);
-  if (options.modifiedAt) workbook.modified = new Date(options.modifiedAt);
-  const model = workbook.model;
-  Reflect.set(model, 'themes', document.themes);
-  workbook.model = model;
-  const buffer = await workbook.xlsx.writeBuffer();
+  if (options.createdAt) workbook.properties.created = new Date(options.createdAt);
+  if (options.modifiedAt) workbook.properties.modified = new Date(options.modifiedAt);
+  const themeXml = Object.values(document.themes).find(value => typeof value === 'string' && value.includes('clrScheme'));
+  const buffer = writeXlsx(workbook);
+  if (themeXml) {
+    const { default: JSZip } = await import('jszip');
+    const archive = await JSZip.loadAsync(buffer);
+    archive.file('xl/theme/theme1.xml', themeXml);
+    const themed = await archive.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
+    if (!options.modifiedAt) return themed;
+    const stamped = await JSZip.loadAsync(themed);
+    for (const entry of Object.values(stamped.files)) entry.date = new Date(options.modifiedAt);
+    return stamped.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
+  }
   if (options.modifiedAt) {
     const { default: JSZip } = await import('jszip');
     const archive = await JSZip.loadAsync(buffer);
     for (const entry of Object.values(archive.files)) entry.date = new Date(options.modifiedAt);
     return archive.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
   }
-  return new Uint8Array(buffer as unknown as Uint8Array).slice().buffer;
+  const result = new ArrayBuffer(buffer.byteLength);
+  new Uint8Array(result).set(buffer);
+  return result;
 }

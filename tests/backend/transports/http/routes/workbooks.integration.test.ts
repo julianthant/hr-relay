@@ -22,6 +22,17 @@ it("serves create/list/open/save/conflict/history with exact Date transport and 
   assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(path)).json()), second);
   assert.deepEqual((await (await h.app.request(`${path}/history`)).json() as unknown[]).map(decodeSavedWorkbook), []);
 });
+it('returns a named conflict and retains the master when formula metadata makes Save unsafe', async () => {
+  const h = await harness();
+  const created = await h.app.request('http://localhost/api/v1/workbooks', { method: 'POST', headers, body: JSON.stringify({ workbook: encodeEditableWorkbook({ ...workbook, hasFormulas: true }) }) });
+  assert.equal(created.status, 201);
+  const first = decodeSavedWorkbook(await created.json());
+  const path = `http://localhost/api/v1/workbooks/${first.libraryId}`;
+  const response = await h.app.request(`${path}/save`, { method: 'POST', headers, body: JSON.stringify({ expectedVersion: first.version, workbook: encodeEditableWorkbook({ ...first.workbook, name: 'Changed.xlsx' }) }) });
+  assert.equal(response.status, 409);
+  assert.equal((await response.json() as { code: string }).code, 'WORKBOOK_METADATA_UNSUPPORTED');
+  assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(path)).json()), first);
+});
 it.each(["/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/operations", "/api/v1/workbooks/id/sync"])("requires JSON before effects for %s", async path => {
   const h = await harness(), generation = h.database.getMeta().authorityGeneration;
   const response = await h.app.request(`http://localhost${path}`, { method: "POST", headers: { host: "localhost", origin: "http://localhost", "content-type": "text/plain" }, body: "{}" });

@@ -31,7 +31,7 @@ function workbookSchema<Value extends z.ZodType>(value: Value) {
   const SheetSchema = z.strictObject({ id: WorkbookIdSchema, name: NameSchema, rows: z.array(z.strictObject({ id: WorkbookIdSchema, sourceRow: z.number().int().positive().optional(), cells: z.array(CellSchema) })).min(1), width: z.number().int().positive(), hidden: z.array(IndexSchema), headerRow: z.number().int().positive().optional(), sourceHeaderRow: z.number().int().positive().optional(), columnBindings: z.array(BindingSchema).optional() });
   const ThemesSchema = z.union([z.array(z.string()), z.record(z.string().regex(/^[a-zA-Z0-9]+$/u), z.string())]);
   function unique(values: readonly (string | number)[]): boolean { return new Set(values).size === values.length; }
-  return z.strictObject({ name: NameSchema, libraryId: WorkbookIdSchema.optional(), sheets: z.array(SheetSchema).min(1), themes: ThemesSchema, hasFormulas: z.boolean() }).superRefine((workbook, ctx) => {
+  return z.strictObject({ name: NameSchema, libraryId: WorkbookIdSchema.optional(), sheets: z.array(SheetSchema).min(1), themes: ThemesSchema, hasFormulas: z.boolean(), unsupportedMetadata: z.boolean().optional() }).superRefine((workbook, ctx) => {
     let cells = 0;
     if (!unique(workbook.sheets.map(sheet => sheet.id)) || !unique(workbook.sheets.map(sheet => sheet.name.toLowerCase()))) ctx.addIssue({ code: "custom", message: "duplicate sheets" });
     for (const sheet of workbook.sheets) {
@@ -132,7 +132,7 @@ export const WorkbookCellChangeSchema = z.strictObject({ sheetId: WorkbookIdSche
 export const WorkbookOperationReceiptSchema = z.strictObject({
   operationId: WorkbookIdSchema, sequence: z.number().int().positive(), libraryId: WorkbookIdSchema,
   key: z.string().optional(), state: z.enum(['applied', 'resolve-required', 'refused']), version: z.number().int().positive(),
-  reason: z.enum(['missing-key', 'duplicate-key', 'operator-edited', 'stale-selection', 'version-conflict', 'invalid', 'sync-ambiguous']).optional(),
+  reason: z.enum(['missing-key', 'duplicate-key', 'operator-edited', 'stale-selection', 'version-conflict', 'invalid', 'sync-ambiguous', 'metadata-unsupported']).optional(),
   candidates: z.array(z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema })),
   changes: z.array(WorkbookCellChangeSchema), source: WorkbookWriteSourceSchema, at: IsoInstantSchema,
 }).superRefine((receipt, ctx) => {

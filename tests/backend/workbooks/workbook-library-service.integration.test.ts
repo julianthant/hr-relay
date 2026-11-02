@@ -15,7 +15,7 @@ import { parseSpreadsheetGrid } from '../../../src/backend/processing/spreadshee
 import { ItemIdSchema, IntakeTargetFieldIdSchema } from '../../../src/rules/identity/ids.js';
 import type { EditableWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { DatabaseSync } from "node:sqlite";
-import Excel from "exceljs";
+import { Workbook, writeXlsx } from "@shbernal/ts-xlsx";
 import { afterEach, expect, it } from "vitest";
 import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkbookLibraryService, WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-service.js";
@@ -37,7 +37,7 @@ function fixture() {
 }
 function workbook(): EditableWorkbook {
   return {
-    name: "Roster.xlsx", themes: ["<theme>original</theme>"], hasFormulas: true,
+    name: "Roster.xlsx", themes: ["<theme>original</theme>"], hasFormulas: false,
     sheets: [{ id: "sheet-a", name: "People", width: 2, hidden: [1], headerRow: 1, sourceHeaderRow: 7,
       columnBindings: [{ id: "binding-a", sourceColumn: 4, sourceHeader: "Employee ID", fieldId: "eid", basis: "manual" }, { id: "binding-b", sourceColumn: null, sourceHeader: "Notes", fieldId: "roster.notes", basis: "header" }],
       rows: [{ id: "source-7", cells: [{ value: "Employee ID", fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF0000" } }, background: "#ff0000" }, { value: "Notes" }] },
@@ -180,20 +180,27 @@ it("refuses a regressing clock without changing accepted versions", () => {
   expect(f.service.history(first.libraryId)).toEqual([]);
 });
 
-it("preserves the actual theme object emitted by ExcelJS XLSX imports", async () => {
-  const f = fixture(), source = new Excel.Workbook();
+it("preserves the theme object emitted by XLSX imports", async () => {
+  const f = fixture(), source = new Workbook();
   source.addWorksheet("People").getCell("A1").value = "Employee ID";
-  const imported = new Excel.Workbook();
-  await imported.xlsx.load(await source.xlsx.writeBuffer());
-  expect(Array.isArray(imported.model.themes)).toBe(false);
-  const value = { ...workbook(), themes: imported.model.themes };
+  const imported = await importSpreadsheet('Theme.xlsx', new Uint8Array(writeXlsx(source)).buffer);
+  expect(Array.isArray(imported.themes)).toBe(false);
+  const value = { ...workbook(), themes: imported.themes };
   const saved = f.service.create(value);
-  expect(f.service.read(saved.libraryId).workbook.themes).toEqual(imported.model.themes);
+  expect(f.service.read(saved.libraryId).workbook.themes).toEqual(imported.themes);
+});
+it('admits the selected writer default style for a safe imported master edit', async () => {
+  const f = fixture();
+  const imported = await importSpreadsheet('Plain.xlsx', await spreadsheetXlsx({ ...workbook(), themes: [] }));
+  expect(imported.unsupportedMetadata).toBeUndefined();
+  const created = f.service.create(imported);
+  const changed = f.service.save(created.libraryId, created.version, { ...created.workbook, name: 'Edited.xlsx' });
+  expect(changed.workbook.name).toBe('Edited.xlsx');
 });
 
 
 it('roundtrips a wide multi-sheet roster as raw library data while execution rejects invalid canonical rows', async () => {
-  const source = new Excel.Workbook();
+  const source = new Workbook();
   const rosterEids = [
     ['10800000', '10800001', '10873698'],
     ['10000001', '10456712', '10101010'],
@@ -216,12 +223,13 @@ it('roundtrips a wide multi-sheet roster as raw library data while execution rej
       target.getRow(row).values = ['Morrow, Bea', 'Morrow, Bee', rawEid, row === 8 ? 'invalid@' : 'bea@example.com', row === 9 ? '02/30/2026' : new Date('2026-10-19T00:00:00Z'), 'JZ 05/29/26', '6.16.26 KM', '  untouched  '];
     }
     target.getCell('A6').value = { richText: [{ text: 'Morrow, ', font: { bold: true, color: { argb: 'FF112233' } } }, { text: 'Bea', font: { italic: true } }] };
-    target.getCell('D6').value = { text: 'bea@example.com', hyperlink: 'mailto:bea@example.com', tooltip: 'Email' };
+    target.getCell('D6').value = 'bea@example.com';
+    target.addHyperlink({ ref: 'D6', target: 'mailto:bea@example.com', tooltip: 'Email' });
     target.getCell('C6').numFmt = '00000000';
     target.getCell('E6').numFmt = 'mm/dd/yyyy';
     target.getCell('F6').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } };
   }
-  const originalBytes = await source.xlsx.writeBuffer();
+  const originalBytes = new Uint8Array(writeXlsx(source)).buffer;
   const imported = await importSpreadsheet('Synthetic.xlsx', originalBytes);
   const prepared = prepareSpreadsheetColumns(imported);
   expect(prepared.sheets.map(sheet => sheet.headerRow)).toEqual(Array(9).fill(5));
@@ -284,13 +292,13 @@ it('retains original worksheet row locations after sorting and save/reopen', asy
 
 
 it('preserves selected blank trailing columns and rows using native XLSX dimensions', async () => {
-  const source = new Excel.Workbook(), target = source.addWorksheet('Synthetic');
+  const source = new Workbook(), target = source.addWorksheet('Synthetic');
   for (let row = 1; row <= 4; row++) for (let column = 1; column <= 3; column++) {
-    const cell = target.getCell(row, column);
+    const cell = target.getRow(row).getCell(column);
     cell.value = row === 1 && column < 3 ? `Field ${column}` : row === 2 && column === 1 ? false : null;
     cell.fill = { type: 'pattern', pattern: 'none' };
   }
-  const imported = selectSpreadsheetColumns(prepareSpreadsheetColumns(await importSpreadsheet('Synthetic.xlsx', await source.xlsx.writeBuffer())));
+  const imported = selectSpreadsheetColumns(prepareSpreadsheetColumns(await importSpreadsheet('Synthetic.xlsx', new Uint8Array(writeXlsx(source)).buffer)));
   expect(imported.sheets[0].width).toBe(3);
   expect(imported.sheets[0].rows).toHaveLength(4);
   const f = fixture(), created = f.service.create(imported), reopened = f.service.read(created.libraryId);
@@ -304,8 +312,8 @@ it('preserves selected blank trailing columns and rows using native XLSX dimensi
 });
 
 it('validates native worksheet dimensions and references before allocating the editable grid', async () => {
-  const source = new Excel.Workbook(); source.addWorksheet('Synthetic').getCell('C3').value = 'Retained';
-  const bytes = await source.xlsx.writeBuffer();
+  const source = new Workbook(); source.addWorksheet('Synthetic').getCell('C3').value = 'Retained';
+  const bytes = new Uint8Array(writeXlsx(source)).buffer;
   const rewrite = async (path: string, change: (xml: string) => string) => {
     const archive = await JSZip.loadAsync(bytes);
     const entry = archive.file(path); if (!entry) throw new Error('Synthetic XML missing');
@@ -330,10 +338,10 @@ it('validates native worksheet dimensions and references before allocating the e
 
 
 it('maps native dimensions through exact worksheet relationships rather than relation order or sheet index', async () => {
-  const source = new Excel.Workbook();
+  const source = new Workbook();
   source.addWorksheet('First').getCell('C3').value = 'First value';
   source.addWorksheet('Second').getCell('F8').value = 'Second value';
-  const archive = await JSZip.loadAsync(await source.xlsx.writeBuffer());
+  const archive = await JSZip.loadAsync(writeXlsx(source));
   const rels = archive.file('xl/_rels/workbook.xml.rels'); if (!rels) throw new Error('Synthetic relationships missing');
   let xml = (await rels.async('string')).replace(/Target="worksheets\/sheet([12])\.xml"/gu, (_match, number: string) => `Target="/xl/worksheets/sheet${3 - Number(number)}.xml"`);
   const reversed = [...xml.matchAll(/<Relationship\b[^>]*\/>/gu)].map(match => match[0]).reverse();

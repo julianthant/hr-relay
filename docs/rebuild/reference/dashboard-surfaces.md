@@ -452,13 +452,15 @@ edits and library save/reopen; warnings use that location. Rows created without 
 labelled with their current row. Inserted columns have a null source coordinate.
 
 Editable XLSX imports include hidden and filtered rows. Worksheet/table filter rules are not imported.
-Unsupported Excel table `colorFilter` metadata is removed only from a private parsing copy; original
+Excel table filter metadata is removed only from a private parsing copy; original
 bytes stay unchanged. Standard worksheet dimensions retain selected trailing blank rows and columns;
 malformed ranges or worksheet references refuse, and declared extents count toward the workbook size limit.
 Values, supported fills, number formats, hyperlink URLs/text and rich-text runs survive library
-save, reopen and XLSX export, while malformed table XML refuses import. The ExcelJS importer drops
-hyperlink tooltips; XLSX export emits tooltips already stored in a workbook. Editing a cell clears
-its old rich text and hyperlink metadata. Formulas remain imported as their stored results.
+save, reopen and XLSX export, while malformed table XML refuses import. The shared browser-safe
+`rules/spreadsheets/workbook-io.ts` boundary uses `@shbernal/ts-xlsx` and retains hyperlink tooltips.
+Editing a cell clears its old rich text and hyperlink metadata. Formulas import their stored results
+and retain a presence flag. Master edits, keyed writes and Sync refuse formula-bearing workbooks
+or metadata the editable model cannot preserve, including table structures and non-cell styles.
 `spreadsheet-fields-model.ts` reuses canonical intake field IDs and namespaces roster-only IDs.
 Canonical value checks use the intake field coercers and schemas without rewriting stored values.
 Roster-only fields remain tracker text; workflow-specific transaction rules belong to execution admission.
