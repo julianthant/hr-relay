@@ -18,6 +18,7 @@ import { boundProfileCredentials, createBoundProfileFixture } from "../helpers/a
 import { createBrowserSessionFactoryFixtures } from "../helpers/browser/session-factory-fixtures.js";
 import { testAdmittedWorker } from "../fixtures/run-lifecycle-fixtures.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
+import { scaledMs } from "../time-scale.js";
 
 const retainedOwners = new Set<object>();
 function contains(error: unknown, expected: unknown): boolean {
@@ -54,6 +55,7 @@ export async function runBrowserRootRetentionCase(input: Readonly<{ scenario: st
   if (input.scenario === "browser-root-native-success") {
     const launcher = { launch: async (launch: Parameters<typeof DEFAULT_BROWSER_LAUNCHER.launch>[0]) => {
       assert.equal(launch.nativeOnly, true); assert.equal(launch.profileDirectory, profileDirectory);
+      assert.equal(launch.timeoutMs, scaledMs(5000));
       const row = document().roots[0]; assert.ok(row);
       if (launches++ === 0) assert.equal(row.launch.state, "launching");
       else assert.equal(row.native?.phase, "probing");
@@ -68,7 +70,7 @@ export async function runBrowserRootRetentionCase(input: Readonly<{ scenario: st
         throw error;
       }
     } };
-    const realOptions = createNativeBrowserProbe({ clock: systemClock, scheduler, closeProofMs: 5000, launchTimeoutMs: 5000, signal: new AbortController().signal, launcher });
+    const realOptions = createNativeBrowserProbe({ clock: systemClock, scheduler, closeProofMs: scaledMs(5000), launchTimeoutMs: scaledMs(5000), signal: new AbortController().signal, launcher });
     await roots.probe(owner, realOptions);
     await roots.withUnused(profileDirectory, realOptions, async ({ remove }) => { remove(); }, owner);
     assert.equal(launches, 2); assert.equal(document().roots.length, 0); assert.equal(fs.existsSync(profileDirectory), false);
