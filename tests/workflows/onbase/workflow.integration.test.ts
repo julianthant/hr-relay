@@ -20,7 +20,7 @@ import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixture
 
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
-it.each(["dry-run", "committed", "lost-acknowledgement"] as const)("runs the registered OnBase child through the real executor/sequencer: %s", async mode => {
+async function runOnbase(mode: "dry-run" | "committed" | "lost-acknowledgement") {
   const pdf = await PDFDocument.create({ updateMetadata: false }); pdf.addPage([100, 200]); pdf.addPage([300, 400]);
   const bytes = await pdf.save(), page = fakeOnbasePage({ lostClick: mode === "lost-acknowledgement" });
   const sessions = sessionFactoryHarness({ onbase: () => createOnbaseDriver(() => undefined, page.page, harness.authority.clock) });
@@ -54,4 +54,8 @@ it.each(["dry-run", "committed", "lost-acknowledgement"] as const)("runs the reg
   if (dryRun) assert.deepEqual(database.authority.writeIntents.countDryRunEvidenceByRun(queued.envelope.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
   if (mode === "lost-acknowledgement") assert.equal(database.authority.writeIntents.listByRun(queued.envelope.runId)[0]?.status, "parked");
   if (mode === "committed") assert.ok(database.authority.runResults.get(queued.envelope.runId));
-});
+}
+
+it("onbase/dry-run — runs the registered child through the real executor and stops after preparation", () => runOnbase("dry-run"));
+it("onbase/committed — runs one import through the real executor and sequencer with a durable result", () => runOnbase("committed"));
+it("onbase/unknown — parks a lost Import acknowledgement without another click", () => runOnbase("lost-acknowledgement"));

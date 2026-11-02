@@ -27,7 +27,7 @@ describe("durable exclusive identity-session leases", () => {
     } finally { a.database.close(); }
   });
 
-  it("retains ownership across connection/process loss, time passage and worker retirement", () => {
+  it("retains ownership across connection closure, time passage and worker retirement", () => {
     const root = mkdtempSync(join(tmpdir(), "onbase-lease-")), path = join(root, "state.db");
     try {
       const a = exclusiveLeaseFixture(path), owned = a.repository.acquire(first);

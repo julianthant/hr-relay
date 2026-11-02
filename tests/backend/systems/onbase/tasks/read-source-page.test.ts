@@ -17,15 +17,15 @@ async function documentBytes() {
   return document.save();
 }
 describe("selected OnBase PDF page", () => {
-  it("copies exactly the selected page with deterministic bytes and no neighboring page", async () => {
+  it("onbase/one-page — copies exactly the selected page with deterministic bytes and no neighboring page", async () => {
     const bytes = await documentBytes(), selected = await extractOnbasePage(bytes, 2);
     const document = await PDFDocument.load(selected); assert.equal(document.getPageCount(), 1);
     assert.deepEqual(document.getPage(0).getSize(), { width: 300, height: 400 });
     assert.deepEqual(await extractOnbasePage(bytes, 2), selected);
     for (const page of [0, -1, 4, 1.5]) await assert.rejects(extractOnbasePage(bytes, page));
-    await assert.rejects(extractOnbasePage(Buffer.from("not a pdf"), 1));
   });
-  it("refuses interactive source fields rather than dropping their values", async () => {
+  it("onbase/invalid-pdf — refuses malformed PDFs and interactive source fields rather than dropping their values", async () => {
+    await assert.rejects(extractOnbasePage(Buffer.from("not a pdf"), 1));
     const document = await PDFDocument.create(); document.addPage();
     document.getForm().createTextField("employee").setText("Example");
     await assert.rejects(extractOnbasePage(await document.save(), 1));
@@ -33,13 +33,14 @@ describe("selected OnBase PDF page", () => {
   it("uses the artifact reader, verifies bytes and never stores another copy or exposes PDF bytes in output", async () => {
     const bytes = await documentBytes(), fixture = fakeOnbasePage(), driver = createOnbaseDriver(() => undefined, fixture.page, manualClock(new Date("2026-11-02T12:00:00Z")));
     const input = OnbaseInputSchema.parse({ ...ONBASE_EXAMPLE_INPUT, sourcePage: 2, document: { ...ONBASE_EXAMPLE_INPUT.document, sha256: hash(bytes), bytes: bytes.length } });
-    const invoke = (body: Uint8Array) => readSourcePageTask.impl.run({ input, ctx: { driver, signal: new AbortController().signal,
+    const invoke = (body: Uint8Array | string) => readSourcePageTask.impl.run({ input, ctx: { driver, signal: new AbortController().signal,
       log: { info() {}, warn() {}, debug() {} }, recordData() {}, captureScreenshot: async () => undefined, fail: taskFailer(readSourcePageTask.contract),
       artifacts: { open: async () => Readable.from([body]), put: async () => { throw new Error("unexpected storage"); } },
     } });
     const output = await invoke(bytes);
     assert.equal(output.pageSha256, hash(await extractOnbasePage(bytes, 2)));
     assert.deepEqual(Object.keys(output).sort(), ["document", "pageSha256", "sourcePage", "ucpathId"]);
+    await assert.rejects(invoke("unexpected text chunk"), /source PDF page could not be verified/u);
     await assert.rejects(invoke(bytes.slice(1)), /source PDF page could not be verified/u);
     const changed = Uint8Array.from(bytes); changed[0] = (changed[0] ?? 0) ^ 1;
     await assert.rejects(invoke(changed), /source PDF page could not be verified/u);

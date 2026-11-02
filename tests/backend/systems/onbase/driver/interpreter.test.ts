@@ -17,7 +17,7 @@ const world = (options: Parameters<typeof fakeOnbasePage>[0] = {}) => {
 };
 
 describe("OnBase semantic import driver", () => {
-  it("clears queue residue, uses the lookup modal, verifies every keyword and stages one page without a save", async () => {
+  it("onbase/prepare — clears queue residue, uses the lookup modal, verifies every keyword and stages one page without a save", async () => {
     const f = world({ queue: 2 });
     assert.equal((await f.driver.prepareImport(target)).observedEid, target.ucpathId);
     assert.equal(await f.driver.read(ONBASE_DISPLAYED_EID), target.ucpathId);
@@ -27,7 +27,19 @@ describe("OnBase semantic import driver", () => {
     assert.equal(f.actions.includes("click:Import"), false);
   });
 
-  it.each([{ noMatch: true }, { stalled: true }, { eid: "10800001" }, { blankDepartment: true }])("refuses missing, stalled or wrong-identity keysets before Import: %j", async options => {
+  it("onbase/keyset-miss — refuses an employee keyset with no match before Import", async () => {
+    const f = world({ noMatch: true });
+    await assert.rejects(f.driver.prepareImport(target), (error: unknown) => error instanceof OnbaseImportError && error.reason === "employee-keyset-no-match");
+    assert.equal(f.actions.includes("click:Import"), false);
+  });
+
+  it("onbase/identity-mismatch — refuses a different employee returned by the keyset before Import", async () => {
+    const f = world({ eid: "10800001" });
+    await assert.rejects(f.driver.prepareImport(target), (error: unknown) => error instanceof OnbaseImportError && error.reason === "selected-employee-mismatch");
+    assert.equal(f.actions.includes("click:Import"), false);
+  });
+
+  it.each([{ stalled: true }, { blankDepartment: true }])("refuses stalled or incomplete keysets before Import: %j", async options => {
     const f = world(options);
     await assert.rejects(f.driver.prepareImport(target));
     assert.equal(f.actions.includes("click:Import"), false);
@@ -54,7 +66,8 @@ describe("OnBase semantic import driver", () => {
     assert.equal(f.actions.filter(action => action === "click:Import").length, 1);
   });
 
-  it("proves exact saved bytes, distinguishes complete absence, duplicate matches and incomplete retrieval", async () => {
+  it("onbase/saved-effect — proves exact saved bytes, distinguishes complete absence, duplicate matches and incomplete retrieval", async () => {
+    assert.equal((await world({ saved: [{ id: "1", eid: target.ucpathId, bytes }] }).driver.readSavedImport(target)).state, "present");
     assert.equal((await world().driver.readSavedImport(target)).state, "absent");
     assert.equal((await world({ saved: [{ id: "1", eid: target.ucpathId, bytes: Buffer.from("another form") }] }).driver.readSavedImport(target)).state, "absent");
     const saved = [{ id: "1", eid: target.ucpathId, bytes }, { id: "2", eid: target.ucpathId, bytes }];

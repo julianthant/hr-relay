@@ -14,10 +14,10 @@ export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stall
   const headers = ["Document ID", "Document Type", "UCPath ID", "Document Name", "File"];
   class FixtureInput { constructor(readonly value: string) {} }
   class Locator {
-    constructor(readonly name: string, readonly scope = "page", readonly index = 0, readonly text?: string, readonly enabledOnly = false, readonly alternative?: Locator) {}
+    constructor(readonly name: string, readonly scope = "page", readonly index = 0, readonly text: readonly string[] = [], readonly enabledOnly = false, readonly alternative?: Locator) {}
     getByRole(role: string, input: { name?: string | RegExp } = {}) { return new Locator(input.name === undefined ? role : String(input.name), this.name === "row" ? `row:${this.index}` : this.scope, this.index); }
     locator(selector: string) { return new Locator(selector === "option:checked" ? `selected:${this.name}` : selector, this.scope); }
-    filter(input: { hasText?: string; has?: unknown }) { return new Locator(this.name, this.scope, this.index, input.hasText); }
+    filter(input: { hasText?: string; has?: unknown }) { return new Locator(this.name, this.scope, this.index, input.hasText === undefined ? this.text : [...this.text, input.hasText]); }
     nth(index: number) { return new Locator(this.name, this.scope, index, this.text, this.enabledOnly, this.alternative); }
     first() { return this.nth(0); }
     and(_other: Locator) { return new Locator(this.name, this.scope, this.index, this.text, true); }
@@ -32,13 +32,13 @@ export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stall
       if (this.name === "Select Employee") return modal && found && !options.noMatch && !options.stalled;
       if (this.name === "status") return searched;
       if (this.name === "Remove") return this.index < queued.length;
-      if (this.name === "row" && mode === "import") return queued.some(row => this.text === undefined || row.name.includes(this.text));
+      if (this.name === "row" && mode === "import") return queued.some(row => this.text.every(text => `Pending Import ${row.name}`.includes(text)));
       return true;
     }
     async waitFor(input: { state: string }) { assert.equal(this.visible(), input.state !== "hidden", `${this.name} did not become ${input.state}`); }
     async count() {
       if (this.name === "Remove") return queued.length;
-      if (this.name === "row") return mode === "import" ? queued.filter(row => this.text === undefined || row.name.includes(this.text)).length : saved.length;
+      if (this.name === "row") return mode === "import" ? queued.filter(row => this.text.every(text => `Pending Import ${row.name}`.includes(text))).length : saved.length;
       return this.visible() ? 1 : 0;
     }
     async isVisible() { return this.visible(); }
