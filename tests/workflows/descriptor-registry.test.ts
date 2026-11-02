@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { STEP_PROOF_DESCRIPTORS } from "../../src/backend/app/registries/step-proof-modules.js";
 import { SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../src/backend/app/registries/workflow-registry.js";
-import { WORKFLOW_DESCRIPTORS } from "../../src/workflows/descriptor-registry.js";
+import { createWorkflowDescriptorRegistry, WORKFLOW_DESCRIPTORS } from "../../src/workflows/descriptor-registry.js";
+import { plan1Child, plan1Leaf, plan1Parent } from "../support/fixtures/plan1-operation-workflows.js";
 
 describe("the declared active-run policy, as the modal states it", () => {
 
@@ -34,6 +35,33 @@ describe("the descriptor prose the modal draws", () => {
 });
 
 describe("workflow descriptor registry", () => {
+  it("resolves declared children without listing or publicly resolving them", () => {
+    const registry = createWorkflowDescriptorRegistry(
+      [...WORKFLOW_DESCRIPTORS, plan1Parent.descriptor],
+      [plan1Child.descriptor, plan1Leaf.descriptor],
+    );
+    expect(registry.descriptors).toEqual([...WORKFLOW_DESCRIPTORS, plan1Parent.descriptor]);
+    for (const descriptor of registry.descriptors) expect(registry.resolve(descriptor.id)).toBe(descriptor);
+    for (const child of [plan1Child, plan1Leaf]) expect(registry.resolve(child.descriptor.id)).toBeUndefined();
+    expect(registry.resolveChild(plan1Parent.descriptor.id, plan1Child.descriptor.id)).toBe(plan1Child.descriptor);
+    expect(registry.resolveChild(plan1Child.descriptor.id, plan1Leaf.descriptor.id)).toBe(plan1Leaf.descriptor);
+    expect(registry.resolveChild(plan1Parent.descriptor.id, plan1Leaf.descriptor.id)).toBe(plan1Leaf.descriptor);
+    expect(Object.isFrozen(registry)).toBe(true);
+    expect(Object.isFrozen(registry.descriptors)).toBe(true);
+  });
+
+  it("refuses unknown targets and undeclared or unknown parents", () => {
+    expect(() => createWorkflowDescriptorRegistry([plan1Parent.descriptor], [plan1Child.descriptor]))
+      .toThrow(`workflow delegation target ${plan1Leaf.descriptor.id} is not registered`);
+    const registry = createWorkflowDescriptorRegistry([plan1Child.descriptor], [plan1Leaf.descriptor]);
+    expect(() => registry.resolveChild("unknown-parent", plan1Leaf.descriptor.id)).toThrow(/does not declare delegation/u);
+    expect(() => registry.resolveChild(plan1Leaf.descriptor.id, plan1Child.descriptor.id)).toThrow(/does not declare delegation/u);
+    for (const id of ["unknown-child", "constructor", "toString", "__proto__"]) {
+      expect(registry.resolve(id)).toBeUndefined();
+      expect(() => registry.resolveChild(plan1Child.descriptor.id, id)).toThrow(/is not registered/u);
+    }
+  });
+
   it("registers only operator workflows", () => {
     expect(WORKFLOW_DESCRIPTORS.map(({ id }) => String(id))).toEqual([
       "person-lookup",
