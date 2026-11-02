@@ -11,7 +11,7 @@ import { createProviderClient } from "../../../src/backend/processing/providers/
 import { readWorkbookResultTask } from "../../../src/backend/processing/workbooks/tasks/read-result.js";
 import { ReadWorkbookResult, WorkbookReferenceWriteSchema } from "../../../src/models/processing/workbooks/read-result.js";
 import { encodeEditableWorkbook, RunWorkbookReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
-import { RunRecordSchema, type RunRecord } from "../../../src/models/run/record.js";
+import { runClaim, RunRecordSchema, type RunRecord } from "../../../src/models/run/record.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
@@ -38,11 +38,25 @@ const descriptor = defineWorkflowDescriptor({ id: "workbook-consumer", code: "wc
 });
 const fixtureProfiles = createProfileFixtureSet();
 const world = createCommandKernelTestWorld(fixtureProfiles.create);
+const releaseClaims: (() => void)[] = [];
 afterAll(() => fixtureProfiles.close());
 afterEach(async () => {
-  for (const database of world.openDatabases.splice(0)) database.close();
-  for (const profile of world.profiles.splice(0)) await profile.close();
-  for (const root of world.roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  while (releaseClaims.length > 0) {
+    const release = releaseClaims.at(-1); assert.ok(release);
+    release(); releaseClaims.pop();
+  }
+  while (world.openDatabases.length > 0) {
+    const database = world.openDatabases.at(-1); assert.ok(database);
+    database.close(); world.openDatabases.pop();
+  }
+  while (world.profiles.length > 0) {
+    const profile = world.profiles.at(-1); assert.ok(profile);
+    await profile.close(); world.profiles.pop();
+  }
+  while (world.roots.length > 0) {
+    const root = world.roots.at(-1); assert.ok(root);
+    rmSync(root, { recursive: true, force: true }); world.roots.pop();
+  }
 });
 
 async function fixture(duplicate = false) {
@@ -85,6 +99,18 @@ async function fixture(duplicate = false) {
     assert.equal(claimed.run.envelope.runId, run.envelope.runId);
     const service = testRunService(h.database, h.clock);
     const claim = { workerId: worker.workerId, claimGeneration: claimed.run.claimGeneration };
+    releaseClaims.push(() => {
+      const current = h.database.authority.runs.get(run.envelope.runId); assert.ok(current);
+      const owner = runClaim(current); assert.ok(owner);
+      assert.equal(owner.workerId, claim.workerId); assert.equal(owner.claimGeneration, claim.claimGeneration);
+      assert.deepEqual(h.database.authority.writeIntents.listByRun(current.envelope.runId), []);
+      assert.throws(() => h.database.assertWorkerLifecycleRelease(worker.workerId), /worker-lifecycle-release-unproved/u);
+      assert.equal(service.requeue({ commandId: randomUUID(), runId: current.envelope.runId,
+        expectedVersion: current.version, claim, cause: "recovery" }).state, "applied");
+      const released = h.database.authority.runs.get(current.envelope.runId); assert.ok(released);
+      assert.equal(runClaim(released), undefined); assert.equal(released.lifecycle.state, "queued");
+      h.database.assertWorkerLifecycleRelease(worker.workerId);
+    });
     const validating = service.workerTransition({ commandId: randomUUID(), runId: run.envelope.runId, claim,
       lifecycle: { state: "validating", workerId: worker.workerId, claimedAt: NOW, heartbeatAt: NOW } });
     assert.equal(validating.state, "applied");
@@ -97,8 +123,9 @@ async function fixture(duplicate = false) {
   const choice = (run: RunRecord) => {
     const operation = section(run).operations[0]; assert.equal(operation.resolution.state, "available");
     if (operation.resolution.state !== "available") throw new Error("fixture row choice unavailable");
+    const candidate = operation.resolution.candidates[0]; assert.ok(candidate);
     return { commandId: world.nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "run-detail", family: "run",
-      type: "resolve-workbook-row", target: operation.resolution.target, payload: operation.resolution.candidates[0] };
+      type: "resolve-workbook-row", target: operation.resolution.target, payload: { sheetId: candidate.sheetId, rowId: candidate.rowId } };
   };
   const edit = (change: (workbook: ReturnType<typeof library.read>["workbook"]) => void) => {
     const current = library.read(saved.libraryId), workbook = structuredClone(current.workbook); change(workbook);
@@ -163,19 +190,19 @@ it("executes the registered workbook task through its real provider using the ca
   const corrupt = RunRecordSchema.parse({ ...run, input: { ...run.input, workbookReferences: run.input.workbookReferences?.map(value => ({ ...value, schemaHash: "f".repeat(64) })) } });
   expect(() => f.runs.write(corrupt, patch)).toThrow();
   const type = f.repository.types().find(value => value.id === patch.typeId); assert.ok(type);
-  f.repository.putType({ ...type, keyFieldId: "roster.result" });
+  expect(() => f.repository.putType({ ...type, keyFieldId: "roster.result" })).toThrow(expect.objectContaining({ code: "WORKBOOK_INVALID" }));
+  expect(f.repository.types().find(value => value.id === patch.typeId)).toEqual(type);
   expect(f.runs.write(run, patch)).toEqual(receipt);
-  expect(() => f.runs.write(run, { ...patch, writeId: "next-result" })).toThrow(expect.objectContaining({ code: "WORKBOOK_INVALID" }));
+  const beforeNext = f.library.read(f.id);
+  expect(f.runs.write(run, { ...patch, writeId: "next-result" })).toMatchObject({ state: "resolve-required", reason: "version-conflict", changes: [] });
+  expect(f.library.read(f.id)).toEqual(beforeNext);
 });
 
 it("serves a resolve-required Logs row choice and applies only the retained values through the canonical command", async () => {
   const f = await fixture(true), run = f.running(f.start());
   expect(f.runs.write(run, patch)).toMatchObject({ state: "resolve-required", reason: "duplicate-key", changes: [] });
-  const before = f.section(run), command = f.choice(run);
+  const before = f.section(run), request = f.choice(run);
   expect(workbookWriteLogStep(before.operations[0])).toMatchObject({ entries: [{ kind: "decision", decision: { state: "review" } }] });
-  // Candidate labels are display data; the command carries identity only.
-  const { label: _label, ...payload } = command.payload;
-  const request = { ...command, payload };
   const result = f.kernel.execute(request);
   expect(result.state).toBe("applied");
   const after = f.section(run);
@@ -186,12 +213,18 @@ it("serves a resolve-required Logs row choice and applies only the retained valu
   expect(f.kernel.execute(request).state).toBe("already-applied");
   expect(f.repository.runOperations(run.envelope.runId)).toHaveLength(2);
   expect(f.kernel.execute({ ...request, commandId: world.nextCommandId() }).state).toBe("rejected");
-  expect(f.kernel.execute({ ...request, commandId: world.nextCommandId(), payload: { ...payload, values: { "roster.result": "forged" } } }).state).toBe("rejected");
+  const forged = { ...request, commandId: world.nextCommandId(), payload: { ...request.payload, values: { "roster.result": "forged" } } };
+  const generation = f.database.getMeta().authorityGeneration, workbook = f.library.read(f.id);
+  expect(() => f.kernel.execute(forged)).toThrow(z.ZodError);
+  expect(f.database.authority.commands.get(forged.commandId)).toBeUndefined();
+  expect(f.database.getMeta().authorityGeneration).toBe(generation);
+  expect(f.repository.runOperations(run.envelope.runId)).toHaveLength(2);
+  expect(f.library.read(f.id)).toEqual(workbook);
 });
 
 it.each(["revision", "key", "worksheet", "operator-cell"] as const)("rejects a stale row choice after a live %s change", async change => {
   const f = await fixture(true), run = f.running(f.start()); f.runs.write(run, patch);
-  const command = f.choice(run), { label: _label, ...payload } = command.payload;
+  const command = f.choice(run);
   f.edit(workbook => {
     if (change === "revision") workbook.name = "Renamed.xlsx";
     if (change === "key") workbook.sheets[0].rows[1].cells[0].value = "10800002";
@@ -199,12 +232,11 @@ it.each(["revision", "key", "worksheet", "operator-cell"] as const)("rejects a s
     if (change === "operator-cell") workbook.sheets[0].rows[1].cells[1].value = "operator";
   });
   const before = f.library.read(f.id);
-  expect(f.kernel.execute({ ...command, payload }).state).toBe("rejected");
+  expect(f.kernel.execute(command).state).toBe("rejected");
   expect(f.library.read(f.id)).toEqual(before);
   expect(f.repository.runOperations(run.envelope.runId)).toHaveLength(1);
   if (change === "operator-cell") {
-    const fresh = f.choice(run), { label: _freshLabel, ...freshPayload } = fresh.payload;
-    expect(f.kernel.execute({ ...fresh, payload: freshPayload }).state).toBe("rejected");
+    expect(f.kernel.execute(f.choice(run)).state).toBe("rejected");
     expect(f.library.read(f.id)).toEqual(before);
   }
 });
@@ -233,18 +265,20 @@ it("retains a missing-key receipt and requires an explicit choice when that key 
   f.edit(workbook => { workbook.sheets[1].rows[1].cells[0].value = "missing"; });
   expect(f.runs.write(run, missing)).toEqual(original);
   expect(f.library.read(f.id).workbook.sheets[1].rows[1].cells[1].value).toBeNull();
-  const command = f.choice(run), { label: _label, ...payload } = command.payload;
-  expect(payload).toEqual({ sheetId: "archive", rowId: "archive-person" });
-  expect(f.kernel.execute({ ...command, payload }).state).toBe("applied");
+  const command = f.choice(run);
+  expect(command.payload).toEqual({ sheetId: "archive", rowId: "archive-person" });
+  expect(f.kernel.execute(command).state).toBe("applied");
   expect(f.library.read(f.id).workbook.sheets[1].rows[1].cells[1].value).toBe("complete");
 });
 
-it("refuses changed type key semantics even when the workbook revision did not advance", async () => {
+it("refuses a declared type key change and preserves its captured reference", async () => {
   const f = await fixture(), run = f.running(f.start());
   const type = f.repository.types().find(value => value.id === patch.typeId); assert.ok(type);
-  f.repository.putType({ ...type, keyFieldId: "roster.result" });
+  expect(() => f.repository.putType({ ...type, keyFieldId: "roster.result" })).toThrow(expect.objectContaining({ code: "WORKBOOK_INVALID" }));
+  expect(f.repository.types().find(value => value.id === patch.typeId)).toEqual(type);
   expect(f.library.read(f.id).version).toBe(2);
-  expect(() => f.runs.write(run, patch)).toThrow(expect.objectContaining({ code: "WORKBOOK_INVALID" }));
   expect(f.repository.runOperations(run.envelope.runId)).toEqual([]);
   expect(f.library.read(f.id).workbook.sheets[0].rows[1].cells[1].value).toBeNull();
+  expect(f.runs.write(run, patch)).toMatchObject({ state: "applied", version: 3 });
+  expect(f.library.read(f.id).workbook.sheets[0].rows[1].cells[1].value).toBe("complete");
 });
