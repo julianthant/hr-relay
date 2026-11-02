@@ -5507,7 +5507,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup-searching"
     },
     {
-      "fingerprint": "5f6007fda3132e2f1cd5e66a476e78e5445a8efe4b3a0aa7dd7c8563d7b28707",
+      "fingerprint": "bb454baa4d89f124805cbeee815a08cb65f3780fe398f214b007c73ce9c2c05b",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -5703,11 +5703,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/canonical-input-schema.ts",
@@ -6037,7 +6041,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations"
     },
     {
-      "fingerprint": "6d0768ca5e56d8608a69afc921a6dc9dc66f5309a4de899de07a66d720c6e86f",
+      "fingerprint": "a4198b34db40655ac33a250be1b2fd6d20f58aa76411b313981b7986f1dcd1a8",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -6233,11 +6237,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/canonical-input-schema.ts",
@@ -6567,7 +6575,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-identity-check"
     },
     {
-      "fingerprint": "cf2dc73be9705ebc24366077effe542b9023347fdcc22cfdeabb4f5cb40dc3d4",
+      "fingerprint": "a5ed6f49c4c27e6d7972d7136435a2dd9da279dab6a47b7aaa5b21c40322cda4",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -6763,11 +6771,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/canonical-input-schema.ts",
@@ -7097,7 +7109,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "eeb36158fad139044d3d488f9be34952ae8917ea9fa00319f2a8aacc87144dc3",
+      "fingerprint": "0e2ce3f883695fd5c26033c259ca448de3679256dd307de5a39c3dd3092cb6a2",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -7293,11 +7305,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/canonical-input-schema.ts",
@@ -7627,7 +7643,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-finalization"
     },
     {
-      "fingerprint": "b415d0100efaf662fc12f956bd44fc64ca9a2aa0b9349a8d8c06fcc5eaa956d9",
+      "fingerprint": "87b9a01b7787308e0ba033a38ab09550ef7dd53b1d9c0cce17f513c9019a9d6c",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -7823,11 +7839,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/canonical-input-schema.ts",
@@ -8157,7 +8177,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-read"
     },
     {
-      "fingerprint": "d617996e09a3ea752b513aae9c71a5487cde64bc7212d0ed0240b6da251415e5",
+      "fingerprint": "9b18ac031eb08e621fd72c4a850d014a3e52dd386d795a79cded759e6d4b4252",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -8353,11 +8373,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/canonical-input-schema.ts",
@@ -13843,7 +13867,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "f5c7e7214f90366cc972b5ec0c62dba549be5aad8d6961216770e2c593e7b742",
+      "fingerprint": "5c4e4457a432187c5d0d046e842c3567415f672ecf92ed6c274cca90b126cc8e",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -13863,7 +13887,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "f09a1f1efe31b75d51d3eb90cc9caa4dda28937c5f8fa1d6ba1716f8215200aa"
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
@@ -13875,15 +13899,19 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
-          "sha256": "fcb219a07e6388acdeb0c833a0873961b40ff4c717c5ccda61d443867bdd5fba"
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
         },
         {
           "path": "src/backend/systems/ucpath/tasks/create-termination.ts",
@@ -14051,11 +14079,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
@@ -14233,7 +14265,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/create-termination"
     },
     {
-      "fingerprint": "4206babca42240965aad6e268f123792c80928fc17321934ff6d1c361885dde6",
+      "fingerprint": "bb0f08fb9e24549739371b19d422244b41e70c9bc49d51e97479b415baf83ad8",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -14253,7 +14285,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "f09a1f1efe31b75d51d3eb90cc9caa4dda28937c5f8fa1d6ba1716f8215200aa"
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
@@ -14265,15 +14297,19 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
-          "sha256": "fcb219a07e6388acdeb0c833a0873961b40ff4c717c5ccda61d443867bdd5fba"
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
         },
         {
           "path": "src/backend/systems/ucpath/tasks/delete-pending-terminations.ts",
@@ -14441,11 +14477,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
@@ -14623,7 +14663,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/delete-pending-terminations"
     },
     {
-      "fingerprint": "f70ffc3d09429dd49dccbbde97652edbabe76948742feef0f3c5ca161117f6b9",
+      "fingerprint": "243def62fc27cacbba001c959383a721943cdac54e868a62a50f683253d7f484",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -14643,7 +14683,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "f09a1f1efe31b75d51d3eb90cc9caa4dda28937c5f8fa1d6ba1716f8215200aa"
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
@@ -14655,15 +14695,19 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
-          "sha256": "fcb219a07e6388acdeb0c833a0873961b40ff4c717c5ccda61d443867bdd5fba"
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
         },
         {
           "path": "src/backend/systems/ucpath/tasks/match-existing-termination.ts",
@@ -14831,11 +14875,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
@@ -15013,7 +15061,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-existing-termination"
     },
     {
-      "fingerprint": "824f157e146c783f9f2718b364ab825df7f70842d5dcc9a7184d1ead4f5330c4",
+      "fingerprint": "680b7e5fccf7fe644b88df4e006d3ce2ff8717c600bceef273c50be0ca61cd63",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -15033,7 +15081,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "f09a1f1efe31b75d51d3eb90cc9caa4dda28937c5f8fa1d6ba1716f8215200aa"
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
@@ -15045,15 +15093,19 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
-          "sha256": "fcb219a07e6388acdeb0c833a0873961b40ff4c717c5ccda61d443867bdd5fba"
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
         },
         {
           "path": "src/backend/systems/ucpath/tasks/match-pending-terminations.ts",
@@ -15221,11 +15273,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
@@ -15403,7 +15459,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-pending-terminations"
     },
     {
-      "fingerprint": "1512eadfd41f06e7c05c7647148a38e6a2b5e79704dbc5afc68e849eeb6e123e",
+      "fingerprint": "13905d1746c0fe73b665694b5f6adc5f98252a38276da2b4699f393435dd8bfd",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -15423,7 +15479,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "f09a1f1efe31b75d51d3eb90cc9caa4dda28937c5f8fa1d6ba1716f8215200aa"
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
@@ -15435,15 +15491,19 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
-          "sha256": "fcb219a07e6388acdeb0c833a0873961b40ff4c717c5ccda61d443867bdd5fba"
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
         },
         {
           "path": "src/backend/systems/ucpath/tasks/read-job-summary.ts",
@@ -15615,11 +15675,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
@@ -15797,7 +15861,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "d1fc7d951fc1f960be4adc93665e1fa8cf8eeff9809361d132cd180e55e90d59",
+      "fingerprint": "73856c88d7e1e59b72324c79caab3b7a6c86c082bc52c43282fc2365d48c17b3",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -15817,7 +15881,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "f09a1f1efe31b75d51d3eb90cc9caa4dda28937c5f8fa1d6ba1716f8215200aa"
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
@@ -15829,15 +15893,19 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
-          "sha256": "fcb219a07e6388acdeb0c833a0873961b40ff4c717c5ccda61d443867bdd5fba"
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
         },
         {
           "path": "src/backend/systems/ucpath/tasks/read-pending-termination-set.ts",
@@ -16009,11 +16077,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
@@ -16191,7 +16263,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-pending-termination-set"
     },
     {
-      "fingerprint": "2285179351c3283e5e7fa9ab72983124d65c5ca89ec52cbcdf7d4d89ac06d97f",
+      "fingerprint": "0b3d7ff4bd1dd67b62fa25ece6340a9dfdd8fa783263519861f0a22392eeeab5",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -16211,7 +16283,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "f09a1f1efe31b75d51d3eb90cc9caa4dda28937c5f8fa1d6ba1716f8215200aa"
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
@@ -16223,15 +16295,421 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
-          "sha256": "fcb219a07e6388acdeb0c833a0873961b40ff4c717c5ccda61d443867bdd5fba"
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
+        },
+        {
+          "path": "src/backend/systems/ucpath/tasks/read-transaction-findings.ts",
+          "sha256": "c2965803c265657b224d267ba424f7cf9a0e4c8c0ac78c37eaee7244ac852e5e"
+        },
+        {
+          "path": "src/backend/systems/ucpath/termination-verdict.ts",
+          "sha256": "39881d3a06e1b0aea831a276c36c432385fc200b83fde098bfd72c16a1fa0eb1"
+        },
+        {
+          "path": "src/models/artifacts/artifacts.ts",
+          "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/secret-names.ts",
+          "sha256": "354319c36bb83897ac1ecc4cc38b1dd2768b054fb9181f3c2ede9a79e98a8970"
+        },
+        {
+          "path": "src/models/dashboard/primitives.ts",
+          "sha256": "63c5a8962c08ac8a86c8b8cea801e96060b80d49a199b8e54be2be6bef46d42e"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
+        },
+        {
+          "path": "src/models/events/data-observation-origin.ts",
+          "sha256": "1319cb98ab9cddffeaafaf536bc5422be9b66e6e014e6c3c0ebdcd19bf58ea52"
+        },
+        {
+          "path": "src/models/failures/boundary-failure.ts",
+          "sha256": "80626b7b95c266a05a63b071a8b5b07806ae026ceec9a91e9bee46097ac31cc4"
+        },
+        {
+          "path": "src/models/failures/error-catalog.ts",
+          "sha256": "ca79de3def4de4fb47a6183203ab5c9defc86063562112d65c5fb596cb8d4c78"
+        },
+        {
+          "path": "src/models/fields/cell-coercion.ts",
+          "sha256": "9512a7db40834142588f389800996219f7ae03f18cdba0db143aa9189073142d"
+        },
+        {
+          "path": "src/models/fields/registry.ts",
+          "sha256": "408a63970e792ffd9ccc9b39a05c0799fed883b7d60dc9c4490a28367a10ad60"
+        },
+        {
+          "path": "src/models/providers/providers.ts",
+          "sha256": "6c5ee12a9762f23920d89932a7e46e224510f042ed4eccc0c3e03f5c1a77dbf2"
+        },
+        {
+          "path": "src/models/run/completion.ts",
+          "sha256": "d7bf14d9ab1c1ce8aab8fe5b8b6310947706fee5f80dbde3533d969ca62a0b8e"
+        },
+        {
+          "path": "src/models/run/display-name.ts",
+          "sha256": "3371b64274b77ce4e90147acdde14c05d9511814c003f311c6675ba1189e27f9"
+        },
+        {
+          "path": "src/models/run/envelope.ts",
+          "sha256": "ec2d415722adadc8ab3f106b419940b09dd8179f45c9579208b8ff219b41963e"
+        },
+        {
+          "path": "src/models/run/record.ts",
+          "sha256": "6bf8cb5ac31e67f48bef37dc50e419da09fec70eac73265b638b88f06735c3db"
+        },
+        {
+          "path": "src/models/run/rerun.ts",
+          "sha256": "6b385bbcc340caf5aedf5ac30fe1fd9d774330a89c1471d45b5a0b17ffc861df"
+        },
+        {
+          "path": "src/models/run/result.ts",
+          "sha256": "a1acb9c401ffadb60a808fa8172c036f7ccc9650c34c2da5b54d9a9e576b8d4f"
+        },
+        {
+          "path": "src/models/run/terminal-authorization.ts",
+          "sha256": "c65f044224a2efee9dc8532187394204231cc1a2131e1cd2ea3817f62645a873"
+        },
+        {
+          "path": "src/models/run/worker.ts",
+          "sha256": "fc9ab179a4c9d102a5ba19c31e716aaa54f53911cddaed29bf30b4a5ba0f0fec"
+        },
+        {
+          "path": "src/models/sessions/session.ts",
+          "sha256": "442833c0025202680e5d72a8ba339599e3e29f36d87a5ce681cb1c9dbd90e74a"
+        },
+        {
+          "path": "src/models/systems/ucpath/create-termination.ts",
+          "sha256": "86306bf51fc6b3a4b441dccc3598799ae43cc0a85cd5360d654ed1b6d6fbb3a0"
+        },
+        {
+          "path": "src/models/systems/ucpath/delete-pending-terminations.ts",
+          "sha256": "ec85913f7fc0d75abfaf233fe16ca25ea449bce0668909843fd14635c98f8345"
+        },
+        {
+          "path": "src/models/systems/ucpath/emergency-contacts.ts",
+          "sha256": "e0e92250c8739e1de9aaf6d6aa10c0496ba74a7ad3940db72bb6b07125cb0f1e"
+        },
+        {
+          "path": "src/models/systems/ucpath/match-existing-termination.ts",
+          "sha256": "6023acca9abc640c331c32b3756c246df83f235836ee8dd2a9224453423ad107"
+        },
+        {
+          "path": "src/models/systems/ucpath/match-pending-terminations.ts",
+          "sha256": "38b9b2db933d93c8745eab706457a0afc767b351ad8c2d9bbe9900c00117047e"
+        },
+        {
+          "path": "src/models/systems/ucpath/read-transaction-findings.ts",
+          "sha256": "65f7e955bdcb35283887b1a533681e8986004da778629dc4c697099e67eb31b3"
+        },
+        {
+          "path": "src/models/systems/ucpath/search-person-match.ts",
+          "sha256": "e71cc856a9791dc2adb73a1f888d476c80534f9bf8df83800e80db3f45413a1c"
+        },
+        {
+          "path": "src/models/systems/ucpath/search-person-org.ts",
+          "sha256": "714301377ae11d5ad3be21fa5912172ee7a8425aa748ac996a6c79fdd8b8403d"
+        },
+        {
+          "path": "src/models/task/task-contract.ts",
+          "sha256": "5b5c4dc9caa1d4ebc78894b916bc9aca2084c11e361d8047375bac978e2ad96e"
+        },
+        {
+          "path": "src/models/task/write-safety.ts",
+          "sha256": "98a8edc5ecb09b5fadd3b6b56fce7760568ad87b57a6a47be38fecdd97d3def8"
+        },
+        {
+          "path": "src/models/trust/failure.ts",
+          "sha256": "eea30caabf7651d139ab6c865ac3435458367dd99be36e232d37a8016570408f"
+        },
+        {
+          "path": "src/models/trust/preflight-scenarios.ts",
+          "sha256": "07d2c4c0a0b7465cf8d0d113a6b8e8b83462ae20b9473baa628be3f3e9918f19"
+        },
+        {
+          "path": "src/models/trust/scenario.ts",
+          "sha256": "74956dd71130bbf7ae4393db9ead0665d11799fd096d0836cf960831f5e00c18"
+        },
+        {
+          "path": "src/models/ui/contracts.ts",
+          "sha256": "b9e336346b6fd542e2c3cb79a0dc68271ba7a9d34b33dbe99974e247a124e643"
+        },
+        {
+          "path": "src/models/ui/driver.ts",
+          "sha256": "2f79c467bd947aa83392ab50ae25053dea26cd2ae08ecd002d9dec48e099e28b"
+        },
+        {
+          "path": "src/models/ui/kuali-document-identity.ts",
+          "sha256": "bf0a623abb15bf6e45a8eb9bcc021891c208b6381a498f89e3400049f086ede1"
+        },
+        {
+          "path": "src/models/ui/kuali-separation-document.ts",
+          "sha256": "69a6a680961136a1e8ae71c4a5ff572cec7c9dbaf57c5b2cefa13ee73a4c4300"
+        },
+        {
+          "path": "src/models/ui/ucpath-driver.ts",
+          "sha256": "ae27f238388b97d343acfa958d349344cac904c0bfc3be922a12d4d99824c6cc"
+        },
+        {
+          "path": "src/models/ui/ucpath-emergency-contact.ts",
+          "sha256": "9a16c06b85ae3442b965fed265975a00d57ba1eafbaa4300f339a0bbc4f2d85a"
+        },
+        {
+          "path": "src/models/ui/ucpath-job-summary.ts",
+          "sha256": "0d7e84cc2bbe8c02268d2165f1368db207185f1e80e966b2ce6f6b70d175db8b"
+        },
+        {
+          "path": "src/models/ui/ucpath-person-org.ts",
+          "sha256": "b022028819ffb68eaa4d7d7daf8bbcaf219429705c226583ac5d86b33538b2bf"
+        },
+        {
+          "path": "src/models/ui/ucpath-smart-hr-termination.ts",
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
+        },
+        {
+          "path": "src/models/ui/ucpath-ss-smart-hr.ts",
+          "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
+        },
+        {
+          "path": "src/models/validation/contract-boundary.ts",
+          "sha256": "471e63df184203b0d537b2b8421b889e7d148629c179febac0a27e1f1d899a8d"
+        },
+        {
+          "path": "src/models/validation/schema-bound-value.ts",
+          "sha256": "36cfd9e3995e989e704262a9108804b6c3eca52192b783e0b276a9ae1f34c888"
+        },
+        {
+          "path": "src/models/workflow/checkpoint.ts",
+          "sha256": "767bd464678dfa0f09a84190a84d51ec757fe6d92eb81530f005eec0ca7e4f87"
+        },
+        {
+          "path": "src/models/workflow/delegation-policy.ts",
+          "sha256": "33a253f7006e24823c3323edd659a9ad78c0044ca3839504c6b3f39344d02ed9"
+        },
+        {
+          "path": "src/models/workflow/dry-run.ts",
+          "sha256": "05622d592537aaf3b0ee3b30f1ea47120ec6d8f9efa145df9bac10656a6b1fe5"
+        },
+        {
+          "path": "src/models/workflow/gates.ts",
+          "sha256": "352b3c127ca73af37a231a01b111c7f562cdfa8dce6bb4f6022e95bf76bf0804"
+        },
+        {
+          "path": "src/models/workflow/graph.ts",
+          "sha256": "8c4c5e82ce9c7d948194391315619a23e0dcfb90cc94d3df3259a71d4b89fff6"
+        },
+        {
+          "path": "src/models/workflow/node-condition.ts",
+          "sha256": "aa27eee68f21043d5748649ad39ede9bf52995d6d3dd7c36082bcb3d34c4d68a"
+        },
+        {
+          "path": "src/models/workflow/operation-action-identity.ts",
+          "sha256": "5aa948b90dedcb14b1ff586e0b07e025e2aca7d3b1e984106e9b6b3155807bf1"
+        },
+        {
+          "path": "src/models/workflow/operation-display-snapshot.ts",
+          "sha256": "8d12a4decf6530a204083df31440e9eeda4b69e84fc7f15d652542440af50f4c"
+        },
+        {
+          "path": "src/models/workflow/operation-display.ts",
+          "sha256": "fbac43bd520fbd8269f55a6d986dbc89c758790c77b73b88dc5d8f783a76d761"
+        },
+        {
+          "path": "src/models/workflow/presentation.ts",
+          "sha256": "d65d75da91559eb4f91d4230ccc2d4f1fd3b421e8872eea71151a00c5ea0e7dc"
+        },
+        {
+          "path": "src/models/workflow/step-omission.ts",
+          "sha256": "fa795a459311ffd41a1f3b52e853937eea25057e584aa23d09535b3086353912"
+        },
+        {
+          "path": "src/models/write-safety/protected-input.ts",
+          "sha256": "97a36f4b4c6bff6df53d2f93cc9e3673eb014e440c71a6280fcde43772b12ae5"
+        },
+        {
+          "path": "src/models/write-safety/unscoped-commit.ts",
+          "sha256": "4415dac682f3f94b4ed677997d6cecf657cabb9f520f1de1cc6cca932235794d"
+        },
+        {
+          "path": "src/rules/identity/ids.ts",
+          "sha256": "7c302d3918c7c745b9d2ead602a2c8908a24e300909c53a623a180284bb28292"
+        },
+        {
+          "path": "src/rules/matching/levenshtein.ts",
+          "sha256": "ca1d094a7bee2107cf36b9c954a3d007994f241190c2b78bb7b4e53d6b007a47"
+        },
+        {
+          "path": "src/rules/matching/name-match.ts",
+          "sha256": "b66d7a8753a36ca4425913f01839706ef2a08ffeb302ae3ba4399467ac832e33"
+        },
+        {
+          "path": "src/rules/matching/ucpath-person.ts",
+          "sha256": "2877e3d22459545579c4e77caf99c3aae5bba1d12b644a5946bc98de1e7d97ca"
+        },
+        {
+          "path": "src/rules/normalization/contact-rules.ts",
+          "sha256": "d635d657c4c5e8680ff4e334e1d4c0f3bf37d30d79bce76c2f593155dc99f446"
+        },
+        {
+          "path": "src/rules/redaction/redaction-policy.ts",
+          "sha256": "ed823f54dde5047b13266ef2be0077fb41354de30c5ef450ccaa483a5275bdb7"
+        },
+        {
+          "path": "src/rules/redaction/redaction.ts",
+          "sha256": "78adf2298c539d75420d010640205d5f0af3fbfe51afad89fea92da6a3f4105e"
+        },
+        {
+          "path": "src/rules/separations/termination-receipt.ts",
+          "sha256": "1aa198cb5ab4920ccb66fcd9d94b3e532f717e0028a4df9ab40e0107f733a4b7"
+        },
+        {
+          "path": "src/rules/separations/termination-type.ts",
+          "sha256": "633c99dc241ef6d02238a5f0a9393fa56df1f12f4a95d88d7f5fb3df9401c196"
+        },
+        {
+          "path": "src/rules/sessions/duo-ceremony-lease.ts",
+          "sha256": "7d0faac137b745470080b22137a1447b47d053dfc392d96913ba9642f3dda189"
+        },
+        {
+          "path": "src/rules/time/clock.ts",
+          "sha256": "4fa0575953145e44d6b528f14b28534493bdfda17f203fa4ec097c03883c218a"
+        },
+        {
+          "path": "src/rules/validation/absence.ts",
+          "sha256": "7d997d8b05c4e3e55c26619594bc8fa19776a544739f0502d9d361d3f0bca863"
+        },
+        {
+          "path": "src/rules/validation/canonical-json.ts",
+          "sha256": "5dc7c0c22c34879c8248950e85d6878f4d74c009039e03c5e21ac4e01ca97159"
+        },
+        {
+          "path": "src/rules/validation/immutability.ts",
+          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
+        },
+        {
+          "path": "src/rules/validation/sha256.ts",
+          "sha256": "a734490377e8d13563b6c4e68f096cfe30c57d28cfcc26db33bb0bc0524a32e8"
+        },
+        {
+          "path": "src/rules/workflow/dependencies.ts",
+          "sha256": "334db97d9b271a347bd307c196f237e68572e0aff2d1e095e430c74a4512b31a"
+        },
+        {
+          "path": "src/rules/workflow/task-provenance.ts",
+          "sha256": "9ee904ebfd0753699f0309762af9765a33b5b2f24d953fd05a13cdb2b79207ce"
+        },
+        {
+          "path": "src/rules/write-safety/write-authority-reason.ts",
+          "sha256": "7f1afa8fac3dd9f999070cfa9fe814c71bf3f227e65d7a26a9d253512d196f68"
+        },
+        {
+          "path": "src/rules/write-safety/write-safety-primitives.ts",
+          "sha256": "575d982af14871ccfcb2492b9a22292d9f8feeca2eb5c38247e4933bb1b55fde"
+        },
+        {
+          "path": "src/rules/write-safety/write-safety.ts",
+          "sha256": "325649015b011f617c8ec2bbc5e53eb84702d31692ac846ec756ebba91e18c01"
+        },
+        {
+          "path": "src/workflow-kit/artifacts.ts",
+          "sha256": "f3431bd158ace4f8c6e8733c21c1fd34e44496fd146e78838a036a4dd39d83f4"
+        },
+        {
+          "path": "src/workflow-kit/duo-ceremony-lease.ts",
+          "sha256": "6bb597db72adcbbd6858ea349a65317016c6cd92b42d135dad4382e164b6c2da"
+        },
+        {
+          "path": "src/workflow-kit/errors.ts",
+          "sha256": "30b2ed116ad46ce2fdfb0d15c366c74a54df3bda8ec34578fd170f30378b87fa"
+        },
+        {
+          "path": "src/workflow-kit/mutation-capability.ts",
+          "sha256": "914c5ed96dff2f0d1b206b09f62766177036655c5cd404fb44c5b7c59c500af2"
+        },
+        {
+          "path": "src/workflow-kit/providers.ts",
+          "sha256": "8abf0ad98d70b4327f6ce09030456a28a15ca965e490463fdc14f412a6f6019f"
+        },
+        {
+          "path": "src/workflow-kit/session.ts",
+          "sha256": "baa0d7467aff176e10e91244a73e287bbef8b6f8a6fd52f15d2eac7766c8c71a"
+        },
+        {
+          "path": "src/workflow-kit/task-registry.ts",
+          "sha256": "7ee7db5284d1d8b693df2fb4ca8aebc5e70124e50a7e41b2797ed8b9054d5bdc"
+        },
+        {
+          "path": "src/workflow-kit/task.ts",
+          "sha256": "40aaa2cf40e66d1ac80cb120e80dc589b480c314f555eee436549ea8e9bee6dc"
+        }
+      ],
+      "id": "ucpath/read-transaction-findings"
+    },
+    {
+      "fingerprint": "12ea1138152a0f7841f53a3ba5b3df791533321fdc369cd0cffc24db467aa6e0",
+      "sources": [
+        {
+          "path": "src/backend/systems/browser-shared/action-notes.ts",
+          "sha256": "a3039b9d38e1db84bd38f44d363233873884e3996500662282ee788ee73bdf1e"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver-declaration.ts",
+          "sha256": "04d5e333a9d031b8f9b793f9c29123921fed117301921e961316bffa64379deb"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/contact-operation.ts",
+          "sha256": "58b1286319eabd9f591181b92bef9d9c547f711ff765b78d19137f2434dcb287"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/contact-page.ts",
+          "sha256": "ded6d16fb499766bb198aeee5a325bdc96dbb79bb3cc99cf6ecaa064e5ecc147"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/interpreter.ts",
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
+          "sha256": "9a66f156851413218bfa5eb73cf74b127539e397ef1d485cc946dd0d0f22a5ee"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/person-org-operation.ts",
+          "sha256": "537a68cb638fa13c0463c0125c600b533463cf9cba5368ee33347f8c44ae3521"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
         },
         {
           "path": "src/backend/systems/ucpath/tasks/search-person-match.ts",
@@ -16399,11 +16877,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
@@ -16581,7 +17063,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-match"
     },
     {
-      "fingerprint": "094b0c6f18cb4791cb68791bbaef4b0b5e2428dee328796c9b0ee4608560f5c9",
+      "fingerprint": "e0970f5ec081671e5736b412ed20fa3413e19786845034dc2e8fb27a38a3770b",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -16601,7 +17083,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "f09a1f1efe31b75d51d3eb90cc9caa4dda28937c5f8fa1d6ba1716f8215200aa"
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
@@ -16613,15 +17095,19 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
-          "sha256": "fcb219a07e6388acdeb0c833a0873961b40ff4c717c5ccda61d443867bdd5fba"
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
         },
         {
           "path": "src/backend/systems/ucpath/tasks/search-person-org.ts",
@@ -16789,11 +17275,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
@@ -16971,7 +17461,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "7e9547acfb05ffec5660e4bd6138431d0df2874291af51444856061722f8faf0",
+      "fingerprint": "40e855491e8f9b056be9b1d1a4c0ca633f9a214bbfd29b1cc0529b6c71c2bd91",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -16991,7 +17481,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "f09a1f1efe31b75d51d3eb90cc9caa4dda28937c5f8fa1d6ba1716f8215200aa"
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
@@ -17003,15 +17493,19 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
-          "sha256": "fcb219a07e6388acdeb0c833a0873961b40ff4c717c5ccda61d443867bdd5fba"
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
         },
         {
           "path": "src/backend/systems/ucpath/tasks/stage-pending-termination-sweep.ts",
@@ -17183,11 +17677,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
@@ -17365,7 +17863,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-pending-termination-sweep"
     },
     {
-      "fingerprint": "cdb7c6331e4e9b669d88bc7a236fae3be633d2a2f98f74fff06dad7be494619d",
+      "fingerprint": "0365e80a90373a0e15ca6ea6847fb8e0bf9eb78d64c4998ecc7133ffb1a0acee",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -17385,7 +17883,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "f09a1f1efe31b75d51d3eb90cc9caa4dda28937c5f8fa1d6ba1716f8215200aa"
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
@@ -17397,15 +17895,19 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
-          "sha256": "fcb219a07e6388acdeb0c833a0873961b40ff4c717c5ccda61d443867bdd5fba"
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
         },
         {
           "path": "src/backend/systems/ucpath/tasks/stage-termination.ts",
@@ -17577,11 +18079,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
@@ -17759,7 +18265,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-termination"
     },
     {
-      "fingerprint": "9617499615fb03d245b45a15e63602099091a1079a5d814808ed4efcf3b4f4d6",
+      "fingerprint": "4f080b0888bcb4920497a2d6ed2db92e7ff2775b925dd2c06408af9e080aff0a",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -17779,7 +18285,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "f09a1f1efe31b75d51d3eb90cc9caa4dda28937c5f8fa1d6ba1716f8215200aa"
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
@@ -17791,15 +18297,19 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
-          "sha256": "fcb219a07e6388acdeb0c833a0873961b40ff4c717c5ccda61d443867bdd5fba"
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
         },
         {
           "path": "src/backend/systems/ucpath/tasks/verify-pending-terminations-cleared.ts",
@@ -17971,11 +18481,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
@@ -18153,7 +18667,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-pending-terminations-cleared"
     },
     {
-      "fingerprint": "a333c4057f460c69495a11588b088fc5f3b803cb23eca5ce06cf031d603591fa",
+      "fingerprint": "227a3bae967393ab0284096b0db1f0db95009068b61cc2a28b69ced0f854307b",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -18173,7 +18687,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "f09a1f1efe31b75d51d3eb90cc9caa4dda28937c5f8fa1d6ba1716f8215200aa"
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
@@ -18185,15 +18699,19 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
-          "sha256": "fcb219a07e6388acdeb0c833a0873961b40ff4c717c5ccda61d443867bdd5fba"
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
         },
         {
           "path": "src/backend/systems/ucpath/tasks/verify-termination.ts",
@@ -18365,11 +18883,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
@@ -18547,7 +19069,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination"
     },
     {
-      "fingerprint": "7906b8d85d1bb100e299b4dd550244b8abcea46d785e85be7e65b68fc8bbc565",
+      "fingerprint": "a940af91e0d5406ccfc83be4cbdaf6ea920c7b923c72014306ac4d5ce85c6118",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -18567,7 +19089,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/interpreter.ts",
-          "sha256": "f09a1f1efe31b75d51d3eb90cc9caa4dda28937c5f8fa1d6ba1716f8215200aa"
+          "sha256": "9260de348b1198097c0c099ffb31bffdbc4ed21d484dca22a8d69bed235cd47e"
         },
         {
           "path": "src/backend/systems/ucpath/driver/person-match-operation.ts",
@@ -18579,15 +19101,19 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/ucpath/driver/registry-locators.ts",
-          "sha256": "6679d32765886c16d367727d94bf2016faad5b39f12a8bbedf1a513eafec75d6"
+          "sha256": "18ca31cf193bf48c349652ae777660ca7539254dd8c79fc88fa92357fbdb0d45"
         },
         {
           "path": "src/backend/systems/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "240bf4c25bc68446f3a429ab4f7e7b91ed70eefe1ac02b2dd707ecfa9a51a405"
+          "sha256": "2b46ad4704f325c4ce3689557d43ede7232687b4a0ddaa05ab843cce6e9183a4"
+        },
+        {
+          "path": "src/backend/systems/ucpath/driver/transaction-findings-operation.ts",
+          "sha256": "c87ad6a30cac89f290e6001f00374af8a395449d05327b85bd12bddd21fd58bc"
         },
         {
           "path": "src/backend/systems/ucpath/driver/ui-registry.ts",
-          "sha256": "fcb219a07e6388acdeb0c833a0873961b40ff4c717c5ccda61d443867bdd5fba"
+          "sha256": "4275dda6bccc4fa3c7014886b6ae9374b338190d7804230af46854255d9d81f8"
         },
         {
           "path": "src/backend/systems/ucpath/tasks/verify-termination-filing-present.ts",
@@ -18759,11 +19285,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
@@ -23919,7 +24449,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/verify-identity-approval"
     },
     {
-      "fingerprint": "c971922b5409217fe8746a46cc986692145ae62d9e45e25a6bbb7f6791b6a7c8",
+      "fingerprint": "43b865ad99d15fd4a34ce6c928c1c3c4ad64d247060aef4b408d16b1533ddc11",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -24015,11 +24545,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/ui/ucpath-smart-hr-termination.ts",
-          "sha256": "cc7e1696d6bb4cebc95957e4d653cabaed4bcd79ac9a009da358678d38cdb77b"
+          "sha256": "8a0ec4494b1d1491c7788367d232966aaea49ba61dcabfe1c1a48bd45260b8cb"
         },
         {
           "path": "src/models/ui/ucpath-ss-smart-hr.ts",
           "sha256": "3207bbe836668a112dc99ceab9ea7879c5a7be8cba9e22d0129ff48495a74a1c"
+        },
+        {
+          "path": "src/models/ui/ucpath-transaction-findings.ts",
+          "sha256": "03e2082208f5e85c2dee099edcbb2256b3a4b39f2cc8850ee071f957f3f0d9d4"
         },
         {
           "path": "src/models/validation/contract-boundary.ts",
