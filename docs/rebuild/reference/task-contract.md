@@ -358,13 +358,14 @@ Unmatched values remain unmatched.
 
 ### 2.13 UCPath emergency contacts
 
-`contact-tasks.ts` declares complete contact reads, unambiguous addition preparation and fresh
-saved-effect comparison through the one UCPath driver. Preparation binds the earlier observed
-set fingerprint, independently checks displayed EID/name and preserves every existing contact.
-Conflicts and unspecified addresses refuse. Comparison records a four-state observation and
-the complete contact set; it grants no receipt, write probe, Save or retry authority. Candidate
-selectors remain pending live read-only verification. The implementations remain unregistered until the owning workflow
-and executable scenarios exist; they are not advertised by the UCPath store. The pending-binding
+`contact-tasks.ts` declares contracts for complete contact reads, unambiguous addition preparation
+and fresh saved-effect comparison. The single UCPath driver exposes reads and staging through
+the shared contact-set interpreter. Preparation binds the earlier observed set fingerprint,
+independently checks displayed EID/name and preserves every existing contact. Conflicts and
+unspecified addresses refuse. The interpreter compares saved effects as four-state observations;
+it grants no receipt, write probe, Save or retry authority. Candidate selectors remain pending
+live read-only verification. Task implementations and provenance recording await the owning
+workflow and executable scenarios; the UCPath store advertises no contact tasks. The pending-binding
 inventory tracks only contracts referenced by registered descriptors.
 
 ## 3. Task registration

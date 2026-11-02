@@ -192,8 +192,9 @@ registry test read or assert their paths.
 `src/backend/systems/ucpath/driver/contact-page.ts` adapts the standalone contact editor to the
 shared contact-set interpreter and the single UCPath driver. Candidate recipes live in
 `UCPATH_PENDING_CONTACT_RECIPES` outside the verified UI registry; the synthetic contact HTML
-fixture proves adapter behavior, not live selector validity. Read, prepare and comparison tasks
-have no contact Save capability.
+fixture proves adapter behavior, not live selector validity. Contact read, prepare and comparison
+contracts live in `src/models/systems/ucpath/contact-tasks.ts`; task implementations and registration
+await their owning workflow. The driver and comparison interpreter expose no contact Save capability.
 `tests/architecture/systems/fixtures/selector-evidence-bindings.json` owns selector-binding inputs.
 `tests/architecture/dashboard/fixtures/pending-wire-bindings.json` owns dashboard wire exceptions.
 
