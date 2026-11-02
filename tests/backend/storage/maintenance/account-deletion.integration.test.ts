@@ -14,7 +14,7 @@ import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admi
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { AccountDeletionSchema } from "../../../../src/backend/storage/maintenance/account-deletion.js";
+import * as accountDeletion from "../../../../src/backend/storage/maintenance/account-deletion.js";
 import { fixedLayoutEntries } from "../../../../src/backend/storage/maintenance/fixed-layout.js";
 import { ProfileVerifierDocumentSchema } from "../../../../src/models/profiles/profile.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
@@ -87,7 +87,7 @@ for (const change of ["none", "unknown-member"] as const) it(`resumes interrupte
     assert.throws(() => f.runtime.session.deleteLoggedOutAccount(f.operationId)); assert.equal(stopped, true);
     spy.mockRestore(); syncBuiltinESMExports();
     const journal = join(f.workspace, ".tracker", "control", "account-deletion.json");
-    const plan = AccountDeletionSchema.parse(JSON.parse(readFileSync(journal, "utf8"))); assert.equal(plan.pending, true);
+    const plan = accountDeletion.AccountDeletionSchema.parse(JSON.parse(readFileSync(journal, "utf8"))); assert.equal(plan.pending, true);
     assert.throws(() => f.machine.readProfileRegistry(), /account-deletion-pending/u);
     if (change === "unknown-member") {
       const unknown = join(f.root, "unknown.txt"); writeFileSync(unknown, "unowned", { mode: 0o600 });
@@ -102,19 +102,19 @@ for (const change of ["none", "unknown-member"] as const) it(`resumes interrupte
 
 it("serves confirmed account deletion through the guarded dashboard route and signals an empty machine", async () => {
   const f = await fixture();
-  let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
-  onTestFinished(async () => { await application?.stop(); await f.close(); });
+  onTestFinished(() => f.close());
   let deletionError: unknown;
-  const deleteProfileAccount = f.machine.deleteProfileAccount.bind(f.machine);
-  const deletion = vi.spyOn(f.machine, "deleteProfileAccount").mockImplementation((profileId, epoch) => {
-    try { deleteProfileAccount(profileId, epoch); }
+  const resumeAccountDeletion = accountDeletion.resumeAccountDeletion;
+  const deletion = vi.spyOn(accountDeletion, "resumeAccountDeletion").mockImplementation((...args) => {
+    try { resumeAccountDeletion(...args); }
     catch (error) { deletionError = error; throw error; }
   });
   onTestFinished(() => { deletion.mockRestore(); });
   await f.runtime.close();
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
-  application = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation,
+  const application = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation,
     repoRoot: f.workspace, backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+  onTestFinished(() => application.stop());
   const base = `http://127.0.0.1:${application.port}`;
   const post = (path: string, body: unknown, cookie?: string, origin = base) => fetch(`${base}/api/v1/profile/${path}`, {
     method: "POST", headers: { origin, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body),
