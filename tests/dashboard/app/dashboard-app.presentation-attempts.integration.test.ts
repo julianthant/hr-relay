@@ -1,3 +1,5 @@
+import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
+import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -63,10 +65,10 @@ it("shows the selected day's runs by start time and keeps that day when an attem
     },
   };
   window.history.replaceState(null, "", `/?day=${selectedDay}`);
-  localStorage.setItem("hr-dashboard.workflow-panel", "sidebar");
+  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION }) })));
+    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
     const trigger = host.querySelector<HTMLButtonElement>('button[aria-label^="Attempts for"]'); assert.ok(trigger);
     assert.equal(host.querySelectorAll("[data-demo-row-id]").length, 1);
     assert.equal(host.querySelector("[data-demo-row-id]")?.getAttribute("data-demo-row-id"), chronologicalRunIds[chronologicalRunIds.length - 1]);

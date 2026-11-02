@@ -29,7 +29,7 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
     nativePathPicker: createNativePathPicker(),
     settings: { readConfig: () => database.withAuthorityTransaction(repositories => { input.assertCurrent?.(); const result = activeSettingsConfig(repositories); input.assertCurrent?.(); return result; }), descriptors: DESCRIPTORS },
     settingsEditor: {
-      settings: { read: () => database.withAuthorityTransaction(repositories => { input.assertCurrent?.(); const result = { ...reader.read(repositories), activeConfig: selectActiveRunSettings(repositories).config }; input.assertCurrent?.(); return result; }) },
+      settings: { read: () => database.withAuthorityTransaction(repositories => { input.assertCurrent?.(); const result = { ...reader.read(repositories), activeConfig: selectActiveRunSettings(repositories).config, activePreferences: selectActiveRunSettings(repositories).preferences }; input.assertCurrent?.(); return result; }) },
       protectedSettings: createProtectedSettingsRuntimeReader({ read: () => { input.assertCurrent?.(); const result = input.credentials.read(); input.assertCurrent?.(); return result; } }), environment: input.environment, clock,
       resolve: resolveSettings,
     },

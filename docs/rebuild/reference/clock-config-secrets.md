@@ -60,7 +60,7 @@ existing value does not read the host clock.
 ## Configuration resolution
 
 `resolveConfigWithProvenance(settingsInput, hostFacts, clock = systemClock, runtimeStoragePair?)`
-returns `{ config, provenance, fingerprint }`. It has no environment override parameter.
+returns `{ config, provenance, fingerprint, preferences, preferencesFingerprint }`. It has no environment override parameter.
 `SettingsOverrideInputSchema` parses a sparse ordinary settings object, defaulting an omitted input
 to `{}`. `HostConfigFactsSchema` accepts only `{ primaryDisplay: { screenWidth, screenHeight } | null }`.
 The resolver supplies runtime paths and host display defaults, merges ordinary settings, then parses
@@ -70,7 +70,15 @@ Ordinary settings take precedence over defaults. `ConfigProvenanceSchema` contai
 and `default`; provenance describes values and does not control runtime decisions. The resolver
 compares the populated config leaf paths with provenance keys and throws
 `config provenance is not bidirectionally complete` if they differ.
-`fingerprint` is SHA-256 over `canonicalJsonStringify(config)`.
+`fingerprint` is SHA-256 over `canonicalJsonStringify(config)`. Person appearance and shell settings live in the
+strict `preferences` sibling of each canonical snapshot, authenticated by `preferencesFingerprint`.
+Execution configuration, accepted snapshot IDs and run fingerprints do not change when preferences
+change. `person-preferences.ts` owns theme, animations, workflow panel mode/selection and keyboard
+bindings. Sparse `preferences.*` overrides are ordinary person settings with the same command,
+revision and backup coupling as other saved values. The stopped schema-16 conversion adds neutral
+preferences to accepted snapshots and updates initialization schema identities and their exact
+command/audit digests; ordinary snapshot readers require the current fields. No browser preference
+is imported.
 
 `ConfigSchema` has fourteen groups: `actor`, `urls`, `timeouts`, `paths`, `annualDates`, `display`,
 `performance`, `ocr`, `browserHealth`, `browser`, `concurrency`, `daemon`, `features`, and `providers`.
@@ -78,7 +86,7 @@ Every group except `paths` has contract defaults. `ConfigPathsSchema` requires n
 The browser-safe schema imports no Node filesystem implementation. Runtime defaults belong to
 `runtime-paths.ts`, rather than a browser stub or polyfill.
 
-`SETTINGS_CATALOG` is a parsed, recursively frozen 65-row registry. Each row names its `key`,
+`SETTINGS_CATALOG` is a parsed, recursively frozen 74-row registry. Each row names its `key`,
 `schema`, `defaultKind`, `editability`, `sensitivity`, `restartScope`, `sourceClass`, and consumers.
 The active source classes are `ordinary-settings`, `protected-store`, `derived-host`, and
 `runtime-isolation`. The catalog validates source and sensitivity pairings, unique keys, and the

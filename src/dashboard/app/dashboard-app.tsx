@@ -1,3 +1,5 @@
+import { createPersonPreferences, type PersonPreferencesOwner } from "../state/person-preferences-model.js";
+import { PersonPreferencesContext, usePersonPreferences } from "../lib/person-preferences.js";
 import { PreflightOcrContext, createServedPreflightOcrPort } from "../surfaces/settings/preflight/preflight-ocr-model.js";
 import { ChatGptAccountContext, createServedChatGptAccountPort } from "../surfaces/settings/general/chatgpt-account-model.js";
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
@@ -130,8 +132,7 @@ const NO_QUEUE_ROWS: readonly QueueSurfaceWire[] = Object.freeze([]);
 
 
 
-export function DashboardApp({ workflowComposition = productWorkflowComposition, profileSource = "mock" }: { profileSource?: "served" | "mock"; workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
-  useHubMotion();
+export function DashboardApp({ workflowComposition = productWorkflowComposition, profileSource = "mock", previewPreferences }: { previewPreferences?: PersonPreferencesOwner; profileSource?: "served" | "mock"; workflowComposition?: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition }) {
   const profileClient = useDashboardClient();
   const publicProfile = usePublicProfileSession(profileClient, profileSource === "served");
   const session = profileSource === "served" ? publicProfile.state : undefined;
@@ -161,7 +162,13 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
       onboardingProfile.current = undefined; setRoute({ start: false });
     } else if (session?.state === "signed-out") onboardingProfile.current = undefined;
   }, [session, setRoute]);
-  const { theme, toggleTheme } = useDemoTheme();
+  const preferencesMode: Parameters<typeof createPersonPreferences>[0] = profileSource === "mock" ? "preview" : session?.state === "active" && session.duoState === "ready" ? "person" : "signed-out";
+  const preferenceRequest = useMemo(() => ({ client: profileClient, profileId, profileEpoch, mode: preferencesMode }), [profileClient, profileId, profileEpoch, preferencesMode]);
+  const preferences = useMemo(() => preferenceRequest.mode === "preview" && previewPreferences !== undefined ? previewPreferences : createPersonPreferences(preferenceRequest.mode), [preferenceRequest, previewPreferences]);
+  const previousPreferences = useRef(preferences);
+  if (previousPreferences.current !== preferences) { previousPreferences.current.clear(); previousPreferences.current = preferences; }
+  useHubMotion(preferences);
+  const { theme, toggleTheme } = useDemoTheme(preferences);
   const filter = useMemo(() => (route.view?.queueFilter ?? ["all"]) as readonly StatusBucket[], [route.view?.queueFilter]);
   const setFilter = useCallback((next: readonly StatusBucket[]) => setRoute(current => ({ ...current, view: { ...current.view, queueFilter: [...next] } })), [setRoute]);
   const openWells = useMemo(() => new Set(route.view?.queueOpen ?? []), [route.view?.queueOpen]);
@@ -179,7 +186,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   // Radix tooltips need their provider ABOVE every surface that draws one.
   // the theme root sits OUTSIDE both providers so the toast viewport inherits its tokens.
   return (
-    <div
+    <PersonPreferencesContext.Provider value={preferences}><div
       data-app-root=""
       data-demo-theme={theme}
       style={{ "--ds-toast-inset-bottom": "calc(var(--ds-h-bar) + var(--ds-space-loose))" } as CSSProperties}
@@ -210,6 +217,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
         <BootGate bootstrap={bootstrap} />
       ) : (
         <ViewNavigationProvider route={route} setRoute={setRoute}><LoadedApp
+          preferences={preferences}
           boot={boot}
           onProfileLogout={profileSource === "served" ? publicProfile.logout : undefined}
           workflowComposition={workflowComposition}
@@ -237,7 +245,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
     </TooltipProvider>
     </PreflightOcrContext.Provider>
     </ChatGptAccountContext.Provider>
-    </div>
+    </div></PersonPreferencesContext.Provider>
   );
 }
 
@@ -275,6 +283,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
 
 
 interface LoadedAppProps {
+  preferences: PersonPreferencesOwner;
   onProfileLogout?: () => Promise<void>;
   workflowComposition: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition;
   boot: FrontendBootstrapWire;
@@ -302,6 +311,7 @@ interface LoadedAppProps {
 
 
 function LoadedApp({
+  preferences,
   onProfileLogout,
   workflowComposition: composeWorkflows,
   boot,
@@ -435,6 +445,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     if (outcome.kind === "uncertain") unknownWarnings.current.set(outcome.commandId, toastId);
   }, [executor, toast, dismiss]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
+  const currentPreferenceBinding = useRef(commandBinding);
+  currentPreferenceBinding.current = commandBinding;
+  useEffect(() => {
+    const binding = currentPreferenceBinding.current;
+    return preferences.connect(client, { ...binding, scope: commandScope, authority: { ...binding.authority, epoch: authorityEpoch } }, () => currentPreferenceBinding.current);
+  }, [preferences, client, authorityEpoch, commandScope]);
+  const preferenceState = usePersonPreferences();
+  useEffect(() => { if (preferenceState.problem) toast({ tone: "warning", title: "Settings weren't saved", description: preferenceState.problem }); }, [preferenceState.problem, toast]);
   const recoveryEntries: readonly UncertainCommandEntry[] = executor.retainedAttempts().flatMap<UncertainCommandEntry>(attempt => {
     const request = attempt.request;
     if (attempt.state === "pending" && attempt.scope.client === commandScope.client && attempt.scope.authority === commandScope.authority && attempt.scope.dayRequest === commandScope.dayRequest) return [];

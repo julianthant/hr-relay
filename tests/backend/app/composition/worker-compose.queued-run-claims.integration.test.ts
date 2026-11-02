@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import * as privateFiles from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 
 import * as credentialStores from "../../../../src/backend/storage/configuration/credential-store.js";
@@ -69,7 +70,7 @@ function persistJournaledWorkerSettings(
     const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") });
     database.withAuthorityTransaction((repositories) => {
       const configSnapshotId = "55555555-5555-4555-8555-555555555555";
-      repositories.configSnapshots.insert({
+      repositories.configSnapshots.insert({ ...PREFERENCES_SNAPSHOT,
         configSnapshotId,
         revision: record.revision,
         fingerprint: resolved.fingerprint,
@@ -101,7 +102,7 @@ function journalWorkerSettings(
     const resolved = resolveConfigWithProvenance(readSettings(database.authority).settings, hostConfigFacts({}), clock, {
       stateRoot, artifactRoot: join(stateRoot, "artifacts"),
     });
-    database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: readSettings(database.authority).revision,
+    database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: readSettings(database.authority).revision,
       fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(),
       capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
   }

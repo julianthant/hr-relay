@@ -1,3 +1,5 @@
+import { removeSchema16PersonPreferences } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
@@ -61,7 +63,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
       const initial = readBootSettings(repositories);
       assert.equal(repositories.runtimeConfig.get(), undefined);
       const resolved = resolveSettings(initial.settings);
-      repositories.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: initial.revision,
+      repositories.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: initial.revision,
         fingerprint: resolved.fingerprint, capturedAt: systemClock.now().toISOString(), capturedBy: LOCAL_OPERATOR_ACTOR_ID,
         config: resolved.config, provenance: resolved.provenance });
     });
@@ -107,6 +109,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
+    removeSchema16PersonPreferences(raw);
     removeSchema15RunPause(raw);
     if (sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(raw);
     if (sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(raw);

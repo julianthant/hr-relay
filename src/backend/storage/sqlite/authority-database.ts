@@ -1,3 +1,4 @@
+import { convertPersonPreferencesRow, migratePersonPreferences } from "./person-preferences-migration.js";
 import { validateRunContinuation } from "./run-continuation.js";
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
 import type { ChildProcess } from "node:child_process";
@@ -1119,6 +1120,7 @@ function inspectionRunReader(expectedSchemaVersion: number): typeof runRecordFro
 
 function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION): number {
   const readRun = inspectionRunReader(expectedSchemaVersion);
+  const convertPreferences = expectedSchemaVersion < 16 ? convertPersonPreferencesRow : (_table: string, row: unknown) => row;
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of migrationTableNames(expectedSchemaVersion)) {
@@ -1134,7 +1136,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             ...(expectedSchemaVersion >= 7 ? { installation_id: z.uuid(), profile_id: z.uuid() } : {}) }).parse(raw);
           if (row.search_state === "ready" && row.search_generation !== row.authority_generation) throw new Error("search-generation-mismatch");
         } else if (table === "runs") readRun(raw);
-        else if (table === "commands") commandFromRow(raw);
+        else if (table === "commands") commandFromRow(convertPreferences(table, raw));
         else if (table === "run_search") {
           const id = z.object({run_id:z.string()}).parse(raw).run_id;
           const run = readTimelineRun(database,id,readRun);
@@ -1142,7 +1144,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
           runSearchIndexFromRow(raw,run,z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready");
         }
         else if (table === "deleted_runs") deletedRunFromRow(raw);
-        else if (table === "settings") readAppSettings(database);
+        else if (table === "settings") readAppSettings(database, convertPreferences);
         else if (table === "worker_slots") workerSlotFromRow(raw);
         else if (table === "worker_controls") workerControlFromRow(raw);
         else if (table === "browser_sessions") workerBrowserFromRow(raw);
@@ -1159,7 +1161,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
               extractionId: row.id, extraction }) });
           } else extractedArtifactFromRow(raw);
         } else if (isNativeOrdinaryTable(table)) {
-          let inspected = raw;
+          let inspected = convertPreferences(table, raw);
           if (table === "run_requests" && expectedSchemaVersion < 6) {
             const row = z.object({ payload_json: z.string() }).parse(raw);
             const payload = z.record(z.string(), z.unknown()).parse(JSON.parse(row.payload_json));
@@ -1192,8 +1194,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             const audit = NativeCommandAuditSchema.parse(record);
             authenticateStoredResolutionAudit(database,audit);
             const commandRow = database.prepare("SELECT * FROM commands WHERE id=?").get(audit.request.commandId);
-            if (commandRow === undefined || canonicalJsonStringify(commandFromRow(commandRow)) !== canonicalJsonStringify(audit.request)
-              || z.object({outcome_json:z.string()}).parse(commandRow).outcome_json !== canonicalJsonStringify(audit)) throw new Error("command-audit-settlement-mismatch");
+            if (commandRow === undefined || canonicalJsonStringify(commandFromRow(convertPreferences("commands", commandRow))) !== canonicalJsonStringify(audit.request)
+              || z.object({outcome_json:z.string()}).parse(convertPreferences("commands", commandRow)).outcome_json !== canonicalJsonStringify(audit)) throw new Error("command-audit-settlement-mismatch");
           }
         } else throw new Error("native row admission is undefined");
       } catch (error) { throw new Error(`authority table ${table} failed native record validation: ${errorMessage(error)}`,{cause:error}); }
@@ -1204,7 +1206,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
     && database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' ORDER BY rowid DESC LIMIT 1) WHERE ?<11 OR mode IS NULL OR mode NOT IN ('before-submits','without-asking')").get(expectedSchemaVersion) !== undefined) throw new Error("assistant-grant-missing-with-history");
   if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13);
   if (expectedSchemaVersion >= 9) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
-  try{readAppSettings(database);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
+  try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
   return validated;
 }
 
@@ -1391,7 +1393,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   const tables = expectedSchemaVersion < 10 ? z.array(z.union([currentTables.element,
     z.strictObject({ name: z.literal("explorer_overrides"), classification: z.literal("authority") }),
   ])) : currentTables;
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -1475,6 +1477,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
             .run(binding.installationId, binding.profileId);
         }
         database.exec(statement);
+        if (migration.version === 16 && index === 2) migratePersonPreferences(database);
       }
     }
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(CURRENT_AUTHORITY_SCHEMA_VERSION);

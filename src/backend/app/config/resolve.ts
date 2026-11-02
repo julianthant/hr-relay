@@ -15,6 +15,7 @@ SettingsOverrideInputSchema,
 type Config,
 type SettingsOverride,
 } from "../../../models/config/schema.js";
+import { PersonPreferencesSchema, resolvePersonPreferences, derivePersonPreferencesFingerprint } from "../../../models/config/person-preferences.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { systemClock } from "../../../rules/time/clock.js";
@@ -25,6 +26,8 @@ export { ConfigLeafPathSchema,ConfigProvenanceSchema,configLeafPaths } from "../
 export type { ConfigLeafPath,ConfigProvenance } from "../../../models/config/provenance.js";
 export const ResolvedConfigSchema = z.strictObject({
   config: ConfigSchema,
+  preferences: PersonPreferencesSchema,
+  preferencesFingerprint: FingerprintSchema,
   /** Provenance is explanatory metadata, never runtime decision input. */
   provenance: z.record(ConfigLeafPathSchema, ConfigProvenanceSchema),
   fingerprint: FingerprintSchema,
@@ -76,7 +79,7 @@ function mergeAnnualDates(
   return Object.fromEntries(entries);
 }
 
-type SettingsOverrideByConfigGroup = Exclude<keyof SettingsOverride, keyof Config> extends never
+type SettingsOverrideByConfigGroup = Exclude<keyof SettingsOverride, keyof Config | "preferences"> extends never
   ? { readonly [Group in keyof Config]: Group extends keyof SettingsOverride ? SettingsOverride[Group] : never }
   : never;
 
@@ -159,7 +162,8 @@ function resolveInternal(settingsInput: unknown, hostFactsInput: HostConfigFacts
   const fingerprint = FingerprintSchema.parse(
     createHash("sha256").update(canonicalJsonStringify(config)).digest("hex"),
   );
-  return ResolvedConfigSchema.parse({ config, provenance, fingerprint });
+  const preferences = resolvePersonPreferences(settings.preferences);
+  return ResolvedConfigSchema.parse({ config, provenance, fingerprint, preferences, preferencesFingerprint: derivePersonPreferencesFingerprint(preferences) });
 }
 
 /** Ordinary document > host/contract defaults. No environment override parameter exists. */

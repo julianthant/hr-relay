@@ -1,3 +1,5 @@
+import { createPersonPreferences } from "../../../../src/dashboard/state/person-preferences-model.js";
+import { PersonPreferencesContext } from "../../../../src/dashboard/lib/person-preferences.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -8,10 +10,11 @@ import { useSelectedWorkflow } from "../../../../src/dashboard/surfaces/shell/sh
 it("clears an unavailable selection on catalog replacement without selecting a substitute", async () => {
   Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
   localStorage.clear();
+  const preferences = createPersonPreferences("preview");
   const seen: ReturnType<typeof useSelectedWorkflow>[] = [];
   function Probe({ workflows }: { workflows: readonly { id: string }[] }) { seen.push(useSelectedWorkflow(workflows)); return null; }
   const root = createRoot(document.createElement("div"));
-  const render = async (ids: string[]) => { await act(async () => root.render(createElement(Probe, { workflows: ids.map(id => ({ id })) }))); };
+  const render = async (ids: string[]) => { await act(async () => root.render(createElement(PersonPreferencesContext.Provider, { value: preferences, children: createElement(Probe, { workflows: ids.map(id => ({ id })) }) }))); };
   try {
     await render(["a", "b"]);
     const preference = localStorage.getItem("hr-dashboard.selected-workflow");
@@ -23,7 +26,7 @@ it("clears an unavailable selection on catalog replacement without selecting a s
     const start = seen.length;
     await render(["a"]);
     assert.ok(seen.slice(start).every(value => value.selectedWorkflowId === ""));
-    assert.equal(localStorage.getItem("hr-dashboard.selected-workflow"), "");
+    assert.equal(localStorage.getItem("hr-dashboard.selected-workflow"), null);
     await render(["a", "b"]);
     assert.equal(seen.at(-1)?.selectedWorkflowId, "");
     assert.equal(seen.at(-1)?.canSelectWorkflowId("b"), true);

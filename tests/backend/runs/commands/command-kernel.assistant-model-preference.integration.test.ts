@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from '../../../../src/backend/storage/sqlite/authority-database.js';
@@ -49,7 +50,7 @@ async function harness(prepare?: CommandKernelDependencies["prepareAssistantMode
       assert.equal(repositories.runtimeConfig.get(), undefined);
       const resolved = resolveConfigWithProvenance(initial.settings, { primaryDisplay: null }, clock,
         { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot });
-      repositories.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: initial.revision,
+      repositories.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: initial.revision,
         fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(), capturedBy: LOCAL_OPERATOR_ACTOR_ID,
         config: resolved.config, provenance: resolved.provenance });
     });

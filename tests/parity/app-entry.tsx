@@ -1,4 +1,7 @@
 /// <reference types="vite/client" />
+import { createPersonPreferences } from "../../src/dashboard/state/person-preferences-model.js";
+import { PersonPreferencesContext } from "../../src/dashboard/lib/person-preferences.js";
+import { NEUTRAL_PERSON_PREFERENCES } from "../../src/models/config/person-preferences.js";
 import { ChatGptAccountContext, createServedChatGptAccountPort } from "../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
 import { lazy, StrictMode, Suspense, type ComponentType } from "react";
 import { createRoot } from "react-dom/client";
@@ -20,7 +23,9 @@ const composition = fixture === "hub-served"
   : fixture === "hub-integration"
   ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), spreadsheets: "served" as const })
   : PARITY_WORKFLOW_COMPOSITION;
+const theme = Reflect.get(window, "relayParityTheme");
+const preferences = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: theme === "light" ? "light" : "dark", animations: Reflect.get(window, "relayParityMotion") !== false });
 const accountPort = createServedChatGptAccountPort(client, { open: () => ({ navigate: () => undefined, close: () => undefined }) });
-createRoot(container).render(ControlPreview ? <Suspense fallback={<p role="status">Loading control preview…</p>}><ControlPreview /></Suspense> : <StrictMode><DashboardClientProvider client={client}>
-  <ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={composition} /></ChatGptAccountContext.Provider>
-</DashboardClientProvider></StrictMode>);
+createRoot(container).render(<PersonPreferencesContext.Provider value={preferences}>{ControlPreview ? <Suspense fallback={<p role="status">Loading control preview…</p>}><ControlPreview /></Suspense> : <StrictMode><DashboardClientProvider client={client}>
+  <ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={composition} previewPreferences={preferences} /></ChatGptAccountContext.Provider>
+</DashboardClientProvider></StrictMode>}</PersonPreferencesContext.Provider>);

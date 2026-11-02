@@ -1,3 +1,4 @@
+import { derivePersonPreferencesFingerprint, resolvePersonPreferences } from "../../../models/config/person-preferences.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { AppSettingsSchema, type AppSettings } from "../../../models/config/app-settings.js";
@@ -25,7 +26,7 @@ export function authenticateSavedSettings(currentInput:unknown,commandInput:unkn
   return {command,audit,result};
 }
 
-export function readAppSettings(database: DatabaseSync): AppSettings | undefined {
+export function readAppSettings(database: DatabaseSync, convertRow: (table: string, row: unknown) => unknown = (_table, row) => row): AppSettings | undefined {
   const raw = database.prepare("SELECT * FROM settings WHERE id='current'").get();
   if (raw === undefined) {
     const history=database.prepare("SELECT 1 FROM commands WHERE family='settings' OR json_extract(request_json,'$.kind')='settings-initialization' LIMIT 1").get();
@@ -33,7 +34,7 @@ export function readAppSettings(database: DatabaseSync): AppSettings | undefined
     return undefined;
   }
   const row = z.strictObject({ id: z.literal("current"), revision: z.number().int().positive(), snapshot_id: z.string(),
-    command_id: z.string(), audit_id: z.string(), payload_json: z.string(), updated_at: z.string() }).parse(raw);
+    command_id: z.string(), audit_id: z.string(), payload_json: z.string(), updated_at: z.string() }).parse(convertRow("settings", raw));
   const record = AppSettingsSchema.parse(JSON.parse(row.payload_json));
   const revision = record.saved?.revision ?? 1;
   const commandId = record.saved?.commandId ?? record.initialization.commandId;
@@ -44,10 +45,10 @@ export function readAppSettings(database: DatabaseSync): AppSettings | undefined
     || row.snapshot_id !== snapshotId || row.updated_at !== updatedAt) throw new Error("settings-row-identity-mismatch");
   const initialCommandRow = database.prepare("SELECT * FROM commands WHERE id=?").get(record.initialization.commandId);
   if (initialCommandRow === undefined) throw new Error("settings-initialization-command-missing");
-  const initialCommand = commandFromRow(initialCommandRow);
+  const initialCommand = commandFromRow(convertRow("commands", initialCommandRow));
   const initialAuditRow = database.prepare("SELECT * FROM command_audits WHERE id=?").get(record.initialization.auditId);
   if (initialAuditRow === undefined) throw new Error("settings-initialization-audit-missing");
-  const audit = SettingsInitializationAuditSchema.parse(nativeOrdinaryRecordFromRow("command_audits",initialAuditRow));
+  const audit = SettingsInitializationAuditSchema.parse(nativeOrdinaryRecordFromRow("command_audits",convertRow("command_audits", initialAuditRow)));
   if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(initialCommand)
     || canonicalJsonStringify({ commandId: audit.request.commandId, auditId: audit.auditId,
       configSnapshotId: audit.request.configSnapshotId, configFingerprint: audit.request.configFingerprint,
@@ -58,12 +59,16 @@ export function readAppSettings(database: DatabaseSync): AppSettings | undefined
     const savedCommandRow=database.prepare("SELECT * FROM commands WHERE id=?").get(record.saved.commandId);
     const savedAuditRow=database.prepare("SELECT * FROM command_audits WHERE id=?").get(record.saved.auditId);
     if(savedCommandRow===undefined || savedAuditRow===undefined)throw new Error("settings-current-command-audit-missing");
-    authenticateSavedSettings(record.saved,commandFromRow(savedCommandRow),nativeOrdinaryRecordFromRow("command_audits",savedAuditRow));
+    authenticateSavedSettings(record.saved,commandFromRow(convertRow("commands", savedCommandRow)),nativeOrdinaryRecordFromRow("command_audits",convertRow("command_audits", savedAuditRow)));
   }
   const snapshotRaw = database.prepare("SELECT payload_json FROM settings_snapshots WHERE id=?").get(snapshotId);
   if (snapshotRaw === undefined) throw new Error("settings-snapshot-missing");
-  const snapshot = ConfigSnapshotRecordSchema.parse(JSON.parse(z.strictObject({ payload_json: z.string() }).parse(snapshotRaw).payload_json));
+  const snapshot = ConfigSnapshotRecordSchema.parse(JSON.parse(z.strictObject({ payload_json: z.string() }).parse(convertRow("settings_snapshots", snapshotRaw)).payload_json));
   if (snapshot.configSnapshotId !== snapshotId || snapshot.fingerprint !== (record.active?.configFingerprint ?? record.initialization.configFingerprint)) throw new Error("settings-snapshot-binding-mismatch");
+  if ((record.active?.settingsRevision ?? 1) === revision
+    && snapshot.preferencesFingerprint !== derivePersonPreferencesFingerprint(resolvePersonPreferences(record.saved?.settings.preferences))) {
+    throw new Error("settings-snapshot-preferences-mismatch");
+  }
   return record;
 }
 export function writeAppSettings(database: DatabaseSync, input: AppSettings): void {

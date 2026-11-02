@@ -21975,7 +21975,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination-filing-present"
     },
     {
-      "fingerprint": "edbb37cd3f1466e0f4b99e2474a84add79843193069368824897ede8362e790d",
+      "fingerprint": "869a5a8d063d78149214fcbedde6e2e5c3e2edb61b21e9701adc5fe9f8f144ef",
       "sources": [
         {
           "path": "src/backend/processing/workbooks/tasks/read-result.ts",
@@ -21987,7 +21987,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "6e8a9a4a7a561aa1811cc389c853a850c379c4027350a73edf53a713ca102800"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -21995,7 +21999,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "6bff9b072860fd811f1daf5607e2855a765ea8a6aa45fba365c1e2eec87eede7"
+          "sha256": "c6c172e59f7b9e6ad49c1d0a23e4fc5ea2d76fc1fff9851857d2bec9ef0e2448"
         },
         {
           "path": "src/models/config/secret-names.ts",

@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../phase1c-contract-fixtures.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -31,7 +32,7 @@ export function retainedHistoricalData(f: { databasePath: string; profileRoot: s
     const config = schemaVersion === 6 ? { ...resolved.config, paths: { ...resolved.config.paths,
       reportsDir: join(workspace, "data", "reports"), downloadsDir: join(workspace, "data", "downloads"),
       onboardingDocsDir: join(workspace, "data", "onboarding"), i9CheckTrackerPath: join(workspace, "data", "reports", "i9-check-tracker.xlsx") } } : resolved.config;
-    const snapshot = ConfigSnapshotRecordSchema.parse({ configSnapshotId: randomUUID(), revision: 1, fingerprint: createHash("sha256").update(canonicalJsonStringify(config)).digest("hex"),
+    const snapshot = ConfigSnapshotRecordSchema.parse({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: 1, fingerprint: createHash("sha256").update(canonicalJsonStringify(config)).digest("hex"),
       capturedAt: at, capturedBy: "local-operator", config, provenance: resolved.provenance });
     raw.prepare("INSERT INTO settings_snapshots (id,revision,fingerprint,payload_json,captured_at) VALUES (?,?,?,?,?)")
       .run(snapshot.configSnapshotId, snapshot.revision, snapshot.fingerprint, canonicalJsonStringify(snapshot), snapshot.capturedAt);

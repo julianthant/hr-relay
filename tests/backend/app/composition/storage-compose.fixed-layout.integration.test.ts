@@ -1,3 +1,5 @@
+import { removeSchema16PersonPreferences } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
@@ -42,7 +44,7 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 |
   try {
     database.withAuthorityTransaction(repositories => {
       const initial = resolve({});
-      repositories.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1, fingerprint: initial.fingerprint,
+      repositories.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: 1, fingerprint: initial.fingerprint,
         config: initial.config, provenance: initial.provenance, capturedAt: now, capturedBy: LOCAL_OPERATOR_ACTOR_ID });
       const settings = { actor: { label: "Retained layout operator" }, paths: { reportsDir: join(profile.workspace, "chosen-reports"),
         ...(explicitBrowserRoot ? { browserProfileRoot: join(profile.stateRoot, "browsers") } : {}) } };
@@ -54,7 +56,7 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 |
       const resolved = resolve(settings), configSnapshotId = randomUUID(), settingsFingerprint = derivePersistedSettingsFingerprint(settings), auditId = randomUUID();
       const target = { family: "settings", revision: 2 };
       repositories.commands.insert(request);
-      repositories.configSnapshots.insert({ configSnapshotId, revision: 2, fingerprint: resolved.fingerprint, config: resolved.config,
+      repositories.configSnapshots.insert({ ...PREFERENCES_SNAPSHOT, configSnapshotId, revision: 2, fingerprint: resolved.fingerprint, config: resolved.config,
         provenance: resolved.provenance, capturedAt: now, capturedBy: LOCAL_OPERATOR_ACTOR_ID });
       repositories.runtimeConfig.activate({ settingsRevision: 2, settingsFingerprint, configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: now });
       repositories.commandAudits.insert({ auditId, request, completedAt: now, result: { state: "applied", commandId: request.commandId,
@@ -81,6 +83,7 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 |
       const native = new DatabaseSync(profile.path);
       try {
         native.exec("BEGIN EXCLUSIVE");
+        removeSchema16PersonPreferences(native);
         removeSchema15RunPause(native);
         if (sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(native);
         if (sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(native);
@@ -223,6 +226,7 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     const source = new DatabaseSync(profile.path);
     try {
       source.exec("BEGIN EXCLUSIVE");
+      removeSchema16PersonPreferences(source);
       removeSchema15RunPause(source);
       removeEmptyExclusiveSessionLeaseFixture(source);
       restoreEmptyPreMasterWorkbookFixture(source);

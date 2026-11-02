@@ -30,15 +30,12 @@ export interface A11ySnapshotSource {
 }
 
 
-const DEMO_THEME_STORAGE_KEY = "rebuild-demo.theme";
 
 
 export async function installTheme(page: Page, theme: ParityTheme): Promise<void> {
   await page.addInitScript(
-    ([key, attribute]) => {
-      window.localStorage.setItem(String(key), String(attribute));
-    },
-    [DEMO_THEME_STORAGE_KEY, theme.attribute] as const,
+    attribute => { Reflect.set(window, "relayParityTheme", attribute); },
+    theme.attribute,
   );
 }
 

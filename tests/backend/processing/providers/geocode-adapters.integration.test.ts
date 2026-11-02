@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { fork,type ChildProcess } from "node:child_process";
@@ -48,7 +49,7 @@ it("spaces actual owned fetch starts across process workers and config snapshots
   const answer = GeocodeOutcomeSchema.parse(first.response.value.value); assert.equal(answer.state === "resolved" && answer.street, "1 Test Road");
   const config = ConfigSchema.parse({ paths: defaultRuntimePaths() });
   const snapshotClient = (timeoutMs: number) => {
-    const id = randomUUID(); const selectedConfig = { ...config, providers: { ...config.providers, geocodeNominatim: { timeoutMs } } }; const snapshot = { configSnapshotId: id, revision: 1, fingerprint: sha256Hex(canonicalJsonStringify(selectedConfig)), config: selectedConfig, provenance: {}, capturedAt: IsoInstantSchema.parse(systemClock.now().toISOString()), capturedBy: "local-operator" };
+    const id = randomUUID(); const selectedConfig = { ...config, providers: { ...config.providers, geocodeNominatim: { timeoutMs } } }; const snapshot = { ...PREFERENCES_SNAPSHOT, configSnapshotId: id, revision: 1, fingerprint: sha256Hex(canonicalJsonStringify(selectedConfig)), config: selectedConfig, provenance: {}, capturedAt: IsoInstantSchema.parse(systemClock.now().toISOString()), capturedBy: "local-operator" };
     return createProviderClient("geocode.nominatim", { execution: { runId: randomUUID(), attempt: 1, nodeId: "contact", taskId: "normalization/read-contact-advice" }, configSnapshotId: id, configFingerprint: snapshot.fingerprint, configSnapshot: snapshot, adapters: { "geocode.nominatim": owner }, clock: systemClock, idFactory: { next: randomUUID }, runSignal: new AbortController().signal, deadlineScheduler: { schedule(deadline, fire) { const timer = setTimeout(fire, Math.max(0, deadline - performance.now())); return { cancel: () => clearTimeout(timer) }; } } });
   };
   const a = child(owner); const b = child(owner); await Promise.all([message(a, "ready"), message(b, "ready")]);
