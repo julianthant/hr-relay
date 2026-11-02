@@ -539,6 +539,10 @@ export class RuntimeAdmission {
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
     this.lifetime.assertRuntimeAvailable();
   }
+  deleteProfileAccount(profileId: string, epoch: number): void {
+    this.#assertMachineRuntime();
+    (this.#authority as InstallationLease).deleteProfileAccount(profileId, epoch);
+  }
   abortUnpublishedProfile(operation: SignUpOperation, head?: { device: number; inode: number; digest: string }): boolean {
     this.#assertMachineRuntime();
     return (this.#authority as InstallationLease).abortUnpublishedProfile(operation, head);

@@ -57,3 +57,15 @@ it("accepts an explicitly confirmed software ceremony without inventing portal a
   value = { ...draft, methods: { ...draft.methods, touch: { ...method, portalAccepted: false } } };
   await assert.rejects(client.readProfileSession());
 });
+
+it("requires explicit confirmation for account deletion and carries empty-machine guidance", async () => {
+  const calls: { path: string; body: unknown }[] = [];
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async (url, init) => {
+    calls.push({ path: new URL(url).pathname, body: JSON.parse(z.string().parse(init?.body)) });
+    return Response.json({ state: "signed-out", signUpRequired: true });
+  } });
+  await assert.rejects(client.deleteProfileAccount({ confirmed: false } as unknown as { confirmed: true }));
+  assert.equal(calls.length, 0);
+  assert.deepEqual(await client.deleteProfileAccount({ confirmed: true }), { state: "signed-out", signUpRequired: true });
+  assert.deepEqual(calls, [{ path: "/api/v1/profile/delete-account", body: { confirmed: true } }]);
+});

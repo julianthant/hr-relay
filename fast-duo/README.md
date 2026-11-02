@@ -33,7 +33,10 @@ before success. Closing setup clears that state.
 
 Enrollment binds the exact account, tab, frame, document, Duo origin and RP ID.
 Software registration waits for backend persistence and ceremony acknowledgments.
-Native Touch ID passes through with software interception disabled. A captured
+Native Touch ID passes through with software interception disabled. When a successful platform
+probe reports no authenticator, or the host is not macOS, Relay uses Chromium’s virtual internal authenticator
+and retains its key in canonical encrypted custody. A failed probe or native ceremony
+never triggers an emulated retry. A captured
 key becomes usable only after the required confirmation or exact credential
 request; an uncertain enrollment must not be repeated.
 
