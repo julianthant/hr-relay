@@ -1069,10 +1069,6 @@ async function composeDashboardRuntimeStartup(
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       try { await profile.runtime.close(); }
       catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
-      if (input.applicationTransport === undefined) {
-        try { machineAdmission.release(); await backupRegisteredPeopleAtCleanShutdown(installation.workspace, input.lifetimeLock, hostConfigFacts(env), clock); }
-        catch (error) { throw new RuntimeCustodyUncertainError([...failures, error]); }
-      }
     },
   });
 }
