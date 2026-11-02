@@ -17777,7 +17777,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workbooks/read-result"
     },
     {
-      "fingerprint": "a1c7446cd1dcadbe3f1c36fa4c3a479e6d63d7b7ee481363c59635dc85f9a636",
+      "fingerprint": "567a5da01fb8c5f39a7cf604cfb9f5cb6a598710ee36bb0c03b86bebdfeced2b",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -17965,7 +17965,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/i9-check/retention.ts",
-          "sha256": "86018b9a0c68e474af232c53ae6952596622db64bc94c1ca940eb2755abbca8d"
+          "sha256": "03aebf97bf638b922577b87b437246136b3edd592e203303433aec556553cc3a"
         },
         {
           "path": "src/rules/identity/ids.ts",
@@ -18035,7 +18035,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:i9-check/read-match-outcome"
     },
     {
-      "fingerprint": "2bc88c90272b0caba4123f0cc5bdb7fa9ea248f50bb70d78668e52a31cec2445",
+      "fingerprint": "d2d02dc126ff923bcb02c9d7c72f6b75f3000e4adba7e75ea980ae98b81dd79a",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -18223,7 +18223,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/i9-check/retention.ts",
-          "sha256": "86018b9a0c68e474af232c53ae6952596622db64bc94c1ca940eb2755abbca8d"
+          "sha256": "03aebf97bf638b922577b87b437246136b3edd592e203303433aec556553cc3a"
         },
         {
           "path": "src/rules/identity/ids.ts",

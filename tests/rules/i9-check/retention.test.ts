@@ -55,6 +55,13 @@ describe("I-9 identity and retention", () => {
     const input = I9CheckInput.parse({ ...i9CheckInput, roster: { seed: { ppsEid: "12345" }, rows: ["10000002", "10000003"].map(eid => ({ ...i9CheckInput.roster.rows[0], eid })) } });
     expect(() => row(input)).toThrow(/multiple employees/u);
   });
+  it("compares same-date PPS identities consistently while preserving the source padding", () => {
+    const original = i9CheckInput.roster.rows[0];
+    const equivalent = I9CheckInput.parse({ ...i9CheckInput, roster: { rows: [original, { ...original, ppsEid: "12345" }] } });
+    expect(row(equivalent).row).toMatchObject({ ppsEid: "000012345", action: "Keep" });
+    const conflict = I9CheckInput.parse({ ...i9CheckInput, roster: { rows: [original, { ...original, ppsEid: "12346" }] } });
+    expect(() => row(conflict)).toThrow(/disagree on the PPS ID/u);
+  });
   it.each([["2026-10-31", "Keep"], ["2026-11-01", "Keep"], ["2026-11-02", "Shred"]])("applies the five-year boundary on %s", (asOf, action) => {
     const result = row(I9CheckInput.parse({ ...i9CheckInput, asOf })).row;
     expect(result.action).toBe(action);

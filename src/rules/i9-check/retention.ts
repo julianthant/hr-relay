@@ -37,19 +37,21 @@ function lookupIdentity({ input, initial, search }: z.output<typeof ReadRetentio
   return { status: "found", eid: hit.emplId, name: hit.name };
 }
 
+const normalizePpsEid = (value: string): string => value.replace(/^0+(?=\d)/u, "");
+
 function rosterEvidence(input: I9CheckInputValue, identity: I9Identity) {
   const seed = input.roster.seed;
   let rows = identity.status === "found" ? input.roster.rows.filter(row => row.eid === identity.eid) : [];
   if (identity.status === "found" && rows.length === 0 && seed?.ppsEid !== undefined) {
-    const pps = seed.ppsEid.replace(/^0+(?=\d)/u, "");
-    rows = input.roster.rows.filter(row => row.ppsEid.replace(/^0+(?=\d)/u, "") === pps);
+    const pps = normalizePpsEid(seed.ppsEid);
+    rows = input.roster.rows.filter(row => normalizePpsEid(row.ppsEid) === pps);
     if (new Set(rows.map(row => row.eid)).size > 1) throw new Error("I-9 PPS roster match names multiple employees");
   }
   const terminations = rows.filter(row => /^(?:ter|termination)$/iu.test(row.action));
   const pool = terminations.length > 0 ? terminations : rows;
   const sorted = [...pool].sort((a, b) => (b.separationDate ?? "").localeCompare(a.separationDate ?? ""));
   const row = sorted[0];
-  if (row !== undefined && sorted.some(other => other.separationDate === row.separationDate && other.ppsEid !== row.ppsEid)) {
+  if (row !== undefined && sorted.some(other => other.separationDate === row.separationDate && normalizePpsEid(other.ppsEid) !== normalizePpsEid(row.ppsEid))) {
     throw new Error("I-9 roster rows disagree on the PPS ID");
   }
   return row === undefined ? { ppsEid: seed?.ppsEid ?? "", separationDate: seed?.separationDate ?? null }
