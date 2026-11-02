@@ -1435,3 +1435,27 @@ export const UCPATH_PENDING_READ_RECIPES = Object.freeze(z.strictObject({
   results: 'table[id^="l0PERSON$"] span[id^="EMPLID$"]', dialog: '[id="#ICOK"]', dialogMessage: "[id^=ptModContainer], [id^=ptMod], [role=dialog], .ps-modal", nextResult: 'a[id*="hnext"], a[id*="PSNEXT"]', mask: "#pt_modalMask, .ps_modalmask",
   startDate: '[id="PER_INST_EMP_VW_LAST_HIRE_DT$0"]', terminationDate: '[id="PER_INST_EMP_VW_TERMINATION_DT$0"]', terminationReason: '[id="PER_INST_EMP_VW_DESCR$0"]',
 }));
+
+// Candidate recipes remain outside the verified registry until live read-only acceptance.
+export const UCPATH_PENDING_CONTACT_RECIPES = deepFreeze({
+  status: "pending-live-verification",
+  path: "/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1",
+  displayedEid: "#PERSON_NPC_VW_EMPLID",
+  displayedName: "#PERSON_NAME_NAME",
+  names: 'input[id^="EMERGENCY_CNTCT_CONTACT_NAME$"]',
+  viewToggle: '[id="$ICField2$hviewall$0"]',
+  counter: '[id="$ICField2$hrow$0"]',
+  busy: "#WAIT_win0",
+  rowFields: {
+    name: "EMERGENCY_CNTCT_CONTACT_NAME",
+    relationship: "EMERGENCY_CNTCT_RELATIONSHIP",
+    primary: "EMERGENCY_CNTCT_PRIMARY_CONTACT",
+    phone: "EMERGENCY_CNTCT_PHONE",
+    sameAddressAsEmployee: "EMERGENCY_CNTCT_SAME_ADDRESS_EMPL",
+    editAddress: "DERIVED_ADDR_UPDATE_ADDRESS",
+  },
+  addressFields: [
+    ["address1", "Address 1"], ["address2", "Address 2"], ["city", "City"],
+    ["state", "State"], ["postalCode", "Postal"], ["country", "Country"],
+  ] as const,
+});
