@@ -211,7 +211,7 @@ The WebAuthn counter belongs to the credential across sessions. `duo-credential-
 reserves `max(highWater + 1, nowSec)` in its existing encrypted native publication transaction.
 `duo-signing.ts` then produces the Node ECDSA assertion. Failed signing, unknown publication and
 crashes never refund a request ID or count. Signup uses the exact draft scope; ready workflow
-sessions use genuine machine/profile admissions. Standalone Fast Duo retains its local signer.
+sessions use genuine machine/profile admissions. Fast Duo uses the backend signer for both paths.
 
 `fast-duo-extension.ts` stages an allowlisted runtime under the owned browser profile.
 Signup uses `relay-manifest.json`; workflow sessions use `workflow-manifest.json` and the
