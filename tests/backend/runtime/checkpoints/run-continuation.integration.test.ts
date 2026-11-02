@@ -9,9 +9,33 @@ import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/check
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { selectRunRuntime } from "../../../../src/backend/runs/settings/run-settings.js";
 import { randomUUID } from "node:crypto";
+import { mappedReadDescriptor } from "../../../support/fixtures/rerun-values-fixtures.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 
 const cleanups: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); });
+
+it("continues a paused and resumed run through ordinary gate resolution without reexecuting its completed read", async () => {
+  const h = await sourceBoundHarness(mappedReadDescriptor(undefined, { gate: true }), sourceBoundReadStores); cleanups.push(h.dispose);
+  let run = h.start(h.proposal());
+  run = requireLifecycleApplied(h.lifecycle.pause({ commandId: h.ids.uuid(), runId: run.envelope.runId, expectedVersion: run.version }));
+  run = requireLifecycleApplied(h.lifecycle.resumePaused({ commandId: h.ids.uuid(), runId: run.envelope.runId, expectedVersion: run.version }));
+  assert.equal(run.envelope.startAt, undefined);
+  assert.equal((await h.execute(run)).state, "parked-gate");
+  run = h.fresh(run);
+  assert.equal(run.lifecycle.state, "parked-gate");
+  const gate = descriptorRuntimeNodes(h.descriptor).find(node => node.id === "approval"); assert.ok(gate?.kind === "gate");
+  const resolved = h.kernel.execute({ commandId: h.ids.uuid(), family: "gate", type: "resolve-gate", requestedBy: "local-operator",
+    source: "dashboard", requestedAt: h.clock.now().toISOString(),
+    target: { runId: run.envelope.runId, gateId: "approval", expectedVersion: run.version },
+    payload: { result: { schemaHash: deriveSchemaHash(gate.result, "output"), value: { approved: true } } } });
+  assert.equal(resolved.state, "applied", JSON.stringify(resolved));
+  run = h.fresh(run);
+  assert.equal(run.envelope.startAt, "approval");
+  assert.equal((await h.execute(run)).state, "done");
+  assert.deepEqual(h.world.events, ["read:absent"]);
+});
 
 it("reuses a completed always-rerun task after downstream failure and does not invoke it again", async () => {
   const h = await sourceBoundHarness(failedSourceReadDescriptor, world => sourceBoundReadStores(world, 2)); cleanups.push(h.dispose);
