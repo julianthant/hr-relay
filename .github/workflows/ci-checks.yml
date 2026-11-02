@@ -297,7 +297,7 @@ jobs:
   unit:
     name: unit
     needs: [changes, ubuntu, macos]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Require the selected suite's runner jobs
@@ -317,7 +317,7 @@ jobs:
   integration:
     name: integration
     needs: [changes, ubuntu, macos]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Require the selected suite's runner jobs
@@ -337,7 +337,7 @@ jobs:
   architecture:
     name: architecture
     needs: [changes, ubuntu]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Require the selected suite's runner jobs
@@ -357,7 +357,7 @@ jobs:
   parity:
     name: parity
     needs: [changes, macos]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Require the selected suite's runner jobs

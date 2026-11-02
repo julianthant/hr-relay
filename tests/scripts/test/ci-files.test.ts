@@ -1,3 +1,8 @@
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { balance, durationsFromReports, MACOS_FILES, SERIAL_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
 
@@ -44,8 +49,28 @@ describe("CI file selection", () => {
   });
 
   it("gives untimed files work even when the committed timings round to zero", () => {
-    const shards = [1, 2, 3].map(job => selectCiFiles(integration, "integration", "ubuntu", job, 3, { [portable[0]!]: 0 }));
+    const shards = [1, 2, 3].map(job => selectCiFiles(integration, "integration", "ubuntu", job, 3, { [portable[0]]: 0 }));
     expect(shards.every(files => files.length > 0)).toBe(true);
     expect(shards.flat().sort()).toEqual(portable);
+  });
+
+  it("refuses corrupt downloaded weights before changing the timing map", () => {
+    const root = mkdtempSync(join(tmpdir(), "relay-ci-timings-"));
+    try {
+      mkdirSync(join(root, "scripts/test"), { recursive: true });
+      mkdirSync(join(root, "reports"));
+      const path = join(root, "scripts/test/ci-durations.json");
+      const invalid = JSON.stringify({ "tests/x.test.ts": "invalid" });
+      writeFileSync(path, invalid);
+      const result = spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"),
+        fileURLToPath(new URL("../../../scripts/test/ci-files.ts", import.meta.url)), "durations", "reports"],
+      { cwd: root, encoding: "utf8" });
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("ZodError");
+      expect(readFileSync(path, "utf8")).toBe(invalid);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
