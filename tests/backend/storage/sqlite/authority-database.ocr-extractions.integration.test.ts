@@ -5,6 +5,16 @@ import { createAuthorityAccountingTestWorld } from "../../../support/helpers/bac
 import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";
 import { bindOcrPageReading } from "../../../../src/models/workflows/ocr/page-accounting.js";
 import { ItemIdSchema } from "../../../../src/rules/identity/ids.js";
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createDiagnosticCaptureService } from "../../../../src/backend/logs/diagnostics/diagnostic-capture.js";
+import { operatorRequestedCapture } from "../../../../src/backend/logs/diagnostics/run-diagnostic-capture.js";
+import { buildOcrSourceManifest, ocrPageInputs } from "../../../../src/models/workflows/ocr/source-manifest.js";
+import { trustWorld } from "../../../support/helpers/backend/trust-authority-fixture.js";
+import { insertUnboundOcrExtraction } from "../../../support/fixtures/storage/ocr-extractions.js";
+import { containsDeletionArtifactReference } from "../../../../src/backend/storage/sqlite/native-run-deletion.js";
 
 const world = createAuthorityAccountingTestWorld();
 afterEach(world.cleanup);
@@ -50,3 +60,52 @@ it("blocks native overwrite, replacement and deletion while retaining exact sour
   } finally { raw.close(); }
   assert.deepEqual(database.authority.ocrExtractions.get(reading.extractionId), { ...reading, binding: "source-bound" });
 });
+
+for (const binding of ["unbound-source", "source-bound"] as const) {
+  it.each(["expiry", "run deletion"] as const)(`retains ${binding} OCR source bytes through %s while removing unrelated bytes`, async cleanup => {
+    const w = await trustWorld();
+    try {
+      const run = w.create(830), terminal = w.cancel(run, 831);
+      const artifacts = createContentAddressedArtifactWriter({ admission: w.profile.admission });
+      const sourceBytes = Buffer.from("synthetic retained OCR image");
+      const image = await artifacts.put(sourceBytes, { mediaType: "image/png" });
+      const document = await artifacts.put(Buffer.from("synthetic original OCR document"), { mediaType: "application/pdf" });
+      const input = ocrPageInputs(buildOcrSourceManifest(document, { pageCount: 1, pages: [{ sourcePage: 1, image }] }), sourceFixture(1).inputs[0].readingId)[0];
+      const reading = donePage(input).output;
+      const raw = new DatabaseSync(w.profile.path);
+      let stored;
+      try { stored = binding === "source-bound" ? w.database.authority.ocrExtractions.insert(reading).record
+        : insertUnboundOcrExtraction(raw, reading.extraction); }
+      finally { raw.close(); }
+      assert.equal(containsDeletionArtifactReference(stored, image), true);
+      if (stored.binding === "unbound-source") {
+        const { sourceSha256: _source, ...withoutSource } = stored.extraction;
+        assert.equal(containsDeletionArtifactReference({ ...stored, extraction: withoutSource }, image), false);
+        assert.equal(containsDeletionArtifactReference(stored, document), false);
+      }
+      const sourcePath = join(w.profile.admission.artifactRoot, `${image.sha256}.artifact`);
+      const before = readFileSync(sourcePath);
+      const service = createDiagnosticCaptureService({ authority: w.database.authority, artifacts, clock: w.world.clock,
+        ids: { uuid: randomUUID }, retentionDays: 1 });
+      const capture = (bytes: Uint8Array) => operatorRequestedCapture({ service, runId: run.envelope.runId,
+        configFingerprint: "a".repeat(64), descriptorFingerprint: "b".repeat(64), fields: [],
+        attachments: [{ kind: "screenshot", mediaType: "image/png", sensitivity: "restricted", width: 1, height: 1, bytes }] });
+      const shared = await capture(sourceBytes), unrelated = await capture(Buffer.from("unreferenced OCR diagnostic"));
+      assert.equal(shared.attachments[0]?.digest, image.sha256);
+      if (cleanup === "expiry") {
+        const result = w.database.sweepOrdinaryDiagnostics(new Date(w.world.clock.nowMs() + 2 * 86_400_000).toISOString());
+        assert.deepEqual([...result.purged].sort(), [shared.bundleId, unrelated.bundleId].sort());
+        assert.equal(result.retainedBytes, sourceBytes.length);
+      } else {
+        assert.equal(w.service.delete({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: terminal.version }).state, "deleted");
+        assert.equal(w.database.authority.runs.get(run.envelope.runId), undefined);
+      }
+      assert.deepEqual(readFileSync(sourcePath), before);
+      assert.equal(existsSync(join(w.profile.admission.artifactRoot, `${unrelated.attachments[0]?.digest}.artifact`)), false);
+      assert.deepEqual(w.database.authority.ocrExtractions.get(stored.extractionId), stored);
+      const stream = await artifacts.open(image), chunks: Uint8Array[] = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      assert.deepEqual(Buffer.concat(chunks), sourceBytes);
+    } finally { await w.dispose(); }
+  });
+}

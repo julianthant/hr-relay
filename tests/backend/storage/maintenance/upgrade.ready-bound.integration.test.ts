@@ -2,6 +2,7 @@ import { removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from 
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
 import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";
+import { corruptLegacyOcrExtraction, historicalOcrExtractions, insertUnboundOcrExtraction } from "../../../support/fixtures/storage/ocr-extractions.js";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { copyFileSync,existsSync,mkdirSync,readFileSync,readdirSync,renameSync,rmdirSync,writeFileSync } from "node:fs";
@@ -117,11 +118,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     }
     if (sourceVersion < 9) raw.exec("DROP TABLE assistant_model_preference");
     if (extractionEvidence) {
-      const extraction = donePage(sourceFixture(1).inputs[0]).output.extraction;
-      const id = `${extraction.sourceSha256}#${extraction.sourcePage}#${extraction.formType}`;
-      raw.prepare(`INSERT INTO artifacts (id,kind,version,form_type,source_sha256,source_page,page_kind,page_fingerprint,source_kind,payload_json,created_at)
-        VALUES (?,'extracted',1,?,?,?,?,?,?,?,?)`).run(id, extraction.formType, extraction.sourceSha256, extraction.sourcePage,
-        extraction.pageKind, extraction.pageFingerprint, extraction.source.kind, JSON.stringify(sourceVersion < 12 ? extraction : { binding: 'unbound-source', extractionId: id, extraction }), extraction.readAt);
+      for (const extraction of historicalOcrExtractions()) insertUnboundOcrExtraction(raw, extraction, sourceVersion < 12);
     }
     if (sourceVersion < 12) restorePreReadingArtifactRetention(raw);
     raw.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(sourceVersion);
@@ -535,7 +532,7 @@ it("backs up schema-11 extraction evidence before conversion and retains both so
     const extraction = donePage(sourceFixture(1).inputs[0]).output.extraction;
     const id = `${extraction.sourceSha256}#${extraction.sourcePage}#${extraction.formType}`;
     const before = rawEight(f.path).artifacts;
-    assert.equal(before?.length, 1);
+    assert.equal(before?.length, historicalOcrExtractions().length);
     await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock);
     const restore = f.acquireRestore();
     try {
@@ -558,18 +555,43 @@ it("backs up schema-11 extraction evidence before conversion and retains both so
         undefined, undefined, undefined, credentials);
       try {
         assert.deepEqual(database.authority.ocrExtractions.get(id), { binding: "unbound-source", extractionId: id, extraction });
+        for (const retained of historicalOcrExtractions()) {
+          const extractionId = `${retained.sourceSha256}#${retained.sourcePage}#${retained.formType}`;
+          assert.deepEqual(database.authority.ocrExtractions.get(extractionId), { binding: "unbound-source", extractionId, extraction: retained });
+        }
         const reading = donePage(sourceFixture(1).inputs[0]).output;
         assert.equal(database.authority.ocrExtractions.insert(reading).state, "inserted");
         assert.deepEqual(database.authority.ocrExtractions.findBySource(extraction.sourceSha256).map(record => record.binding).sort(),
-          ["source-bound", "unbound-source"]);
+          ["source-bound", ...historicalOcrExtractions().map(() => "unbound-source")]);
       } finally { database.close(); }
     } finally { admission.release(); }
     const restarted = f.machine.admitProfile(f.claim);
     try {
       const database = AuthorityDatabase.open(restarted, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
         undefined, undefined, undefined, createCredentialStore({ admission: restarted, stateRoot: f.stateRoot }));
-      try { assert.equal(database.authority.ocrExtractions.findBySource(extraction.sourceSha256).length, 2); }
+      try { assert.equal(database.authority.ocrExtractions.findBySource(extraction.sourceSha256).length, historicalOcrExtractions().length + 1); }
       finally { database.close(); }
     } finally { restarted.release(); }
+  } finally { await f.close(); }
+});
+
+it.each(["artifact-id", "source-column", "payload"] as const)("refuses a stopped schema-11 OCR upgrade with malformed %s without changing source bytes or identity", async fault => {
+  const f = await readyBoundEight("idle", 11, true);
+  try {
+    const raw = new DatabaseSync(f.path);
+    try { corruptLegacyOcrExtraction(raw, fault); } finally { raw.close(); }
+    const rows = rawEight(f.path), sourceBytes = readFileSync(f.path);
+    const before = storageTree(f.stateRoot), machineBefore = storageTree(join(f.machine.stateRoot, "machine"));
+    await assert.rejects(upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock),
+      /authority table artifacts failed native record validation/u);
+    assert.deepEqual(rawEight(f.path), rows);
+    assert.deepEqual(readFileSync(f.path), sourceBytes);
+    assert.deepEqual(storageTree(f.stateRoot), before);
+    assert.deepEqual(storageTree(join(f.machine.stateRoot, "machine")), machineBefore);
+    const unchanged = new DatabaseSync(f.path, { readOnly: true });
+    try {
+      assert.equal(unchanged.prepare("PRAGMA user_version").get()?.user_version, 11);
+      assert.equal(unchanged.prepare("SELECT schema_version FROM database_states").get()?.schema_version, 11);
+    } finally { unchanged.close(); }
   } finally { await f.close(); }
 });
