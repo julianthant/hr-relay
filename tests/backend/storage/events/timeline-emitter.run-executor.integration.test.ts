@@ -57,6 +57,7 @@ describe("failure, retry, and resume", () => {
     const retryEnvelope = retryRun.envelope as Record<string, unknown>;
     retryEnvelope.runId = UUID_5;
     retryEnvelope.retryOf = RUN_ID;
+    assert.equal(retryEnvelope.continuation, undefined, "this raw retryOf fixture has no authenticated continuation");
     database.authority.runs.enqueue(retryRun);
     const { workerId, workerLifetime } = testWorkerLifetime(database, WORKFLOW_ID, 1);
     const reclaimed = database.authority.runs.claimNext({
