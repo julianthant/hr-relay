@@ -75,6 +75,16 @@ it("regenerates a generated file deleted by the PR and modified by staging", () 
   });
 });
 
+it("merges on a fresh runner without a configured Git identity", () => {
+  fixture(false, (root, _head, staging) => {
+    execFileSync("git", ["config", "user.name", ""], { cwd: root });
+    execFileSync("git", ["config", "user.email", ""], { cwd: root });
+    assert.equal(mergeGeneratedConflicts(root, staging, checkout => {
+      writeFileSync(join(checkout, manifest), "regenerated combined manifest\n");
+    }), true);
+  });
+});
+
 it("propagates generator failures and refuses unexpected authored output", () => {
   fixture(false, (root, _head, staging) => {
     assert.throws(() => mergeGeneratedConflicts(root, staging, () => { throw new Error("generator failed"); }), /generator failed/u);
