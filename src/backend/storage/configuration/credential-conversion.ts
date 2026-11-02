@@ -138,12 +138,35 @@ function decryptSource(metadata: Readonly<{ nonce: string; tag: string; cipherte
   return decodeSource(Buffer.concat([decipher.update(ciphertext), decipher.final()]));
 }
 
+function readStoppedCredentialKey(source: Extract<ReturnType<typeof requireStoppedControlProfileInventory>, { credentialFormat: "legacy" }>) {
+  const keyPath = join(source.machineRoot, "machine", "credential-keys", `${source.binding.profileId}.json`);
+  const keyFile = sourceFile(keyPath, undefined, 4096), raw = decodeSource(keyFile.bytes);
+  const inline = StoppedInlineKey.safeParse(raw), metadata = StoppedNativeKey.safeParse(raw);
+  const identity = inline.success ? inline.data : metadata.success ? metadata.data : undefined;
+  if (identity === undefined || identity.installationId !== source.binding.installationId || identity.profileId !== source.binding.profileId
+    || identity.keyId !== source.key.keyId) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
+  const keyDocument = inline.success ? inline.data : metadata.success ? credentialKeyCustody.read({ schemaVersion: 2,
+    installationId: metadata.data.installationId, profileId: metadata.data.profileId, keyId: metadata.data.keyId, keyDigest: metadata.data.keyDigest }) : undefined;
+  if (keyDocument === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
+  const key = Buffer.from(keyDocument.key, "base64");
+  if (key.length !== 32 || key.toString("base64") !== keyDocument.key) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
+  if (inline.success) {
+    try { credentialKeyCustody.read({ schemaVersion: 2, ...source.binding, keyId: identity.keyId, keyDigest: sourceHash(key) }); }
+    catch (error) { if (!(error instanceof CredentialKeyCustodyError) || error.code !== "CREDENTIAL_KEYCHAIN_MISSING") throw error; }
+  }
+  const witnessedDigest = metadata.success && metadata.data.legacyWitness === true ? sourceHash(encodePrivate(keyDocument)) : sourceHash(keyFile.bytes);
+  if (keyFile.identity.device !== source.key.file.device || keyFile.identity.inode !== source.key.file.inode
+    || witnessedDigest !== source.key.file.digest) throw new Error("profile-control-upgrade-credential-source-changed");
+  return { key, identity, keyDocument };
+}
+
 export function assertStoppedCredentialSourceFormat(claim: StoppedControlProfileInventory): void {
   const source = requireStoppedControlProfileInventory(claim);
   source.assertHeld();
   if (source.credentialFormat !== "legacy") return;
   try { ProtectedEnvelope.parse(decodeSource(sourceFile(join(source.stateRoot, "credentials", "protected.json")).bytes)); }
   catch (error) { throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED", { cause: error }); }
+  readStoppedCredentialKey(source);
 }
 
 export function inspectStoppedCredentialSource(admission: RuntimeAdmission, claim: StoppedControlProfileInventory) {
@@ -156,25 +179,8 @@ export function inspectStoppedCredentialSource(admission: RuntimeAdmission, clai
       DuoCredentialFileSchema.parse(decodeSource(legacyDuo.bytes));
       throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_COUNTER_UNPROVED");
     }
-    const keyPath = join(source.machineRoot, "machine", "credential-keys", `${claim.profileId}.json`),
-      journalPath = join(source.machineRoot, "machine", "erasures", `${claim.profileId}.json`);
-    const keyFile = sourceFile(keyPath, undefined, 4096), raw = decodeSource(keyFile.bytes);
-    const inline = StoppedInlineKey.safeParse(raw), metadata = StoppedNativeKey.safeParse(raw);
-    const identity = inline.success ? inline.data : metadata.success ? metadata.data : undefined;
-    if (identity === undefined || identity.installationId !== source.binding.installationId || identity.profileId !== source.binding.profileId
-      || identity.keyId !== source.key.keyId) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-    const keyDocument = inline.success ? inline.data : metadata.success ? credentialKeyCustody.read({ schemaVersion: 2,
-      installationId: metadata.data.installationId, profileId: metadata.data.profileId, keyId: metadata.data.keyId, keyDigest: metadata.data.keyDigest }) : undefined;
-    if (keyDocument === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-    const key = Buffer.from(keyDocument.key, "base64");
-    if (key.length !== 32 || key.toString("base64") !== keyDocument.key) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-    if (inline.success) {
-      try { credentialKeyCustody.read({ schemaVersion: 2, ...source.binding, keyId: identity.keyId, keyDigest: sourceHash(key) }); }
-      catch (error) { if (!(error instanceof CredentialKeyCustodyError) || error.code !== "CREDENTIAL_KEYCHAIN_MISSING") throw error; }
-    }
-    const witnessedDigest = metadata.success && metadata.data.legacyWitness === true ? sourceHash(encodePrivate(keyDocument)) : sourceHash(keyFile.bytes);
-    if (keyFile.identity.device !== source.key.file.device || keyFile.identity.inode !== source.key.file.inode
-      || witnessedDigest !== source.key.file.digest) throw new Error("profile-control-upgrade-credential-source-changed");
+    const { key, identity, keyDocument } = readStoppedCredentialKey(source);
+    const journalPath = join(source.machineRoot, "machine", "erasures", `${claim.profileId}.json`);
     let erased: string[] = [], retired: string[] = [];
     if (source.head.state === "never-erased") {
       if (readPrivateFile(journalPath, { label: "lock", maxBytes: 64_000 }) !== undefined
