@@ -1,7 +1,8 @@
 import { useDeferredValue, useMemo, useState, type RefObject } from 'react';
 import { useViewState } from '../../app/navigation/view-route-model.js';
 import { Banner, Button, Checkbox, ChoicePicker, Dialog, DialogBody, DialogContent, DialogFooter, SearchInput, Select } from '../../ds/ui.js';
-import { cellText, columnName, type EditableSheet, type EditableWorkbook } from './spreadsheet-editor-model.js';
+import { columnName } from './spreadsheet-editor-model.js';
+import { cellText, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { setSpreadsheetColumnField, setSpreadsheetHeaderRow, spreadsheetColumnErrors, spreadsheetColumnValueErrors, spreadsheetColumnValueIssues, spreadsheetHeaderRow } from './spreadsheet-column-import-model.js';
 import { SPREADSHEET_FIELDS, spreadsheetField } from './spreadsheet-fields-model.js';
 import '../run-start/launch-presentation.css';

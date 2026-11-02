@@ -20,6 +20,41 @@
       "binding": "route:GET /artifacts/v1/:artifactId",
       "direction": "served-unconsumed",
       "note": "The route is served, but no mounted dashboard consumer invokes it."
+    },
+    {
+      "binding": "route:GET /api/v1/workbooks/types",
+      "direction": "served-unconsumed",
+      "note": "Queued Spreadsheets library wiring will supply spreadsheet-library.tsx type rows and type choices from served library.types rather than its mock producer."
+    },
+    {
+      "binding": "route:POST /api/v1/workbooks/types",
+      "direction": "served-unconsumed",
+      "note": "Queued Spreadsheets library wiring will connect spreadsheet-library.tsx Create type and Edit type callbacks to the served type command."
+    },
+    {
+      "binding": "route:GET /api/v1/workbooks/:libraryId/metadata",
+      "direction": "served-unconsumed",
+      "note": "Queued Spreadsheets workbook wiring will load the selected workbook type and SharePoint link for its library/editor state; backend-first library work leaves these served metadata unconsumed."
+    },
+    {
+      "binding": "route:GET /api/v1/workbooks/:libraryId/versions",
+      "direction": "served-unconsumed",
+      "note": "Queued Spreadsheets Versions wiring will supply spreadsheet-versions.tsx with served manual named versions and migration provenance instead of the current history presentation producer."
+    },
+    {
+      "binding": "route:GET /api/v1/workbooks/:libraryId/changes",
+      "direction": "served-unconsumed",
+      "note": "Queued Spreadsheets change-log wiring will read the selected master operation journal to show run and Sync source, keyed cells, old/new values and resolution state; this backend-first API has no mounted journal consumer yet."
+    },
+    {
+      "binding": "route:POST /api/v1/workbooks/:libraryId/operations",
+      "direction": "served-unconsumed",
+      "note": "Queued Spreadsheets workbook command wiring will dispatch operator manual named-version and metadata changes through the typed dashboard client; the backend-first command has no mounted consumer yet."
+    },
+    {
+      "binding": "route:POST /api/v1/workbooks/:libraryId/sync",
+      "direction": "served-unconsumed",
+      "note": "Queued Spreadsheets manual Sync wiring will dispatch the selected workbook SharePoint refresh through the typed dashboard client; the backend-first API has no mounted Sync consumer yet."
     }
   ]
 }

@@ -1,9 +1,10 @@
-import Excel_m1 from 'exceljs';
+import { Workbook, writeXlsx } from '@shbernal/ts-xlsx';
 import { default as assert_m0,default as assert_m1,default as assert_m2,default as assert_m3 } from 'node:assert/strict';
 import { readFileSync as readFileSync_m1 } from 'node:fs';
 import { afterEach as afterEach_m2,describe as describe_m1,describe as describe_m2,it as it_m0,it as it_m1,it as it_m2,it as it_m3 } from 'vitest';
 import { prepareSpreadsheetColumns as prepareSpreadsheetColumns_m2,selectSpreadsheetColumns as selectSpreadsheetColumns_m2,setSpreadsheetColumnField as setSpreadsheetColumnField_m2 } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.js';
-import { addSpreadsheetColumn as addSpreadsheetColumn_m2,cellDisplayText as cellDisplayText_m0,cellText as cellText_m0,cellText as cellText_m1,editSpreadsheetCell as editSpreadsheetCell_m1,editSpreadsheetCell as editSpreadsheetCell_m2,importSpreadsheet as importSpreadsheet_m1,newEditableWorkbook as newEditableWorkbook_m1,newEditableWorkbook as newEditableWorkbook_m2,readSpreadsheetField as readSpreadsheetField_m2,sortSpreadsheet as sortSpreadsheet_m1,spreadsheetCellProblem as spreadsheetCellProblem_m2,spreadsheetColor as spreadsheetColor_m1,spreadsheetCsv as spreadsheetCsv_m1,spreadsheetForeground as spreadsheetForeground_m3,spreadsheetXlsx as spreadsheetXlsx_m1,updateSpreadsheetFields as updateSpreadsheetFields_m2,type EditableWorkbook as EditableWorkbook_m2 } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { addSpreadsheetColumn as addSpreadsheetColumn_m2, cellDisplayText as cellDisplayText_m0, editSpreadsheetCell as editSpreadsheetCell_m1, editSpreadsheetCell as editSpreadsheetCell_m2, newEditableWorkbook as newEditableWorkbook_m1, newEditableWorkbook as newEditableWorkbook_m2, readSpreadsheetField as readSpreadsheetField_m2, sortSpreadsheet as sortSpreadsheet_m1, spreadsheetCellProblem as spreadsheetCellProblem_m2, spreadsheetForeground as spreadsheetForeground_m3, updateSpreadsheetFields as updateSpreadsheetFields_m2 } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { cellText as cellText_m0, cellText as cellText_m1, importWorkbook as importSpreadsheet_m1, spreadsheetColor as spreadsheetColor_m1, writeWorkbookCsv as spreadsheetCsv_m1, writeWorkbookXlsx as spreadsheetXlsx_m1, type EditableWorkbook as EditableWorkbook_m2 } from '../../../../src/rules/spreadsheets/workbook-io.js';
 import { registeredSpreadsheetWorkbook as registeredSpreadsheetWorkbook_m2,registerLocalSpreadsheet as registerLocalSpreadsheet_m2,resetSpreadsheetMocks as resetSpreadsheetMocks_m2,resetSpreadsheetMocks as resetSpreadsheetMocks_m3,retainSpreadsheetCopy as retainSpreadsheetCopy_m2,searchMockSpreadsheet as searchMockSpreadsheet_m2 } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js';
 
 
@@ -40,8 +41,8 @@ describe_m1('XLSX / CSV editor round trips', () => {
   it_m1('imports color-filtered Excel tables with all records, fills and other sheets intact', async () => {
     const source = bytes(readFileSync_m1(new URL('../../../support/fixtures/spreadsheet/color-filtered-roster.xlsx', import.meta.url)));
     const original = new Uint8Array(source).slice();
-    await assert_m1.rejects(new Excel_m1.Workbook().xlsx.load(source), /Unexpected xml node in parseOpen.*colorFilter/u);
     const document = await importSpreadsheet_m1('color-filtered-roster.xlsx', source);
+    assert_m1.equal(document.unsupportedMetadata, true);
     assert_m1.deepEqual(document.sheets.map(sheet => sheet.name), ['Roster', 'Notes']);
     const roster = document.sheets[0];
     assert_m1.deepEqual(roster.rows.map(row => row.cells.map(cell => cell.value)), [
@@ -76,13 +77,13 @@ describe_m1('XLSX / CSV editor round trips', () => {
     assert_m1.equal(document.sheets[0].rows[1].cells[2].value, 'Line one\nLine two');
   });
   it_m1('retains RGB, theme and indexed fills after sort/edit/XLSX export, across sheets', async () => {
-    const original = new Excel_m1.Workbook(), sheet = original.addWorksheet('People');
+    const original = new Workbook(), sheet = original.addWorksheet('People');
     sheet.addRows([['Name', 'ID', 'Notes'], ['Zoe', '00002', 'last'], ['Alex', '00001', 'first']]);
     sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB7D7F0' } };
-    sheet.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: 0.4 } as Partial<Excel_m1.Color> };
-    sheet.getCell('A3').fill = { type: 'pattern', pattern: 'solid', fgColor: { indexed: 3 } as Partial<Excel_m1.Color> };
+    sheet.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: 0.4 } };
+    sheet.getCell('A3').fill = { type: 'pattern', pattern: 'solid', fgColor: { indexed: 3 } };
     original.addWorksheet('Other').getCell('B2').value = 'Keep';
-    const source = bytes(await original.xlsx.writeBuffer() as unknown as Uint8Array);
+    const source = bytes(writeXlsx(original));
     const document = await importSpreadsheet_m1('source.xlsx', source);
     assert_m1.equal(document.sheets[0].rows[0].cells[0].background, '#b7d7f0');
     assert_m1.equal(document.sheets[0].rows[2].cells[0].background, '#00ff00');
@@ -107,9 +108,9 @@ describe_m1('XLSX / CSV editor round trips', () => {
     assert_m1.equal(exported.sheets[0].width, 2); assert_m1.equal(exported.sheets[0].rows.length, 2);
   });
   it_m1('shows stored formula results and emits value copies, never formula recalculation', async () => {
-    const original = new Excel_m1.Workbook(), sheet = original.addWorksheet('Values');
+    const original = new Workbook(), sheet = original.addWorksheet('Values');
     sheet.getCell('A1').value = 'Total'; sheet.getCell('A2').value = { formula: '1+2', result: 3 };
-    const document = await importSpreadsheet_m1('formula.xlsx', bytes(await original.xlsx.writeBuffer() as unknown as Uint8Array));
+    const document = await importSpreadsheet_m1('formula.xlsx', bytes(writeXlsx(original)));
     assert_m1.equal(document.hasFormulas, true); assert_m1.equal(document.sheets[0].rows[1].cells[0].value, 3);
     const exported = await importSpreadsheet_m1('copy.xlsx', await spreadsheetXlsx_m1(document));
     assert_m1.equal(exported.hasFormulas, false); assert_m1.equal(exported.sheets[0].rows[1].cells[0].value, 3);

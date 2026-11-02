@@ -87,7 +87,7 @@ Paths in this table are relative to `src/backend/`.
 | `systems/ui-task-links.ts` | Explorer task attribution from system registries. |
 | `transports/cli/` | CLI dispatch and command handling. |
 | `transports/http/` | Dashboard HTTP routes, request schemas, and SSE subscriptions. |
-| `workbooks/` | Saved workbook library: validated workbook records, versions and history over its SQLite repository. |
+| `workbooks/` | Typed workbook library: one mutable master, ordered durable keyed writes, cell ownership, operation receipts, manual named versions, immutable creation proofs and reference snapshots. Manual Sync uses an explicit authenticated download port; its production driver is unavailable. |
 | `workbooks/workflow-workbook-service.ts` | Creates one new table workbook per run through the admitted library repository. The `workbooks.library` provider is composed in `app/composition/worker/run-resources.ts`; the original saved record supplies replay proof. |
 
 ### Dashboard and shared packages
@@ -232,3 +232,5 @@ Workflow execution uses the signed-in dashboard Run and its canonical start-plan
 ### Assistant model preference
 
 `src/models/dashboard/assistant.ts` owns the profile preference record. `src/backend/storage/sqlite/assistant-model-preference.ts` owns its authenticated singleton and command/audit history checks. The existing command kernel and command service own the operator-only asynchronous preparation boundary and compare-and-swap mutation; account/composition preparation is required before that command becomes available.
+
+`src/rules/spreadsheets/workbook-io.ts` owns shared library XLSX/CSV IO, structural admission, retained cell metadata and deterministic intake export through `@shbernal/ts-xlsx`. Imported formulas or metadata outside the editable model mark the workbook for named master-edit refusal. The dashboard editor owns editing/rendering behavior and consumes this browser-safe boundary.

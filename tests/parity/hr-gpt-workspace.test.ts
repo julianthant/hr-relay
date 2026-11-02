@@ -1,6 +1,6 @@
 
 import { readFile } from 'node:fs/promises';
-import Excel from 'exceljs';
+import { Workbook, readXlsx, writeXlsx } from '@shbernal/ts-xlsx';
 import { expect } from '@playwright/test';
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from './helpers/bundle.js';
@@ -216,9 +216,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(settings.getByRole('navigation', { name: 'Breadcrumb', exact: true })).toContainText('26–27 Student applicants.xlsx');
       await settings.getByRole('navigation', { name: 'Breadcrumb', exact: true }).getByRole('button', { name: 'Spreadsheets', exact: true }).click();
       await expect(library).toBeVisible();
-      const original = new Excel.Workbook(), sheet = original.addWorksheet('People'); sheet.addRows([['Name', 'ID', 'Department'], ['Zoe', '10000002', 'Services'], ['Alex', '10000001', 'Payroll']]);
+      const original = new Workbook(), sheet = original.addWorksheet('People'); sheet.addRows([['Name', 'ID', 'Department'], ['Zoe', '10000002', 'Services'], ['Alex', '10000001', 'Payroll']]);
       sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB7D7F0' } }; sheet.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE699' } }; sheet.getCell('A3').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6E0B4' } };
-      const source = Buffer.from(await original.xlsx.writeBuffer());
+      const source = Buffer.from(writeXlsx(original));
       await settings.locator('input[type=file]').setInputFiles({ name: 'People.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: source });
       const importColumns = page.getByRole('dialog', { name: 'Choose spreadsheet columns', exact: true });
       await expect(importColumns).toBeVisible();
@@ -239,7 +239,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       for (const format of ['xlsx', 'csv'] as const) {
         await settings.getByRole('button', { name: 'Export copy', exact: true }).click(); const downloaded = page.waitForEvent('download'); await page.getByRole('menuitem', { name: format === 'xlsx' ? 'Excel workbook (.xlsx)' : 'Current sheet (.csv)', exact: true }).click();
         const download = await downloaded; expect(download.suggestedFilename()).toBe(`People-edited.${format}`); const data = await readFile((await download.path()));
-        if (format === 'xlsx') { const exported = new Excel.Workbook(); await exported.xlsx.load(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)); expect(exported.worksheets[0].getCell('A2').value).toBe('Alex edited'); expect(exported.worksheets[0].getCell('A2').fill).toEqual(sheet.getCell('A3').fill); expect(exported.worksheets[0].getCell('C1').value).toBe('Notes'); }
+        if (format === 'xlsx') { const exported = readXlsx(data); expect(exported.worksheets[0].getCell('A2').value).toBe('Alex edited'); expect(exported.worksheets[0].getCell('A2').fill).toEqual(sheet.getCell('A3').fill); expect(exported.worksheets[0].getCell('C1').value).toBe('Notes'); }
         else { expect(data.toString()).toContain('Name,ID,Notes'); expect(data.toString()).toContain('Alex edited,10000001,'); expect(data.toString()).toContain('New person,,'); }
       }
       await expect(settings.getByText(/1 sheet · Edited copy/)).toBeVisible();
