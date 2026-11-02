@@ -21,14 +21,14 @@ const subject = {
 const freshness = { defaultMaxAgeMs: 0, defaultOverride: "forbidden" } as const;
 const provenance = { default: "live" } as const;
 const scenarios = ["emergency-contact/unambiguous-addition", "emergency-contact/exact-existing-effect", "emergency-contact/conflict-refused"];
-const example = {
+const example = UcpathContactReadOutputSchema.parse({
   contacts: {
     pageStateId: "ucpath.emergency-contact.editor-ready", emplId: "10000001", displayedName: "Example, Alex",
     observation: "persisted", viewAll: "already-complete", rowCount: 1,
     rows: [{ kind: "blank", rowIndex: 0, primary: false, sameAddressAsEmployee: false }],
     observedAt: "2026-11-01T12:00:00.000Z",
   },
-};
+});
 
 export const UcpathReadEmergencyContacts = defineTaskContract({
   id: taskId("ucpath/read-emergency-contacts"), title: "Read Emergency Contacts", effect: "read",
