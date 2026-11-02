@@ -2,7 +2,7 @@ import { Entry } from "@napi-rs/keyring";
 import { runCredentialSourceRetentionCase } from "../../../support/helpers/credential-source-retention.js";
 import assert from "node:assert/strict";
 import nativeCrypto, { createHmac, generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
-import fs, { chmodSync, existsSync, linkSync, lstatSync, readFileSync, readdirSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import fs, { chmodSync, existsSync, linkSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -209,8 +209,9 @@ it("fails closed at a monotonically prepared uint32 boundary without changing th
 
 it("burns a real inherited process allocation when that process exits before releasing its runtime", async () => {
   const w = await fixture(false, true);
+  let restarted: RuntimeLifetimeLock | undefined, machine: ReturnType<typeof acquireEntrypointAdmission> | undefined, admission: ReturnType<typeof w.f.machine.admitProfile> | undefined;
   try {
-    const run = (request: string, mode: string) => runInheritedRuntimeChild(w.f.lifetime, new URL("../../../support/processes/duo-credential-worker.ts", import.meta.url),
+    const run = (request: string, mode: string) => runInheritedRuntimeChild(restarted ?? w.f.lifetime, new URL("../../../support/processes/duo-credential-worker.ts", import.meta.url),
       [w.f.workspace, w.profileId, w.input.credentialId, request, mode], { env: credentialKeychainTestEnvironment(process.env) });
     const [first, peer] = await Promise.all([run("first independent process", "close"), run("concurrent independent process", "close")]);
     assert.equal(peer.status, 0); assert.equal(peer.signal, null); assert.equal(peer.stderr, "");
@@ -227,10 +228,19 @@ it("burns a real inherited process allocation when that process exits before rel
     assert.throws(() => w.owner.reserveDuoCounter(w.input.credentialId, "dead process reservation"), { code: "CREDENTIAL_CONFLICT" });
     const interrupted = await run("head rename process death", "crash-head");
     assert.equal(interrupted.status, 97); assert.equal(interrupted.signal, null); assert.equal(interrupted.stdout, ""); assert.equal(interrupted.stderr, "");
-    assert.throws(() => w.owner.reserveDuoCounter(w.input.credentialId, "head rename process death"), { code: "CREDENTIAL_CONFLICT" });
+    const durable = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(w.headPath, "utf8")));
+    assert.equal(durable.counters.find(row => row.credentialId === w.input.credentialId)?.count, c.count + 1);
+    await w.f.closeController();
+    restarted = await RuntimeLifetimeLock.acquire(0);
+    machine = acquireEntrypointAdmission(w.f.workspace, "exclusive", restarted);
+    signInBoundProfileFixture(machine); machine.release();
+    machine = acquireEntrypointAdmission(w.f.workspace, "shared", restarted);
+    admission = machine.admitProfile(w.profileId);
+    const reopened = createCanonicalCredentials(admission);
+    assert.throws(() => reopened.reserveDuoCounter(w.input.credentialId, "head rename process death"), { code: "CREDENTIAL_CONFLICT" });
     const recovered = await run("after head rename process death", "close"); assert.equal(recovered.status, 0); assert.equal(recovered.signal, null); assert.equal(recovered.stderr, "");
     assert.equal((JSON.parse(recovered.stdout) as { count: number }).count, c.count + 2);
-  } finally { await w.f.close(); }
+  } finally { admission?.release(); machine?.release(); await restarted?.close(); await w.f.close(); }
 }, scaledMs(30_000));
 
 for (const field of ["tag", "kind", "installationId", "profileId", "keyId", "revision"] as const) {
@@ -358,7 +368,7 @@ for (const boundary of ["head", "key", "protected", "duo", "chatgpt", "consume"]
       const retained = readFileSync(w.headPath), head = CanonicalCredentialHeadSchema.parse(JSON.parse(retained.toString("utf8")));
       assert.equal(head.state, "erased"); assert.ok(head.retired.includes(w.input.credentialId));
       assert.throws(() => eraseCanonicalDraftCredentials(w.f.machine, w.f.admission, SignUpOperationSchema.parse({ ...operation,
-        onboarding: { ...operation.onboarding, abort: { operationId: randomUUID(), generation: operation.onboarding?.abort?.generation } } })), { code: "CREDENTIAL_UNAVAILABLE" });
+        onboarding: { ...operation.onboarding, abort: { operationId: randomUUID(), generation: operation.onboarding?.abort?.generation } } })), /profile-credential-erasure-changed/u);
       assert.deepEqual(readFileSync(w.headPath), retained);
       eraseCanonicalDraftCredentials(w.f.machine, w.f.admission, operation);
       assert.deepEqual(readFileSync(w.headPath), retained);
@@ -412,34 +422,39 @@ it("retains genuine stopped maintenance and the actual canonical head descriptor
   await runCredentialSourceRetentionCase("stopped-head-close");
 });
 
-it("refuses genuine database schema drift introduced during the final Duo read", async () => {
-  const w = await fixture(), database = new DatabaseSync(w.f.path), read = fs.readFileSync, target = lstatSync(w.duoPath);
+it("refuses new profile admission after database schema drift during an independent Duo read", async () => {
+  const w = await fixture(), database = new DatabaseSync(w.f.path), close = fs.closeSync, target = lstatSync(w.duoPath);
+  const record = w.owner.readRecord("duo"), before = readFileSync(w.duoPath), head = readFileSync(w.headPath);
   const version = database.prepare("PRAGMA user_version").get()?.user_version; assert.equal(typeof version, "number");
-  let reads = 0, fired = false;
-  vi.spyOn(fs, "readFileSync").mockImplementation((...args: Parameters<typeof read>) => {
-    const result = read(...args);
-    if (typeof args[0] === "number") {
-      const opened = fs.fstatSync(args[0]);
-      if (opened.dev === target.dev && opened.ino === target.ino && ++reads === 2) { fired = true; database.exec("PRAGMA user_version=0"); }
-    }
-    return result;
+  let fired = false;
+  vi.spyOn(fs, "closeSync").mockImplementation(descriptor => {
+    const opened = fs.fstatSync(descriptor); close(descriptor);
+    if (!fired && opened.dev === target.dev && opened.ino === target.ino) { fired = true; database.exec("PRAGMA user_version=0"); }
   }); syncBuiltinESMExports();
-  try { assert.throws(() => w.owner.readRecord("duo"), { code: "CREDENTIAL_UNAVAILABLE" }); assert.equal(fired, true); }
+  try {
+    assert.deepEqual(w.owner.readRecord("duo"), record); assert.equal(fired, true);
+    assert.throws(() => w.f.machine.admitProfile(w.profileId), /profile-database-schema-mismatch/u);
+    assert.deepEqual(readFileSync(w.duoPath), before); assert.deepEqual(readFileSync(w.headPath), head);
+  }
   finally { vi.restoreAllMocks(); syncBuiltinESMExports(); database.exec(`PRAGMA user_version=${String(version)}`); database.close(); await w.f.close(); }
 });
 
 for (const boundary of ["key-read", "current-document-read", "final-document-read", "decrypt"] as const) it(`refuses genuine draft operation drift during ${boundary}`, async () => {
   const w = await fixture(true), operation = currentOperation(w.f), operationPath = join(w.f.machine.stateRoot, "machine", "operations", `${operation.operationId}.json`),
-    original = readFileSync(operationPath), target = lstatSync(boundary === "key-read" ? w.headPath : w.duoPath), read = fs.readFileSync, decipher = nativeCrypto.createDecipheriv;
+    original = readFileSync(operationPath), target = lstatSync(boundary === "key-read" ? w.headPath : w.duoPath), read = fs.readFileSync, close = fs.closeSync, decipher = nativeCrypto.createDecipheriv;
   let fired = false, reads = 0;
   const mutate = () => { if (!fired) { fired = true; writeFileSync(operationPath, JSON.stringify({ ...operation, commandFingerprint: "b".repeat(64) })); } };
   vi.spyOn(fs, "readFileSync").mockImplementation((...args: Parameters<typeof read>) => {
     const result = read(...args);
-    if (typeof args[0] === "number" && boundary !== "decrypt") {
+    if (typeof args[0] === "number" && boundary !== "decrypt" && boundary !== "final-document-read") {
       const opened = fs.fstatSync(args[0]);
-      if (opened.dev === target.dev && opened.ino === target.ino && ++reads === (boundary === "final-document-read" ? 2 : 1)) mutate();
+      if (opened.dev === target.dev && opened.ino === target.ino && ++reads === 1) mutate();
     }
     return result;
+  });
+  vi.spyOn(fs, "closeSync").mockImplementation(descriptor => {
+    const opened = fs.fstatSync(descriptor); close(descriptor);
+    if (boundary === "final-document-read" && opened.dev === target.dev && opened.ino === target.ino) mutate();
   });
   vi.spyOn(nativeCrypto, "createDecipheriv").mockImplementation((...args: Parameters<typeof decipher>) => { const result = decipher(...args); if (boundary === "decrypt") mutate(); return result; });
   syncBuiltinESMExports();
@@ -452,6 +467,7 @@ for (const shape of ["object", "array", "wrapper", "malformed"] as const) it(`ho
   const path = join(f.stateRoot, "credentials", "duo-webauthn.json");
   const legacy = { rpId: "duosecurity.com", credentialId: "synthetic-retained-id", privateKey: "synthetic-retained-key", signCount: 42, transport: "internal" };
   const bytes = Buffer.from(shape === "malformed" ? "invalid legacy signer bytes" : JSON.stringify(shape === "array" ? [legacy] : shape === "wrapper" ? { credentials: [legacy] } : legacy));
+  mkdirSync(join(f.stateRoot, "credentials"), { recursive: true, mode: 0o700 });
   writeFileSync(path, bytes, { mode: 0o600 });
   const entry = new FakeKeyringEntry("Relay", `${f.admission.profileBinding.installationId}:${f.admission.profileBinding.profileId}`);
   assert.equal(entry.getPassword(), null);

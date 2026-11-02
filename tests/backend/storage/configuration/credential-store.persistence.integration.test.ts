@@ -42,7 +42,8 @@ it("keeps private profile reads and writes beneath a sticky workspace while rele
     assert.equal(f.store.read().entries.ucpathPassword, undefined);
     const bytes = readFileSync(f.path);
     f.admission.release();
-    assert.throws(() => f.store.read(), /released admission/u);
+    assert.throws(() => f.store.read(), error => error instanceof Error && "code" in error && error.code === "CREDENTIAL_UNAVAILABLE"
+      && error.cause instanceof Error && error.cause.message === "runtime-admission: missing or released admission");
     assert.deepEqual(readFileSync(f.path), bytes);
   } finally { chmodSync(f.workspace, 0o700); }
 });
@@ -124,13 +125,15 @@ for (const version of [2, 3] as const) it.each(["unchanged", "value", "timestamp
     const control = { ...current, record: corrupted };
     if (corruption === "unchanged") assert.deepEqual(authenticateDocument(control), current);
     else assert.throws(() => authenticateDocument(control), { message: corruption === "value" || corruption === "timestamp"
-      ? "credential-latest-request-invalid" : "credential store protected.json disagrees with its identity history" });
+      ? "credential-latest-request-invalid" : corruption === "commandFingerprint" ? "credential store protected.json disagrees with its identity history"
+        : "credential store protected.json is malformed" });
     const candidate = { ...control, schemaVersion: version };
     const validation = CredentialDocumentSchema.safeParse(candidate);
     assert.equal(validation.success, false);
     if (validation.success) throw new Error("noncurrent credential schema unexpectedly accepted");
     assert.deepEqual(validation.error.issues.map(issue => ({ code: issue.code, path: issue.path, values: "values" in issue ? issue.values : undefined })),
-      [{ code: "invalid_value", values: [4], path: ["schemaVersion"] }]);
+      [{ code: "invalid_value", values: [4], path: ["schemaVersion"] },
+        ...(corruption === "expectedRevision" || corruption === "protectedSchemaHash" ? [{ code: "custom", path: ["record", "lastApplied"], values: undefined }] : [])]);
     rewriteAuthenticatedCredentialFixture(f.machine.stateRoot, f.admission.profileBinding.profileId, () => candidate);
     const actual = createCanonicalCredentials(f.admission).readRecord("protected"); assert.ok(actual);
     assert.equal(actual.revision, record.revision);

@@ -140,7 +140,9 @@ for (const unsafe of ["directory-mode", "root-mode", "hardlink", "symlink", "mis
       if (unsafe === "malformed") writeFileSync(f.path, '{"secret":"synthetic"');
       const names = readdirSync(f.directory).sort();
       assert.throws(() => f.store.read(), { code: "CREDENTIAL_UNAVAILABLE" });
-      assert.throws(() => f.store.apply(request()), { code: "CREDENTIAL_UNAVAILABLE" });
+      assert.throws(() => f.store.apply(request()), unsafe === "root-mode"
+        ? { message: "directory-integrity: credential ancestor is group/world-writable without sticky protection or has an untrusted owner" }
+        : { code: "CREDENTIAL_UNAVAILABLE" });
       assert.deepEqual(readdirSync(f.directory).sort(), names);
       if (unsafe === "symlink") { assert.equal(readlinkSync(f.path), alias); assert.deepEqual(readFileSync(alias), bytes); }
       else if (unsafe !== "missing") assert.deepEqual(readFileSync(f.path), unsafe === "malformed" ? Buffer.from('{"secret":"synthetic"') : bytes);

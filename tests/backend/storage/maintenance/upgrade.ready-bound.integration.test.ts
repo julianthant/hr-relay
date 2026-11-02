@@ -2,8 +2,8 @@ import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/mai
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/native-profile-probe.js";
 import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
-import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, rmdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, mkdirSync, readdirSync, rmdirSync } from "node:fs";
+import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
@@ -308,7 +308,7 @@ it("revokes READY custody on a same-byte key replacement even after exact origin
   try {
     const before = readFileSync(key);
     renameSync(key, saved); moved = true; copyFileSync(saved, key);
-    assert.throws(() => owner.assertLive(), { message: "credential-key-custody-changed" });
+    assert.throws(() => owner.assertLive(), { message: "runtime-control: profile-stopped-upgrade-authority-changed" });
     assert.deepEqual(readFileSync(key), before);
     renameSync(saved, key); moved = false;
     assert.equal(f.machine.readProfileRegistry().profiles.find(value => value.profileId === f.binding.profileId)?.credentialState, "saved");
@@ -331,22 +331,19 @@ it("excludes registry session mutation while READY maintenance custody is held",
   } finally { owner.release(); restore.release(); await f.close(); }
 });
 
-it("refuses loss of the authenticated never-erased head instead of treating it as a default", async () => {
+it("refuses loss of the authenticated canonical head instead of treating it as a default", async () => {
   const f = await readyBoundEight(), restore = f.acquireRestore();
   const owner = await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, restore, systemClock, hostFacts);
-  const journal = join(f.machine.stateRoot, "machine", "erasures", `${f.binding.profileId}.json`);
-  const existed = existsSync(dirname(journal));
-  let planted = false;
+  const head = join(f.machine.stateRoot, "machine", "credential-keys", `${f.binding.profileId}.json`), saved = join(f.workspace, "owned-head-preimage");
+  let moved = false;
   try {
-    assert.equal(existsSync(journal), false); assert.equal(existsSync(`${journal}.authority`), false);
+    assert.equal(existsSync(head), true);
+    renameSync(head, saved); moved = true;
     const before = storageTree(f.stateRoot);
-    mkdirSync(dirname(journal), { recursive: true, mode: 0o700 });
-    writeFileSync(journal, "{}", { mode: 0o600, flag: "wx" }); planted = true;
-    assert.throws(() => owner.assertLive(), { message: "credential-erasure-head-missing" });
+    assert.throws(() => owner.assertLive(), { message: "runtime-control: profile-stopped-upgrade-key-required" });
     assert.deepEqual(storageTree(f.stateRoot), before);
   } finally {
-    if (planted) unlinkSync(journal);
-    if (!existed) { assert.deepEqual(readdirSync(dirname(journal)), []); rmdirSync(dirname(journal)); }
+    if (moved) renameSync(saved, head);
     owner.release(); restore.release(); await f.close();
   }
 });

@@ -7,7 +7,8 @@ import { z } from "zod";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
 import { randomUUID } from "node:crypto";
-import { chmodSync, linkSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
@@ -303,13 +304,15 @@ for (const pid of [2_147_483_647, process.pid]) it(`refuses unknown old account 
 });
 
 it("unbound synthetic admissions cannot read or overwrite registered-person credentials", async () => {
-  const f = await fixture(), unbound = RuntimeAdmission.syntheticRoots(f.root, f.admission.artifactRoot);
+  const f = await fixture(), root = mkdtempSync(join(realpathSync(tmpdir()), "unbound-credentials-"));
+  const unbound = RuntimeAdmission.syntheticRoots(root, join(root, "artifacts"));
   try {
     await f.repository.withLock(async tx => { tx.replace(f.record, null); }); const before = readFileSync(f.path);
+    assert.throws(() => RuntimeAdmission.syntheticRoots(f.root, f.admission.artifactRoot), { message: "runtime-admission: fixture overlaps installation witness" });
     assert.throws(() => createChatGptCredentialRepository({ admission: unbound, stateRoot: f.root }).read(), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
     await assert.rejects(async () => createChatGptCredentialRepository({ admission: unbound, stateRoot: f.root }).withLock(async tx => {
       tx.replace({ ...f.record, revision: 2 }, 1);
     }), { code: "CHATGPT_CREDENTIAL_UNAVAILABLE" });
     assert.deepEqual(readFileSync(f.path), before); assert.deepEqual(f.repository.read(), f.record);
-  } finally { unbound.release(); await f.cleanup(); }
+  } finally { unbound.release(); rmSync(root, { recursive: true }); await f.cleanup(); }
 });

@@ -20,6 +20,7 @@ import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/r
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { FrontendBootstrapWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { ProfileVerifierDocumentSchema } from "../../../../../src/models/profiles/profile.js";
+import { CanonicalCredentialHeadSchema } from "../../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import type { DraftDuoCapability, ProfileOnboardingDuoProvider } from "../../../../../src/backend/profiles/onboarding-duo.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
@@ -267,9 +268,11 @@ it("aborts an unpublished pre-enrollment draft through erasure before accepting 
     const cancelled = await post("/api/v1/profile/onboarding/cancel", { operationId: draft.operationId }, cookie);
     assert.equal(cancelled.status, 200); assert.deepEqual(PublicProfileStateSchema.parse(await cancelled.json()), { state: "signed-out" });
     assert.equal(f.machine.readProfileRegistry().profiles.length, 0); assert.equal(f.machine.readProfileRegistry().activeProfileId, null);
-    assert.equal(existsSync(join(f.machine.stateRoot, "machine", "credential-keys", `${draft.profileId}.json`)), false);
+    const erased = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${draft.profileId}.json`), "utf8")));
+    assert.equal(erased.state, "erased"); assert.equal(erased.profileId, draft.profileId);
+    assert.equal(erased.installationId, f.machine.locator.installationId);
     assert.equal(existsSync(join(f.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`)), false);
-    assert.equal(existsSync(join(f.machine.stateRoot, "machine", "erasures", `${draft.profileId}.json`)), true);
+    assert.equal(existsSync(join(f.machine.stateRoot, "machine", "erasures", `${draft.profileId}.json`)), false);
     assert.equal(existsSync(join(f.machine.stateRoot, "profiles", draft.profileId)), false);
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie } })).status, 401);
     const replacement = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-up", {
