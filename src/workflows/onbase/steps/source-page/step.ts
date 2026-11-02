@@ -14,7 +14,7 @@ export const onbaseSourcePageDefinition = defineStep({
   group: ONBASE_SOURCE_STEP, build: buildSource,
   proof: { id: "onbase-source-page", order: 13,
     build: (parent: WorkflowDefinition<typeof OnbaseInputSchema>) => ({
-      ...inheritStepProof(parent), code: "b1", label: "OnBase source page", summary: "Verifies source bytes and binds exactly one PDF page without importing it.",
+      ...inheritStepProof(parent), code: "obs", label: "OnBase source page", summary: "Verifies source bytes and binds exactly one PDF page without importing it.",
       nodePurposes: [{ nodeId: "source-page", purpose: "Read and verify the content-addressed PDF, extract exactly the selected page and bind its bytes to this session." }],
       steps: (author: WorkflowAuthor<typeof OnbaseInputSchema>) => buildSource(author),
     }),

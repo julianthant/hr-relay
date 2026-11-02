@@ -5,6 +5,9 @@ This reference owns test selection, runner containment, coverage policy, and gua
 acceptance scope and the gate schedule. A declared test, scenario ID, or guard is not evidence that
 it ran.
 
+TypeScript sources use LF checkouts through `.gitattributes`. Build manifests and reviewed source
+digests hash exact source bytes, so Windows and CI must read the same line endings.
+
 ## 1. Test layers and ownership
 
 Tests mirror source once under `tests/`. A source path under `src/` drops that prefix. Tests for

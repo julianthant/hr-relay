@@ -22,7 +22,7 @@ export const onbaseImportDocumentDefinition = defineStep({
   group: ONBASE_IMPORT_STEP, build: buildImport,
   proof: { id: "onbase-import-document", order: 14,
     build: (parent: WorkflowDefinition<typeof OnbaseInputSchema, typeof OnbaseResultSchema>) => ({
-      ...inheritStepProof(parent), code: "b2", label: "OnBase import document", summary: "Proves staging, one fenced import and saved PDF read-back for one person.",
+      ...inheritStepProof(parent), code: "obi", label: "OnBase import document", summary: "Proves staging, one fenced import and saved PDF read-back for one person.",
       steps: (author: WorkflowAuthor<typeof OnbaseInputSchema>) => {
         const source = buildSource(author), imported = buildImport(author, source);
         return { steps: [...source.steps, ...imported.steps], result: imported.result };
