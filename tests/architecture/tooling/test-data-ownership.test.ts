@@ -2,11 +2,11 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync,readFileSync,realpathSync } from "node:fs";
-import { dirname,join,relative,resolve } from "node:path";
+import { dirname,isAbsolute,join,relative,resolve } from "node:path";
 import ts from "typescript";
 import { describe,it } from "vitest";
 import { TEST_DATA_CONFIG_PATH,TEST_DATA_LOCAL_CONFIG_PATH,TEST_DATA_LOCAL_EXAMPLE_PATH } from "../../../src/models/config/test-data.js";
-import { gitVisibleFiles,REPO_ROOT } from "../support/helpers/guard-files.js";
+import { gitVisibleFiles,repoRelative,REPO_ROOT } from "../support/helpers/guard-files.js";
 
 function isUnitTest(path: string): boolean {
   return path.startsWith("tests/") && /\.test\.(?:ts|js)$/u.test(path)
@@ -57,7 +57,7 @@ function importsFromText(path: string, text: string): { specifier: string; resol
   return [...text.matchAll(IMPORT_SPECIFIER)].map((match) => {
     const specifier = match[1] ?? "";
     return { specifier, resolved: specifier.startsWith(".")
-      ? relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), specifier)) : specifier };
+      ? repoRelative(resolve(REPO_ROOT, dirname(path), specifier)) : specifier };
   });
 }
 function importsOf(path: string) {
@@ -90,6 +90,7 @@ const DEFERRED_CAPABILITIES = [
 const RETENTION_CASES_MODULES = ["tests/support/processes/startup-upgrade-retention-cases.js", "tests/support/processes/browser-root-retention.js"];
 const RETENTION_CASES_OWNER = "tests/support/processes/credential-source-retention-worker.ts";
 const PROCESS_ENTRYPOINTS = [
+  { file: "command-custody-worker.ts", consumers: ["tests/backend/runtime/browser/command-browser.integration.test.ts"] },
   { file: "credential-source-retention-worker.ts", consumers: ["tests/support/helpers/credential-source-retention.ts"] },
   { file: "duo-credential-worker.ts", consumers: ["tests/backend/storage/configuration/canonical-credential-store.recovery.integration.test.ts"] },
   { file: "chatgpt-credential-worker.ts", consumers: ["tests/backend/storage/configuration/chatgpt-credential-repository.integration.test.ts"] },
@@ -135,7 +136,7 @@ function capabilityViolations(path: string, text: string): string[] {
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword
       && node.arguments[0] !== undefined && ts.isStringLiteral(node.arguments[0])) {
       const specifier = node.arguments[0].text;
-      const resolved = specifier.startsWith(".") ? relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), specifier)) : specifier;
+      const resolved = specifier.startsWith(".") ? repoRelative(resolve(REPO_ROOT, dirname(path), specifier)) : specifier;
       if (FORBIDDEN_SHARED_IMPORTS.some((pattern) => pattern.test(resolved) || pattern.test(specifier))) failures.push(`${path}: dynamic capability import`);
     }
     ts.forEachChild(node, rejectDynamicCapability);
@@ -145,7 +146,7 @@ function capabilityViolations(path: string, text: string): string[] {
     if (!(ts.isImportDeclaration(declaration) || ts.isExportDeclaration(declaration))
       || declaration.moduleSpecifier === undefined || !ts.isStringLiteral(declaration.moduleSpecifier)) continue;
     const specifier = declaration.moduleSpecifier.text;
-    const resolved = specifier.startsWith(".") ? relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), specifier)) : specifier;
+    const resolved = specifier.startsWith(".") ? repoRelative(resolve(REPO_ROOT, dirname(path), specifier)) : specifier;
     if (!FORBIDDEN_SHARED_IMPORTS.some((pattern) => pattern.test(resolved) || pattern.test(specifier))) continue;
     if ((ts.isExportDeclaration(declaration) && declaration.isTypeOnly)
       || (ts.isImportDeclaration(declaration) && declaration.importClause?.isTypeOnly)) continue;
@@ -229,7 +230,7 @@ function childEntrypointBound(path: string, text: string, file: string): boolean
       && (ts.isNamespaceImport(clause.namedBindings) ? clause.namedBindings.name.text === 'URL'
         : clause.namedBindings.elements.some(binding => binding.name.text === 'URL'))) urlShadowed = true;
     const resolved = declaration.moduleSpecifier.text.startsWith(".")
-      ? relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), declaration.moduleSpecifier.text)) : declaration.moduleSpecifier.text;
+      ? repoRelative(resolve(REPO_ROOT, dirname(path), declaration.moduleSpecifier.text)) : declaration.moduleSpecifier.text;
     if (resolved === "tests/support/helpers/backend/runtime-lifetime.js") {
       const bindings = clause?.namedBindings;
       if (bindings !== undefined && ts.isNamedImports(bindings) && !clause?.isTypeOnly) {
@@ -278,7 +279,7 @@ function childEntrypointBound(path: string, text: string, file: string): boolean
     }
     if (ts.isNewExpression(node) && node.expression.getText(source) === "URL" && node.arguments?.length === 2) {
       return ts.isStringLiteral(node.arguments[0])
-        && relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), node.arguments[0].text)) === `tests/support/processes/${file}`
+        && repoRelative(resolve(REPO_ROOT, dirname(path), node.arguments[0].text)) === `tests/support/processes/${file}`
         && node.arguments[1].getText(source) === "import.meta.url";
     }
     if (ts.isCallExpression(node) && joinNames.has(node.expression.getText(source)) && node.arguments[0]?.getText(source) === "process.cwd()") {
@@ -523,8 +524,8 @@ describe("test-data ownership", () => {
       const declared = resolve(REPO_ROOT, dirname(TEST_DATA_CONFIG_PATH), file.path);
       assert.ok(existsSync(declared), `declared file ${name} must exist`);
       const real = realpathSync(declared);
-      assert.ok(real.startsWith(`${repoReal}/`), `declared file ${name} must resolve inside the repository`);
-      const rel = relative(repoReal, real);
+      const rel = relative(repoReal, real).replaceAll("\\", "/");
+      assert.ok(rel !== "" && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel), `declared file ${name} must resolve inside the repository`);
       assert.ok(visible.has(rel), `declared file ${name} (${rel}) must be visible to git`);
       assert.equal(isIgnored(rel), false, `declared file ${name} must not be ignored`);
     }

@@ -5,7 +5,7 @@ import { DuoAssertionRequestSchema } from "../../storage/configuration/duo-signi
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
 import { lstatSync, mkdirSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
-import { submitOnboardingSsoCredentials } from "../../systems/browser-shared/ucsd-sso.js";
+import { submitPinnedUcsdSsoCredentials } from "../../systems/browser-shared/ucsd-sso.js";
 import type { BrowserContext, Page, Worker } from "playwright";
 import { z } from "zod";
 import { BrowserDocumentIdSchema } from "../../../models/config/duo-credential-store.js";
@@ -269,7 +269,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       try {
         await page.goto("https://duo.ucpath.edu", { waitUntil: "domcontentloaded" });
         browserCurrent(session);
-        await submitOnboardingSsoCredentials(page, () => session.owner.acquireCredentials(), () => browserCurrent(session), options.closeProofMs);
+        await submitPinnedUcsdSsoCredentials(page, () => session.owner.acquireCredentials(), () => browserCurrent(session), options.closeProofMs, "/tritON/profile/SAML2/Redirect/SSO");
         browserCurrent(session);
       } catch { throw new ProfileOnboardingDuoProviderError("refused", "scope"); }
     })();

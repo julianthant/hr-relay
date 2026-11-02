@@ -94,41 +94,49 @@ function passwordField(page: Page): Locator {
   return byLabels(page, page.locator(SSO_PASSWORD_SELECTOR), SSO_PASSWORD_LABELS).first();
 }
 
-export async function submitOnboardingSsoCredentials(page: Page,
+export async function submitPinnedUcsdSsoCredentials(page: Page,
   acquire: () => Promise<Readonly<{ userId: string; password: string }>>,
-  assertCurrent: () => void, timeout: number): Promise<void> {
+  assertCurrent: () => void, timeout: number,
+  path: "/tritON/profile/SAML2/Redirect/SSO" | "/idp/profile/SAML2/Redirect/SSO"): Promise<void> {
   assertCurrent();
-  const url = page.url(), path = "/tritON/profile/SAML2/Redirect/SSO";
+  const url = page.url();
+  if (path !== "/tritON/profile/SAML2/Redirect/SSO" && path !== "/idp/profile/SAML2/Redirect/SSO") throw new Error("UCSD_SSO_SCOPE");
   const allowed = (value: string) => {
     const parsed = URL.parse(value);
     return parsed?.origin === "https://a5.ucsd.edu" && parsed.username === "" && parsed.password === "" && parsed.port === "" && parsed.pathname === path;
   };
-  const check = () => { assertCurrent(); if (page.url() !== url || !allowed(url)) throw new Error("ONBOARDING_SSO_SCOPE"); };
+  const check = () => { assertCurrent(); if (page.url() !== url || !allowed(url)) throw new Error("UCSD_SSO_SCOPE"); };
   check();
   const username = page.locator(SSO_USERNAME_SELECTOR), password = page.locator(SSO_PASSWORD_SELECTOR), submit = page.locator(SSO_SUBMIT_SELECTOR);
   const users = await username.count(); check();
   const passwords = await password.count(); check();
   const buttons = await submit.count(); check();
-  if (users !== 1 || passwords !== 1 || buttons !== 1) throw new Error("ONBOARDING_SSO_FIELDS");
+  if (users !== 1 || passwords !== 1 || buttons !== 1) throw new Error("UCSD_SSO_FIELDS");
   let user: Awaited<ReturnType<typeof username.elementHandle>> = null;
   let secret: Awaited<ReturnType<typeof password.elementHandle>> = null;
   let button: Awaited<ReturnType<typeof submit.elementHandle>> = null;
+  let failure: { error: unknown } | undefined;
+  const cleanup: unknown[] = [];
   try {
     user = await username.elementHandle(); check();
     secret = await password.elementHandle(); check();
     button = await submit.elementHandle(); check();
-    if (!user || !secret || !button) throw new Error("ONBOARDING_SSO_FIELDS");
+    if (!user || !secret || !button) throw new Error("UCSD_SSO_FIELDS");
     const pinnedUser = user, pinnedSecret = secret, pinnedSubmit = button;
     const controls = async () => {
       check();
+      const users = await username.count(); check();
+      const passwords = await password.count(); check();
+      const buttons = await submit.count(); check();
+      if (users !== 1 || passwords !== 1 || buttons !== 1) throw new Error("UCSD_SSO_FIELDS");
       for (const field of [pinnedUser, pinnedSecret]) {
         const visible = await field.isVisible(); check();
         const editable = await field.isEditable(); check();
-        if (!visible || !editable) throw new Error("ONBOARDING_SSO_FIELDS");
+        if (!visible || !editable) throw new Error("UCSD_SSO_FIELDS");
       }
       const visible = await pinnedSubmit.isVisible(); check();
       const enabled = await pinnedSubmit.isEnabled(); check();
-      if (!visible || !enabled) throw new Error("ONBOARDING_SSO_FIELDS");
+      if (!visible || !enabled) throw new Error("UCSD_SSO_FIELDS");
       const valid = await pinnedUser.evaluate((element, input) => {
         if (!(element instanceof HTMLInputElement) || !(input.other instanceof HTMLInputElement) || !(input.submit instanceof HTMLButtonElement)) return false;
         const form = element.form, action = form === null ? null : new URL(form.action);
@@ -141,7 +149,7 @@ export async function submitOnboardingSsoCredentials(page: Page,
           && buttonAction.origin === "https://a5.ucsd.edu" && buttonAction.username === "" && buttonAction.password === "" && buttonAction.port === "" && buttonAction.pathname === input.path
           && action?.origin === "https://a5.ucsd.edu" && action.username === "" && action.password === "" && action.port === "" && action.pathname === input.path;
       }, { other: pinnedSecret, submit: pinnedSubmit, path });
-      check(); if (!valid) throw new Error("ONBOARDING_SSO_FIELDS");
+      check(); if (!valid) throw new Error("UCSD_SSO_FIELDS");
     };
     await controls();
     const credentials = await acquire(); check();
@@ -151,7 +159,14 @@ export async function submitOnboardingSsoCredentials(page: Page,
     await secret.fill(credentials.password, { timeout }); check();
     await controls();
     await button.click({ timeout }); assertCurrent();
-  } finally { try { await user?.dispose(); } finally { try { await secret?.dispose(); } finally { await button?.dispose(); } } }
+  } catch (error) { failure = { error }; }
+  finally {
+    for (const handle of [user, secret, button]) {
+      try { await handle?.dispose(); } catch (error) { cleanup.push(error); }
+    }
+  }
+  if (cleanup.length !== 0) throw new AggregateError(failure === undefined ? cleanup : [failure.error, ...cleanup], "UCSD_SSO_CLEANUP");
+  if (failure !== undefined) throw failure.error;
 }
 
 

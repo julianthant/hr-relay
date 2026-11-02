@@ -174,9 +174,10 @@ describe("provider capability boundary", () => {
         "src/backend/processing/providers/geocode-adapters.ts",
         "src/backend/processing/providers/nominatim-owner.ts",
         "src/backend/processing/providers/provider-client.ts",
+        "src/backend/processing/providers/sharepoint-browser-transport.ts",
         "src/backend/processing/providers/workbook-library-adapter.ts",
       ].sort(),
-      "the registered local workbook, subscription OCR, deterministic and geocoding modules are the complete provider modules",
+      "the registered local workbook, subscription OCR, deterministic, geocoding and bounded SharePoint transport modules are the complete provider modules",
     );
     assert.deepEqual(
       gitVisibleFiles(["src/backend/app/host/local-vite-probe.ts"])

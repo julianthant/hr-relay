@@ -8,10 +8,9 @@ import {
   WorkerIdSchema,
 } from "../identity/ids.js";
 
-export const DuoCeremonyLeaseHolderSchema = z.strictObject({
-  workerId: WorkerIdSchema,
-  system: BrowserSystemIdSchema,
-});
+const WorkerHolderSchema = z.strictObject({ workerId: WorkerIdSchema, system: BrowserSystemIdSchema, commandId: z.never().optional() });
+const CommandHolderSchema = z.strictObject({ commandId: z.uuid(), system: z.literal('sharepoint'), workerId: z.never().optional() });
+export const DuoCeremonyLeaseHolderSchema = z.union([WorkerHolderSchema, CommandHolderSchema]);
 export type DuoCeremonyLeaseHolder = z.infer<typeof DuoCeremonyLeaseHolderSchema>;
 
 export const DuoCeremonyLeaseStateSchema = z.enum(["held", "released"]);
@@ -40,14 +39,8 @@ export const DuoCeremonyLeaseRecordSchema = z.strictObject({
 });
 export type DuoCeremonyLeaseRecord = z.infer<typeof DuoCeremonyLeaseRecordSchema>;
 
-export const DuoCeremonyLeaseAcquireRequestSchema = z.strictObject({
-  credentialKey: FingerprintSchema,
-  workerId: WorkerIdSchema,
-  system: BrowserSystemIdSchema,
-  now: IsoInstantSchema,
-  /** `timeouts.sessionAcquireMs + timeouts.duoCeremonyLeaseGraceMs` (§10.3). */
-  ttlMs: PositiveIntSchema,
-});
+const AcquireFields = { credentialKey: FingerprintSchema, now: IsoInstantSchema, ttlMs: PositiveIntSchema };
+export const DuoCeremonyLeaseAcquireRequestSchema = z.union([WorkerHolderSchema.extend(AcquireFields), CommandHolderSchema.extend(AcquireFields)]);
 export type DuoCeremonyLeaseAcquireRequest = z.infer<typeof DuoCeremonyLeaseAcquireRequestSchema>;
 
 /** Who an expired lease was taken from, recorded on the takeover outcome. */

@@ -191,11 +191,12 @@ export function composeProfileClosureInventory(input: Readonly<{ admission: Runt
     if (admission === input.admission) {
       admission.assertProfileRuntime();
       const binding = admission.captureBrowserRegistryContext(), document = createBrowserRoots(admission).inventory();
-      const retained = retainedBrowserProfiles(admission.stateRoot, custody, config.paths.browserProfileRoot, profileBrowserClosure)
+      const retained = retainedBrowserProfiles(admission.stateRoot, custody, config.paths.browserProfileRoot, profileBrowserClosure, { machineRoot: binding.machineRoot, profileId: admission.profileBinding.profileId, roots: document.roots })
         .filter(row => {
           if (lstatSync(row.profileDirectory, { throwIfNoEntry: false }) !== undefined) return true;
           if (!row.cleanupCompleted) throw new Error("profile-closure-browser-custody-unproved");
-          return false;
+          return document.roots.some(registered => registered.owner.kind === 'command' && registered.profileId === binding.profileId
+            && registered.launch.state === 'closed' && registered.native === undefined && join(binding.machineRoot, registered.directory) === row.profileDirectory);
         });
       const rows = document.roots.filter(row => row.profileId === binding.profileId);
       if (rows.length !== retained.length || rows.some(row => row.launch.state !== "closed" || row.native !== undefined

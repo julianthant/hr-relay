@@ -1,3 +1,4 @@
+import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import { createBoundProfileFixture, createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { afterAll } from "vitest";
@@ -131,7 +132,7 @@ describe("authority generation accounting", () => {
         assert.equal(fenceWriteFixture(database, { intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }).state, "fenced");
         database.commitWriteAttempt(ATOMIC_WRITE_COMMIT, atomicWriteCheckpoint(ATOMIC_WRITE_COMMIT));
       } else if (trigger.tableName.startsWith("workbook_")) {
-        const library = createWorkbookLibraryService({ repository: database.authority.workbooks, clock: CLOCK });
+        const library = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock: CLOCK });
         const record = library.create({
           name: "Retained.xlsx", themes: [], hasFormulas: false,
           sheets: [{ id: "sheet", name: "Sheet", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "retained" }] }] }],

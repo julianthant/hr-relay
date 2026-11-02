@@ -65,7 +65,7 @@ it("refuses malformed workbook dates and dimensions with WORKBOOK_INVALID before
   }
 });
 
-it('serves persisted types and manual named versions, refusing forged sources and unavailable Sync', async () => {
+it('serves persisted types and manual named versions, refusing forged sources and unlinked Sync', async () => {
   const h = await harness();
   const create = await h.app.request('http://localhost/api/v1/workbooks', { method: 'POST', headers, body: JSON.stringify({ workbook: encodeEditableWorkbook(workbook) }) });
   const first = decodeSavedWorkbook(await create.json()), path = `http://localhost/api/v1/workbooks/${first.libraryId}`;
@@ -79,6 +79,7 @@ it('serves persisted types and manual named versions, refusing forged sources an
   for (const forged of [{ ...request, source: { kind: 'run', runId: 'foreign' } }, { ...request, at: '2099-01-01T00:00:00.000Z' }, { operationId: 'run', change: { kind: 'patch', key: '001', values: { 'roster.notes': 'forged' } } }])
     assert.equal((await post('/operations', forged)).status, 400);
   const sync = await post('/sync', { operationId: 'sync' });
-  assert.equal((await sync.json() as { code: string }).code, 'WORKBOOK_SYNC_UNAVAILABLE');
+  assert.equal(sync.status, 409);
+  assert.equal((await sync.json() as { code: string }).code, 'WORKBOOK_SYNC_LINK_REQUIRED');
   assert.equal(h.database.authority.workbooks.read(first.libraryId)?.version, 1);
 });
