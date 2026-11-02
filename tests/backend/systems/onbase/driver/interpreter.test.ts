@@ -72,4 +72,22 @@ describe("OnBase semantic import driver", () => {
     await assert.rejects(world({ foreignRoute: true }).driver.prepareImport(target), OnbaseImportError);
     assert.equal(f.actions.length, 0);
   });
+
+  it.each(["UCPath ID", "Document Name"])("refuses an ignored %s filter before submitting a retrieval", async ignoredFilter => {
+    const f = world({ ignoredFilter });
+    await assert.rejects(f.driver.readSavedImport(target), OnbaseImportError);
+    assert.equal(f.actions.includes("click:Find"), false); assert.equal(f.actions.includes("click:Import"), false);
+  });
+
+  it("refuses stale results, filter drift, duplicate document IDs and unreadable saved bytes", async () => {
+    await assert.rejects(world({ staleResults: true }).driver.readSavedImport(target));
+    const saved = [{ id: "1", eid: target.ucpathId, bytes }];
+    await assert.rejects(world({ saved, changeDuringDownload: true }).driver.readSavedImport(target), OnbaseImportError);
+    await assert.rejects(world({ saved, unreadablePdf: true }).driver.readSavedImport(target), OnbaseImportError);
+    assert.equal((await world({ saved: [...saved, ...saved] }).driver.readSavedImport(target)).state, "unknown");
+    const f = world(); await f.driver.prepareImport(target);
+    f.fields.set("form:Document Types", "A different type");
+    await assert.rejects(f.driver.commitImport(target, capability()), OnbaseImportError);
+    assert.equal(f.actions.includes("click:Import"), false);
+  });
 });

@@ -7,6 +7,7 @@ import { buildSource } from "../source-page/step.js";
 export const OnbaseResultSchema = z.strictObject({ disposition: z.enum(["committed", "already-present"]), savedDocument: OnbaseSavedDocumentSchema });
 export const ONBASE_IMPORT_STEP = Object.freeze({ ...defineWorkflowStep({ key: "import-document", label: "Import Emergency Contact" }), system: "onbase" as const });
 const entry = defineStepEntries(ONBASE_IMPORT_STEP).transaction("import-document", {
+  label: "Import Emergency Contact",
   prepare: OnbasePrepareImport, commit: OnbaseCommitImport, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 45_000,
 });
 export function buildImport(author: WorkflowAuthor<typeof OnbaseInputSchema>, upstream: ReturnType<typeof buildSource>) {

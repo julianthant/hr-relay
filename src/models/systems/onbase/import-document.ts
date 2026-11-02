@@ -49,7 +49,7 @@ export const OnbaseReadSourcePage = defineTaskContract({
   scenarios: ["onbase/one-page", "onbase/invalid-pdf"], example: ONBASE_EXAMPLE_TARGET,
 });
 export const OnbasePrepareImport = defineTaskContract({
-  id: taskId("onbase/prepare-import"), title: "Prepare Emergency Contact import", effect: "prepare", input: OnbaseTargetSchema, output: OnbasePreparedSchema,
+  id: taskId("onbase/stage-import"), title: "Prepare Emergency Contact import", effect: "prepare", input: OnbaseTargetSchema, output: OnbasePreparedSchema,
   errorCodes: errors, subject, checkpoint: "in-memory-only", scenarios: ["onbase/prepare", "onbase/keyset-miss", "onbase/identity-mismatch"],
   example: { observedEid: "10800000", pageSha256: "2".repeat(64), keywords: { ucpathId: "10800000", lastName: "Example", firstName: "Person",
     documentName: ONBASE_DOCUMENT_NAME, departmentName: "Example Department", departmentCode: "000001", viceChancellor: "Example Division", viceChancellorCode: "EX" } },
@@ -66,7 +66,7 @@ export const OnbaseVerifyImport = defineTaskContract({
   scenarios: ["onbase/saved-effect", "onbase/unknown"], example: OnbaseMatchImport.example,
 });
 export const OnbaseCommitImport = defineTaskContract({
-  id: taskId("onbase/commit-import"), title: "Import Emergency Contact once", effect: "commit", input: OnbaseTargetSchema, output: OnbaseImportOutputSchema,
+  id: taskId("onbase/upload-import"), title: "Import Emergency Contact once", effect: "commit", input: OnbaseTargetSchema, output: OnbaseImportOutputSchema,
   errorCodes: errors, subject, scenarios: ["onbase/committed", "onbase/unknown"],
   writeSafety: {
     completion: { kind: "upload-verify", verify: { taskId: TaskIdSchema.parse("onbase/verify-import"), effect: "read" }, proofSchema: OnbaseSavedDocumentSchema,

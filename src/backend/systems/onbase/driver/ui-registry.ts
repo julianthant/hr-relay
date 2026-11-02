@@ -1,4 +1,4 @@
-import type { FrameLocator, Page } from "playwright";
+import type { FrameLocator, Locator, Page } from "playwright";
 import { deepFreeze } from "../../../../rules/validation/immutability.js";
 
 export const ONBASE_UI_REGISTRY = deepFreeze({
@@ -18,6 +18,9 @@ export const ONBASE_UI_REGISTRY = deepFreeze({
   lookupDialog: (page: Page) => page.getByRole("dialog", { name: "Employee Lookup", exact: true }),
   lookupForm: (page: Page) => page.frameLocator('iframe[src*="ReverseKeysetLookup.aspx"]'),
   findEmployee: (form: FrameLocator) => form.getByRole("button", { name: "Find", exact: true }),
+  selectEmployee: (page: Page) => page.getByRole("dialog", { name: "Employee Lookup", exact: true }).getByRole("button", { name: "Select Employee", exact: true }),
+  enabled: (scope: Page | FrameLocator) => scope.locator(":enabled"),
+  selectedLabels: (control: Locator) => control.locator("option:checked"),
   noEmployee: (page: Page) => page.getByText("No matching records were found", { exact: true }),
   queueRemove: (viewer: FrameLocator) => viewer.getByRole("button", { name: "Remove", exact: true }),
   queueRows: (viewer: FrameLocator) => viewer.getByRole("row").filter({ hasText: "Pending Import" }),
@@ -25,4 +28,8 @@ export const ONBASE_UI_REGISTRY = deepFreeze({
   search: (form: FrameLocator) => form.getByRole("button", { name: "Find", exact: true }),
   resultCount: (viewer: FrameLocator) => viewer.getByRole("status"),
   resultGrid: (viewer: FrameLocator) => viewer.getByRole("grid", { name: "Document Search Results", exact: true }),
+  resultRows: (viewer: FrameLocator) => viewer.getByRole("grid", { name: "Document Search Results", exact: true }).getByRole("row").filter({ has: viewer.getByRole("gridcell") }),
+  resultHeaders: (viewer: FrameLocator) => viewer.getByRole("grid", { name: "Document Search Results", exact: true }).getByRole("columnheader"),
+  resultCells: (row: Locator) => row.getByRole("gridcell"),
+  download: (row: Locator) => row.getByRole("link", { name: "Download", exact: true }),
 });

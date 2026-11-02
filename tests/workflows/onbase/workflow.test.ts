@@ -6,6 +6,7 @@ import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry
 import { BROWSER_SYSTEM_BINDINGS } from "../../../src/backend/runtime/browser/system-bindings.js";
 import { onbaseStore } from "../../../src/backend/systems/onbase/task-registry.js";
 import { OnbaseCommitImport, ONBASE_EXAMPLE_INPUT, OnbaseInputSchema, ONBASE_EXAMPLE_TARGET, ONBASE_EXAMPLE_PROOF, validateOnbaseImportVerdict } from "../../../src/models/systems/onbase/import-document.js";
+import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 
 describe("OnBase child-only workflow registration", () => {
   it("binds its real exclusive system store and derived proofs without public or undeclared starts", () => {
@@ -24,7 +25,7 @@ describe("OnBase child-only workflow registration", () => {
     }
   });
   it("keeps dry-run stop-after-prepare, mandatory probes and operator-only negative recovery", () => {
-    const imported = onbaseModule.definition.steps[1]?.[1][0]; assert.ok(imported); assert.equal(imported.kind, "transaction");
+    const imported = descriptorRuntimeNodes(onbaseModule.descriptor).find(node => node.kind === "transaction"); assert.ok(imported); assert.equal(imported.kind, "transaction");
     if (imported.kind !== "transaction") throw new Error("missing import transaction");
     assert.equal(imported.dryRun, "stop-after-prepare"); assert.equal(imported.probePolicy, "always");
     assert.equal(OnbaseCommitImport.writeSafety.completion.kind, "upload-verify");

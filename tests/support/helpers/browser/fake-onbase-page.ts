@@ -1,25 +1,28 @@
 import assert from "node:assert/strict";
+import { runInNewContext } from "node:vm";
 import type { Page } from "playwright";
 import { ONBASE_DOCUMENT_NAME, ONBASE_DOCUMENT_TYPE } from "../../../../src/models/systems/onbase/import-document.js";
 
 export interface SavedOnbaseFixture { id: string; eid: string; bytes: Uint8Array; href?: string }
 export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stalled?: boolean; blankDepartment?: boolean;
-  saved?: SavedOnbaseFixture[]; incomplete?: boolean; lostClick?: boolean; queue?: number; foreignRoute?: boolean } = {}) {
+  saved?: SavedOnbaseFixture[]; incomplete?: boolean; lostClick?: boolean; queue?: number; foreignRoute?: boolean;
+  ignoredFilter?: string; staleResults?: boolean; changeDuringDownload?: boolean; unreadablePdf?: boolean } = {}) {
   const actions: string[] = [], fields = new Map<string, string>(), queued: { name: string; buffer: Buffer }[] = [];
   const saved = [...options.saved ?? []];
   for (let index = 0; index < (options.queue ?? 0); index++) queued.push({ name: `leftover-${index}.pdf`, buffer: Buffer.from("old page") });
   let mode = "retrieval", modal = false, searched = false, found = false;
   const headers = ["Document ID", "Document Type", "UCPath ID", "Document Name", "File"];
+  class FixtureInput { constructor(readonly value: string) {} }
   class Locator {
     constructor(readonly name: string, readonly scope = "page", readonly index = 0, readonly text?: string, readonly enabledOnly = false, readonly alternative?: Locator) {}
     getByRole(role: string, input: { name?: string | RegExp } = {}) { return new Locator(input.name === undefined ? role : String(input.name), this.name === "row" ? `row:${this.index}` : this.scope, this.index); }
-    locator(selector: string) { return new Locator(selector, this.scope); }
+    locator(selector: string) { return new Locator(selector === "option:checked" ? `selected:${this.name}` : selector, this.scope); }
     filter(input: { hasText?: string; has?: unknown }) { return new Locator(this.name, this.scope, this.index, input.hasText); }
     nth(index: number) { return new Locator(this.name, this.scope, index, this.text, this.enabledOnly, this.alternative); }
     first() { return this.nth(0); }
     and(_other: Locator) { return new Locator(this.name, this.scope, this.index, this.text, true); }
     or(other: Locator) { return new Locator(this.name, this.scope, this.index, this.text, this.enabledOnly, other); }
-    visible() {
+    visible(): boolean {
       if (this.alternative !== undefined) return this.singleVisible() || this.alternative.visible();
       return this.singleVisible();
     }
@@ -41,13 +44,13 @@ export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stall
     async isVisible() { return this.visible(); }
     async isEnabled() { return this.visible(); }
     async inputValue() { return fields.get(`${this.scope}:${this.name}`) ?? ""; }
-    async fill(value: string) { fields.set(`${this.scope}:${this.name}`, value); actions.push(`fill:${this.scope}:${this.name}`); }
+    async fill(value: string) { if (this.name !== options.ignoredFilter) fields.set(`${this.scope}:${this.name}`, value); actions.push(`fill:${this.scope}:${this.name}`); }
     async selectOption(input: { label: string }) { fields.set(`${this.scope}:${this.name}`, input.label); actions.push(`select:${input.label}`); return [input.label]; }
     async click() {
       actions.push(`click:${this.name}`);
-      if (this.name === "Import Document" || this.name === "Document Retrieval") { mode = this.name === "Import Document" ? "import" : "retrieval"; searched = false; }
+      if (this.name === "Import Document" || this.name === "Document Retrieval") { mode = this.name === "Import Document" ? "import" : "retrieval"; searched = options.staleResults === true; }
       if (this.name === "Remove") queued.splice(this.index, 1);
-      if (this.name === "Clear Keywords") for (const key of [...fields.keys()]) if (key.startsWith("form:")) fields.delete(key);
+      if (this.name === "Clear Keywords") for (const name of ["UCPath ID", "Last Name", "First Name", "Document Name", "Department Name", "Department Code", "Vice Chancellor", "Vice Chancellor Code"]) fields.delete(`form:${name}`);
       if (this.name === "Keyset Lookup") modal = true;
       if (this.name === "Find") { if (this.scope === "lookup") found = true; else searched = true; }
       if (this.name === "Select Employee") {
@@ -63,9 +66,10 @@ export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stall
       }
     }
     async setInputFiles(file: { name: string; buffer: Buffer }) { queued.push(file); actions.push("upload"); }
-    async elementHandle() { return { value: await this.inputValue() }; }
+    async elementHandle() { return new FixtureInput(await this.inputValue()); }
     async innerText() { return `${saved.length + (options.incomplete ? 1 : 0)} documents found`; }
     async allTextContents() {
+      if (this.name.startsWith("selected:")) { const selected = fields.get(`${this.scope}:${this.name.slice(9)}`); return selected === undefined ? [] : [selected]; }
       if (this.name === "columnheader") return headers;
       const row = saved[this.index]; assert.ok(row);
       return [row.id, ONBASE_DOCUMENT_TYPE, row.eid, ONBASE_DOCUMENT_NAME, "Download"];
@@ -82,10 +86,11 @@ export function fakeOnbasePage(options: { eid?: string; noMatch?: boolean; stall
       getByRole: (role: string, input?: { name: string }) => new Locator(input?.name ?? role, selector.includes("ReverseKeyset") ? "lookup" : selector.includes("frmViewer") ? "viewer" : "form"),
       locator: (text: string) => new Locator(text, "form"),
     }),
-    async waitForFunction(callback: (element: { value: string }) => boolean, element: { value: string }) { assert.equal(callback(element), true); },
+    async waitForFunction(callback: (element: { value: string }) => boolean, element: { value: string }) { assert.equal(runInNewContext(`(${callback.toString()})(element)`, { HTMLInputElement: FixtureInput, element }), true); },
     context: () => ({ request: { async get(href: string) {
       const id = new URL(href).searchParams.get("id"), row = saved.find(value => value.id === id); assert.ok(row); actions.push(`download:${id}`);
-      return { ok: () => true, headers: () => ({ "content-type": "application/pdf" }), body: async () => Buffer.from(row.bytes), dispose: async () => undefined };
+      if (options.changeDuringDownload) fields.set("form:UCPath ID", "10800001");
+      return { ok: () => !options.unreadablePdf, headers: () => ({ "content-type": "application/pdf" }), body: async () => Buffer.from(row.bytes), dispose: async () => undefined };
     } } }),
   };
   return { page: page as unknown as Page, actions, fields, queued, saved };
