@@ -665,7 +665,10 @@ async function runLogout(): Promise<void> {
       : new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
     let probes = 0;
     profileBrowserClosure.probeClosed = async (profiles, _timing, _clock, _signal, owner) => {
-      probes++; assert.deepEqual(profiles, []); assert.equal(owner, context?.admission);
+      probes++; assert.deepEqual(profiles, []); assert.ok(owner instanceof RuntimeAdmission);
+      assert.equal(owner.stateRoot, join(root, "profiles", profileId));
+      assert.equal(owner.lifetime, controller);
+      assert.deepEqual(owner.assertPendingLogoutSettlementDatabase(join(owner.stateRoot, "state.db")), readOperation());
       throw refusal;
     };
     startLogout();
