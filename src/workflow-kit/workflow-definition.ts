@@ -784,6 +784,18 @@ export type AnyWorkflowDefinition = WorkflowDefinition<z.ZodType, z.ZodType, Com
 
 export type StepProofSpec<Input extends z.ZodType, Result extends z.ZodType> = Omit<WorkflowDefinitionSpec<Input, Result>, "id" | "role">;
 
+/** A workflow-owned call retains the driver's exact contract, store and provenance policy. */
+export function reuseTask<const Identity extends TaskEntryIdentity, Input>(
+  step: WorkflowTimelineGroup,
+  identity: Identity,
+  bind: (input: Input) => z.input<Identity["contract"]["input"]>,
+) {
+  return Object.freeze({
+    identity: Object.freeze({ ...identity, step }),
+    bind: ({ input }: Readonly<{ input: Input }>) => bind(input),
+  });
+}
+
 export function defineStep<const Spec extends {
   readonly group: WorkflowTimelineGroup;
   readonly proof: { readonly id: string; readonly order: number };

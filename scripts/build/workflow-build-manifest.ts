@@ -222,7 +222,7 @@ function taskEntries(
           let callsSystemTask = false, definesImplementation = false;
           const visit = (node: ts.Node): void => {
             if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-              if (node.expression.text === "defineStepEntries") callsSystemTask = true;
+              if (node.expression.text === "reuseTask") callsSystemTask = true;
               if (node.expression.text === "defineTask") definesImplementation = true;
             }
             ts.forEachChild(node, visit);

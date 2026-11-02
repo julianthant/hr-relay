@@ -55,6 +55,33 @@ function assertStepOwnership(path: string, text: string): void {
   if (step) assert.equal(declarations, 1, `${path}: requires exactly one defineStep declaration`);
 }
 
+function assertTaskReuse(path: string, text: string): void {
+  const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
+  const imports = new Map<string, string>();
+  const systemContracts = new Set<string>();
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
+      || statement.importClause?.namedBindings === undefined || !ts.isNamedImports(statement.importClause.namedBindings)) continue;
+    for (const binding of statement.importClause.namedBindings.elements) {
+      imports.set(binding.name.text, binding.propertyName?.text ?? binding.name.text);
+      if (statement.moduleSpecifier.text.includes("/models/systems/")) systemContracts.add(binding.name.text);
+    }
+  }
+  let helper = false, systemCall = false;
+  function visit(node: ts.Node): void {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const name = imports.get(node.expression.text) ?? node.expression.text;
+      assert.notEqual(name, "defineStepEntries", `${path}: thin system calls use reuseTask`);
+      if (name === "reuseTask") helper = true;
+    }
+    if (ts.isPropertyAssignment(node) && node.name.getText(source) === "contract"
+      && ts.isIdentifier(node.initializer) && systemContracts.has(node.initializer.text)) systemCall = true;
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  assert.ok(!systemCall || helper, `${path}: thin system calls use reuseTask`);
+}
+
 describe("workflow-structure", () => {
   it("every workflow.ts folder has tasks/ and at least one steps/<step>/step.ts", () => {
     assertWorkflowStructure(join(REPO_ROOT, "src/workflows"));
@@ -70,7 +97,19 @@ describe("workflow-structure", () => {
         const path = join(folder, "steps", step, "step.ts");
         assertStepOwnership(`${workflow.name}/steps/${step}/step.ts`, readFileSync(path, "utf8"));
       }
+      for (const task of readdirSync(join(folder, "tasks")).filter(name => name.endsWith(".ts"))) {
+        const path = join(folder, "tasks", task);
+        assertTaskReuse(`${workflow.name}/tasks/${task}`, readFileSync(path, "utf8"));
+      }
     }
+  });
+
+  it("requires the reuse helper for thin system calls without constraining pure task implementations", () => {
+    const imported = 'import { Search } from "../../../models/systems/example/search.js";';
+    assert.doesNotThrow(() => assertTaskReuse("tasks/search.ts", `${imported} reuseTask(step, { contract: Search }, bind);`));
+    assert.doesNotThrow(() => assertTaskReuse("tasks/fold.ts", "defineTask(Fold, { sessions: [], run });"));
+    assert.throws(() => assertTaskReuse("tasks/search.ts", `${imported} const identity = { contract: Search };`), /use reuseTask/u);
+    assert.throws(() => assertTaskReuse("tasks/search.ts", 'import { defineStepEntries as entries } from "kit"; entries(step);'), /use reuseTask/u);
   });
 
   it("rejects duplicated wiring, aliased hand-written proofs and runtime step lookup", () => {

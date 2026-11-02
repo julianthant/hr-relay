@@ -3,14 +3,16 @@ import { I9CheckInput } from "../../../../models/workflows/i9-check/input.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-import { personMatchInput, searchPersonMatchTask } from "../../tasks/search-person-match.js";
-import { personOrgInput, searchPersonOrgTask } from "../../tasks/search-person-org.js";
+import { searchPersonMatchTask } from "../../tasks/search-person-match.js";
+import { searchPersonOrgTask } from "../../tasks/search-person-org.js";
 export const personMatch = defineWorkflowStep({ key: "person-match", label: "Match person" });
 type I9Author = WorkflowAuthor<typeof I9CheckInput>;
 const match = defineStepEntries(personMatch);
 export function personMatchEntries({ task }: I9Author) {
-  const matching = task(searchPersonMatchTask(personMatch), [], ({ input }) => personMatchInput(input));
-  const initialSearch = task(searchPersonOrgTask(personMatch, "initial-name-search", { kind: "is-false", of: { from: "input", path: "person.useMatch" } }), [], ({ input }) => personOrgInput(input));
+  const matchCall = searchPersonMatchTask(personMatch);
+  const matching = task(matchCall.identity, [], matchCall.bind);
+  const searchCall = searchPersonOrgTask(personMatch, "initial-name-search", { kind: "is-false", of: { from: "input", path: "person.useMatch" } });
+  const initialSearch = task(searchCall.identity, [], searchCall.bind);
   const initial = task(match.task("match-outcome", ReadMatchOutcome, { replay: "always-rerun" }), [matching, initialSearch], ({ outputs }) => ({ match: outputs["identifier-match"] }));
   return { matching, initialSearch, initial };
 }

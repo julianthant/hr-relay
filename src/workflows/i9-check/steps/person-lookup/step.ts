@@ -3,12 +3,13 @@ import { I9CheckInput } from "../../../../models/workflows/i9-check/input.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-import { personOrgInput, searchPersonOrgTask } from "../../tasks/search-person-org.js";
+import { searchPersonOrgTask } from "../../tasks/search-person-org.js";
 import { i9CheckPersonMatchDefinition, personMatchEntries } from "../person-match/step.js";
 export const personLookup = defineWorkflowStep({ key: "person-lookup", label: "Check hire date" });
 type I9Author = WorkflowAuthor<typeof I9CheckInput>;
 export function personLookupEntries({ task }: I9Author, matched: ReturnType<typeof personMatchEntries>) {
-  return task(searchPersonOrgTask(personLookup, "name-search", { kind: "is-true", of: { from: "node", nodeId: "match-outcome", path: "shouldLookup" } }), [matched.initial], ({ input }) => personOrgInput(input));
+  const searchCall = searchPersonOrgTask(personLookup, "name-search", { kind: "is-true", of: { from: "node", nodeId: "match-outcome", path: "shouldLookup" } });
+  return task(searchCall.identity, [matched.initial], searchCall.bind);
 }
 export function buildStep(author: I9Author, matched: ReturnType<typeof personMatchEntries>) {
   const search = personLookupEntries(author, matched);
