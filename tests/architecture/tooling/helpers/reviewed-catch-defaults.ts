@@ -148,8 +148,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/bootstrap/secure-env-bootstrap.ts",
-    "sha256": "01f09fa3f35f6dd79fa7cbd344eed4b8d8dfb4ef6fe82f301244220b5e649c14",
-    "reason": "The root listener or inherited lifetime is acquired before admission. Unproved source closure retains admission and rethrows; typed runtime or source-closure uncertainty retains the outer lifetime, while settled paths await its close. Stopped maintenance releases admission only when custody was not retained. No failed bootstrap becomes successful runtime admission. The real browser closure port is supplied to dashboard admission and offline cancellation without changing the failure-retention path. Fixed-layout failure preserves its cause before ordinary admission, so nested closure uncertainty retains the same root listener."
+    "sha256": "d506e4048bea92dac89fe6d4472e16db9522184715cfe9c083530e735a045cf6",
+    "reason": "The root listener or inherited lifetime is acquired before admission. Unproved source closure retains admission and rethrows; typed runtime or source-closure uncertainty retains the outer lifetime, while settled paths await its close. Stopped maintenance releases admission only when custody was not retained. No failed bootstrap becomes successful runtime admission. The real browser closure port is supplied to dashboard admission and offline cancellation without changing the failure-retention path. Layout preparation rethrows typed person-upgrade and automatic-repair refusals unchanged; other layout failures preserve their cause before ordinary admission, so nested closure uncertainty retains the same root listener."
   },
   {
     "path": "src/backend/storage/admission/process-root.ts",

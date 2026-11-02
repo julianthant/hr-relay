@@ -11,7 +11,7 @@ import { acquireExclusiveRuntimeAdmission,RuntimeAdmission } from "../../storage
 import { acquireDashboardEntrypointAdmission,acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { FixedLayoutRefusedError } from "../../storage/maintenance/fixed-layout.js";
 import { assertDashboardBuildCurrent } from "../composition/dashboard/build-identity.js";
-import { RuntimeCustodyUncertainError } from "../composition/storage-compose.js";
+import { AutomaticPersonRepairRefusedError,RegisteredPersonUpgradeRefusedError,RuntimeCustodyUncertainError } from "../composition/storage-compose.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../config/runtime-isolation.js";
 import { probePrimaryDisplay } from "../host/primary-display.js";
 
@@ -87,7 +87,10 @@ async function runAdmittedEnvironmentBootstrap(
   if (repoRoot !== workspace && dependencies.acquireAdmission === undefined && !(lifetime.lock instanceof WorkerRuntimeLifetimeLock)) {
     const { prepareApplicationDataWorkspace } = await import("../composition/storage-compose.js");
     try { await prepareApplicationDataWorkspace(repoRoot, workspace, rootLifetime(), hostConfigFacts(hostAwareResolutionEnvironment(probePrimaryDisplay))); }
-    catch (error) { throw new FixedLayoutRefusedError(error); }
+    catch (error) {
+      if (error instanceof RegisteredPersonUpgradeRefusedError || error instanceof AutomaticPersonRepairRefusedError) throw error;
+      throw new FixedLayoutRefusedError(error);
+    }
   }
   if (entrypoint === "cli" && entrypointArgs[0] === "dashboard" && dependencies.acquireAdmission === undefined) {
     const { initializeRegisteredPersonStores } = await import("../composition/storage-compose.js");
