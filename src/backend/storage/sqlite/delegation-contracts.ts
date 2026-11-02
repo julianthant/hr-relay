@@ -55,7 +55,10 @@ export const DelegationSettlementRequestSchema = z.strictObject({
   now: IsoInstantSchema,
 });
 
+export const ContinuationRetryOwnerSchema = z.strictObject({ runId: RunIdSchema, version: PositiveIntSchema, attempt: PositiveIntSchema });
+
 export const DelegationRetryRequestSchema = z.strictObject({
+  continuationOwner: ContinuationRetryOwnerSchema.optional(),
   commandId: CommandIdSchema, sourceCommandId: CommandIdSchema, invocationCommandId: CommandIdSchema,
   manifestId: DelegationManifestIdSchema, dependencyId: DependencyIdSchema, expectedVersion: PositiveIntSchema,
   parentVersion: PositiveIntSchema, originalRunId: RunIdSchema, originalAttempt: PositiveIntSchema,

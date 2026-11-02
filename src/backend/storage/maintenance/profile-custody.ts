@@ -4,6 +4,7 @@ import { ProfileBrowserRootRefusalError,requireRuntimeAdmission } from "../admis
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { privatePathRejects } from "../private-path.js";
 import type { AuthorityDatabase } from "../sqlite/authority-database.js";
+import { runClaim } from "../../../models/run/record.js";
 import type { ProfileBrowserClosure,RetainedBrowserProfile } from "./profile-inventory.js";
 
 type CredentialMembershipCustody = ReturnType<AuthorityDatabase["readProfileResourceCustody"]>;
@@ -73,4 +74,20 @@ export function assertCredentialCopyResourcesClosed(facts: ReturnType<AuthorityD
   assertStoppedProfileResourcesClosed(facts);
   if (facts.writeIntents.some(intent => intent.status !== "committed" && intent.status !== "observed-present") || facts.pendingArtifacts.length > 0
     || facts.runs.some(run => run.lifecycle.state !== "terminal")) throw new Error("credential-maintenance-custody-unproved");
+}
+
+export function assertShutdownResourcesClosed(facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) {
+  assertStoppedProfileResourcesClosed(facts);
+  const unresolved = facts.writeIntents.filter(intent => intent.status !== "committed" && intent.status !== "observed-present");
+  const owns = (run: typeof facts.runs[number], intent: typeof unresolved[number]) => "runId" in intent
+    && run.envelope.runId === intent.runId && run.envelope.workflow === intent.workflowId
+    && run.envelope.itemId === intent.itemId && run.envelope.attempt === intent.runAttempt
+    && run.lifecycle.state === "parked-write" && run.lifecycle.writeIntentId === intent.writeIntentId
+    && run.lifecycle.intentGeneration === intent.generation;
+  if (facts.pendingArtifacts.length > 0 || facts.runs.some(run => runClaim(run) !== undefined
+    || run.lifecycle.state !== "terminal" && run.pause?.state !== "paused" && run.lifecycle.state !== "parked-write"
+    || run.lifecycle.state === "parked-write" && !unresolved.some(intent => owns(run, intent)))
+    || unresolved.some(intent => !facts.runs.some(run => owns(run, intent)))) {
+    throw new Error("profile-shutdown-custody-unproved");
+  }
 }

@@ -57,6 +57,7 @@ export interface FanOutEnvelope {
   readonly commandId: string;
   readonly actorId: string;
   readonly sourceBound?: RunEnvelope["sourceBound"];
+  readonly continuation?: RunEnvelope["continuation"];
   readonly recovery?: RunEnvelope["recovery"];
   readonly relaunch?: Readonly<{ archivedRunId: string; archiveFingerprint: string }>;
   readonly workflow: string;
@@ -161,7 +162,7 @@ export function fanOutQueuedRuns(
       configFingerprint: envelope.configFingerprint, configSnapshotId: envelope.configSnapshotId,
       shape: envelope.shape, priority: envelope.priority, dryRun: envelope.dryRun, recovery: envelope.recovery,
       browserMode: envelope.browserMode, captureBrowserScreenshots: envelope.captureBrowserScreenshots,
-      stepOmissions: envelope.stepOmissions, sourceBound: envelope.sourceBound,
+      stepOmissions: envelope.stepOmissions, sourceBound: envelope.sourceBound, continuation: envelope.continuation,
       retryOf: entry.retryOf, appVersion: envelope.appVersion, sessionId: envelope.session.sessionId,
       input: { raw: entry.rawInput, parsed: entry.parsedInput, ingressSchemaHash: envelope.ingressSchemaHash },
       runtimeConfig,
@@ -171,6 +172,10 @@ export function fanOutQueuedRuns(
     if (outcome.state === "refused") refuse("run lifecycle refused", outcome.refusal);
     const record = requireLifecycleApplied(outcome);
     runs.push(record);
+    for (const child of lifecycle.continueDelegations(record, envelope.commandId)) {
+      affectedTargets.push(runTarget(child.envelope.runId));
+      versionChanges.push({ target: runTarget(child.envelope.runId), before: 0, after: child.version });
+    }
     affectedTargets.push(runTarget(record.envelope.runId));
     versionChanges.push({ target: runTarget(record.envelope.runId), before: 0, after: record.version });
   }

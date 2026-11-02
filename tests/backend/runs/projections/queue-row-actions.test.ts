@@ -142,6 +142,11 @@ describe("queue-row action descriptors — the per-status set", () => {
 
       delete: ["footer", "menu"],
     });
+    assert.deepEqual(placements("failed"), {
+      rerun: ["footer", "menu", "data"],
+      rename: ["menu"],
+      delete: ["footer", "menu"],
+    });
     for (const status of QueueStatusSchema.options) {
       for (const action of queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor(status))) {
         assert.ok(
@@ -336,4 +341,21 @@ describe("queue-row action descriptors — every served verb has a command behin
       );
     }
   });
+});
+
+it("offers explicit checkpoint recovery only from canonical failed/interrupted facts, alongside ordinary Rerun", () => {
+  for (const recoverySource of ["failed", "interrupted"] as const) {
+    const facts = { ...factsFor("failed"), recoverySource };
+    const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, facts);
+    assert.ok(actions.some(action => action.key === "rerun" && action.kind === "navigation"));
+    const recover = actions.find(action => action.key === "recover-run");
+    assert.ok(recover?.kind === "command");
+    assert.equal(recover.command, "recover-run");
+    assert.equal(recover.expectedVersion, facts.rowRevision);
+    assert.equal(recover.confirm?.confirmLabel, "Recover");
+    assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, { ...facts, parkedWrite: true }).some(action => action.key === "recover-run"), false);
+    assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, { ...facts, isChild: true }).some(action => action.key === "recover-run"), false);
+  }
+  assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("done")).some(action => action.key === "recover-run"), false);
+  assert.equal(queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("partial")).some(action => action.key === "recover-run"), false);
 });

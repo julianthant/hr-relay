@@ -5,6 +5,18 @@ configuration, Settings, inbox and cross-date search with local workflow produce
 route can exist without being mounted by the product. The tables below describe both the present
 producer and the requirements for replacing it.
 
+Run and item Pause/Resume, exact-membership Pause all, and confirmed Pause all and quit use the
+canonical typed command facade. The application lifecycle query supplies runtime generation,
+current target versions and update availability. Application pause commands refresh every affected
+run in the served projection before quit notification. Queue producers retain the orthogonal pause
+state and available pause command. Ordinary Rerun accepts done, failed and interrupted sources and
+starts fresh; native Retry and Restart retain their lifecycle semantics. A separate server-authored
+Recover completed steps action composes `run/recover-run` through the same client and confirmation
+flow. The server derives its checkpoint recovery plan from an exact failed or interrupted source.
+Readback verifies the new item attempt while the source remains unchanged. Incompatible contracts,
+uncertain writes and unavailable retained evidence show the named recovery refusal. Host updater installation has no
+production dispatch; its absence remains explicit in the lifecycle query.
+
 ## Client facade and boundaries
 
 `src/dashboard/client/index.ts` assembles `DashboardClient` from `queries.ts`, `commands.ts`, and

@@ -1,3 +1,4 @@
+import { RunPauseSchema } from "../run/record.js";
 import { z } from "zod";
 import { WorkerControlRecordSchema } from "../run/worker-control.js";
 import { WorkerPoolMemberSchema, WorkerSlotRecordSchema } from "../run/worker-slot.js";
@@ -123,6 +124,9 @@ const QueueBaseFields = {
   resolvedInstances: z.array(ResolvedInstanceSchema),
     /* Whether this run is a REHEARSAL, read from the one envelope home of the flag; there is no absent arm and there must never be one. */
   dryRun: z.boolean(),
+  pause: RunPauseSchema.optional(),
+  pauseControl: z.strictObject({ state: z.enum(["running", "pause-pending", "paused", "unavailable"]),
+    expectedVersion: PositiveIntSchema, command: z.enum(["pause", "resume"]).optional() }).optional(),
     /* The scheduling class, read from the run envelope (its one home) exactly as `dryRun` is; there is no absent arm and there must never be one. */
   priority: QueuePrioritySchema,
     /* This run's ORDINAL within its workflow — the footer's `#N`; durable and assigned at enqueue, never derived from a row's position in a day's page. */

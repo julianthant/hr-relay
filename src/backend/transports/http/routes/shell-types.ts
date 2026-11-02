@@ -5,6 +5,7 @@ import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import type { RunLogsStreamHub } from "../subscriptions/run-logs-stream.js";
 
 export interface ShellRouteDeps {
+  readonly applicationLifecycle?: { snapshot(): import("../../../../models/dashboard/application-lifecycle.js").ApplicationLifecycle };
   readonly debugEvents?: ReturnType<typeof import("../../../logs/debug-events.js").createDebugEventWriter>;
   readonly calendar?: import("../../../runs/queries/calendar.js").CalendarQueryService;
   readonly bootstrap: BootstrapQueryDeps;

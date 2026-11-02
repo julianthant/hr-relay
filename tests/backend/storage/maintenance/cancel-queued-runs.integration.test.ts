@@ -13,7 +13,8 @@ import { z } from "zod";
 import { workerBootstrapEnvironment } from "../../../../src/models/config/secrets.js";
 import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { runOfflineQueuedRunCancellation } from "../../../../src/backend/storage/maintenance/cancel-queued-runs.js";
-import { runRecordFromRow, updateRunRecord } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { readNative6RunRecord, updateNative6RunFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { RunCheckpointRecordSchema, checkpointRecordKey } from "../../../../src/models/workflow/checkpoint.js";
 import { deriveCheckpointOutputDigest } from "../../../../src/models/run/result.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
@@ -29,14 +30,14 @@ afterEach(() => vi.restoreAllMocks());
 
 async function fixture(claimGeneration = 0) {
   const f = await createHistoricalFlatProfileFixture();
-  const rowModule = pathToFileURL(join(process.cwd(), "src/backend/storage/sqlite/run-record-row.ts")).href;
+  const rowModule = pathToFileURL(join(process.cwd(), "tests/support/fixtures/storage/historical-run-schema.ts")).href;
   const recordModule = pathToFileURL(join(process.cwd(), "src/models/run/record.ts")).href;
   const changed = spawnSync(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e",
-    `import { DatabaseSync } from "node:sqlite"; import { runRecordFromRow, updateRunRecord } from ${JSON.stringify(rowModule)};
+    `import { DatabaseSync } from "node:sqlite"; import { readNative6RunRecord, updateNative6RunFixture } from ${JSON.stringify(rowModule)};
       import { RunRecordSchema } from ${JSON.stringify(recordModule)};
       const raw = new DatabaseSync(process.argv[1]);
-      try { const current = runRecordFromRow(raw.prepare("SELECT * FROM runs").get());
-        updateRunRecord(raw, RunRecordSchema.parse({ ...current, lifecycle: { state: "queued" }, claimGeneration: Number(process.argv[2]), version: current.version + 1 }));
+      try { const current = readNative6RunRecord(raw, raw.prepare("SELECT * FROM runs").get());
+        updateNative6RunFixture(raw, RunRecordSchema.parse({ ...current, lifecycle: { state: "queued" }, claimGeneration: Number(process.argv[2]), version: current.version + 1 }));
         process.stdout.write(current.envelope.runId); } finally { raw.close(); }`, f.databasePath, String(claimGeneration)],
     { encoding: "utf8", timeout: 20_000, env: credentialKeychainTestEnvironment(workerBootstrapEnvironment()) });
   assert.equal(changed.error, undefined); assert.equal(changed.status, 0, changed.stderr);
@@ -61,7 +62,8 @@ it("plans without source writes, binds the exact capture, cancels with lifecycle
     const raw = new DatabaseSync(f.databasePath, { readOnly: true });
     try {
       inspectNativeAuthority(raw, 6);
-      const run = runRecordFromRow(raw.prepare("SELECT * FROM runs WHERE id=?").get(f.runId));
+      assert.throws(() => runRecordFromRow(raw.prepare("SELECT * FROM runs WHERE id=?").get(f.runId)), /native schema/u);
+      const run = readNative6RunRecord(raw, raw.prepare("SELECT * FROM runs WHERE id=?").get(f.runId));
       assert.equal(run.lifecycle.state, "terminal");
       assert.deepEqual(run.lifecycle, { state: "terminal", outcome: "cancelled", endedAt: run.updatedAt, errorSummary: "cancelled offline: stale queued run" });
       assert.equal(raw.prepare("SELECT count(*) AS count FROM command_audits WHERE json_extract(payload_json,'$.kind')='run-lifecycle'").get()?.count, 1);
@@ -93,8 +95,8 @@ it("refuses a changed native capture and retained old-build runtime evidence bef
     const plan = await runOfflineQueuedRunCancellation(profileBrowserClosure, f.workspace, ["--plan"], f.lifetime);
     const raw = new DatabaseSync(f.databasePath);
     try {
-      const current = runRecordFromRow(raw.prepare("SELECT * FROM runs").get());
-      updateRunRecord(raw, RunRecordSchema.parse({ ...current, version: current.version + 1 }));
+      const current = readNative6RunRecord(raw, raw.prepare("SELECT * FROM runs").get());
+      updateNative6RunFixture(raw, RunRecordSchema.parse({ ...current, version: current.version + 1 }));
     } finally { raw.close(); }
     const before = readFileSync(f.databasePath);
     await assert.rejects(() => runOfflineQueuedRunCancellation(profileBrowserClosure, f.workspace, ["--capture", plan.report.captureDigest, "--apply"], f.lifetime), /capture-changed/u);
@@ -111,7 +113,7 @@ it("rejects a checkpoint-bearing queued run without touching its original bytes"
   try {
     const raw = new DatabaseSync(f.databasePath);
     try {
-      const run = runRecordFromRow(raw.prepare("SELECT * FROM runs WHERE id=?").get(f.runId));
+      const run = readNative6RunRecord(raw, raw.prepare("SELECT * FROM runs WHERE id=?").get(f.runId));
       const checkpoint = RunCheckpointRecordSchema.parse({ workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
         nodeId: "synthetic-checkpoint", attempt: run.envelope.attempt, claimGeneration: 1, runId: f.runId,
         output: { schemaHash: "a".repeat(64), value: {} }, descriptorVersion: run.envelope.descriptorVersion,
@@ -167,7 +169,7 @@ it("plans and applies a safe 0644 native6 SQLite file without changing its mode"
     const raw = new DatabaseSync(f.databasePath, { readOnly: true });
     try {
       inspectNativeAuthority(raw, 6);
-      const run = runRecordFromRow(raw.prepare("SELECT * FROM runs WHERE id=?").get(f.runId));
+      const run = readNative6RunRecord(raw, raw.prepare("SELECT * FROM runs WHERE id=?").get(f.runId));
       assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled");
       assert.equal(run.lifecycle.errorSummary, "cancelled offline: stale queued run");
     } finally { raw.close(); }

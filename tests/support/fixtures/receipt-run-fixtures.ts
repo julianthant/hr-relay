@@ -1,4 +1,4 @@
-import { jsonLeafPaths } from "../../../src/backend/runs/provenance/task-provenance.js";
+import { jsonLeafPaths, transactionCheckpointProvenance } from "../../../src/backend/runs/provenance/task-provenance.js";
 import { JsonValueSchema } from "../../../src/rules/validation/canonical-json.js";
 import { resolvePersonLookupIdentity, derivePersonLookupOutcome } from "../../../src/rules/matching/person-lookup.js";
 import { PersonLookupInput } from "../../../src/models/workflows/person-lookup/input.js";
@@ -14,7 +14,7 @@ import {
   KualiSaveSeparationFinalization,
   kualiFinalizationIdempotencyKey,
 } from "../../../src/models/systems/kuali/save-separation-finalization.js";
-import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
+import { RunCheckpointRecordSchema, type FactProvenance } from "../../../src/models/workflow/checkpoint.js";
 import {
   deriveIdempotencyKeyDigest,
   deriveWriteBindingProofDigest,
@@ -430,7 +430,7 @@ export interface KualiReceiptEvidence {
 
 
 export function kualiReceiptEvidence(
-  input?: Readonly<{ readonly contractFingerprint?: string }>,
+  input?: Readonly<{ readonly contractFingerprint?: string; readonly transactionProvenance?: readonly FactProvenance[] }>,
 ): KualiReceiptEvidence {
   const descriptor = separationsKualiFinalizationDescriptor;
   const storedContractFingerprint =
@@ -467,20 +467,8 @@ export function kualiReceiptEvidence(
     descriptorVersion: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
     implFingerprint: IMPL_FINGERPRINT,
-    provenance: provenance(
-      [
-        "output.savedState.kind",
-        "output.savedState.actionId",
-        "output.savedState.documentNumber",
-        "output.savedState.observedEid",
-        ...Object.keys(FINALIZATION_FIELDS).map(
-          (field) => `output.savedState.fields.${field}`,
-        ),
-        "output.savedState.source",
-      ],
-      "live",
-      KUALI_CONFIRMED_AT,
-    ),
+    provenance: input?.transactionProvenance === undefined
+      ? transactionCheckpointProvenance(outcome, KUALI_CONFIRMED_AT) : input.transactionProvenance,
     writtenAt: KUALI_CONFIRMED_AT,
   });
   const dependencyCheckpoint = (

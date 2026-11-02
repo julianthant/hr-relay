@@ -307,7 +307,7 @@ function resolveApprovalGate(harness: Awaited<ReturnType<typeof harnessFor>>, pa
   database.authority.gateResults.insert({
     runId: RUN_ID,
     gateId: "approval",
-    nodeId: "approve",
+    nodeId: "approval",
     commandId: "cccccccc-0000-4000-8000-000000000000",
     expectedVersion: parkedRun.version,
     resolvedBy: "local-operator",
