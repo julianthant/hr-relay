@@ -871,7 +871,9 @@ export function defineWorkflow<
     ...(intake === undefined ? {} : { intake }),
     ...(operationDisplay === undefined ? {} : { operationDisplay }),
     steps: Object.freeze(authored.steps.map(([group, entries]) => Object.freeze([
-      Object.freeze({ ...group }),
+      Object.freeze(Object.defineProperty({ ...group }, GROUP_OWNER, {
+        value: group[GROUP_OWNER] ?? group, enumerable: false,
+      })),
       Object.freeze([...entries]),
     ] as const))),
     result: authored.result,

@@ -1,11 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { compileWorkflow, defineStepProof } from "../../src/workflow-kit/workflow-definition.js";
+import { compileWorkflow, defineStepProof, defineWorkflow } from "../../src/workflow-kit/workflow-definition.js";
 import { personLookupSearchingDefinition } from "../../src/workflows/person-lookup/steps/searching/step.js";
 import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
 import { SeparationsIdentityCheckCanonicalInput, separationsIdentityCheckDefinition } from "../../src/workflows/separations/steps/identity-check/step.js";
 import { separationsWorkflow } from "../../src/workflows/separations/workflow.js";
 
 describe("step proof derivation", () => {
+  it("retains canonical group ownership when reusing frozen tuples and refuses an unrelated group copy", () => {
+    const steps = personLookupWorkflow.steps;
+    const spec = { ...personLookupWorkflow, steps: () => ({ steps, result: personLookupWorkflow.result }) };
+    const reused = defineWorkflow(spec);
+    expect(reused.steps).toEqual(steps);
+    expect(reused.steps[0][1][0]).toBe(steps[0][1][0]);
+    expect(() => defineWorkflow({
+      ...spec,
+      steps: () => ({ steps: [[{ ...steps[0][0] }, steps[0][1]], ...steps.slice(1)], result: personLookupWorkflow.result }),
+    })).toThrow(/same key but distinct step objects/u);
+  });
+
   it("inherits the parent's input and presentation while retaining the step graph and result", () => {
     const { definition, order } = defineStepProof(personLookupWorkflow, personLookupSearchingDefinition);
     expect(order).toBe(5);
