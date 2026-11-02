@@ -115,6 +115,8 @@ Paths in this table are relative to `src/backend/`.
 `task-registry.ts`, `index.ts`, and `tasks/`. The workflow definition is browser-safe. The index declares
 registration, importing the definition, backend task store and retained proofs. The generated descriptor
 tuple imports definitions directly, keeping those backend imports out of the dashboard.
+`src/models/ocr/stored-extraction.ts` owns immutable extraction storage envelopes: validated source-bound page readings and explicitly unbound source evidence. The native artifact repository reads exact extraction IDs and retains every deliberate reading version.
+
 The unregistered `src/workflows/ocr/` and `src/workflows/ocr-page/`
 folders use the same layout; their test-only composition inventory in
 `tests/support/fixtures/ocr/unregistered-workflows.ts` supports compiler, layout, bundle and manifest
