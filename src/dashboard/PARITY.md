@@ -97,7 +97,7 @@ current corpus.
 - Notifications has interactive local destinations and separate read state.
 - Analytics uses duration coverage and exact-population drilldown rather than a labor-saving estimate.
 - Explorer renders complete local workflow timelines and source disclosures with stable IDs.
-- Spreadsheets uses the approved HUB library, inline spreadsheet types and Kronos report controls,
+- Spreadsheets uses the approved HUB library, inline spreadsheet types,
   versioned files, typed fields, selected header/column import, real XLSX workers and bounded editor history.
   The former Library/Types tabs, library search and Date added column are absent.
 - The HUB Assistant mounts in the shell with a retained composer in Chat files. Product conversations use the served assistant controller with per-chat cancellation and account authority.

@@ -16,7 +16,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole('heading', { name: 'Spreadsheets', exact: true })).toHaveCSS('line-height', '33px');
       await expect(surface.getByRole('heading', { name: 'Spreadsheets', exact: true })).toHaveCSS('font-weight', '650');
       await expect(surface.getByRole('tablist', { name: 'Spreadsheet settings' })).toHaveCount(0);
-      await expect(surface.getByRole('heading', { level: 2 })).toHaveText(['Spreadsheet types', 'Kronos reports']);
+      await expect(surface.getByRole('heading', { level: 2 })).toHaveText(['Spreadsheet types']);
       await expect(surface.getByRole('table', { name: 'Registered spreadsheets', exact: true }).getByRole('columnheader')).toHaveText(['Spreadsheet', 'Type', 'Rows', 'Actions']);
       for (const button of await surface.locator('.hub-sheets-toolbar').getByRole('button').all()) {
         await expect(button).toHaveCSS('font-size', '12px');

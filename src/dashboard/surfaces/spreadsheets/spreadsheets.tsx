@@ -10,7 +10,6 @@ import { SpreadsheetColumnImport } from "./spreadsheet-column-import.js";
 import { prepareSpreadsheetColumns, selectSpreadsheetColumns } from "./spreadsheet-column-import-model.js";
 import { SpreadsheetLibrary } from "./spreadsheet-library.js";
 import { SpreadsheetVersions } from "./spreadsheet-versions.js";
-import type { KronosReportDatesPort } from "./spreadsheet-library-model.js";
 import { spreadsheetChatRegistrationPort, saveSpreadsheetDownload } from "./spreadsheet-chat-registration-model.js";
 import { saveMockSpreadsheet, addMockSpreadsheetType, renameMockSpreadsheetType, registeredSpreadsheetWorkbook, registerLocalSpreadsheet, retainSpreadsheetCopy, useSpreadsheetMocks, type RegisteredSpreadsheet, type SpreadsheetType } from "./spreadsheet-mock-model.js";
 
@@ -32,7 +31,7 @@ export function SpreadsheetTypeDialog({ open, onOpenChange, type, returnFocus }:
   </DialogContent></Dialog>;
 }
 
-export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook, reportDates, source = "served" }: { reportDates?: KronosReportDatesPort; source?: "mock" | "served"; workbook: EditableWorkbook | null; workbookDirty: boolean; onWorkbook: (next: EditableWorkbook | null, dirty: boolean) => void }) {
+export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook, source = "served" }: { source?: "mock" | "served"; workbook: EditableWorkbook | null; workbookDirty: boolean; onWorkbook: (next: EditableWorkbook | null, dirty: boolean) => void }) {
   const mocks = useSpreadsheetMocks();
   const { types } = mocks;
   const { toast } = useToasts();
@@ -122,7 +121,7 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook, repo
       setImportOpen(true);
     } : undefined} /> : <>
       {pendingImport && <Banner tone="info" title="Import ready to review">{pendingImport.name} · Choose columns before adding this file to your library.</Banner>}
-      <SpreadsheetLibrary files={files} types={types} busy={busy} loading={source === "served" && served.loading} failed={!!fileError || source === "served" && served.refreshing} pendingImport={!!pendingImport} importTrigger={importTrigger} onImport={() => { if (pendingImport) { setImportView("columns"); setImportOpen(true); } else upload.current?.click(); }} onCreateType={button => { typeTrigger.current = button; setViewType(undefined); }} onEditType={(type, button) => { typeTrigger.current = button; setViewType(type); }} onOpen={openFile} onDownload={source === "served" ? file => { void download(file); } : undefined} onFileButton={(id, node) => { if (node) libraryButtons.current.set(id, node); else libraryButtons.current.delete(id); }} reportDates={reportDates} />
+      <SpreadsheetLibrary files={files} types={types} busy={busy} loading={source === "served" && served.loading} failed={!!fileError || source === "served" && served.refreshing} pendingImport={!!pendingImport} importTrigger={importTrigger} onImport={() => { if (pendingImport) { setImportView("columns"); setImportOpen(true); } else upload.current?.click(); }} onCreateType={button => { typeTrigger.current = button; setViewType(undefined); }} onEditType={(type, button) => { typeTrigger.current = button; setViewType(type); }} onOpen={openFile} onDownload={source === "served" ? file => { void download(file); } : undefined} onFileButton={(id, node) => { if (node) libraryButtons.current.set(id, node); else libraryButtons.current.delete(id); }} />
     </>}
     {importView === "columns" ? pendingImport ? <SpreadsheetColumnImport open={importOpen} document={pendingImport} onOpenChange={setImportOpen} onChange={next => onWorkbook(next, true)} onCancel={() => { setImportOpen(false); onWorkbook(null, false); }} onConfirm={confirmImport} returnFocus={importTrigger} /> : importOpen && <Dialog open onOpenChange={setImportOpen}><DialogContent title="Import unavailable" description="Choose the file again to review its columns."><DialogBody>The pending file is no longer in memory.</DialogBody><DialogFooter><Button onClick={() => setImportOpen(false)}>Close</Button></DialogFooter></DialogContent></Dialog> : <SpreadsheetImportDialog open={importOpen} onOpenChange={setImportOpen} existing={editing} onRegistered={() => { if (!editing) setSelectedId(null); }} />}
     <SpreadsheetVersions key={versionsId ?? "closed"} returnFocus={versionTrigger} libraryId={versionsId} read={readVersions} onClose={() => setVersionsId(null)} onDownload={async record => { saveSpreadsheetDownload(await registration.download({ libraryId: record.libraryId, version: record.version, name: record.workbook.name, status: record.version > 1 ? 'Updated' : 'Attached' })); }} />
