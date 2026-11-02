@@ -1,11 +1,12 @@
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { ocrPageWorkflow } from "./workflow.js";
+import { defineStepProof } from "../../workflow-kit/workflow-definition.js";
+import { ocrPageReadingDefinition } from "./steps/read-page/step.js";
 import { ocrPageStore } from "./task-registry.js";
-import { ocrPageReadingWorkflow } from "./steps/read-page/step.js";
+import { ocrPageWorkflow } from "./workflow.js";
 
 export const registration = deepFreeze({
   definition: ocrPageWorkflow,
   exposure: { kind: "unregistered" },
   store: ocrPageStore,
-  proofs: [{ definition: ocrPageReadingWorkflow, order: 1 }],
+  proofs: [defineStepProof(ocrPageWorkflow, ocrPageReadingDefinition)],
 } as const);

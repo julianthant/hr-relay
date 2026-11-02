@@ -17,16 +17,17 @@ function workflow(root: string, id: string, exposure: string, order: number): vo
   const folder = `src/workflows/${id}`;
   put(root, `${folder}/workflow.ts`, `export const ${id}Workflow = defineWorkflow({ id: "${id}" });\n`);
   put(root, `${folder}/task-registry.ts`, `export const ${id}Store = {};\n`);
-  put(root, `${folder}/steps/read/step.ts`, `export const ${id}ReadWorkflow = defineWorkflow({ id: "${id}-read" });\n`);
+  put(root, `${folder}/steps/read/step.ts`, `export const ${id}ReadDefinition = defineStep({ group: {}, proof: { id: "${id}-read", order: ${order}, build: () => ({}) } });\n`);
   put(root, `${folder}/index.ts`, [
     'import { deepFreeze } from "../../rules/validation/immutability.js";',
     `import { ${id}Workflow } from "./workflow.js";`,
     `import { ${id}Store } from "./task-registry.js";`,
-    `import { ${id}ReadWorkflow } from "./steps/read/step.js";`,
+    `import { ${id}ReadDefinition } from "./steps/read/step.js";`,
+    'import { defineStepProof } from "../../workflow-kit/workflow-definition.js";',
     'throw new Error("registration source must not execute during generation");',
     "export const registration = deepFreeze({",
     `  definition: ${id}Workflow, exposure: ${exposure}, store: ${id}Store,`,
-    `  proofs: [{ definition: ${id}ReadWorkflow, order: ${order} }],`,
+    `  proofs: [defineStepProof(${id}Workflow, ${id}ReadDefinition)],`,
     "} as const);\n",
   ].join("\n"));
 }
@@ -81,7 +82,7 @@ describe("workflow registry generation", () => {
         ["order: 0", "order: -1", /nonnegative integer order/u],
         ["order: 0", "order: 1.5", /nonnegative integer order/u],
         ["store: alphaStore", "store: {}", /real named value import/u],
-        ["proofs: [{ definition: alphaReadWorkflow, order: 0 }]", "proofs: []", /proofs must list every/u],
+        ["proofs: [defineStepProof(alphaWorkflow, alphaReadDefinition)]", "proofs: []", /proofs must list every/u],
         ["definition: alphaWorkflow", "definition: alphaWorkflow, definition: alphaWorkflow", /duplicate property/u],
         ['"./workflow.js"', '"../../backend/unsafe.js"', /real named value import/u],
       ] as const) {
@@ -97,7 +98,7 @@ describe("workflow registry generation", () => {
       put(root, "src/workflows/beta/workflow.ts", 'export const betaWorkflow = defineWorkflow({ id: "wrong" });\n');
       expect(() => workflowRegistrySources(root)).toThrow(/workflow id must match its folder/u);
       workflow(root, "beta", '{ kind: "child-only" }', 1);
-      put(root, "src/workflows/beta/steps/read/step.ts", 'export const betaReadWorkflow = defineWorkflow({ id: "alpha-read" });\n');
+      put(root, "src/workflows/beta/steps/read/step.ts", 'export const betaReadDefinition = defineStep({ group: {}, proof: { id: "alpha-read", order: 1, build: () => ({}) } });\n');
       expect(() => workflowRegistrySources(root)).toThrow(/repeat workflow ids/u);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });

@@ -6,6 +6,7 @@ import { EidSchema } from "../../../rules/identity/ids.js";
 import { defineCanonicalInput } from "../../workflow/canonical-input.js";
 
 const name = CANONICAL_FIELDS.fullName.schema;
+export const PERSON_LOOKUP_EXAMPLE_EID = "10000001";
 const search = {
   mode: z.literal("search").default("search"),
   crmCheck: z.boolean().default(true),
@@ -35,7 +36,7 @@ export const PersonLookupCanonicalInput = defineCanonicalInput(PersonLookupInput
   z.strictObject({ ...canonicalSearch, name }),
   z.strictObject({ ...canonicalSearch, emplId: EidSchema, name: name.optional() }),
   z.strictObject({ mode: z.literal("match"), lastName: z.string().min(1).refine(value => value.trim() === value && value.trim().length > 0), firstName: z.string().min(1).refine(value => value.trim() === value && value.trim().length > 0), dob: z.string().min(1).refine((value) => value.trim() === value && !/^x$/iu.test(value), "Missing DOB must be omitted").optional(), ssn: z.string().regex(/^\d{9}$/u).optional(), crmCheck: z.boolean(), includeCrmDates: z.literal(false) }),
-]).superRefine(validateOptions), [{ name: "Example, Person" }, { emplId: "10000001" }, { mode: "match", lastName: "Example", firstName: "Person", dob: "01/15/2000" }]);
+]).superRefine(validateOptions), [{ name: "Example, Person" }, { emplId: PERSON_LOOKUP_EXAMPLE_EID }, { mode: "match", lastName: "Example", firstName: "Person", dob: "01/15/2000" }]);
 export type PersonLookupInputValue = z.output<typeof PersonLookupInput>;
 
 export class PersonLookupMatchInputError extends Error {
