@@ -35,6 +35,8 @@ import { boundProfileCredentials,createBoundProfileFixture } from "../../../supp
 import { update as artifactUpdate } from "../../../support/helpers/database-foundation/fixtures.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
+import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 
 const hostFacts = { primaryDisplay: null };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -143,6 +145,7 @@ it("upgrades a genuinely READY bound profile with unchanged historical rows, cre
     const after = rawEight(f.path);
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "runs") assert.deepEqual(after[table], rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows);
     }
@@ -244,18 +247,24 @@ it("refuses a genuine canonical queued run despite stopped global process roles"
   } finally { await f.close(); }
 });
 
-it("automatically upgrades with queued work intact instead of retiring its durable state", async () => {
-  const f = await readyBoundEight("queued");
+it.each([8, 11] as const)("automatically upgrades schema %s with queued work intact instead of retiring its durable state", async sourceVersion => {
+  const f = await readyBoundEight("queued", sourceVersion);
   try {
     const before = rawEight(f.path);
     assert.ok((before.runs?.length ?? 0) > 0); assert.ok((before.artifacts?.length ?? 0) > 0);
+    assert.throws(() => runRecordFromRow(before.runs?.[0]), /native schema/u);
     const artifactDirectory = join(f.stateRoot, "artifacts"), artifactNames = readdirSync(artifactDirectory);
     assert.equal(artifactNames.length, 1); const artifactName = artifactNames[0]; assert.ok(artifactName);
     const artifactBytes = readFileSync(join(artifactDirectory, artifactName)), outputBytes = readFileSync(join(f.stateRoot, "files", "upgrade-proof.txt"));
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
+    const backupDirectory = join(f.stateRoot, "backups", "authority");
+    const manifests = readdirSync(backupDirectory).filter(name => name.endsWith(".manifest.json"))
+      .map(name => AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(backupDirectory, name), "utf8"))));
+    assert.ok(manifests.some(manifest => manifest.schemaVersion === sourceVersion && manifest.verification.schemaVersion === sourceVersion));
     const after = rawEight(f.path);
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "runs") assert.deepEqual(after[table], rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows);
     }
@@ -466,6 +475,7 @@ it.each([9, 10, 11] as const)("upgrades supported schema %s to the current versi
     const after = rawEight(f.path);
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "runs") assert.deepEqual(after[table], rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
       else assert.deepEqual(after[table], rows);
     }

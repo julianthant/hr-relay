@@ -845,9 +845,9 @@ function commandGroupLinkViolations(database: DatabaseSync): readonly string[] {
     ? [] : ["command-group child linkage mismatch"]);
 }
 
-function readTimelineRun(database: DatabaseSync, runId: string): RunRecord | undefined {
+function readTimelineRun(database: DatabaseSync, runId: string, readRun = runRecordFromRow): RunRecord | undefined {
   const row = database.prepare("SELECT * FROM runs WHERE id = ?").get(runId);
-  return row === undefined ? undefined : runRecordFromRow(row);
+  return row === undefined ? undefined : readRun(row);
 }
 
 function authenticatedPublicationDeletion(database: DatabaseSync, runId: string, publication: ConfirmationPublication): boolean {
@@ -880,10 +880,10 @@ function readConfirmationPublication(database: DatabaseSync,id:string): Confirma
   return confirmationPublicationFromRow(intent,Reflect.get(row,"publication_json"));
 }
 
-function assertConfirmationPublication(database:DatabaseSync,id:string): void {
+function assertConfirmationPublication(database:DatabaseSync,id:string,readRun = runRecordFromRow): void {
   const publication = readConfirmationPublication(database,id);
   if (publication === undefined) return;
-  const owner = readTimelineRun(database,publication.ledger.runId);
+  const owner = readTimelineRun(database,publication.ledger.runId,readRun);
   const deleted = database.prepare("SELECT 1 FROM deleted_runs WHERE run_id=?").get(publication.ledger.runId) !== undefined;
   if (owner !== undefined && deleted) throw new Error("confirmed-publication-owner-ambiguous");
   if (deleted && !authenticatedPublicationDeletion(database,publication.ledger.runId,publication)) throw new Error("confirmed-publication-deletion-unverified");
@@ -892,11 +892,11 @@ function assertConfirmationPublication(database:DatabaseSync,id:string): void {
   const raw = database.prepare("SELECT * FROM timeline_events WHERE id=?").get(publication.timeline.eventId);
   if (raw === undefined) {
     if (!authenticatedPublicationDeletion(database,publication.ledger.runId,publication)) throw new Error("confirmed-publication-timeline-missing");
-    if (readTimelineRun(database,publication.ledger.runId) !== undefined) throw new Error("confirmed-publication-deleted-run-still-present");
+    if (readTimelineRun(database,publication.ledger.runId,readRun) !== undefined) throw new Error("confirmed-publication-deleted-run-still-present");
   } else {
     const timeline = timelineEventFromRow(raw);
     if (timelineAppendContent(timeline) !== canonicalJsonStringify(publication.timeline)) throw new Error("confirmed-publication-timeline-mismatch");
-    assertTimelineOwner(database,timeline);
+    assertTimelineOwner(database,timeline,false,readRun);
   }
 }
 
@@ -929,9 +929,9 @@ function timelineEvidenceRepositories(database: DatabaseSync) {
   };
 }
 
-function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, appending = false): void {
+function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, appending = false, readRun = runRecordFromRow): void {
     if (record.scope.kind !== "run") return;
-    const run = readTimelineRun(database, record.scope.runId);
+    const run = readTimelineRun(database, record.scope.runId, readRun);
     if (run === undefined) throw new Error("timeline-event-owner-missing");
     if (run.envelope.workflow !== record.workflow) throw new Error("timeline-event-owner-mismatch");
     if (record.payload.kind === "operation-confirmed") {
@@ -1013,11 +1013,11 @@ function authenticateStoredResolutionAudit(database: DatabaseSync,input:unknown)
   authenticateAuditedParkedWriteResolution(nativeOrdinaryRecordFromRow("write_attempts",attempt),commandFromRow(command),audit);
 }
 
-function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRecord): void {
+function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRecord, readRun = runRecordFromRow): void {
   const evidence = terminalEvidenceResult(record);
   const rawRun = database.prepare("SELECT * FROM runs WHERE id=?").get(record.runId);
   if (rawRun === undefined) throw new Error("terminal-evidence-run-missing");
-  const run = runRecordFromRow(rawRun);
+  const run = readRun(rawRun);
   if (evidence === undefined) {
     if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done") throw new Error("terminal-evidence-payload-required");
     if (run.completion?.kind !== "done" || run.completion.resultDigest !== record.resultDigest) throw new Error("terminal-result-completion-mismatch");
@@ -1054,7 +1054,16 @@ function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRe
   if (canonicalJsonStringify(createRunTerminalEvidenceResult(run,evidence)) !== canonicalJsonStringify(record)) throw new Error("terminal-evidence-result-mismatch");
 }
 
+function inspectionRunReader(expectedSchemaVersion: number): typeof runRecordFromRow {
+  return expectedSchemaVersion >= 12 ? runRecordFromRow : (raw: unknown) => {
+    const row = z.record(z.string(), z.unknown()).parse(raw);
+    if (Object.hasOwn(row, "pause_state")) throw new Error("stopped-run-schema-columns-mismatch");
+    return runRecordFromRow({ ...row, pause_state: null });
+  };
+}
+
 function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION): number {
+  const readRun = inspectionRunReader(expectedSchemaVersion);
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of migrationTableNames(expectedSchemaVersion)) {
@@ -1069,11 +1078,11 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             search_generation:z.number().int().nonnegative().nullable(),search_state:z.enum(["unbuilt","ready","invalid"]),
             ...(expectedSchemaVersion >= 7 ? { installation_id: z.uuid(), profile_id: z.uuid() } : {}) }).parse(raw);
           if (row.search_state === "ready" && row.search_generation !== row.authority_generation) throw new Error("search-generation-mismatch");
-        } else if (table === "runs") runRecordFromRow(raw);
+        } else if (table === "runs") readRun(raw);
         else if (table === "commands") commandFromRow(raw);
         else if (table === "run_search") {
           const id = z.object({run_id:z.string()}).parse(raw).run_id;
-          const run = readTimelineRun(database,id);
+          const run = readTimelineRun(database,id,readRun);
           if (run === undefined) throw new Error("run-search-owner-missing");
           runSearchIndexFromRow(raw,run,z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready");
         }
@@ -1082,7 +1091,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
         else if (table === "worker_slots") workerSlotFromRow(raw);
         else if (table === "worker_controls") workerControlFromRow(raw);
         else if (table === "browser_sessions") workerBrowserFromRow(raw);
-        else if (table === "timeline_events") assertTimelineOwner(database,timelineEventFromRow(raw));
+        else if (table === "timeline_events") assertTimelineOwner(database,timelineEventFromRow(raw),false,readRun);
         else if (table === "artifacts") {
           const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
           if (kind === "imported") importedArtifactFromRow(raw);
@@ -1116,8 +1125,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             const chat = AssistantChatRecordSchema.parse(nativeOrdinaryRecordFromRow("assistant_chats", rawChat));
             if (chat.profileId !== action.binding.profileId || chat.epoch !== action.binding.accountSessionEpoch) throw new Error("assistant-action-chat-mismatch");
           }
-          if (table === "run_results") assertTerminalEvidenceOwner(database,RunResultRecordSchema.parse(record));
-          if (table === "write_intents") { authenticateStoredWriteResolution(database,record); assertConfirmationPublication(database,z.object({writeIntentId:z.string()}).parse(record).writeIntentId); }
+          if (table === "run_results") assertTerminalEvidenceOwner(database,RunResultRecordSchema.parse(record),readRun);
+          if (table === "write_intents") { authenticateStoredWriteResolution(database,record); assertConfirmationPublication(database,z.object({writeIntentId:z.string()}).parse(record).writeIntentId,readRun); }
           if (table === "command_audits") {
             const audit = NativeCommandAuditSchema.parse(record);
             authenticateStoredResolutionAudit(database,audit);
@@ -1448,7 +1457,7 @@ function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typ
   const browserProfiles = browserProfileInventory(database);
   const reservations = readWorkerReservationCustody(database, browserProfiles.slots, browserProfiles.controls);
   const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
-  const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow);
+  const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map(inspectionRunReader(inspection.schemaVersion));
   const writeIntents = database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row)));
   const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
   const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
@@ -2013,7 +2022,7 @@ export class AuthorityDatabase implements Disposable {
     owner.assertStoppedProfile(operation); copy.assertReadOnlyAuthorityDatabase(path);
     return withAuthorityDatabaseReadOnly(copy, path, database => {
       const version = readIntPragma(database, "user_version"), meta = readMetaRow(database), binding = owner.profileBinding;
-      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || ![8, 9, 10, 11].includes(version)
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || ![8, 9, 10, 11, 12].includes(version)
         || meta.schema_version !== version || meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) throw new Error("restore-candidate-binding-mismatch");
       const facts = Object.freeze(browserProfileInventory(database));
       owner.assertStoppedProfile(operation); return facts;

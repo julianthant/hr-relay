@@ -394,7 +394,10 @@ An existing database must match its application ID, `user_version`, metadata, an
 ordinary startup. Ordinary writable opens and stopped upgrades use SQLite existing-only mode,
 including when a source disappears during opening. Only `initializeProfile`, after its issued setup
 admission check, creates the absent canonical profile database and its current baseline.
-Schemas 1–7 are inspected only by the stopped upgrade path; ordinary readers use the current layout.
+Schemas 1–11 are inspected only under stopped upgrade or maintenance authority; ordinary readers
+use the current layout. Stopped inspection projects the absent pre-v12 pause column as null only
+after validating the predecessor's registered schema, including run/search/timeline/result owners.
+The forward v12 migration adds the pause scalar and its JSON-equality triggers before runtime opens.
 
 Assistant grants, chats and once-consumable actions use three profile-owned authority tables.
 An explicit operator `apply-settings` command may carry `assistantPermission` with the expected
