@@ -140,7 +140,7 @@ npm run test:pc -- 'tests/backend/runs/**/*.integration.test.ts'
 ```
 
 The PC needs tailnet-only SSH (prefer Tailscale SSH with its systemd service enabled), Node
-satisfying `package.json`, rsync, Git, and Chromium's libraries installed with
+satisfying `package.json`, rsync, Git, flock, and Chromium's libraries installed with
 `npx playwright install --with-deps chromium`. Keep its private host in local configuration.
 Normal SSH host verification applies.
 
@@ -151,7 +151,8 @@ dependencies and build output are excluded. Edits after sync belong to the next 
 metadata retains the Mac's index for inventory guards, without history.
 
 Three independent slots under `~/.cache/relay-test-pc/` retain separate `node_modules` while the
-lockfile hash is unchanged. A run takes a free slot or waits. After measuring integration load,
+lockfile hash is unchanged. A kernel lock holds the slot through sync and execution; a run takes
+a free slot or waits. After measuring integration load,
 capacity can be set in `~/.config/relay-test-pc/slots` (1..16; change only while idle). Integration
 runs build the dashboard as CI does. Test environment values come from `ci-checks.yml`, temp files
 use `/dev/shm`, and each run uses at most two Vitest workers.

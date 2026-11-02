@@ -74,6 +74,7 @@ async function remote(slot: string): Promise<number> {
     return await command("npx", ["--no-install", "vitest", "run", ...projects, "--maxWorkers=2", "--passWithNoTests=false", ...request.files], cwd);
   } finally {
     await checked("rm", ["-rf", "--", temp], cwd);
+    writeFileSync(join(slot, "completed"), "done\n");
   }
 }
 
@@ -88,7 +89,9 @@ while :; do
   for number in $(seq 1 "$slots"); do
     slot="$root/slot-$number"
     mkdir -p "$slot/work"
-    if mkdir "$slot/lease" 2>/dev/null; then
+    exec 9>"$slot/lock"
+    if flock -n 9 && mkdir "$slot/lease" 2>/dev/null; then
+      rm -f "$slot/completed"
       find "$slot/work" -mindepth 1 -maxdepth 1 ! -name node_modules -exec rm -rf -- {} +
       printf 'RELAY_PC_SLOT=%s\\n' "$slot"
       if ! read -r ready; then echo "Interrupted sync: retained lease $slot/lease" >&2; exit 1; fi
@@ -104,9 +107,11 @@ while :; do
       set +e
       node --import tsx scripts/test/pc.ts --remote "$slot"
       status=$?
-      rmdir "$slot/lease"
+      if [ ! -f "$slot/completed" ]; then echo "Interrupted run: retained lease $slot/lease" >&2; exit 1; fi
+      rmdir "$slot/lease" || exit 1
       exit "$status"
     fi
+    exec 9>&-
   done
   sleep 1
 done`;
