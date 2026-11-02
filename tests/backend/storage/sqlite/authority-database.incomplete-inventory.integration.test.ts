@@ -1,3 +1,4 @@
+import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -219,7 +220,7 @@ for (const activity of ["business", "deleted-history", "artifact-reference", "wo
           search.rebuild({ restart: true }, generation, initial.capturedAt);
         }
         if (activity === "workbook-history") {
-          const service = createWorkbookLibraryService({ clock: manualClock(new Date(initial.capturedAt)),
+          const service = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, clock: manualClock(new Date(initial.capturedAt)),
             repository: createWorkbookLibraryRepository({ database, mutate: work => work().result, read: work => work() }) });
           const first = service.create({ name: "Fixture.xlsx", themes: [], hasFormulas: false, sheets: [{ id: "sheet", name: "Fixture", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "fixture" }] }] }] });
           const saved = service.save(first.libraryId, first.version, { ...first.workbook, name: "Saved.xlsx" });

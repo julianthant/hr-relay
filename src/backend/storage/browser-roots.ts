@@ -79,10 +79,37 @@ export type BrowserProfileProbeFactory = (input: Readonly<{
 
 const Generation = BrowserRootsSchema.shape.nextGeneration;
 const RelativePath = BrowserRootSchema.shape.directory;
-const [WorkerOwner, SignupOwner] = BrowserRootOwnerSchema.options;
+const [WorkerOwner, SignupOwner, CommandOwner] = BrowserRootOwnerSchema.options;
 const Launch = BrowserRootSchema.shape.launch;
 export type BrowserLaunchOwner = Readonly<{ kind: "worker"; database: AuthorityDatabase; workerId: string; stoppedProcess?: ChildProcess }>
-  | Readonly<z.infer<typeof SignupOwner>>;
+  | Readonly<z.infer<typeof SignupOwner>> | Readonly<{ kind: 'command'; capability: CommandBrowserCapability }>;
+declare const commandBrowserBrand: unique symbol;
+export interface CommandBrowserCapability { readonly [commandBrowserBrand]: true }
+const commandCapabilities = new WeakMap<CommandBrowserCapability, Readonly<{ admission: RuntimeAdmission;
+  binding: ReturnType<RuntimeAdmission['captureBrowserRegistryContext']>; owner: z.infer<typeof CommandOwner>; profileRoot: string; profileDirectory: string }>>();
+export function commandProfileDirectory(profileRoot: string): string { return resolve(AbsolutePathSchema.parse(profileRoot), 'commands', 'sharepoint'); }
+export function admitCommandBrowser(input: RuntimeAdmission, value: Readonly<{ commandId: string; requestDigest: string; profileRoot: string }>): CommandBrowserCapability {
+  const admission = requireRuntimeAdmission(input), binding = admission.captureBrowserRegistryContext();
+  if (binding.profileId === null) throw new BrowserRootUnavailableError();
+  admission.assertBrowserRegistryLaunch(binding.profileId);
+  const owner = CommandOwner.parse({ kind: 'command', commandId: value.commandId, requestDigest: value.requestDigest, system: 'sharepoint' });
+  const profileRoot = resolve(AbsolutePathSchema.parse(value.profileRoot)), profileDirectory = commandProfileDirectory(profileRoot);
+  const withinProfile = relative(join(binding.machineRoot, 'profiles', binding.profileId), profileRoot);
+  if (!withinProfile || isAbsolute(withinProfile) || withinProfile.split(sep).includes('..')) throw new BrowserRootUnavailableError();
+  const capability = Object.freeze({}) as CommandBrowserCapability;
+  commandCapabilities.set(capability, { admission, binding, owner, profileRoot, profileDirectory });
+  return capability;
+}
+function commandOwner(admission: RuntimeAdmission, capability: CommandBrowserCapability, profileId: string, directory: string, cleanup: boolean) {
+  const source = commandCapabilities.get(capability);
+  if (source === undefined || source.admission !== admission || source.binding.profileId !== profileId || source.profileDirectory !== directory) throw new BrowserRootUnavailableError();
+  admission.assertBrowserRegistryCustody();
+  if (!cleanup) {
+    admission.assertBrowserRegistryLaunch(profileId);
+    if (!same(admission.captureBrowserRegistryContext(), source.binding)) throw new BrowserRootUnavailableError();
+  }
+  return source.owner;
+}
 export interface BrowserRootLaunchInput {
   readonly profileId: string;
   readonly profileRoot: string;
@@ -155,14 +182,16 @@ export function createBrowserRoots(input: RuntimeAdmission) {
       if (owner.stoppedProcess !== undefined && !cleanup) throw new BrowserRootUnavailableError();
       return WorkerOwner.parse(AuthorityDatabase.prototype.browserWorkerOwner.call(owner.database, admission, owner.workerId, profileDirectory, owner.stoppedProcess));
     }
+    if (owner.kind === 'command') return commandOwner(admission, owner.capability, profileId, profileDirectory, cleanup);
     const parsed = SignupOwner.parse(owner);
     if (cleanup) admission.assertBrowserRegistryCleanup(profileId, parsed);
     else admission.assertBrowserRegistryLaunch(profileId, parsed);
     return parsed;
   }
   function current(input: BrowserRootLaunchInput, cleanup = false): BrowserRootOwner {
+    if (input.owner.kind === 'command' && commandCapabilities.get(input.owner.capability)?.profileRoot !== input.profileRoot) throw new BrowserRootUnavailableError();
     const owner = ownerOf(input.owner, input.profileId, input.profileDirectory, cleanup), captured = admission.captureBrowserRegistryContext();
-    if (!(cleanup && owner.kind === "signup") && !same(captured, binding)) throw new BrowserRootUnavailableError();
+    if (!(cleanup && (owner.kind === "signup" || owner.kind === "command")) && !same(captured, binding)) throw new BrowserRootUnavailableError();
     return owner;
   }
   function assertRow(document: BrowserRootsDocument, expected: BrowserRoot): BrowserRoot {
@@ -180,8 +209,10 @@ export function createBrowserRoots(input: RuntimeAdmission) {
     let captured = mutate(document => {
       assertCurrent();
       const prior = document.roots.find(row => row.directory === root);
+      const commandRotation = prior?.owner.kind === 'command' && owner.kind === 'command' && prior.profileId === input.profileId && prior.profileRoot === profileRoot;
       if (prior !== undefined && (prior.native !== undefined || prior.launch.state !== "closed" || prior.profileId !== input.profileId
-        || !same(prior.owner, owner) || prior.profileRoot !== profileRoot || prior.credentialFingerprint !== null && prior.credentialFingerprint !== input.credentialFingerprint)) throw new BrowserRootUnavailableError();
+        || !commandRotation && !same(prior.owner, owner) || prior.profileRoot !== profileRoot || prior.credentialFingerprint !== null && prior.credentialFingerprint !== input.credentialFingerprint
+          && !(commandRotation && lstatSync(input.profileDirectory, { throwIfNoEntry: false }) === undefined))) throw new BrowserRootUnavailableError();
       if (prior === undefined && lstatSync(input.profileDirectory, { throwIfNoEntry: false }) !== undefined) throw new BrowserRootUnavailableError();
       const row = BrowserRootSchema.parse({ profileId: input.profileId, profileRoot, directory: root, owner,
         sessionGeneration: binding.sessionGeneration, credentialFingerprint: input.credentialFingerprint,
@@ -238,10 +269,11 @@ export function createBrowserRoots(input: RuntimeAdmission) {
       const prior = document.roots.find(row => row.directory === root);
       if (prior === undefined || owner !== undefined && (prior.native !== undefined && stoppedProcess === undefined && expectedOwner?.kind !== "signup" || prior.profileId !== owner.profileId)) throw new BrowserRootUnavailableError();
       if (expectedOwner !== undefined && !same(prior.owner, expectedOwner)) {
-        if (prior.owner.kind !== "worker" || expectedOwner.kind !== "worker" || prior.owner.workerId !== expectedOwner.workerId
+        const commandRotation = prior.owner.kind === 'command' && expectedOwner.kind === 'command' && prior.launch.state === 'closed';
+        if (!commandRotation && (prior.owner.kind !== "worker" || expectedOwner.kind !== "worker" || prior.owner.workerId !== expectedOwner.workerId
           || prior.owner.workflowId !== expectedOwner.workflowId || prior.owner.ordinal !== expectedOwner.ordinal
           || prior.owner.membershipRevision > expectedOwner.membershipRevision || prior.owner.leaseGeneration >= expectedOwner.leaseGeneration
-          || prior.launch.state !== "closed") throw new BrowserRootUnavailableError();
+          || prior.launch.state !== "closed")) throw new BrowserRootUnavailableError();
       } else if (owner !== undefined && expectedOwner?.kind !== "signup" && prior.launch.state !== "closed") {
         stoppedRecoveryRequired = true; assertStoppedRecovery();
       }

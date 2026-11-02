@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, wr
 import { join } from "node:path";
 import { it } from "vitest";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { createBrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions, onboardingProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
+import { createBrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions, onboardingProfileDirectory, admitCommandBrowser, commandProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
 import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -280,4 +280,31 @@ it("excludes another registry factory throughout the body of the same genuine of
       assert.equal(a.inventory().roots.length, 0); assert.equal(existsSync(w.input.profileDirectory), false);
     });
   } finally { resume(); await w.close(); }
+});
+
+it("binds a command capability to the real profile epoch and rotates only closed command custody", async () => {
+  const w = await fixture(), foreign = await fixture();
+  try {
+    const identity = { commandId: randomUUID(), requestDigest: "c".repeat(64), profileRoot: w.input.profileRoot };
+    const capability = admitCommandBrowser(w.f.admission, identity);
+    const input: BrowserRootLaunchInput = { profileId: w.input.profileId, profileRoot: identity.profileRoot,
+      profileDirectory: commandProfileDirectory(identity.profileRoot), credentialFingerprint: "a".repeat(64), owner: { kind: "command", capability } };
+    const before = readFileSync(w.path);
+    const foreignCapability = admitCommandBrowser(foreign.f.admission, { ...identity, profileRoot: foreign.input.profileRoot });
+    assert.throws(() => w.roots.beginLaunch({ ...input, owner: { kind: "command", capability: foreignCapability } }));
+    assert.throws(() => w.roots.beginLaunch({ ...input, profileDirectory: join(identity.profileRoot, "commands", "crm") }));
+    assert.deepEqual(readFileSync(w.path), before);
+    const first = w.roots.beginLaunch(input);
+    const nextIdentity = { ...identity, commandId: randomUUID() };
+    const nextInput = { ...input, owner: { kind: "command" as const, capability: admitCommandBrowser(w.f.admission, nextIdentity) } };
+    assert.throws(() => w.roots.beginLaunch(nextInput));
+    first.opened(); first.closing(); first.closed();
+    const next = w.roots.beginLaunch(nextInput);
+    assert.ok(next.generation > first.generation);
+    const row = w.roots.inventory().roots.find(value => value.owner.kind === "command");
+    assert.equal(row?.owner.kind, "command");
+    if (row?.owner.kind !== "command") throw new Error("command owner missing");
+    assert.equal(row.owner.commandId, nextIdentity.commandId);
+    next.closing(); next.closed();
+  } finally { await foreign.close(); await w.close(); }
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { Page } from "playwright";
 import { it } from "vitest";
-import { submitOnboardingSsoCredentials } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
+import { submitPinnedUcsdSsoCredentials } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
 
 it.each([false, true])("guards credential effects and retains element disposal after username fill revocation (%s)", async revoke => {
   let current = true;
@@ -22,8 +22,8 @@ it.each([false, true])("guards credential effects and retains element disposal a
       return { count: async () => 1, elementHandle: async () => handles.get(key) };
     },
   } as unknown as Page;
-  const operation = submitOnboardingSsoCredentials(page, async () => ({ userId: "fixture-user", password: "fixture-password" }),
-    () => { if (!current) throw refusal; }, 1000);
+  const operation = submitPinnedUcsdSsoCredentials(page, async () => ({ userId: "fixture-user", password: "fixture-password" }),
+    () => { if (!current) throw refusal; }, 1000, "/tritON/profile/SAML2/Redirect/SSO");
   if (revoke) await assert.rejects(operation, error => error === refusal);
   else await operation;
   assert.deepEqual(effects, revoke ? ["fill:ssousername"] : ["fill:ssousername", "fill:ssopassword", "click:sso-submit"]);

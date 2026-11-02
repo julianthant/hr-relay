@@ -1,4 +1,5 @@
 import { DryRunStepSchema } from "../models/workflow/dry-run.js";
+import { WorkbookIdSchema } from "../models/dashboard/workbooks.js";
 import { lifecycleCommandId } from "../rules/commands/lifecycle-command-id.js";
 import { sha256Hex } from "../rules/validation/sha256.js";
 import type { RerunValueMappingSpec } from "../models/workflow/rerun-values.js";
@@ -202,6 +203,8 @@ export interface WorkflowDescriptor<
   readonly version: number;
   /** Build-manifest derived (ref workflow-model ); stamped on every run, checkpoint, and span. */
   readonly contractFingerprint: Fingerprint;
+  /** Existing references or linked masters this workflow directly needs. */
+  readonly requiredWorkbookTypeIds: readonly string[];
   readonly code: string;
   readonly label: string;
   readonly sessionLabel?: string;
@@ -258,6 +261,7 @@ export interface AnyWorkflowDescriptor {
   readonly id: WorkflowId;
   readonly version: number;
   readonly contractFingerprint: Fingerprint;
+  readonly requiredWorkbookTypeIds: readonly string[];
   readonly code: string;
   readonly label: string;
   readonly sessionLabel?: string;
@@ -326,10 +330,11 @@ export interface WorkflowDescriptorSpec<
 > extends Omit<
   WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D>,
   "id" | "contractFingerprint" | "input" | "result" | "nodes" | "scenarios" | "timeline"
-  | "timelineDeclared" | "nodePurposes" | "stepOmissions"
+  | "timelineDeclared" | "nodePurposes" | "stepOmissions" | "requiredWorkbookTypeIds"
 > {
   readonly id: string;
   readonly contractFingerprint: string;
+  readonly requiredWorkbookTypeIds?: readonly string[];
   /** Parsed into branded `ScenarioId`s by the factory, the way contracts do. */
   readonly scenarios: readonly [string, ...string[]];
    // Optional; declaring it demands every node exactly once.
@@ -352,6 +357,7 @@ export interface WorkflowDescriptorSpec<
 }
 
 export interface WorkflowProjections {
+  readonly requiredWorkbookTypeIds: readonly string[];
   readonly steps: readonly StepProjection[];
   readonly gates: readonly GateProjectionDefinition[];
   /** Browser systems only — service and `workflow:<id>` stores contribute none. */
@@ -400,6 +406,7 @@ export function workflowDryRunSupport(descriptor: AnyWorkflowDescriptor): Workfl
 
 // Re-parses through the canonical schema before handing to authored callbacks.
 export interface WorkflowPlanning {
+  readonly requiredWorkbookTypeIds: readonly string[];
   readonly parseInput: (raw: unknown) => unknown;
   readonly parseCanonicalInput: (value: unknown) => unknown;
   readonly matchKey: (parsed: unknown) => string;
@@ -857,6 +864,12 @@ function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSur
   }
 }
 
+export function parseRequiredWorkbookTypeIds(value: unknown): readonly string[] {
+  const ids = WorkbookIdSchema.array().parse(value === undefined ? [] : value);
+  if (new Set(ids).size !== ids.length) throw new Error("requiredWorkbookTypeIds must be unique");
+  return Object.freeze(ids);
+}
+
 export function defineWorkflowDescriptor<
   InputSchema extends z.ZodType,
   ResultSchema extends z.ZodType,
@@ -869,6 +882,7 @@ export function defineWorkflowDescriptor<
 ): WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D> {
   const id = WorkflowIdSchema.parse(spec.id);
   const contractFingerprint = FingerprintSchema.parse(spec.contractFingerprint);
+  const requiredWorkbookTypeIds = parseRequiredWorkbookTypeIds(spec.requiredWorkbookTypeIds);
   // The ONE code declaration site. Uniqueness across the registry is
   // the composition root's — a descriptor cannot see its siblings.
   if (!WorkflowCodeSchema.safeParse(spec.code).success) {
@@ -1126,6 +1140,7 @@ export function defineWorkflowDescriptor<
     ...(spec.protectedInputs === undefined ? {} : { protectedInputs: Object.freeze(ProtectedInputDeclarationSchema.array().max(1).parse(spec.protectedInputs)) }),
     id,
     contractFingerprint,
+    requiredWorkbookTypeIds,
     surfaces,
     input: spec.flow.input,
     result: spec.flow.result,
@@ -1139,6 +1154,7 @@ export function defineWorkflowDescriptor<
     nodePurposes: deriveNodePurposes(id, nodes, spec.nodePurposes),
   });
   PROJECTIONS.set(descriptor, Object.freeze({
+    requiredWorkbookTypeIds,
     steps,
     gates,
     systems,
@@ -1149,6 +1165,7 @@ export function defineWorkflowDescriptor<
     contracts: Object.freeze(contracts),
   }));
   PLANNING.set(descriptor, Object.freeze({
+    requiredWorkbookTypeIds,
     parseInput: (raw: unknown) => spec.flow.input.parse(raw),
     parseCanonicalInput: (value: unknown) => spec.canonicalInput.parse(value),
     matchKey: (parsed: unknown) => spec.identity.matchKey(spec.canonicalInput.parse(parsed)),

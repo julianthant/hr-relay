@@ -379,14 +379,21 @@ function profileResourceCustodyBusy(before: ReturnType<AuthorityDatabase["readPr
     || before.duoLeases.some(lease => lease.state === "held") || before.pendingArtifacts.length > 0;
 }
 
+export interface ProfileCommandActivity {
+  hasUnquiescedWork(profileId: string): boolean;
+  requestCancellation(profileId: string): void;
+  awaitCancellation(): Promise<void>;
+}
+
 export function composeProfileActivity(input: Readonly<{
+  commandActivities?: ReadonlySet<ProfileCommandActivity>;
   admission: RuntimeAdmission; database: AuthorityDatabase; clock: Clock;
   supervisor: Pick<DashboardWorkerProcessSupervisor, "memberEvidence" | "drainOwnedChildren"> | { readonly state: "not-constructed" };
   lifecycle: Pick<RunRecordService, "read" | "transition">;
 }>) {
   const profileId = input.admission.profileBinding.profileId;
   let drain: { state: "pending"; completion: Promise<void> } | { state: "complete" } | { state: "failed"; error: unknown } | undefined;
-  const observe = () => {
+  const observe = (includeCommands = true) => {
     input.admission.assertLive();
     const before = input.database.readProfileResourceCustody();
     let busy = profileResourceCustodyBusy(before);
@@ -405,6 +412,7 @@ export function composeProfileActivity(input: Readonly<{
     }
     const after = input.database.readProfileResourceCustody();
     if (canonicalJsonStringify(before) !== canonicalJsonStringify(after)) throw new Error("profile-resource-custody-changed");
+    if (includeCommands) for (const activity of input.commandActivities ?? []) if (activity.hasUnquiescedWork(profileId)) busy = true;
     return busy;
   };
   return Object.freeze({
@@ -416,17 +424,33 @@ export function composeProfileActivity(input: Readonly<{
     requestCancellation(requestedProfileId: string): void {
       if (requestedProfileId !== profileId) throw new Error("profile-resource-owner-mismatch");
       if (drain !== undefined) return;
-      for (const run of input.database.readProfileResourceCustody().runs) {
-        const current = input.lifecycle.read(run.envelope.runId);
-        if (current.state !== "present") throw new Error("profile-run-custody-unavailable");
-        if (current.run.lifecycle.state === "terminal" || current.run.lifecycle.state === "parked-write") continue;
-        requireLifecycleApplied(input.lifecycle.transition({ commandId: randomUUID(), runId: current.run.envelope.runId,
-          expectedVersion: current.run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: input.clock.now().toISOString() } }));
+      const failures: unknown[] = [], pending: Promise<void>[] = [];
+      for (const activity of input.commandActivities ?? []) {
+        try { activity.requestCancellation(profileId); } catch (error) { failures.push(error); }
+        try { pending.push(activity.awaitCancellation()); } catch (error) { failures.push(error); }
       }
-      const completion = "state" in input.supervisor
-        ? (observe() ? Promise.reject(new Error("profile-resource-closure-unproved")) : Promise.resolve())
-        : input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
-          requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: "profile-logout" });
+      try {
+        for (const run of input.database.readProfileResourceCustody().runs) {
+          try {
+            const current = input.lifecycle.read(run.envelope.runId);
+            if (current.state !== 'present') throw new Error('profile-run-custody-unavailable');
+            if (current.run.lifecycle.state === 'terminal' || current.run.lifecycle.state === 'parked-write') continue;
+            requireLifecycleApplied(input.lifecycle.transition({ commandId: randomUUID(), runId: current.run.envelope.runId,
+              expectedVersion: current.run.version, lifecycle: { state: 'terminal', outcome: 'cancelled', endedAt: input.clock.now().toISOString() } }));
+          } catch (error) { failures.push(error); }
+        }
+      } catch (error) { failures.push(error); }
+      try {
+        pending.push('state' in input.supervisor
+          ? (observe(false) ? Promise.reject(new Error('profile-resource-closure-unproved')) : Promise.resolve())
+          : input.supervisor.drainOwnedChildren({ requestedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
+            requestedBy: LOCAL_OPERATOR_ACTOR_ID, reason: 'profile-logout' }));
+      } catch (error) { failures.push(error); }
+      const completion = Promise.allSettled(pending).then(results => {
+        const errors: unknown[] = [...failures];
+        for (const result of results) if (result.status === 'rejected') { const reason: unknown = result.reason; errors.push(reason); }
+        if (errors.length) throw new AggregateError(errors, 'profile-resource-drain-unproved');
+      });
       drain = { state: "pending", completion };
       void completion.then(() => { drain = { state: "complete" }; }, error => { drain = { state: "failed", error }; });
     },
@@ -546,7 +570,7 @@ export function composeProfileRuntime(input: Readonly<{
     custody: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>;
     exits: Map<string, Readonly<{ member: WorkerPoolMember; processId: number; leaseGeneration: number; valid(): boolean }>>;
     operationId?: string; busy?: boolean; stopped?: Awaited<ReturnType<AuthorityDatabase["settlePendingLogout"]>> };
-  type Owned = { logout?: LogoutClosure; supervision: Supervision; admission: RuntimeAdmission; credentials: CredentialStore; context?: Context; activity?: ReturnType<typeof composeProfileActivity>;
+  type Owned = { commandActivities?: Set<ProfileCommandActivity>; logout?: LogoutClosure; supervision: Supervision; admission: RuntimeAdmission; credentials: CredentialStore; context?: Context; activity?: ReturnType<typeof composeProfileActivity>;
     inventory?: ReturnType<typeof composeProfileClosureInventory>; preparation?: Preparation; state: "open" | "closing" | "closed" };
   const completedLogouts = new Map<string, Readonly<{ profileId: string; epoch: number }>>();
   const coldLogouts = new Map<string, { operationId: string; completion: Promise<void>; state: "pending" | "ready" | "failed"; busy?: boolean; error?: unknown }>();
@@ -563,7 +587,7 @@ export function composeProfileRuntime(input: Readonly<{
     const context = contextFor(expected), entry = resources.get(profileId)?.ordinary;
     if (entry === undefined) throw new Error("profile-authority-unavailable");
     if (entry.supervision.state === "constructing") throw new RuntimeCustodyUncertainError([new Error("profile-supervisor-construction-unproved")]);
-    if (entry.activity === undefined) entry.activity = composeProfileActivity({ admission: entry.admission, database: context.database,
+    if (entry.activity === undefined) entry.activity = composeProfileActivity({ commandActivities: entry.commandActivities ??= new Set(), admission: entry.admission, database: context.database,
       clock: input.clock, supervisor: entry.supervision.state === "bound" ? entry.supervision.owner : entry.supervision,
       lifecycle: new RunRecordService({ database: context.database, clock: input.clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("profile custody cannot enqueue runs"); } }) });
     entry.inventory ??= composeProfileClosureInventory({ admission: entry.admission, database: context.database, hostFacts: input.hostFacts, clock: input.clock });
@@ -765,6 +789,14 @@ export function composeProfileRuntime(input: Readonly<{
     assertMachineOwner(admission: RuntimeAdmission): void { if (admission !== machine) throw new Error("profile-machine-owner-mismatch"); machine.assertLive(); },
     assertCurrent,
     selectedContext(token: string): Context { assertCurrent(token); return contextFor(); },
+    registerCommandActivity(token: string, activity: ProfileCommandActivity): void {
+      assertCurrent(token);
+      const entry = resources.get(contextFor().admission.profileBinding.profileId)?.ordinary;
+      if (entry === undefined || entry.preparation !== undefined) throw new Error('profile-command-activity-unavailable');
+      const activities = entry.commandActivities ??= new Set();
+      if (activities.has(activity)) throw new Error('profile-command-activity-already-registered');
+      activities.add(activity);
+    },
     beginSupervisorConstruction(token: string): void {
       assertCurrent(token);
       const entry = resources.get(contextFor().admission.profileBinding.profileId)?.ordinary;

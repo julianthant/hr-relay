@@ -39,6 +39,15 @@ edit. Descriptor `version` is a positive integer. `contractFingerprint` comes fr
 build manifest in `src/workflow-kit/validation/build-manifest.ts`; authors do not supply it to
 `defineWorkflow`.
 
+`requiredWorkbookTypeIds` declares the types of existing library reference workbooks or linked
+masters this workflow directly needs. It preserves exact IDs and order, rejects invalid or repeated
+IDs, and is copied and frozen by the definition and descriptor factories. Omission means no
+requirements; production definitions declare an explicit array. It does not describe new output
+workbooks, spreadsheet intake, or delegated children's requirements. Retained step proofs inherit
+the parent declaration. The descriptor and its sealed planning and projections expose the same
+validated facts; workbook selection and reference snapshots belong to run planning. All current
+definitions declare an empty array.
+
 `failureCorrections` binds a task node and failure code to one run input. Logs offers Check again
 and a text entry for that input only when the failed run has no uncertain writes. The correction
 preserves execution options and protected input bindings, retains source-run lineage, and reads

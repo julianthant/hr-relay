@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { testWorkerPorts } from "../support/fixtures/run-lifecycle-fixtures.js";
 import { personLookupDescriptor } from "../support/helpers/registered-workflows.js";
 
@@ -178,4 +179,25 @@ describe("duo_ceremony_leases — acquire / release / takeover", () => {
     );
     database.close();
   });
+});
+
+it("shares the real credential row across honest command and worker holders", async () => {
+  const database = await openDatabase(), commandId = randomUUID();
+  const command = database.authority.duoCeremonyLeases.acquire({ credentialKey: CREDENTIAL, commandId, system: "sharepoint", now: at(0), ttlMs: TTL_MS });
+  assert.equal(command.state, "acquired"); if (command.state !== "acquired") throw new Error("command lease missing");
+  assert.deepEqual(command.token.holder, { commandId, system: "sharepoint" });
+  assertDuoCeremonyLeaseToken(command.token, { system: "sharepoint" });
+  assert.deepEqual(database.authority.duoCeremonyLeases.get(CREDENTIAL)?.holder, command.token.holder);
+  const workerBlocked = database.authority.duoCeremonyLeases.acquire({ credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(1), ttlMs: TTL_MS });
+  assert.equal(workerBlocked.state, "held");
+  assert.equal(database.authority.duoCeremonyLeases.release({ token: command.token, now: at(2) }).state, "released");
+  const worker = database.authority.duoCeremonyLeases.acquire({ credentialKey: CREDENTIAL, workerId: "person-lookup-worker-1", system: "ucpath", now: at(3), ttlMs: TTL_MS });
+  assert.equal(worker.state, "acquired"); if (worker.state !== "acquired") throw new Error("worker lease missing");
+  assert.equal(worker.token.generation, command.token.generation + 1);
+  const commandBlocked = database.authority.duoCeremonyLeases.acquire({ credentialKey: CREDENTIAL, commandId: randomUUID(), system: "sharepoint", now: at(4), ttlMs: TTL_MS });
+  assert.equal(commandBlocked.state, "held");
+  assert.throws(() => database.authority.duoCeremonyLeases.acquire({ credentialKey: CREDENTIAL, commandId, workerId: "person-lookup-worker-1", system: "sharepoint", now: at(5), ttlMs: TTL_MS }));
+  assert.throws(() => database.authority.duoCeremonyLeases.acquire({ credentialKey: CREDENTIAL, commandId, system: "ucpath", now: at(5), ttlMs: TTL_MS }));
+  assert.equal(database.authority.duoCeremonyLeases.release({ token: command.token, now: at(6) }).state, "superseded");
+  assert.equal(database.authority.duoCeremonyLeases.release({ token: worker.token, now: at(7) }).state, "released");
 });
