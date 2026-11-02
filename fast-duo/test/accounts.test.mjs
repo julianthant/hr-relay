@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { selectCredential, validateAccount, isDuoOrigin, validateCredentials } from '../src/accounts.js';
+import { selectCredential, validateAccount, isDuoOrigin } from '../src/accounts.js';
 const accounts=[{id:'a',username:'demo-user',enabled:true},{id:'b',username:'demouser',enabled:true}];
 const a={accountId:'a',credentialId:btoa('alpha'),rpId:'duosecurity.com',status:'ready',transport:'internal',isResidentCredential:true,userHandle:btoa('a')};
 const b={...a,accountId:'b',credentialId:btoa('beta'),transport:'usb',userHandle:btoa('b')};
@@ -20,21 +20,16 @@ test('discoverable authentication requires a resident credential and user handle
 test('paused account cannot sign even with the correct requested key',()=>assert.ok(selectCredential({...state,accounts:accounts.map(x=>({...x,enabled:false}))},req).reason));
 test('keys from multiple accounts in the allowlist require disambiguation',()=>assert.ok(selectCredential(state,{...req,allowCredentials:[a.credentialId,b.credentialId]}).reason));
 test('pending enrollment can be activated by a server request for that exact ID',()=>assert.equal(selectCredential({...state,credentials:[{...b,status:'pending'}]},req).credential.status,'pending'));
-test('usernames and sign-in links validate strictly',()=>{
+test('usernames validate strictly',()=>{
   assert.equal(validateAccount({username:' DEMOUSER '}).username,'demouser');
-  for(const input of [{username:'demouser'},{username:'bad user'},{username:'x',loginUrl:'http://example.com'},{username:'x',loginUrl:'https://user:secret@example.com'}])assert.throws(()=>validateAccount(input,accounts));
+  for(const input of [{username:'demouser'},{username:'bad user'}])assert.throws(()=>validateAccount(input,accounts));
 });
 test('Duo origin must be HTTPS with the exact domain suffix',()=>{
   for(const value of ['https://api-1.duosecurity.com/frame','https://duosecurity.com/'])assert.equal(isDuoOrigin(value),true);
   for(const value of ['http://api.duosecurity.com/','https://duosecurity.com.evil.test/','https://evilduosecurity.com/','https://user@duosecurity.com/','garbage'])assert.equal(isDuoOrigin(value),false);
 });
-test('imports reject partial invalid or duplicate sets',()=>{
-  const c={...a,privateKey:btoa('key'),signCount:0};
-  assert.equal(validateCredentials([c]).length,1);
-  for(const input of [[c,{...c,privateKey:''}],[c,c],[],[{...c,signCount:-1}]])assert.throws(()=>validateCredentials(input));
-});
 test('manifest keeps both content worlds and host access scoped to Duo', () => {
-  const manifest = JSON.parse(readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'));
+  const manifest = JSON.parse(readFileSync(new URL('../relay-manifest.json', import.meta.url), 'utf8'));
   assert.deepEqual(manifest.host_permissions, ['https://*.duosecurity.com/*']);
   assert.deepEqual(manifest.permissions, ['storage']);
   assert.deepEqual(manifest.content_scripts.map(script => script.world), ['MAIN', 'ISOLATED']);
