@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
-import { existsSync,readFileSync,readdirSync,renameSync,writeFileSync } from "node:fs";
+import { copyFileSync,existsSync,readFileSync,readdirSync,renameSync,writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -286,11 +286,15 @@ it.each(["missing", "corrupt", "future", "foreign"] as const)("stops established
   try {
     if (state === "missing") renameSync(profile.path, `${profile.path}.test-owned`);
     else if (state === "corrupt") writeFileSync(profile.path, "invalid SQLite person authority", { mode: 0o600 });
+    else if (state === "foreign") {
+      const foreign = await createHistoricalRegisteredProfileFixture({ sourceVersion: 8 });
+      try { copyFileSync(foreign.path, profile.path); }
+      finally { await foreign.close(); }
+    }
     else {
       const database = new DatabaseSync(profile.path);
       try {
-        if (state === "future") database.exec(`PRAGMA user_version=${CURRENT_AUTHORITY_SCHEMA_VERSION + 1}`);
-        else database.prepare("UPDATE database_states SET profile_id=? WHERE id=1").run(randomUUID());
+        database.exec(`PRAGMA user_version=${CURRENT_AUTHORITY_SCHEMA_VERSION + 1}`);
       } finally { database.close(); }
     }
     const before = existsSync(profile.path) ? readFileSync(profile.path) : undefined;
