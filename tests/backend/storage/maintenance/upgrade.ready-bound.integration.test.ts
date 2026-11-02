@@ -1,4 +1,6 @@
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
+import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
+import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { copyFileSync,existsSync,mkdirSync,readFileSync,readdirSync,renameSync,rmdirSync,writeFileSync } from "node:fs";
@@ -40,7 +42,7 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 const hostFacts = { primaryDisplay: null };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 = 8) {
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 = 8, extractionEvidence = false) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
@@ -109,6 +111,14 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
       raw.exec(editorDdl);
     }
     if (sourceVersion < 9) raw.exec("DROP TABLE assistant_model_preference");
+    if (extractionEvidence) {
+      const extraction = donePage(sourceFixture(1).inputs[0]).output.extraction;
+      const id = `${extraction.sourceSha256}#${extraction.sourcePage}#${extraction.formType}`;
+      raw.prepare(`INSERT INTO artifacts (id,kind,version,form_type,source_sha256,source_page,page_kind,page_fingerprint,source_kind,payload_json,created_at)
+        VALUES (?,'extracted',1,?,?,?,?,?,?,?,?)`).run(id, extraction.formType, extraction.sourceSha256, extraction.sourcePage,
+        extraction.pageKind, extraction.pageFingerprint, extraction.source.kind, JSON.stringify(sourceVersion < 12 ? extraction : { binding: 'unbound-source', extractionId: id, extraction }), extraction.readAt);
+    }
+    if (sourceVersion < 12) restorePreReadingArtifactRetention(raw);
     raw.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(sourceVersion);
     raw.exec(`PRAGMA user_version=${sourceVersion}; COMMIT`);
     const prior = inspectNativeAuthority(raw, sourceVersion);
@@ -453,7 +463,7 @@ it("revokes READY custody on exact artifact-root ancestry substitution", async (
   }
 });
 
-it.each([9, 10, 11] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
+it.each([9, 10, 11, 12] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
   const f = await readyBoundEight("idle", sourceVersion);
   try {
     const before = rawEight(f.path);
@@ -471,8 +481,8 @@ it.each([9, 10, 11] as const)("upgrades supported schema %s to the current versi
   } finally { await f.close(); }
 });
 
-it('upgrades populated schema 11 workbooks without replacing masters or claiming automatic revisions were operator versions', async () => {
-  const f = await readyBoundEight('idle', 11);
+it.each([11, 12] as const)('upgrades populated schema %s workbooks without replacing masters or claiming automatic revisions were operator versions', async version => {
+  const f = await readyBoundEight('idle', version);
   const at = '2026-01-01T00:00:00.000Z';
   const first = { libraryId: 'migration-workbook', version: 1, createdAt: at, savedAt: at,
     workbook: { libraryId: 'migration-workbook', name: 'Before.xlsx', themes: [], hasFormulas: false,
@@ -482,7 +492,7 @@ it('upgrades populated schema 11 workbooks without replacing masters or claiming
   try {
     raw.prepare('INSERT INTO workbook_library(id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(second.libraryId, 2, at, at, JSON.stringify(second));
     for (const record of [first, second]) raw.prepare('INSERT INTO workbook_library_history(workbook_id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(record.libraryId, record.version, at, at, JSON.stringify(record));
-    assert.equal(inspectNativeAuthority(raw, 11).schemaVersion, 11);
+    assert.equal(inspectNativeAuthority(raw, version).schemaVersion, version);
   } finally { raw.close(); }
   try {
     assert.equal((await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock)).state, 'upgraded');
@@ -498,5 +508,50 @@ it('upgrades populated schema 11 workbooks without replacing masters or claiming
         assert.equal(inspectAuthorityBackupReadOnly(admission, f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       } finally { database.close(); }
     } finally { admission.release(); }
+  } finally { await f.close(); }
+});
+
+it("backs up schema-11 extraction evidence before conversion and retains both source states after restart", async () => {
+  const f = await readyBoundEight("idle", 11, true);
+  try {
+    const extraction = donePage(sourceFixture(1).inputs[0]).output.extraction;
+    const id = `${extraction.sourceSha256}#${extraction.sourcePage}#${extraction.formType}`;
+    const before = rawEight(f.path).artifacts;
+    assert.equal(before?.length, 1);
+    await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock);
+    const restore = f.acquireRestore();
+    try {
+      const stopped = await f.machine.forStoppedProfileUpgrade(profileBrowserClosure, f.claim, restore, systemClock, hostFacts);
+      try {
+        const directory = join(f.stateRoot, "backups", "authority");
+        const manifests = readdirSync(directory).filter(name => name.endsWith(".manifest.json"));
+        assert.equal(manifests.length, 1);
+        const backup = verifyStoppedBackupManifestAtPath(stopped, join(directory, manifests[0]));
+        assert.equal(backup.manifest.schemaVersion, 11);
+        const raw = new DatabaseSync(backup.backupPath, { readOnly: true });
+        try { assert.deepEqual(raw.prepare("SELECT * FROM artifacts").all(), before); }
+        finally { raw.close(); }
+      } finally { stopped.release(); }
+    } finally { restore.release(); }
+    const admission = f.machine.admitProfile(f.claim);
+    try {
+      const credentials = createCredentialStore({ admission, stateRoot: f.stateRoot });
+      const database = AuthorityDatabase.open(admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
+        undefined, undefined, undefined, credentials);
+      try {
+        assert.deepEqual(database.authority.ocrExtractions.get(id), { binding: "unbound-source", extractionId: id, extraction });
+        const reading = donePage(sourceFixture(1).inputs[0]).output;
+        assert.equal(database.authority.ocrExtractions.insert(reading).state, "inserted");
+        assert.deepEqual(database.authority.ocrExtractions.findBySource(extraction.sourceSha256).map(record => record.binding).sort(),
+          ["source-bound", "unbound-source"]);
+      } finally { database.close(); }
+    } finally { admission.release(); }
+    const restarted = f.machine.admitProfile(f.claim);
+    try {
+      const database = AuthorityDatabase.open(restarted, { path: f.path, busyTimeoutMs: 250, migrationOwner: "selected-profile-runtime" }, systemClock,
+        undefined, undefined, undefined, createCredentialStore({ admission: restarted, stateRoot: f.stateRoot }));
+      try { assert.equal(database.authority.ocrExtractions.findBySource(extraction.sourceSha256).length, 2); }
+      finally { database.close(); }
+    } finally { restarted.release(); }
   } finally { await f.close(); }
 });

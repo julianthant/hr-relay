@@ -143,11 +143,13 @@ outcomes remain separate from the original review seed in a derived result check
 approval. Before registration,
 intake must bind `sourceRunId` to the actual run and manual assertions to the authenticated operator.
 The definitions and mini-stores are audited through a test-only inventory; neither public nor child
-production registries contain them. No reading versions or review revisions are persisted here.
+production registries contain them. Their task outputs have no production persistence binding; review revisions are not persisted.
 
-The native `artifacts` table stores `imported`, `extracted`, and `generated` rows. `AuthorityDatabase.authority.ocrExtractions` stores admitted OCR records under `${sourceSha256}#${sourcePage}#${formType}`. An identical whole-record replay returns `existing`; different content at that key throws. Producer or timestamp changes can therefore conflict even when answer fingerprints agree.
+The native `artifacts` table stores `imported`, `extracted`, and `generated` rows. `AuthorityDatabase.authority.ocrExtractions.insert` accepts only a validated `OcrPageReading` and stores its exact source-bound `extractionId`, full page input and admitted extraction. Reusing the same reading identity and content returns `existing`; changing any content at that identity refuses with `ocr-extraction-replay-conflict`. A deliberate reread uses a new `readingId` and appends a separate extraction. `get(extractionId)` reads exactly that version. `findBySource(imageSha256)` returns every retained version in page/ID order, never a selected latest reading.
 
-`src/backend/storage/sqlite/extracted-artifact-row.ts` checks record/column identity on document queries. `artifacts_extracted_immutable` in `migrations.ts` refuses updates. Storage does not publish task output to review.
+`src/models/ocr/stored-extraction.ts` owns the current stored evidence union. `source-bound` retains original-PDF, rendered-image, manifest and reading identities. `unbound-source` preserves an extraction and its original artifact ID when those bindings were never recorded; it cannot supply missing PDF or reading provenance. New repository inserts cannot create unbound evidence. Migration 12 wraps existing extraction payloads in that explicit state without changing their extraction content or artifact identity. The stopped upgrade validates the source format and verifies a backup before conversion; ordinary readers accept only the current envelope.
+
+`src/backend/storage/sqlite/extracted-artifact-row.ts` checks every stored extraction against its native columns. `artifacts_extracted_immutable`, `artifacts_no_replace` and `artifacts_retained` protect updates, replacement and deletion. The existing artifact authority, inspection, backup and deletion inventories retain both evidence states. Storage does not publish task output to review or authenticate a production OCR caller.
 
 The `review` and `people` section names and review-record schemas exist. `buildRunSection` in `src/backend/runs/queries/run-sections.ts` currently throws `SectionUnavailableError` for them. There is no served OCR acceptance/correction/child-dispatch flow.
 
@@ -266,7 +268,7 @@ These rules identify the enforcing seam rather than relying on presentation alon
 6. `defineIntakeProjection` requires the canonical schema object at every mapped leaf; `intakeProjectionRegistry` requires the descriptor's input schema object.
 7. `admitOcrExtraction` checks every declared field and typed absence without granting weaker admission to a producer.
 8. `groupStack` matches exact name keys across the supplied stack and keeps unidentified, duplicate, incomplete, and wrong-form pages visible.
-9. `imported-artifacts.ts` and native triggers hold submitted import content immutable; OCR insertion refuses a different whole reading at an existing page/form key.
+9. `imported-artifacts.ts` and native triggers hold submitted import content immutable; OCR insertion refuses a different whole reading at an existing extraction ID.
 10. `artifact-sink-projector.ts` and `xlsx-retention-sink.ts` serialize publication and refuse unowned or changed workbook bytes.
 11. `rerunDiff` compares stable-item membership separately from changed input hashes.
 12. `data.ts` serves checkpoint values for reading; the start planner admits new Rerun values without mutating the source.

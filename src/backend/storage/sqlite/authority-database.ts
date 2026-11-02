@@ -21,7 +21,8 @@ import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
 import { IntakeSessionSchema } from "../../../models/intake/session.js";
 import { NotificationFoldRequestSchema,NotificationRecordOutcomeSchema,NotificationRecordSchema,NotificationStateRequestSchema,notificationCollectionTarget,requireMutableNotification,type NotificationCollectionOperation,type NotificationCollectionTarget,type NotificationRecord,type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
-import { AdmittedExtractionSchema } from "../../../models/ocr/extraction.js";
+import { StoredOcrExtractionSchema, type StoredOcrExtraction } from "../../../models/ocr/stored-extraction.js";
+import { OcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
 import { AssistantActionRecordSchema,AssistantChatRecordSchema,AssistantGrantRecordSchema } from "../../../models/profiles/assistant-authorization.js";
 import { LogoutOperationSchema,ProfileDatabaseBindingSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
 import { completionFromAuthorization } from "../../../models/run/completion.js";
@@ -500,10 +501,10 @@ type IntakeSessionRepository = Readonly<{
 
 
 type OcrExtractionRepository = Readonly<{
-  insert(input: unknown): ImmutableInsertResult<z.infer<typeof AdmittedExtractionSchema>>;
-  get(sourceSha256: string, sourcePage: number, formType: string):
-    z.infer<typeof AdmittedExtractionSchema> | undefined;
-  findByDocument(sourceSha256: string): readonly z.infer<typeof AdmittedExtractionSchema>[];
+  insert(input: unknown): ImmutableInsertResult<StoredOcrExtraction>;
+  get(extractionId: string):
+    StoredOcrExtraction | undefined;
+  findBySource(sourceSha256: string): readonly StoredOcrExtraction[];
 }>;
 
 
@@ -975,7 +976,7 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
 function nativeTableKey(table: AuthorityTableName | "explorer_overrides", database: DatabaseSync): string {
   if (table === "run_results" || table === "deleted_runs" || table === "run_search") return "run_id";
   if (table === "worker_pools") return "workflow";
-  if (table === "workbook_library_history") return readIntPragma(database, "user_version") >= 12
+  if (table === "workbook_library_history") return readIntPragma(database, "user_version") >= 13
     ? "workbook_id,version,name" : "workbook_id,version,payload_json";
   if (table === "workbook_operations") return "sequence";
   if (table === "worker_controls") return "command_id";
@@ -1081,7 +1082,12 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
           const {kind} = z.object({kind:z.enum(["imported","generated","extracted"])}).parse(raw);
           if (kind === "imported") importedArtifactFromRow(raw);
           else if (kind === "generated") generatedArtifactFromRow(raw);
-          else extractedArtifactFromRow(raw);
+          else if (expectedSchemaVersion < 12) {
+            const row = z.object({ id: z.string(), payload_json: z.string() }).parse(raw);
+            const extraction: unknown = JSON.parse(row.payload_json);
+            extractedArtifactFromRow({ ...raw, payload_json: canonicalJsonStringify({ binding: "unbound-source",
+              extractionId: row.id, extraction }) });
+          } else extractedArtifactFromRow(raw);
         } else if (isNativeOrdinaryTable(table)) {
           let inspected = raw;
           if (table === "run_requests" && expectedSchemaVersion < 6) {
@@ -1126,7 +1132,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
   }
   if (expectedSchemaVersion >= 8 && database.prepare("SELECT 1 FROM assistant_grants WHERE id='current'").get() === undefined
     && database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' ORDER BY rowid DESC LIMIT 1) WHERE ?<11 OR mode IS NULL OR mode NOT IN ('before-submits','without-asking')").get(expectedSchemaVersion) !== undefined) throw new Error("assistant-grant-missing-with-history");
-  if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 12);
+  if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13);
   if (expectedSchemaVersion >= 9) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
   try{readAppSettings(database);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
   return validated;
@@ -1315,7 +1321,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   const tables = expectedSchemaVersion < 10 ? z.array(z.union([currentTables.element,
     z.strictObject({ name: z.literal("explorer_overrides"), classification: z.literal("authority") }),
   ])) : currentTables;
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -1414,9 +1420,8 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
     database.exec("COMMIT");
     return { ...inspection, schemaVersion: version, authorityContentFingerprint: fingerprint };
   } catch (error) {
-    const failures: unknown[] = [];
-    try { database.exec("ROLLBACK"); } catch (rollbackError) { failures.push(rollbackError); }
-    if (failures.length !== 0) throw retainAuthoritySourceClosure([error, ...failures], { database });
+    try { database.exec("ROLLBACK"); }
+    catch (rollbackError) { throw retainAuthoritySourceClosure([error, rollbackError], { database }); }
     throw error;
   }
 }
@@ -2010,7 +2015,7 @@ export class AuthorityDatabase implements Disposable {
     owner.assertStoppedProfile(operation); copy.assertReadOnlyAuthorityDatabase(path);
     return withAuthorityDatabaseReadOnly(copy, path, database => {
       const version = readIntPragma(database, "user_version"), meta = readMetaRow(database), binding = owner.profileBinding;
-      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || ![8, 9, 10, 11, 12].includes(version)
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || ![8, 9, 10, 11, 12, 13].includes(version)
         || meta.schema_version !== version || meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) throw new Error("restore-candidate-binding-mismatch");
       const facts = Object.freeze(browserProfileInventory(database));
       owner.assertStoppedProfile(operation); return facts;
@@ -2253,7 +2258,7 @@ export class AuthorityDatabase implements Disposable {
         const version = readIntPragma(database, "user_version");
         if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("profile-startup-foreign-application");
         if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup schema is newer than supported");
-        if (![8, 9, 10, 11, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)) throw new Error("profile-startup-unsupported-schema");
+        if (![8, 9, 10, 11, 12, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)) throw new Error("profile-startup-unsupported-schema");
         const inspection = inspectNativeAuthority(database, version);
         machine.assertOfflineMaintenance(machine.maintenanceOperation());
         if (inspection.installationId !== machine.locator.installationId || inspection.profileId !== id) throw new Error("profile-startup-foreign-binding");
@@ -2321,7 +2326,7 @@ export class AuthorityDatabase implements Disposable {
       if (record === undefined || !("startupLogout" in record) || record.startupLogout === undefined
         || canonicalJsonStringify(record.startupLogout.operation) !== canonicalJsonStringify(operation)) return undefined;
       const settlement = operation.settlement;
-      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10, 11].includes(record.fromSchemaVersion)
+      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10, 11, 12].includes(record.fromSchemaVersion)
         || settlement === undefined || record.startupLogout.postimage !== authorityContentFingerprint(database, record.recordKey)) throw new Error("profile-startup-logout-postimage-changed");
       const backup = verifyBackup(admission, record.backup.manifestPath);
       if (backup.manifest.sha256 !== record.backup.sha256 || backup.manifest.authorityContentFingerprint !== record.upgradeId
@@ -4008,13 +4013,13 @@ export class AuthorityDatabase implements Disposable {
   #validateExternalQuerySources(mode: "selector" | "mutation" = "selector", searchValidation: "all" | "progress" | "none" = "all"): void {
     const observed = readIntPragma(this.#database, "data_version");
     if (observed === this.#validatedExternalDataVersion && observed === this.#snapshotExternalDataVersion) return;
+    this.#validatedExternalDataVersion = undefined;
     try {
       validateAuthorityRecordSchemas(this.#database, searchValidation === "all");
       const violations = invariantViolations(this.#database);
       if (violations.length > 0) throw new Error("current composite authority is invalid");
       if (searchValidation !== "none") createRunSearchIndex(this.#database).validateCoverage();
     } catch (error) {
-      this.#validatedExternalDataVersion = undefined;
       if (mode === "mutation") throw error;
       throw new Error("run-search-index-rebuild-required", { cause: error });
     }
@@ -4555,17 +4560,15 @@ export class AuthorityDatabase implements Disposable {
 
       ocrExtractions: Object.freeze({
         insert: (input: unknown) => {
-          const record = AdmittedExtractionSchema.parse(input);
-          const key = `${record.sourceSha256}#${String(record.sourcePage)}#${record.formType}`;
-          const json = canonicalJsonStringify(record);
+          const reading = OcrPageReadingSchema.parse(input);
+          const stored = StoredOcrExtractionSchema.parse({ ...reading, binding: "source-bound" });
+          const record = stored.extraction, key = stored.extractionId;
+          const json = canonicalJsonStringify(stored);
           return this.#authorityWrite("artifacts", () => {
-            const existing = this.#readRecord("artifacts", key, AdmittedExtractionSchema);
+            const existing = this.#readRecord("artifacts", key, StoredOcrExtractionSchema);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(
-                  `page ${String(record.sourcePage)} of ${record.sourceSha256} was already read for `
-                  + `${record.formType} with a different result; replacing it is an explicit decision`,
-                );
+                throw new Error("ocr-extraction-replay-conflict");
               }
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
             }
@@ -4577,15 +4580,15 @@ export class AuthorityDatabase implements Disposable {
               key, record.formType, record.sourceSha256, record.sourcePage,
               record.pageKind, record.pageFingerprint, record.source.kind, json, record.readAt,
             );
-            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
+            return { result: Object.freeze({ state: "inserted" as const, record: stored }), changes: sqliteChanges(result.changes) };
           });
         },
-        get: (sourceSha256: string, sourcePage: number, formType: string) =>
-          this.#readRecord("artifacts", `${sourceSha256}#${String(sourcePage)}#${formType}`, AdmittedExtractionSchema),
-        findByDocument: (sourceSha256: string) => this.#database.prepare(`
-          SELECT * FROM artifacts WHERE kind='extracted' AND source_sha256 = ? ORDER BY source_page
+        get: (extractionId: string) =>
+          this.#readRecord("artifacts", extractionId, StoredOcrExtractionSchema),
+        findBySource: (sourceSha256: string) => this.#database.prepare(`
+          SELECT * FROM artifacts WHERE kind='extracted' AND source_sha256 = ? ORDER BY source_page, id
         `).all(sourceSha256).map((row) =>
-          AdmittedExtractionSchema.parse(extractedArtifactFromRow(row))),
+          extractedArtifactFromRow(row)),
       }),
       evidenceReceipts: Object.freeze({
         insert: (input: unknown) => {

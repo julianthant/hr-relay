@@ -1,3 +1,4 @@
+import { restorePreReadingArtifactRetention } from "./pre-reading-artifact-retention.js";
 import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { restoreEmptyPreMasterWorkbookFixture } from "../../helpers/workbooks/pre-master-schema.js";
 import { SavedWorkbookSchema, encodeSavedWorkbook } from "../../../../src/models/dashboard/workbooks.js";
@@ -31,7 +32,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../helpers/admission-fixture.js";
 
-export async function createHistoricalRegisteredProfileFixture(options: { sourceVersion: 8 | 9 | 10; workspace?: string; lifetime?: RuntimeLifetimeLock }) {
+export async function createHistoricalRegisteredProfileFixture(options: { sourceVersion: 8 | 9 | 10 | 11 | 12; workspace?: string; lifetime?: RuntimeLifetimeLock }) {
   assert.equal(Entry, FakeKeyringEntry, "historical fixture requires the actual fake keychain before backend imports");
   const lifetime = options.lifetime ?? await RuntimeLifetimeLock.acquire(0);
   const fixture = await createBoundProfileFixture({ pending: "onboarding", lifetime, ...(options.workspace === undefined ? {} : { workspace: options.workspace }) });
@@ -80,6 +81,7 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
       assert.ok(editor); database.exec(editor);
     }
     if (options.sourceVersion < 9) database.exec("DROP TABLE assistant_model_preference");
+    if (options.sourceVersion < 12) restorePreReadingArtifactRetention(database);
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(options.sourceVersion);
     database.exec(`PRAGMA user_version=${options.sourceVersion}; COMMIT`);
     inspectOpenDatabase(database, options.sourceVersion);
