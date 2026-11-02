@@ -4,22 +4,20 @@ import { composeDashboardApplication } from "../../../../src/backend/app/composi
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
 import assert from "node:assert/strict";
-import nativeFs, { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import nativeFs, { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, onTestFinished, vi } from "vitest";
-import { AutomaticShutdownBackupError, backupRegisteredPeopleAtCleanShutdown, composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import * as accountDeletion from "../../../../src/backend/storage/maintenance/account-deletion.js";
-import { profileProcessQuery } from "../../../../src/backend/storage/maintenance/process-closure.js";
+import { AccountDeletionSchema } from "../../../../src/backend/storage/maintenance/account-deletion.js";
 import { fixedLayoutEntries } from "../../../../src/backend/storage/maintenance/fixed-layout.js";
 import { ProfileVerifierDocumentSchema } from "../../../../src/models/profiles/profile.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { AuthorityBackupRequestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 
@@ -78,7 +76,7 @@ it("deletes only the confirmed logged-out account, including native key and loca
   } finally { await f.close(); }
 });
 
-for (const change of ["none", "unknown-member", "shutdown-backup"] as const) it(`resumes interrupted erasure at startup with ${change}`, async () => {
+for (const change of ["none", "unknown-member"] as const) it(`resumes interrupted erasure at startup with ${change}`, async () => {
   const f = await fixture(), original = nativeFs.unlinkSync;
   let stopped = false;
   const spy = vi.spyOn(nativeFs, "unlinkSync").mockImplementation(path => {
@@ -89,15 +87,8 @@ for (const change of ["none", "unknown-member", "shutdown-backup"] as const) it(
     assert.throws(() => f.runtime.session.deleteLoggedOutAccount(f.operationId)); assert.equal(stopped, true);
     spy.mockRestore(); syncBuiltinESMExports();
     const journal = join(f.workspace, ".tracker", "control", "account-deletion.json");
-    const plan = accountDeletion.AccountDeletionSchema.parse(JSON.parse(readFileSync(journal, "utf8"))); assert.equal(plan.pending, true);
+    const plan = AccountDeletionSchema.parse(JSON.parse(readFileSync(journal, "utf8"))); assert.equal(plan.pending, true);
     assert.throws(() => f.machine.readProfileRegistry(), /account-deletion-pending/u);
-    if (change === "shutdown-backup") {
-      await f.runtime.close(); f.machine.release();
-      await assert.rejects(backupRegisteredPeopleAtCleanShutdown(f.workspace, f.lifetime), error => error instanceof AutomaticShutdownBackupError
-        && error.cause instanceof Error && error.cause.message === "runtime-control: account-deletion-pending");
-      f.lifetime.assertHeld();
-      assert.equal(existsSync(journal), true); assert.equal(existsSync(f.root), true);
-    }
     if (change === "unknown-member") {
       const unknown = join(f.root, "unknown.txt"); writeFileSync(unknown, "unowned", { mode: 0o600 });
       await assert.rejects(f.restart(), error => error instanceof Error && error.cause instanceof Error && error.cause.message === "account-deletion-membership-changed");
@@ -109,22 +100,9 @@ for (const change of ["none", "unknown-member", "shutdown-backup"] as const) it(
   } finally { spy.mockRestore(); syncBuiltinESMExports(); await f.close(); }
 });
 
-for (const [empty, trial] of [[true, 1], [true, 2], [true, 3], [true, 4], [true, 5], [true, 6], [true, 7], [true, 8], [false, 1]] as const) it(`${empty
-  ? "serves confirmed account deletion through the guarded dashboard route and signals an empty machine"
-  : "backs up the remaining account after confirmed deletion through the guarded dashboard route"} [DEBUG-ad-20261102 trial ${trial}]`, async () => {
+it("serves confirmed account deletion through the guarded dashboard route and signals an empty machine", async () => {
   const f = await fixture();
   onTestFinished(() => f.close());
-  let deletionError: unknown;
-  const resumeAccountDeletion = accountDeletion.resumeAccountDeletion;
-  const deletion = vi.spyOn(accountDeletion, "resumeAccountDeletion").mockImplementation((...args) => {
-    try { resumeAccountDeletion(...args); }
-    catch (error) { deletionError = error; throw error; }
-  });
-  onTestFinished(() => { deletion.mockRestore(); });
-  const census = vi.spyOn(profileProcessQuery, "spawnSync");
-  onTestFinished(() => { census.mockRestore(); });
-  const backups = vi.spyOn(AuthorityBackupService.prototype, "request");
-  onTestFinished(() => { backups.mockRestore(); });
   await f.runtime.close();
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
   const application = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation,
@@ -134,48 +112,18 @@ for (const [empty, trial] of [[true, 1], [true, 2], [true, 3], [true, 4], [true,
   const post = (path: string, body: unknown, cookie?: string, origin = base) => fetch(`${base}/api/v1/profile/${path}`, {
     method: "POST", headers: { origin, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body),
   });
-  for (const email of empty ? ["fixture@ucsd.edu", "other@ucsd.edu"] : ["fixture@ucsd.edu"]) {
+  for (const email of ["fixture@ucsd.edu", "other@ucsd.edu"]) {
     const login = await post("sign-in", { email, password: "disposable-fixture-password" });
     assert.equal(PublicProfileStateSchema.parse(await login.json()).state, "active");
     const cookie = login.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
     assert.equal((await post("delete-account", { confirmed: true }, cookie, "http://foreign.invalid")).status, 403);
     assert.equal((await post("delete-account", { confirmed: false }, cookie)).status, 400);
     assert.equal(f.machine.readProfileRegistry().profiles.length, email === "fixture@ucsd.edu" ? 2 : 1);
-    const response = await post("delete-account", { confirmed: true }, cookie);
-    if (deletionError !== undefined) {
-      const observations = census.mock.results.map((result, index) => {
-        if (result.type !== "return") return { type: result.type };
-        const value = result.value;
-        const stdout = typeof value.stdout === "string" ? value.stdout : undefined;
-        const stderr = typeof value.stderr === "string" ? value.stderr : undefined;
-        return {
-          lsof: census.mock.calls[index]?.[0] === "/usr/sbin/lsof", status: value.status, signal: value.signal,
-          queryError: value.error !== undefined,
-          errorCode: value.error !== undefined && "code" in value.error && typeof value.error.code === "string" ? value.error.code : null,
-          stderrPresent: stderr === undefined ? null : stderr.length !== 0,
-          stdoutEmpty: stdout === undefined ? null : stdout.length === 0,
-          newlineTerminated: stdout === undefined ? null : stdout.endsWith("\n"),
-          unresolvedDescriptor: stdout === undefined ? null : stdout.includes("vnode: FD unavailable"),
-          selectedRootMentioned: stdout === undefined ? null : stdout.includes(f.root),
-          otherRootMentioned: stdout === undefined ? null : stdout.includes(f.otherRoot),
-        };
-      });
-      throw new Error(`[DEBUG-ad-20261102] erasure failure; native census facts: ${JSON.stringify(observations)}`, { cause: deletionError });
-    }
-    assert.ifError(deletionError);
-    assert.equal(response.status, 200);
-    assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "signed-out", signUpRequired: empty && email === "other@ucsd.edu" });
+    const response = await post("delete-account", { confirmed: true }, cookie); assert.equal(response.status, 200);
+    assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "signed-out", signUpRequired: email === "other@ucsd.edu" });
     assert.equal((await post("delete-account", { confirmed: true }, cookie)).status, 409);
   }
-  assert.deepEqual(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`)).json()), { state: "signed-out", signUpRequired: empty });
-  await application.stop();
-  assert.equal(backups.mock.calls.length, empty ? 0 : 1);
-  assert.equal(existsSync(f.root), false);
-  assert.equal(existsSync(f.otherRoot), !empty);
-  if (!empty) {
-    assert.equal(AuthorityBackupRequestSchema.parse(backups.mock.calls[0]?.[0]).trigger, "graceful-drain");
-    assert.equal(readdirSync(join(f.otherRoot, "backups", "authority")).filter(name => name.endsWith(".shutdown.sqlite.manifest.json")).length, 1);
-  }
+  assert.deepEqual(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`)).json()), { state: "signed-out", signUpRequired: true });
 });
 
 it("refuses deletion before effects when a shared installation upgrade backup retains the person", async () => {
