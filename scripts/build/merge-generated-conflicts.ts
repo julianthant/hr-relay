@@ -33,6 +33,8 @@ export function mergeGeneratedConflicts(root: string, staging: string, generate 
     for (const path of output.paths) {
       if (!conflicts.includes(path)) continue;
       if ("section" in output) {
+        git(root, "cat-file", "-e", `:2:${path}`);
+        git(root, "cat-file", "-e", `:3:${path}`);
         writeFileSync(join(root, path), clearGeneratedSection(readFileSync(join(root, path), "utf8"), output.section));
       } else {
         rmSync(join(root, path), { force: true });
