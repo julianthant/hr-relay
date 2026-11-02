@@ -59,11 +59,6 @@ export async function runStartupUpgradeRetentionCase(input: { scenario: string; 
     return owner;
   };
   const retainedAdmissions = new Set<RuntimeAdmission>();
-  const retainAdmission = Object.getOwnPropertyDescriptors(RuntimeAdmission.prototype).retainSourceClosure.value; assert.ok(retainAdmission);
-  RuntimeAdmission.prototype.retainSourceClosure = function (this: RuntimeAdmission, error) {
-    if (chain(error).has(injected)) retainedAdmissions.add(this);
-    retainAdmission.call(this, error);
-  };
   const retain = Object.getOwnPropertyDescriptors(RuntimeLifetimeLock.prototype).retainSourceClosure.value; assert.ok(retain);
   RuntimeLifetimeLock.prototype.retainSourceClosure = function (this: RuntimeLifetimeLock, error) {
     if (this === lifetime && chain(error).has(injected)) originalClosure ??= error;
@@ -72,7 +67,11 @@ export async function runStartupUpgradeRetentionCase(input: { scenario: string; 
   const inspect = Object.getOwnPropertyDescriptors(AuthorityDatabase).inspectStoppedUpgrade.value; assert.ok(inspect);
   AuthorityDatabase.inspectStoppedUpgrade = function (this: typeof AuthorityDatabase, ...args) {
     phase = "service-inspection";
-    try { return inspect.apply(this, args); } finally { phase = undefined; }
+    try { return inspect.apply(this, args); }
+    catch (error) {
+      if (chain(error).has(injected)) retainedAdmissions.add(args[0]);
+      throw error;
+    } finally { phase = undefined; }
   };
   const inspectBinding = Object.getOwnPropertyDescriptors(AuthorityDatabase).inspectRegisteredPersonAtStartup.value; assert.ok(inspectBinding);
   AuthorityDatabase.inspectRegisteredPersonAtStartup = function (this: typeof AuthorityDatabase, ...args) {
