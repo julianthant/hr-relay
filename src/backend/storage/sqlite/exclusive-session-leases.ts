@@ -52,7 +52,7 @@ export function createExclusiveSessionLeaseRepository(ports: Ports) {
         const before = get(request.identityKey);
         if (before?.releasedAt === null) return { result: { state: "held", lease: before }, changes: 0 };
         const owner = z.strictObject({ lease_generation: z.number().int().positive() }).parse(database.prepare(
-          "SELECT l.lease_generation FROM worker_leases l JOIN worker_slots s ON s.id=l.worker_id WHERE l.worker_id=? AND s.retired_at IS NULL AND l.state NOT IN ('stopped','stopping') ORDER BY l.lease_generation DESC LIMIT 1",
+          "SELECT l.lease_generation FROM worker_leases l JOIN worker_slots s ON s.id=l.worker_id WHERE l.worker_id=? AND s.retired_at IS NULL AND l.state IN ('starting','idle','busy','waiting','paused') AND l.lease_generation=(SELECT MAX(lease_generation) FROM worker_leases WHERE worker_id=l.worker_id)",
         ).get(request.workerId));
         if (before !== undefined && request.now < (before.releasedAt ?? before.acquiredAt)) throw new Error("exclusive-session-lease-clock-regressed");
         const lease = ExclusiveSessionLeaseSchema.parse({ identityKey: request.identityKey, generation: (before?.generation ?? 0) + 1,

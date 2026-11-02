@@ -145,6 +145,17 @@ const UCPATH_REUSE = {
 };
 
 describe("worker browser sessions", () => {
+  it("keeps an exclusive session poisoned when the close proof omits identity-lease release", async () => {
+    const harness = sessionFactory({ omitExclusiveRelease: true }), events: WorkerSessionEvent[] = [];
+    const sessions = await manager(harness, events);
+    const need = { system: "onbase", access: "read", session: "reuse-worker", exclusive: true } as const;
+    await sessions.withDriver(need, "prod", SIGNAL, async () => undefined);
+    await assert.rejects(sessions.closeAll("worker-stop"), error => error instanceof WorkerSessionClosureUnprovedError
+      && error.errors.some(cause => cause instanceof Error && /exclusive identity-lease release/u.test(cause.message)));
+    assert.equal(events.some(event => event.type === "browser-session:close"), false);
+    await assert.rejects(sessions.withDriver(need, "prod", SIGNAL, async () => assert.fail("poisoned session cannot run")));
+    assert.equal(harness.opens(), 1);
+  });
 
   it("proves an authored fresh boundary closes before starting the replacement", async () => {
     const harness = sessionFactory();

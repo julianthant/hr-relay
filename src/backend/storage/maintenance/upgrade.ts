@@ -23,7 +23,7 @@ import { assertStoppedBackupClosure,prepareStoppedBackupClosure,readStoppedProfi
 
 export const StorageUpgradeReportSchema = z.strictObject({
   state: z.enum(["planned", "initialized", "upgraded", "already-upgraded"]),
-  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   toSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   credentials: z.literal("unchanged"),
   diagnostics: z.strictObject({ reclaimedStages: z.number().int().nonnegative(), retainedStages: z.number().int().nonnegative(), capacityWarning: z.boolean() }).optional(),

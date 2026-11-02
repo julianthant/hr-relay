@@ -5,7 +5,7 @@ import { BrowserProfileStillClosingError, BrowserSessionClosureUnprovedError } f
 import { privatePathRejects } from "../../storage/private-path.js";
 import type { BrowserRoots, BrowserRootLaunch, BrowserRootLaunchInput } from "../../storage/browser-roots.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
-import { retainAuthoritySourceClosure } from "../../storage/source-closure.js";
+import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 import { provisionWorkflowDuo } from "./workflow-duo-provider.js";
 import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
@@ -215,16 +215,35 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     const sessionId = BrowserSessionIdSchema.parse(this.#options.newSessionId());
     const exclusiveLease = input.exclusive ? await this.#acquireExclusiveSession({ workerId, sessionId, instance,
       signal: input.signal, assertCurrent, ...(input.acquisitionRemainingMs === undefined ? {} : { remainingMs: input.acquisitionRemainingMs }) }) : undefined;
-    assertCurrent();
-    profileReservations.add(profileDirectory);
-    const rootOwner = this.#rootInput(workerId, profileDirectory, signInFingerprint);
-    if (resetRequired) {
-      profileReservations.delete(profileDirectory);
-      await this.#unusedProfile(rootOwner, async unused => { assertCurrent(); unused.remove(); });
+    let launchStarted = false;
+    let reserved = false;
+    let context: BrowserContext;
+    try {
+      input.signal.throwIfAborted(); assertCurrent();
+      if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
       profileReservations.add(profileDirectory);
+      reserved = true;
+      const rootOwner = this.#rootInput(workerId, profileDirectory, signInFingerprint);
+      if (resetRequired) {
+        profileReservations.delete(profileDirectory);
+        reserved = false;
+        await this.#unusedProfile(rootOwner, async unused => { assertCurrent(); unused.remove(); });
+        profileReservations.add(profileDirectory);
+        reserved = true;
+      }
+      input.signal.throwIfAborted(); assertCurrent();
+      launchStarted = true;
+      context = await this.#launchProfile(rootOwner, browserMode, input.acceptDownloads, system);
+    } catch (error) {
+      if (!launchStarted && !hasUnprovedSourceClosure(error)) {
+        if (reserved) profileReservations.delete(profileDirectory);
+        if (exclusiveLease !== undefined) {
+          try { this.#options.browserOwner.database.authority.exclusiveSessionLeases.release(exclusiveLease, this.#options.clock.now().toISOString()); }
+          catch (releaseError) { throw new AggregateError([error, releaseError], "exclusive session prelaunch cleanup failed", { cause: releaseError }); }
+        }
+      }
+      throw error;
     }
-    assertCurrent();
-    const context = await this.#launchProfile(rootOwner, browserMode, input.acceptDownloads, system);
 
     const lifecycle = observeContextLifecycle(context);
     let signingToken: DuoCeremonyLeaseToken | undefined;
@@ -412,8 +431,8 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
             this.#releaseProfile(profileDirectory);
             profileReleased = true;
           }
-          if (exclusiveLease !== undefined) this.#options.browserOwner.database.authority.exclusiveSessionLeases.release(exclusiveLease, this.#options.clock.now().toISOString());
           diagnostics.dispose();
+          if (exclusiveLease !== undefined) this.#options.browserOwner.database.authority.exclusiveSessionLeases.release(exclusiveLease, this.#options.clock.now().toISOString());
           closeProof = Object.freeze({ sessionId, system, pagesClosed: true, contextClosed: true,
             ...(exclusiveLease === undefined ? {} : { exclusiveLeaseReleased: true }) });
           if (observeEvent().state === "current") emit("released");

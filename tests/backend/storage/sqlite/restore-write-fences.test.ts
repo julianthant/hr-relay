@@ -69,3 +69,14 @@ it("reads the stored lifecycle wrapper and refuses a hidden parked state", () =>
   assert.doesNotThrow(() => readRestoreWriteFences(reader({ runs: [{ state: "queued", lifecycle_json: JSON.stringify({ lifecycle: { state: "queued" } }) }] })));
   assert.throws(() => readRestoreWriteFences(reader({ runs: [{ state: "queued", lifecycle_json: JSON.stringify({ lifecycle: { state: "parked-write", writeIntentId: WRITE_ATTEMPT.writeIntentId } }) }] })), /run-fence-record-invalid/u);
 });
+
+it("refuses repair that loses a held identity-session lease even without a write intent", () => {
+  const lease = { id: "a".repeat(64), generation: 1, worker_id: "onbase-worker-1", worker_lease_generation: 1,
+    session_id: "11111111-1111-4111-8111-111111111111", acquired_at: "2026-11-02T12:00:00.000Z", released_at: null };
+  const source = readRestoreWriteFences(reader({ sqlite_schema: [{ name: "exclusive_session_leases" }], exclusive_session_leases: [lease] }));
+  assert.equal(source.tables.find(table => table.name === "exclusive_session_leases")?.rows.length, 1);
+  assert.throws(() => assertRestorePreservesWriteFences(source, { unresolved: [], tables: [] }), /exclusive_session_leases/u);
+  const released = readRestoreWriteFences(reader({ sqlite_schema: [{ name: "exclusive_session_leases" }],
+    exclusive_session_leases: [{ ...lease, released_at: lease.acquired_at }] }));
+  assert.equal(released.tables.length, 0);
+});

@@ -6,6 +6,7 @@ import { describe, it } from "vitest";
 import { exclusiveLeaseFixture } from "../../../support/helpers/exclusive-session-leases.js";
 import { SQLITE_MIGRATIONS, migrationTableNames, auditMigrationTableCoverage } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { DatabaseSync } from "node:sqlite";
+import { BrowserSessionIdSchema, PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 
 const first = { identityKey: "a".repeat(64), workerId: "onbase-worker-1", sessionId: "11111111-1111-4111-8111-111111111111", now: "2026-11-02T12:00:00.000Z" };
 const second = { ...first, workerId: "onbase-worker-2", sessionId: "22222222-2222-4222-8222-222222222222" };
@@ -17,8 +18,8 @@ describe("durable exclusive identity-session leases", () => {
       const owned = a.repository.acquire(first); assert.equal(owned.state, "acquired");
       assert.equal(a.repository.acquire(second).state, "held");
       assert.equal(a.repository.acquire(first).state, "held", "same worker cannot acquire a second session");
-      assert.throws(() => a.repository.release({ ...owned.lease, sessionId: second.sessionId }, first.now), /release-refused/u);
-      assert.throws(() => a.repository.release({ ...owned.lease, generation: 2 }, first.now), /release-refused/u);
+      assert.throws(() => a.repository.release({ ...owned.lease, sessionId: BrowserSessionIdSchema.parse(second.sessionId) }, first.now), /release-refused/u);
+      assert.throws(() => a.repository.release({ ...owned.lease, generation: PositiveIntSchema.parse(2) }, first.now), /release-refused/u);
       a.repository.release(owned.lease, first.now);
       const next = a.repository.acquire(second); assert.equal(next.state, "acquired"); assert.equal(next.lease.generation, 2);
       assert.throws(() => a.repository.release(owned.lease, first.now), /release-refused/u);
@@ -53,6 +54,9 @@ describe("durable exclusive identity-session leases", () => {
       database.prepare("UPDATE worker_leases SET state='stopped' WHERE worker_id=?").run(second.workerId);
       assert.throws(() => repository.acquire({ ...second, identityKey: "c".repeat(64) }));
       assert.throws(() => repository.acquire({ ...second, identityKey: "c".repeat(64), workerId: "unknown-worker" }));
+      database.prepare("UPDATE worker_leases SET state='idle' WHERE worker_id=?").run(second.workerId);
+      database.prepare("INSERT INTO worker_leases VALUES(?,2,'stopped')").run(second.workerId);
+      assert.throws(() => repository.acquire({ ...second, identityKey: "c".repeat(64) }), "a stopped current lifetime cannot fall back to an older live generation");
     } finally { database.close(); }
   });
 
