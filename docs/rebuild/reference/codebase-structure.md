@@ -80,6 +80,7 @@ Paths in this table are relative to `src/backend/`.
 | `transports/cli/` | CLI dispatch and command handling. |
 | `transports/http/` | Dashboard HTTP routes, request schemas, and SSE subscriptions. |
 | `workbooks/` | Saved workbook library: validated workbook records, versions and history over its SQLite repository. |
+| `workbooks/workflow-workbook-service.ts` | Shared run-scoped workbook publication: create, append table rows, or import XLSX as a new workbook or linked version. The `workbooks.library` provider is composed per run in `app/composition/worker/run-resources.ts`; immutable workbook history supplies replay proof. |
 
 ### Dashboard and shared packages
 
@@ -109,6 +110,8 @@ Paths in this table are relative to `src/backend/`.
 `src/workflows/person-lookup/` and `src/workflows/separations/` each contain `workflow.ts`,
 `task-registry.ts`, and `tasks/`. The workflow definition is browser-safe. The registry loads
 backend task implementations.
+
+`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Shared workbook publication lives outside this workflow. `src/models/dashboard/workbook-import.ts` owns the browser-safe XLSX/CSV importer used by the dashboard and workflow workbook service.
 
 Person Lookup has four chunk harnesses at `src/workflows/person-lookup/steps/<step>/step.ts`:
 `searching`, `cross-verify`, `active-status`, and `crm-dates`.

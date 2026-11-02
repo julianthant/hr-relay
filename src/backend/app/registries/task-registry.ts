@@ -18,6 +18,8 @@ import { separationsStore } from "../../../workflows/separations/task-registry.j
 import { servicenowStore } from "../../systems/servicenow/task-registry.js";
 import { sharepointStore } from "../../systems/sharepoint/task-registry.js";
 import { ucpathStore } from "../../systems/ucpath/task-registry.js";
+import { i9CheckStore } from "../../../workflows/i9-check/task-registry.js";
+import { workbooksStore } from "../../processing/workbooks/task-registry.js";
 
 export const BROWSER_STORES = Object.freeze([
   ucpathStore,
@@ -39,6 +41,8 @@ export const TASK_STORES: readonly RegisteredTaskStore[] = Object.freeze([
   personLookupStore,
   rosterStore,
   separationsStore,
+  i9CheckStore,
+  workbooksStore,
 ]);
 
 function corpusFor(stores: readonly RegisteredTaskStore[]) {

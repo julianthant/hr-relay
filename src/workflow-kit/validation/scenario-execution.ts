@@ -15,7 +15,11 @@ export const DASHBOARD_SCENARIO_FILE_PATTERN =
 
 export const ExecutableScenarioSpecSchema = z.strictObject({
   scenarioId: ScenarioIdSchema,
-  file: z.union([z.string().regex(GRAPH_SCENARIO_FILE_PATTERN), z.literal("tests/workflows/person-lookup/workflow.scenarios.integration.test.ts")]),
+  file: z.union([z.string().regex(GRAPH_SCENARIO_FILE_PATTERN), z.enum([
+    "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts",
+    "tests/workflows/i9-check/workflow.integration.test.ts",
+    "tests/backend/workbooks/workflow-workbook-service.integration.test.ts",
+  ])]),
 });
 
 /** Production scenario ids are registered here; contracts and descriptors may reference only these, and a lane separately proves each row is a real `it(...)` in its file. */
@@ -37,6 +41,8 @@ const SEPARATIONS_FILE = workflowStructuralScenarioPath("separations", defineWor
 const PERSON_LOOKUP_FILE = workflowStructuralScenarioPath("person-lookup", defineWorkflowRole({ kind: "composition" }));
 
 export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
+  { scenarioId: "workbooks/publish", file: "tests/backend/workbooks/workflow-workbook-service.integration.test.ts" },
+  { scenarioId: "i9-check/person", file: "tests/workflows/i9-check/workflow.integration.test.ts" },
   { scenarioId: "person-lookup/s1", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
   { scenarioId: "person-lookup/s2", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },
   { scenarioId: "person-lookup/s3", file: "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts" },

@@ -24,6 +24,7 @@ import { taskStoreRegistry } from "./task-registry.js";
 import { personLookupWorkflow } from "../../../workflows/person-lookup/workflow.js";
 import { separationsWorkflow } from "../../../workflows/separations/workflow.js";
 import { createWorkflowDescriptorRegistry } from "../../../workflows/descriptor-registry.js";
+import { i9CheckWorkflow } from "../../../workflows/i9-check/workflow.js";
 
 export function createWorkflowRegistry<PublicModule extends WorkflowModule>(
   publicEntries: readonly PublicModule[],
@@ -67,10 +68,12 @@ export const separationsModule = composeWorkflowModule(
   compileWorkflow(separationsWorkflow),
   taskStoreRegistry.stores,
 );
+export const i9CheckModule = composeWorkflowModule(compileWorkflow(i9CheckWorkflow), taskStoreRegistry.stores);
+export const CHILD_WORKFLOW_MODULES = Object.freeze([i9CheckModule]);
 const registry = createWorkflowRegistry([
   personLookupModule,
   separationsModule,
-], []);
+], CHILD_WORKFLOW_MODULES);
 
 export const WORKFLOW_MODULES = registry.publicModules;
 
@@ -113,15 +116,15 @@ export const WORKFLOW_IDS_BY_CODE = workflowCodeRegistry(DESCRIPTORS);
 
 export function auditImplBindings(bindings: PendingImplBindings): readonly string[] {
   const violations: string[] = [
-    ...auditWorkflowModuleBindings(WORKFLOW_MODULES),
-    ...auditWorkflowModuleRoles(WORKFLOW_MODULES),
-    ...auditWorkflowCodes(DESCRIPTORS),
+    ...auditWorkflowModuleBindings([...WORKFLOW_MODULES, ...CHILD_WORKFLOW_MODULES]),
+    ...auditWorkflowModuleRoles([...WORKFLOW_MODULES, ...CHILD_WORKFLOW_MODULES]),
+    ...auditWorkflowCodes([...DESCRIPTORS, ...CHILD_WORKFLOW_MODULES.map(module => module.descriptor)]),
   ];
   const bound = new Set(boundTaskIds());
   const pending = new Map(bindings.tasks.map((entry) => [String(entry.taskId), entry]));
   const used = new Set<string>();
 
-  for (const descriptor of DESCRIPTORS) {
+  for (const descriptor of [...DESCRIPTORS, ...CHILD_WORKFLOW_MODULES.map(module => module.descriptor)]) {
     for (const contract of workflowProjections(descriptor).contracts) {
       const id = String(contract.id);
       used.add(id);

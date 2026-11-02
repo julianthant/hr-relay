@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
 
-import { WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
+import { CHILD_WORKFLOW_MODULES, WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { workflowScenarioFolder, workflowSourceFolder, workflowSourcePath } from "../../../src/workflow-kit/validation/source-layout.js";
 import { gitVisibleFilesIn, REPO_ROOT } from "../support/helpers/guard-files.js";
@@ -469,7 +469,7 @@ const PRE_CANONICAL_SCENARIOS: readonly PreCanonicalScenarioEntry[] = [];
 const ARTIFACT_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [];
 
 function auditedWorkflowSources(): readonly RegisteredWorkflowSource[] {
-  return [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES].map((module) => {
+  return [...WORKFLOW_MODULES, ...CHILD_WORKFLOW_MODULES, ...STEP_PROOF_MODULES].map((module) => {
     const id = String(module.descriptor.id);
     return {
       id,
@@ -830,7 +830,7 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
     assert.ok(tree.sources.size > 500, `source scan resolved only ${tree.sources.size} files`);
     assert.ok(tree.artifactFiles.length > 10, `artifact scan resolved only ${tree.artifactFiles.length} files`);
     const registered = auditedWorkflowSources();
-    assert.equal(registered.length, WORKFLOW_MODULES.length + STEP_PROOF_MODULES.length,
+    assert.equal(registered.length, WORKFLOW_MODULES.length + CHILD_WORKFLOW_MODULES.length + STEP_PROOF_MODULES.length,
       "operator workflows and retained step proofs must stay in the scan");
 
     const scannedWorkflowFiles = [...tree.sources.keys()]
