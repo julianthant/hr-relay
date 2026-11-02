@@ -519,6 +519,7 @@ export async function executeIdempotencyProbe(
     signal: AbortSignal;
     screenshotOwner?: Readonly<{ nodeId: string; attempt: number; log: Pick<TaskLogger, "warn"> }>;
     onRecord?: (taskId: TaskId, batch: BoundedTaskRecordBatch) => void;
+    onTaskSignal?: (signal: AbortSignal) => void;
     actionBinderForInput?: (taskId: string, parsedInput: unknown) => BrowserActionBinder;
     confirmedForInput?: (taskId: string, parsedInput: unknown) => ConfirmedTaskActions | undefined;
   }>,
@@ -553,6 +554,7 @@ export async function executeIdempotencyProbe(
   const proofSchema = commitContract.writeSafety.completion.proofSchema;
   const raw = await deps.sessions.withDriver(need, input.instance, input.signal, async (driver, captureScreenshot) => {
     const invocation = beginBoundedTask(deps, probeRef.taskId, input.signal, (innerSignal, recordData) => {
+      input.onTaskSignal?.(innerSignal);
       const run = RunnableTaskSchema.parse(probeTask.impl.run);
       const confirmed = input.confirmedForInput?.(probeRef.taskId, probeInput);
       return withBrowserActionBinding(input.actionBinderForInput?.(probeRef.taskId, probeInput), () => run({

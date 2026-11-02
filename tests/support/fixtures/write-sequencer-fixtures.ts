@@ -287,6 +287,7 @@ export interface WriteFixtureWorld {
   subjectReadThrows?: Error;
   /** Throw only after the probe has recorded its observation. */
   probeThrowsAfterRecord?: Error;
+  probeWait?: Promise<void>;
   /** Mutation control: author one unclassified point and require a loud refusal. */
   recordUndeclaredProbeField: boolean;
   /** Mutation control: author one unclassified commit point after the click. */
@@ -346,6 +347,7 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld, commitContra
     sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
     async run({ input, ctx }) {
       world.events.push("probe");
+      await world.probeWait;
       const next = world.probeResults.shift();
       if (next === undefined) {
         throw new Error("write fixture probe was invoked with no queued result; the test under-provisioned it");
