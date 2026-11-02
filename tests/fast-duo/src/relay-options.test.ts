@@ -61,3 +61,40 @@ it("renders the approved extension states and keeps card selection, guards and f
     document.body.replaceChildren(); vi.unstubAllGlobals(); vi.useRealTimers();
   }
 });
+
+for (const lateFailure of [false, true]) it(`keeps actions available during a state poll and ignores its superseded ${lateFailure ? "failure" : "reply"}`, async () => {
+  const { mountRelayOptions } = await import(pathToFileURL(resolve("fast-duo/src/relay-options.js")).href) as { mountRelayOptions(this: void, profile: unknown): Promise<void> };
+  vi.useFakeTimers();
+  document.body.innerHTML = readFileSync("fast-duo/src/options.html", "utf8");
+  const initial = { operationId: "synthetic-operation", profileId: "synthetic-profile", methods: { key: { state: "idle" }, touch: { state: "idle" } } };
+  const pending = { ...initial, methods: { ...initial.methods, key: { state: "pending", attemptId: "synthetic-attempt" } } };
+  let settle: (() => void) | undefined;
+  const calls: string[] = [];
+  vi.stubGlobal("chrome", { runtime: { sendMessage: async ({ type }: { type: string }) => {
+    calls.push(type);
+    if (type === "STATE") return new Promise((resolve, reject) => {
+      settle = () => lateFailure ? reject(new Error("synthetic obsolete state read")) : resolve({ success: true, result: { relaySetup: true, profile: initial } });
+    });
+    assert.equal(type, "RELAY_START");
+    return { success: true, result: { relaySetup: true, profile: pending } };
+  } } });
+  try {
+    await mountRelayOptions(initial);
+    await vi.advanceTimersByTimeAsync(1000);
+    assert.ok(settle);
+    const start = document.querySelector<HTMLButtonElement>("#startCapture")!;
+    assert.equal(start.disabled, false);
+    start.click();
+    await vi.advanceTimersByTimeAsync(0);
+    assert.deepEqual(calls, ["STATE", "RELAY_START"]);
+    assert.equal(document.querySelector<HTMLButtonElement>("#cancelCapture")!.disabled, false);
+    settle();
+    await vi.advanceTimersByTimeAsync(0);
+    assert.equal(document.querySelector<HTMLButtonElement>("#cancelCapture")!.disabled, false);
+    assert.equal(document.querySelector<HTMLElement>('.relay-method-card[data-method="key"]')!.dataset.state, "pending");
+    assert.equal(document.getElementById("message")!.hidden, true);
+  } finally {
+    window.dispatchEvent(new Event("pagehide"));
+    document.body.replaceChildren(); vi.unstubAllGlobals(); vi.useRealTimers();
+  }
+});
