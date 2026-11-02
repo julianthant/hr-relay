@@ -67,8 +67,8 @@ export function createDashboardClient(input: Readonly<{
       return result;
     },
     async uploadOcrSource(request, signal) {
-      const source = OcrSourceUploadSchema.parse(await transport.requestJson(`/api/v1/ocr/files?filename=${encodeURIComponent(request.fileName)}`, {
-        method: "POST", headers: { "content-type": "application/pdf" }, body: new Uint8Array(request.bytes).buffer,
+      const source = OcrSourceUploadSchema.parse(await transport.requestJson("/api/v1/ocr/files", {
+        method: "POST", headers: { "content-type": "application/pdf", "x-relay-file-name": encodeURIComponent(request.fileName) }, body: new Uint8Array(request.bytes).buffer,
         ...(signal === undefined ? {} : { signal }),
       }));
       const hash = await crypto.subtle.digest("SHA-256", new Uint8Array(request.bytes).buffer);

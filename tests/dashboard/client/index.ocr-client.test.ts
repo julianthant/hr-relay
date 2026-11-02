@@ -11,8 +11,9 @@ it("uses the existing transport for a content-bound PDF upload and exact review 
     sha256: createHash("sha256").update(bytes).digest("hex") }, fileName: "source.pdf",
     uploadedAt: "2026-11-02T10:00:00.000Z", uploadedBy: "local-operator" };
   const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async (url, init) => {
-    assert.equal(url, "http://localhost/api/v1/ocr/files?filename=source.pdf");
+    assert.equal(url, "http://localhost/api/v1/ocr/files");
     assert.equal(init?.method, "POST");
+    assert.equal(new Headers(init?.headers).get("x-relay-file-name"), "source.pdf");
     assert.deepEqual(new Uint8Array(await new Response(init?.body).arrayBuffer()), bytes);
     return new Response(JSON.stringify(source), { status: 201, headers: { "content-type": "application/json" } });
   } });

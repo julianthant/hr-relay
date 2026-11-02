@@ -6,6 +6,15 @@ import { verifiedByteResponse } from "./verified-byte-response.js";
 import { z } from "zod";
 
 export interface OcrRouteDeps { readonly ocr?: OcrSourceService; }
+function uploadFileName(value: string | undefined): string {
+  if (value === undefined) throw new OcrSourceRefusedError();
+  let decoded: string;
+  try { decoded = decodeURIComponent(value); }
+  catch { throw new OcrSourceRefusedError(); }
+  const parsed = z.string().min(1).max(255).safeParse(decoded);
+  if (!parsed.success) throw new OcrSourceRefusedError();
+  return parsed.data;
+}
 async function uploadBytes(request: Request): Promise<Uint8Array> {
   if (request.body === null) throw new OcrSourceRefusedError();
   const reader = request.body.getReader(), chunks: Uint8Array[] = [];
@@ -33,7 +42,7 @@ export function registerOcrRoutes(app: DashboardApp, deps: OcrRouteDeps): void {
     try {
       if (deps.ocr === undefined) throw new OcrSourceRefusedError();
       const source = await deps.ocr.upload({ actorId: c.get("requestActorId"),
-        fileName: z.string().min(1).parse(c.req.query("filename")), mediaType: c.req.header("content-type") ?? "",
+        fileName: uploadFileName(c.req.header("x-relay-file-name")), mediaType: c.req.header("content-type") ?? "",
         bytes: await uploadBytes(c.req.raw) });
       return c.json(source, 201);
     } catch (error) {

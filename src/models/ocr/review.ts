@@ -6,6 +6,7 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { TimelineCheckpointReferenceSchema } from "../events/timeline.js";
 import { ArtifactRefSchema } from "../artifacts/artifacts.js";
+import { personMatchKey } from "./stack.js";
 
 export const OcrSourceUploadSchema = z.strictObject({
   artifact: ArtifactRefSchema.extend({ mediaType: z.literal("application/pdf"), bytes: z.number().int().positive().max(25 * 1024 * 1024) }),
@@ -23,8 +24,11 @@ export function initialOcrReviewRecords(seed: z.output<typeof OcrResultSchema>) 
     const identities = seed.identities.filter(identity => identity.recordIds.includes(record.recordId));
     const outcome = identities.length === 1 ? identities[0]?.outcome : undefined;
     const status = outcome?.state === "done" ? outcome.output.activeStatus : undefined;
+    const documentName = record.subjectName === null ? null : personMatchKey(record.subjectName);
+    const observedName = status?.details.name == null ? null : personMatchKey(status.details.name);
     const observed = status?.ucpathSelection === "resolved" && status.details.ucpath === "Found"
-      && status.details.foundInUcpath === true ? EidSchema.parse(status.details.eid) : null;
+      && status.details.foundInUcpath === true && documentName !== null && documentName === observedName
+      ? EidSchema.parse(status.details.eid) : null;
     const fieldEid = record.fields.answers.find(answer => ["employee.employeeId", "employeeId"].includes(answer.path));
     const conflicting = observed !== null && fieldEid?.state === "read" && fieldEid.value !== observed;
     return { recordId: record.recordId, fields: record.fields, assertedEid: conflicting ? null : observed, discarded: false };

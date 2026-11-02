@@ -22,13 +22,22 @@ function result(documentEid?: string) {
   return OcrResultSchema.parse({ review, identities: bindOcrLookupOutcomes(review, [{ state: "done",
     itemId: ocrLookupItemId(request.input), runId: "00000000-0000-4000-8000-000000000777", output: {
       activeStatus: { ...ReadActiveStatus.example, ucpathSelection: "resolved", state: "found", candidateEids: ["10800000"],
-        details: { ...ReadActiveStatus.example.details, ucpath: "Found", foundInUcpath: true, eid: "10800000" } },
+        code: null, reason: "Verified in UCPath.",
+        details: { ...ReadActiveStatus.example.details, ucpath: "Found", foundInUcpath: true, eid: "10800000", name: "Example, Avery" } },
       crmDates: { state: "not-requested" },
     } }]) });
 }
 
 it("retains a proved UCPath identity in the initial review without requiring a correction", () => {
   assert.equal(initialOcrReviewRecords(result())[0]?.assertedEid, "10800000");
+});
+it("holds a resolved lookup whose name conflicts with or cannot corroborate the document", () => {
+  const seed = result();
+  const identity = seed.identities[0]; assert.ok(identity && identity.outcome.state === "done");
+  identity.outcome.output.activeStatus.details.name = "Example, Morgan";
+  assert.equal(initialOcrReviewRecords(seed)[0]?.assertedEid, null);
+  identity.outcome.output.activeStatus.details.name = null;
+  assert.equal(initialOcrReviewRecords(seed)[0]?.assertedEid, null);
 });
 it("holds a conflicting document identity and an unresolved lookup for explicit operator review", () => {
   assert.equal(initialOcrReviewRecords(result("10800001"))[0]?.assertedEid, null);
