@@ -11,7 +11,7 @@ describe("Fast Duo extension staging", () => {
     try {
       const staged = join(root, "extension");
       stageFastDuoExtension(realpathSync("fast-duo"), staged, mode);
-      const manifest = JSON.parse(readFileSync(join(staged, "manifest.json"), "utf8")) as { background: { service_worker: string }; content_scripts: { js: string[] }[] };
+      const manifest = JSON.parse(readFileSync(join(staged, "manifest.json"), "utf8")) as { background: { service_worker: string }; content_scripts: { js: string[] }[]; options_ui?: { page: string }; action?: unknown };
       assert.equal(manifest.background.service_worker, mode === "onboarding" ? "src/relay-background.js" : "src/workflow-background.js");
       const checked = new Set<string>();
       const checkImports = (name: string): void => {
@@ -21,9 +21,18 @@ describe("Fast Duo extension staging", () => {
         for (const match of source.matchAll(/from ['"]\.\/(.+?)['"]/gu)) checkImports(`src/${match[1]}`);
       };
       for (const name of [manifest.background.service_worker, ...manifest.content_scripts.flatMap(script => script.js)]) checkImports(name);
+      assert.equal(manifest.action, undefined);
+      if (mode === "onboarding") {
+        assert.equal(manifest.options_ui?.page, "src/options.html");
+        const page = readFileSync(join(staged, "src/options.html"), "utf8");
+        for (const match of page.matchAll(/(?:src|href)="([^"#]+)"/gu)) {
+          assert.ok(existsSync(join(staged, "src", match[1])));
+        }
+        checkImports("src/options.js");
+      }
       for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.md"]) assert.equal(readFileSync(join(staged, name), "utf8"), readFileSync(join("fast-duo", name), "utf8"));
       assert.equal(statSync(join(staged, "manifest.json")).mode & 0o777, 0o600);
-      for (const name of ["bootstrap.json", "credentials", "src/background.js", "src/private-storage.js"]) assert.equal(existsSync(join(staged, name)), false);
+      for (const name of ["bootstrap.json", "credentials", "src/background.js", "src/private-storage.js", "src/popup.html", "src/popup.js"]) assert.equal(existsSync(join(staged, name)), false);
       if (mode === "workflow") {
         assert.deepEqual(readdirSync(join(staged, "src")).filter(name => /options|popup|relay-|service|crypto|sign-count/u.test(name)), []);
         const permissions = JSON.parse(readFileSync(join(staged, "manifest.json"), "utf8")) as { permissions: string[] };
@@ -37,11 +46,11 @@ describe("Fast Duo extension staging", () => {
     try {
       const source = join(root, "source");
       mkdirSync(join(source, "src"), { recursive: true });
-      for (const name of ["workflow-manifest.json", "LICENSE", "THIRD_PARTY_NOTICES.md", "src/background.js", "src/workflow-background.js"]) cpSync(join(realpathSync("fast-duo"), name), join(source, name));
+      for (const name of ["workflow-manifest.json", "LICENSE", "THIRD_PARTY_NOTICES.md", "src/relay-background.js", "src/workflow-background.js"]) cpSync(join(realpathSync("fast-duo"), name), join(source, name));
       const target = join(source, "src", "workflow-background.js");
       unlinkSync(target);
-      if (kind === "symlink") symlinkSync(join(source, "src", "background.js"), target);
-      else linkSync(join(source, "src", "background.js"), target);
+      if (kind === "symlink") symlinkSync(join(source, "src", "relay-background.js"), target);
+      else linkSync(join(source, "src", "relay-background.js"), target);
       assert.throws(() => stageFastDuoExtension(source, join(root, "staged"), "workflow"));
     } finally { rmSync(root, { recursive: true, force: true }); }
   });

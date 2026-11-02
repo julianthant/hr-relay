@@ -72,7 +72,7 @@ function world(method: "key" | "touch" = "key") {
   function makePage(initialUrl = "about:blank") {
     let pageClosed = false;
     let url = initialUrl;
-    return { evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => url,
+    return { frames: () => [{ url: () => url, evaluate: async () => true }], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => url,
       goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://")) { portalPages++; throw new Error("synthetic navigation failure"); } url = destination; },
       close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
   }

@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { readRestoreWriteFences } from "../sqlite/restore-write-fences.js";
 import { withReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -13,6 +14,11 @@ import { readPrivateFile, removeExactPath } from "../configuration/credential-sa
 import { fsyncPath, replacePrivateFile, writePrivateStage } from "../private-path.js";
 import { FixedLayoutEntrySchema, fixedLayoutEntries } from "./fixed-layout.js";
 import { proveProfileRootsUnused } from "./process-closure.js";
+
+export class AccountDeletionRefusedError extends Error {
+  readonly code = "PROFILE_ACCOUNT_DELETION_REFUSED";
+  constructor(cause: unknown) { super(ERROR_CATALOG.PROFILE_ACCOUNT_DELETION_REFUSED.text, { cause }); this.name = "AccountDeletionRefusedError"; }
+}
 
 const FileSchema = z.strictObject({ device: z.number().int().nonnegative(), inode: z.number().int().nonnegative(), digest: z.string().regex(/^[a-f0-9]{64}$/u) });
 const RelativePath = z.string().min(1).refine(path => !path.includes("\\") && path.split("/").every(part => part !== "" && part !== "." && part !== ".."));
@@ -71,7 +77,9 @@ export function captureAccountDeletion(location: Location, document: z.infer<typ
 }
 
 export function publishAccountDeletion(path: string, plan: AccountDeletion): void {
-  writePrivateStage(path, Buffer.from(canonicalJsonStringify(AccountDeletionSchema.parse(plan)))); fsyncPath(dirname(path));
+  const bytes = Buffer.from(canonicalJsonStringify(AccountDeletionSchema.parse(plan)));
+  if (bytes.byteLength > 100 * 1024 * 1024) throw new Error("account-deletion-plan-too-large");
+  writePrivateStage(path, bytes); fsyncPath(dirname(path));
 }
 
 export function resumeAccountDeletion(location: Location, journal: string, assertHeld: () => void,

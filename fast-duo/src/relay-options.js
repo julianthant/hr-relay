@@ -5,33 +5,6 @@ export async function mountRelayOptions(initial) {
   let polling = false, actionGeneration = 0;
   let selected = 'key';
   let unavailable = false;
-  for (const selector of ['.tabs', '.activity', '#addAccount', '#pause', '#legacy', '#intro', '#accountForm', '#aliasForm', '#accountActions', '#advanced', '#editDetails', '#closeEditor', '#refreshTabs', '#duoTab', 'label[for="duoTab"]']) {
-    document.querySelector(selector).hidden = true;
-  }
-  $('editor').hidden = false;
-  $('connection').hidden = false;
-  $('openLogin').hidden = false;
-  $('openLogin').textContent = 'Open duo.ucpath.edu';
-  $('editorTitle').textContent = 'Set up your sign-in methods';
-  document.querySelector('.brand small').textContent = 'Relay sign-in setup';
-  document.querySelector('.brand span').firstChild.textContent = 'Fast Duo';
-  document.title = 'Fast Duo · Relay sign-in setup';
-  document.querySelector('footer > span').firstChild.textContent = 'Fast Duo ';
-  document.querySelector('footer > span:last-child').textContent = 'Private Relay sign-in methods.';
-  $('accountListHeading').textContent = 'Relay sign-in methods';
-  document.querySelector('#connection h3').textContent = 'Set up a sign-in method';
-  document.querySelector('#connection > p').textContent = 'Open Duo in this same window and sign in once. Complete MFA, then choose Other options → Manage devices.';
-  document.querySelector('label[for="transport"]').textContent = 'Sign-in method';
-  $('transport').nextElementSibling.textContent = 'Relay needs both methods. Set up each method once.';
-  $('startCapture').textContent = 'Set up selected method';
-  document.querySelector('.setup-panel').setAttribute('aria-labelledby', 'editorTitle');
-  $('duoTab').closest('.input-action').hidden = true;
-  $('duoTab').closest('.input-action').nextElementSibling.textContent = 'Relay verifies the exact Duo page and account before capture.';
-  document.querySelector('.local-note').textContent = 'Private Relay draft';
-  document.querySelector('.page-heading h1').textContent = 'Duo setup for Relay';
-  document.querySelector('.page-heading p').textContent = 'A software security key and native Touch ID must both be verified.';
-  $('globalDetail').textContent = 'Open Duo in this same window. Relay uses your saved profile details to sign in once; complete MFA yourself.';
-  $('transport').options[1].textContent = 'Touch ID on this Mac (native)';
   const labels = { key: 'Security key', touch: 'Touch ID' };
   const kinds = { key: 'Software key in this browser', touch: 'Built-in sensor on this Mac' };
   const notes = {

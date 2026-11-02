@@ -86,7 +86,7 @@ for (const change of ["none", "unknown-member"] as const) it(`resumes interrupte
     assert.throws(() => f.machine.readProfileRegistry(), /account-deletion-pending/u);
     if (change === "unknown-member") {
       const unknown = join(f.root, "unknown.txt"); writeFileSync(unknown, "unowned", { mode: 0o600 });
-      await assert.rejects(f.restart(), /membership-changed/u);
+      await assert.rejects(f.restart(), error => error instanceof Error && error.cause instanceof Error && error.cause.message === "account-deletion-membership-changed");
       assert.equal(readFileSync(unknown, "utf8"), "unowned"); assert.equal(existsSync(journal), true);
     } else {
       await f.restart(); assert.equal(existsSync(journal), false); assert.equal(existsSync(f.root), false);

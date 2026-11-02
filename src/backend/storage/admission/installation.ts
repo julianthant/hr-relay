@@ -1,4 +1,4 @@
-import { captureAccountDeletion, publishAccountDeletion, resumeAccountDeletion } from "../maintenance/account-deletion.js";
+import { AccountDeletionRefusedError, captureAccountDeletion, publishAccountDeletion, resumeAccountDeletion } from "../maintenance/account-deletion.js";
 import { createHash,randomBytes,randomUUID } from "node:crypto";
 import {
 closeSync,constants,existsSync,fstatSync,
@@ -731,7 +731,7 @@ function readProfilePublicationSource(control: string, locator: RuntimeLocator) 
 
 function finishAccountDeletion(control: string, locator: RuntimeLocator, assertHeld: () => void): void {
   const journal = join(control, "account-deletion.json");
-  resumeAccountDeletion(locator, journal, assertHeld, {
+  try { resumeAccountDeletion(locator, journal, assertHeld, {
     validate(prior, next) {
       const source = readProfilePublicationSource(control, locator);
       const same = (left: unknown, right: unknown) => canonicalJsonStringify(left) === canonicalJsonStringify(right);
@@ -745,7 +745,7 @@ function finishAccountDeletion(control: string, locator: RuntimeLocator, assertH
       atomicJson(source.witnessPath, profileRegistryWitness(locator.installationId, source.path, source.document));
       dropProfileRegistryProof(control, locator);
     },
-  });
+  }); } catch (cause) { throw new AccountDeletionRefusedError(cause); }
 }
 
 function readMachineRegistry(control: string, locator: RuntimeLocator, recoverPublication = true, publicationOperationId?: string): ProfileRegistryDocument {
@@ -1829,7 +1829,10 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (profileOperationInventory(locator.stateRoot).length !== 0
           || lstatMaybe(join(locator.stateRoot, "machine", "credential-operations", `${z.uuid().parse(profileId)}.json`))) fail("account-deletion-operation-pending");
         const archives = join(control, "profile-control-upgrades");
-        if (lstatMaybe(archives) && readdirSync(archives).some(name => name.includes(profileId))) fail("account-deletion-retained-installation-backup");
+        if (lstatMaybe(archives)) {
+          assertNoSymlinkComponents(archives); privateDirectory(archives);
+          if (readdirSync(archives).some(name => name.includes(profileId))) fail("account-deletion-retained-installation-backup");
+        }
         assertCanonicalProfileBinding(join(locator.stateRoot, "profiles", profileId, "state.db"), { installationId: locator.installationId, profileId });
         const plan = captureAccountDeletion(locator, document, profileId, epoch);
         guard(); publishAccountDeletion(journal, plan);

@@ -1,5 +1,5 @@
 import { createPrivateKey, createPublicKey } from "node:crypto";
-import type { BrowserContext, Page } from "playwright";
+import type { BrowserContext, Frame, Page } from "playwright";
 import { z } from "zod";
 import type { DraftDuoPendingCredential } from "../../profiles/onboarding-duo.js";
 
@@ -7,7 +7,7 @@ export type OnboardingPlatformAuthenticator =
   | Readonly<{ mechanism: "native-platform" }>
   | Readonly<{ mechanism: "chromium-platform"; credential(credentialId: string, rpId: string, createdAt: string): Promise<DraftDuoPendingCredential> }>;
 
-export async function prepareOnboardingPlatformAuthenticator(context: BrowserContext, page: Page): Promise<OnboardingPlatformAuthenticator> {
+export async function prepareOnboardingPlatformAuthenticator(context: BrowserContext, page: Page | Frame): Promise<OnboardingPlatformAuthenticator> {
   const available = z.boolean().parse(await page.evaluate(async () => typeof PublicKeyCredential === "function"
     && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()));
   if (available) return { mechanism: "native-platform" };
