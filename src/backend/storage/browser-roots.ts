@@ -115,6 +115,10 @@ export function createBrowserRoots(input: RuntimeAdmission) {
     throw error instanceof BrowserRootUnavailableError ? error : new BrowserRootUnavailableError({ cause: error });
   }
   function read(): BrowserRootsDocument {
+    try { assertHeld(); return withPrivateFileLock(directory, ".browser-roots.lock", readLocked); }
+    catch (error) { return retain(error); }
+  }
+  function readLocked(): BrowserRootsDocument {
     try {
     assertHeld();
     if (!noSymlinkAncestry(directory, ancestry)) throw new BrowserRootUnavailableError();
@@ -131,14 +135,14 @@ export function createBrowserRoots(input: RuntimeAdmission) {
     guard: () => void = assertHeld): T {
     let publicationStarted = false;
     try { return withPrivateFileLock(directory, ".browser-roots.lock", () => {
-      const prior = read(), outcome = body(prior), next = BrowserRootsSchema.parse({ ...outcome.document, revision: increment(prior.revision) });
+      const prior = readLocked(), outcome = body(prior), next = BrowserRootsSchema.parse({ ...outcome.document, revision: increment(prior.revision) });
       if (next.installationId !== prior.installationId) throw new BrowserRootUnavailableError();
       const stage = join(directory, `.browser-roots.${randomUUID()}.tmp`), bytes = encode(next);
       guard(); publicationStarted = true; writePrivateStage(stage, bytes); stages.add(stage); fsyncPath(directory);
-      const current = read();
+      const current = readLocked();
       if (!same(current, prior)) throw new BrowserRootUnavailableError();
       guard(); replacePrivateFile(stage, path); stages.delete(stage); fsyncPath(directory);
-      if (!same(read(), next)) throw new BrowserRootUnavailableError();
+      if (!same(readLocked(), next)) throw new BrowserRootUnavailableError();
       return outcome.result;
     }); } catch (error) {
       if (publicationStarted) retain(retainAuthoritySourceClosure([error], { admission, directory: { path, stages, lifetime } }));
@@ -255,8 +259,8 @@ export function createBrowserRoots(input: RuntimeAdmission) {
       return { document: { ...replaceRow(document, prior, row), nextGeneration: increment(document.nextGeneration) }, result: row };
     }, assertOwner);
     let removed = false;
-    function assertExcluded(): void {
-      assertOwner(); assertRow(read(), captured);
+    function assertExcluded(document?: BrowserRootsDocument): void {
+      assertOwner(); assertRow(document ?? read(), captured);
       const source = lstatSync(profileDirectory, { throwIfNoEntry: false });
       if (removed ? source !== undefined : source === undefined || captured.native === undefined
         || source.dev !== captured.native.source.device || source.ino !== captured.native.source.inode) throw new BrowserRootUnavailableError();
@@ -266,7 +270,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
       await runNativeBrowserProbe(join(binding.machineRoot, captured.profileRoot), profileDirectory, probe);
       assertExcluded();
       captured = mutate(document => {
-        assertExcluded();
+        assertExcluded(document);
         const row = BrowserRootSchema.parse({ ...captured, native: { ...captured.native, phase: "observed" } });
         return { document: replaceRow(document, captured, row), result: row };
       }, assertOwner);
@@ -277,7 +281,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
         assertExcluded();
         if (captured.native?.phase !== "observed" || removed) throw new BrowserRootUnavailableError();
         captured = mutate(document => {
-          assertExcluded();
+          assertExcluded(document);
           const row = BrowserRootSchema.parse({ ...captured, native: { ...captured.native, phase: "deleting" } });
           return { document: replaceRow(document, captured, row), result: row };
         }, assertOwner);
@@ -293,7 +297,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
       } })); } finally { bodyActive = false; }
       assertExcluded();
       mutate(document => {
-        assertExcluded();
+        assertExcluded(document);
         if (removed) {
           return { document: { ...document, roots: document.roots.filter(row => row.directory !== root) }, result: undefined };
         }
