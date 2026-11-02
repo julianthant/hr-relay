@@ -15,7 +15,14 @@ export function workerControlScope(request: z.infer<typeof WorkerBrowserCommandR
 
 /** The observed result survives the BFF's acknowledgement/audit crash window. */
 export const WorkerEffectAcknowledgementSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("parked-write-check"), result: ParkedWriteCheckResultSchema, evidence: SchemaBoundCanonicalValueSchema.optional() }),
+  z.strictObject({ kind: z.literal("parked-write-check"), result: ParkedWriteCheckResultSchema, evidence: SchemaBoundCanonicalValueSchema.optional(),
+    findingsIdentity: z.strictObject({ activityId: z.uuid(), descriptorVersion: PositiveIntSchema, contractFingerprint: FingerprintSchema,
+      claimGeneration: PositiveIntSchema, implFingerprint: FingerprintSchema }).optional() }).superRefine((ack, context) => {
+    if (ack.findingsIdentity !== undefined && (ack.evidence === undefined || ack.result.probeTaskId !== "ucpath/read-transaction-findings"
+      || ack.result.state !== "unknown" || ack.result.provenance !== "system-probe")) {
+      context.addIssue({ code: "custom", message: "held findings require their registered unverified read evidence" });
+    }
+  }),
   z.strictObject({ kind: z.literal("plan"), workerIds: z.array(WorkerIdSchema), retirements: z.array(WorkerRetirementProofSchema) }),
   z.strictObject({ kind: z.literal("reset-replacement"), commandId: CommandIdSchema, oldLeaseGeneration: PositiveIntSchema,
     leaseGeneration: PositiveIntSchema, oldControlRevision: PositiveIntSchema, controlRevision: PositiveIntSchema,

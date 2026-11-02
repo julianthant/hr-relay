@@ -184,6 +184,18 @@ export function composeCommandRequest(
     }
     case "resolve-gate":
       return composeGateResult(action, context.gate, context.gateAnswer, envelope);
+    case "check-parked-write": {
+      const write = context.parkedWrite;
+      const served = write?.actions.find(candidate => candidate.key === action.key);
+      if (write?.check?.state !== "available" || action.checkTarget === undefined || context.transactionId !== undefined
+        || write.runId !== target.runId || target.expectedVersion !== action.expectedVersion || action.checkTarget.runVersion !== action.expectedVersion
+        || canonicalJsonStringify(action.checkTarget) !== canonicalJsonStringify(write.check.target)
+        || canonicalJsonStringify(served) !== canonicalJsonStringify(action)) {
+        return { state: "refused", reason: "The held check target changed. Reload before checking." };
+      }
+      const parsed = CommandRequestSchema.safeParse({ ...envelope, family: "worker-browser", type: "check-parked-write", target: action.checkTarget });
+      return parsed.success ? { state: "ready", request: parsed.data } : { state: "refused", reason: "The held check is unavailable." };
+    }
     case "recheck-write":
     case "resolve-write-absent": {
       const parked = context.parkedWrite;

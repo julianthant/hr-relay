@@ -845,6 +845,13 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
       context.addIssue({ code: "custom", message: "a parked check must name this exact retained write and native occurrence" });
     }
   }
+  for (const action of parked.actions) {
+    if (action.kind === "command" && action.command === "check-parked-write"
+      && (parked.check?.state !== "available" || canonicalJsonStringify(action.checkTarget) !== canonicalJsonStringify(parked.check.target)
+        || action.expectedVersion !== parked.check.target.runVersion)) {
+      context.addIssue({ code: "custom", path: ["actions"], message: "held check action must name this exact available check" });
+    }
+  }
   if (Date.parse(parked.parkedAt) < Date.parse(parked.fencedAt)) {
     context.addIssue({
       code: "custom",

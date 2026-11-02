@@ -1,6 +1,7 @@
 /** Server-authored action descriptors: the ONLY source a surface may render a run control from — a control the server did not describe is unreachable, not hidden. */
 import { z } from "zod";
 import { WriteIntentIdSchema, WriteAttemptIdSchema, FingerprintSchema } from "../../rules/identity/ids.js";
+import { ParkedWriteCheckTargetSchema } from "../../rules/commands/commands.js";
 
 export const ActionPlacementSchema = z.enum(["footer", "banner", "outcome", "menu", "data", "review"]);
 export const ActionIntentSchema = z.enum(["primary", "neutral", "destructive", "violet", "success", "info", "warning"]);
@@ -8,10 +9,10 @@ export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "archive",
 /** The command verbs a served action may name; the two write resolutions are INTENT-scoped rather than run-scoped, and every verb on this list has a durable reason it is here. */
 export const ActionCommandKeySchema = z.enum([
   "retry", "restart", "recover-run", "cancel", "bump", "rename", "archive", "delete", "resolve-gate",
-  "recheck-write", "resolve-write-absent",
+  "recheck-write", "resolve-write-absent", "check-parked-write",
 ]);
 
-/** Both write resolutions are INTENT-scoped as well as run-scoped: a stale generation is refused by the kernel, so the descriptor carries the generation it was projected from. */
+/** Parked-write actions bind the exact intent generation and original attempt. */
 export const ActionWriteTargetSchema = z.strictObject({
   writeIntentId: WriteIntentIdSchema,
   intentGeneration: z.number().int().positive(),
@@ -49,8 +50,10 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
     confirm: ActionConfirmWireSchema.optional(),
     /** the typed resolution this gate option records (`resolve-gate` only) */
     resolution: z.enum(["approved", "rejected"]).optional(),
-    /** the parked intent this write resolution settles (`resolve-write-*` only) */
+    /** The parked intent and original write occurrence. */
     writeTarget: ActionWriteTargetSchema.optional(),
+    /** The idle worker and held run authority for `check-parked-write`. */
+    checkTarget: ParkedWriteCheckTargetSchema.optional(),
   }),
   z.strictObject({
     ...ActionBaseFields,
@@ -62,8 +65,11 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
   }),
 ]).superRefine((action, context) => {
   if (action.kind !== "command") return;
-  const scoped = action.command === "recheck-write" || action.command === "resolve-write-absent";
-  // Intent targets belong only to write resolutions, which require one to be sendable.
+  const scoped = action.command === "recheck-write" || action.command === "resolve-write-absent" || action.command === "check-parked-write";
+  if ((action.command === "check-parked-write") !== (action.checkTarget !== undefined)) {
+    context.addIssue({ code: "custom", path: ["checkTarget"], message: "only held checks require their exact worker and parked-write target" });
+  }
+  // Every parked-write action requires an occurrence target.
   if (scoped && action.writeTarget === undefined) {
     context.addIssue({
       code: "custom",
@@ -75,7 +81,7 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
     context.addIssue({
       code: "custom",
       path: ["writeTarget"],
-      message: `${action.command} takes no write target; only the ref write-safety §4.1 resolutions are intent-scoped`,
+      message: `${action.command} takes no parked-write target`,
     });
   }
 });

@@ -37,6 +37,18 @@ function requireNative(value: NativeRunEventWire | undefined): NativeRunEventWir
   return value;
 }
 
+function sameHeldOccurrence(envelope: CommandRequest, write: ParkedWriteDetailWire | undefined): boolean {
+  if (envelope.family !== "worker-browser" || envelope.type !== "check-parked-write" || write === undefined) return false;
+  const target = envelope.target;
+  const action = write.actions.find(action => action.kind === "command" && action.command === "recheck-write");
+  return action?.kind === "command" && action.writeTarget !== undefined && target.runId === write.runId
+    && target.runVersion === action.expectedVersion && target.runAttempt === write.runAttempt
+    && target.traceId === write.native?.traceId && target.nodeId === write.native.nodeId
+    && target.writeIntentId === write.writeIntentId && target.intentGeneration === write.generation
+    && target.writeAttemptId === action.writeTarget.writeAttemptId && target.bindingProofDigest === action.writeTarget.bindingProofDigest
+    && target.occurrenceKeyDigest === action.writeTarget.occurrenceKeyDigest;
+}
+
 type RunReads = Pick<DashboardClient, "runDetail" | "runSection">;
 export interface RunLogSnapshot {
   readonly detail: RunDetailWire;
@@ -415,9 +427,10 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
 
 export function parkedWriteLogActions(write: ParkedWriteDetailWire): readonly LogDecisionAction[] {
   const recheck = write.actions.find(action => action.kind === "command" && action.command === "recheck-write");
+  const again = write.actions.find(action => action.kind === "command" && action.command === "check-parked-write") ?? recheck;
   const absent = write.actions.find(action => action.kind === "command" && action.command === "resolve-write-absent");
   return [
-    ...(recheck === undefined ? [] : [{ id: recheck.key, label: "Check again", primary: !write.acceptsTransactionId,
+    ...(again === undefined ? [] : [{ id: again.key, label: "Check again", primary: !write.acceptsTransactionId,
       result: { title: "Check requested", message: "Checking the target system again", tone: "info" as const } }]),
     ...(write.acceptsTransactionId ? recheck === undefined || absent === undefined ? [] : [{
       id: "check-write-result", label: "Check result", primary: true, input: { kind: "verification" as const, question: "Was it submitted?" },
@@ -544,8 +557,9 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       if (envelope.family === "start" && prepared !== undefined) return prepared.sourceVersion === row.rowRevision
         && prepared.failureId === served.failureId && canonicalJsonStringify(prepared.envelope) === canonicalJsonStringify(envelope);
     }
-    if (envelope.family !== "run" || (envelope.type !== "recheck-write" && envelope.type !== "resolve-write-absent")
-      || parked?.section !== "parked-write" || envelope.target.expectedVersion.valueOf() !== row.rowRevision.valueOf()) return false;
+    const held = envelope.family === "worker-browser" && envelope.type === "check-parked-write";
+    if ((!held && (envelope.family !== "run" || (envelope.type !== "recheck-write" && envelope.type !== "resolve-write-absent")))
+      || parked?.section !== "parked-write") return false;
     const descriptor = parked.payload.actions.find(action => action.kind === "command" && action.command === envelope.type);
     const composed = descriptor?.kind === "command" ? composeCommandRequest(descriptor,
       { runId: row.runId, expectedVersion: row.rowRevision }, { actorId: envelope.requestedBy, source: "run-detail", parkedWrite: parked.payload,
@@ -559,11 +573,14 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
       && detailGate.nodeId?.valueOf() === attempt.envelope.target.gateId.valueOf()), [matchesDecision, detailGate, row.rowRevision, parked]);
   const currentDecisionMatches = useRef(matchesDecision);
   currentDecisionMatches.current = matchesDecision;
+  const currentParkedWrite = useRef<ParkedWriteDetailWire | undefined>(undefined);
+  currentParkedWrite.current = parked?.section === "parked-write" ? parked.payload : undefined;
   const send = useCallback(async (envelope: CommandRequest, replay = false) => {
     if (!mounted.current || currentCommandOwner.current !== commandOwner || binding === undefined
       || binding.scope.client !== client || bindingRef.current?.scope !== binding.scope
       || envelope.requestedBy !== binding.scope.actorId) return;
-    if (replay && envelope.family !== "gate" && !currentDecisionMatches.current(envelope)) {
+    if (replay && envelope.family !== "gate" && !currentDecisionMatches.current(envelope)
+      && !sameHeldOccurrence(envelope, currentParkedWrite.current)) {
       binding.feedback({ kind: "refused", commandId: envelope.commandId, reason: "not-attempted",
         feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})) });
       return;
@@ -681,22 +698,25 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const onUcpathDecision = useCallback((decision: UcpathFoundDecision) => {
     if (decision.kind !== "check-again" || parked?.section !== "parked-write" || parked.payload.ucpathFindings === undefined
       || decision.transactionNumber !== undefined && !parked.payload.acceptsTransactionId) return;
-    const descriptor = parked.payload.actions.find(action => action.kind === "command" && action.command === "recheck-write");
-    const choice = parkedWriteLogActions(parked.payload).find(action => action.id === descriptor?.key);
+    const held = parked.payload.actions.find(action => action.kind === "command" && action.command === "check-parked-write");
+    const choice = parkedWriteLogActions(parked.payload).find(action => action.id === (decision.transactionNumber === undefined ? held?.key : "check-write-result"));
     if (choice !== undefined) onDecision(parked.payload.writeIntentId, choice,
-      decision.transactionNumber === undefined ? {} : { transaction: decision.transactionNumber });
+      decision.transactionNumber === undefined ? {} : { outcome: "present", transaction: decision.transactionNumber });
   }, [parked, onDecision]);
   const newest = binding?.executor.retainedAttempts().findLast(attempt => {
     const request = attempt.request;
     if ("targets" in request || request.requestedBy !== binding.scope.actorId || attempt.scope.client !== binding.scope.client
       || attempt.scope.authority !== binding.scope.authority || attempt.scope.dayRequest !== binding.scope.dayRequest) return false;
     if (request.family === "start") return correctionCommand?.get(row.runId)?.envelope.commandId === request.commandId;
-    return (request.family === "gate" || (request.family === "run" && ["recheck-write", "resolve-write-absent", "retry"].includes(request.type)))
+    return (request.family === "gate" || (request.family === "worker-browser" && request.type === "check-parked-write")
+      || (request.family === "run" && ["recheck-write", "resolve-write-absent", "retry"].includes(request.type)))
       && request.target.runId === row.runId;
   });
-  const retained = newest !== undefined && !("targets" in newest.request) && (newest.request.family === "gate" || newest.request.family === "run" || newest.request.family === "start") && (newest.state === "pending" || newest.outcome?.kind === "uncertain"
+  const retained = newest !== undefined && !("targets" in newest.request) && (newest.request.family === "gate" || newest.request.family === "run" || newest.request.family === "start"
+    || newest.request.family === "worker-browser" && newest.request.type === "check-parked-write") && (newest.state === "pending" || newest.outcome?.kind === "uncertain"
     || (newest.outcome !== undefined && (newest.outcome.kind !== "confirmed" || newest.request.family === "start") && matchesDecision(newest.request))) ? newest : undefined;
-  const retainedEnvelope = retained !== undefined && !("targets" in retained.request) && (retained.request.family === "gate" || retained.request.family === "run" || retained.request.family === "start") ? retained.request : undefined;
+  const retainedEnvelope = retained !== undefined && !("targets" in retained.request) && (retained.request.family === "gate" || retained.request.family === "run" || retained.request.family === "start"
+    || retained.request.family === "worker-browser" && retained.request.type === "check-parked-write") ? retained.request : undefined;
   const retainedState = retained === undefined ? undefined : retained.state === "pending" ? "pending" : retained.outcome?.kind === "uncertain" ? "uncertain" : retained.outcome?.kind === "confirmed" ? "settled" : "refused";
   const retainedFeedback = retained?.outcome !== undefined && "feedback" in retained.outcome ? retained.outcome.feedback.text : undefined;
   const retainedCommand = useMemo(() => retainedEnvelope === undefined || retainedState === undefined ? undefined
@@ -707,6 +727,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const replayEnvelope = currentCommand?.state === "uncertain" ? currentCommand.envelope : undefined;
   const replay = useCallback(() => { if (replayEnvelope !== undefined) void send(replayEnvelope, true); }, [replayEnvelope, send]);
   return { ...value, onDecision: value.state === "loaded" && binding !== undefined && (currentCommand === undefined || currentCommand.state === "refused") ? onDecision : undefined,
-    onUcpathDecision: value.state === "loaded" && binding !== undefined && (currentCommand === undefined || currentCommand.state === "refused") ? onUcpathDecision : undefined,
+    onUcpathDecision: value.state === "loaded" && binding !== undefined && parked?.section === "parked-write"
+      && parked.payload.actions.some(action => action.kind === "command" && action.command === "check-parked-write")
+      && (currentCommand === undefined || currentCommand.state === "refused") ? onUcpathDecision : undefined,
     command: currentCommand, replay: replayEnvelope === undefined ? undefined : replay };
 }

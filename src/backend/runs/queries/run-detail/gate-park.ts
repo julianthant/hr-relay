@@ -1,7 +1,7 @@
 import { acceptsRecheckTransactionId } from "../../../../rules/write-safety/parked-resolution.js";
 import { retainedUcpathFindings } from "./ucpath-findings.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
-import { ParkedWriteCheckTargetSchema } from "../../../../rules/commands/commands.js";
+import { ParkedWriteCheckTargetSchema, type ParkedWriteCheckTarget } from "../../../../rules/commands/commands.js";
 import { requireParkedWriteCheckTarget } from "../../../runtime/writes/write-recovery.js";
 import { WorkerControlRefusal } from "../../../../models/run/worker-control.js";
 import { readTimelineRecords } from "../../../storage/events/timeline-reader.js";
@@ -482,7 +482,8 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction"
       && node.commit.uses.id === intent.taskId && acceptsRecheckTransactionId(node.commit.uses.writeSafety.completion));
   const repositories = deps.canonical?.database?.authority;
-  let check: unknown = { state: "unavailable", code: "PARKED_CHECK_UNAVAILABLE" };
+  let check: { state: "available"; target: ParkedWriteCheckTarget } | { state: "unavailable"; code: "PARKED_CHECK_UNAVAILABLE" }
+    = { state: "unavailable", code: "PARKED_CHECK_UNAVAILABLE" };
   if (repositories !== undefined && deps.authorityIdentity !== undefined && native !== undefined
     && intent.bindingProof.kind === "subject-match" && ["ucpath/create-termination", "ucpath/delete-pending-terminations", "kuali/save-separation-finalization"].includes(intent.taskId)) {
     const worker = repositories.workerSlots.list(authority.envelope.workflow).filter(slot => slot.retiredAt === null)
@@ -519,7 +520,7 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
   const lastCheck = latest?.phase.state === "succeeded" && latest.phase.acknowledgement.kind === "parked-write-check"
     ? latest.phase.acknowledgement.result : undefined;
   return ParkedWriteDetailWireSchema.parse({ acceptsTransactionId, check, ...(lastCheck === undefined ? {} : { lastCheck }),
-    ...(intent.taskId === "ucpath/create-termination" ? { ucpathFindings: retainedUcpathFindings(deps, authority, intent) } : {}),
+    ...(intent.taskId === "ucpath/create-termination" ? { ucpathFindings: retainedUcpathFindings(deps, authority, intent, latest) } : {}),
     ...(native === undefined || nativeEvent === undefined ? {} : { native: {
       eventId: nativeEvent.eventId, order: nativeEvent.cursor, runId: native.runId,
       attempt: native.attempt, traceId: native.traceId, nodeId: native.nodeId,
@@ -539,7 +540,15 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
       + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, hasProtectedTransactionInput(authority))}. Verify the target system, then use one typed resolution.`,
     subject: parkedWriteSubject(intent.bindingProof),
     proofContract: parkedWriteProofContract(deps, authority, intent),
-    actions: parkedWriteActions(authority, intent),
+    actions: [...parkedWriteActions(authority, intent), ...(intent.taskId !== "ucpath/create-termination" || check.state !== "available" ? [] : [{
+      key: "check-parked-write", label: "Check again", detail: "Read UCPath while keeping this write parked.",
+      intent: "warning", icon: "resolve", placement: ["review"], kind: "command", command: "check-parked-write",
+      expectedVersion: authority.version, checkTarget: check.target,
+      writeTarget: { writeIntentId: intent.writeIntentId, intentGeneration: intent.generation, writeAttemptId: intent.currentAttemptId,
+        bindingProofDigest: intent.bindingProofDigest, occurrenceKeyDigest: intent.idempotencyKeyDigest },
+      confirm: { title: "Read UCPath transaction findings", body: "Read the transaction list and details. The write stays parked; Relay submits nothing and does not authorize a retry.",
+        confirmLabel: "Check again", tone: "neutral" },
+    }])],
   });
 }
 

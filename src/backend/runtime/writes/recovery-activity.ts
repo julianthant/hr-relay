@@ -20,8 +20,12 @@ import type { RunConfigFingerprintBinding } from "../workers/worker-sessions.js"
 import { WorkerSessionClosureUnprovedError } from "../workers/worker-sessions.js";
 import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { DuoCeremonyReleaseFailedError } from "../gates/duo-ceremony-gate.js";
-import { executeIdempotencyProbe, type ProbeReadDeps, type TransactionSessionHost } from "./write-sequencer.js";
+import { beginBoundedTask, executeIdempotencyProbe, type ProbeReadDeps, type TransactionSessionHost } from "./write-sequencer.js";
 import type { TransactionRuntimeNode } from "./write-resolution-binding.js";
+import { UcpathReadTransactionFindings } from "../../../models/systems/ucpath/read-transaction-findings.js";
+import { UcpathTerminationTargetSchema } from "../../../models/ui/ucpath-smart-hr-termination.js";
+import { UcpathTransactionFindingsReadSchema } from "../../../models/ui/ucpath-transaction-findings.js";
+import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 
 export class RecoveryActivityError extends WorkerControlRefusal {
   readonly code = "WRITE_RECOVERY_ACTIVITY_UNAVAILABLE";
@@ -36,7 +40,7 @@ function containsFailure(error: unknown, matches: (error: unknown) => boolean): 
   return error instanceof Error && error.cause !== undefined && containsFailure(error.cause, matches);
 }
 
-export async function executeRecoveryProbe(input: Readonly<{
+type RecoveryReadInput = Readonly<{
   operation: "diagnostic-recovery" | "parked-write-check";
   repositories: AuthorityRepositories;
   run: RunRecord;
@@ -48,7 +52,51 @@ export async function executeRecoveryProbe(input: Readonly<{
   probe: ProbeReadDeps;
   sessions: Pick<TransactionSessionHost, "withDriver" | "closeAll"> & RunConfigFingerprintBinding;
   configureRun?: () => Readonly<{ taskDeadlineMs: number }>;
-}>) {
+}>;
+
+type RecoveryReadOptions = Omit<Parameters<typeof executeIdempotencyProbe>[1], "commitContract" | "commitInput" | "screenshotOwner">
+  & { readonly screenshotOwner: NonNullable<Parameters<typeof executeIdempotencyProbe>[1]["screenshotOwner"]> };
+
+export async function executeRecoveryProbe(input: RecoveryReadInput) {
+  return (await executeRecoveryRead(input, (deps, options) => executeIdempotencyProbe(deps, {
+    ...options, commitContract: input.node.commit.uses, commitInput: input.commitInput,
+  }))).output;
+}
+
+export async function executeRecoveryFindings(input: RecoveryReadInput) {
+  const target = UcpathTerminationTargetSchema.parse(input.commitInput);
+  const contract = UcpathReadTransactionFindings;
+  const task = input.probe.stores.stores.flatMap(store => Object.values(store.tasks)).find(candidate => candidate.contract.id === contract.id);
+  const need = task?.impl.sessions[0];
+  if (task === undefined || task.contract.effect !== "read" || task.impl.sessions.length !== 1 || need?.access !== "read"
+    || need.system !== "ucpath" || task.driver?.system !== "ucpath"
+    || deriveSchemaHash(task.contract.input, "input") !== deriveSchemaHash(contract.input, "input")
+    || deriveSchemaHash(task.contract.output, "output") !== deriveSchemaHash(contract.output, "output")) {
+    throw new RecoveryActivityError(new Error("ucpath-findings-registered-read-unavailable"));
+  }
+  const parsed = contract.input.parse({ emplId: target.emplId, expectedName: target.expectedName });
+  return await executeRecoveryRead(input, async (deps, options) => {
+    // This recovery read has native activity notes, not a workflow invocation declaration.
+    return await deps.sessions.withDriver(need, options.instance, options.signal, async (driver, captureScreenshot) => {
+      const invocation = beginBoundedTask(deps, contract.id, options.signal, async (signal, recordData) => {
+        options.onTaskSignal?.(signal);
+        const raw: unknown = await Reflect.apply(task.impl.run, undefined, [{ input: parsed, ctx: { driver, signal, recordData, log: deps.log,
+          fail: (code: string, message: string, details?: Readonly<{ subject?: string; transient?: boolean; cause?: unknown }>): never => {
+            throw new TaskError(contract.id, code, message, details);
+          } } }]);
+        return raw;
+      });
+      deps.retainCallback?.(invocation.settlement);
+      const result = await invocation.bounded;
+      const output = UcpathTransactionFindingsReadSchema.parse(result.raw);
+      await captureScreenshot();
+      return output;
+    }, { ...options.screenshotOwner, taskId: contract.id });
+  });
+}
+
+async function executeRecoveryRead<Output>(input: RecoveryReadInput,
+  read: (deps: ProbeReadDeps, options: RecoveryReadOptions) => Promise<Output>) {
   input.signal.throwIfAborted();
   const { run, intent, probe, sessions, repositories } = input;
   const instance = run.envelope.resolvedInstance[intent.system];
@@ -90,7 +138,7 @@ export async function executeRecoveryProbe(input: Readonly<{
     try { notes.emitRunAction({ workflow: activity.workflow, address, action }, run); }
     catch (error) { noteFailure = new RecoveryActivityError(error); throw noteFailure; }
   };
-  let outcome: Awaited<ReturnType<typeof executeIdempotencyProbe>> | undefined;
+  let outcome: Output | undefined;
   let failure: Error | undefined;
   let closureFailure: unknown;
   let probeFailure: Error | undefined;
@@ -113,9 +161,8 @@ export async function executeRecoveryProbe(input: Readonly<{
       let verdict: typeof outcome;
       try {
         const snapshot = run.envelope.operationDisplaySnapshot;
-        verdict = await executeIdempotencyProbe({ ...probe, sessions, taskDeadlineMs: resources?.taskDeadlineMs ?? probe.taskDeadlineMs,
+        verdict = await read({ ...probe, sessions, taskDeadlineMs: resources?.taskDeadlineMs ?? probe.taskDeadlineMs,
           retainCallback: settlement => { callbackSettlement = settlement; probe.retainCallback?.(settlement); } }, {
-          commitContract: input.node.commit.uses, commitInput: input.commitInput,
           instance, signal: input.signal,
           onTaskSignal: signal => { taskSignal = signal; },
           screenshotOwner: { nodeId: activity.nodeId, attempt: activity.attempt, log: probe.log },
@@ -199,5 +246,5 @@ export async function executeRecoveryProbe(input: Readonly<{
     throw new RecoveryActivityError(failure);
   }
   if (failure !== undefined) throw failure;
-  return outcome!;
+  return { output: outcome!, activityId: activity.activityId };
 }
