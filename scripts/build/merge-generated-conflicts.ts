@@ -37,7 +37,7 @@ export function mergeGeneratedConflicts(root: string, staging: string, generate 
         git(root, "cat-file", "-e", `:3:${path}`);
         writeFileSync(join(root, path), clearGeneratedSection(readFileSync(join(root, path), "utf8"), output.section));
       } else {
-        rmSync(join(root, path), { force: true });
+        writeFileSync(join(root, path), "");
       }
     }
   }
