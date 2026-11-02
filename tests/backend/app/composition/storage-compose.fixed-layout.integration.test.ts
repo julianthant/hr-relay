@@ -145,6 +145,16 @@ it.each([[false, 11], [true, 11], [false, 10]] as const)("converts the stopped d
     const owner = machine;
     assert.throws(() => RuntimeAdmission.forFixedLayoutProfile(owner, { operationId: randomUUID(), profileId: f.before.binding.profileId }), /claim-unissued/u);
     database.close(); database = undefined; profile.release(); profile = undefined; machine.release(); machine = undefined;
+    if (!explicitBrowser && sourceVersion === 11) {
+      const sourceControl = join(f.profile.workspace, ".tracker", "control");
+      mkdirSync(sourceControl, { mode: 0o700 });
+      try { await assert.rejects(prepareApplicationDataWorkspace(f.profile.workspace, target, lifetime, hostFacts), /fixed-layout-two-installations-present/u); }
+      finally { rmSync(sourceControl, { recursive: true }); }
+      const journalPath = join(target, ".tracker", "fixed-layout.json"), journal = readFileSync(journalPath);
+      rmSync(journalPath);
+      try { await assert.rejects(prepareApplicationDataWorkspace(f.profile.workspace, target, lifetime, hostFacts), /fixed-layout-two-installations-present/u); }
+      finally { writeFileSync(journalPath, journal, { mode: 0o600 }); }
+    }
     await prepareApplicationDataWorkspace(f.profile.workspace, target, lifetime, hostFacts);
     assert.equal(readFixedLayoutIntent(target)?.phase, "complete");
   } finally { publication.mockRestore(); database?.close(); profile?.release(); machine?.release(); await lifetime.close(); await f.profile.close(); rmSync(target, { recursive: true, force: true }); }

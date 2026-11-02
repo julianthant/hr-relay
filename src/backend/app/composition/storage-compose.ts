@@ -131,7 +131,7 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
       if (targetControl === undefined || !existsSync(join(targetWorkspace, ".tracker", "control", "installation.json"))
         || !existsSync(join(targetWorkspace, ".tracker", "control", "locator.json"))
         || !existsSync(join(targetWorkspace, rebuildRuntimeIsolation.stateRoot))) throw new Error("fixed-layout-target-established-missing");
-      if (sourceControl !== undefined || sourceData !== undefined && journal?.sourceWorkspace !== sourceWorkspace) throw new Error("fixed-layout-two-installations-present");
+      if (sourceControl !== undefined || (sourceData !== undefined && journal?.sourceWorkspace !== sourceWorkspace)) throw new Error("fixed-layout-two-installations-present");
       if (sourceData !== undefined && journal !== undefined) assertFixedLayoutSourceFence(journal);
       return;
     }

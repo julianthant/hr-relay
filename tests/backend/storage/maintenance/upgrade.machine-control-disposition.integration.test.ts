@@ -590,7 +590,7 @@ for (const padding of [0, 16 * 1024 * 1024]) it(`converts an offline canonical5 
   const parse = JSON.parse; let largeParses = 0, largeParseMs = 0;
   const parseSpy = vi.spyOn(JSON, "parse").mockImplementation((value, reviver) => {
     const before = performance.now();
-    try { return parse(value, reviver); }
+    try { const result: unknown = parse(value, reviver); return result; }
     finally { if (value.length >= 16 * 1024 * 1024) { largeParses++; largeParseMs += performance.now() - before; } }
   });
   try {
