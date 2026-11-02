@@ -283,7 +283,6 @@ export function ucpathTerminationFilingPresence(
   };
 }
 
-// The EID filter echoes input; displayed name is UCPath's independent subject evidence.
 export function firstDisagreeingName(
   scan: UcpathTransactionScan,
   expectedName: string,

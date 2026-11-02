@@ -1,3 +1,5 @@
+import { UcpathTransactionFindingsSchema } from "../../../../models/ui/ucpath-transaction-findings.js";
+import type { UcpathTransactionFindings } from "../../../../models/ui/ucpath-transaction-findings.js";
 
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { deterministicContactOperations } from "./contact-fake.js";
@@ -43,9 +45,10 @@ function refuse(half: string, operation: string): never {
 /** The Smart HR operations, refused — for a Person Org fixture to spread in. */
 export function refuseUnimplementedSmartHrHalf(half: string): Pick<
   UcpathStoreDriver,
-  "scanTerminationTransactions" | "stageTermination" | "stagePendingTerminationSweep" | "commit"
+  "readTransactionFindings" | "scanTerminationTransactions" | "stageTermination" | "stagePendingTerminationSweep" | "commit"
 > {
   return {
+    readTransactionFindings: () => refuse(half, "readTransactionFindings"),
     scanTerminationTransactions: () => refuse(half, "scanTerminationTransactions"),
     stageTermination: () => refuse(half, "stageTermination"),
     stagePendingTerminationSweep: () => refuse(half, "stagePendingTerminationSweep"),
@@ -67,6 +70,7 @@ function refuseUnimplementedPersonOrgHalf(half: string): Pick<
 }
 
 export interface DeterministicSmartHrOptions {
+  readonly findings?: UcpathTransactionFindings;
   /** What the rich transaction scan answers. Required — see the module note. */
   readonly scan: UcpathTransactionScan;
   /** What `prepare` staged, if the fixture exercises the prepare arm. */
@@ -92,6 +96,12 @@ export function createDeterministicUcpathSmartHrDriver(
   return {
     ...refuseUnimplementedPersonOrgHalf(half),
     system: "ucpath",
+    async readTransactionFindings(input) {
+      if (options.findings === undefined) refuse(half, "readTransactionFindings without explicit findings evidence");
+      const result = UcpathTransactionFindingsSchema.parse(options.findings);
+      if (result.emplId !== input.emplId) throw new Error("the findings fixture belongs to another subject");
+      return result;
+    },
     async scanTerminationTransactions(input: Readonly<{ emplId: Eid; transactionId?: string }>) {
       if (options.scanThrows !== undefined) throw new Error(options.scanThrows);
       const parsed = UcpathTransactionScanSchema.parse(options.scan);
@@ -188,6 +198,7 @@ export function createDeterministicUcpathSmartHrDriver(
 
 
 export interface UcpathSmartHrFakeWorld {
+  findings?: UcpathTransactionFindings;
   readonly emplId: Eid;
   /** Who UCPath resolves the typed EID to on Page B. */
   displayedName: string;
@@ -221,11 +232,13 @@ export function createUcpathSmartHrFakeWorld(input: Readonly<{
   emplId: Eid;
   displayedName: string;
   rows?: readonly UcpathTransactionRow[];
+  findings?: UcpathTransactionFindings;
   nextTransactionId?: string;
 }>): UcpathSmartHrFakeWorld {
   return {
     emplId: input.emplId,
     displayedName: input.displayedName,
+    ...(input.findings === undefined ? {} : { findings: input.findings }),
 
     rows: input.rows === undefined ? [] : [...input.rows],
     events: [],
@@ -264,6 +277,12 @@ export function createDeterministicUcpathSmartHrWorldDriver(
   return {
     ...refuseUnimplementedPersonOrgHalf(half),
     system: "ucpath",
+    async readTransactionFindings(input) {
+      if (world.findings === undefined) refuse(half, "readTransactionFindings without explicit findings evidence");
+      const result = UcpathTransactionFindingsSchema.parse(world.findings);
+      if (result.emplId !== input.emplId) throw new Error("the findings fixture belongs to another subject");
+      return result;
+    },
     async scanTerminationTransactions(input: Readonly<{ emplId: Eid; transactionId?: string }>) {
       if (input.emplId !== world.emplId) {
         throw new Error(`${half} holds transactions for ${directIdentifierDisplay(world.emplId)}, not ${directIdentifierDisplay(input.emplId)}`);

@@ -12,6 +12,7 @@ import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
 import { UcpathTerminationTemplateSchema } from "../../rules/separations/termination-type.js";
 import type { MutationCapability, UiActionProof } from "./driver.js";
 import { UcpathApprovalStatusSchema, UcpathTransactionReceiptSchema } from "./ucpath-ss-smart-hr.js";
+import type { UcpathTransactionFindings } from "./ucpath-transaction-findings.js";
 
 /* ── Screens ─────────────────────────────────────────────────────────────── */
 
@@ -360,6 +361,7 @@ export type UcpathSmartHrObservations = Readonly<{
 
 /** The semantic operations the store's tasks call, declared on the ONE `ucpath` driver declaration the whole store binds; a sibling family extends it, never mints a second. */
 export type UcpathSmartHrTerminationDriver = Readonly<{
+  readTransactionFindings(input: Readonly<{ emplId: Eid }>): Promise<UcpathTransactionFindings>;
     /* The rich read: every transaction this person has, with each row's action, status, start date and displayed name; both probe kinds fold THIS. */
   scanTerminationTransactions(
     input: Readonly<{ emplId: Eid; transactionId?: string }>,
