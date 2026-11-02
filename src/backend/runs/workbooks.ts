@@ -131,10 +131,18 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
           || Number(run.claimGeneration) !== Number(captured.claimGeneration)
           || canonicalJsonStringify(run.input) !== canonicalJsonStringify(captured.input)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
         const reference = referenceFor(run, command.typeId);
+        const operationId = deriveStableUuid("run-workbook-write-request", canonicalJsonStringify({ runId: run.envelope.runId, writeId: command.writeId }));
+        const previous = repositories.workbooks.runOperations(run.envelope.runId).find(entry => entry.operation.operationId === operationId);
+        if (previous !== undefined && previous.libraryId !== reference.value.snapshot.libraryId) throw new WorkbookLibraryError("WORKBOOK_OPERATION_CONFLICT");
+        if (previous === undefined) {
+          const currentType = repositories.workbooks.types().find(type => type.id === reference.value.snapshot.type.id);
+          if (currentType === undefined || currentType.keyFieldId !== reference.value.snapshot.type.keyFieldId
+            || repositories.workbooks.metadata(reference.value.snapshot.libraryId).typeId !== currentType.id
+            || reference.value.request.fields.some(field => !currentType.fields.includes(field))) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        }
         const row = reference.value.snapshot.rows.find(row => row.key === command.key);
         if (row === undefined || command.values.some(cell => !reference.value.request.fields.includes(cell.fieldId))) throw new WorkbookLibraryError("WORKBOOK_INVALID");
         const match = row.state === "matched" ? row.matches[0] : undefined;
-        const operationId = deriveStableUuid("run-workbook-write-request", canonicalJsonStringify({ runId: run.envelope.runId, writeId: command.writeId }));
         const receipt = writeRunWorkbook(repositories.workbooks, deps.clock, run.envelope.runId, reference.value.snapshot.libraryId, operationId,
           { kind: "patch", key: command.key, values: Object.fromEntries(command.values.map(cell => [cell.fieldId, cell.value])), expectedVersion: reference.value.snapshot.version,
             ...(match === undefined ? {} : { selection: { sheetId: match.sheetId, rowId: match.rowId, expectedVersion: reference.value.snapshot.version } }) }, reference.digest);

@@ -162,6 +162,10 @@ it("executes the registered workbook task through its real provider using the ca
     { ...patch, values: [{ fieldId: "roster.result", value: "changed replay" }] }]) expect(() => f.runs.write(run, invalid)).toThrow();
   const corrupt = RunRecordSchema.parse({ ...run, input: { ...run.input, workbookReferences: run.input.workbookReferences?.map(value => ({ ...value, schemaHash: "f".repeat(64) })) } });
   expect(() => f.runs.write(corrupt, patch)).toThrow();
+  const type = f.repository.types().find(value => value.id === patch.typeId); assert.ok(type);
+  f.repository.putType({ ...type, keyFieldId: "roster.result" });
+  expect(f.runs.write(run, patch)).toEqual(receipt);
+  expect(() => f.runs.write(run, { ...patch, writeId: "next-result" })).toThrow(expect.objectContaining({ code: "WORKBOOK_INVALID" }));
 });
 
 it("serves a resolve-required Logs row choice and applies only the retained values through the canonical command", async () => {
@@ -233,4 +237,14 @@ it("retains a missing-key receipt and requires an explicit choice when that key 
   expect(payload).toEqual({ sheetId: "archive", rowId: "archive-person" });
   expect(f.kernel.execute({ ...command, payload }).state).toBe("applied");
   expect(f.library.read(f.id).workbook.sheets[1].rows[1].cells[1].value).toBe("complete");
+});
+
+it("refuses changed type key semantics even when the workbook revision did not advance", async () => {
+  const f = await fixture(), run = f.running(f.start());
+  const type = f.repository.types().find(value => value.id === patch.typeId); assert.ok(type);
+  f.repository.putType({ ...type, keyFieldId: "roster.result" });
+  expect(f.library.read(f.id).version).toBe(2);
+  expect(() => f.runs.write(run, patch)).toThrow(expect.objectContaining({ code: "WORKBOOK_INVALID" }));
+  expect(f.repository.runOperations(run.envelope.runId)).toEqual([]);
+  expect(f.library.read(f.id).workbook.sheets[0].rows[1].cells[1].value).toBeNull();
 });
