@@ -1431,17 +1431,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (options?.machine === true) readMachineRegistry(control, resolved, options.readonlyControl !== true);
     return resolved;
   }); } catch (error) {
-    const pending: unknown[] = [error], seen = new Set<unknown>();
-    let closureUnproved = false;
-    while (pending.length > 0) {
-      const failure = pending.pop();
-      if (seen.has(failure)) continue;
-      seen.add(failure);
-      if (failure instanceof AuthoritySourceClosureUnprovedError) closureUnproved = true;
-      if (failure instanceof AggregateError) { const errors: readonly unknown[] = failure.errors; pending.push(...errors); }
-      if (failure instanceof Error && failure.cause !== undefined) pending.push(failure.cause);
-    }
-    if (closureUnproved) lifetime.retainSourceClosure(error);
+    if (hasUnprovedSourceClosure(error)) lifetime.retainSourceClosure(error);
     else releaseExclusive?.();
     throw error;
   }

@@ -1418,9 +1418,8 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
     database.exec("COMMIT");
     return { ...inspection, schemaVersion: version, authorityContentFingerprint: fingerprint };
   } catch (error) {
-    const failures: unknown[] = [];
-    try { database.exec("ROLLBACK"); } catch (rollbackError) { failures.push(rollbackError); }
-    if (failures.length !== 0) throw retainAuthoritySourceClosure([error, ...failures], { database });
+    try { database.exec("ROLLBACK"); }
+    catch (rollbackError) { throw retainAuthoritySourceClosure([error, rollbackError], { database }); }
     throw error;
   }
 }
@@ -4009,13 +4008,13 @@ export class AuthorityDatabase implements Disposable {
   #validateExternalQuerySources(mode: "selector" | "mutation" = "selector", searchValidation: "all" | "progress" | "none" = "all"): void {
     const observed = readIntPragma(this.#database, "data_version");
     if (observed === this.#validatedExternalDataVersion && observed === this.#snapshotExternalDataVersion) return;
+    this.#validatedExternalDataVersion = undefined;
     try {
       validateAuthorityRecordSchemas(this.#database, searchValidation === "all");
       const violations = invariantViolations(this.#database);
       if (violations.length > 0) throw new Error("current composite authority is invalid");
       if (searchValidation !== "none") createRunSearchIndex(this.#database).validateCoverage();
     } catch (error) {
-      this.#validatedExternalDataVersion = undefined;
       if (mode === "mutation") throw error;
       throw new Error("run-search-index-rebuild-required", { cause: error });
     }
