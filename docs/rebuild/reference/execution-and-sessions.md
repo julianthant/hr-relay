@@ -225,7 +225,8 @@ hands off to native authentication; failures, cancellation and late replies reje
 binds the actual token to the factory's signing scope. The broker may install and wait before a
 ceremony, but signing and reply require that current unretired token, matching worker/system and
 credential identity, unexpired TTL and current profile/worker ownership. Stop drains pending broker
-work alongside native context closure; either failure retains the profile reservation.
+work before closing its native context, within one shared proof deadline. Native closure is attempted
+even if broker stop fails; either failure retains the profile reservation.
 Explicitly disabled `features.duoWebAuthn` launches Chromium with extensions disabled.
 
 ### 4.3 Acquisition deadline
@@ -292,7 +293,7 @@ observers, and awaits `drainOwnedChildren`. The supervisor uses the ordinary gra
 escalation policy, then observes owned child exits. Failure to observe exit is a shutdown failure.
 Closing the supervisor cancels its timers and returns any remaining live-child evidence for the
 structured fault sink. The dashboard closes its database before releasing its process lock and
-runtime admission. Shutdown does not create a backup.
+runtime admission. After clean resource closure, the held lifetime owns verified person backups and last-three shutdown retention before it can release the listener. Failed closure or backup verification prevents a successful shutdown.
 
 `src/backend/storage/sqlite/runtime-process-locks.ts` owns acquisition-specific process records
 and OS process-birth checks. Database closure precedes their release.

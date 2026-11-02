@@ -372,7 +372,7 @@ function section(id: string, label: string): SettingsSection_m7 {
 const STORAGE = section("storage", "Storage checks");
 const HEALTHY_STORAGE = StorageHealthSummaryWireSchema_m7.parse({
   authority: "healthy",
-  backup: "current",
+  automaticRepair: { state: "none" }, backup: "current",
   checkedAt: "2026-08-26T16:00:00.000Z",
 });
 const STATIC_SETTINGS_CLIENT = {} as DashboardClient_m7;

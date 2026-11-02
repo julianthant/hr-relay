@@ -5,6 +5,7 @@ import { isDirectExecution } from "./scope-files.js";
 // Storage closure, backup and restore proofs refuse off macOS, so these files run on macOS runners.
 export const MACOS_FILES: readonly string[] = [
   "tests/backend/storage/maintenance/account-deletion.integration.test.ts",
+  "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
   "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",
   "tests/backend/app/composition/worker/artifact-output.integration.test.ts",
   "tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts",
@@ -37,7 +38,6 @@ export const MACOS_FILES: readonly string[] = [
   "tests/backend/storage/sqlite/profile-local-databases.readonly-binding.integration.test.ts",
   "tests/backend/storage/sqlite/readonly-authority-snapshot.integration.test.ts",
   "tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts",
-  "tests/scripts/dev/secure-env-bootstrap.backup.integration.test.ts",
   "tests/backend/app/composition/storage-compose.fixed-layout.integration.test.ts",
   "tests/backend/storage/maintenance/fixed-layout.test.ts",
 ];

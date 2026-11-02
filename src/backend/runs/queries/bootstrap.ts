@@ -1,3 +1,4 @@
+import type { AutomaticRepairNoticeWire } from "../../../models/dashboard/storage.js";
 
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { descriptorRuntimeNodes, workflowProjections } from "../../../workflow-kit/workflow.js";
@@ -33,6 +34,7 @@ export interface BootstrapQueryDeps {
   /** Probes the authority store; throws when it cannot be reached. */
   readonly authorityMeta: () => { schemaVersion: number; authorityGeneration: number };
   // The summary checks copy shape; the doctor verifies its contents.
+  readonly automaticRepair: () => AutomaticRepairNoticeWire;
   readonly backupSummary: () => "current" | "stale" | "missing" | "unavailable";
   /** The one retained report produced by the composed preflight authority. */
   readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
@@ -84,6 +86,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     actor: { id: LOCAL_OPERATOR_ACTOR_ID, label: "Local operator" },
     serverClock: { now: deps.clock.now().toISOString(), zone: deps.timeZone ?? runtimeTimeZone() },
     storage: {
+      automaticRepair: deps.automaticRepair(),
       authority: storageAuthority,
       backup: deps.backupSummary(),
       checkedAt: deps.clock.now().toISOString(),
