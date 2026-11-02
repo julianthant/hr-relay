@@ -1,3 +1,4 @@
+import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { createWorkbookLibraryRepository } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { DatabaseSync } from "node:sqlite";
@@ -182,7 +183,7 @@ function historicalAuthorityArchive(profileRoot: string, binding: { installation
 
 export async function convertHistoricalIncompleteProfileFixture(fixture: { workspace: string; lifetime: RuntimeLifetimeLock }): Promise<void> {
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(fixture.workspace, fixture.lifetime);
-  try { await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock, composeStoppedControlCredentialInventory); }
+  try { await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts: { primaryDisplay: null } }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe); }
   finally { maintenance.release(); }
 }
 

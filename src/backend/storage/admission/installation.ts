@@ -1,3 +1,4 @@
+import type { BrowserProfileProbeFactory } from "../browser-roots.js";
 import { BrowserRootsSchema, type BrowserRootsDocument } from "../browser-root-contract.js";
 import { lstatMaybe, assertNoSymlinkComponents, assertNoOldBuildRuntimeArtifacts } from "./process-root.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
@@ -8,13 +9,12 @@ import { inspectAuthorityBackupReadOnly, openAuthorityBackupSourceReadOnly } fro
 import { CredentialMaintenanceHold, captureCanonicalCredentialStartupLocks, publishStoppedCanonicalCredentials, CanonicalCredentialConversionPlanSchema, type CanonicalCredentialConversionPlan, CanonicalCredentialRestoreSnapshotSchema, CanonicalCredentialHeadSchema, CanonicalCredentialPublicationSourceSchema } from "../configuration/canonical-credential-store.js";
 import type { StoppedBackupClosure } from "../maintenance/profile-inventory.js";
 import { FlatStartCleanIntentSchema, assertFlatStartCleanCredentials, assertFlatStartCleanFiles, flatStartCleanPlan, readFlatStartCleanSource, type FlatStartCleanIntent } from "../maintenance/flat-start-clean.js";
-import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
+import { profileAuthorityFileWitnesses, retainedStorageBackup, SourceRecordSchema, hash as backupHash, file as backupFile } from "../maintenance/existing-data-backup-files.js";
 import { replacePrivateFile, privatePathRejects, writePrivateStage, fsyncPath } from "../private-path.js";
 import { assertOfflineMaintenanceOperation, OfflineMaintenanceOperationUnavailableError, isOfflineMaintenanceOperationActive, type OfflineMaintenanceOperation, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "./lifetime-lock.js";
 import { ProfileStorageRelocationUnsupportedError, requireRuntimeAdmission } from "./admission-identity.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
 import { createProfileVerifiers, preparedProfileVerifierPepperWitness, verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
-import { retainedStorageBackup, SourceRecordSchema, hash as backupHash, file as backupFile } from "../maintenance/existing-data-backup-files.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure, hasUnprovedSourceClosure, retainUnprovedSourceOwners, rememberUnprovedSourceClosure, assertSourceClosuresProved } from "../source-closure.js";
 import { capturePriorPrivateFileLock, withPrivateFileLock, withOperationProof, outermostOperationProof, type PrivateFileLock, readPrivateFile, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";
 import { captureCanonicalProfileBinding, assertProfileRestoreDatabaseBinding, assertCanonicalProfileBinding, readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
@@ -2860,7 +2860,7 @@ export interface StoppedProfileControlUpgradeAdmission {
   readonly installationId: string;
   machineControlCurrent(): boolean;
   upgradeIntentPresent(): boolean;
-  prepareBrowserInventory(plan: boolean): Promise<void>;
+  prepareBrowserInventory(plan: boolean, createProbe: BrowserProfileProbeFactory): Promise<void>;
   registeredProfileIds(): readonly string[];
   profileInventory(profileId: string): StoppedControlProfileInventory;
   recordProfileInventory(claim: StoppedControlProfileInventory, proof: StoppedControlCredentialAttestation): void;
@@ -3242,7 +3242,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     held();
   }
   return Object.freeze({ installationId: locator.installationId,
-    async prepareBrowserInventory(plan: boolean): Promise<void> {
+    async prepareBrowserInventory(plan: boolean, createProbe: BrowserProfileProbeFactory): Promise<void> {
       held();
       if (this.machineControlCurrent() && !this.upgradeIntentPresent()) return;
       const pending = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath) : undefined;
@@ -3266,7 +3266,6 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         }
         if (!plan) {
           const { planStoppedBrowserRoots, probeStoppedControlBrowserRoots } = await import("../browser-roots.js");
-          const { createTimeoutDeadlineScheduler } = await import("../../runtime/scheduling/timeout-deadline-scheduler.js");
           if (pending === undefined) {
             let browsers: BrowserRootsDocument = BrowserRootsSchema.parse({ schemaVersion: 1, installationId: locator.installationId, revision: 0, nextGeneration: 1, roots: [] });
             for (const [index, claim] of claims.entries()) {
@@ -3309,8 +3308,8 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
           for (const [index, claim] of claims.entries()) {
             const admission = admissions[index]; if (admission === undefined) fail("profile-control-upgrade-inventory-required");
             const config = ConfigSchema.shape.browser.parse(undefined), timeouts = ConfigSchema.shape.timeouts.parse(undefined);
-            await probeStoppedControlBrowserRoots(admission, claim, { clock: systemClock, scheduler: createTimeoutDeadlineScheduler(systemClock), closeProofMs: config.closeProofMs,
-              launchTimeoutMs: timeouts.sessionAcquireMs, signal: new AbortController().signal });
+            await probeStoppedControlBrowserRoots(admission, claim, createProbe({ clock: systemClock, closeProofMs: config.closeProofMs,
+              launchTimeoutMs: timeouts.sessionAcquireMs, signal: new AbortController().signal }));
           }
         }
       } catch (error) { primary = { error }; }

@@ -1,6 +1,9 @@
+import type { BrowserProfileProbeFactory, BrowserProfileProbeOptions } from "../../storage/browser-roots.js";
+import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
+import { z } from "zod";
 import { chromium, type BrowserContext } from "playwright";
 import type { Clock } from "../../../rules/time/clock.js";
-import { BrowserSessionClosureUnprovedError, type BrowserSessionCloseReason } from "../../../workflow-kit/session.js";
+import { BrowserSessionClosureUnprovedError, BrowserProfileStillClosingError, type BrowserSessionCloseReason } from "../../../workflow-kit/session.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 
@@ -45,10 +48,6 @@ export interface PersistentContextLauncher {
   }>): Promise<BrowserContext>;
 }
 
-export class BrowserProfileStillClosingError extends Error {
-  readonly code = "BROWSER_PROFILE_STILL_CLOSING";
-  constructor(cause: unknown) { super(ERROR_CATALOG.BROWSER_PROFILE_STILL_CLOSING.text, { cause }); this.name = "BrowserProfileStillClosingError"; }
-}
 
 export const DEFAULT_BROWSER_LAUNCHER: PersistentContextLauncher = {
   async launch(input) {
@@ -151,4 +150,17 @@ export async function runNativeContextProbe(input: NativeBrowserProbeInput): Pro
     throw new NativeBrowserClosureUnprovedError([retainAuthoritySourceClosure([failure], { directory: { context, profileDirectory: input.launch.profileDirectory } })]);
   }
   input.signal.throwIfAborted();
+}
+
+export function createNativeBrowserProbe(input: Parameters<BrowserProfileProbeFactory>[0] & Readonly<{
+  scheduler?: BrowserDeadlineScheduler; launcher?: PersistentContextLauncher;
+}>): BrowserProfileProbeOptions {
+  return Object.freeze({ signal: input.signal,
+    async probe(profileRoot: string, profileDirectory: string): Promise<void> {
+      z.number().positive().finite().parse(input.closeProofMs);
+      await runNativeContextProbe({ ...input, profileRoot, scheduler: input.scheduler ?? createTimeoutDeadlineScheduler(input.clock),
+        launch: { profileDirectory, extensionDirectory: "", downloadsPath: profileDirectory,
+          viewport: { width: 800, height: 600 }, timeoutMs: input.launchTimeoutMs } });
+    },
+  });
 }

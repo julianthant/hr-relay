@@ -1,3 +1,5 @@
+import { createNativeBrowserProbe, DEFAULT_BROWSER_LAUNCHER } from "../../../src/backend/runtime/browser/native-browser.js";
+import { BrowserProfileStillClosingError } from "../../../src/workflow-kit/session.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -6,7 +8,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { BrowserRootUnavailableError, createBrowserRoots, type BrowserProfileProbeOptions, type BrowserRootLaunchInput } from "../../../src/backend/storage/browser-roots.js";
 import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
-import { DEFAULT_BROWSER_LAUNCHER, BrowserProfileStillClosingError } from "../../../src/backend/runtime/browser/native-browser.js";
 import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
@@ -47,7 +48,7 @@ export async function runBrowserRootRetentionCase(input: Readonly<{ scenario: st
     return { cancel: () => clearTimeout(timer) };
   } };
   const fixtures = createBrowserSessionFactoryFixtures(manualClock(new Date()), randomUUID(), scheduler);
-  const options = (launcher = fixtures.fakeLauncher().launcher): BrowserProfileProbeOptions => ({ clock: systemClock,
+  const options = (launcher = fixtures.fakeLauncher().launcher): BrowserProfileProbeOptions => createNativeBrowserProbe({ clock: systemClock,
     scheduler, closeProofMs: 100, launchTimeoutMs: 5000, signal: new AbortController().signal, launcher });
   let launches = 0;
   if (input.scenario === "browser-root-native-success") {
@@ -58,7 +59,7 @@ export async function runBrowserRootRetentionCase(input: Readonly<{ scenario: st
       else assert.equal(row.native?.phase, "probing");
       return DEFAULT_BROWSER_LAUNCHER.launch(launch);
     } };
-    const realOptions = { ...options(launcher), closeProofMs: 5000 };
+    const realOptions = createNativeBrowserProbe({ clock: systemClock, scheduler, closeProofMs: 5000, launchTimeoutMs: 5000, signal: new AbortController().signal, launcher });
     await roots.probe(owner, realOptions);
     await roots.withUnused(profileDirectory, realOptions, async ({ remove }) => { remove(); }, owner);
     assert.equal(launches, 2); assert.equal(document().roots.length, 0); assert.equal(fs.existsSync(profileDirectory), false);
@@ -195,8 +196,8 @@ async function runUnknownHandoff(input: Readonly<{ scenario: string; workspace: 
     const owner: BrowserRootLaunchInput = { profileId: f.admission.profileBinding.profileId, profileRoot, profileDirectory,
       credentialFingerprint: "a".repeat(64), owner: { kind: "worker", database, workerId: worker.workerId } };
     const fault = new Error("owned unknown predecessor native launch failure"); let launches = 0, failure: unknown;
-    try { await roots.probe(owner, { clock: systemClock, scheduler, closeProofMs: 100, launchTimeoutMs: 100,
-      signal: new AbortController().signal, launcher: { launch: async () => { launches++; throw fault; } } }); }
+    try { await roots.probe(owner, createNativeBrowserProbe({ clock: systemClock, scheduler, closeProofMs: 100, launchTimeoutMs: 100,
+      signal: new AbortController().signal, launcher: { launch: async () => { launches++; throw fault; } } })); }
     catch (error) { failure = error; }
     assert.equal(launches, 1); assert.equal(hasUnprovedSourceClosure(failure), true); assert.equal(contains(failure, fault), true);
     const row = BrowserRootsSchema.parse(JSON.parse(fs.readFileSync(registryPath, "utf8"))).roots[0]; assert.ok(row);
@@ -241,8 +242,8 @@ async function runUnknownHandoff(input: Readonly<{ scenario: string; workspace: 
   const owner: BrowserRootLaunchInput = { profileId: seed.profileId, profileRoot, profileDirectory,
     credentialFingerprint: row.credentialFingerprint, owner: { kind: "worker", database, workerId: seed.workerId } };
   let launches = 0, effects = 0;
-  await assert.rejects(roots.withUnused(profileDirectory, { clock: systemClock, scheduler, closeProofMs: 100, launchTimeoutMs: 100,
-    signal: new AbortController().signal, launcher: { launch: async () => { launches++; throw new Error("unknown predecessor cannot launch"); } } },
+  await assert.rejects(roots.withUnused(profileDirectory, createNativeBrowserProbe({ clock: systemClock, scheduler, closeProofMs: 100, launchTimeoutMs: 100,
+    signal: new AbortController().signal, launcher: { launch: async () => { launches++; throw new Error("unknown predecessor cannot launch"); } } }),
   async () => { effects++; }, owner), error => error instanceof BrowserRootUnavailableError && !hasUnprovedSourceClosure(error));
   assert.equal(launches, 0); assert.equal(effects, 0); assert.deepEqual(fs.readFileSync(registryPath), before);
   assert.deepEqual(roots.inventory(), inventory); admission.assertProfileRuntime(); lifetime.assertHeld();

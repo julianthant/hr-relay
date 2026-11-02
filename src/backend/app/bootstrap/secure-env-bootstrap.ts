@@ -1,8 +1,7 @@
-import { profileBrowserClosure } from "../../storage/browser-roots.js";
+import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { acquireRuntimeLifetimeLock, receiveRuntimeLifetimeLock, RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { fileURLToPath } from "node:url";
-
 import { assertNoMigratedEnvironmentKeys } from "../../../models/config/secrets.js";
 import { acquireStorageBackupEntrypointAdmission, acquireDashboardEntrypointAdmission, acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { inspectPendingRelocationStatus } from "../../storage/admission/installation.js";

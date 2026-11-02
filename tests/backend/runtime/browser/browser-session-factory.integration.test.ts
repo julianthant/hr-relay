@@ -1,10 +1,9 @@
+import { BrowserProfileStillClosingError, BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
 import { mockBrowserRootPort } from "../../../support/helpers/browser/browser-roots.js";
 import { fixtureDuoSigningSource, fixtureWorkflowWorker } from "../../../support/helpers/browser/duo-signing.js";
 import { createBrowserSessionFactoryFixtures } from "../../../support/helpers/browser/session-factory-fixtures.js";
 import { BrowserLoginError } from "../../../../src/backend/systems/browser-shared/login-contract.js";
-import { BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import { chmodSync, existsSync, writeFileSync } from "node:fs";
@@ -14,23 +13,11 @@ import { tsImport } from "tsx/esm/api";
 import { beforeEach, describe,it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import {
-assertFastDuoReady,
-BrowserProfileAdmissionSchema,
-BrowserProfileStillClosingError,
-browserSignInFingerprint,
-DuoProvisioningError,
-PlaywrightWorkerSessionFactory,
-ProfileCustodyUnavailableError,
-workerProfileDirectory,
-type BrowserDeadlineScheduler
-} from "../../../../src/backend/runtime/browser/browser-session-factory.js";
-
+import { assertFastDuoReady, BrowserProfileAdmissionSchema, browserSignInFingerprint, DuoProvisioningError, PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError, workerProfileDirectory, type BrowserDeadlineScheduler } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import type {
 AuthenticatedApplicationEvidence, SystemLoginContext
 } from "../../../../src/backend/systems/browser-shared/login-contract.js";
 import type { Config } from "../../../../src/models/config/schema.js";
-
 import { FingerprintSchema,WorkerIdSchema,WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { fixtureDuoCeremonyGate } from "../../../support/helpers/duo-ceremony-fixtures.js";

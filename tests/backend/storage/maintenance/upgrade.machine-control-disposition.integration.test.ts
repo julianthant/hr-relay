@@ -1,3 +1,4 @@
+import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { ChatGptCredentialRecordSchema, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
@@ -182,14 +183,14 @@ it("converts only stopped machine-control format while keeping an incomplete his
   console.info("stopped-control timing", { phase: "fixture", milliseconds: Math.round(created - started) });
   const controlBytes = readFileSync(f.controlPath), markerBytes = readFileSync(f.markerPath);
   let maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-  const plan = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+  const plan = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
   const planned = performance.now();
   console.info("stopped-control timing", { phase: "plan", milliseconds: Math.round(planned - created) });
   assert.deepEqual(plan, { state: "planned", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
   assert.equal(readFileSync(f.controlPath).equals(controlBytes), true); assert.equal(readFileSync(f.markerPath).equals(markerBytes), true);
   maintenance.release();
   maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-  const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+  const upgraded = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
   console.info("stopped-control timing", { phase: "conversion", milliseconds: Math.round(performance.now() - planned) });
   assert.equal(upgraded.state, "upgraded"); assert.equal(upgraded.runtimeAccess, "onboarding-incomplete"); assert.equal(upgraded.profileCount, 1);
   assert.equal(typeof upgraded.receiptId, "string");
@@ -202,7 +203,7 @@ it("converts only stopped machine-control format while keeping an incomplete his
   assertCanonicalCredentialConversion(f, upgraded.receiptId, maintenance);
   maintenance.release();
   maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-  const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+  const current = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
   assert.deepEqual(current, { state: "current", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
   assert.throws(() => maintenance.admitProfile(f.profileId), /offline-maintenance-busy/u);
   for (const source of original) assert.equal(readFileSync(source.path).equals(source.bytes), true);
@@ -227,7 +228,7 @@ it("converts stopped schema2 only with authenticated empty suspect membership an
   let primary: { error: unknown } | undefined;
   try {
     assert.throws(() => RuntimeAdmission.acquireMachine(f.workspace, "exclusive", f.lifetime));
-    const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+    const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
     assert.equal(result.state, "upgraded"); assert.equal(result.runtimeAccess, "onboarding-incomplete");
     const current = z.looseObject({ schemaVersion: z.literal(6), operations: z.array(z.unknown()), completedRestores: z.array(z.unknown()) })
       .parse(JSON.parse(readFileSync(f.controlPath, "utf8")));
@@ -251,7 +252,7 @@ it("retains unbound schema2 suspect files and refuses conversion before control 
   try {
     const before = storageTree(f.workspace);
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-    try { await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory), /profile-control-upgrade-suspect-custody-unproved/u); }
+    try { await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe), /profile-control-upgrade-suspect-custody-unproved/u); }
     finally { maintenance.release(); }
     assert.deepEqual(storageTree(f.workspace), before);
   } finally { await f.close(); }
@@ -265,18 +266,18 @@ for (const boundary of ["registry", "control", "marker"] as const) it(`retains t
     if (!fired && String(target) === (boundary === "registry" ? f.registryPath : boundary === "control" ? f.controlPath : f.markerPath)) { fired = true; throw new Error("fixture stopped format publication boundary"); }
   });
   syncBuiltinESMExports();
-  try { await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory)); }
+  try { await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe)); }
   finally { fault.mockRestore(); syncBuiltinESMExports(); }
   assert.equal(fired, true);
   assert.equal(existsSync(join(f.workspace, ".tracker", "control", "profile-control-upgrade.json")), true);
   maintenance.release();
   let cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-  const recovered = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+  const recovered = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
   assert.equal(recovered.state, "upgraded"); assert.equal(recovered.runtimeAccess, "onboarding-incomplete"); assert.equal(recovered.profileCount, 1);
   assertCanonicalCredentialConversion(f, recovered.receiptId, cold);
   cold.release();
   cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-  const current = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+  const current = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
   assert.deepEqual(current, { state: "current", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
   assert.throws(() => cold.admitProfile(f.profileId), /offline-maintenance-busy/u);
   for (const source of original) assert.equal(readFileSync(source.path).equals(source.bytes), true);
@@ -297,7 +298,7 @@ it("converts settled control3 and preserves exact completed historical upgrade a
   });
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   try {
-    const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+    const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
     assert.equal(result.state, "upgraded");
     assertCanonicalCredentialConversion(f, result.receiptId, maintenance, retained.map(row => basename(row.path)));
     for (const source of [...original, ...retained]) assert.deepEqual(readFileSync(source.path), source.bytes);
@@ -339,7 +340,7 @@ for (const keyFormat of ["metadata", "inline"] as const) for (const version of [
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
     try {
       const before = storageTree(f.workspace), keys = FakeKeyringEntry.snapshot();
-      const plan = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+      const plan = await upgradeStoppedMachineControl(maintenance, { plan: true, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
       assert.equal(plan.state, "planned"); assert.equal(plan.runtimeAccess, "onboarding-incomplete");
       assert.deepEqual(storageTree(f.workspace), before);
       assert.deepEqual(FakeKeyringEntry.snapshot(), keys);
@@ -357,7 +358,7 @@ it("imports only the known inline predecessor key through the same recorded conv
   assert.equal(f.originalTokens.length, 3);
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   try {
-    const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+    const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
     assert.equal(result.state, "upgraded"); assertCanonicalCredentialConversion(f, result.receiptId, maintenance);
     for (const source of original) assert.deepEqual(readFileSync(source.path), source.bytes);
   } finally { maintenance.release(); await f.close(); }
@@ -375,7 +376,7 @@ it("holds a missing real predecessor key without replacing source bytes or gener
   try {
     await assert.rejects(async () => {
       maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-      await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+      await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
     }, error => {
       const pending: unknown[] = [error], seen = new Set<unknown>();
       while (pending.length > 0) {
@@ -415,7 +416,7 @@ for (const change of ["bytes", "same-byte-inode"] as const) it(`holds the actual
   });
   syncBuiltinESMExports();
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-  try { await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory)); }
+  try { await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe)); }
   finally { fault.mockRestore(); syncBuiltinESMExports(); maintenance.release(); }
   assert.equal(fired, true);
   const directory = join(f.workspace, ".tracker", "control", "profile-control-upgrades");
@@ -439,7 +440,7 @@ for (const change of ["bytes", "same-byte-inode"] as const) it(`holds the actual
   try {
     for (const plan of [true, false]) await assert.rejects(async () => {
       const candidate = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-      try { await upgradeStoppedMachineControl(candidate, { plan, hostFacts }, systemClock, composeStoppedControlCredentialInventory); }
+      try { await upgradeStoppedMachineControl(candidate, { plan, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe); }
       finally { candidate.release(); }
     }, { message: "runtime-control: profile-control-upgrade-publication-uncertain" });
     assert.deepEqual(storageTree(f.workspace), held);
@@ -537,7 +538,7 @@ async function offlineCanonicalPredecessor() {
   const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(seed.workspace, seed.lifetime);
   let operationId: string;
   try {
-    const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+    const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
     assert.equal(result.state, "upgraded"); operationId = z.uuid().parse(result.receiptId);
   } finally { maintenance.release(); }
   await seed.lifetime.close();
@@ -588,7 +589,7 @@ for (const padding of [0, 16 * 1024 * 1024]) it(`converts an offline canonical5 
   try {
     const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
     try {
-      const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory);
+      const result = await upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
       assert.equal(result.state, "upgraded");
       const after = storageTree(f.backupRoot);
       for (const [path, digest] of Object.entries(retained)) assert.equal(after[path], digest);
@@ -617,7 +618,7 @@ for (const change of ["operation-prefix", "malformed-receipt", "manifest-digest"
     const launch = vi.spyOn(chromium, "launchPersistentContext").mockRejectedValue(new Error("unexpected Chrome effect"));
     try {
       const maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
-      try { await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory)); }
+      try { await assert.rejects(upgradeStoppedMachineControl(maintenance, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe)); }
       finally { maintenance.release(); }
       assert.equal(launch.mock.calls.length, 0);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "profile-control-upgrade.json")), false);

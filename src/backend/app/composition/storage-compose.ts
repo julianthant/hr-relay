@@ -1,3 +1,5 @@
+import { createNativeBrowserProbe } from "../../runtime/browser/native-browser.js";
+import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
 import { LogoutOperationSchema, type LogoutOperation } from "../../../models/profiles/profile.js";
 import { readPrivateFile } from "../../storage/configuration/credential-safe-file.js";
 import { reconcileExitedWorker, reconcileStoppedLogout } from "../../runs/lifecycle/startup-crash-recovery.js";
@@ -5,7 +7,6 @@ import { runClaim } from "../../../models/run/record.js";
 import { prepareStoppedBackupClosure, StorageBackupClosureUnprovedError, type StoppedBackupClosure } from "../../storage/maintenance/profile-inventory.js";
 import { isOfflineMaintenanceOperationActive, OfflineMaintenanceOperationUnavailableError, type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
 import { type AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
-import { profileBrowserClosure } from "../../storage/browser-roots.js";
 import { assertProfileBrowserRoot, composeProfileClosureInventory } from "./profile-credential-inventory.js";
 import { createAssistantAuthorization } from "../../assistant/authorization.js";
 import type { CommandKernel } from "../../runs/commands/command-kernel.js";
@@ -1111,7 +1112,7 @@ export async function composeStorageCommand(
         const { composeStoppedControlCredentialInventory } = await import("./profile-credential-inventory.js");
         const { hostConfigFacts } = await import("../../../models/config/host-display.js");
         const { workerBootstrapEnvironment } = await import("../../../models/config/secrets.js");
-        const report = await upgradeStoppedMachineControl(admission, { plan: rest.includes("--plan"), hostFacts: hostConfigFacts(workerBootstrapEnvironment()) }, clock, composeStoppedControlCredentialInventory);
+        const report = await upgradeStoppedMachineControl(admission, { plan: rest.includes("--plan"), hostFacts: hostConfigFacts(workerBootstrapEnvironment()) }, clock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
         operation.release();
         return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: machine-control ${report.state} (${String(report.profileCount)} profiles)\nruntime access: ${report.runtimeAccess}${report.state === "planned" ? "\nBrowser closure will be checked when the upgrade runs." : ""}`, exitCode: 0 };
       }

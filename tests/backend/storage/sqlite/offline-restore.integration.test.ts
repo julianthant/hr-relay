@@ -1,5 +1,6 @@
-import { createBrowserRoots, profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
-import { BrowserProfileStillClosingError } from "../../../../src/backend/runtime/browser/native-browser.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { BrowserProfileStillClosingError } from "../../../../src/workflow-kit/session.js";
+import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";

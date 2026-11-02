@@ -659,8 +659,9 @@ async function runLogout(): Promise<void> {
     }
   };
   if (scenario === "logout-browser-busy" || scenario === "logout-browser-unproved") {
-    const { profileBrowserClosure } = await import("../../../src/backend/storage/browser-roots.js");
-    const { BrowserProfileStillClosingError, NativeBrowserClosureUnprovedError } = await import("../../../src/backend/runtime/browser/native-browser.js");
+    const { profileBrowserClosure } = await import("../../../src/backend/runtime/browser/profile-browser-closure.js");
+    const { BrowserProfileStillClosingError } = await import("../../../src/workflow-kit/session.js");
+    const { NativeBrowserClosureUnprovedError } = await import("../../../src/backend/runtime/browser/native-browser.js");
     const refusal = scenario === "logout-browser-busy" ? new BrowserProfileStillClosingError(new Error("synthetic native busy"))
       : new NativeBrowserClosureUnprovedError([new Error("synthetic native close unproved")]);
     let probes = 0;

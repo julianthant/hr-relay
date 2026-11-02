@@ -1,3 +1,4 @@
+import { BrowserProfileStillClosingError } from "../../../src/workflow-kit/session.js";
 import { testProcessImport } from "../../support/compiled-process.js";
 import assert from "node:assert/strict";
 import { execFileSync, fork, spawnSync } from "node:child_process";
@@ -28,7 +29,6 @@ import { ProfileOnboardingDuoProviderError } from "../../../src/backend/runtime/
 import { CanonicalCredentialHeadSchema } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { createBrowserRoots, onboardingProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
-import { BrowserProfileStillClosingError } from "../../../src/backend/runtime/browser/native-browser.js";
 import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { scaledMs } from "../../support/time-scale.js";
 

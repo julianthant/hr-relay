@@ -1,5 +1,5 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
-import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
 import { createAdmissionChildFixtures } from "../../../support/helpers/storage/admission-child-fixtures.js";
 import assert from "node:assert/strict";
 import { execFile, spawn, type ChildProcess } from "node:child_process";

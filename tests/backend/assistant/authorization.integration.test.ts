@@ -1,12 +1,10 @@
-import { profileBrowserClosure } from "../../../src/backend/storage/browser-roots.js";
+import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../support/helpers/admission-fixture.js";
 import { createProductionAssistantTools } from "../../../src/backend/assistant/tools.js";
 import { assistantKnowledgeArtifact, createAssistantContext } from "../../../src/backend/assistant/context.js";
 import { AssistantRequestSchema, AssistantResultSchema } from "../../../src/models/dashboard/assistant.js";
 import { type AssistantFunctionContext } from "../../../src/backend/assistant/service.js";
-
-
 
 
 

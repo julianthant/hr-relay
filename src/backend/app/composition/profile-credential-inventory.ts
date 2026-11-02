@@ -1,17 +1,14 @@
-
+import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
 import { inspectStoppedCanonicalConversion } from "../../storage/configuration/canonical-credential-store.js";
 import { prepareStoppedCredentialConversion, releaseStoppedCredentialConversion, type StoppedCredentialCopyInspection } from "../../storage/configuration/credential-conversion.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
-import { createBrowserRoots, planStoppedBrowserRoots, profileBrowserClosure } from "../../storage/browser-roots.js";
+import { createBrowserRoots, planStoppedBrowserRoots } from "../../storage/browser-roots.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../storage/source-closure.js';
 import { inventoryFileIdentity, enumerateProfileCredentialMembership, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
 import { assertRetainedProfileBrowserRoot, assertCredentialCopyResourcesClosed, retainedBrowserProfiles } from "../../storage/maintenance/profile-custody.js";
-
 import { migrationTableNames } from "../../storage/sqlite/migrations.js";
 import { readEmergencyFaults } from "../../logs/emergency-faults.js";
-
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
-
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { createHash } from "node:crypto";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
@@ -22,9 +19,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { countProfileCredentialLoginRows } from "../../profiles/credential-inventory.js";
 import { verifyBackupManifestAtPath, verifyStoppedBackupManifestAtPath } from "../../storage/sqlite/backup-service.js";
 import { withAuthorityDatabaseReadOnly } from "../../storage/sqlite/readonly-authority-snapshot.js";
-
 import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
-
 import { requireStoppedControlProfileInventory, type StoppedControlProfileInventory } from "../../storage/admission/installation.js";
 import { RuntimeAdmission } from "../../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../../storage/admission/admission-identity.js";

@@ -1,5 +1,5 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
-import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
 import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { copyFileSync, existsSync, readFileSync, renameSync, writeFileSync, mkdirSync, readdirSync, rmdirSync } from "node:fs";

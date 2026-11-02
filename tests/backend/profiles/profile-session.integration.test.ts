@@ -1,17 +1,16 @@
+import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { reconcileStoppedLogout } from "../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
-import { profileBrowserClosure } from "../../../src/backend/storage/browser-roots.js";
 import { createCanonicalCredentials } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { testProcessImport } from "../../support/compiled-process.js";
-import { LogoutOperationSchema, advanceProfileRegistryDocument } from "../../../src/models/profiles/profile.js";
+import { LogoutOperationSchema, advanceProfileRegistryDocument, ProfileRegistryDocumentSchema, SignUpOperationSchema, type ProfileRegistryDocument } from "../../../src/models/profiles/profile.js";
 import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { PrivateFileLockUnavailableError, withOperationProof } from "../../../src/backend/storage/configuration/credential-safe-file.js";
 import { FakeKeyringEntry } from "../../support/helpers/credential-keychain-fake.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
-import { finishProfileOnboarding, readyProfileOnboarding } from "../../support/helpers/admission-fixture.js";
+import { finishProfileOnboarding, readyProfileOnboarding, createBoundProfileFixture, createSyntheticProfileSession as realCreateProfileSession } from "../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
-import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -22,10 +21,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
-
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
-import { createSyntheticProfileSession as realCreateProfileSession } from "../../support/helpers/admission-fixture.js";
-import { ProfileRegistryDocumentSchema, SignUpOperationSchema, type ProfileRegistryDocument } from "../../../src/models/profiles/profile.js";
 import { manualClock, systemClock } from "../../../src/rules/time/clock.js";
 import { IsoInstantSchema, PositiveIntSchema, FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/models/config/settings.js";

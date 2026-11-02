@@ -1,3 +1,4 @@
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import assert from "node:assert/strict";
 import fs, { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -8,7 +9,6 @@ import { z } from "zod";
 import { acquireRecoveryRuntimeRestore } from "../../../../src/backend/storage/admission/admission.js";
 import type { OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
-import { profileBrowserClosure } from "../../../../src/backend/storage/browser-roots.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService, OfflineRestoreFailure, settleInterruptedAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";

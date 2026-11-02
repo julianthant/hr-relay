@@ -1,3 +1,5 @@
+import { createNativeBrowserProbe, BrowserLaunchUncertainError, chromiumProfileInUse, DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, closeContextWithProof, observeContextLifecycle, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
+import { BrowserProfileStillClosingError, BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
 import { privatePathRejects } from "../../storage/private-path.js";
 import type { BrowserRoots, BrowserRootLaunch, BrowserRootLaunchInput } from "../../storage/browser-roots.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
@@ -6,14 +8,11 @@ import { provisionWorkflowDuo } from "./workflow-duo-provider.js";
 import type { DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
 import { ProfileCustodyUnavailableError, profileReservations, assertPrivateProfilePath, workerProfileDirectory } from "../../storage/browser-roots.js";
-import { BrowserLaunchUncertainError, chromiumProfileInUse, DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, BrowserProfileStillClosingError, closeContextWithProof, observeContextLifecycle, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
 export { ProfileCustodyUnavailableError, PROFILE_CUSTODY_UNAVAILABLE_TEXT, workerProfileDirectory } from "../../storage/browser-roots.js";
-export { BrowserProfileStillClosingError, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
-import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
+export type { BrowserDeadlineScheduler, PersistentContextLauncher } from "./native-browser.js";
 import { UCPATH_PENDING_READ_RECIPES } from "../../systems/ucpath/driver/ui-registry.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-
 import { lstatSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import type { BrowserContext, Frame, Page } from "playwright";
@@ -158,9 +157,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     assertPrivateProfilePath(config.paths.browserProfileRoot, profileDirectory);
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
     try {
-      await this.#options.browserRoots.probe(this.#rootInput(WorkerIdSchema.parse(input.workerId), profileDirectory, null), {
+      await this.#options.browserRoots.probe(this.#rootInput(WorkerIdSchema.parse(input.workerId), profileDirectory, null), createNativeBrowserProbe({
         launcher: this.#launcher, clock, scheduler, closeProofMs: config.browser.closeProofMs,
-        launchTimeoutMs: config.timeouts.sessionAcquireMs, signal: input.signal });
+        launchTimeoutMs: config.timeouts.sessionAcquireMs, signal: input.signal }));
     } catch (error) {
       if (error instanceof BrowserProfileStillClosingError || error instanceof ProfileCustodyUnavailableError) throw error;
       throw new BrowserSessionClosureUnprovedError([error], `${system} native profile probe closure is unproved`, { cause: error });
@@ -463,9 +462,9 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
 
   async #unusedProfile(owner: BrowserRootLaunchInput, body: Parameters<BrowserRoots["withUnused"]>[2]): Promise<void> {
     const { config, clock, scheduler } = this.#options;
-    await this.#options.browserRoots.withUnused(owner.profileDirectory, { launcher: this.#launcher,
+    await this.#options.browserRoots.withUnused(owner.profileDirectory, createNativeBrowserProbe({ launcher: this.#launcher,
       clock, scheduler, closeProofMs: config.browser.closeProofMs, launchTimeoutMs: config.timeouts.sessionAcquireMs,
-      signal: new AbortController().signal }, body, owner);
+      signal: new AbortController().signal }), body, owner);
   }
 
   async #launchProfile(owner: BrowserRootLaunchInput, browserMode: BrowserPresentationMode, acceptDownloads: boolean, system: BrowserSystemId, timeoutMs?: number): Promise<BrowserContext> {

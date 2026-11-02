@@ -1,10 +1,10 @@
+import { createNativeBrowserProbe, NativeBrowserClosureUnprovedError } from "../runtime/browser/native-browser.js";
 import { initializeCanonicalCredentials, captureCanonicalCredentialUpgradeSource, eraseCanonicalDraftCredentials, captureCanonicalDraftErasure } from "../storage/configuration/canonical-credential-store.js";
 import { privatePathRejects } from "../storage/private-path.js";
 
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
 import { resolveConfigWithProvenance } from "../app/config/resolve.js";
 import { onboardingProfileDirectory, createBrowserRoots, assertPrivateProfilePath } from "../storage/browser-roots.js";
-import { NativeBrowserClosureUnprovedError } from "../runtime/browser/native-browser.js";
 import { ProfileOnboardingDuoProviderError } from "../runtime/browser/onboarding-duo-provider.js";
 import { ProfileSessionRefusedError } from "./profile-errors.js";
 import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure } from '../storage/source-closure.js';
@@ -19,12 +19,11 @@ import { requireRuntimeAdmission } from "../storage/admission/admission-identity
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../models/config/protected-settings.js";
 
 import { operatorFailureSentence, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
-import { assertFinishedProfileOnboarding, deriveProfileNames, ProfileNameValidationError, ProfileAuthoritySnapshotSchema, type ProfileAuthoritySnapshot } from "../../models/profiles/profile.js";
+import { assertFinishedProfileOnboarding, deriveProfileNames, ProfileNameValidationError, ProfileAuthoritySnapshotSchema, type ProfileAuthoritySnapshot, SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation } from "../../models/profiles/profile.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { noSymlinkAncestry, withOperationProof, type DirectoryIdentity } from "../storage/configuration/credential-safe-file.js";
 import { type CredentialInventory } from "./credential-inventory.js";
 import { createProfileRegistry, withProfileLock, ProfileRegistryAuthorityError } from "./registry.js";
-import { SignUpOperationSchema, LogoutOperationSchema, type SignUpOperation, type LogoutOperation, type ProfileOperation } from "../../models/profiles/profile.js";
 import { createProfileVerifiers } from "../storage/configuration/verifier-store.js";
 import { ProfileOnboardingStateSchema, type ProfileOnboardingState } from "../../models/profiles/public-profile.js";
 import type { ProfileOnboardingMethod } from "../../models/profiles/public-profile.js";
@@ -654,8 +653,8 @@ export function createProfileSession(input: {
       for (const entry of present) {
         const draft = entry.operation.onboarding;
         if (draft === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-        await browserRoots.withUnused(entry.profileDirectory, { clock, scheduler: createTimeoutDeadlineScheduler(clock),
-          closeProofMs: config.browser.closeProofMs, launchTimeoutMs: config.timeouts.sessionAcquireMs, signal: new AbortController().signal },
+        await browserRoots.withUnused(entry.profileDirectory, createNativeBrowserProbe({ clock, scheduler: createTimeoutDeadlineScheduler(clock),
+          closeProofMs: config.browser.closeProofMs, launchTimeoutMs: config.timeouts.sessionAcquireMs, signal: new AbortController().signal }),
         async ({ remove }) => { assertBound(); remove(); }, { profileId: entry.operation.profileId, profileRoot: browserRoot,
           profileDirectory: entry.profileDirectory, credentialFingerprint: null, owner: { kind: "signup", operationId: entry.operation.operationId,
             accountId: draft.accountId, providerGeneration: draft.generation } });

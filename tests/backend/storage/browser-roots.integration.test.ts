@@ -1,3 +1,4 @@
+import { createNativeBrowserProbe } from "../../../src/backend/runtime/browser/native-browser.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -25,7 +26,7 @@ async function fixture() {
   const input: BrowserRootLaunchInput = { profileId: f.admission.profileBinding.profileId, profileRoot, profileDirectory,
     credentialFingerprint: "a".repeat(64), owner: { kind: "worker", database, workerId: worker.workerId } };
   const roots = createBrowserRoots(f.admission), path = join(f.machine.stateRoot, "machine", "browser-roots.json");
-  const options = (launcher = browser.fakeLauncher().launcher): BrowserProfileProbeOptions => ({ clock, scheduler,
+  const options = (launcher = browser.fakeLauncher().launcher): BrowserProfileProbeOptions => createNativeBrowserProbe({ clock, scheduler,
     closeProofMs: 100, launchTimeoutMs: 100, signal: new AbortController().signal, launcher });
   return { f, database, roots, input, path, options,
     close: async () => { database.close(); await f.close(); } };
@@ -205,8 +206,8 @@ for (const phase of ["publishing", "abort"] as const)
       const input: BrowserRootLaunchInput = { profileId: operation.profileId, profileRoot,
         profileDirectory: onboardingProfileDirectory(profileRoot, { operationId: owner.operationId, profileId: operation.profileId,
           accountId: owner.accountId, generation: owner.providerGeneration }), credentialFingerprint: null, owner };
-      const roots = createBrowserRoots(f.machine), options = { clock, scheduler, closeProofMs: 100, launchTimeoutMs: 100,
-        signal: new AbortController().signal, launcher: browser.fakeLauncher().launcher };
+      const roots = createBrowserRoots(f.machine), options = createNativeBrowserProbe({ clock, scheduler, closeProofMs: 100, launchTimeoutMs: 100,
+        signal: new AbortController().signal, launcher: browser.fakeLauncher().launcher });
       await roots.probe(input, options);
       const updated = SignUpOperationSchema.parse(phase === "publishing" ? { ...operation, phase } : { ...operation,
         onboarding: { ...operation.onboarding, abort: { operationId: randomUUID(), generation: operation.credentials.generation + 1 } } });

@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from "../models/failures/error-catalog.js";
 import { z } from "zod";
 import type { DuoCeremonyGate } from "./duo-ceremony-lease.js";
 import { BrowserSystemIdSchema } from "../rules/identity/ids.js";
@@ -62,6 +63,11 @@ export interface WorkerBrowserResource {
   readonly reset: (input: Readonly<{ signal: AbortSignal }>) => Promise<void>;
   readonly close: (input: Readonly<{ reason: BrowserSessionCloseReason }>) =>
     Promise<BrowserSessionCloseProof>;
+}
+
+export class BrowserProfileStillClosingError extends Error {
+  readonly code = "BROWSER_PROFILE_STILL_CLOSING";
+  constructor(cause: unknown) { super(ERROR_CATALOG.BROWSER_PROFILE_STILL_CLOSING.text, { cause }); this.name = "BrowserProfileStillClosingError"; }
 }
 
 export class BrowserSessionClosureUnprovedError extends AggregateError {
