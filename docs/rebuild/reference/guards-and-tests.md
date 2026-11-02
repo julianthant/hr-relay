@@ -128,6 +128,48 @@ also refresh the committed seed from a successful run:
 `scripts/test/ci-durations.json`. Corrupt reports and download failures fail CI.
 A new test file that needs macOS fails on Ubuntu with the darwin refusal; add it to `MACOS_FILES`.
 
+### Pre-push tests on the PC
+
+Agents on the Mac run affected unit, integration and architecture files in the PC's WSL Ubuntu:
+
+```sh
+export RELAY_TEST_HOST=user@your-wsl-tailnet-node
+npm run test:pc                            # affected by the diff against origin/staging
+npm run test:pc -- tests/scripts/test/pc.test.ts
+npm run test:pc -- 'tests/backend/runs/**/*.integration.test.ts'
+```
+
+The PC needs tailnet-only SSH (prefer Tailscale SSH with its systemd service enabled), Node
+satisfying `package.json`, rsync, Git, and Chromium's libraries installed with
+`npx playwright install --with-deps chromium`. Keep its private host in local configuration.
+Normal SSH host verification applies.
+
+Vitest selects the files; the runner subtracts `MACOS_FILES`, `SERIAL_FILES` and
+`SERIAL_STORAGE_FILES` with one skip note. Those files run in GitHub CI. Rsync copies tracked and
+unignored working files, including uncommitted edits; credentials, private inputs, runtime state,
+dependencies and build output are excluded. Edits after sync belong to the next run. Remote Git
+metadata retains the Mac's index for inventory guards, without history.
+
+Three independent slots under `~/.cache/relay-test-pc/` retain separate `node_modules` while the
+lockfile hash is unchanged. A run takes a free slot or waits. After measuring integration load,
+capacity can be set in `~/.config/relay-test-pc/slots` (1..16; change only while idle). Integration
+runs build the dashboard as CI does. Test environment values come from `ci-checks.yml`, temp files
+use `/dev/shm`, and each run uses at most two Vitest workers.
+
+Output streams and is saved with a final `result.json` under the main checkout's ignored
+`.work/test-pc/<run-id>/`. The printed result path records selected files, slot, exit code and
+elapsed time. The command exits with the remote test result and also works in the background:
+
+```sh
+npm run test:pc -- tests/scripts/test/pc.test.ts > /tmp/relay-test-pc.log 2>&1 &
+```
+
+A dropped connection can retain a slot's `lease` directory. Verify that its sync, install, build
+and tests have stopped before removing that exact empty directory with `rmdir`. Never remove a
+live lease. GitHub CI remains the merge gate.
+
+### CI scheduling
+
 Unit, integration and parity use two workers. Ubuntu jobs put test temp on tmpfs and have 20-minute
 budgets; macOS jobs use a RAM disk with Spotlight indexing off and have 30-minute budgets. Budgets are
 hang guards. CI sets `RELAY_TEST_TIME_SCALE=2.5`; `tests/support/time-scale.ts` multiplies the
