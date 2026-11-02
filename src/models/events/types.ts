@@ -419,7 +419,7 @@ const NoteBodyFields = {
 
 /** Same `SpanRef` addressing as spans — a note attributes to its exact task attempt or worker lifetime. */
 export const NoteWireSchema = z.union([
-  z.strictObject({ ...NoteBodyFields, ...RunSpanIdentityFields }),
+  z.strictObject({ ...NoteBodyFields, ...RunSpanIdentityFields, recoveryActivityId: UuidSchema.optional() }),
   z.strictObject({ ...NoteBodyFields, ...WorkerSpanIdentityFields }),
 ]).superRefine((note, context) => {
   const confirmed = note.confirmedAction;

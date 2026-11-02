@@ -1,6 +1,11 @@
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet, openBoundDatabaseFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
+import { createTimelineRepository } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
+import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { recordBrowserAction, withBrowserActionSession } from "../../../../src/backend/systems/browser-shared/action-notes.js";
+import { RecoveryActivityError } from "../../../../src/backend/runtime/writes/recovery-activity.js";
 import { checkParkedWrite } from "../../../../src/backend/runtime/writes/write-recovery.js";
 import { WorkerSessionClosureUnprovedError, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { createWorkerBrowserControl } from "../../../../src/backend/runtime/workers/worker-browser-control.js";
@@ -77,7 +82,12 @@ async function fixture(rows: number, workflowId: string = descriptor.id) {
   const attempt = WriteAttemptRecordSchema.parse({ writeAttemptId: UUID_5, writeIntentId: UUID_8, generation: 1, runId: run.envelope.runId,
     runAttempt: run.envelope.attempt, leaseId: UUID_6, bindingProof: proof, bindingProofDigest: intent.bindingProofDigest, fencedAt: NOW,
     outcome: { state: "parked", code: "unknown", message: "Synthetic unknown write", authorityReason: intent.authorityReason }, recordedAt: NOW });
-  const repositories = { ...opened.database.authority, runs: { ...opened.database.authority.runs, get: () => run },
+  const timelineDatabase = new DatabaseSync(":memory:");
+  for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) timelineDatabase.exec(statement);
+  disposers.push(async () => { timelineDatabase.close(); });
+  const timeline = createTimelineRepository({ database: timelineDatabase, read: read => read(), assertOwner: () => {},
+    mutate: work => work().result });
+  const repositories = { ...opened.database.authority, timelineEvents: timeline, runs: { ...opened.database.authority.runs, get: () => run },
     writeIntents: { ...opened.database.authority.writeIntents, get: () => intent }, writeAttempts: { ...opened.database.authority.writeAttempts, get: () => attempt } };
   const target = ParkedWriteCheckTargetSchema.parse({ workerId: "separations-worker-1", expectedVersion: 1, controlBasis: { leaseGeneration: 1, controlRevision: 1 },
     membershipRevision: 1, processId: 42, startedAt: NOW, installationId: UUID_6, profileId: UUID_7,
@@ -87,24 +97,60 @@ async function fixture(rows: number, workflowId: string = descriptor.id) {
   const events: string[] = [];
   let failClose = false;
   let failRead = false;
+  let failCapture = false;
   let readHold: Promise<void> | undefined;
   let afterRead = () => {};
-  const driver = { system: "ucpath" as const, scanTerminationTransactions: async () => { await readHold; return UcpathTransactionScanSchema.parse({ state: "read", emplId: TARGET.emplId,
+  const driver = { system: "ucpath" as const, scanTerminationTransactions: async () => { recordBrowserAction("opened", "ucpath.smart-hr.transaction-search"); await readHold; return UcpathTransactionScanSchema.parse({ state: "read", emplId: TARGET.emplId,
     rows: Array.from({ length: rows }, (_, index) => ({ transactionId: `T00220963${index + 1}`, emplId: TARGET.emplId, action: "Terminatn", approvalStatus: "Pending",
       startDate: TARGET.effectiveDate, displayedName: TARGET.expectedName })), scannedRowCount: rows, observedAt: NOW }); } };
   const sessions: Parameters<typeof checkParkedWrite>[0]["sessions"] = {
-    withDriver: async (_need, _instance, _signal, operation) => { events.push("read"); if (failRead) throw new Error("synthetic-read-unavailable"); const result = await operation(driver, async () => { throw new Error("recheck does not request capture"); }); afterRead(); return result; },
+    withDriver: async (_need, _instance, _signal, operation) => { events.push("read"); if (failRead) throw new Error("synthetic-read-unavailable"); const result = await withBrowserActionSession(UUID_6, () => operation(driver, async () => {
+      if (failCapture) throw new RecoveryActivityError(new Error("synthetic-capture-failure"));
+      recordBrowserAction("screenshot", "ucpath.smart-hr.transaction-search", `${UUID_5}:${UUID_8}`);
+    })); afterRead(); return result; },
     bindRunConfigFingerprint: () => { events.push("bind"); }, releaseRunConfigFingerprint: () => { events.push("release"); },
     closeAll: async () => { events.push("close"); if (failClose && events.includes("read")) throw new WorkerSessionClosureUnprovedError("separations-worker-1"); },
   };
   const input: Parameters<typeof checkParkedWrite>[0] = { repositories, descriptor: active, target, commandId: UUID_7, requestedBy: "local-operator", signal: new AbortController().signal,
     probe: { stores: taskStoreRegistry, clock, scheduler: new ManualScheduler(clock), taskDeadlineMs: 1000, log: recordingLogger().log }, sessions,
     configureRun: () => ({ taskDeadlineMs: 1000 }) };
-  return { input, events, run, intent, attempt, driver, clock, database: opened.database, path: opened.path, holdRead: (hold: Promise<void>) => { readHold = hold; },
+  return { input, events, run, intent, attempt, driver, clock, timeline, failCapture: () => { failCapture = true; }, database: opened.database, path: opened.path, holdRead: (hold: Promise<void>) => { readHold = hold; },
     failClosure: () => { failClose = true; }, failRead: () => { failRead = true; }, afterRead: (fn: () => void) => { afterRead = fn; } };
 }
 
 describe("held-only parked write checks", () => {
+  it("records real action and capture times on a retained run without changing write authority", async () => {
+    const h = await fixture(1);
+    h.clock.advanceWall(3 * 24 * 60 * 60 * 1000);
+    const at = h.clock.now().toISOString();
+    const before = canonicalJsonStringify([h.run, h.intent, h.attempt]);
+    const result = await checkParkedWrite(h.input);
+    assert.equal(result.result.code, "PARKED_CHECK_OCCURRENCE_UNPROVED");
+    const events = h.timeline.page({ runId: h.run.envelope.runId });
+    assert.deepEqual(events.map(event => event.payload.kind),
+      ["recovery-activity-started", "note", "note", "recovery-activity-ended"]);
+    assert.ok(events.every(event => event.occurredAt === at && event.recordedAt === at));
+    const notes = events.flatMap(event => event.payload.kind === "note" ? [event.payload.note] : []);
+    assert.equal(notes.filter(note => note.action?.kind === "screenshot").length, 1);
+    assert.ok(notes.every(note => "recoveryActivityId" in note && note.recoveryActivityId === events[0].eventId));
+    assert.equal(canonicalJsonStringify([h.run, h.intent, h.attempt]), before);
+  });
+  it("refuses failed activity opening before sessions or captures", async () => {
+    const h = await fixture(1);
+    await assert.rejects(checkParkedWrite({ ...h.input, repositories: { ...h.input.repositories,
+      timelineEvents: { ...h.timeline, append: () => { throw new Error("synthetic-open-failed"); } } } }), RecoveryActivityError);
+    assert.deepEqual(h.events, []);
+    assert.deepEqual(h.timeline.page({}), []);
+  });
+  it("refuses a required capture failure without settling the held occurrence", async () => {
+    const h = await fixture(1); h.failCapture();
+    const before = canonicalJsonStringify([h.run, h.intent, h.attempt]);
+    await assert.rejects(checkParkedWrite(h.input), RecoveryActivityError);
+    assert.equal(canonicalJsonStringify([h.run, h.intent, h.attempt]), before);
+    assert.equal(h.timeline.page({}).at(-1)?.payload.kind, "recovery-activity-ended");
+    assert.equal(h.input.repositories.runCheckpoints.latest(h.run.envelope.workflow, h.run.envelope.itemId, "submit-write"), undefined);
+  });
+
   it("preserves channel Error identity and non-Error causes without changing held authority", async () => {
     const failures: readonly unknown[] = [new Error("synthetic-channel-scheduler-failure"), { code: "synthetic-non-error" }];
     for (const failure of failures) {

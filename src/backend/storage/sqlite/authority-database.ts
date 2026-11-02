@@ -83,6 +83,7 @@ import { createRunSummaries } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings } from "./settings-storage.js";
 import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } from "./timeline-repository.js";
+import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
 import { selectTransactions } from "./transaction-selection.js";
 import { createWorkbookLibraryRepository,validateWorkbookLibrary } from "./workbook-library-repository.js";
@@ -926,6 +927,45 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
     const run = readTimelineRun(database, record.scope.runId);
     if (run === undefined) throw new Error("timeline-event-owner-missing");
     if (run.envelope.workflow !== record.workflow) throw new Error("timeline-event-owner-mismatch");
+    const recoveryStart = (activityId: string) => {
+      const row = database.prepare("SELECT * FROM timeline_events WHERE id=?").get(activityId);
+      const start = row === undefined ? undefined : timelineEventFromRow(row);
+      if (start?.payload.kind !== "recovery-activity-started") throw new Error("recovery-activity-start-missing");
+      return RecoveryActivitySchema.strip().parse(start.payload);
+    };
+    const recoveryEnd = (activityId: string) => {
+      const row = database.prepare("SELECT * FROM timeline_events WHERE id=?").get(deriveStableUuid("recovery-activity-ended", activityId));
+      const end = row === undefined ? undefined : timelineEventFromRow(row);
+      if (end !== undefined && end.payload.kind !== "recovery-activity-ended") throw new Error("recovery-activity-end-invalid");
+      return end?.payload.kind === "recovery-activity-ended" ? end.payload : undefined;
+    };
+    if (record.payload.kind === "recovery-activity-started" || record.payload.kind === "recovery-activity-ended") {
+      const { kind } = record.payload;
+      const activity = RecoveryActivitySchema.strip().parse(record.payload);
+      const attempt = timelineEvidenceRepositories(database).writeAttempts.get(activity.writeAttemptId);
+      if (activity.traceId !== run.envelope.traceId || activity.attempt > run.envelope.attempt
+        || attempt === undefined || attempt.runId !== activity.runId || attempt.runAttempt !== activity.attempt
+        || attempt.writeIntentId !== activity.writeIntentId || attempt.generation !== activity.generation
+        || attempt.bindingProof.afterPrepareSpanPath !== `${activity.traceId}/${activity.nodeId}/prepare`) {
+        throw new Error("recovery-activity-owner-mismatch");
+      }
+      if (kind === "recovery-activity-started" && appending) {
+        const raw = database.prepare("SELECT * FROM write_intents WHERE id=?").get(activity.writeIntentId);
+        const intent = raw === undefined ? undefined : WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", raw));
+        if (intent === undefined || intent.status === "observed-present" || intent.currentAttemptId !== activity.writeAttemptId
+          || intent.generation !== activity.generation || intent.runId !== activity.runId
+          || activity.attempt !== run.envelope.attempt
+          || (activity.operation === "parked-write-check" ? intent.status !== "parked" : intent.status !== "attempting")) {
+          throw new Error("recovery-activity-authority-changed");
+        }
+      }
+      if (kind === "recovery-activity-ended") {
+        if (record.eventId !== deriveStableUuid("recovery-activity-ended", activity.activityId)
+          || canonicalJsonStringify(recoveryStart(activity.activityId)) !== canonicalJsonStringify(activity)) {
+          throw new Error("recovery-activity-end-mismatch");
+        }
+      }
+    }
     if (record.payload.kind === "operation-confirmed") {
       const facts = record.payload.facts;
       if (facts.traceId !== run.envelope.traceId || facts.itemId !== run.envelope.itemId
@@ -959,6 +999,16 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
       const note = record.payload.note;
       if (!("runId" in note) || note.traceId !== run.envelope.traceId || note.attempt > run.envelope.attempt) {
         throw new Error("timeline-note-owner-mismatch");
+      }
+      if ("recoveryActivityId" in note && note.recoveryActivityId !== undefined) {
+        const activity = recoveryStart(note.recoveryActivityId);
+        const end = recoveryEnd(activity.activityId);
+        if (activity.runId !== note.runId || activity.workflow !== note.workflow || activity.attempt !== note.attempt
+          || activity.traceId !== note.traceId || note.spanPath !== recoveryActivitySpanPath(activity)
+          || Date.parse(note.ts) < Date.parse(activity.openedAt)
+          || (end !== undefined && (appending || Date.parse(note.ts) > Date.parse(end.endedAt)))) {
+          throw new Error("recovery-activity-note-not-open");
+        }
       }
     }
     if (record.payload.kind === "span") {
