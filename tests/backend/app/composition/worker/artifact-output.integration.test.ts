@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { it } from "vitest";
 import { z } from "zod";
+import { collectSourceClosure,fingerprintSourceSet } from "../../../../../scripts/build/workflow-build-manifest.js";
+import { parseBuildManifest } from "../../../../../src/models/workflow/build-manifest.js";
+import { BUILD_MANIFEST } from "../../../../../src/workflow-kit/validation/build-manifest.js";
 import { composeWorkerArtifactProjector } from "../../../../../src/backend/app/composition/worker/artifact-output.js";
 import { executeClaimedRun } from "../../../../../src/backend/runtime/execution/run-executor.js";
 import { createContentAddressedArtifactWriter } from "../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -46,6 +50,10 @@ it("publishes a task's one batch zip through the real checkpoint, outbox, worker
     canonicalInput, inputSubject: "name", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [],
     identity: { matchKey: (value: z.output<typeof input>) => value.name }, presentation: { title: (value: z.output<typeof input>) => value.name }, scenarios: [String(scenario)],
     artifactProjections: [{ id: "batch-archive", source: { nodeId: "archive", fieldPath: "archive" }, keyFields: ["archive.fileName"], sink: "documents-file", blocking: true }], flow: definition });
+  const sources = collectSourceClosure(process.cwd(), fileURLToPath(import.meta.url));
+  const entry = (id: string) => ({ id, sources, fingerprint: fingerprintSourceSet(BUILD_MANIFEST.toolchain, id, sources) });
+  const buildManifest = parseBuildManifest({ ...BUILD_MANIFEST, workflows: [...BUILD_MANIFEST.workflows, entry(descriptor.id)],
+    tasks: [...BUILD_MANIFEST.tasks, entry(contract.id)] });
   try {
     const artifacts = createContentAddressedArtifactWriter({ admission: f.profile.admission }); await artifacts.ready;
     const artifactProjector = composeWorkerArtifactProjector({ admission: f.profile.admission, database: f.db, artifacts, clock: f.clock });
@@ -60,7 +68,7 @@ it("publishes a task's one batch zip through the real checkpoint, outbox, worker
     const sessions = await sessionManagerFor(happySessionHarness(), f.clock);
     const result = await executeClaimedRun({ descriptor, lifecycle: testRunLifecycle(f.db, f.clock), stores: defineTaskStoreRegistry([defineWorkflowStore(descriptor.id, { publishArchive: task })],
       { scenarioIds: [scenario], tasks: [{ id: contract.id, effect: "read" }] }), authority: f.db, sessions, emitter: recordingEmitter().emitter, clock: f.clock,
-      ids: sequentialIdFactory("f"), scheduler: new ManualScheduler(f.clock, 0), taskDeadlineMs: 60_000, log: recordingLogger().log, artifacts, artifactProjector },
+      ids: sequentialIdFactory("f"), scheduler: new ManualScheduler(f.clock, 0), taskDeadlineMs: 60_000, log: recordingLogger().log, artifacts, artifactProjector, buildManifest },
       { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration }, signal: new AbortController().signal });
     assert.equal(result.state, "done");
     const file = f.db.authority.generatedArtifacts.get(`sink:documents-file-${runId}`); assert.ok(file);
