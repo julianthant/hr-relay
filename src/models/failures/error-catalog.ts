@@ -495,6 +495,7 @@ export const ERROR_CATALOG = Object.freeze({
     "That email belongs to a different profile.",
     EmptyParametersSchema,
   ),
+  PROFILE_ACCOUNT_DELETION_REFUSED: catalogEntry("Relay could not complete account deletion. Sign-in is blocked while an erasure is unfinished; restart Relay to settle it safely.", EmptyParametersSchema),
   PROFILE_LOGOUT_BLOCKED: catalogEntry(
     "Log out waits until this profile's active work can stop.",
     EmptyParametersSchema,

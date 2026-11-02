@@ -2,7 +2,7 @@ import { mockBrowserRootPort } from "../../../support/helpers/browser/browser-ro
 import { onboardingProfileDirectory } from "../../../../src/backend/storage/browser-roots.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync, realpathSync, unlinkSync, symlinkSync, linkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +12,7 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext } from "../../../../src/backend/profiles/onboarding-duo.js";
 
-function world(method: "key" | "touch" = "key") {
+function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "darwin") {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "relay-onboarding-provider-")));
   const browserRoot = join(directory, "browsers");
   const extensionDirectory = join(directory, "extension");
@@ -45,6 +45,7 @@ function world(method: "key" | "touch" = "key") {
   const failures: Error[] = [];
   const reportFailure = async (error: Error): Promise<void> => { failures.push(error); };
   let current = true;
+  let sameOriginChildFrame = false;
   let observed: DraftDuoObservedContext | undefined;
   const worker = {
     url: () => "chrome-extension://owned-extension/src/relay-background.js",
@@ -69,18 +70,27 @@ function world(method: "key" | "touch" = "key") {
       throw new Error("unexpected operation");
     },
   } as unknown as Worker;
-  function makePage() {
+  function makePage(initialUrl = "about:blank") {
     let pageClosed = false;
-    let url = "about:blank";
-    return { bringToFront: async () => { focusCount++; }, url: () => url,
+    let url = initialUrl;
+    const frame = { url: () => url, evaluate: async () => true };
+    return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : [frame], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => url,
       goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://")) { portalPages++; throw new Error("synthetic navigation failure"); } url = destination; },
       close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
   }
   let pages = [makePage()];
   const context = { serviceWorkers: () => [worker], pages: () => pages.filter(page => !page.isClosed()), on: (_event: string, callback: () => void) => { listeners.push(callback); },
+    newCDPSession: async () => ({ async send(name: string, input?: { credentialId: string }) {
+      if (name === "WebAuthn.enable") return {};
+      if (name === "WebAuthn.addVirtualAuthenticator") return { authenticatorId: "synthetic-platform" };
+      if (name === "WebAuthn.getCredential") return { credential: { credentialId: input?.credentialId, rpId: "duosecurity.com",
+        privateKey: generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
+        isResidentCredential: true } };
+      throw new Error("unexpected platform operation");
+    } }),
     newPage: async () => { const page = makePage(); pages.push(page); return page; },
     close: async () => { closed = true; if (!missingCloseEvent) for (const listener of listeners) listener(); if (!blockedPump) { waiter?.(null); waiter = undefined; } browserWaiter?.(null); browserWaiter = undefined; } } as unknown as BrowserContext;
-  const realProvider = createProfileOnboardingDuoProvider({ browserRoots: mockBrowserRootPort().browserRoots, browserRoot, extensionDirectory, clock, closeProofMs: 50,
+  const realProvider = createProfileOnboardingDuoProvider({ browserRoots: mockBrowserRootPort().browserRoots, browserRoot, extensionDirectory, clock, closeProofMs: 50, platform,
     launcher: { launch: async input => {
       if(input.nativeOnly===true){
         nativeProbes++;
@@ -90,7 +100,7 @@ function world(method: "key" | "touch" = "key") {
         closed=false;pages=[makePage()];listeners.length=0;
         return context;
       }
-      launchCount++; closed = false; pages = [makePage()]; listeners.length = 0; profile = input.profileDirectory;
+      launchCount++; closed = false; pages = [makePage(), ...(method === "touch" ? [makePage("https://test.duosecurity.com")] : [])]; listeners.length = 0; profile = input.profileDirectory;
       assert.equal(existsSync(join(input.extensionDirectory, "unlisted.txt")), false);
       assert.equal(readFileSync(join(input.extensionDirectory, "LICENSE"), "utf8"), "synthetic license fixture");
       assert.equal(readFileSync(join(input.extensionDirectory, "THIRD_PARTY_NOTICES.md"), "utf8"), "synthetic notices fixture");
@@ -133,7 +143,7 @@ function world(method: "key" | "touch" = "key") {
     else requests.push(request);
     return result;
   }
-  return { mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
+  return { sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
     loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, launches: () => launchCount, profile: () => profile,
     portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
     loseActiveStopAck: () => { lostActiveStopAck = true; }, blockPump: () => { blockedPump = true; },
@@ -432,6 +442,40 @@ describe("draft Duo provider", () => {
       assert.deepEqual(w.calls, ["native-platform"]);
       await w.send("portal-accepted", { credentialId: "native-public-id", requestId });
       assert.deepEqual(w.calls, ["native-platform", "portal-accepted"]);
+    } finally { await w.cleanup(); }
+  });
+
+  it("retains the virtual platform key before recording its ceremony on Windows", async () => {
+    const w = world("touch", "win32");
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
+      const requestId = randomUUID(), credentialId = Buffer.from("virtual-public-id").toString("base64url");
+      assert.deepEqual(await w.send("native-created", { credentialId, requestId }), { ok: true, value: { observed: true } });
+      assert.deepEqual(w.calls, ["persist", "chromium-platform"]);
+      await w.send("portal-accepted", { credentialId, requestId });
+      assert.deepEqual(w.calls, ["persist", "chromium-platform", "portal-accepted"]);
+    } finally { await w.cleanup(); }
+  });
+
+  it("binds the verified top-level Duo page when it also contains same-origin child frames", async () => {
+    const w = world("touch");
+    w.sameOriginChildFrame();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
+      await w.send("native-created", { credentialId: "native-public-id", requestId: randomUUID() });
+      assert.deepEqual(w.calls, ["native-platform"]);
+    } finally { await w.cleanup(); }
+  });
+
+  it("refuses ambiguous top-level Duo pages before preparing an authenticator", async () => {
+    const w = world("touch");
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      w.addDuoPage();
+      assert.deepEqual(await w.send("bind", BIND), { ok: false });
+      assert.deepEqual(w.calls, []);
     } finally { await w.cleanup(); }
   });
 

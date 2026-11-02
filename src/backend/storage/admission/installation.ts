@@ -1,3 +1,4 @@
+import { AccountDeletionRefusedError, captureAccountDeletion, publishAccountDeletion, resumeAccountDeletion } from "../maintenance/account-deletion.js";
 import { createHash,randomBytes,randomUUID } from "node:crypto";
 import {
 closeSync,constants,existsSync,fstatSync,
@@ -203,6 +204,7 @@ export type InstallationLease = Readonly<{ retainSourceClosure(error: unknown): 
   readFlatStartCleanIntent(): FlatStartCleanIntent | undefined;
   prepareFlatStartClean(restore: OfflineMaintenanceOperation, timing: FlatStartCleanIntent["timing"]): void;
   startCleanFlatStore(restore: OfflineMaintenanceOperation, backup: RuntimeAdmission, closure: StoppedBackupClosure): Promise<void>;
+  deleteProfileAccount(profileId: string, epoch: number): void;
   abortUnpublishedProfile(operation: z.infer<typeof SignUpOperationSchema>, head?: z.infer<typeof CanonicalCredentialPublicationSourceSchema.shape.head>): boolean;
   reclassifyIncompleteProfile(profile: RuntimeAdmission): void;
   resumeIncompleteProfileDraft(profileId: string, restore: OfflineMaintenanceOperation): boolean;
@@ -727,7 +729,27 @@ function readProfilePublicationSource(control: string, locator: RuntimeLocator) 
   return { path, document, witnessPath, witness };
 }
 
+function finishAccountDeletion(control: string, locator: RuntimeLocator, assertHeld: () => void): void {
+  const journal = join(control, "account-deletion.json");
+  try { resumeAccountDeletion(locator, journal, assertHeld, {
+    validate(prior, next) {
+      const source = readProfilePublicationSource(control, locator);
+      const same = (left: unknown, right: unknown) => canonicalJsonStringify(left) === canonicalJsonStringify(right);
+      if (profileOperationInventory(locator.stateRoot).length !== 0 || lstatMaybe(join(control, "profile-publication.json"))
+        || !same(source.document, prior) && !same(source.document, next)
+        || !same(source.witness, profileRegistryWitness(locator.installationId, source.path, prior))
+          && !same(source.witness, profileRegistryWitness(locator.installationId, source.path, next))) fail("account-deletion-registry-changed");
+    },
+    publish() {
+      const source = readProfilePublicationSource(control, locator);
+      atomicJson(source.witnessPath, profileRegistryWitness(locator.installationId, source.path, source.document));
+      dropProfileRegistryProof(control, locator);
+    },
+  }); } catch (cause) { throw new AccountDeletionRefusedError(cause); }
+}
+
 function readMachineRegistry(control: string, locator: RuntimeLocator, recoverPublication = true, publicationOperationId?: string): ProfileRegistryDocument {
+  if (lstatMaybe(join(control, "account-deletion.json"))) fail("account-deletion-pending");
   const { path, document, witness, witnessPath } = readProfilePublicationSource(control, locator);
   const intentPath = join(control, "profile-publication.json");
   if (lstatMaybe(intentPath)) {
@@ -1358,6 +1380,9 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       const marker = lstatMaybe(join(machine, "profile-registry-version.json")) === undefined ? undefined
         : readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() }));
       if (marker?.schemaVersion === 8) {
+        if (lstatMaybe(join(control, "account-deletion.json"))) {
+          finishAccountDeletion(control, priorLocator, () => lifetime.assertStartupWorkspace(workspace));
+        }
         const pending = lstatMaybe(join(control, "profile-publication.json")) === undefined ? undefined
           : readProfileEvidence(join(control, "profile-publication.json"), ProfilePublicationSchema);
         if (pending?.kind === "profile") {
@@ -1782,6 +1807,28 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         readMachineRegistry(control, locator, false); assertHeld();
         return true;
       });
+    },
+    deleteProfileAccount(profileId: string, epoch: number): void {
+      const restore = this.beginOfflineMaintenance();
+      try { mutate(() => {
+        const guard = () => assertStoppedMachineMaintenance(this, restore);
+        guard();
+        const journal = join(control, "account-deletion.json");
+        if (lstatMaybe(journal)) fail("account-deletion-pending");
+        const document = readMachineRegistry(control, locator);
+        if (profileOperationInventory(locator.stateRoot).length !== 0
+          || lstatMaybe(join(locator.stateRoot, "machine", "credential-operations", `${z.uuid().parse(profileId)}.json`))) fail("account-deletion-operation-pending");
+        const archives = join(control, "profile-control-upgrades");
+        if (lstatMaybe(archives)) {
+          assertNoSymlinkComponents(archives); privateDirectory(archives);
+          if (readdirSync(archives).some(name => name.includes(profileId))) fail("account-deletion-retained-installation-backup");
+        }
+        assertCanonicalProfileBinding(join(locator.stateRoot, "profiles", profileId, "state.db"), { installationId: locator.installationId, profileId });
+        const plan = captureAccountDeletion(locator, document, profileId, epoch);
+        guard(); publishAccountDeletion(journal, plan);
+        finishAccountDeletion(control, locator, guard);
+        readMachineRegistry(control, locator, false);
+      }); } finally { restore.release(); }
     },
     abortUnpublishedProfile(input: z.infer<typeof SignUpOperationSchema>, head?: z.infer<typeof CanonicalCredentialPublicationSourceSchema.shape.head>) {
       return mutate(() => {
