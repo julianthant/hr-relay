@@ -1,3 +1,5 @@
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
 import { DatabaseSync } from "node:sqlite";
 import { inspectOpenDatabase } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { StoppedAuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
@@ -29,7 +31,7 @@ import { boundProfileCredentials,createBoundProfileFixture,readAuthenticatedCred
 import { assertRuntimeLifetimeHeld } from "../../../support/helpers/backend/runtime-lifetime.js";
 
 const hostFacts = { primaryDisplay: null };
-async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 = 11) {
+async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION) {
   const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(profile.admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "fixed-layout-fixture" }, systemClock,
     undefined, undefined, undefined, boundProfileCredentials(profile.admission));
@@ -73,18 +75,21 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 =
     const credentials = fixedLayoutEntries(join(profile.stateRoot, "credentials"));
     const keys = fixedLayoutEntries(join(profile.machine.stateRoot, "machine", "credential-keys"));
     await profile.closeController();
-    if (sourceVersion === 10) {
+    if (sourceVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
       const native = new DatabaseSync(profile.path);
       try {
-        native.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT");
-        assert.equal(inspectOpenDatabase(native, 10).schemaVersion, 10);
+        native.exec("BEGIN EXCLUSIVE");
+        restorePreReadingArtifactRetention(native);
+        native.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(sourceVersion);
+        native.exec(`PRAGMA user_version=${sourceVersion}; COMMIT`);
+        assert.equal(inspectOpenDatabase(native, sourceVersion).schemaVersion, sourceVersion);
       } finally { native.close(); }
     }
     return { profile, before, credentials, keys };
   } catch (error) { database.close(); await profile.close(); throw error; }
 }
 
-it.each([[false, 11], [true, 11], [false, 10]] as const)("converts the stopped default layout, retains identities/settings/key inodes, and keeps one listener (saved browser: %s, schema: %s)", async (explicitBrowser, sourceVersion) => {
+it.each([[false, CURRENT_AUTHORITY_SCHEMA_VERSION], [true, CURRENT_AUTHORITY_SCHEMA_VERSION], [false, 10], [false, 11]] as const)("converts the stopped default layout, retains identities/settings/key inodes, and keeps one listener (saved browser: %s, schema: %s)", async (explicitBrowser, sourceVersion) => {
   const f = await predecessor(explicitBrowser, sourceVersion), target = realpathSync(mkdtempSync(join(tmpdir(), "relay-fixed-target-")));
   const lifetime = await RuntimeLifetimeLock.acquire(0), port = lifetime.port;
   const activate = AuthorityDatabase.publishFixedLayoutActivation.bind(AuthorityDatabase);
@@ -104,7 +109,7 @@ it.each([[false, 11], [true, 11], [false, 10]] as const)("converts the stopped d
       const source = await stopped.forStoppedProfileLayout(profileBrowserClosure, f.before.binding.profileId, stopped.maintenanceOperation(), systemClock, hostFacts);
       try {
         assert.throws(() => source.assertWritable(), /profile-stopped-upgrade-runtime-refused/u);
-        assert.throws(() => source.assertProfileMigration(f.profile.path, 11), /fixed-layout-schema-mutation-refused/u);
+        assert.throws(() => source.assertProfileMigration(f.profile.path, CURRENT_AUTHORITY_SCHEMA_VERSION), /fixed-layout-schema-mutation-refused/u);
         assert.throws(() => source.assertReadyStoppedProfileUpgradeOwner(stopped), /owner-required/u);
       } finally { source.release(); stopped.release(); }
     }
@@ -129,7 +134,7 @@ it.each([[false, 11], [true, 11], [false, 10]] as const)("converts the stopped d
     const directory = join(profile.stateRoot, "backups", "authority");
     const manifests = readdirSync(directory).filter(name => name.endsWith(".manifest.json"))
       .map(name => StoppedAuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(directory, name), "utf8"))));
-    assert.deepEqual(manifests.map(manifest => manifest.schemaVersion).sort(), sourceVersion === 10 ? [10, 11] : [11]);
+    assert.deepEqual(manifests.map(manifest => manifest.schemaVersion).sort(), sourceVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION ? [sourceVersion, CURRENT_AUTHORITY_SCHEMA_VERSION] : [CURRENT_AUTHORITY_SCHEMA_VERSION]);
     for (const manifest of manifests) {
       assert.equal(manifest.installationId, f.before.binding.installationId); assert.equal(manifest.profileId, f.before.binding.profileId);
       assert.equal(manifest.verification.quickCheck, "ok"); assert.equal(manifest.verification.foreignKeyViolations, 0);
@@ -146,7 +151,7 @@ it.each([[false, 11], [true, 11], [false, 10]] as const)("converts the stopped d
     const owner = machine;
     assert.throws(() => RuntimeAdmission.forFixedLayoutProfile(owner, { operationId: randomUUID(), profileId: f.before.binding.profileId }), /claim-unissued/u);
     database.close(); database = undefined; profile.release(); profile = undefined; machine.release(); machine = undefined;
-    if (!explicitBrowser && sourceVersion === 11) {
+    if (!explicitBrowser && sourceVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) {
       const sourceControl = join(f.profile.workspace, ".tracker", "control");
       mkdirSync(sourceControl, { mode: 0o700 });
       try { await assert.rejects(prepareApplicationDataWorkspace(f.profile.workspace, target, lifetime, hostFacts), /fixed-layout-two-installations-present/u); }
@@ -204,7 +209,11 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     seedRegisteredSignupBrowser(profile.machine, operation);
     await profile.closeController();
     const source = new DatabaseSync(profile.path);
-    try { source.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT"); }
+    try {
+      source.exec("BEGIN EXCLUSIVE");
+      restorePreReadingArtifactRetention(source);
+      source.exec("UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT");
+    }
     finally { source.close(); }
     await prepareApplicationDataWorkspace(profile.workspace, target, lifetime, hostFacts);
     await upgradeRegisteredPersonStores(target, lifetime, hostFacts);
@@ -214,7 +223,7 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     assert.deepEqual(SignUpOperationSchema.parse(JSON.parse(readFileSync(movedOperation, "utf8"))), operation);
     assert.equal(readFixedLayoutIntent(target)?.phase, "complete");
     const database = new DatabaseSync(join(stateRoot, "state.db"), { readOnly: true });
-    try { assert.equal(inspectOpenDatabase(database, 11).profileId, operation.profileId); } finally { database.close(); }
+    try { assert.equal(inspectOpenDatabase(database, CURRENT_AUTHORITY_SCHEMA_VERSION).profileId, operation.profileId); } finally { database.close(); }
     machine = acquireEntrypointAdmission(target, "shared", lifetime);
     assert.equal(machine.readProfileRegistry().profiles.some(row => row.profileId === operation.profileId), false);
     runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu") });
