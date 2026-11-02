@@ -1,6 +1,6 @@
 import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
 import { readContinuationGate, validateRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
-import { captureRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
+import { captureRunContinuation, continuationEvidenceDigest } from "../../runtime/checkpoints/run-continuation.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { RerunPlanRefusalCode } from "../../../models/run/rerun.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -22,6 +22,87 @@ export class RerunRefusedError extends Error {
   constructor(readonly code: RerunPlanRefusalCode, message: string) {
     super(message); this.name = "RerunRefusedError";
   }
+}
+
+export function validateCompletedTransactionContinuations(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor,
+  run: RunRecord, input: JsonValue = run.input.parsed.value): ReadonlySet<string> {
+  const continuation = captureRunContinuation(repositories, run);
+  const sources = new Map([run, ...validateRunContinuation(repositories, run.envelope)].map(source => [source.envelope.runId, source]));
+  const ownedIntents = [...sources.values()].flatMap(source => repositories.writeIntents.listByRun(source.envelope.runId));
+  const nodes = descriptorRuntimeNodes(descriptor);
+  const completed = new Set<string>();
+  const scopeFor = (source: RunRecord, dependsOn: readonly string[], value: JsonValue) => {
+    const outputs: Record<string, JsonValue> = {};
+    for (const dependency of dependsOn) {
+      const own = repositories.runCheckpoints.listByAttempt(source.envelope.workflow, source.envelope.itemId, dependency, source.envelope.attempt)
+        .filter(row => row.runId === source.envelope.runId).at(-1);
+      const checkpoint = own ?? (source.envelope.continuation === undefined ? undefined : readRunCheckpoint(repositories, source.envelope, dependency, true));
+      const node = nodes.find(candidate => candidate.id === dependency);
+      if (checkpoint !== undefined) {
+        const schema = node?.kind === "task" ? node.uses.output : node?.kind === "transaction" ? TransactionOutcomeSchema : undefined;
+        if (schema === undefined || checkpoint.output.schemaHash !== deriveSchemaHash(schema, "output") || !schema.safeParse(checkpoint.output.value).success) {
+          throw new RerunRefusedError("schema-mismatch", "Saved transaction dependency is incompatible.");
+        }
+        outputs[dependency] = node?.kind === "transaction" ? JsonValueSchema.parse(projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Transaction continuation")) : checkpoint.output.value;
+      } else {
+        const gate = readContinuationGate(repositories, source.envelope, dependency);
+        if (gate === undefined || node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output") || !node.result.safeParse(gate.result.value).success) {
+          throw new RerunRefusedError("invalid-value", "Saved transaction dependency is unavailable.");
+        }
+        outputs[dependency] = gate.result.value;
+      }
+    }
+    const configuration: Record<string, JsonValue> = {};
+    const keys = descriptor.operationDisplay?.capability === "complete" ? descriptor.operationDisplay.transforms
+      .flatMap(transform => transform.inputs.flatMap(source => source.value.kind === "configuration" ? [source.value.key] : [])) : [];
+    if (keys.length > 0) {
+      const snapshot = repositories.configSnapshots.get(source.envelope.configSnapshotId);
+      if (snapshot === undefined || snapshot.fingerprint !== source.envelope.configFingerprint
+        || sha256Hex(canonicalJsonStringify(snapshot.config)) !== snapshot.fingerprint) throw new RerunRefusedError("schema-mismatch", "Saved transaction configuration is unavailable.");
+      for (const key of keys) configuration[key] = field(snapshot.config, key);
+    }
+    return { input: value, outputs, configuration: Object.freeze(configuration), protectedInputBindings: retainedRunProtectedBindings(source) };
+  };
+  for (const node of nodes) {
+    if (node.kind !== "transaction") continue;
+    const reference = continuation.checkpoints.find(row => row.nodeId === node.id);
+    const committed = ownedIntents.filter(intent => intent.status === "committed" && intent.taskId === node.commit.uses.id
+        && sources.get(intent.runId)?.envelope.traceId + `/${node.id}/prepare` === intent.bindingProof.afterPrepareSpanPath);
+    if (reference === undefined) {
+      if (committed.length > 0) throw new RerunRefusedError("invalid-value", "Completed transaction checkpoint is unavailable.");
+      continue;
+    }
+    const checkpoint = repositories.runCheckpoints.get(run.envelope.workflow, run.envelope.itemId, node.id, reference.attempt, reference.claimGeneration);
+    const original = sources.get(reference.runId);
+    if (checkpoint === undefined || checkpoint.runId !== reference.runId || original === undefined || continuationEvidenceDigest(checkpoint) !== reference.digest) {
+      throw new RerunRefusedError("invalid-value", "Completed transaction checkpoint cannot be authenticated.");
+    }
+    if (checkpoint.descriptorVersion !== descriptor.version || checkpoint.contractFingerprint !== descriptor.contractFingerprint
+      || checkpoint.output.schemaHash !== deriveSchemaHash(TransactionOutcomeSchema, "output")) throw new RerunRefusedError("schema-mismatch", "Completed transaction contract changed.");
+    const parsed = TransactionOutcomeSchema.safeParse(checkpoint.output.value);
+    if (!parsed.success) throw new RerunRefusedError("schema-mismatch", "Completed transaction outcome is invalid.");
+    const outcome = parsed.data;
+    try { projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Transaction continuation"); }
+    catch { throw new RerunRefusedError("schema-mismatch", "Completed transaction proof or output schema changed."); }
+    const prior = scopeFor(original, node.dependsOn, original.input.parsed.value), current = scopeFor(run, node.dependsOn, input);
+    const mappings = (scope: typeof current) => ({ prepare: node.prepare.uses.input.parse(node.prepare.bind(scope)), commit: node.commit.uses.input.parse(node.commit.bind(scope)) });
+    const priorMappings = mappings(prior), currentMappings = mappings(current);
+    if (canonicalJsonStringify(priorMappings) !== canonicalJsonStringify(currentMappings)) throw new RerunRefusedError("invalid-value", "Completed transaction mapped input changed.");
+    const system = BrowserSystemIdSchema.parse(node.commit.uses.id.split("/")[0]);
+    const key = IdempotencyKeySchema.parse(Reflect.apply(node.commit.uses.writeSafety.idempotency.key, undefined, [currentMappings.commit]));
+    const siblings = repositories.writeIntents.listByBusinessKey(system, deriveIdempotencyKeyDigest(system, key));
+    if (committed.some(intent => intent.status === "committed" && intent.runId === reference.runId && intent.runAttempt === reference.attempt && intent.occurrence !== undefined)) {
+      throw new RerunRefusedError("invalid-state", "Predecessor repeat-occurrence transaction replay is unsupported.");
+    }
+    if (siblings.some(intent => intent.status !== "committed" && intent.status !== "observed-present")) throw new RerunRefusedError("invalid-state", "Transaction business key has unresolved writes.");
+    const durable = repositories.writeIntents.findByPermanentKey(system, key);
+    const proof = durable?.status === "committed" ? durable.completionProof : durable?.status === "observed-present" ? durable.observedProof : undefined;
+    if (durable?.taskId !== node.commit.uses.id || proof === undefined || canonicalJsonStringify(proof) !== canonicalJsonStringify(outcome.proof)) {
+      throw new RerunRefusedError("invalid-value", "Completed transaction lacks its exact natural-key settlement proof.");
+    }
+    completed.add(String(node.id));
+  }
+  return completed;
 }
 
 
@@ -164,13 +245,11 @@ function buildWarnings(repositories: AuthorityRepositories, descriptor: AnyWorkf
   const selected = new Set(source.selectedStepKeys);
   const protectedBindings = retainedRunProtectedBindings(run);
   const nodes = new Set(descriptor.timeline.filter((step) => selected.has(step.key)).flatMap((step) => step.nodes.map((node) => String(node.id))));
-  const continuation = captureRunContinuation(repositories, run);
+  const completedTransactions = validateCompletedTransactionContinuations(repositories, descriptor, run, entry?.input.value ?? run.input.parsed.value);
   const warnings: RepeatWarning[] = [];
   for (const node of descriptorRuntimeNodes(descriptor)) {
     if (node.kind !== "transaction" || !nodes.has(String(node.id))) continue;
-    if (continuation.checkpoints.some(row => row.nodeId === node.id)) {
-      throw new RerunRefusedError("invalid-state", "Saved transaction continuation is unavailable until strict write replay is supported.");
-    }
+    if (completedTransactions.has(String(node.id))) continue;
     const outputs: Record<string, JsonValue> = {};
     for (const dependency of node.dependsOn) {
       const checkpoint = latest.get(String(dependency));

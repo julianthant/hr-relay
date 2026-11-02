@@ -49,7 +49,7 @@ import type { BuildManifest } from "../../../models/workflow/build-manifest.js";
 import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, RunCheckpointRecordSchema, type CheckpointPatch, type ReplayedCheckpoint, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "../checkpoints/checkpoint-patch.js";
 import { deriveArtifactProjectionRows } from "../../../models/workflow/artifact-projection.js";
-import type { RuntimeFlowNode, RuntimeScope } from "../../../models/workflow/graph.js";
+import { projectTransactionOutcome, type RuntimeFlowNode, type RuntimeScope } from "../../../models/workflow/graph.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { planStepOmissions } from "../../../models/workflow/step-omission.js";
@@ -688,7 +688,11 @@ export async function executeClaimedRun(
           .filter(row => row.runId === sourceRunId).at(-1);
         const checkpoint = own ?? (source.envelope.continuation === undefined ? undefined : readRunCheckpoint(deps.authority.authority, source.envelope, String(dependency), true));
         const gate = readContinuationGate(deps.authority.authority, source.envelope, String(dependency));
-        if (checkpoint !== undefined) values[String(dependency)] = checkpoint.output.value;
+        if (checkpoint !== undefined) {
+          const dependencyNode = nodes.find(node => node.id === dependency);
+          values[String(dependency)] = dependencyNode?.kind === "transaction"
+            ? JsonValueSchema.parse(projectTransactionOutcome(dependencyNode.commit.uses, checkpoint.output.value, "Continuation source scope")) : checkpoint.output.value;
+        }
         else if (gate !== undefined) values[String(dependency)] = gate.result.value;
         else {
           const dependencyNode = nodes.find(node => node.id === dependency);
@@ -1780,6 +1784,17 @@ export async function executeClaimedRun(
             ));
           }
           const transactionScope = scopeFor(node.dependsOn);
+          if (!envelope.dryRun && envelope.continuation !== undefined) {
+            const checkpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id), true);
+            if (checkpoint !== undefined && checkpoint.runId !== envelope.runId) {
+              const originalScope = sourceScopeFor(checkpoint.runId, node.dependsOn);
+              const mappings = (scope: RuntimeScope) => ({ prepare: node.prepare.uses.input.parse(node.prepare.bind(scope)),
+                commit: node.commit.uses.input.parse(node.commit.bind(scope)) });
+              if (canonicalJsonStringify(mappings(originalScope)) !== canonicalJsonStringify(mappings(transactionScope))) {
+                throw new RunContinuationRefusedError("run-continuation-transaction-input-mismatch");
+              }
+            }
+          }
           let previewBinding: DryRunBinding | undefined;
           if (envelope.dryRun) {
             try {

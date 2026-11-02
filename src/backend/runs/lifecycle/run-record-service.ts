@@ -1,4 +1,5 @@
 import { protectedSubjectDisplay } from "../start/protected-input.js";
+import { RerunRefusedError, validateCompletedTransactionContinuations } from "../start/rerun.js";
 import { continuationDelegationGroups } from "../../runtime/checkpoints/run-continuation-delegation.js";
 import { captureRunContinuation } from "../../runtime/checkpoints/run-continuation.js";
 import { CanonicalCrashRecoveryRequestSchema } from "../../../models/run/worker.js";
@@ -1047,8 +1048,8 @@ export class RunRecordService {
       if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
       if (request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint) return refused({ reason: "runtime-stale" });
       const continuation = captureRunContinuation(repositories, run);
-      if (descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction"
-        && continuation.checkpoints.some(row => row.nodeId === node.id))) return refused({ reason: "policy-refused" });
+      try { validateCompletedTransactionContinuations(repositories, descriptor, run); }
+      catch (error) { if (error instanceof RerunRefusedError) return refused({ reason: "policy-refused" }); throw error; }
       if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,
       }).some((entry) => entry.lifecycle.state !== "terminal")) return refused({ reason: "policy-refused" });

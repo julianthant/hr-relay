@@ -436,10 +436,16 @@ the existing preselection based on source outcome and step completion, then appl
 rules. Incompatible retained transaction-warning evidence still refuses Rerun.
 
 Rerun reads source checkpoints and gate results to build value offers and validate copied coordinates.
-Accepted continuation retains exact completed task, gate and child-result evidence. A correction that
-changes a completed task's mapped input refuses reuse. Current planning and Retry refuse retained
-transaction checkpoints: cross-run transaction replay has no admitted write-sequencer implementation.
-UNKNOWN, attempting and parked writes refuse Rerun; saved results never authorize another submit.
+Accepted continuation retains exact completed task, gate, transaction and child-result evidence.
+Planning and Retry authenticate captured transaction coordinates and require the exact settled
+natural-key intent and proof. Predecessor repeat-occurrence checkpoints are refused before admission;
+ordinary acknowledged repeats retain their distinct keys and own-run Resume remains supported.
+The executor compares original and current prepare and commit mappings before passing its unchanged
+native run and restored scope to the write sequencer. The sequencer retains all schema, implementation,
+proof, key and unresolved-sibling checks and reuses an eligible completion with no new probe, prepare,
+submit, intent, transaction checkpoint or confirmation publication. A correction that changes a
+completed task or transaction's mapped input refuses reuse. UNKNOWN, attempting and parked writes
+refuse Rerun; saved results never authorize another submit.
 
 Dashboard Rerun consumes its canonical source-bound plan; Retry uses the lifecycle service. Both
 doors enforce failed-only sources and retain exact continuation lineage.
