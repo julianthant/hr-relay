@@ -33,10 +33,22 @@ it("retains an explicitly paused previous-day queue through startup", async () =
   const run = world.created(f.service, f.request);
   const paused = f.service.pause({ commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: run.version });
   assert.ok(paused.state === "applied");
+  const leases = f.database.authority.workerLeases.listLive();
+  assert.equal(leases.length, 1);
+  const lease = leases[0]; assert.ok(lease);
+  assert.notEqual(lease.lifecycle.state, "stopped");
   f.clock.advanceWall(24 * 60 * 60 * 1000);
-  reconcileStartupCrash({ ...f, lifecycle: f.service, lock: f.lifetime });
+  const reconcile = () => reconcileStartupCrash({ ...f, lifecycle: f.service, lock: f.lifetime });
+  reconcile();
   assert.deepEqual(f.database.authority.runs.get(run.envelope.runId), paused.run);
-  assert.equal(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID).length, 0);
+  const stopped = f.database.authority.workerLeases.get(lease.workerId);
+  assert.equal(stopped?.lifecycle.state, "stopped");
+  const notifications = f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID);
+  assert.deepEqual(notifications.map(note => note.title), ["RUN_CRASH_RESOURCES_RELEASED"]);
+  reconcile();
+  assert.deepEqual(f.database.authority.runs.get(run.envelope.runId), paused.run);
+  assert.deepEqual(f.database.authority.workerLeases.get(lease.workerId), stopped);
+  assert.deepEqual(f.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID), notifications);
 });
 
 for (const mode of ["none", "attempting", "parked"] as const) it(`recovers an interrupted run with ${mode} write state and releases its resources once`, async () => {
