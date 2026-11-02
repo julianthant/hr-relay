@@ -1,15 +1,16 @@
-import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
+import { OnboardingInput, type OnboardingInputValue } from "../../../../models/workflows/onboarding/input.js";
+import { CrmReadHireData } from "../../../../models/systems/crm/read-hire-data.js";
 import { OnboardingReadHirePlan } from "../../../../models/workflows/onboarding/read-hire-plan.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
-import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
+import { defineStep, defineStepEntries, inheritStepProof, reuseTask } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-import { readCrmDataTask } from "../../tasks/read-crm-data.js";
 
 const group = defineWorkflowStep({ key: "crm-data", label: "Read and validate hire data" });
 const entries = defineStepEntries(group);
 
 export function buildCrmData(author: WorkflowAuthor<typeof OnboardingInput>) {
-  const call = readCrmDataTask(group);
+  const call = reuseTask(group, { id: "crm-source", contract: CrmReadHireData, replay: "always-rerun" },
+    (input: OnboardingInputValue) => ({ email: input.email }));
   const source = author.task(call.identity, [], call.bind);
   const plan = author.task(entries.task("hire-plan", OnboardingReadHirePlan, { replay: "checkpoint" }), [source], ({ input, outputs }) => ({
     crm: outputs["crm-source"], roster: input.roster,

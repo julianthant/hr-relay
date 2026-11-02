@@ -1,16 +1,20 @@
 import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
 import { OnboardingMatchHireSubject } from "../../../../models/workflows/onboarding/match-hire-subject.js";
+import { SearchPersonMatch } from "../../../../models/systems/ucpath/search-person-match.js";
+import type { HireEmployee } from "../../../../models/workflows/onboarding/read-hire-plan.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
-import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";
+import { defineStep, defineStepEntries, inheritStepProof, reuseTask } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-import { searchPersonMatchTask } from "../../tasks/search-person-match.js";
 import { buildCrmData } from "../crm-data/step.js";
 
 const group = defineWorkflowStep({ key: "ucpath-search", label: "Check UCPath duplicates" });
 const entries = defineStepEntries(group);
 
 export function buildUcpathSearch(author: WorkflowAuthor<typeof OnboardingInput>, crm: ReturnType<typeof buildCrmData>) {
-  const call = searchPersonMatchTask(group);
+  const call = reuseTask(group, { id: "ucpath-source", contract: SearchPersonMatch, replay: "always-rerun" },
+    (employee: HireEmployee) => ({ firstName: employee.firstName, lastName: employee.lastName,
+      dob: `${employee.dob.slice(5, 7)}/${employee.dob.slice(8, 10)}/${employee.dob.slice(0, 4)}`,
+      ...(employee.ssn === null ? {} : { ssn: employee.ssn }) }));
   const matches = author.task(call.identity, [crm.plan], ({ outputs }) => call.bind({ input: outputs["hire-plan"].employee }));
   const subject = author.task(entries.task("hire-subject", OnboardingMatchHireSubject, { replay: "always-rerun" }), [crm.plan, matches], ({ input, outputs }) => ({
     mode: input.mode, firstName: outputs["hire-plan"].employee.firstName, lastName: outputs["hire-plan"].employee.lastName,

@@ -142,8 +142,7 @@ at `ocr/steps/source-pages/step.ts` and `ocr-page/steps/read-page/step.ts` in th
 `src/workflows/onboarding/` registers the read-only hire review; hire submission and I-9 profile creation remain unavailable.
 Its `index.ts` derives four retained proofs from step definitions: CRM data, UCPath duplicate search,
 delegated I-9 search, and the I-9 profile-creation plan. Each step owns its group, typed wiring,
-result and proof recipe; `workflow.ts` composes their build results. Thin system calls use `reuseTask`
-under `tasks/`, alongside one implementation per pure task ID. The I-9 search step owns child input and item-ID bindings;
+result and proof recipe; `workflow.ts` composes their build results. Thin system calls use `reuseTask` in the step modules; `tasks/` holds one implementation per pure task ID. The I-9 search step owns child input and item-ID bindings;
 pure validation and profile decisions live in `src/rules/onboarding/`. Tests compose the definition
 and proofs through the production registries. Legal/lived names
 arrive through the declared run-start roster snapshot input. I-9 profile creation and UCPath hire
