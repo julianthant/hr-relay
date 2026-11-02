@@ -13,6 +13,7 @@ Relay refuses uncertain writes and reports completion only from validated extern
 | Permanent keys, intent generations, atomic settlement, and authenticated resolution | `src/backend/storage/sqlite/authority-database.ts`, `migrations.ts`, and `write-commit-contracts.ts` in that folder |
 | Negative recovery evidence | `src/rules/write-safety/write-safety.ts` |
 | Crash recovery and typed operator resolution | `src/backend/runtime/writes/write-recovery.ts` |
+| Durable recovery activity, action notes and required read captures | `src/backend/runtime/writes/recovery-activity.ts`, `src/models/run/recovery-activity.ts` |
 | Resolution target identity | `src/backend/runtime/writes/write-resolution-binding.ts` |
 | No generic retry or cancellation over an unresolved write | `src/backend/runs/commands/command-kernel.ts` |
 | Immutable terminal evidence receipt | `src/backend/runs/provenance/evidence-receipt.ts`, `src/backend/runs/trust/receipt-service.ts` |
@@ -145,9 +146,24 @@ Commit `recordData` batches are validated and timestamped at the call but delive
 Required captures follow the owned-run probe and prepare and surround submit. A failed post-submit capture
 still reaches saved-effect verification, then refuses settlement and parks the original held attempt
 even when proof is valid. Missing required capture cannot create a transaction checkpoint or
-confirmed-operation history; resolution stays on the typed parked-write path. Standalone recovery
-and held-only diagnostic checks do not yet have required probe capture: their action-note scope
-and retained-run activity authority remain prerequisites.
+confirmed-operation history; resolution stays on the typed parked-write path.
+
+Standalone recovery and held-only diagnostic checks open a durable recovery activity before their
+read probe. It binds the exact run, attempt, trace, node, intent generation and original write attempt,
+with actual start and end instants. Only that operation's live scope admits its action notes outside
+the ordinary run window. Required probe captures bind the retained run and descriptor fingerprint.
+The scope remains open until the actual callback settles, sessions close and the canonical action
+notes drain in occurrence order. Notes retain their action timestamps; they do not rewrite run times
+or grant submission, settlement or retry authority. Declared action binding requires the retained
+display snapshot; runs without one record ordinary actions and captures without invented attribution.
+Cancellation and deadlines stop new action notes
+while cleanup waits for the callback. The scope seals before its durable end append; a crash-open
+record cannot reopen it. Start/end evidence is protected from ordinary timeline expiry. Failed open
+records no recovery notes or captures, and activity, note or capture persistence failure refuses the
+check or recovery rather than becoming an ordinary unknown probe result. This path persists directly
+through native authority; ordinary worker logging retains its existing emergency fault spool.
+Unproved browser or retained-configuration cleanup remains fatal to the worker control, including
+when probe, note drain or activity-end persistence also fails. It cannot become a swallowed refusal.
 
 `captureProof` wraps verifier task lookup, input binding, span setup, execution, required step capture, verdict parsing, and proof parsing within `PostFenceWriteFailure`. `parkAfterFence` persists intent uncertainty before the executor returns `parked-write`. Its closed codes are `unknown`, `ambiguous`, `present-proof-invalid`, `binding-invalid`, and `operator-required`.
 
