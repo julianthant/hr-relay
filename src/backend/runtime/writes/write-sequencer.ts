@@ -1339,6 +1339,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         `transaction node "${context.node.id}" stored proof is bound to a different proof schema; refusing to replay`,
       );
     }
+    if (outcome.output.schemaHash !== deriveSchemaHash(commitContract.output, "output")) {
+      throw new Error(`transaction node "${context.node.id}" stored output is bound to a different output schema; refusing to replay`);
+    }
     const proof = completion.proofSchema.parse(outcome.proof.value);
     const output = commitContract.output.parse(outcome.output.value);
     return {
@@ -1770,7 +1773,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
     const naturalKey = IdempotencyKeySchema.parse(keyRaw);
     const businessKeyDigest = deriveIdempotencyKeyDigest(system, naturalKey);
-    const sourceBound = envelope.sourceBound;
+    const storedCheckpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id));
+    const sourceBound = envelope.continuation !== undefined && storedCheckpoint !== undefined && storedCheckpoint.runId !== envelope.runId
+      ? undefined : envelope.sourceBound;
     const repeatBindings = sourceBound?.protectedBindings ?? retainedRunProtectedBindings(run);
     const consent = sourceBound?.warnings.filter((warning) => warning.nodeId === node.id
       && warning.taskId === commitContract.id && warning.system === system && warning.businessKeyDigest === businessKeyDigest);
@@ -1802,7 +1807,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
 
 
-    const storedCheckpoint = readRunCheckpoint(deps.authority.authority, envelope, String(node.id));
     if (storedCheckpoint !== undefined && (sourceBound === undefined || storedCheckpoint.runId === envelope.runId)) {
 
       assertReplayMatchesFreshFacts(context, commitContract, storedCheckpoint, system, key, keyDigest);
