@@ -30,6 +30,13 @@ export class RecoveryActivityError extends WorkerControlRefusal {
   }
 }
 
+function hasUnprovedClosure(error: unknown): boolean {
+  if (error instanceof WorkerSessionClosureUnprovedError || error instanceof BrowserSessionClosureUnprovedError
+    || error instanceof DuoCeremonyReleaseFailedError) return true;
+  if (error instanceof AggregateError && error.errors.some(hasUnprovedClosure)) return true;
+  return error instanceof Error && error.cause !== undefined && hasUnprovedClosure(error.cause);
+}
+
 export async function executeRecoveryProbe(input: Readonly<{
   operation: "diagnostic-recovery" | "parked-write-check";
   repositories: AuthorityRepositories;
@@ -86,13 +93,13 @@ export async function executeRecoveryProbe(input: Readonly<{
   };
   let outcome: Awaited<ReturnType<typeof executeIdempotencyProbe>> | undefined;
   let failure: unknown;
+  let closureFailure: unknown;
   try {
     outcome = await withBrowserActionNotes(probe.clock, async () => {
       try { await sessions.closeAll("parked"); }
       catch (error) {
-        if (error instanceof WorkerSessionClosureUnprovedError || error instanceof BrowserSessionClosureUnprovedError
-          || error instanceof DuoCeremonyReleaseFailedError) throw error;
-        throw new RecoveryActivityError(error);
+        closureFailure = error;
+        throw error;
       }
       let resources: Readonly<{ taskDeadlineMs: number }> | undefined;
       try {
@@ -139,9 +146,9 @@ export async function executeRecoveryProbe(input: Readonly<{
         });
       } catch (error) { acceptingActions = false; probeFailure = error; }
       const cleanup: unknown[] = [];
-      try { await sessions.closeAll("parked"); } catch (error) { cleanup.push(error); }
+      try { await sessions.closeAll("parked"); } catch (error) { closureFailure = error; cleanup.push(error); }
       try { await callbackSettlement; } catch (error) { cleanup.push(error); }
-      try { sessions.releaseRunConfigFingerprint(); } catch (error) { cleanup.push(error); }
+      try { sessions.releaseRunConfigFingerprint(); } catch (error) { closureFailure ??= error; cleanup.push(error); }
       const custodyFailure = cleanup.find(error => error instanceof WorkerSessionClosureUnprovedError
         || error instanceof BrowserSessionClosureUnprovedError || error instanceof DuoCeremonyReleaseFailedError);
       if (custodyFailure !== undefined && cleanup.length === 1 && probeFailure === undefined) throw custodyFailure;
@@ -156,13 +163,22 @@ export async function executeRecoveryProbe(input: Readonly<{
     });
   } catch (error) { failure = error; }
   active = false;
+  let endFailure: unknown;
   try {
     const endedAt = probe.clock.now().toISOString();
     repositories.timelineEvents.append({ ...started, eventId: endId, occurredAt: endedAt, recordedAt: endedAt,
       retentionDate: localDatePart(new Date(endedAt)), payload: { kind: "recovery-activity-ended", ...activity, endedAt } });
   } catch (error) {
-    throw new RecoveryActivityError(failure === undefined ? error : new AggregateError([failure, error], "Recovery activity close failed"));
+    endFailure = error;
   }
+  const failures = [failure, noteFailure, endFailure].filter(error => error !== undefined);
+  if (closureFailure !== undefined || failures.some(hasUnprovedClosure)) {
+    if (failures.length === 1 && failure === closureFailure
+      && (failure instanceof WorkerSessionClosureUnprovedError || failure instanceof BrowserSessionClosureUnprovedError
+        || failure instanceof DuoCeremonyReleaseFailedError)) throw failure;
+    throw new BrowserSessionClosureUnprovedError(failures, "Recovery probe resource closure is unproved");
+  }
+  if (endFailure !== undefined) throw new RecoveryActivityError(new AggregateError(failures, "Recovery activity close failed"));
   if (noteFailure !== undefined) throw noteFailure;
   if (failure instanceof TaskError && failure.code === "BROWSER_SCREENSHOT_CAPTURE_FAILED") throw new RecoveryActivityError(failure);
   if (failure !== undefined) throw failure;

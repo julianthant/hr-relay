@@ -6,6 +6,8 @@ import { createTimelineRepository } from "../../../../src/backend/storage/sqlite
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { recordBrowserAction, withBrowserActionSession } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { RecoveryActivityError } from "../../../../src/backend/runtime/writes/recovery-activity.js";
+import { BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
+import { WorkerControlRefusal } from "../../../../src/models/run/worker-control.js";
 import { checkParkedWrite } from "../../../../src/backend/runtime/writes/write-recovery.js";
 import { WorkerSessionClosureUnprovedError, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { createWorkerBrowserControl } from "../../../../src/backend/runtime/workers/worker-browser-control.js";
@@ -406,5 +408,30 @@ describe("held-only parked write checks", () => {
     await assert.rejects(checkParkedWrite(h.input), WorkerSessionClosureUnprovedError);
     assert.deepEqual(h.events, ["close", "bind", "read", "close", "release"]);
     assert.equal(h.run.lifecycle.state, "parked-write"); assert.equal(h.intent.status, "parked");
+  });
+
+  for (const companion of ["read", "note", "release", "end", "all"] as const) it(`keeps closure uncertainty fatal alongside ${companion} failure`, async () => {
+    const h = await fixture(1); h.failClosure();
+    if (companion === "read" || companion === "all") h.failRead();
+    const timeline = h.input.repositories.timelineEvents;
+    const repositories = { ...h.input.repositories, timelineEvents: { ...timeline, append: (input: unknown) => {
+      const kind = (input as { payload: { kind: string } }).payload.kind;
+      if ((companion === "note" || companion === "all") && kind === "note") throw new Error("synthetic-note-failure");
+      if ((companion === "end" || companion === "all") && kind === "recovery-activity-ended") throw new Error("synthetic-end-failure");
+      return timeline.append(input);
+    } } };
+    const sessions = { ...h.input.sessions, releaseRunConfigFingerprint: () => {
+      h.input.sessions.releaseRunConfigFingerprint();
+      if (companion === "release" || companion === "all") throw new Error("synthetic-release-failure");
+    } };
+    await assert.rejects(checkParkedWrite({ ...h.input, repositories, sessions }), error => {
+      assert.ok(error instanceof BrowserSessionClosureUnprovedError || error instanceof WorkerSessionClosureUnprovedError);
+      assert.equal(error instanceof WorkerControlRefusal, false);
+      return true;
+    });
+    assert.deepEqual(h.events, ["close", "bind", "read", "close", "release"]);
+    assert.equal(h.run.lifecycle.state, "parked-write"); assert.equal(h.intent.status, "parked");
+    assert.equal(h.attempt.outcome.state, "parked");
+    assert.equal(h.input.repositories.runCheckpoints.latest(h.run.envelope.workflow, h.run.envelope.itemId, "submit-write"), undefined);
   });
 });

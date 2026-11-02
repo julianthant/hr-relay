@@ -14,6 +14,7 @@ import { WorkflowOperationDisplaySnapshotSchema } from "../../../../src/models/w
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
+import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { localDatePart } from "../../../../src/rules/time/clock.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
@@ -125,7 +126,7 @@ describe("durable recovery activity authority", () => {
     const address = { runId: activity.runId, attempt: activity.attempt, traceId: activity.traceId, spanPath: recoveryActivitySpanPath(activity) };
     const note = { ...address, workflow: activity.workflow, at: f.h.clock.now() };
     assertNoteWithinRunScope(f.input.run, note, activity);
-    assert.throws(() => assertNoteWithinRunScope(f.input.run, note, { ...activity, runId: UUID_6 }), /scope-mismatch/);
+    assert.throws(() => assertNoteWithinRunScope(f.input.run, note, { ...activity, runId: RunIdSchema.parse(UUID_6) }), /scope-mismatch/);
     const ordinary = createNoteTimelineWriter({ repository, clock: f.h.clock });
     assert.throws(() => ordinary.emitRunAction({ workflow: activity.workflow, address,
       action: { kind: "opened", targetId: "ucpath.recovery", at: activity.openedAt } }, f.input.run), /outside the run/);

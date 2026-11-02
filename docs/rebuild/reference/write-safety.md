@@ -160,6 +160,8 @@ record cannot reopen it. Start/end evidence is protected from ordinary timeline 
 records no recovery notes or captures, and activity, note or capture persistence failure refuses the
 check or recovery rather than becoming an ordinary unknown probe result. This path persists directly
 through native authority; ordinary worker logging retains its existing emergency fault spool.
+Unproved browser or retained-configuration cleanup remains fatal to the worker control, including
+when probe, note drain or activity-end persistence also fails. It cannot become a swallowed refusal.
 
 `captureProof` wraps verifier task lookup, input binding, span setup, execution, required step capture, verdict parsing, and proof parsing within `PostFenceWriteFailure`. `parkAfterFence` persists intent uncertainty before the executor returns `parked-write`. Its closed codes are `unknown`, `ambiguous`, `present-proof-invalid`, `binding-invalid`, and `operator-required`.
 
