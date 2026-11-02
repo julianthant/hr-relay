@@ -41,6 +41,21 @@ const enrollment = (attachment = 'cross-platform') => ({ type: 'DUO_AUTOPILOT_EN
   pubKeyCredParams: [{ type: 'public-key', alg: -7 }], authenticatorAttachment: attachment, residentKey: false,
 } });
 
+test('Chromium requires successful trusted-context protection and never falls back', async () => {
+  for (const protect of [undefined, async () => { throw new Error('protection refused'); }]) {
+    const w = world();
+    w.api.storage.session.setAccessLevel = protect;
+    await assert.rejects(w.worker.install({ method: 'key', nowMs: 1000 }), /ONBOARDING_DUO_SESSION_UNAVAILABLE|protection refused/);
+    assert.deepEqual(w.state(), {});
+    assert.equal(w.localReads(), 0);
+  }
+  const w = world();
+  await w.worker.install({ method: 'key', nowMs: 1000 });
+  assert.equal(w.state().autopilotV1.version, 1);
+  assert.equal(w.localReads(), 0);
+  await w.worker.stop();
+});
+
 test('browser UI broker accepts the exact native extension tab and refuses content, foreign and stale documents', async t => {
   const w = world();
   let receive;
@@ -63,6 +78,7 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
     { ...sender, id: 'another-extension' }, { ...sender, frameId: 1 },
     { ...sender, url: ORIGIN + '/setup', origin: ORIGIN },
     { ...sender, url: root + 'src/options.html?extra' },
+    { ...sender, url: root + 'src/popup.html' },
     { ...sender, origin: 'null' }, { ...sender, documentLifecycle: 'cached' },
     { ...sender, documentId: 'forged' }, { ...sender, tab: { ...sender.tab, url: ORIGIN } },
   ]) assert.equal((await send({ type: 'STATE' }, source)).success, false);
@@ -252,7 +268,7 @@ test('Relay manifest import closure cannot load standalone bootstrap or persiste
   const { readFile } = await import('node:fs/promises');
   const manifest = JSON.parse(await readFile(new URL('../relay-manifest.json', import.meta.url), 'utf8'));
   const allowed = new Set(['src/relay-background.js', 'src/relay-content.js', 'src/relay-inpage.js',
-    'src/relay-native.js', 'src/service.js', 'src/crypto.js', 'src/accounts.js', 'src/duo-origin.js', 'src/sign-count.js', 'src/username.js']);
+    'src/relay-native.js', 'src/service.js', 'src/crypto.js', 'src/accounts.js', 'src/duo-origin.js', 'src/username.js']);
   const discovered = new Set([manifest.background.service_worker, ...manifest.content_scripts.flatMap(script => script.js)]);
   for (const file of discovered) {
     assert.ok(allowed.has(file), `unexpected entrypoint ${file}`);

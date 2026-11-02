@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { it } from "vitest";
-import { z } from "zod";
 import { collectSourceClosure,fingerprintSourceSet } from "../../../../../scripts/build/workflow-build-manifest.js";
 import { parseBuildManifest } from "../../../../../src/models/workflow/build-manifest.js";
 import { BUILD_MANIFEST } from "../../../../../src/workflow-kit/validation/build-manifest.js";
@@ -20,17 +19,12 @@ import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/aut
 import { ArtifactOutboxStorageRecordSchema } from "../../../../../src/models/artifacts/generated-artifact.js";
 import { executeClaimedRun } from "../../../../../src/backend/runtime/execution/run-executor.js";
 import { createContentAddressedArtifactWriter } from "../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { ArtifactRefSchema, NamedArtifactOutputSchema } from "../../../../../src/models/artifacts/artifacts.js";
-import { defineTaskContract } from "../../../../../src/models/task/task-contract.js";
 import { deriveSchemaHash } from "../../../../../src/models/validation/schema-bound-value.js";
-import { defineCanonicalInput } from "../../../../../src/models/workflow/canonical-input.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../../../../src/models/workflow/presentation.js";
-import { ScenarioIdSchema, taskId, TraceIdSchema } from "../../../../../src/rules/identity/ids.js";
+import { TraceIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { namedArtifactOutput } from "../../../../../src/workflow-kit/artifacts.js";
-import { flow } from "../../../../../src/workflow-kit/flow.js";
 import { defineTaskStoreRegistry, defineWorkflowStore } from "../../../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../../../src/workflow-kit/task.js";
-import { defineWorkflowDescriptor } from "../../../../../src/workflow-kit/workflow.js";
+import { namedFileOutputContract as contract,namedFileOutputDescriptor as descriptor,namedFileOutputScenario as scenario } from "../../../../support/fixtures/named-file-output-workflow.js";
 import { testRunLifecycle, testWorkerPorts } from "../../../../support/fixtures/run-lifecycle-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../../../../support/fixtures/phase1f-run-fixtures.js";
 import { foundationFixture } from "../../../../support/helpers/database-foundation/fixtures.js";
@@ -39,26 +33,14 @@ import { happySessionHarness, ManualScheduler, recordingEmitter, recordingLogger
 
 it("publishes a task's one batch zip through the real checkpoint, outbox, worker sink and retained documents path", async () => {
   const f = await foundationFixture(), fileName = `Onboarding Docs ${randomUUID()}.zip`;
-  const scenario = ScenarioIdSchema.parse("wiring-projection/archive"), input = z.strictObject({ name: z.string() });
-  const canonicalInput = defineCanonicalInput(input, input, [{ name: "Synthetic batch" }]);
   const zip = new JSZip(); zip.file("Worksheet A/Synthetic One/document.pdf", "synthetic one"); zip.file("Worksheet B/Synthetic Two/document.pdf", "synthetic two");
   const bytes = await zip.generateAsync({ type: "nodebuffer" });
-  const contract = defineTaskContract({ id: taskId("workflow:wiring-projection/read-archive"), title: "Publish archive", effect: "read", input,
-    output: z.strictObject({ archive: NamedArtifactOutputSchema }), errorCodes: ["archive-unavailable"] as const, artifacts: "content-addressed",
-    subject: { kind: "none", reason: "synthetic batch archive" }, scenarios: [scenario], freshness: { defaultMaxAgeMs: Number.POSITIVE_INFINITY, defaultOverride: "forbidden" },
-    provenance: { default: "live" }, example: { archive: { fileName, artifact: ArtifactRefSchema.parse({ id: randomUUID(), sha256: "a".repeat(64), bytes: 1, mediaType: "application/zip" }) } } });
   const task = defineTask(contract, { sessions: [], async run({ ctx }) {
     const archive = namedArtifactOutput(await ctx.artifacts.put(bytes, { mediaType: "application/zip" }), fileName);
     for (const [field, value] of Object.entries(archive.artifact)) ctx.recordData({ direction: "read", field: `archive.artifact.${field}`, value });
     ctx.recordData({ direction: "read", field: "archive.fileName", value: archive.fileName });
     return { archive };
   } });
-  const definition = flow(input).step("archive", contract, { dependsOn: [], replay: "checkpoint", bind: ({ input: value }) => ({ name: value.name }) })
-    .build({ schema: z.strictObject({ done: z.boolean() }), dependsOn: ["archive"], derive: () => ({ done: true }) });
-  const descriptor = defineWorkflowDescriptor({ id: "wiring-projection", version: 1, contractFingerprint: "a".repeat(64), code: "wj", label: "Named output fixture", icon: "Search", category: "operations",
-    canonicalInput, inputSubject: "name", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [],
-    identity: { matchKey: (value: z.output<typeof input>) => value.name }, presentation: { title: (value: z.output<typeof input>) => value.name }, scenarios: [String(scenario)],
-    artifactProjections: [{ id: "batch-archive", source: { nodeId: "archive", fieldPath: "archive" }, keyFields: ["archive.fileName"], sink: "documents-file", blocking: true }], flow: definition });
   const sources = collectSourceClosure(process.cwd(), fileURLToPath(import.meta.url));
   const entry = (id: string) => ({ id, sources, fingerprint: fingerprintSourceSet(BUILD_MANIFEST.toolchain, id, sources) });
   const buildManifest = parseBuildManifest({ ...BUILD_MANIFEST, workflows: [...BUILD_MANIFEST.workflows, entry(descriptor.id)],
@@ -71,7 +53,7 @@ it("publishes a task's one batch zip through the real checkpoint, outbox, worker
     const runId = randomUUID();
     f.db.authority.runs.enqueue({ ...QUEUED_RUN, envelope: { ...QUEUED_RUN.envelope, runId, itemId: runId, workflow: descriptor.id, contractFingerprint: descriptor.contractFingerprint,
       traceId: TraceIdSchema.parse("wj-170000-2222"), configSnapshotId: f.snapshot.configSnapshotId, configFingerprint: f.snapshot.fingerprint, resolvedInstance: {} },
-      input: { raw: { name: "Synthetic batch" }, parsed: { schemaHash: deriveSchemaHash(canonicalInput, "output"), value: { name: "Synthetic batch" }, protectedBindings: [] }, ingressSchemaHash: "a".repeat(64) } });
+      input: { raw: { name: "Synthetic batch" }, parsed: { schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value: { name: "Synthetic batch" }, protectedBindings: [] }, ingressSchemaHash: "a".repeat(64) } });
     const claimed = ports.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: slot.workerId }); assert.equal(claimed.state, "applied");
     if (claimed.state !== "applied") throw new Error("synthetic output run was not claimed");
     const sessions = await sessionManagerFor(happySessionHarness(), f.clock);

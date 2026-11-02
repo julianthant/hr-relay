@@ -399,7 +399,7 @@ export class RuntimeAdmission {
     if (this.#scope !== "stopped-control-inventory" || this.#stoppedControlInventory === undefined) return false;
     const source = requireStoppedControlProfileInventory(this.#stoppedControlInventory.claim), directory = source.backupDirectory;
     return isAbsolute(path) && resolve(path) === path && (path === directory || dirname(path) === directory
-      && /^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite(?:\.manifest\.json)?)$/u.test(basename(path)));
+      && /^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite(?:\.manifest\.json)?)$/u.test(basename(path)));
   }
   assertAuthorityBackupWrite(path: string): void {
     if (this.#scope === "stopped-control-inventory") {
@@ -411,7 +411,7 @@ export class RuntimeAdmission {
       this.assertLive();
       const directory = join(this.#stateRoot, "backups", "authority");
       if (!isAbsolute(path) || resolve(path) !== path || path !== directory && (dirname(path) !== directory
-        || !/^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite(?:\.manifest\.json)?)$/u.test(path.slice(directory.length + 1)))) throw new Error("profile-maintenance-backup-path-refused");
+        || !/^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite(?:\.manifest\.json)?)$/u.test(path.slice(directory.length + 1)))) throw new Error("profile-maintenance-backup-path-refused");
       this.assertStateRoot(path);
       return;
     }
@@ -422,7 +422,7 @@ export class RuntimeAdmission {
       const directory = join(this.#stateRoot, "backups", "authority");
       if (backup.copyPath !== undefined || backup.qualification.current.kind !== "qualified"
         || !isAbsolute(path) || resolve(path) !== path || path !== directory && (dirname(path) !== directory
-          || !/^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite(?:\.manifest\.json)?)$/u.test(path.slice(directory.length + 1)))) throw new Error("profile-stopped-upgrade-backup-refused");
+          || !/^(?:\.authority-[0-9a-f-]{36}\.(?:sqlite|manifest\.json)\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite(?:\.manifest\.json)?)$/u.test(path.slice(directory.length + 1)))) throw new Error("profile-stopped-upgrade-backup-refused");
       this.assertStateRoot(path);
       return;
     }
@@ -1047,7 +1047,7 @@ export class RuntimeAdmission {
       if (path === ":memory:" || backup.copyPath !== undefined && path !== backup.copyPath) throw new Error("profile-stopped-upgrade-path-refused");
       if (backup.copyPath === undefined && path !== backup.sourcePath
         && (dirname(path) !== join(this.#stateRoot, "backups", "authority")
-          || !/^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite)$/u.test(path.slice(dirname(path).length + 1)))) throw new Error("profile-stopped-upgrade-path-refused");
+          || !/^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite)$/u.test(path.slice(dirname(path).length + 1)))) throw new Error("profile-stopped-upgrade-path-refused");
     }
     if (this.#scope === "profile-pending-logout-inventory") {
       if (path === ":memory:" || this.#pendingLogout?.copyPath !== undefined && path !== this.#pendingLogout.copyPath) throw new Error("profile-pending-logout-path-refused");
@@ -1064,7 +1064,7 @@ export class RuntimeAdmission {
     const parent = dirname(checked);
     if (parent === join(this.#stateRoot, "backups", "suspects") && /^suspect-\d{17}-[0-9a-f-]{36}\.sqlite$/u.test(checked.slice(parent.length + 1))) return;
     if (parent === join(this.#stateRoot, "backups", "authority")
-      && /^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite)$/u.test(checked.slice(parent.length + 1))) {
+      && /^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite)$/u.test(checked.slice(parent.length + 1))) {
       this.assertStateRoot(parent);
       return;
     }
@@ -1307,7 +1307,7 @@ export class RuntimeAdmission {
     if (this.#readyUpgrade !== undefined && (this.#readyUpgrade.copyPath !== undefined
       || !isAbsolute(path) || resolve(path) !== path
       || dirname(resolve(path)) !== join(this.#stateRoot, "backups", "authority")
-      || !/^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite)$/u.test(resolve(path).slice(dirname(resolve(path)).length + 1)))) throw new Error("profile-stopped-upgrade-copy-refused");
+      || !/^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}(?:\.shutdown)?\.sqlite)$/u.test(resolve(path).slice(dirname(resolve(path)).length + 1)))) throw new Error("profile-stopped-upgrade-copy-refused");
     if (this.#pendingLogout?.copyPath !== undefined) throw new Error("profile-pending-logout-copy-delegation-refused");
     if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot delegate copy authority");
     if (!/^[0-9a-f]{64}$/u.test(expectedSha256)) throw new Error("runtime-admission: invalid copy digest");

@@ -158,7 +158,7 @@ export function createRelayWorker(api) {
         recordCeremony: (credentialId, requestId) => checked(() => call('software-created', { credentialId, requestId })),
         exactCredentialRequested: (credentialId, requestId) => checked(() => call('exact-request', { credentialId, requestId })),
       });
-      await service.initialize({});
+      await service.initialize();
     },
     assertContext: assertScope,
     next() {
@@ -196,7 +196,7 @@ if (typeof chrome !== 'undefined') {
   const requireBrowser = () => { if (!browserInstalled || browserStopped) throw new Error('ONBOARDING_DUO_REVOKED'); };
   function browserReceive(message, sender) {
     requireBrowser();
-    if (sender.id !== chrome.runtime.id || !['src/options.html', 'src/popup.html'].some(path => sender.url === chrome.runtime.getURL(path))
+    if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL('src/options.html')
       || sender.tab !== undefined && (!Number.isInteger(sender.tab.id) || sender.tab.id < 0 || sender.tab.url !== sender.url)
       || sender.frameId !== undefined && sender.frameId !== 0
       || sender.documentLifecycle !== 'active' || typeof sender.documentId !== 'string' || sender.documentId.length !== 32 || !/^[0-9a-f]{32}$/i.test(sender.documentId)
