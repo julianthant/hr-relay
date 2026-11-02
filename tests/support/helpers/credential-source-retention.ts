@@ -51,6 +51,7 @@ export async function runCredentialSourceRetentionCase(scenario: CredentialSourc
         z.strictObject({ scenario: z.literal(scenario), assertionsComplete: z.literal(false), failure: z.strictObject({
           name: z.enum(["Error", "AssertionError", "TypeError", "RangeError", "SyntaxError"]),
           locations: z.array(z.string().max(240).regex(/^(?:tests|src)\/[A-Za-z0-9_./-]+\.(?:[cm]?js|tsx?):[1-9]\d*:[1-9]\d*$/u)).max(8),
+          causes: z.array(z.string().regex(/^[A-Za-z][A-Za-z0-9-]{0,79}$/u)).max(20),
         }) })]).parse(next.value?.[0]);
       if ("ownedWorkspace" in message) {
         assert.equal(setupWorkspace, undefined);
@@ -64,7 +65,7 @@ export async function runCredentialSourceRetentionCase(scenario: CredentialSourc
         ownedSnapshots.add(message.ownedSnapshot);
       } else {
         if (!message.assertionsComplete) {
-          const error = new Error(`credential-source-retention-failed: ${scenario}; ${message.failure.name}; ${message.failure.locations.join(", ")}`);
+          const error = new Error(`credential-source-retention-failed: ${scenario}; ${message.failure.name}; ${message.failure.causes.join(", ")}; ${message.failure.locations.join(", ")}`);
           error.name = "CredentialSourceRetentionAssertionError";
           throw error;
         }

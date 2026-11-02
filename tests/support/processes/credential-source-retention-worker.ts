@@ -363,7 +363,20 @@ try {
     const match = /(?:^|\/)((?:tests|src)\/[A-Za-z0-9_./-]+\.(?:[cm]?js|tsx?):[1-9]\d*:[1-9]\d*)\)?$/u.exec(line.replaceAll("\\", "/").trim());
     return match?.[1] === undefined || match[1].length > 240 ? [] : [match[1]];
   }).slice(0, 8) : [];
-  process.send({ scenario, assertionsComplete: false, failure: { name, locations } });
+  const pending = [error], seen = new Set<unknown>(), causes = new Set<string>();
+  const names = new Set(["Error", "AssertionError", "TypeError", "RangeError", "SyntaxError", "TimeoutError", "NativeBrowserClosureUnprovedError", "BrowserLaunchUncertainError", "ProfileCustodyUnavailableError", "BrowserRootUnavailableError"]);
+  while (pending.length > 0) {
+    const failure = pending.pop(); if (seen.has(failure)) continue; seen.add(failure);
+    if (failure instanceof Error) {
+      if (names.has(failure.name)) causes.add(failure.name);
+      if (failure.message === "runtime-control: profile-registry-observation-changed") causes.add("profile-registry-observation-changed");
+      if (/^Timeout [0-9]+ms exceeded/u.test(failure.message)) causes.add("native-launch-timeout");
+      if ("code" in failure && ["EACCES", "EPERM", "ENOENT", "ETIMEDOUT", "EBUSY"].includes(String(failure.code))) causes.add(String(failure.code));
+      pending.push(failure.cause);
+    }
+    if (failure instanceof AggregateError) { const nested: readonly unknown[] = failure.errors; pending.push(...nested); }
+  }
+  process.send({ scenario, assertionsComplete: false, failure: { name, locations, causes: [...causes] } });
 }
 
 
