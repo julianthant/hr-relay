@@ -15,8 +15,7 @@ import { declaredWorkflowId } from "../../../scripts/build/workflow-build-manife
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 
 const WORKFLOWS_ROOT = "src/workflows";
-/** The one file §1.2.2 rule 1 allows to sit beside the workflow folders. */
-const TOP_LEVEL_FILES = new Set(["descriptor-registry.ts"]);
+const TOP_LEVEL_FILES = new Set(["descriptor-registry.ts", "generated-descriptors.ts"]);
 
 
 export interface WorkflowLayoutModule {
@@ -106,6 +105,7 @@ export function auditWorkflowLayout(
     for (const name of childrenOf(tree.files, folder)) {
       if (name === (module.role.kind === "chunk-harness" ? "step.ts" : "workflow.ts")) continue;
       if (module.role.kind !== "chunk-harness" && name === "task-registry.ts") continue;
+      if (module.role.kind !== "chunk-harness" && name === "index.ts") continue;
       violations.push(
         `workflow ${module.id} authors ${folder}/${name} beside ${entryPath}; a workflow folder holds exactly its `
         + `one ${module.role.kind === "chunk-harness" ? "step.ts" : "workflow.ts"}`,
@@ -224,8 +224,11 @@ const FIXTURE_MODULE = "export const module = { role: \"fixture\" };\n";
 function cleanFixtureFiles(): Record<string, string> {
   return {
     "src/workflows/descriptor-registry.ts": "export const REGISTRY = [];\n",
+    "src/workflows/generated-descriptors.ts": "export const WORKFLOW_DESCRIPTORS = [];\n",
     "src/workflows/solo/workflow.ts": fixtureWorkflow("solo"),
+    "src/workflows/solo/index.ts": "export const registration = {};\n",
     "src/workflows/combo/workflow.ts": fixtureWorkflow("combo"),
+    "src/workflows/combo/index.ts": "export const registration = {};\n",
     "src/workflows/combo/steps/step-one/step.ts": fixtureWorkflow("combo-harness"),
   };
 }
