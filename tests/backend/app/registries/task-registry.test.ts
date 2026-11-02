@@ -17,6 +17,7 @@ describe("Person Lookup task implementations", () => {
         // The extraction service store lands before any descriptor consumes it.
         "extraction/extract-pdf-pages",
         "extraction/extract-spreadsheet",
+      "i9/read-section2-signer",
         // Separations chunk 5's finalization family shares the SAME driver
         // declaration as the separation form read.
         "kuali/match-separation-finalization",

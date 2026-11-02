@@ -224,6 +224,7 @@ describe("task contract sealing architecture", () => {
       "src/models/systems/crm/read-onboarding-results.ts",
       "src/models/systems/crm/search-onboarding-records.ts",
       "src/models/systems/crm/verify-onboarding-record.ts",
+      "src/models/systems/i9/read-section2-signer.ts",
       "src/models/systems/kuali/match-separation-finalization.ts",
       "src/models/systems/kuali/read-separation-document.ts",
       "src/models/systems/kuali/save-separation-finalization.ts",

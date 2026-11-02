@@ -538,7 +538,7 @@ function cleanFixtureFiles(): Record<string, string> {
     "tests/scenario/dashboard/combo/world.ts": "export const WORLD = 1;\n",
     "tests/scenario/intake-extraction.scenario.test.ts": "export const INTAKE = 1;\n",
     "tests/scenario/combo-supplement.md": "# additional combo proof\n",
-    "tests/scenario/i9-lookup.md": "# an unregistered candidate\n",
+    "tests/scenario/unregistered-lookup.md": "# an unregistered candidate\n",
   };
 }
 
@@ -887,7 +887,7 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
       attributeWorkflowArtifact("tests/scenario/separations-supplement.md", workflows),
       "separations",
     );
-    assert.equal(attributeWorkflowArtifact("tests/scenario/i9-lookup.md", workflows), undefined);
+    assert.equal(attributeWorkflowArtifact("tests/scenario/unregistered-lookup.md", workflows), undefined);
     assert.equal(attributeWorkflowArtifact("src/workflows/descriptor-registry.ts", workflows), undefined);
     // Inside `src/workflows/` the harness id is NOT in the path: only the
     // registered FOLDER can say whose budget a file beside its workflow.ts is.
