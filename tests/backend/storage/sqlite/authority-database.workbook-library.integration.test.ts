@@ -1,3 +1,4 @@
+import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
@@ -21,7 +22,7 @@ it("accounts separately for durable admission and atomic master settlement, pers
   const f = await fixture();
   let database = f.open();
   try {
-    const service = () => createWorkbookLibraryService({ repository: database.authority.workbooks, clock });
+    const service = () => createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
     const first = service().create(workbook);
     assert.equal(database.getMeta().authorityGeneration, 1);
     const second = service().save(first.libraryId, 1, { ...first.workbook, name: "Saved.xlsx" });
@@ -46,7 +47,7 @@ it("accounts separately for durable admission and atomic master settlement, pers
 
 it.each(["head", "creation-value", "creation-missing"])("refuses corrupt workbook %s during authority admission", async corruption => {
   const f = await fixture(), database = f.open();
-  const service = createWorkbookLibraryService({ repository: database.authority.workbooks, clock });
+  const service = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
   const first = service.create(workbook);
   service.save(first.libraryId, 1, { ...first.workbook, name: "Second.xlsx" });
   database.close();

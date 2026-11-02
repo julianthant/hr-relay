@@ -1,3 +1,4 @@
+import type { BrowserRoot } from "../browser-root-contract.js";
 import { lstatSync } from "node:fs";
 import { dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
 import { ProfileBrowserRootRefusalError,requireRuntimeAdmission } from "../admission/admission-identity.js";
@@ -19,7 +20,8 @@ export function configuredBrowserRoots(root: string, custody: BrowserProfileCust
   return [...new Set([savedBrowserRoot, ...historical])];
 }
 
-export function retainedBrowserProfiles(root: string, custody: BrowserProfileCustody, savedBrowserRoot: string, browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">) {
+export type BrowserRegistryMembership = Readonly<{ machineRoot: string; profileId: string; roots: readonly BrowserRoot[] }>;
+export function retainedBrowserProfiles(root: string, custody: BrowserProfileCustody, savedBrowserRoot: string, browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, registry?: BrowserRegistryMembership) {
   const profiles = new Map<string, RetainedBrowserProfile>();
   for (const path of configuredBrowserRoots(root, custody, savedBrowserRoot)) assertBrowserRoot(root, path);
   for (const browser of custody.browsers) {
@@ -40,6 +42,14 @@ export function retainedBrowserProfiles(root: string, custody: BrowserProfileCus
     const cleanupCompleted = slot.retiredAt !== null && (verification !== undefined ? verification.cleanup === "closed"
       : proof !== undefined && proof.workerId === slot.workerId && proof.membershipRevision + 1 === slot.membershipRevision);
     profiles.set(browser.profileDirectory, {profileRoot,profileDirectory:browser.profileDirectory,cleanupCompleted});
+  }
+  if (registry !== undefined) for (const row of registry.roots) {
+    if (row.profileId !== registry.profileId || row.owner.kind !== 'command') continue;
+    const profileRoot = join(registry.machineRoot, row.profileRoot), profileDirectory = join(registry.machineRoot, row.directory);
+    assertBrowserRoot(root, profileRoot);
+    if (!configuredBrowserRoots(root, custody, savedBrowserRoot).includes(profileRoot) || profileDirectory !== join(profileRoot, 'commands', 'sharepoint')
+      || profiles.has(profileDirectory)) throw new Error('profile-inventory-browser-membership-unavailable');
+    profiles.set(profileDirectory, { profileRoot, profileDirectory, cleanupCompleted: row.launch.state === 'closed' && row.native === undefined });
   }
   return [...profiles.values()];
 }

@@ -1,3 +1,4 @@
+import { unexpectedWorkbookSync } from "./workbook-sync.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { createWorkbookIntakeBridge } from "../../../../src/backend/runs/commands/workbook-intake-service.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
@@ -368,7 +369,7 @@ export async function harness(options: {
     },
   });
   const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger: createTransactionHistory(database.authority) });
-  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock });
+  const workbookLibrary = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository: database.authority.workbooks, clock });
   const app = createDashboardApp({
     protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
     requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({

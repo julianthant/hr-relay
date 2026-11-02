@@ -6659,7 +6659,7 @@ export class AuthorityDatabase implements Disposable {
             version, payload_json, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-          record.credentialKey, record.generation, record.holder.workerId, record.holder.system,
+          record.credentialKey, record.generation, record.holder.workerId ?? null, record.holder.system,
           record.state, record.expiresAt, record.version, json, record.updatedAt,
         )
         : this.#database.prepare(`
@@ -6668,7 +6668,7 @@ export class AuthorityDatabase implements Disposable {
             version = ?, payload_json = ?, updated_at = ?
           WHERE credential_key = ? AND version = ?
         `).run(
-          record.generation, record.holder.workerId, record.holder.system, record.state,
+          record.generation, record.holder.workerId ?? null, record.holder.system, record.state,
           record.expiresAt, record.version, json, record.updatedAt, record.credentialKey, record.version - 1,
         );
       const changes = sqliteChanges(result.changes);
@@ -6695,7 +6695,7 @@ export class AuthorityDatabase implements Disposable {
           const lease = DuoCeremonyLeaseRecordSchema.parse({
             credentialKey: request.credentialKey,
             generation: (existing?.generation ?? 0) + 1,
-            holder: { workerId: request.workerId, system: request.system },
+            holder: request.workerId === undefined ? { commandId: request.commandId, system: request.system } : { workerId: request.workerId, system: request.system },
             state: "held",
             acquiredAt: request.now,
             expiresAt: new Date(nowMs + request.ttlMs).toISOString(),

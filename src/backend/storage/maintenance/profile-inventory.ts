@@ -23,7 +23,7 @@ import { verifyStoppedBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { countProfileCredentialLoginRows } from "../sqlite/profile-local-databases.js";
 import { inspectRuntimeProcessOrphans,observeRuntimeLockSnapshot } from "../sqlite/runtime-process-locks.js";
 import { proveProfileRootsUnused } from "./process-closure.js";
-import { assertCredentialCopyResourcesClosed,configuredBrowserRoots,retainedBrowserProfiles,type BrowserProfileCustody } from "./profile-custody.js";
+import { assertCredentialCopyResourcesClosed,configuredBrowserRoots,retainedBrowserProfiles,type BrowserProfileCustody,type BrowserRegistryMembership } from "./profile-custody.js";
 
 type CredentialMembershipCustody = Pick<ReturnType<AuthorityDatabase["readProfileResourceCustody"]>, "slots" | "reservations" | "verificationProfiles" | "browsers" | "configSnapshots" | "controls" | "artifactReferences" | "upgrades">;
 
@@ -43,7 +43,7 @@ export async function probeRetainedBrowsersClosed(input: Readonly<{
   browserClosure: ProfileBrowserClosure; clock: Clock; signal: AbortSignal;
 }>): Promise<void> {
   input.admission.assertLive();
-  await input.browserClosure.probeClosed(retainedBrowserProfiles(input.admission.stateRoot, input.custody, input.config.paths.browserProfileRoot, input.browserClosure),
+  await input.browserClosure.probeClosed(retainedBrowserProfiles(input.admission.stateRoot, input.custody, input.config.paths.browserProfileRoot, input.browserClosure, registryMembership(input.admission)),
     { launchTimeoutMs: input.config.timeouts.sessionAcquireMs, closeProofMs: input.config.browser.closeProofMs }, input.clock, input.signal, input.admission);
   input.admission.assertLive();
 }
@@ -71,10 +71,18 @@ export async function probeStoppedProfileBrowsersClosed(admission: RuntimeAdmiss
   admission.assertLive();
 }
 
+function registryMembership(admission: RuntimeAdmission): BrowserRegistryMembership | undefined {
+  if (!admission.hasCurrentBrowserRegistry()) return undefined;
+  const binding = admission.captureBrowserRegistryContext();
+  if (binding.profileId === null) throw new Error('profile-inventory-browser-membership-unavailable');
+  return { machineRoot: binding.machineRoot, profileId: binding.profileId, roots: createBrowserRoots(admission).inventory().roots };
+}
+
 function stoppedBrowserProfiles(admission: RuntimeAdmission, custody: BrowserProfileCustody, savedBrowserRoot: string,
   browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">): RetainedBrowserProfile[] {
-  const profiles = retainedBrowserProfiles(admission.stateRoot, custody, savedBrowserRoot, browserClosure);
-  if (!admission.preservesUnfinishedProfileState()) return profiles;
+  const registry = registryMembership(admission);
+  const profiles = retainedBrowserProfiles(admission.stateRoot, custody, savedBrowserRoot, browserClosure, registry);
+  if (!admission.preservesUnfinishedProfileState() || registry === undefined) return profiles;
   const binding = admission.captureBrowserRegistryContext();
   for (const row of createBrowserRoots(admission).inventory().roots) {
     if (row.profileId !== binding.profileId || row.owner.kind !== "signup") continue;
@@ -313,6 +321,14 @@ function restoreBrowserCensus(admission: RuntimeAdmission, scope: "browser-roots
         if (!system.isDirectory() || !BrowserSystemIdSchema.safeParse(system.name).success) throw new ProfileRestoreBrowserCustodyUnprovedError();
         addProfile(profileRoot, join(path, system.name));
       }
+    } else if (name === "commands") {
+      const command = rows.filter(row => row.owner.kind === "command" && join(binding.machineRoot, row.profileRoot) === profileRoot
+        && join(binding.machineRoot, row.directory) === join(path, "sharepoint"));
+      if (command.length !== 1) throw new ProfileRestoreBrowserCustodyUnprovedError();
+      for (const child of children(path)) {
+        if (!child.isDirectory() || child.name !== "sharepoint") throw new ProfileRestoreBrowserCustodyUnprovedError();
+        addProfile(profileRoot, join(path, child.name));
+      }
     } else if (/^onboarding-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-){3}g[1-9]\d*$/u.test(name)) addProfile(profileRoot, path);
     else throw new ProfileRestoreBrowserCustodyUnprovedError();
   }
@@ -372,7 +388,7 @@ export function enumerateProfileCredentialMembership<Custody extends CredentialM
     const path = join(directory, name); inventoryFileIdentity(path);
     return { path, sha256: createHash("sha256").update(readFileSync(path)).digest("hex"), companion: /-(?:wal|shm)$/u.test(name) };
   });
-  return enumerateCredentialMembership(root, flat, custody, savedBrowserRoot, path => admission.assertStateRoot(path), suspects, browserClosure, ownedWriter, ownedCredentialStages, admission.preservesUnfinishedProfileState());
+  return enumerateCredentialMembership(root, flat, custody, savedBrowserRoot, path => admission.assertStateRoot(path), suspects, browserClosure, ownedWriter, ownedCredentialStages, admission.preservesUnfinishedProfileState(), registryMembership(admission));
 }
 
 export function enumerateFlatBackupRecoveryMembership<Custody extends CredentialMembershipCustody>(root: string, custody: Custody, browserClosure: ProfileBrowserClosure) {
@@ -384,8 +400,8 @@ export function enumerateFlatBackupRecoveryMembership<Custody extends Credential
 function enumerateCredentialMembership<Custody extends CredentialMembershipCustody>(root: string, flat: boolean, custody: Custody,
   savedBrowserRoot: string, assertPath: (path: string) => void,
   suspects: readonly Readonly<{ path: string; sha256: string; companion: boolean }>[],
-  browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>, ownedCredentialStages: readonly string[] = [], startupUpgrade = false) {
-    const profiles = retainedBrowserProfiles(root, custody, savedBrowserRoot, browserClosure);
+  browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>, ownedCredentialStages: readonly string[] = [], startupUpgrade = false, registry?: BrowserRegistryMembership) {
+    const profiles = retainedBrowserProfiles(root, custody, savedBrowserRoot, browserClosure, registry);
     const browserRootPaths = [...new Set([...configuredBrowserRoots(root, custody, savedBrowserRoot), ...profiles.map(profile => profile.profileRoot)])];
     for (const path of browserRootPaths) assertPath(path);
     if (browserRootPaths.some(path => browserRootPaths.some(other => other !== path && path.startsWith(`${other}${sep}`)))) throw new Error("profile-inventory-browser-root-ambiguous");
@@ -413,7 +429,7 @@ function enumerateCredentialMembership<Custody extends CredentialMembershipCusto
       if (entry.directory) {
         if (configuredBrowserRoot !== undefined) {
           const browserParts = relative(configuredBrowserRoot, path).split(sep).filter(Boolean);
-          if (browserParts.length === 1 && !custody.slots.some(slot => `w${slot.ordinal}` === browserParts[0])) throw new Error("profile-inventory-browser-membership-unavailable");
+          if (browserParts.length === 1 && !(browserParts[0] === 'commands' && browserRoots.has(join(configuredBrowserRoot, 'commands', 'sharepoint'))) && !custody.slots.some(slot => `w${slot.ordinal}` === browserParts[0])) throw new Error("profile-inventory-browser-membership-unavailable");
           if (browserParts.length === 2 && !browserRoots.has(path)) throw new Error("profile-inventory-browser-membership-unavailable");
         }
         if (top === "backups" && parts.length === 2 && !["authority", "suspects"].includes(parts[1] ?? "")) throw new Error("profile-inventory-backup-unowned");

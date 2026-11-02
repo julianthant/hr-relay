@@ -65,6 +65,9 @@ import { operatorMutationIngressGuard } from "../../../transports/http/routes/op
 import { openStaticBundle,staticBundleHandler } from "../../../transports/http/static-bundle.js";
 
 import { createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
+import { createSharePointWorkbookSync } from "../../../workbooks/sharepoint-sync.js";
+import { createCommandBrowserManager } from "../../../runtime/browser/command-browser.js";
 import { composeRuntimePreflight,type RuntimePreflight } from "../../preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "../../preflight/runtime-runners.js";
 import { composeActivity } from "./activity.js";
@@ -123,7 +126,7 @@ import { runQueuedSpanEvent } from "../../../runs/commands/run-queued-span.js";
 import { createRunWorkerCapacity } from "../../../runs/commands/run-worker-capacity.js";
 import { createStartPlanService } from "../../../runs/commands/start-plan-service.js";
 import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
-import { activeSettingsRuntimeIdentity,readBootSettings } from "../../../runtime/settings/settings-runtime.js";
+import { activeSettingsConfig,activeSettingsRuntimeIdentity,readBootSettings } from "../../../runtime/settings/settings-runtime.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../../transports/http/frontend-owner.js";
 import { dispatchMountedRequest,startDashboardHttpServer,type DashboardHttpListener,type DashboardHttpServer } from "../../../transports/http/http-server.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/request-identity.js";
@@ -952,7 +955,37 @@ async function composeDashboardRuntimeStartup(
 
 
   const intake = composeIntake({ database, artifacts, parser: intakeParser, projections: intakeProjections, descriptors, clock, ids });
-  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock });
+  const workbookCommands = createCommandBrowserManager({ admission, leases: database.authority.duoCeremonyLeases,
+    clock, scheduler: createTimeoutDeadlineScheduler(clock), recordEvidence: () => {
+      assertCurrent();
+      const eventId = randomUUID(), now = clock.now();
+      loggingRepository.append({ schemaVersion: 1, eventId,
+        scope: { kind: "transport", connectionId: "workbook-sync" }, occurredAt: now.toISOString(),
+        recordedAt: now.toISOString(), retentionDate: localDatePart(now), source: { kind: "native" },
+        payload: { kind: "debug", event: { category: "session", phase: "acquired", correlationId: eventId,
+          code: "sharepoint-authenticated", message: "SharePoint verified the configured account and the absence of sign-in controls.",
+          build: appVersion, pid: process.pid, pinned: false } } });
+    } });
+  profile.runtime.registerCommandActivity(profile.token, workbookCommands);
+  startupCleanups.push(requiredClosure(async () => {
+    workbookCommands.requestCancellation(selected);
+    await workbookCommands.awaitCancellation();
+  }));
+  const workbookSync = createSharePointWorkbookSync({ commands: workbookCommands, protectedSecrets,
+    createDuoSource: () => createDuoCredentialStore(admission, clock),
+    captureConfiguration: () => {
+      assertCurrent();
+      const captured = database.withAuthorityReadSnapshot(() => ({ config: activeSettingsConfig(database.authority),
+        identity: canonicalJsonStringify(activeSettingsRuntimeIdentity(database.authority)) }));
+      return { config: captured.config, assertCurrent: () => {
+        assertCurrent();
+        if (profile.runtime.selectedContext(profile.token) !== context || context.profileEpoch !== selectedModelEpoch
+          || canonicalJsonStringify(activeSettingsRuntimeIdentity(database.authority)) !== captured.identity)
+          throw new WorkbookLibraryError("WORKBOOK_SYNC_CONTEXT_CHANGED");
+        context.assertCurrent();
+      } };
+    } });
+  const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync });
 
   const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors, runLogsHub,
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
