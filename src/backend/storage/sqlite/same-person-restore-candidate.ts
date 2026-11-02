@@ -27,3 +27,10 @@ export function validateSamePersonRestoreCandidate(input: Readonly<{
   if (input.verifiedBackup.manifest.installationId !== binding.installationId || input.verifiedBackup.manifest.profileId !== binding.profileId) refuse("backup profile binding differs from issued profile");
   if (input.verifiedBackup.manifest.sourceDatabaseIdentity !== AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())) refuse("logical authority identity differs from issued profile");
 }
+
+export function assertRestoreRuntimePaths(input: Readonly<{ stateRoot: string; artifactRoot: string;
+  activePaths: Readonly<{ artifactRoot: string; browserProfileRoot: string }>; savedBrowserRoot?: string }>): void {
+  const browserRoot = join(input.stateRoot, "browsers");
+  if (input.activePaths.artifactRoot !== input.artifactRoot || input.activePaths.browserProfileRoot !== browserRoot
+    || input.savedBrowserRoot !== undefined && input.savedBrowserRoot !== browserRoot) refuse("backup runtime paths differ from current person");
+}

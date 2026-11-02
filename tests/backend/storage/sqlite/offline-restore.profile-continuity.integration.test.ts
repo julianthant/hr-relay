@@ -11,7 +11,6 @@ import { createProfileRegistry } from "../../../../src/backend/profiles/registry
 import { reconcileStoppedLogout } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
-import { CompletedRestoreCustodySchema } from "../../../../src/backend/storage/admission/installation.js";
 import { isOfflineMaintenanceOperationActive,RuntimeAlreadyRunningError,RuntimeLifetimeLock,type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import * as nativeBrowserInventory from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { BrowserProfileStillClosingError } from "../../../../src/workflow-kit/session.js";
@@ -34,7 +33,7 @@ import { createCredentialStore } from "../../../../src/backend/storage/configura
 
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { OfflineAuthorityRestoreService,OfflineRestoreFailure,settleInterruptedAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import { OfflineAuthorityRestoreService,OfflineRestoreFailure,resumeAutomaticAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { DuoCredentialRecordSchema } from "../../../../src/models/config/duo-credential-store.js";
 import { deriveSettingsPatchFingerprint,initialSettingsFileRecord,SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
@@ -176,14 +175,14 @@ describe("profile restore continuity", () => {
       const membership = database.authority.workerSlots.get(claim.workerId), lease = database.authority.workerLeases.get(claim.workerId);
       assert.ok(membership); assert.ok(lease); assert.equal(claim.claimGeneration, run.claimGeneration);
       assert.notEqual(lease.lifecycle.state, "stopped");
-      const manifestPath = await drill.takeBackup(database, paths);
+      await drill.takeBackup(database, paths);
       closeDatabase(); drill.corrupt(paths);
       const corrupted = readFileSync(paths.authorityPath);
       const protectedBytes = readFileSync(join(paths.stateRoot, "credentials", "protected.json"));
       const machineRoot = join(paths.repoRoot, rebuildRuntimeIsolation.stateRoot, "machine");
       const independent = () => Object.fromEntries(Object.entries(storageTree(machineRoot)).filter(([path]) => path !== "profiles.json"));
       const independentBefore = independent();
-      const restored = await drill.composeStorageCommand(rebuildRuntimeIsolation, ["restore", "--from", manifestPath], drill.CLOCK, paths.repoRoot);
+      const restored = await drill.repairAutomatically(paths);
       assert.equal(restored.exitCode, 0, restored.output);
       assert.notDeepEqual(readFileSync(paths.authorityPath), corrupted);
       assert.deepEqual(independent(), independentBefore);
@@ -275,67 +274,25 @@ describe("profile restore continuity", () => {
     } finally { await f.close(); }
   });
 
-  it("retains completed suspect custody across sign-in and actual retained-credential logout", async () => {
+  it("keeps quarantine bytes through sign-in and logout without a completed physical custody chain", async () => {
     const f = await world();
     let primary: { error: unknown } | undefined;
     try {
-      const manifestPath = await f.backup();
-      await f.restore().restore({ manifestPath }, f.operation());
-      const fresh = f.renew(), rows = fresh.readCompletedRestores();
-      assert.equal(rows.length, 1);
-      assert.deepEqual(rows[0]?.profile, fresh.profileBinding);
-      assert.equal(rows[0]?.outcome, "replaced");
-      const copies = rows.map(row => ({ path: join(f.stateRoot, row.suspect.relativePath), bytes: readFileSync(join(f.stateRoot, row.suspect.relativePath)) }));
+      await f.restore().restore({ manifestPath: await f.backup() }, f.operation());
+      f.renew();
+      const directory = join(f.stateRoot, "backups", "suspects");
+      const copies = readdirSync(directory).map(name => ({ path: join(directory, name), bytes: readFileSync(join(directory, name)) }));
+      assert.ok(copies.length > 0);
       const active = f.signIn();
-      assert.deepEqual(f.current().readCompletedRestores(), rows);
       assert.equal((await f.logout(active.token)).state, "signed-out");
-      const after = z.object({ completedRestores: z.array(CompletedRestoreCustodySchema) })
-        .parse(JSON.parse(readFileSync(join(f.workspace, ".tracker", "control", "profile-registry.json"), "utf8")));
-      assert.deepEqual(after.completedRestores, rows);
+      const control = z.object({ schemaVersion: z.literal(7) }).parse(JSON.parse(readFileSync(join(f.workspace, ".tracker", "control", "profile-registry.json"), "utf8")));
+      assert.equal("completedRestores" in control, false);
       for (const copy of copies) assert.deepEqual(readFileSync(copy.path), copy.bytes);
+      const notice = z.object({ profileId: z.uuid(), backupTime: z.iso.datetime() }).parse(JSON.parse(readFileSync(join(f.workspace, ".tracker", "control", `automatic-repair-${f.profileId}.json`), "utf8")));
+      assert.equal(notice.profileId, f.profileId);
     } catch (error) { primary = { error }; }
     finally { await closeCustodyFixture(() => f.close(), primary); }
   });
-
-  for (const mutation of ["missing", "substituted", "extra companion", "divergent row", "duplicate operation", "missing history"] as const) {
-    it(`refuses completed restore ${mutation} custody before admitting credential copies`, async () => {
-      const f = await world();
-      let undo: (() => void) | undefined;
-      let primary: { error: unknown } | undefined;
-      try {
-        const manifestPath = await f.backup();
-        await f.restore().restore({ manifestPath }, f.operation());
-        const fresh = f.renew(), original = fresh.readCompletedRestores();
-        const first = original[0]; assert.ok(first);
-        const row = CompletedRestoreCustodySchema.parse(first);
-        const path = join(f.stateRoot, row.suspect.relativePath), retained = `${path}.fixture-retained`;
-        const controlPath = join(f.workspace, ".tracker", "control", "profile-registry.json"), controlBytes = readFileSync(controlPath);
-        const sourceBytes = readFileSync(f.path), suspectBytes = readFileSync(path);
-        if (mutation === "missing" || mutation === "substituted") {
-          renameSync(path, retained);
-          undo = () => { rmSync(path, { force: true }); renameSync(retained, path); };
-          if (mutation === "substituted") copyFileSync(retained, path);
-        } else if (mutation === "extra companion") {
-          undo = () => rmSync(`${path}-wal`);
-          writeFileSync(`${path}-wal`, "synthetic-unbound-companion", { mode: 0o600 });
-        } else {
-          const control = z.looseObject({ completedRestores: z.array(CompletedRestoreCustodySchema) }).parse(JSON.parse(controlBytes.toString("utf8")));
-          if (mutation === "divergent row") row.suspect.file.sha256 = "0".repeat(64);
-          const { completedRestores: _history, ...withoutHistory } = control;
-          undo = () => writeFileSync(controlPath, controlBytes);
-          writeFileSync(controlPath, JSON.stringify(mutation === "missing history" ? withoutHistory
-            : { ...control, completedRestores: mutation === "duplicate operation" ? [row, row] : [row] }));
-        }
-        assert.throws(() => fresh.readCompletedRestores());
-        assert.deepEqual(readFileSync(f.path), sourceBytes);
-        assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
-        undo(); undo = undefined;
-        assert.deepEqual(readFileSync(path), suspectBytes);
-        assert.deepEqual(fresh.readCompletedRestores(), original);
-      } catch (error) { primary = { error }; }
-      finally { await closeCustodyFixture(async () => { undo?.(); await f.close(); }, primary); }
-    });
-  }
 
   it("refuses ordinary SQLite restore before effects when its retained OS entry is missing", async () => {
     const f = await world();
@@ -567,18 +524,8 @@ describe("profile restore continuity", () => {
       assert.throws(() => recoveredAdmission.assertWritable());
       assert.throws(() => recoveredAdmission.assertProfileRuntime());
       assert.throws(() => AuthorityDatabase.open(recoveredAdmission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-recovery-new-work" }));
-      const beforeWrong = readFileSync(journalPath), databaseBytes = readFileSync(f.path);
-      const companionBytes = () => ["-wal", "-shm"].map(suffix => existsSync(f.path + suffix) ? readFileSync(f.path + suffix) : undefined);
-      const beforeCompanions = companionBytes();
-      await assert.rejects(settleInterruptedAuthorityRestore({ admission: recovery.admission, operationId: pending.restore.operationId,
-        manifestPath, outcome: "unchanged", processLockRoot: f.processLockRoot, restoreAdmission: restoreHandle }));
-      assert.deepEqual(readFileSync(journalPath), beforeWrong); assert.deepEqual(readFileSync(f.path), databaseBytes);
-      assert.deepEqual(companionBytes(), beforeCompanions);
-      restoreHandle.release(); recovery.admission.release();
-      restoreHandle = f.lifetime.beginOfflineMaintenance(f.workspace);
-      recovery = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, pending.restore.operationId, restoreHandle);
-      assert.equal((await settleInterruptedAuthorityRestore({ admission: recovery.admission, operationId: pending.restore.operationId,
-        manifestPath, outcome: "replaced", processLockRoot: f.processLockRoot, restoreAdmission: restoreHandle })).state, "settled");
+      assert.equal((await resumeAutomaticAuthorityRestore({ browserClosure: profileBrowserClosure, admission: recovery.admission, operationId: pending.restore.operationId,
+        processLockRoot: f.processLockRoot, restoreAdmission: restoreHandle })).state, "settled");
       assert.equal(replacements, 1); assert.equal(existsSync(journalPath), false);
       restoreHandle.release(); restoreHandle = undefined; recovery.admission.release(); recovery = undefined;
       freshMachine = RuntimeAdmission.acquireMachine(f.workspace, "exclusive", f.lifetime);
@@ -592,65 +539,29 @@ describe("profile restore continuity", () => {
     }
   });
 
-  for (const outcome of ["unchanged", "replaced"] as const) it(`recovers ${outcome} history publication before journal unlink once and refuses divergent custody`, async () => {
-    const f = await world();
-    let restoreHandle: OfflineMaintenanceOperation | undefined;
-    let recovery: ReturnType<typeof acquireRecoveryRuntimeRestore> | undefined;
-    let freshMachine: RuntimeAdmission | undefined;
-    let primary: { error: unknown } | undefined;
-    const controlPath = join(f.workspace, ".tracker", "control", "profile-registry.json"), journalPath = join(f.workspace, ".tracker", "control", "journal.json");
-    const originalUnlink = fs.unlinkSync;
+  it("replays a completed automatic notice publication after interruption before journal removal", async () => {
+    const f = await world(), journalPath = join(f.workspace, ".tracker", "control", "journal.json");
+    let operation: OfflineMaintenanceOperation | undefined, recovery: ReturnType<typeof acquireRecoveryRuntimeRestore> | undefined;
+    const unlink = fs.unlinkSync;
     try {
       const manifestPath = await f.backup();
-      let interrupted = false, replacements = 0;
+      let interrupted = false;
       vi.spyOn(fs, "unlinkSync").mockImplementation(path => {
-        if (!interrupted && String(path) === journalPath) {
-          const control = z.object({ completedRestores: z.array(CompletedRestoreCustodySchema) }).parse(JSON.parse(readFileSync(controlPath, "utf8")));
-          if (control.completedRestores.length === 1) { interrupted = true; throw new Error("synthetic-history-before-journal-unlink"); }
-        }
-        originalUnlink(path);
-      });
-      syncBuiltinESMExports();
-      try {
-        await assert.rejects(f.restore(async () => {}, (source, target) => {
-          replacements++;
-          if (outcome === "unchanged") throw new Error("synthetic-replacement-before-effect");
-          renameSync(source, target);
-        }).restore({ manifestPath }, f.operation()), error => error instanceof OfflineRestoreFailure && error.authorityState === outcome);
-      } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
-      assert.equal(interrupted, true); assert.equal(replacements, 1);
+        if (!interrupted && String(path) === journalPath) { interrupted = true; throw new Error("interrupt-before-automatic-journal-removal"); }
+        unlink(path);
+      }); syncBuiltinESMExports();
+      try { await assert.rejects(f.restore().restore({ manifestPath }, f.operation()), error => error instanceof OfflineRestoreFailure && error.authorityState === "replaced"); }
+      finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
+      assert.equal(interrupted, true);
       const pending = z.object({ restore: z.object({ operationId: z.uuid() }) }).parse(JSON.parse(readFileSync(journalPath, "utf8")));
-      const published = readFileSync(controlPath), control = z.looseObject({ completedRestores: z.array(CompletedRestoreCustodySchema) }).parse(JSON.parse(published.toString("utf8")));
-      assert.equal(control.completedRestores.length, 1);
-      assert.equal(control.completedRestores[0]?.operationId, pending.restore.operationId);
-      f.machine.release();
-      restoreHandle = f.lifetime.beginOfflineMaintenance(f.workspace);
-      recovery = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, pending.restore.operationId, restoreHandle);
-      const completed = control.completedRestores[0]; assert.ok(completed);
-      writeFileSync(controlPath, JSON.stringify({ ...control, completedRestores: [{ ...completed, outcome: outcome === "replaced" ? "unchanged" : "replaced" }] }));
-      const beforeJournal = readFileSync(journalPath), beforeDatabase = readFileSync(f.path), divergent = readFileSync(controlPath);
-      await assert.rejects(settleInterruptedAuthorityRestore({ admission: recovery.admission, operationId: pending.restore.operationId,
-        manifestPath, outcome, processLockRoot: f.processLockRoot, restoreAdmission: restoreHandle }));
-      assert.deepEqual(readFileSync(journalPath), beforeJournal); assert.deepEqual(readFileSync(f.path), beforeDatabase);
-      assert.deepEqual(readFileSync(controlPath), divergent);
-      writeFileSync(controlPath, published);
-      restoreHandle.release(); recovery.admission.release();
-      restoreHandle = f.lifetime.beginOfflineMaintenance(f.workspace);
-      recovery = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, pending.restore.operationId, restoreHandle);
-      assert.equal((await settleInterruptedAuthorityRestore({ admission: recovery.admission, operationId: pending.restore.operationId,
-        manifestPath, outcome, processLockRoot: f.processLockRoot, restoreAdmission: restoreHandle })).state, "settled");
-      assert.equal(replacements, 1); assert.equal(existsSync(journalPath), false);
-      restoreHandle.release(); restoreHandle = undefined; recovery.admission.release(); recovery = undefined;
-      freshMachine = RuntimeAdmission.acquireMachine(f.workspace, "exclusive", f.lifetime);
-      const fresh = freshMachine.admitProfile(f.profileId);
-      try { assert.deepEqual(fresh.readCompletedRestores(), control.completedRestores); } finally { fresh.release(); }
-    } catch (error) { primary = { error }; }
-    finally {
-      vi.restoreAllMocks(); syncBuiltinESMExports();
-      await closeCustodyFixture(async () => {
-        restoreHandle?.release(); recovery?.admission.release(); freshMachine?.release(); await f.close();
-      }, primary);
-    }
+      const noticePath = join(f.workspace, ".tracker", "control", `automatic-repair-${f.profileId}.json`), notice = readFileSync(noticePath);
+      const database = readFileSync(f.path); f.machine.release();
+      operation = f.lifetime.beginOfflineMaintenance(f.workspace);
+      recovery = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, pending.restore.operationId, operation);
+      await resumeAutomaticAuthorityRestore({ browserClosure: profileBrowserClosure, admission: recovery.admission, operationId: pending.restore.operationId,
+        processLockRoot: f.processLockRoot, restoreAdmission: operation });
+      assert.equal(existsSync(journalPath), false); assert.deepEqual(readFileSync(noticePath), notice); assert.deepEqual(readFileSync(f.path), database);
+    } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); operation?.release(); recovery?.admission.release(); await f.close(); }
   });
 
   it("reports replaced and retains the genuine root when exclusive operation release fails", async () => {

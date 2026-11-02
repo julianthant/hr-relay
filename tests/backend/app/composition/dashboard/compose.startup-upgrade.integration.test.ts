@@ -13,8 +13,7 @@ import * as credentialInventoryOwner from "../../../../../src/backend/app/compos
 import { prepareApplicationDataWorkspace,composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { createProfileSession } from "../../../../../src/backend/profiles/profile-session.js";
-import { requireLifecycleApplied,RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { reconcileStartupCrash } from "../../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { requireLifecycleApplied } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
 import * as admissionOwner from "../../../../../src/backend/storage/admission/admission.js";
 import { acquireSharedRuntimeAdmission,type RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
@@ -63,7 +62,7 @@ import { createHistoricalRegisteredProfileFixture } from "../../../../support/fi
 import { FakeKeyringEntry } from "../../../../support/helpers/credential-keychain-fake.js";
 import { runCredentialSourceRetentionCase } from "../../../../support/helpers/credential-source-retention.js";
 
-import { RegisteredPersonUpgradeRefusedError,upgradeRegisteredPersonStores } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { initializeRegisteredPersonStores,RegisteredPersonUpgradeRefusedError,upgradeRegisteredPersonStores } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { AuthorityBackupService } from "../../../../../src/backend/storage/sqlite/backup-service.js";
 import { migrationTableNames } from "../../../../../src/backend/storage/sqlite/migrations.js";
 
@@ -373,11 +372,10 @@ for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] 
         else if (table === "database_upgrades" || move && ["commands", "command_audits", "settings_snapshots"].includes(table)) assert.deepEqual(after[table]?.slice(0, previous.length), previous);
         else assert.deepEqual(after[table], previous);
       }
+      await initializeRegisteredPersonStores(currentWorkspace, lifetime, hostFacts, f.clock);
       machine = acquireSharedRuntimeAdmission(currentWorkspace, lifetime); admission = machine.admitProfile(profileId);
       database = AuthorityDatabase.open(admission, { path: currentPath, migrationOwner: "startup-upgrade-recovery", busyTimeoutMs: 250 }, f.clock,
         undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: admission.stateRoot }));
-      const lifecycle = new RunRecordService({ database, clock: f.clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("startup recovery must not queue work"); } });
-      reconcileStartupCrash({ machine, admission, database, lifecycle, lock: lifetime, clock: f.clock });
       const recovered = database.authority.runs.get(f.run.envelope.runId); assert.ok(recovered);
       if (intent === undefined) assert.ok(recovered.lifecycle.state === "terminal" && recovered.lifecycle.outcome === "failed");
       else {

@@ -1,3 +1,5 @@
+import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { runLogoutSettlementCase } from "../../../support/helpers/credential-source-retention.js";
 import { syntheticOnboardingDuo, finishProfileOnboarding, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
@@ -12,7 +14,7 @@ import { copyFileSync, readFileSync, readdirSync, statSync, mkdirSync, mkdtempSy
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { it, vi } from "vitest";
-import { composeProfileRuntime, composeSelectedProfileStorage, composeStorageCommand } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime, composeSelectedProfileStorage } from "../../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
@@ -233,15 +235,15 @@ it("requires the same actual profile credential owner for canonical offline rest
       .request({ trigger: "operator", requiredGeneration: context.database.getMeta().authorityGeneration });
     const manifest = report.manifests.at(-1); assert.ok(manifest);
     await context.account.close(); context.database.close();
-    const args = ["restore", "--from", join(f.stateRoot, "backups", "authority", `${manifest.backupFileName}.manifest.json`), "--json"];
-    await assert.rejects(composeStorageCommand(rebuildRuntimeIsolation, args, clock, f.workspace, f.admission), /profile-restore-credential-owner-required/u);
+    const options = { authorityPath: f.path, suspectDirectory: join(f.stateRoot, "backups", "suspects"), busyTimeoutMs: 250,
+      processLockRoot: join(f.workspace, rebuildRuntimeIsolation.processLockRoot) };
+    const create = (store?: import("../../../../src/models/config/credential-store.js").CredentialStore) =>
+      new OfflineAuthorityRestoreService(profileBrowserClosure, f.admission, options, async () => {}, clock, undefined, store);
+    assert.throws(() => create(), /profile-restore-credential-owner-required/u);
     const foreign = await createBoundProfileFixture();
-    try { await assert.rejects(composeStorageCommand(rebuildRuntimeIsolation, args, clock, f.workspace, f.admission, boundProfileCredentials(foreign.admission))); }
-    finally { await foreign.close(); }
-    const restored = await composeStorageCommand(rebuildRuntimeIsolation, args, clock, f.workspace, f.admission, credentials);
-    assert.equal(restored.exitCode, 0, restored.output);
-    const outcome = JSON.parse(restored.output) as { credentials: { state: string } };
-    assert.equal(outcome.credentials.state, "unavailable");
+    try { assert.throws(() => create(boundProfileCredentials(foreign.admission))); } finally { await foreign.close(); }
+    const restored = await create(credentials).restoreNewest(f.admission.acquireOfflineMaintenance());
+    assert.equal(restored.state, "restored");
     assert.throws(() => credentials.read());
     const signedOut = f.machine.admitProfile(profileId);
     assert.throws(() => signedOut.assertCredentialRead(), /profile-session-not-current/u); signedOut.release();

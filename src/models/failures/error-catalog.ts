@@ -13,6 +13,7 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  STORAGE_AUTOMATIC_REPAIR_REFUSED: catalogEntry("Relay could not safely repair saved person data. Your data and unresolved writes have been retained; startup cannot continue.", EmptyParametersSchema),
   STORAGE_PROFILE_UPGRADE_REFUSED: catalogEntry("Relay could not verify and upgrade its saved person data. Your data has been retained; startup cannot continue.", EmptyParametersSchema),
   DRY_RUN_SAMPLE_UNDECLARED: catalogEntry("Dry-run sample values require declared preview provenance.", EmptyParametersSchema),
   DRY_RUN_SAMPLE_REFUSED: catalogEntry("Dry-run samples cannot authorize a real submission.", EmptyParametersSchema),

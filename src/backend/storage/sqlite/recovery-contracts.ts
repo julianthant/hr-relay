@@ -429,7 +429,7 @@ export const OfflineRestoreReportSchema = z.strictObject({
   backupFileName: SafeFileNameSchema,
   suspectFileName: SafeFileNameSchema,
   sourceDatabaseIdentity: FingerprintSchema,
-  schemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+  schemaVersion: BackupSchemaVersionSchema,
   authorityGeneration: NonNegativeIntSchema,
   projectionRebuilt: z.boolean(),
   authorityPreservedAcrossProjectionRebuild: z.literal(true),

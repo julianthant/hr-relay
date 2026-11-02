@@ -2,7 +2,7 @@ import { detachBoundFixtureWorkers } from "../../../support/helpers/synthetic-da
 import { createStorageRestoreTestWorld } from "../../../support/helpers/backend/storage-restore-world.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import assert from "node:assert/strict";
-import {readFileSync, readdirSync, statSync } from "node:fs";
+import {readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
@@ -13,7 +13,7 @@ import { COMMAND_FIXTURES, NOTIFICATION, NOW, WRITE_INTENT_ATTEMPTING } from "..
 import { makeWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { sqliteRunReader } from "../../../support/helpers/canonical-run-reader.js";
 
-const {CLOCK, composeStorageCommand, drillPaths, open, seedRealShapedAuthority, takeBackup, corrupt, cleanup } = createStorageRestoreTestWorld();
+const {CLOCK, composeStorageCommand, repairAutomatically, drillPaths, open, seedRealShapedAuthority, takeBackup, corrupt, cleanup } = createStorageRestoreTestWorld();
 
 const CommandIdentitySchema = z.object({ commandId: z.string().min(1) });
 
@@ -51,7 +51,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
       workerId: "restored-worker", spanPath: "worker/restored-worker", name: "Restored worker" });
     const retainedTimeline = database.authority.timelineEvents.page({});
     const generation = database.getMeta().authorityGeneration;
-    const manifestPath = await takeBackup(database, paths);
+    await takeBackup(database, paths);
 
     database.authority.notifications.create(NOTIFICATION);
     detachBoundFixtureWorkers(database);
@@ -59,6 +59,7 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
     const before = readFileSync(paths.authorityPath);
 
     corrupt(paths);
+    const afterCorruption = readFileSync(paths.authorityPath);
 
     // 1 — the doctor degrades READ-ONLY and names the corruption.
     const degraded = await composeStorageCommand(
@@ -80,30 +81,12 @@ describe("corruption → degraded → restore → rebuild, through the CLI", () 
       false,
       "the corruption itself must have changed the file",
     );
-    const afterDoctor = readFileSync(paths.authorityPath);
-
-    // 2 — the restore, through the operator's command, naming ONE manifest.
-    const restored = await composeStorageCommand(
-      rebuildRuntimeIsolation,
-      ["restore", "--from", manifestPath],
-      CLOCK,
-      paths.repoRoot,
-    );
-    assert.equal(restored.exitCode, 0, restored.output);
-    assert.match(restored.output, /authority restore — restored/u);
-    assert.match(restored.output, /projections rebuilt: true/u);
-
-    // 3 — the suspect database is preserved, byte-identical to what the
-    // doctor saw. It is evidence, not garbage.
-    const quarantined = readdirSync(join(paths.stateRoot, "backups", "suspects"));
-    const suspects = quarantined.filter((name) => name.endsWith(".sqlite"));
-    assert.equal(suspects.length, 1, quarantined.join(","));
-    assert.equal(
-      readFileSync(join(paths.stateRoot, "backups", "suspects", suspects[0] ?? "")).equals(afterDoctor),
-      true,
-    );
+    assert.deepEqual(readFileSync(paths.authorityPath), afterCorruption, "doctor must not mutate the corrupt source");
 
     const oldAdmission = paths.admission;
+    const restored = await repairAutomatically(paths);
+    assert.equal(restored.exitCode, 0, restored.output);
+    assert.equal(z.object({ state: z.literal("restored"), projectionRebuilt: z.literal(true) }).parse(JSON.parse(restored.output)).state, "restored");
     paths.renewAfterRestore();
     assert.throws(() => oldAdmission.assertProfileRuntime());
 

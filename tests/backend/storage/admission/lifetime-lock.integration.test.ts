@@ -10,7 +10,7 @@ import { promisify } from "node:util";
 import { it,vi } from "vitest";
 import { z } from "zod";
 import { runSecureEnvironmentBootstrap } from "../../../../src/backend/app/bootstrap/secure-env-bootstrap.js";
-import { runOfflineAuthorityRestoreRecovery } from "../../../../src/backend/app/composition/storage-compose.js";
+import { resumePendingAutomaticRestore } from "../../../../src/backend/app/composition/storage-compose.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -131,7 +131,7 @@ it("uses the configured singleton port for production parents and refuses busy r
     const config = z.object({ rebuild: z.object({ lockPort: z.number().int().positive() }) }).parse(JSON.parse(
       await readFile(new URL("../../../../config/runtime-isolation.json", import.meta.url), "utf8")));
     for (const args of [["cli", "dashboard"], ["cli", "dashboard", "--prod"], ["cli", "storage", "backup"],
-      ["cli", "storage", "restore"], ["cli", "storage", "recover-restore"],
+      ["cli", "storage", "upgrade"],
       ["cli", "storage", "cancel-queued-runs"], ["test-target-document-number"]]) {
       await assert.rejects(runSecureEnvironmentBootstrap(args, {
         acquireLifetimeLock: port => { assert.equal(port, config.rebuild.lockPort); return acquireRuntimeLifetimeLock(lock.port); },
@@ -489,10 +489,9 @@ for (const capability of ["foreign-workspace", "retained-child"] as const) it(`r
     const mutations = [vi.spyOn(fs, "mkdirSync"), vi.spyOn(fs, "openSync"), vi.spyOn(fs, "writeFileSync"),
       vi.spyOn(fs, "unlinkSync"), vi.spyOn(fs, "renameSync"), vi.spyOn(fs, "linkSync")];
     syncBuiltinESMExports();
-    const operationId = "11111111-1111-4111-8111-111111111111";
     const writers: (() => unknown)[] = [
       () => RuntimeAdmission.acquireStoppedMachineControlMaintenance(directory, lock),
-      () => runOfflineAuthorityRestoreRecovery(directory, ["--operation", operationId, "--from", join(directory, "backup.json"), "--outcome", "unchanged"], lock),
+      () => resumePendingAutomaticRestore(directory, lock),
       () => runOfflineQueuedRunCancellation(profileBrowserClosure, directory, ["--apply", "--capture", "a".repeat(64)], lock),
     ];
     for (const writer of writers) {
