@@ -1,3 +1,4 @@
+import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
 import { DatabaseSync } from "node:sqlite";
 import { inspectOpenDatabase } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { StoppedAuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
@@ -76,7 +77,7 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 =
     if (sourceVersion === 10) {
       const native = new DatabaseSync(profile.path);
       try {
-        native.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT");
+        restoreEmptyPreMasterWorkbookFixture(native); native.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT");
         assert.equal(inspectOpenDatabase(native, 10).schemaVersion, 10);
       } finally { native.close(); }
     }
@@ -204,7 +205,7 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     seedRegisteredSignupBrowser(profile.machine, operation);
     await profile.closeController();
     const source = new DatabaseSync(profile.path);
-    try { source.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT"); }
+    try { restoreEmptyPreMasterWorkbookFixture(source); source.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT"); }
     finally { source.close(); }
     await prepareApplicationDataWorkspace(profile.workspace, target, lifetime, hostFacts);
     await upgradeRegisteredPersonStores(target, lifetime, hostFacts);

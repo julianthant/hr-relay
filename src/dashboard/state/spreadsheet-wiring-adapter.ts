@@ -5,7 +5,8 @@ import type { DashboardClient } from '../client/index.js';
 import { DashboardClientError } from '../client/errors.js';
 import { useDashboardClient, useDashboardCommandBinding } from './client-context.js';
 import type { SavedWorkbook } from '../../models/dashboard/workbooks.js';
-import { cellText, spreadsheetSaveMatches, type EditableWorkbook, type SpreadsheetSaveResult } from '../surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { spreadsheetSaveMatches, type SpreadsheetSaveResult } from '../surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { cellText, type EditableWorkbook } from '../../rules/spreadsheets/workbook-io.js';
 import { NOT_MAPPED, type RegisteredSpreadsheet } from '../surfaces/spreadsheets/spreadsheet-mock-model.js';
 import { spreadsheetField } from '../surfaces/spreadsheets/spreadsheet-fields-model.js';
 

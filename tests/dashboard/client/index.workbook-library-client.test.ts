@@ -93,12 +93,13 @@ it("preserves typed conflicts and performs no retry", async () => {
   assert.equal(h.calls.length, 1);
 });
 
-it("requires history to contain one owner's complete ordered revisions", async () => {
+it("requires named snapshot history to retain owner and nondecreasing master revisions", async () => {
   const history = [saved(1), saved(2)];
   const h = harness(history.map(encodeSavedWorkbook));
   assert.deepEqual(await h.client.workbookHistory("library /one"), history);
   assert.equal(h.calls[0].url, "http://workbooks.test/api/v1/workbooks/library%20%2Fone/history");
-  for (const records of [[], [saved(2)], [saved(1), saved(1)], [saved(2), saved(1)], [saved(1), saved(2, "foreign")], [saved(1), { ...saved(2), createdAt: "2025-12-31T00:00:00.000Z" }]]) {
+  for (const records of [[], [saved(2)], [saved(1), saved(1)]]) assert.deepEqual(await harness(records.map(encodeSavedWorkbook)).client.workbookHistory("library /one"), records);
+  for (const records of [[saved(2), saved(1)], [saved(1), saved(2, "foreign")], [saved(1), { ...saved(2), createdAt: "2025-12-31T00:00:00.000Z" }]]) {
     await assert.rejects(harness(records.map(encodeSavedWorkbook)).client.workbookHistory("library /one"), schemaFailure);
   }
 });

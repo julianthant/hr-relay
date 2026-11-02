@@ -1,3 +1,4 @@
+import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { copyFileSync,existsSync,mkdirSync,readFileSync,readdirSync,renameSync,rmdirSync,writeFileSync } from "node:fs";
@@ -39,7 +40,7 @@ import { personLookupDescriptor } from "../../../support/helpers/registered-work
 const hostFacts = { primaryDisplay: null };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 = 8) {
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 = 8) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
@@ -101,6 +102,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
+    restoreEmptyPreMasterWorkbookFixture(raw);
     if (sourceVersion < 10) {
       const editorDdl = SQLITE_MIGRATIONS[0].statements.join("\n").match(/CREATE TABLE explorer_overrides \([\s\S]*?\n\) STRICT;/u)?.[0];
       assert.ok(editorDdl);
@@ -451,7 +453,7 @@ it("revokes READY custody on exact artifact-root ancestry substitution", async (
   }
 });
 
-it.each([9, 10] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
+it.each([9, 10, 11] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
   const f = await readyBoundEight("idle", sourceVersion);
   try {
     const before = rawEight(f.path);
@@ -466,5 +468,35 @@ it.each([9, 10] as const)("upgrades supported schema %s to the current version w
     const fresh = f.machine.admitProfile(f.binding.profileId);
     try { assert.equal(fresh.profileMaintenanceSchemaVersion(), CURRENT_AUTHORITY_SCHEMA_VERSION); }
     finally { fresh.release(); }
+  } finally { await f.close(); }
+});
+
+it('upgrades populated schema 11 workbooks without replacing masters or claiming automatic revisions were operator versions', async () => {
+  const f = await readyBoundEight('idle', 11);
+  const at = '2026-01-01T00:00:00.000Z';
+  const first = { libraryId: 'migration-workbook', version: 1, createdAt: at, savedAt: at,
+    workbook: { libraryId: 'migration-workbook', name: 'Before.xlsx', themes: [], hasFormulas: false,
+      sheets: [{ id: 'sheet', name: 'People', width: 1, hidden: [], rows: [{ id: 'row', cells: [{ value: 'original' }] }] }] } };
+  const second = { ...first, version: 2, workbook: { ...first.workbook, name: 'Master.xlsx' } };
+  const raw = new DatabaseSync(f.path);
+  try {
+    raw.prepare('INSERT INTO workbook_library(id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(second.libraryId, 2, at, at, JSON.stringify(second));
+    for (const record of [first, second]) raw.prepare('INSERT INTO workbook_library_history(workbook_id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(record.libraryId, record.version, at, at, JSON.stringify(record));
+    assert.equal(inspectNativeAuthority(raw, 11).schemaVersion, 11);
+  } finally { raw.close(); }
+  try {
+    assert.equal((await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock)).state, 'upgraded');
+    const admission = f.machine.admitProfile(f.claim);
+    try {
+      const database = AuthorityDatabase.open(admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: 'workbook-upgrade-proof' }, systemClock, undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: f.stateRoot }));
+      try {
+        assert.deepEqual(database.authority.workbooks.read(first.libraryId), second);
+        assert.deepEqual(database.authority.workbooks.creation(first.libraryId), first);
+        assert.deepEqual(database.authority.workbooks.versions(first.libraryId).map(({ name, provenance }) => ({ name, provenance })), [
+          { name: 'Saved revision 1', provenance: 'migration' }, { name: 'Saved revision 2', provenance: 'migration' }]);
+        assert.equal(database.authority.workbooks.metadata(first.libraryId).typeId, 'general');
+        assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+      } finally { database.close(); }
+    } finally { admission.release(); }
   } finally { await f.close(); }
 });

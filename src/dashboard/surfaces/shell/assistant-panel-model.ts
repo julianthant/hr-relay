@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { DashboardClient } from '../../client/index.js';
 import type { ChatGptAccountView } from '../../../models/dashboard/chatgpt-account.js';
 import { importSpreadsheetInWorker } from '../spreadsheets/spreadsheet-import-client.js';
-import { cellText, type EditableWorkbook } from '../spreadsheets/spreadsheet-editor-model.js';
+import { cellText, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { MOCK_WORKFLOWS } from '../workflows/mocks/workflow-mock-catalog.js';
 import type { ComposerValue } from './composer-model.js';
 

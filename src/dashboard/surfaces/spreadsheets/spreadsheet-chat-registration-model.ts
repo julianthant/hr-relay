@@ -2,7 +2,8 @@ import { encodeEditableWorkbook } from '../../../models/dashboard/workbooks.js';
 import { canonicalJsonStringify } from '../../../rules/validation/canonical-json.js';
 import type { createSpreadsheetWiringAdapter } from '../../state/spreadsheet-wiring-adapter.js';
 import { exportSheetInWorker, exportSpreadsheetInWorker } from './spreadsheet-import-client.js';
-import { spreadsheetSaveMatches, type EditableWorkbook, type SpreadsheetSaveResult } from './spreadsheet-editor-model.js';
+import { spreadsheetSaveMatches, type SpreadsheetSaveResult } from './spreadsheet-editor-model.js';
+import { type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 
 export type SpreadsheetFileReference = Readonly<{ libraryId: string; version: number; name: string; status: 'Attached' | 'Generated' | 'Updated' }>;
 export type SpreadsheetRegistrationRequest = Readonly<{

@@ -1,3 +1,4 @@
+import { restoreEmptyPreMasterWorkbookFixture } from '../../../../support/helpers/workbooks/pre-master-schema.js';
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { copyFileSync,existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,realpathSync,renameSync,rmSync,writeFileSync } from "node:fs";
@@ -273,7 +274,7 @@ it("preserves a real UNKNOWN parked write, its fenced attempt and stopped worker
     const path = join(f.root, "state.db"), protectedPath = join(f.root, "credentials", "protected.json"), protectedBefore = digest(protectedPath);
     await f.closeController();
     const native = new DatabaseSync(path);
-    try { native.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT"); }
+    try { restoreEmptyPreMasterWorkbookFixture(native); native.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT"); }
     finally { native.close(); }
     const before = rows(path, 10);
     assert.ok((before.write_intents?.length ?? 0) > 0); assert.ok((before.write_attempts?.length ?? 0) > 0);
@@ -317,7 +318,7 @@ it.each(["missing", "corrupt", "future", "foreign"] as const)("stops established
 
 function historicalTen(path: string): void {
   const database = new DatabaseSync(path);
-  try { database.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT"); }
+  try { restoreEmptyPreMasterWorkbookFixture(database); database.exec("BEGIN EXCLUSIVE; UPDATE database_states SET schema_version=10 WHERE id=1; PRAGMA user_version=10; COMMIT"); }
   finally { database.close(); }
 }
 

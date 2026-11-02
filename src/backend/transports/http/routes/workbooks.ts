@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, decodeEditableWorkbook, encodeSavedWorkbook } from "../../../../models/dashboard/workbooks.js";
+import { WorkbookOperatorOperationRequestSchema, WorkbookTypeSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, decodeEditableWorkbook, encodeSavedWorkbook } from "../../../../models/dashboard/workbooks.js";
 import { WorkbookLibraryError, type WorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import type { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import type { DashboardApp } from "./api-types.js";
@@ -19,8 +19,21 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
   };
   app.get("/api/v1/workbooks/list", c => c.json(service().library.list().map(encodeSavedWorkbook)));
   app.post("/api/v1/workbooks", async c => {
-    const request = workbookRequest(WorkbookCreateRequestSchema, await c.req.json());
+    const request = workbookRequest(WorkbookOperatorOperationRequestSchema, WorkbookTypeSchema, WorkbookCreateRequestSchema, await c.req.json());
     return c.json(encodeSavedWorkbook(service().library.create(decodeEditableWorkbook(request.workbook))), 201);
+  });
+  app.get('/api/v1/workbooks/types', c => c.json(service().library.types()));
+  app.post('/api/v1/workbooks/types', async c => c.json(service().library.putType(workbookRequest(WorkbookTypeSchema, await c.req.json()))));
+  app.get('/api/v1/workbooks/:libraryId/metadata', c => c.json(service().library.metadata(c.req.param('libraryId'))));
+  app.get('/api/v1/workbooks/:libraryId/versions', c => c.json(service().library.versions(c.req.param('libraryId'))));
+  app.get('/api/v1/workbooks/:libraryId/changes', c => c.json(service().library.journal(c.req.param('libraryId'))));
+  app.post('/api/v1/workbooks/:libraryId/operations', async c => {
+    const request = workbookRequest(z.strictObject({ operationId: z.string().min(1), change: WorkbookOperatorOperationRequestSchema }), await c.req.json());
+    return c.json(service().library.operatorOperation(c.req.param('libraryId'), request.operationId, request.change));
+  });
+  app.post('/api/v1/workbooks/:libraryId/sync', async c => {
+    const request = workbookRequest(z.strictObject({ operationId: z.string().min(1) }), await c.req.json());
+    return c.json(await service().library.sync(c.req.param('libraryId'), request.operationId, c.req.raw.signal));
   });
   app.get("/api/v1/workbooks/:libraryId", c => c.json(encodeSavedWorkbook(service().library.read(c.req.param("libraryId")))));
   app.post("/api/v1/workbooks/:libraryId/save", async c => {

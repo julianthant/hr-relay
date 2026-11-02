@@ -5,8 +5,6 @@ import { UnboundPredecessorBackupManifestSchema } from "../../../../src/backend/
 import { prepareStoppedBackupClosure, probeStoppedProfileBrowsersClosed } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { withOfflineMaintenanceSync, withOfflineMaintenance, boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { NativeBrowserClosureUnprovedError } from "../../../../src/backend/runtime/browser/native-browser.js";
-import { createWorkbookLibraryRepository } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
-import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { START_PLAN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
@@ -129,9 +127,11 @@ describe("stopped native upgrade admission",()=>{
   try {raw.prepare("INSERT INTO run_requests VALUES(?,?,?,NULL,?,?,?,?)").run(plan.startPlanId,plan.workflowId,plan.plannedBy,
    plan.expiresAt,plan.version,canonicalJsonStringify(plan),plan.createdAt);
    if(version===4){
-    const library=createWorkbookLibraryService({repository:createWorkbookLibraryRepository({database:raw,mutate:work=>work().result,read:work=>work()}),clock});
-    const first=library.create({name:"Retained.xlsx",themes:[],hasFormulas:false,sheets:[{id:"sheet",name:"People",width:1,hidden:[],rows:[{id:"row",cells:[{value:"retained"}]}]}]});
-    library.save(first.libraryId,first.version,{...first.workbook,name:"Saved.xlsx"});
+    const at = clock.now().toISOString(), id = randomUUID();
+    const first = { libraryId: id, version: 1, createdAt: at, savedAt: at, workbook: { libraryId: id, name: 'Retained.xlsx', themes: [], hasFormulas: false, sheets: [{ id: 'sheet', name: 'People', width: 1, hidden: [], rows: [{ id: 'row', cells: [{ value: 'retained' }] }] }] } };
+    const second = { ...first, version: 2, workbook: { ...first.workbook, name: 'Saved.xlsx' } };
+    raw.prepare('INSERT INTO workbook_library(id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(id, 2, at, at, JSON.stringify(second));
+    for (const record of [first, second]) raw.prepare('INSERT INTO workbook_library_history(workbook_id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(id, record.version, at, at, JSON.stringify(record));
     workbookRows=Object.fromEntries(["workbook_library","workbook_library_history"].map(table=>[table,raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
    }
   }finally{raw.close();}
@@ -153,11 +153,14 @@ describe("stopped native upgrade admission",()=>{
   }finally{current.close();}
   const stored=new DatabaseSync(f.path,{readOnly:true});
   try {
-   for(const [table,rows] of Object.entries(f.workbookRows))assert.deepEqual(stored.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),rows);
+   for(const [table,rows] of Object.entries(f.workbookRows)) {
+     const columns = table === 'workbook_library' ? 'id,version,created_at,saved_at,payload_json' : 'workbook_id,version,created_at,saved_at,payload_json';
+     assert.deepEqual(stored.prepare(`SELECT ${columns} FROM ${table} ORDER BY rowid`).all(),rows);
+    }
    const row=stored.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();assert.ok(row);
    const record=AuthorityUpgradeRecordSchema.parse(JSON.parse(String(row.payload_json)));assert.ok(record.phase==="settled");
    const migrations=SQLITE_MIGRATIONS.filter(migration=>migration.version>version);
-   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5,6,7,8,9,10,11]:[5,6,7,8,9,10,11]);
+   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5,6,7,8,9,10,11,12]:[5,6,7,8,9,10,11,12]);
    assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:version,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,
     sourceContentFingerprint:source.authorityContentFingerprint,statements:migrations.flatMap(migration=>migration.statements)})).digest("hex"));
   }finally{stored.close();}

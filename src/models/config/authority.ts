@@ -52,6 +52,9 @@ export const AuthorityTableNameSchema = z.enum([
   "diagnostic_files",
   "dryrun_results",
   "run_search",
+  "workbook_creations",
+  "workbook_types",
+  "workbook_operations",
   "workbook_library",
   "workbook_library_history",
 ]);

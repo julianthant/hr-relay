@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe,it } from 'vitest';
-import { editSpreadsheetCell,importSpreadsheet,sortSpreadsheet,spreadsheetXlsx,type EditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { editSpreadsheetCell, sortSpreadsheet } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { importWorkbook as importSpreadsheet, writeWorkbookXlsx as spreadsheetXlsx, type EditableWorkbook } from '../../../../src/rules/spreadsheets/workbook-io.js';
 import { EMPTY_WORKBOOK_HISTORY,recordWorkbookEdit,stepWorkbookHistory } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-history-model.js';
 
 function workbook(): EditableWorkbook {

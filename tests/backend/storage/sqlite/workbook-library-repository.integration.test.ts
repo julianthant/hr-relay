@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -17,7 +17,7 @@ it("adds workbook storage to the baseline without changing existing schema or re
     const existingSchema = database.prepare("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name").all();
     const state = database.prepare("SELECT * FROM database_states").get();
     database.exec("BEGIN IMMEDIATE");
-    for (const statement of WORKBOOK_LIBRARY_MIGRATION.statements) database.exec(statement);
+    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements]) database.exec(statement);
     database.exec("COMMIT");
     const after = database.prepare("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name").all();
     expect(after.filter(row => existingSchema.some(before => before.name === row.name))).toEqual(existingSchema);
@@ -36,7 +36,7 @@ it("adds workbook storage to the baseline without changing existing schema or re
     database.close();
     database = new DatabaseSync(path);
     expect(service().read(first.libraryId)).toEqual(second);
-    expect(service().history(first.libraryId)).toEqual([first, second]);
+    expect(service().history(first.libraryId)).toEqual([]);
     expect(service().list()).toEqual([second]);
     expect(database.prepare("SELECT * FROM database_states").get()).toEqual(state);
   } finally { database.close(); rmSync(root, { recursive: true, force: true }); }

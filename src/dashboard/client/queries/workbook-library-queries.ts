@@ -62,7 +62,7 @@ export function createWorkbookLibraryQueries(transport: DashboardTransport): Wor
     async workbookHistory(libraryId: string) {
       const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}/history`;
       const records = parseOrThrow(WorkbookHistoryWireSchema, path, await transport.requestJson(path));
-      if (records.length === 0 || records.some((record, index) => record.libraryId !== libraryId || record.version !== index + 1
+      if (records.some((record, index) => record.libraryId !== libraryId || (index > 0 && record.version < records[index - 1].version)
         || record.createdAt !== records[0].createdAt)) throw schemaError(path, "workbook history identity or revision order mismatch");
       return records.map(decodeSavedWorkbook);
     },

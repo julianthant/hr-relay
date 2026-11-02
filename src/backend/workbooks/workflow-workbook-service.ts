@@ -16,7 +16,7 @@ export function createWorkflowWorkbookService(deps: Readonly<{ repository: Workb
       const receipt = () => WorkflowWorkbookResultSchema.parse({ state: "saved", operationId, libraryId, version: 1 });
       signal.throwIfAborted();
       if (deps.repository.read(libraryId) !== undefined) {
-        const original = deps.repository.history(libraryId)[0];
+        const original = deps.repository.creation(libraryId);
         if (original === undefined || original.workbook.sheets[0].id !== `${marker}sheet`) throw new WorkbookLibraryError("WORKBOOK_VERSION_CONFLICT");
         return receipt();
       }

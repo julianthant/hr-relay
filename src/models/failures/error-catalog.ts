@@ -626,6 +626,8 @@ export const ERROR_CATALOG = Object.freeze({
     "An active intake uses the same file with different workbook provenance. Finish that intake before importing this workbook.",
     EmptyParametersSchema,
   ),
+  WORKBOOK_OPERATION_CONFLICT: catalogEntry("This workbook operation ID was already used with different input.", EmptyParametersSchema),
+  WORKBOOK_SYNC_UNAVAILABLE: catalogEntry("Authenticated SharePoint Sync is unavailable.", EmptyParametersSchema),
   WORKBOOK_INVALID: catalogEntry(
     "The workbook is malformed and cannot be saved.",
     EmptyParametersSchema,
