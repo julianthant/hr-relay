@@ -297,7 +297,9 @@ export async function importWorkbook(name: string, data: ArrayBuffer): Promise<E
       const link = sheet.hyperlinkAt(cell.address);
       if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
         if ('formula' in value || 'sharedFormula' in value || 'shareType' in value) { hasFormulas = true; value = value.result ?? null; }
-        else if ('richText' in value) value = value.richText.map(part => part.text).join('');
+      }
+      if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+        if ('richText' in value) value = value.richText.map(part => part.text).join('');
         else if ('error' in value) { unsupportedCellMetadata = true; value = value.error; }
       }
       const fill = fromLibraryFill(cell.fill);

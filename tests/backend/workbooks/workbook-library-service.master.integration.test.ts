@@ -117,18 +117,22 @@ it('settles an oversized add without changing content or ownership and drains th
   expect(f.service.read(saved.libraryId).workbook.sheets[0].rows[1].cells[1].value).toBe('good');
   expect(f.database.prepare('SELECT COUNT(*) AS n FROM workbook_operations WHERE workbook_id=? AND receipt_json IS NULL').get(saved.libraryId)?.n).toBe(0);
 });
-it('refuses master edits of a standalone OOXML error cell without a formula', async () => {
+it.each([
+  ['standalone', '', false],
+  ['cached formula', '<f>NA()</f>', true],
+] as const)('imports a %s OOXML error cell as display text and refuses master edits', async (_kind, formula, hasFormulas) => {
   const { default: JSZip } = await import('jszip');
   const { writeWorkbookXlsx } = await import('../../../src/rules/spreadsheets/workbook-io.js');
   const f = fixture(), source = f.service.read(f.id).workbook;
   const archive = await JSZip.loadAsync(await writeWorkbookXlsx(source));
   const sheet = archive.file('xl/worksheets/sheet1.xml')!;
-  archive.file(sheet.name, (await sheet.async('string')).replace(/<c\b[^>]*\br="A1"[^>]*>[\s\S]*?<\/c>/u, '<c r="A1" t="e"><v>#N/A</v></c>'));
+  archive.file(sheet.name, (await sheet.async('string')).replace(/<c\b[^>]*\br="A1"[^>]*>[\s\S]*?<\/c>/u, `<c r="A1" t="e">${formula}<v>#N/A</v></c>`));
   const imported = await importWorkbook('Error.xlsx', await archive.generateAsync({ type: 'arraybuffer' }));
   expect(imported.sheets[0].rows[0].cells[0].value).toBe('#N/A');
-  expect(imported.hasFormulas).toBe(false); expect(imported.unsupportedMetadata).toBe(true);
+  expect(imported.hasFormulas).toBe(hasFormulas); expect(imported.unsupportedMetadata).toBe(true);
   const saved = f.service.create(imported);
-  expect(() => f.service.save(saved.libraryId, saved.version, { ...saved.workbook, unsupportedMetadata: false }))
+  expect(saved.workbook.sheets[0].rows[0].cells[0].value).toBe('#N/A');
+  expect(() => f.service.save(saved.libraryId, saved.version, { ...saved.workbook, hasFormulas: false, unsupportedMetadata: false }))
     .toThrow(expect.objectContaining({ code: 'WORKBOOK_METADATA_UNSUPPORTED' }));
   expect(f.service.read(saved.libraryId)).toEqual(saved);
 });
