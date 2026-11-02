@@ -1,6 +1,7 @@
 import { testProcessImport } from "../../compiled-process.js";
 import { spawn, type SpawnOptions } from "node:child_process";
 import { once } from "node:events";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import assert from "node:assert/strict";
 import { onTestFinished } from "vitest";
@@ -21,9 +22,10 @@ export async function assertRuntimeLifetimeHeld(lock:RuntimeLifetimeLock):Promis
   },RuntimeAlreadyRunningError);
 }
 
-export async function runInheritedRuntimeChild(lock: RuntimeLifetimeLock, code: string, args: readonly string[], options: Pick<SpawnOptions, "cwd" | "env" | "timeout"> = {}) {
+export async function runInheritedRuntimeChild(lock: RuntimeLifetimeLock, entrypoint: string | URL, args: readonly string[], options: Pick<SpawnOptions, "cwd" | "env" | "timeout"> = {}) {
   lock.assertHeld();
-  const child = spawn(process.execPath, ["--import", testProcessImport(), "--input-type=module", "-e", code, String(lock.port), ...args],
+  const executable = entrypoint instanceof URL ? [fileURLToPath(entrypoint)] : ["--input-type=module", "-e", entrypoint];
+  const child = spawn(process.execPath, ["--import", testProcessImport(), ...executable, String(lock.port), ...args],
     { cwd: process.cwd(), ...options, stdio: ["ignore", "pipe", "pipe", "ipc"] });
   assert.ok(child.stdout && child.stderr);
   const output: Buffer[] = [], errors: Buffer[] = [];

@@ -2,7 +2,7 @@ import { createDuoCredentialStore } from "../../storage/configuration/duo-creden
 import { createNominatimWorkerAdapter } from "../../processing/providers/nominatim-owner.js";
 import { createNominatimGeocodeAdapter } from "../../processing/providers/geocode-adapters.js";
 import { RuntimeLifetimeLock, WorkerRuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
-import { AuthoritySourceClosureUnprovedError, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
+import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../../storage/source-closure.js";
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
 import { createChatGptOcrAdapter, CHATGPT_OCR_MODEL } from "../../processing/providers/chatgpt-ocr-adapter.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
@@ -443,10 +443,10 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   try {
     selected.assertCurrent();
     issued = machine.admitProfile(selected.profileId);
-    protectedAuthority = createCredentialStore({ admission: issued, stateRoot, erasureJournalAdmission: machine,
-      erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
+    protectedAuthority = createCredentialStore({ admission: issued, stateRoot });
   } catch (error) {
-    if (error instanceof AuthoritySourceClosureUnprovedError) {
+    if (hasUnprovedSourceClosure(error)) {
+      machine.retainSourceClosure(error); issued?.retainSourceClosure(error);
       if (issued !== undefined) retainUnprovedSourceOwners(error, { admission: issued });
       throw new RuntimeCustodyUncertainError([error]);
     }
@@ -485,7 +485,11 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       });
       return { database, workerId };
     } catch (error) {
-      if (error instanceof AuthoritySourceClosureUnprovedError) throw new RuntimeCustodyUncertainError([error]);
+      if (hasUnprovedSourceClosure(error)) {
+        admission.retainSourceClosure(error); machine.retainSourceClosure(error);
+        retainUnprovedSourceOwners(error, { admission: { admission, machine }, database: opened });
+        throw new RuntimeCustodyUncertainError([error]);
+      }
       try { if (opened !== undefined) closeDatabase(opened); }
       catch (closeError) { throw new RuntimeCustodyUncertainError([error, closeError]); }
       try { admission.release(); }
@@ -532,7 +536,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     ports: input.gateSourcePorts ?? [],
     clock,
   });
-  const duo = createDuoCredentialStore(admission, machine, clock);
+  const duo = createDuoCredentialStore(admission, clock);
   const runtimePreflight = composeRuntimePreflight({ duo, admission, credentials: protectedAuthority, database, clock, repoRoot, isolation: input.isolation,
     descriptors: { resolve: resolveDescriptor }, descriptorSetHash: descriptor.contractFingerprint,
     protectedSecrets, environment: env,

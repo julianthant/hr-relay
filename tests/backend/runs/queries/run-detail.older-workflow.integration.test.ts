@@ -1,5 +1,5 @@
 import { afterAll, afterEach, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { buildRunDetail, type RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail.js";
 import { LogIdentityRefusedError } from "../../../../src/backend/runs/commands/refusals.js";
@@ -15,7 +15,7 @@ import { createRunQueueProjectionTestWorld } from "../../../support/helpers/back
 import { taskEventsOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupModule } from "../../../support/helpers/registered-workflows.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld(profileFixtures.create);

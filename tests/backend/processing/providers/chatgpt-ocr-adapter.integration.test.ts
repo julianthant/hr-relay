@@ -1,4 +1,4 @@
-import { createChatGptCredentialRepository } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createChatGptCredentialRepository } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -8,7 +8,7 @@ import { z } from "zod";
 import { pdf } from "pdf-to-img";
 import * as pdfReader from "pdf-to-img";
 import { createChatGptAccountService } from "../../../../src/backend/accounts/chatgpt-account-service.js";
-import { createBoundProfileFixture, createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { join } from "node:path";
 import { chatGptFixture, completedOcrStream } from "../../../support/helpers/chatgpt-account-fixtures.js";
 import { createCapabilityWiringTestWorld } from "../../../support/helpers/backend/capability-wiring-world.js";
@@ -36,7 +36,7 @@ import { flow } from "../../../../src/workflow-kit/flow.js";
 
 vi.mock("pdf-to-img", async importOriginal => ({ ...await importOriginal<typeof import("pdf-to-img")>() }));
 
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
 
 const world = createCapabilityWiringTestWorld();

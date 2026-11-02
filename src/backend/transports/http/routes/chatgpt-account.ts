@@ -1,7 +1,7 @@
 import type { ChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
 import { randomUUID } from "node:crypto";
 import { ChatGptAccountError, type ChatGptAccountService, type ChatGptAuthorization } from "../../../accounts/chatgpt-account-service.js";
-import { ChatGptCredentialError } from "../../../storage/configuration/credential-store.js";
+import { ChatGptCredentialError } from "../../../storage/configuration/chatgpt-credential-repository.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../../../models/failures/error-catalog.js";
 import { ChatGptAccountViewSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSchema, ChatGptEmptyRequestSchema,
   ChatGptOcrTestResultSchema, ChatGptSignInCompletionSchema, ChatGptSignInRequestSchema, ChatGptSignInStartResultSchema, ChatGptSignOutResultSchema,

@@ -1,10 +1,10 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import assert from "node:assert/strict";
 import { DAY, instantOffsetOf, workerLeaseOf, declareProjectionWorker } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const {world, cleanup, queuedEventOf, runRecordOf } = createRunQueueProjectionTestWorld(profileFixtures.create);

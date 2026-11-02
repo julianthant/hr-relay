@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
@@ -11,7 +11,7 @@ import { sourceBoundHarness } from "../../../support/fixtures/integration/source
 import { sourceBoundReadDescriptor,sourceBoundReadStores } from "../../../support/fixtures/source-bound-read-fixtures.js";
 import { absentProbeEvidence,buildWriteFixtureRegistry,writeFixtureDescriptor,writeFixtureDocumentDescriptor,writeFixtureMemoDescriptor,writeFixtureOmittableDescriptor,writeFixtureParallelDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const disposers: (() => void | Promise<void>)[] = [];

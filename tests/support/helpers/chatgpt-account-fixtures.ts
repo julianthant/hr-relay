@@ -5,6 +5,7 @@ import type { RuntimeAdmission } from "../../../src/backend/storage/admission/ad
 import { createChatGptAccountService, type ChatGptAuthorization } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 
+import { createChatGptCredentialRepository } from "../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { createBoundProfileFixture, type BoundProfileStorageFixture } from "./admission-fixture.js";
 
 export async function chatGptFixture(ownedAdmission?: RuntimeAdmission, profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture) {
@@ -21,6 +22,7 @@ export async function chatGptFixture(ownedAdmission?: RuntimeAdmission, profileF
   let sse = completedOcrStream("Synthetic form");
   let models: unknown = { models: [{ slug: "gpt-6.1-sol", display_name: "GPT-6.1 Sol", visibility: "list" }] };
   let modelsHook: (() => Promise<Response>) | undefined;
+  let revocationHook: (() => Promise<void>) | undefined;
   let revocationStatus = 200, discoveryPatch: { [key: string]: unknown } = {};
   let tokenHook: (() => Promise<void>) | undefined, tokenPatch: { [key: string]: unknown } = {}, tokenStatus = 200, tokenError = "invalid_grant", tamperSignature = false;
   let responseHook: ((init: RequestInit) => Response) | undefined;
@@ -41,11 +43,12 @@ export async function chatGptFixture(ownedAdmission?: RuntimeAdmission, profileF
       return Response.json({ access_token: `synthetic-access-${String(count)}`, refresh_token: `synthetic-refresh-${String(count)}`, id_token: idToken(),
         token_type: "Bearer", expires_in: 3600, scope: grantedScopes, ...tokenPatch });
     }
-    if (url.endsWith("/revoke")) return new Response(revocationStatus === 200 ? "" : "synthetic-unavailable", { status: revocationStatus });
+    if (url.endsWith("/revoke")) { await revocationHook?.(); return new Response(revocationStatus === 200 ? "" : "synthetic-unavailable", { status: revocationStatus }); }
     if (url.endsWith("/models")) return modelsHook === undefined ? Response.json(models) : modelsHook();
     if (url.endsWith("/responses")) return responseHook?.(init) ?? new Response(sse, { headers: { "Content-Type": "text/event-stream" } });
     throw new Error("Unexpected synthetic URL");
   };
+  const repository = createChatGptCredentialRepository({ admission, stateRoot: root });
   const service = createChatGptAccountService({ admission, stateRoot: root, clock, fetch: transport });
   async function callback(attempt: ChatGptAuthorization, patch: { [key: string]: string | null } = {}) {
     const authorize = new URL(attempt.authorizationUrl); nonce = authorize.searchParams.get("nonce") ?? "";
@@ -60,11 +63,11 @@ export async function chatGptFixture(ownedAdmission?: RuntimeAdmission, profileF
     await service.close();
     await profile?.close();
   }
-  return { root, admission, clock, service, transport, calls, callback, connected, cleanup,
+  return { root, admission, clock, service, repository, transport, calls, callback, connected, cleanup,
     setClaims(patch: { [key: string]: unknown }) { claimsPatch = patch; },
     setModels(value: unknown) { models = value; }, setModelsHook(hook: () => Promise<Response>) { modelsHook = hook; },
     setScopes(scopes: string) { grantedScopes = scopes; }, setSse(value: string) { sse = value; },
-    setRevocation(status: number) { revocationStatus = status; }, setDiscovery(patch: { [key: string]: unknown }) { discoveryPatch = patch; },
+    setRevocation(status: number) { revocationStatus = status; }, setRevocationHook(hook: () => Promise<void>) { revocationHook = hook; }, setDiscovery(patch: { [key: string]: unknown }) { discoveryPatch = patch; },
     setTokenHook(hook: () => Promise<void>) { tokenHook = hook; },
     setToken(patch: { [key: string]: unknown }) { tokenPatch = patch; },
     setTokenStatus(status: number, error = "invalid_grant") { tokenStatus = status; tokenError = error; }, tamperSignature() { tamperSignature = true; },

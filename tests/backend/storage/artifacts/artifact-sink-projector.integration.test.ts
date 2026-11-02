@@ -1,5 +1,5 @@
 import { afterAll, describe, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { existsSync,readFileSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -10,7 +10,7 @@ import type { ArtifactRef } from "../../../../src/models/artifacts/artifacts.js"
 import { foundationFixture,id,NOW,update } from "../../../support/helpers/database-foundation/fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 async function fixture() {

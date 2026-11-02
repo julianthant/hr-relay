@@ -1,5 +1,5 @@
 import { afterAll, it, vi } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -23,7 +23,7 @@ import { failure,HASH,NOW } from "../../../support/helpers/database-foundation/f
 import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 async function fixture() {

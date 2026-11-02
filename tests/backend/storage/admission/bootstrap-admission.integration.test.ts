@@ -113,8 +113,8 @@ try {
     const lifetime = await RuntimeLifetimeLock.acquire(Number(process.argv[2]));
     const root = process.argv[1], machine = acquireEntrypointAdmission(root, "exclusive", lifetime);
     const admission = machine.admitProfile(${JSON.stringify(profileId)}), state = admission.stateRoot;
-    const credentials = createCredentialStore({ admission, stateRoot: state, erasureJournalAdmission: machine,
-      erasureJournalPath: join(machine.stateRoot, "machine", "erasures", admission.profileBinding.profileId + ".json") });
+    const credentials = createCredentialStore({ admission, stateRoot: state,
+      });
     const path = join(state, "state.db"), directory = join(state, "backups", "authority"), processLockRoot = join(root, ${JSON.stringify(rebuildRuntimeIsolation.processLockRoot)});
     const db = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "native-crash-test" }, undefined, undefined, undefined, undefined, credentials);
     const report = await new AuthorityBackupService(admission, db, { directory }).request({ trigger: "operator", requiredGeneration: db.getMeta().authorityGeneration });

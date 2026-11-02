@@ -12,7 +12,7 @@ import { createItemAttemptHistoryQuery } from "../../../../src/backend/runs/quer
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase, detachBoundFixtureWorkers, registerBoundFixtureWorker } from "../../../support/helpers/synthetic-database-admission.js";
 import { deletedRunFromRow } from "../../../../src/backend/storage/sqlite/deleted-run-row.js";
 import { reconstructConfirmedOperation } from "../../../../src/models/events/confirmed-operation.js";
@@ -37,7 +37,7 @@ import { AuthorityDatabase as AuthorityDatabase_m2 } from "../../../support/help
 
 import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-lookup/workflow.js";
 
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
 
 {

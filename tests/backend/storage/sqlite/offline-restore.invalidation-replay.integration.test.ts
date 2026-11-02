@@ -31,9 +31,9 @@ for (const boundary of ["before", "after"] as const) for (const mutation of ["re
         const report = await new AuthorityBackupService(f.admission, database, { directory }).request({ trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration });
         const manifest = report.manifests[0]; assert.ok(manifest); manifestPath = join(directory, manifest.backupFileName + ".manifest.json");
       } finally { database.close(); }
-      const before = f.machine.readProfileRegistry(), profileId = f.admission.profileBinding.profileId;
-      const store = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot, erasureJournalAdmission: f.machine,
-        erasureJournalPath: join(f.machine.stateRoot, "machine", "erasures", `${profileId}.json`) });
+      const before = f.machine.readProfileRegistry();
+      const store = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot,
+        });
       const rename = fs.renameSync; let interrupted = false, replacements = 0;
       vi.spyOn(fs, "renameSync").mockImplementation((source, target) => {
         if (!interrupted && String(target) === registryPath && existsSync(journalPath)) {

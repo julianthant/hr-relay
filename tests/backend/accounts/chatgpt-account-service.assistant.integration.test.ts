@@ -3,7 +3,7 @@ import { z } from 'zod';
 import assert from "node:assert/strict";
 import { afterAll, it } from "vitest";
 import { setImmediate } from 'node:timers/promises';
-import { createBoundProfileFixture, createClonedProfileFixtures } from '../../support/helpers/admission-fixture.js';
+import { createBoundProfileFixture, createProfileFixtureSet } from '../../support/helpers/admission-fixture.js';
 import { ChatGptAccountError } from '../../../src/backend/accounts/chatgpt-account-service.js';
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, type AssistantInferenceRequest } from "../../../src/models/dashboard/assistant.js";
 import { syntheticAssistantTools, syntheticAssistantResponse, completedAssistantStream } from "../../support/helpers/assistant-function-fixtures.js";
@@ -15,7 +15,7 @@ const request: AssistantInferenceRequest = { model: "gpt-6.1-sol", reasoning: { 
 function terminal(output: unknown, model = request.model) {
   return `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_synthetic", model, status: "completed", output } })}\n\n`;
 }
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
 
 it("uses private admitted subscription transport with fixed roles and strict namespaced assistant functions", async () => {

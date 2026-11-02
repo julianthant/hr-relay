@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { it, vi } from "vitest";
-import * as credentials from "../../../src/backend/storage/configuration/credential-store.js";
+import * as credentials from "../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { ChatGptAccountError, createChatGptAccountService } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";

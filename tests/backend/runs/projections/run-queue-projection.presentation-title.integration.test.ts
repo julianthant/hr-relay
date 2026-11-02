@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { RunEvidenceReceiptSchema } from "../../../../src/models/trust/evidence.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
@@ -7,7 +7,7 @@ import { createRunQueueProjectionTestWorld } from "../../../support/helpers/back
 import { FICTIONAL_PERSON, seedPersonLookupPresentation } from "../../../support/fixtures/person-lookup-presentation.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld(profileFixtures.create);

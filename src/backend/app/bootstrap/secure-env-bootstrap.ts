@@ -136,17 +136,10 @@ async function runAdmittedEnvironmentBootstrap(
   }
   const storageCommand = entrypoint === "cli" && entrypointArgs[0] === "storage" ? entrypointArgs[1] : undefined;
   const machineControlMaintenance = storageCommand === "upgrade" && entrypointArgs.includes("--machine-control");
-  const duoPublicationRecovery = storageCommand === "recover-duo-publication";
-  if (machineControlMaintenance || duoPublicationRecovery) {
-    if (duoPublicationRecovery && entrypointArgs.length !== 2) throw new Error("unsupported storage recover-duo-publication argument");
+  if (machineControlMaintenance) {
     const admission = RuntimeAdmission.acquireStoppedMachineControlMaintenance(workspace, rootLifetime());
     let retainCustody = false;
     try {
-      if (duoPublicationRecovery) {
-        const recovered = admission.recoverInterruptedDuoPublication();
-        process.stdout.write(`storage recover-duo-publication: recovered revision ${String(recovered.revision)}\n`);
-        return;
-      }
       const { composeStorageCommand } = await import("../composition/storage-compose.js");
       const outcome = await composeStorageCommand(rebuildRuntimeIsolation, entrypointArgs.slice(1), systemClock, workspace, admission);
       process.stdout.write(outcome.output.endsWith("\n") ? outcome.output : `${outcome.output}\n`);

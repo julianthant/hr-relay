@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
@@ -19,7 +19,7 @@ import { separationsDescriptor } from "../../../support/helpers/registered-workf
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 import { RerunRefusedError } from "../../../../src/backend/runs/start/rerun.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const CLOCK = manualClock(new Date(NOW));

@@ -121,8 +121,8 @@ it("recovers an actual hard-crashed standalone reservation with no worker lease 
     lock = await RuntimeLifetimeLock.acquire(port);
     machine = acquireEntrypointAdmission(installation.workspace, "shared", lock);
     admission = machine.admitProfile(binding.profileId);
-    const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
-      erasureJournalPath: join(machine.stateRoot, "machine", "erasures", binding.profileId + ".json") });
+    const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot,
+      });
     database = AuthorityDatabase.open(admission, { path: join(f.root, "state.db"), busyTimeoutMs: 250,
       migrationOwner: "verification-restart-proof" }, f.clock, undefined, undefined, undefined, credentials);
     assert.equal(database.authority.workerLeases.get(member.workerId), undefined);

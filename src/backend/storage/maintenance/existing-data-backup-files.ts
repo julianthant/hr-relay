@@ -26,6 +26,14 @@ export function existingDataFileLabel(inventoryPath: string): "lock" | "authorit
   return "lock";
 }
 
+export function profileAuthorityFileWitnesses(root: string) {
+  return (["", "-wal", "-shm", "-journal"] as const).map(suffix => {
+    const source = readPrivateFile(join(root, `state.db${suffix}`), { label: "authority database", maxBytes });
+    return { suffix, ...(source === undefined ? {} : { file: { device: source.identity.device,
+      inode: source.identity.inode, digest: hash(source.bytes) } }) };
+  });
+}
+
 export function file(path: string, label: "lock" | "authority database" | "managed data" = "lock") {
   noSymlinkAncestry(dirname(path), new Map());
   const value = readPrivateFile(path, { label, maxBytes });

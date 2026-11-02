@@ -141,7 +141,7 @@ for (const change of ["no-selection", "unfinished", "foreign-binding"] as const)
   });
 }
 
-it("refuses a selected profile generation change during backup instead of reporting success", async () => {
+it("refuses a selected profile generation mutation attempted during backup instead of reporting success", async () => {
   const fixture = await installation(), lease = acquireInstallation(fixture.workspace, "exclusive", fixture.lifetime);
   const machine = RuntimeAdmission.fromInstallationLease(lease), rename = nativeFs.renameSync.bind(nativeFs);
   const path = join(fixture.stateRoot, "state.db"), before = readFileSync(path); let changed = false;
@@ -162,7 +162,8 @@ it("refuses a selected profile generation change during backup instead of report
         while (pending.length !== 0) {
           const value = pending.pop(); if (seen.has(value)) continue; seen.add(value);
           if (value instanceof AggregateError) { const errors: readonly unknown[] = value.errors; pending.push(...errors); }
-          else { assert.ok(value instanceof Error); assert.match(value.message, /profile-session-stale|profile-storage-claim-generation-changed/u); stale = true; }
+          else { assert.ok(value instanceof Error && "code" in value && "reason" in value);
+            assert.equal(value.code, "RUNTIME_OFFLINE_OPERATION_UNAVAILABLE"); assert.equal(value.reason, "offline-maintenance-busy"); stale = true; }
         }
         return stale;
       });

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 
 import assert from "node:assert/strict";
 import { separationsIdentityCheckModule } from "../../../../src/backend/app/registries/step-proof-modules.js";
@@ -45,7 +45,7 @@ uuidOf,
 type DashboardWorld,
 } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const worlds: DashboardWorld[] = [];

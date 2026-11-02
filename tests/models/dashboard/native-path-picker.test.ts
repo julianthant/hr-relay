@@ -17,7 +17,7 @@ async function mount(pickSettingsPath: DashboardClient["pickSettingsPath"], onSe
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   const client = { pickSettingsPath } as DashboardClient;
   await act(async () => root?.render(createElement(DashboardClientProvider, { client,
-    children: createElement(SettingsPathPicker, { field: "paths.duoCredential", label: "Duo credential file",
+    children: createElement(SettingsPathPicker, { field: "paths.i9CheckTrackerPath", label: "Duo credential file",
       value: "/tmp/private/duo.json", disabled: false, onSelected }) })));
   return host;
 }
@@ -26,7 +26,7 @@ describe("native Paths picker control", () => {
   it("shows the full accessible path, selects one file, and leaves cancellation untouched", async () => {
     const selected: string[] = [];
     const requests: unknown[] = [];
-    let response: NativePathPickerResponse = { state: "selected", field: "paths.duoCredential", path: "/tmp/private/new.json" };
+    let response: NativePathPickerResponse = { state: "selected", field: "paths.i9CheckTrackerPath", path: "/tmp/private/new.json" };
     const surface = await mount(request => { requests.push(request); return Promise.resolve(response); }, path => selected.push(path));
     const value = surface.querySelector(".ds-path-value");
     assert.equal(value?.getAttribute("aria-label"), "/tmp/private/duo.json");
@@ -37,9 +37,9 @@ describe("native Paths picker control", () => {
     const button = surface.querySelector('button[aria-label="Change Duo credential file"]');
     if (!(button instanceof HTMLButtonElement)) throw new Error("picker button missing");
     await act(async () => { button.click(); await Promise.resolve(); });
-    assert.deepEqual(requests, [{ field: "paths.duoCredential", initialPath: "/tmp/private/duo.json" }]);
+    assert.deepEqual(requests, [{ field: "paths.i9CheckTrackerPath", initialPath: "/tmp/private/duo.json" }]);
     assert.deepEqual(selected, ["/tmp/private/new.json"]);
-    response = { state: "cancelled", field: "paths.duoCredential" };
+    response = { state: "cancelled", field: "paths.i9CheckTrackerPath" };
     await act(async () => { button.click(); await Promise.resolve(); });
     assert.deepEqual(selected, ["/tmp/private/new.json"]);
   });
@@ -55,7 +55,7 @@ describe("native Paths picker control", () => {
     assert.equal(button.disabled, true);
     button.click();
     assert.equal(calls, 1);
-    await act(async () => release?.({ state: "unavailable", field: "paths.duoCredential", reason: "busy" }));
+    await act(async () => release?.({ state: "unavailable", field: "paths.i9CheckTrackerPath", reason: "busy" }));
     assert.match(surface.querySelector('[role="alert"]')?.textContent ?? "", /Another path picker is already open/u);
     assert.deepEqual(selected, []);
   });
@@ -66,7 +66,7 @@ describe("native Paths picker control", () => {
     await mount(() => new Promise(resolve => { release = resolve; }), path => selected.push(path));
     await act(async () => host?.querySelector("button")?.click());
     act(() => root?.unmount()); root = undefined;
-    await act(async () => release?.({ state: "selected", field: "paths.duoCredential", path: "/tmp/stale.json" }));
+    await act(async () => release?.({ state: "selected", field: "paths.i9CheckTrackerPath", path: "/tmp/stale.json" }));
     assert.deepEqual(selected, []);
   });
 });

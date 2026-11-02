@@ -3,7 +3,7 @@ import { CONFIG_ROUTE_KEYS } from "../config/schema.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { RUNTIME_ENVIRONMENT_REGISTRY, RuntimeEnvironmentRegistrySchema, auditRuntimeEnvironmentInventory } from "./runtime-environment.js";
 import { BrowserSystemIdSchema, ProviderCapabilityIdSchema, ScenarioIdSchema } from "../../rules/identity/ids.js";
-import { SECRET_FILE_SPECS, SECRET_SPECS, SecretFileNameSchema, SecretNameSchema } from "../config/secrets.js";
+import { SECRET_SPECS, SecretNameSchema } from "../config/secrets.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS, PreflightScenarioIdSchema } from "../trust/preflight-scenarios.js";
 import { PreflightCheckIdSchema, RuntimeCapabilitySchema } from "../preflight/preflight-contract.js";
 import { auditPreflightSemanticRegistry } from "../../rules/preflight/preflight-semantics.js";
@@ -149,7 +149,6 @@ export const RuntimeDependencySpecSchema = z.strictObject({
   scenario: PreflightScenarioIdSchema,
   justification: z.string().min(1),
   secretNames: z.array(SecretNameSchema).optional(),
-  secretFiles: z.array(SecretFileNameSchema).optional(),
 });
 
 function endpointDependencies() {
@@ -195,7 +194,7 @@ export const RUNTIME_DEPENDENCIES = deepFreeze(RuntimeDependencySpecSchema.array
   { id: "runtime.node", kind: "runtime", requirement: "blocking", capabilities: ["dashboard.serve", "executor.run"], check: "runtime.compatibility", consumer: "runtime-composition", scenario: "preflight/runtime-mismatch", justification: "both runtime surfaces require the pinned Node engine" },
   { id: "runtime.package-lock", kind: "runtime", requirement: "blocking", capabilities: ["dashboard.serve", "executor.run"], check: "runtime.compatibility", consumer: "runtime-composition", scenario: "preflight/runtime-mismatch", justification: "both runtime surfaces require dependencies matching the reviewed package lock" },
   { id: "browser.chromium", kind: "browser", requirement: "blocking", capabilities: ["executor.run"], check: "browser.assets", consumer: "system-driver", scenario: "preflight/browser-missing", justification: "executor tasks cannot launch their isolated browser without Chromium" },
-  { id: "browser.duo-extension", kind: "browser", requirement: "blocking", capabilities: ["executor.run"], check: "browser.assets", consumer: "system-driver", scenario: "preflight/browser-missing", justification: "authenticated executor tasks require the registered isolated Duo credential asset", secretFiles: ["duoWebauthnCredential"] },
+  { id: "browser.duo-extension", kind: "browser", requirement: "blocking", capabilities: ["executor.run"], check: "browser.assets", consumer: "system-driver", scenario: "preflight/browser-missing", justification: "authenticated executor tasks require the registered isolated Duo credential asset" },
   { id: "config.resolved", kind: "config", requirement: "blocking", capabilities: ["dashboard.serve", "executor.run"], check: "config.valid", consumer: "runtime-composition", scenario: "preflight/config-invalid", justification: "dashboard and executor decisions require one strict resolved config snapshot" },
   { id: "path.state", kind: "path", requirement: "blocking", capabilities: ["dashboard.serve", "executor.run"], check: "filesystem.health", consumer: "authority-storage", scenario: "preflight/low-disk", justification: "runtime authority requires a writable isolated state root" },
   { id: "path.artifact", kind: "path", requirement: "blocking", capabilities: ["dashboard.serve", "executor.run"], check: "filesystem.health", consumer: "artifact-storage", scenario: "preflight/low-disk", justification: "runtime evidence requires a writable isolated artifact root" },
@@ -446,7 +445,6 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
   for (const dependency of registry.dependencies) {
     unique(dependency.capabilities, `dependency ${dependency.id} capabilities`);
     unique(dependency.secretNames ?? [], `dependency ${dependency.id} secret names`);
-    unique(dependency.secretFiles ?? [], `dependency ${dependency.id} secret files`);
     if (!registeredConsumers.has(dependency.consumer)) violations.push(`dependency ${dependency.id} names missing consumer ${dependency.consumer}`);
     const check = checks.get(dependency.check);
     if (check === undefined) {
@@ -504,13 +502,8 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
     timekeeperName: "secret.timekeeper",
     sharepointOnboardingRosterUrl: "secret.sharepoint-roster",
   } as const satisfies Record<z.infer<typeof SecretNameSchema>, string>;
-  const secretFileDependencyByName = {
-    duoWebauthnCredential: "browser.duo-extension",
-  } as const satisfies Record<z.infer<typeof SecretFileNameSchema>, string>;
   const referencedSecretNames = registry.dependencies.flatMap(({ secretNames }) => secretNames ?? []);
-  const referencedSecretFiles = registry.dependencies.flatMap(({ secretFiles }) => secretFiles ?? []);
   unique(referencedSecretNames, "runtime secret-name references");
-  unique(referencedSecretFiles, "runtime secret-file references");
   for (const secret of SECRET_SPECS) {
     if (!referencedSecretNames.includes(secret.name)) violations.push(`secret ${secret.name} has no runtime dependency consumer`);
     const owner = secretDependencyByName[secret.name];
@@ -518,22 +511,10 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
       violations.push(`secret ${secret.name} is not owned by dependency ${owner}`);
     }
   }
-  for (const secretFile of SECRET_FILE_SPECS) {
-    if (!referencedSecretFiles.includes(secretFile.name)) violations.push(`secret file ${secretFile.name} has no runtime dependency consumer`);
-    const owner = secretFileDependencyByName[secretFile.name];
-    if (!dependencies.get(RuntimeDependencyIdSchema.parse(owner))?.secretFiles?.includes(secretFile.name)) {
-      violations.push(`secret file ${secretFile.name} is not owned by dependency ${owner}`);
-    }
-  }
   for (const dependency of registry.dependencies) {
     for (const secret of dependency.secretNames ?? []) {
       if (secretDependencyByName[secret] !== dependency.id) {
         violations.push(`dependency ${dependency.id} cannot own secret ${secret}`);
-      }
-    }
-    for (const secretFile of dependency.secretFiles ?? []) {
-      if (secretFileDependencyByName[secretFile] !== dependency.id) {
-        violations.push(`dependency ${dependency.id} cannot own secret file ${secretFile}`);
       }
     }
   }

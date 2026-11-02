@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { plan1Contract, plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
@@ -47,7 +47,7 @@ sessionManagerFor,
 type AuthorityHarness,
 } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
 const disposers: (() => void | Promise<void>)[] = [];
 afterEach(async () => {

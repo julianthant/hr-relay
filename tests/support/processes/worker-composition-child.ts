@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { statSync } from "node:fs";
-import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { z } from "zod";
 import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -28,8 +27,8 @@ let entered = false, proved = false;
 try {
   const selected = captureSelectedProfileStorage(machine);
   child = machine.admitProfile(selected.profileId);
-  const credentials = createCredentialStore({ admission: child, stateRoot: child.stateRoot, erasureJournalAdmission: machine,
-    erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
+  const credentials = createCredentialStore({ admission: child, stateRoot: child.stateRoot,
+    });
   database = AuthorityDatabase.open(child, { path: selected.authorityPath, busyTimeoutMs: 5000, migrationOwner: "worker-composition-child" },
     clock, undefined, undefined, undefined, credentials);
   const active = database.authority.runtimeConfig.get(); assert.ok(active);

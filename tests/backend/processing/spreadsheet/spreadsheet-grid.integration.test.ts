@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { createHash,randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -9,7 +9,7 @@ import { CommandRequestSchema,CommandResultSchema } from "../../../../src/rules/
 import { createIntakeAuthority,INTAKE_CSV } from "../../../support/fixtures/dashboard/fixture-intake-authority.js";
 import { defineIntakeFixtureDescriptor,INTAKE_FIXTURE_WORKFLOW_ID } from "../../../support/fixtures/intake-workflow-fixture.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 type Harness = Awaited<ReturnType<typeof createIntakeAuthority>>;

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
 import { testWorkerLifetime, testRunLifecycle,testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -31,7 +31,7 @@ recordingLogger,
 sessionManagerFor,
 } from "../../../support/helpers/phase1f-executor-harness.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const disposers: (() => void | Promise<void>)[] = [];

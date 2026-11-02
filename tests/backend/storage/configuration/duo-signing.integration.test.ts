@@ -1,3 +1,5 @@
+import { CanonicalCredentialHeadSchema } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
+import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
 import { z } from "zod";
 import nativeFs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -9,7 +11,7 @@ import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import type { BrowserContext } from "playwright";
 import { it, vi } from "vitest";
-import { createDuoCredentialStore, DuoCredentialCommitUncertainError } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
+import { createDuoCredentialStore, DuoCredentialError } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
 import { provisionWorkflowDuo } from "../../../../src/backend/runtime/browser/workflow-duo-provider.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
@@ -22,7 +24,7 @@ import { scaledMs } from "../../../support/time-scale.js";
 async function setup() {
   const fixture = await createBoundProfileFixture({ sharedMachine: true });
   const clock = manualClock(new Date("2026-11-01T12:00:00Z"));
-  const store = createDuoCredentialStore(fixture.admission, fixture.machine, clock);
+  const store = createDuoCredentialStore(fixture.admission, clock);
   const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const scope = { armId: randomUUID(), contextId: "a".repeat(32), tabId: 1, accountId: randomUUID(),
     origin: "https://test.duosecurity.com", rpId: "duosecurity.com", armedAt: clock.now().toISOString(), expiresAt: "2026-11-01T12:10:00.000Z" };
@@ -41,7 +43,7 @@ it("two independent workflow brokers sign through the same durable store with st
     const config = resolveConfigWithProvenance({}, hostConfigFacts({}), f.clock).config;
     const replies = await Promise.all([0, 1].map(async () => {
       const broker = fixtureWorkflowWorker();
-      const source = createDuoCredentialStore(f.admission, f.machine, f.clock);
+      const source = createDuoCredentialStore(f.admission, f.clock);
       let reply: (value: unknown) => void = () => { throw new Error("reply not installed"); };
       const result = new Promise<unknown>(resolve => { reply = resolve; });
       broker.owner.reply = (_id, value) => reply(value);
@@ -63,7 +65,8 @@ it("two independent workflow brokers sign through the same durable store with st
       return auth.readUInt32BE(33);
     }).sort((a, b) => a - b);
     assert.equal(assertions[1], assertions[0] + 1);
-    assert.equal(f.store.read().credentials.find(row => row.credentialId === f.credentialId)?.highWater, assertions[1]);
+    const head = CanonicalCredentialHeadSchema.parse(JSON.parse(nativeFs.readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")));
+    assert.ok(head.state === "active"); assert.equal(head.counters.find(row => row.credentialId === f.credentialId)?.count, assertions[1]);
   } finally { await Promise.all(owners.map(owner => owner.stop())); await f.close(); }
 });
 
@@ -73,9 +76,9 @@ it("burns a failed signature request durably, refuses replay after reopening and
     const first = await f.store.sign(f.request);
     const failed = { ...f.request, requestId: randomUUID(), challenge: Buffer.alloc(4097).toString("base64") };
     await assert.rejects(f.store.sign(failed), /duo-challenge-invalid/u);
-    const fresh = createDuoCredentialStore(f.admission, f.machine, f.clock);
-    await assert.rejects(fresh.sign({ ...failed, challenge: "AQID" }), /duo-attempt-reused/u);
-    await assert.rejects(fresh.sign(f.request), /duo-attempt-reused/u);
+    const fresh = createDuoCredentialStore(f.admission, f.clock);
+    await assert.rejects(fresh.sign({ ...failed, challenge: "AQID" }), { code: "DUO_CREDENTIAL_CONFLICT" });
+    await assert.rejects(fresh.sign(f.request), { code: "DUO_CREDENTIAL_CONFLICT" });
     assert.equal((await fresh.sign({ ...f.request, requestId: randomUUID() })).signCount, first.signCount + 2);
   } finally { await f.close(); }
 });
@@ -85,32 +88,45 @@ it("burns an unacknowledged signature across actual process death and refuses it
   const f = await setup();
   const child = fork(fileURLToPath(new URL("../../../support/processes/duo-credential-store-worker.ts", import.meta.url)),
     [f.workspace, f.admission.profileBinding.profileId, f.credentialId, f.clock.now().toISOString(), String(f.lifetime.port)],
-    { execArgv: ["--import", testProcessImport()], stdio: ["ignore", "ignore", "pipe", "ipc"] });
+    { env: credentialKeychainTestEnvironment(process.env), execArgv: ["--import", testProcessImport()], stdio: ["ignore", "ignore", "pipe", "ipc"] });
   const held = { fixture: f, child }; retainedChildren.add(held);
   let stderrBytes = 0;
   child.stderr?.on("data", (bytes: Buffer) => { stderrBytes += bytes.length; });
   const exit = once(child, "exit");
   const close = once(child, "close");
   const ready = once(child, "message");
-  await f.lifetime.share(child);
-  assert.equal(z.object({ type: z.literal("ready") }).parse((await ready)[0]).type, "ready");
-  const first = await f.store.sign(f.request);
-  const requestId = randomUUID();
-  child.send({ kind: "sign-then-crash", requestId });
-  assert.deepEqual(await exit, [23, null]); assert.deepEqual(await close, [23, null]);
-  assert.equal(stderrBytes, 0); assert.equal(child.connected, false);
-  const fresh = createDuoCredentialStore(f.admission, f.machine, f.clock);
-  await assert.rejects(fresh.sign({ ...f.request, requestId }), /duo-attempt-reused/u);
-  assert.equal((await fresh.sign({ ...f.request, requestId: randomUUID() })).signCount, first.signCount + 2);
-  await f.close(); retainedChildren.delete(held);
+  let primary: { error: unknown } | undefined;
+  try {
+    await f.lifetime.share(child);
+    assert.equal(z.object({ type: z.literal("ready") }).parse((await ready)[0]).type, "ready");
+    const first = await f.store.sign(f.request);
+    const requestId = randomUUID();
+    child.send({ kind: "sign-then-crash", requestId });
+    assert.deepEqual(await exit, [23, null]); assert.deepEqual(await close, [23, null]);
+    assert.equal(stderrBytes, 0); assert.equal(child.connected, false);
+    const fresh = createDuoCredentialStore(f.admission, f.clock);
+    await assert.rejects(fresh.sign({ ...f.request, requestId }), { code: "DUO_CREDENTIAL_CONFLICT" });
+    assert.equal((await fresh.sign({ ...f.request, requestId: randomUUID() })).signCount, first.signCount + 2);
+  } catch (error) { primary = { error }; }
+  const cleanup: unknown[] = [];
+  if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  try { await close; } catch (error) { cleanup.push(error); }
+  try { await f.close(); } catch (error) { cleanup.push(error); }
+  if (cleanup.length !== 0) throw new AggregateError(primary === undefined ? cleanup : [primary.error, ...cleanup], "Duo owned child cleanup failed", { cause: cleanup[0] });
+  retainedChildren.delete(held);
+  if (primary !== undefined) {
+    if (primary.error instanceof Error) throw primary.error;
+    throw new Error("Duo process death proof failed", { cause: primary.error });
+  }
+
 }, scaledMs(30_000));
 
-it("withholds a signature on unknown publication, then burns the same request through exact settlement", async () => {
+it("withholds a signature after a lost head publication acknowledgement and refuses the burned request through a fresh owner", async () => {
   const f = await setup();
   const first = await f.store.sign(f.request);
   const request = { ...f.request, requestId: randomUUID() };
   const rename = nativeFs.renameSync;
-  const canonical = join(f.machine.stateRoot, "machine", "duo-credentials", `${f.admission.profileBinding.profileId}.json`);
+  const canonical = join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`);
   let injected = false;
   const fault = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
     rename(source, destination);
@@ -118,12 +134,11 @@ it("withholds a signature on unknown publication, then burns the same request th
   });
   syncBuiltinESMExports();
   try {
-    await assert.rejects(f.store.sign(request), DuoCredentialCommitUncertainError);
+    await assert.rejects(f.store.sign(request), error => error instanceof DuoCredentialError && error.code === "DUO_CREDENTIAL_UNCERTAIN");
     assert.equal(injected, true);
   } finally { fault.mockRestore(); syncBuiltinESMExports(); }
-  f.store.recoverInterruptedPublication();
-  const fresh = createDuoCredentialStore(f.admission, f.machine, f.clock);
-  await assert.rejects(fresh.sign(request), /duo-attempt-reused/u);
+  const fresh = createDuoCredentialStore(f.admission, f.clock);
+  await assert.rejects(fresh.sign(request), { code: "DUO_CREDENTIAL_CONFLICT" });
   assert.equal((await fresh.sign({ ...f.request, requestId: randomUUID() })).signCount, first.signCount + 2);
   await f.close();
 });

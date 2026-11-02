@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, verify } from "node:crypto";
 import { describe, it } from "vitest";
-import { createDuoAssertion, type DuoAssertionRequest } from "../../../../src/backend/storage/configuration/duo-signing.js";
+import { createDuoAssertion, validateDuoKeyPair, type DuoAssertionRequest } from "../../../../src/backend/storage/configuration/duo-signing.js";
 
 const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
 const material = { credentialId: "AQID", privateKeyPkcs8: keys.privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"), transport: "usb" as const };
@@ -29,5 +29,23 @@ describe("backend Duo assertions", () => {
     assert.throws(() => createDuoAssertion(material, { ...request, challenge: "" }, 1));
     for (const count of [0, -1, 0x1_0000_0000, 1.5]) assert.throws(() => createDuoAssertion(material, request, count), /duo-signature-input-invalid/u);
     assert.deepEqual([...Buffer.from(createDuoAssertion(material, request, 0xffff_ffff).authenticatorData, "base64").subarray(33)], [255, 255, 255, 255]);
+  });
+});
+
+describe("canonical Duo key pairs", () => {
+  const publicKeySpki = keys.publicKey.export({ format: "der", type: "spki" }).toString("base64");
+  it("accepts matching canonical-base64 P-256 material", () => {
+    assert.doesNotThrow(() => validateDuoKeyPair(material.privateKeyPkcs8, publicKeySpki));
+  });
+  it("rejects noncanonical private or public key encodings", () => {
+    assert.throws(() => validateDuoKeyPair(`${material.privateKeyPkcs8} `, publicKeySpki), /duo-key-encoding-invalid/u);
+    assert.throws(() => validateDuoKeyPair(material.privateKeyPkcs8, `${publicKeySpki}\n`), /duo-key-encoding-invalid/u);
+  });
+  it("rejects mismatched public keys, other curves and malformed DER", () => {
+    const other = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    assert.throws(() => validateDuoKeyPair(material.privateKeyPkcs8, other.publicKey.export({ format: "der", type: "spki" }).toString("base64")), /duo-key-pair-invalid/u);
+    const wrongCurve = generateKeyPairSync("ec", { namedCurve: "secp384r1" });
+    assert.throws(() => validateDuoKeyPair(wrongCurve.privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"), wrongCurve.publicKey.export({ format: "der", type: "spki" }).toString("base64")), /duo-key-pair-invalid/u);
+    assert.throws(() => validateDuoKeyPair(Buffer.from("not DER").toString("base64"), publicKeySpki));
   });
 });

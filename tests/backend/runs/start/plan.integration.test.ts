@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { ProtectedStoreRecordSchema } from "../../../../src/models/config/protected-settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 
@@ -26,7 +26,7 @@ import { PersonLookupCanonicalInput, PersonLookupInput } from "../../../../src/w
 
 import { WRITE_FIXTURE_NODE_ID, writeFixtureDescriptorWithoutDryRunArm } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 {

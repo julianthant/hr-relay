@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { createClonedProfileFixtures, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import { runInheritedRuntimeChild } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createNotificationInboxTestWorld } from "../../../support/helpers/backend/notification-inbox-world.js";
 
@@ -17,7 +17,7 @@ import { NOW, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 {

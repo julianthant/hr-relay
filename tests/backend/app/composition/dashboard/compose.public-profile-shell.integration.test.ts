@@ -20,6 +20,7 @@ import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/r
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { FrontendBootstrapWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { ProfileVerifierDocumentSchema } from "../../../../../src/models/profiles/profile.js";
+import { CanonicalCredentialHeadSchema } from "../../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import type { DraftDuoCapability, ProfileOnboardingDuoProvider } from "../../../../../src/backend/profiles/onboarding-duo.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
@@ -200,7 +201,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     const request = { requestId: randomUUID(), credentialId: "Zml4dHVyZS1zb2Z0d2FyZS1rZXk", origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" as const, challenge: "AQID" };
     const assertion = await keyCapture.capability.signAssertion(request);
     assert.ok(assertion.signCount > 0);
-    await assert.rejects(keyCapture.capability.signAssertion(request), /duo-attempt-reused/u);
+    await assert.rejects(keyCapture.capability.signAssertion(request), { code: "DUO_CREDENTIAL_CONFLICT" });
     const touch = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/onboarding/duo/start", { operationId: draft.operationId, method: "touch" }, draftCookie)).json());
     if (touch.state !== "onboarding" || touch.methods.touch.attemptId === undefined) throw new Error("fixture touch draft required");
     assert.equal(closedAttempts, 1);
@@ -227,10 +228,15 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie, origin: "http://foreign.invalid" } })).status, 401);
     assert.equal((await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).status, 200);
     assert.equal(existsSync(join(f.machine.stateRoot, "profiles", active.profileId, "state.db")), true);
+    const profileRoot = join(f.machine.stateRoot, "profiles", active.profileId);
+    const credentialPaths = [join(profileRoot, "credentials", "protected.json"), join(profileRoot, "credentials", "chatgpt-account.json"),
+      join(f.machine.stateRoot, "machine", "duo-credentials", `${active.profileId}.json`), join(f.machine.stateRoot, "machine", "credential-keys", `${active.profileId}.json`)];
+    const retainedCredentials = credentialPaths.map(path => createHash("sha256").update(readFileSync(path)).digest("hex"));
     const logout = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/logout", {}, cookie)).json());
     assert.deepEqual(logout, { state: "signed-out" });
     assert.equal(f.machine.readProfileRegistry().activeProfileId, null);
-    assert.equal(f.machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.credentialState, "wiped");
+    assert.equal(f.machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.credentialState, "saved");
+    assert.deepEqual(credentialPaths.map(path => createHash("sha256").update(readFileSync(path)).digest("hex")), retainedCredentials);
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie } })).status, 401);
     const login = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
     const restored = PublicProfileStateSchema.parse(await login.json()); assert.equal(restored.state, "active");
@@ -262,9 +268,11 @@ it("aborts an unpublished pre-enrollment draft through erasure before accepting 
     const cancelled = await post("/api/v1/profile/onboarding/cancel", { operationId: draft.operationId }, cookie);
     assert.equal(cancelled.status, 200); assert.deepEqual(PublicProfileStateSchema.parse(await cancelled.json()), { state: "signed-out" });
     assert.equal(f.machine.readProfileRegistry().profiles.length, 0); assert.equal(f.machine.readProfileRegistry().activeProfileId, null);
-    assert.equal(existsSync(join(f.machine.stateRoot, "machine", "credential-keys", `${draft.profileId}.json`)), false);
+    const erased = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${draft.profileId}.json`), "utf8")));
+    assert.equal(erased.state, "erased"); assert.equal(erased.profileId, draft.profileId);
+    assert.equal(erased.installationId, f.machine.locator.installationId);
     assert.equal(existsSync(join(f.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`)), false);
-    assert.equal(existsSync(join(f.machine.stateRoot, "machine", "erasures", `${draft.profileId}.json`)), true);
+    assert.equal(existsSync(join(f.machine.stateRoot, "machine", "erasures", `${draft.profileId}.json`)), false);
     assert.equal(existsSync(join(f.machine.stateRoot, "profiles", draft.profileId)), false);
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie } })).status, 401);
     const replacement = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/sign-up", {

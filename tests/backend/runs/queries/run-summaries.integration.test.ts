@@ -1,5 +1,5 @@
 import { afterAll, it, describe } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createSubjectTitleTestWorld } from "../../../support/helpers/backend/subject-title-world.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
@@ -42,7 +42,7 @@ import { activityDatePartAtInstant } from "../../../../src/models/dashboard/acti
 import { runtimeTimeZone } from "../../../../src/rules/time/clock.js";
 import { makeWorld, receiptWithWarningsOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 {

@@ -61,8 +61,8 @@ const pause = () => {
 const clock = manualClock(new Date(data.now));
 const machine = acquireSharedRuntimeAdmission(resolve(dirname(data.path), "../../../.."), lifetime);
 const admission = machine.admitProfile(basename(dirname(data.path)));
-const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
-  erasureJournalPath: resolve(machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
+const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot,
+  });
 const database = AuthorityDatabase.open(admission, { path: data.path, busyTimeoutMs: 250, migrationOwner: "race-proof" },
   clock, undefined, { afterFailureStorageStep: (step) => { if (step === "failure") pause(); } },
   { afterClaimSelection: () => { if (data.operation.kind === "claim") pause(); } }, credentials);

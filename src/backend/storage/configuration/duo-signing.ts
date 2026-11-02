@@ -1,4 +1,4 @@
-import { createHash, createPrivateKey, sign } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey, sign } from "node:crypto";
 import { z } from "zod";
 import type { Fingerprint } from "../../../rules/identity/ids.js";
 
@@ -39,6 +39,13 @@ export interface DuoSigningSource {
   identity(): Fingerprint;
   credentials(): readonly DuoPublicCredential[];
   sign(request: DuoAssertionRequest): Promise<DuoAssertion>;
+}
+
+export function validateDuoKeyPair(privateKeyPkcs8: string, publicKeySpki: string): void {
+  for (const value of [privateKeyPkcs8, publicKeySpki]) if (Buffer.from(value, "base64").toString("base64") !== value) throw new Error("duo-key-encoding-invalid");
+  const key = createPrivateKey({ key: Buffer.from(privateKeyPkcs8, "base64"), format: "der", type: "pkcs8" });
+  if (key.asymmetricKeyType !== "ec" || key.asymmetricKeyDetails?.namedCurve !== "prime256v1"
+    || !createPublicKey(key).export({ format: "der", type: "spki" }).equals(Buffer.from(publicKeySpki, "base64"))) throw new Error("duo-key-pair-invalid");
 }
 
 export function createDuoAssertion(

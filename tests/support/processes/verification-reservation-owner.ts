@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
 import { z } from "zod";
 import { RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -13,8 +12,8 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 const [workspace, port, now] = z.tuple([z.string().min(1), z.coerce.number().int().positive(), z.iso.datetime()]).parse(process.argv.slice(2));
 const lock = await RuntimeLifetimeLock.acquire(port), machine = acquireEntrypointAdmission(workspace, "shared", lock);
 const selected = captureSelectedProfileStorage(machine), admission = machine.admitProfile(selected.profileId);
-const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
-  erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
+const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot,
+  });
 const clock = manualClock(new Date(now));
 const database = AuthorityDatabase.open(admission, { path: selected.authorityPath, busyTimeoutMs: 5000, migrationOwner: "verification-crash-test" },
   clock, undefined, undefined, undefined, credentials);

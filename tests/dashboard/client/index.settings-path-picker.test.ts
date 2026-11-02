@@ -18,7 +18,7 @@ async function mount(pickSettingsPath: DashboardClient["pickSettingsPath"], onSe
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   const client = { pickSettingsPath } as DashboardClient;
   await act(async () => root?.render(createElement(DashboardClientProvider, { client,
-    children: createElement(SettingsPathPicker, { field: "paths.duoCredential", label: "Duo credential file",
+    children: createElement(SettingsPathPicker, { field: "paths.i9CheckTrackerPath", label: "Duo credential file",
       value: "/tmp/private/duo.json", disabled: false, onSelected }) })));
   return host;
 }
@@ -28,7 +28,7 @@ describe("native Paths picker control", () => {
   it("uses concise host and timeout messages without changing the path", async () => {
     let reason: "busy" | "timeout" | "unsupported-platform" | "dialog-failed" = "timeout";
     const selected: string[] = [];
-    const surface = await mount(() => Promise.resolve({ state: "unavailable", field: "paths.duoCredential", reason }), path => selected.push(path));
+    const surface = await mount(() => Promise.resolve({ state: "unavailable", field: "paths.i9CheckTrackerPath", reason }), path => selected.push(path));
     const button = surface.querySelector("button");
     if (!(button instanceof HTMLButtonElement)) throw new Error("picker button missing");
     for (const [next, code] of [["busy", "SETTINGS_PATH_PICKER_BUSY"], ["timeout", "SETTINGS_PATH_PICKER_TIMEOUT"], ["unsupported-platform", "SETTINGS_PATH_PICKER_UNSUPPORTED"],
@@ -51,7 +51,7 @@ for (const replacement of ["client", "scope", "field", "value", "disabled"] as c
       const render = async (changed: boolean) => {
         await act(async () => root?.render(createElement(DashboardClientProvider, { client: changed && replacement === "client" ? { ...client } : client,
           children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey: changed && replacement === "scope" ? 1 : 0,
-            children: createElement(SettingsPathPicker, { field: changed && replacement === "field" ? "paths.reportsDir" : "paths.duoCredential",
+            children: createElement(SettingsPathPicker, { field: changed && replacement === "field" ? "paths.reportsDir" : "paths.i9CheckTrackerPath",
               label: "Duo credential file", value: changed && replacement === "value" ? "/tmp/changed.json" : "/tmp/private/duo.json",
               disabled: changed && replacement === "disabled", onSelected: path => selected.push(path) }) }) })));
       };
@@ -60,8 +60,8 @@ for (const replacement of ["client", "scope", "field", "value", "disabled"] as c
       await act(async () => button.click()); assert.ok(resolveReply);
       await render(true);
       await act(async () => resolveReply?.(responseState === "selected"
-        ? { state: "selected", field: "paths.duoCredential", path: "/tmp/late.json" }
-        : { state: "unavailable", field: "paths.duoCredential", reason: "dialog-failed" }));
+        ? { state: "selected", field: "paths.i9CheckTrackerPath", path: "/tmp/late.json" }
+        : { state: "unavailable", field: "paths.i9CheckTrackerPath", reason: "dialog-failed" }));
       assert.deepEqual(selected, []); assert.equal(host.querySelector('[role="alert"]'), null);
       assert.equal(button.disabled, replacement === "disabled");
     });

@@ -4,9 +4,9 @@ import { readProfileDatabaseBinding } from "../../../storage/sqlite/profile-loca
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../storage/sqlite/migrations.js";
 import { profileBrowserClosure } from "../../../runtime/browser/native-profile-probe.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
-import { reconcileStartupCrash, reconcileExitedWorker } from "../../../runs/lifecycle/startup-crash-recovery.js";
+import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
-import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
+import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../../../storage/source-closure.js";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
 import { createAssistantService } from "../../../assistant/service.js";
 import { assistantSurfaceCoverage, createProductionAssistantTools } from "../../../assistant/tools.js";
@@ -612,7 +612,7 @@ async function composeDashboardRuntimeStartup(
     resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,
   };
   const setHash = descriptorSetHash(DESCRIPTORS.map((descriptor) => descriptor.contractFingerprint));
-  const runtimePreflight = composeRuntimePreflight({ duo: createDuoCredentialStore(admission, machineAdmission, clock), admission, credentials: context.credentials, database, clock, repoRoot, isolation: input.isolation,
+  const runtimePreflight = composeRuntimePreflight({ duo: createDuoCredentialStore(admission, clock), admission, credentials: context.credentials, database, clock, repoRoot, isolation: input.isolation,
     descriptors, descriptorSetHash: setHash, protectedSecrets, environment: env,
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
   const lifecycle = new RunRecordService({ database, clock, ids,
@@ -736,16 +736,7 @@ async function composeDashboardRuntimeStartup(
   profile.runtime.beginSupervisorConstruction(profile.token);
   const nominatim = createNominatimGeocodeAdapter({clock});
   const workerControl = composeWorkerProcessControl({
-    onExit: (member, pid, valid) => {
-      const lease = database.authority.workerLeases.get(member.workerId);
-      if (lease === undefined) return;
-      const slot = database.authority.workerSlots.get(member.workerId);
-      if (lease.processId !== pid || slot?.membershipRevision !== member.membershipRevision) throw new Error("worker-exit-lifetime-changed");
-      input.lifetimeLock.assertHeld();
-      if (!valid()) throw new Error("worker-exit-record-changed");
-      reconcileExitedWorker({ machine: machineAdmission, admission, database, lifecycle, clock,
-        workerId: member.workerId, leaseGeneration: lease.leaseGeneration, lock: input.lifetimeLock });
-    },
+    onExit: (member, pid, valid) => profile.runtime.workerExited(admission, member, pid, valid),
     profileRoot: resolved.config.paths.browserProfileRoot,
     database,
     clock,
@@ -1070,7 +1061,9 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
         const report = await upgradeReadyProfileStorage(profileBrowserClosure, exclusive, profileId, { plan: false, hostFacts: facts }, clock);
         if (report.state !== "upgraded" || report.fromSchemaVersion !== sourceVersion || report.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-upgrade-readback-unproved");
       } catch (error) {
-        if (!(error instanceof AuthoritySourceClosureUnprovedError)) {
+        if (hasUnprovedSourceClosure(error)) {
+          exclusive.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission: exclusive });
+        } else {
           try { exclusive.release(); exclusiveOwner = undefined; }
           catch (cleanup) { throw new RuntimeCustodyUncertainError([error, cleanup]); }
         }
@@ -1250,7 +1243,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
         if (continuation.state !== "authorized") return continuation;
         return continuation.resume();
       })();
-      if (result.state === "wiped") return { state: "signed-out" as const };
+      if (result.state === "signed-out") return result;
       if (result.state === "cancelling" && result.operationId !== undefined) return { state: "cancelling" as const, operationId: result.operationId };
       if (result.state === "refused" && "upgrade" in result) { upgradePending = true; return result; }
       if (result.state === "onboarding") {
@@ -1350,7 +1343,7 @@ async function composeDashboardApplicationInstance(input: DashboardComposeInput,
       await operation.runtime.detach();
       await profileRuntime.awaitClosurePreparation(operation.profileId);
       const result = profileRuntime.session.resumeLogout(operation.operationId);
-      if (result.state !== "wiped") return c.json(PublicProfileStateSchema.parse(result.state === "refused"
+      if (result.state !== "signed-out") return c.json(PublicProfileStateSchema.parse(result.state === "refused"
         ? { state: "refused", code: result.code } : { state: "cancelling", operationId: operation.operationId }));
       pending = undefined;
       c.header("set-cookie", `${cookieName}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);

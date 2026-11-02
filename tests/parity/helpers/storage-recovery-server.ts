@@ -57,7 +57,7 @@ export async function storageRecoveryTarget() {
     const workspace = process.argv[1], machine = RuntimeAdmission.acquireMachine(workspace, 'exclusive', lifetime);
     const admission = machine.admitProfile(process.argv[2]), root = admission.stateRoot;
     const path = join(root, "state.db"), directory = join(root, "backups", "authority"), processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
-    const credentials = createCredentialStore({ admission, stateRoot: root, erasureJournalAdmission: machine, erasureJournalPath: join(machine.stateRoot, "machine", "erasures", \`\${admission.profileBinding.profileId}.json\`) });
+    const credentials = createCredentialStore({ admission, stateRoot: root });
     const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 500, migrationOwner: "parity-native-restore" }, systemClock, undefined, undefined, undefined, credentials);
     const credentialResult = credentials.apply({commandId: "00000000-0000-4000-8000-000000089750",
       commandFingerprint: "a".repeat(64), expectedRevision: credentials.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
@@ -190,8 +190,7 @@ export async function storageRecoveryTarget() {
       held.shell = shell;
       const app: DashboardApp = new Hono();
       const credentials = restoreHandle === undefined && diagnosticMachine !== undefined
-        ? createCredentialStore({ admission, stateRoot: root, erasureJournalAdmission: diagnosticMachine,
-          erasureJournalPath: join(diagnosticMachine.stateRoot, "machine", "erasures", `${profileId}.json`) })
+        ? createCredentialStore({ admission, stateRoot: root })
         : undefined;
       registerStorageRoutes(app, {storage: {admission, credentials, doctorOptions, clock,
       serviceState: () => ({state: "never-run", reason: "This diagnostic host runs no automatic backups."})}});

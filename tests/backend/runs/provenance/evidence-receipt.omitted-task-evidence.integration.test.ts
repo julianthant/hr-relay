@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createStepOmissionTestWorld, type Fixture } from "../../../support/helpers/backend/step-omission-world.js";
 import assert from "node:assert/strict";
 
@@ -9,7 +9,7 @@ import { evidenceEntryRef } from "../../../../src/models/trust/evidence-identity
 import type { RunEvidenceReceipt } from "../../../../src/models/trust/evidence.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const {STEP, ASSERTED_AT, ASSERTED_NODE, OMITTED_NODE, TYPED_FACT, omittedStepFixture, cleanup } = createStepOmissionTestWorld(profileFixtures.create);

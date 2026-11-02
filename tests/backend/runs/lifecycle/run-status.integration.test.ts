@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
 import { deriveRunStatus, taskStateOf } from "../../../../src/backend/runs/lifecycle/run-status.js";
@@ -9,7 +9,7 @@ import type { SpanOutcomeWire } from "../../../../src/models/events/types.js";
 import { claimEventOf, instantOffsetOf, queuedEventOf, runEndedEventOf, runRecordOf, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const {world, cleanup } = createRunDetailTestWorld(profileFixtures.create);

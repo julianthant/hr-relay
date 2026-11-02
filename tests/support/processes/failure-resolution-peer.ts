@@ -3,7 +3,6 @@ import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority
 import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { WorkerRuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
-import { join } from "node:path";
 import { basename, dirname, resolve } from "node:path";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { FailureResolutionCommandSchema } from "../../../src/rules/commands/commands.js";
@@ -16,8 +15,8 @@ parentStop.signal.throwIfAborted();
 const clock = manualClock(new Date(NOW));
 const machine = acquireSharedRuntimeAdmission(resolve(dirname(path), "../../../.."), lifetime);
 const admission = machine.admitProfile(basename(dirname(path)));
-const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
-  erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
+const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot,
+  });
 const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 5000, migrationOwner: "diagnostics-peer" }, clock, undefined, undefined, undefined, credentials);
 let closing: Promise<void> | undefined;
 const close = (): Promise<void> => closing ??= (async () => {

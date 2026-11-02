@@ -65,9 +65,8 @@ const CATALOG_ROWS = [
   {"key": "paths.stateRoot", "schema": "AbsolutePathSchema", "defaultKind": "runtime-path", "editability": "deployment", "sensitivity": "ordinary", "restartScope": "process", "sourceClass": "runtime-isolation", "consumers": [{"module": "src/backend/app/config/runtime-paths.ts", "purpose": "isolation default composition"}, {"module": "src/backend/app/config/resolve.ts", "purpose": "leaf supply (not overridable)"}], "currentSource": [{"kind": "code", "name": "code"}], "targetSource": {"kind": "code", "name": "code"}},
   {"key": "paths.artifactRoot", "schema": "AbsolutePathSchema", "defaultKind": "runtime-path", "editability": "deployment", "sensitivity": "ordinary", "restartScope": "process", "sourceClass": "runtime-isolation", "consumers": [{"module": "src/backend/app/config/runtime-paths.ts", "purpose": "isolation default composition"}, {"module": "src/backend/app/config/resolve.ts", "purpose": "leaf supply"}], "currentSource": [{"kind": "code", "name": "code"}], "targetSource": {"kind": "code", "name": "code"}},
   {"key": "paths.browserProfileRoot", "schema": "AbsolutePathSchema", "defaultKind": "runtime-path", "editability": "operator", "sensitivity": "ordinary", "restartScope": "generation", "sourceClass": "ordinary-settings", "consumers": [{"module": "src/backend/app/config/runtime-paths.ts", "purpose": "installation default"}, {"module": "src/backend/app/config/resolve.ts", "purpose": "new-run profile root"}], "currentSource": [{"kind": "code", "name": "code"}], "targetSource": {"kind": "document", "name": "settings.json"}},
-  {"key": "paths.duoCredential", "schema": "AbsolutePathSchema", "defaultKind": "runtime-path", "editability": "operator", "sensitivity": "ordinary", "restartScope": "generation", "sourceClass": "ordinary-settings", "consumers": [{"module": "src/backend/app/config/runtime-paths.ts", "purpose": "independent installation default"}, {"module": "src/backend/app/config/resolve.ts", "purpose": "new-run credential path"}, {"module": "src/models/config/secrets.ts", "purpose": "requireSecretFile target"}], "currentSource": [{"kind": "code", "name": "code"}], "targetSource": {"kind": "document", "name": "settings.json"}},
+  {"key": "paths.duoCredential", "schema": "AbsolutePathSchema", "defaultKind": "runtime-path", "editability": "operator", "sensitivity": "ordinary", "restartScope": "generation", "sourceClass": "ordinary-settings", "consumers": [{"module": "src/backend/app/config/runtime-paths.ts", "purpose": "independent installation default"}, {"module": "src/backend/app/config/resolve.ts", "purpose": "new-run credential path"}], "currentSource": [{"kind": "code", "name": "code"}], "targetSource": {"kind": "document", "name": "settings.json"}},
   {"key": "paths.duoExtensionDir", "schema": "AbsolutePathSchema", "defaultKind": "runtime-path", "editability": "operator", "sensitivity": "ordinary", "restartScope": "generation", "sourceClass": "ordinary-settings", "consumers": [{"module": "src/backend/app/config/runtime-paths.ts", "purpose": "installation default"}, {"module": "src/backend/app/config/resolve.ts", "purpose": "new-run extension"}], "currentSource": [{"kind": "code", "name": "code"}], "targetSource": {"kind": "document", "name": "settings.json"}},
-  {"key": "duoWebauthnCredential", "schema": "SecretFileSpecSchema", "defaultKind": "none", "editability": "machine", "sensitivity": "protected-secret", "restartScope": "process", "sourceClass": "runtime-isolation", "consumers": [{"module": "src/models/config/secrets.ts", "purpose": "requireSecretFile"}, {"module": "src/models/config/secrets.ts", "purpose": "resolveSecretFileIdentity"}], "currentSource": [{"kind": "code", "name": "code"}], "targetSource": {"kind": "code", "name": "code"}},
 ] as const;
 
 const CatalogSourceReferenceSchema = z.strictObject({
@@ -92,17 +91,14 @@ export const SettingsCatalogRowSchema = z.strictObject({
   currentSource: z.array(CatalogSourceReferenceSchema).min(1),
   targetSource: CatalogSourceReferenceSchema,
 }).superRefine((row, context) => {
-  const credentialFile = row.key === "duoWebauthnCredential"
-    && row.sensitivity === "protected-secret" && row.sourceClass === "runtime-isolation"
-    && row.editability === "machine";
   const expectedSource = row.sensitivity === "protected-identifier" || row.sensitivity === "protected-secret"
     ? "protected-store"
       : row.sensitivity === "derived-host" ? "derived-host" : undefined;
-  if (!credentialFile && expectedSource !== undefined && row.sourceClass !== expectedSource) {
+  if (expectedSource !== undefined && row.sourceClass !== expectedSource) {
     context.addIssue({ code: "custom", path: ["sourceClass"], message: `${row.key}: sensitivity requires ${expectedSource}` });
   }
   const expectedEditability = row.sourceClass === "runtime-isolation"
-    ? (credentialFile ? "machine" : "deployment") : row.sourceClass === "derived-host" ? "derived" : "operator";
+    ? "deployment" : row.sourceClass === "derived-host" ? "derived" : "operator";
   if (row.editability !== expectedEditability) {
     context.addIssue({ code: "custom", path: ["editability"], message: `${row.key}: source class requires ${expectedEditability}` });
   }
@@ -111,13 +107,10 @@ export const SettingsCatalogRowSchema = z.strictObject({
   }
 });
 
-export const SettingsCatalogSchema = z.array(SettingsCatalogRowSchema).length(65).superRefine((rows, context) => {
+export const SettingsCatalogSchema = z.array(SettingsCatalogRowSchema).length(64).superRefine((rows, context) => {
   const keys = rows.map((row) => row.key);
   if (new Set(keys).size !== rows.length) {
     context.addIssue({ code: "custom", message: "settings catalog repeats a key" });
-  }
-  if (rows.filter((row) => row.sensitivity === "protected-secret" && row.sourceClass === "runtime-isolation").length !== 1) {
-    context.addIssue({ code: "custom", message: "duoWebauthnCredential is the one machine credential exemption" });
   }
 });
 

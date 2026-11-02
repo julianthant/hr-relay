@@ -13,8 +13,7 @@ const boundProfiles = new Map<string, { admission: RuntimeAdmission; machine: Ru
 const workerDatabases = new WeakSet<RealAuthorityDatabase>();
 
 export function registerBoundProfile(admission: RuntimeAdmission, machine: RuntimeAdmission): void {
-  const credentials = productionCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
-    erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
+  const credentials = productionCredentialStore({ admission, stateRoot: admission.stateRoot });
   const prior = boundProfiles.get(admission.stateRoot);
   if (prior !== undefined && prior.workers.size !== 0) throw new Error("fixture-worker-custody-retained");
   boundProfiles.set(admission.stateRoot, { admission, machine, credentials, workers: new Set() });
@@ -26,8 +25,7 @@ export function transferBoundFixtureWorkers(prior: RealAuthorityDatabase, admiss
   const retained = [...entry.workers];
   if (retained.some(worker => worker.database !== prior)) throw new Error("fixture-worker-custody-retained");
   const path = join(admission.stateRoot, "state.db");
-  const credentials = productionCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
-    erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
+  const credentials = productionCredentialStore({ admission, stateRoot: admission.stateRoot });
   const successor = RealAuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "fixture-session-change" }, clock,
     undefined, undefined, undefined, credentials);
   for (const worker of retained) {
@@ -89,6 +87,7 @@ export function registerBoundFixtureWorker(input: FixtureWorker & Readonly<{ pat
   if (entry?.admission !== admission || input.database.getSourceDatabaseIdentity() !== RealAuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource())) {
     throw new Error("fixture-worker-database-owner-mismatch");
   }
+  fixturePaths.set(input.database, input.path);
   if ([...entry.workers].some(worker => worker.workerId === input.workerId)) throw new Error("fixture-worker-owner-already-retained");
   const worker = Object.freeze({ database: input.database, workerId: input.workerId, generation: input.generation,
     processId: input.processId, clock: input.clock });
@@ -139,11 +138,10 @@ export function boundFixtureWorker(database: RealAuthorityDatabase, path: string
     && lease.lifecycle.state !== "stopped";
 }
 
-export function createBoundProfileCredentialStore(admission: RuntimeAdmission, options: Omit<Parameters<typeof productionCredentialStore>[0], "admission" | "erasureJournalAdmission" | "erasureJournalPath">): CredentialStore {
+export function createBoundProfileCredentialStore(admission: RuntimeAdmission, options: Omit<Parameters<typeof productionCredentialStore>[0], "admission">): CredentialStore {
   const entry = boundProfiles.get(admission.stateRoot);
   if (entry?.admission !== admission || options.stateRoot !== admission.stateRoot) throw new Error("fixture-bound-profile-credential-owner-required");
-  return productionCredentialStore({ ...options, admission, erasureJournalAdmission: entry.machine,
-    erasureJournalPath: join(entry.machine.stateRoot, "machine", "erasures", `${admission.profileBinding.profileId}.json`) });
+  return productionCredentialStore({ ...options, admission });
 }
 
 export function boundProfileCredentials(admission: RuntimeAdmission): CredentialStore {

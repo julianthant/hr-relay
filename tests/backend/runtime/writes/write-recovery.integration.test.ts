@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it, vi } from "vitest";
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createWriteRecoveryTestWorld } from "../../../support/helpers/backend/write-recovery-world.js";
 import { lifecycleCommandId } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { executeSequencedWriteCommit } from "../../../../src/backend/runtime/writes/write-sequencer.js";
@@ -13,7 +13,7 @@ import { UUID_5, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtu
 import { WRITE_FIXTURE_EID, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_ITEM_ID, WRITE_FIXTURE_KEY, WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_NOW, WRITE_FIXTURE_RUN_ID, WRITE_FIXTURE_WORKFLOW_ID, WriteFixtureCommit, WriteFixtureProofSchema, absentProbeEvidence, ambiguousProbeVerdict, unknownProbeVerdict, writeFixtureDescriptor, writeFixtureDescriptorAfterUnrelatedEdit, writeFixtureDescriptorWithMovedKey, writeFixtureDocumentDescriptor, writeFixtureQueuedRun, writeFixtureSaveDescriptor } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const {SIGNAL, harness, ownBindingProof, parkedAttemptingWrite, cleanup } = createWriteRecoveryTestWorld(profileFixtures.create);

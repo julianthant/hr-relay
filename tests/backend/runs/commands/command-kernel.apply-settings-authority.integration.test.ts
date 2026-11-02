@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createClonedProfileFixtures, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
@@ -11,7 +11,7 @@ import { deriveSettingsCommandFingerprint } from "../../../../src/rules/commands
 import { HASH_A, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const { roots, openDatabases, profiles, createHarness, nextCommandId } = createCommandKernelTestWorld(profileFixtures.create);

@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
@@ -13,7 +13,7 @@ import { personLookupDescriptor, separationsDescriptor } from "../../../support/
 import { WorkerControlRecordSchema } from "../../../../src/models/run/worker-control.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const {world, runRecordOf, queuedEventOf, CLAIM, otherConnection, appendOther, seedWorld, cleanup } = createRunQueueProjectionTestWorld(profileFixtures.create);

@@ -1,6 +1,6 @@
 import { assertRuntimeLifetimeHeld, runtimeLifetimeLock } from "../../../../support/helpers/backend/runtime-lifetime.js";
 import type { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
-import { composeProfileCredentialInventory } from "../../../../../src/backend/app/composition/profile-credential-inventory.js";
+import { composeProfileClosureInventory } from "../../../../../src/backend/app/composition/profile-credential-inventory.js";
 import type { RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
 import { createCredentialStore } from "../../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthorityDatabase as CanonicalAuthorityDatabase, AuthorityDatabaseOptionsSchema, AuthoritySchemaVersionError } from "../../../../../src/backend/storage/sqlite/authority-database.js";
@@ -50,8 +50,8 @@ function selectedProfile(fixture: Awaited<ReturnType<typeof createBoundProfileFi
   if (active.state !== "active") throw new Error("startup fixture sign-in refused");
   const admission = machine.admitProfile(active.profileId);
   storage.admission = admission;
-  const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
-    erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${active.profileId}.json`) });
+  const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot,
+    });
   return { machine, runtime, token: active.token, admission, credentials, cleanup };
 }
 async function readyRoot(lifetime: RuntimeLifetimeLock) {
@@ -295,7 +295,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     else mkdirSync(path, { mode: 0o700 });
     const planted = statSync(path), bytes = kind === "file" ? readFileSync(path) : undefined;
     const before = storageTree(stateRoot);
-    await assert.rejects(composeProfileCredentialInventory({ machine: selected.machine, admission: context.admission,
+    await assert.rejects(composeProfileClosureInventory({ admission: context.admission,
       database: context.database, hostFacts: { primaryDisplay: null }, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")) }).prepare(),
       error => error instanceof Error && error.message === "profile-inventory-unowned-entry");
     context.assertCurrent();
@@ -455,8 +455,8 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       if (signedIn.state !== "active") throw new Error("corruption-fixture-signin-refused");
       const admission = owner.machine.admitProfile(signedIn.profileId);
       storage.admission = admission;
-      const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: owner.machine,
-        erasureJournalPath: join(owner.machine.stateRoot, "machine", "erasures", `${signedIn.profileId}.json`) });
+      const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot,
+        });
       const fixture = persistCorruptJournaledSettings({
         repoRoot,
         stateRoot: owner.stateRoot,

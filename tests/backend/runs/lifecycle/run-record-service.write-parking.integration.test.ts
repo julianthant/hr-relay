@@ -1,5 +1,5 @@
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
-import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import { buildGateParkSection } from "../../../../src/backend/runs/queries/run-detail/gate-park.js";
 import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
@@ -26,7 +26,7 @@ const MUCH_LATER = "2026-07-31T18:00:00.000Z";
 
 const WORKER_ID = "person-lookup-worker-1";
 const SIBLING_WORKER_ID = "person-lookup-worker-2";
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 const heldProfiles: BoundProfileStorageFixture[] = [];
 afterAll(() => profiles.close());
 const databases: AuthorityDatabase[] = [];

@@ -1,29 +1,21 @@
+import { runCredentialPublicationCrashCase } from "../../support/helpers/credential-source-retention.js";
 import { join } from "node:path";
 import { createCredentialDoctorWriter } from "../../support/helpers/credential-doctor-fixtures.js";
 import { createCredentialDoctorFixtures } from "../../support/helpers/credential-doctor-fixtures.js";
 import { createCredentialPersistenceFixtures } from "../../support/helpers/credential-persistence-fixtures.js";
 import { default as assert } from "node:assert/strict";
 
-
-
-
-
 import { readFileSync, unlinkSync } from "node:fs";
-
 
 import { rmSync } from "node:fs";
 import { writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-
-
 
 import { isDeepStrictEqual } from "node:util";
 import { afterEach } from "vitest";
 import { describe } from "vitest";
 import { it } from "vitest";
 import { vi } from "vitest";
-
-
 
 import { doctorAuthorityStorage } from "../../../src/backend/storage/sqlite/storage-doctor.js";
 
@@ -35,8 +27,8 @@ import type { ProtectedSettingsApplyInput } from "../../../src/models/config/pro
 
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../src/rules/validation/sha256.js";
-import { createCredentialStore as createCredentialStore_m2 } from "../../support/helpers/synthetic-storage-admission.js";
-
+import { createCredentialStore as createCredentialStore_m2, CredentialStoreCommitUncertainError } from "../../../src/backend/storage/configuration/credential-store.js";
+import { CanonicalCredentialError } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
 
 {
 
@@ -75,18 +67,16 @@ afterEach(_afterEachFixture0);
 const COMMAND_ID = "11111111-1111-4111-8111-111111111111";
 const WRITE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
-const cleanups: (() => void)[] = [];
+const cleanups: (() => void | Promise<void>)[] = [];
 
-const _afterEachFixture0 = () => {
-  for (const cleanup of cleanups.reverse()) cleanup();
+const _afterEachFixture0 = async () => {
+  for (const cleanup of cleanups.reverse()) await cleanup();
   cleanups.length = 0;
 };
 
 const { fixture, snapshot } = createCredentialDoctorFixtures(cleanups);
 
 const writeCredentials = createCredentialDoctorWriter(COMMAND_ID, WRITE_ID);
-
-
 
 async function unchanged(f: Awaited<ReturnType<typeof fixture>>) {
   const meta = f.database.getMeta();
@@ -174,13 +164,7 @@ const _afterEachFixture0 = async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 };
 
-const { fixture, releaseFixtures, crashAfterCredentialRename, crashBeforeCredentialRename, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
-
-
-
-
-
-
+const { fixture, releaseFixtures, request } = createCredentialPersistenceFixtures(roots, COMMAND_1, NOW_1);
 
 function applied(
   store: ReturnType<typeof createCredentialStore_m2>,
@@ -197,10 +181,11 @@ afterEach(_afterEachFixture0);
 
   it("validates a request before reading private bytes and keeps diagnostics value-free", async () => {
     const f = await fixture();
+    const revision = f.store.read().revision;
     applied(f.store, request({
       commandId: COMMAND_1,
       writeId: WRITE_1,
-      expectedRevision: 1,
+      expectedRevision: revision,
       entries: { timekeeperName: { set: "private-seed" } },
     }));
     writeFileSync(f.path, `malformed ${PRIVATE_VALUE_1}`, { mode: 0o600 });
@@ -209,7 +194,7 @@ afterEach(_afterEachFixture0);
       ...request({
         commandId: COMMAND_1,
         writeId: WRITE_1,
-        expectedRevision: 2,
+        expectedRevision: revision + 1,
         entries: { ucpathPassword: { set: PRIVATE_VALUE_2 } },
       }),
       entries: { ucpathPassword: { set: "" } },
@@ -225,26 +210,37 @@ afterEach(_afterEachFixture0);
       () => f.store.apply(request({
         commandId: COMMAND_2,
         writeId: WRITE_2,
-        expectedRevision: 2,
+        expectedRevision: revision + 1,
         entries: { ucpathPassword: { set: PRIVATE_VALUE_2 } },
       })),
-      (error: unknown) => error instanceof Error
-        && error.message === "credential store protected.json is malformed"
+      (error: unknown) => error instanceof CanonicalCredentialError
+        && error.code === "CREDENTIAL_UNAVAILABLE"
+        && error.message === "Credentials could not be read or saved safely."
         && !error.message.includes(PRIVATE_VALUE_1)
         && !error.message.includes(PRIVATE_VALUE_2),
     );
   });
 
-  it.each(["before", "after"] as const)("resolves retry time after a SIGKILL %s credential rename", async (boundary) => {
-    const f = await fixture();
-    const input = request({ commandId: COMMAND_1, writeId: WRITE_1, expectedRevision: 1, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } });
-    const child = boundary === "before" ? await crashBeforeCredentialRename(f.tracker, input) : await crashAfterCredentialRename(f.tracker, input);
-    assert.equal(child.signal, "SIGKILL", child.stderr);
+  it.each(["before", "after"] as const)("settles retry identity after the current %s publication hook fails", async (boundary) => {
+    const failure = new Error("credential-publication-test-boundary");
+    let armed = true;
+    const f = await fixture({ [boundary === "before" ? "beforeRename" : "afterRename"]: () => {
+      if (armed) { armed = false; throw failure; }
+    } });
+    const revision = f.store.read().revision, before = readFileSync(f.path);
+    const input = request({ commandId: COMMAND_1, writeId: WRITE_1, expectedRevision: revision, entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } });
+    assert.throws(() => f.store.apply(input), (error: unknown) => boundary === "before" ? error === failure : error instanceof CredentialStoreCommitUncertainError);
+    if (boundary === "before") assert.deepEqual(readFileSync(f.path), before);
+    else assert.notDeepEqual(readFileSync(f.path), before);
     assert.equal(f.store.acceptedAt(COMMAND_1), boundary === "before" ? undefined : NOW_1);
+    assert.equal(f.store.ownsCommandId(COMMAND_1), boundary === "after");
     const retry = ProtectedSettingsApplyInputSchema.parse({ ...input, updatedAt: boundary === "before" ? NOW_2 : NOW_1 });
+    const published = readFileSync(f.path);
     assert.equal(f.store.apply(retry).state, "applied");
+    if (boundary === "after") assert.deepEqual(readFileSync(f.path), published, "exact retry must not republish");
     const bytes = readFileSync(f.path);
     assert.equal(f.store.acceptedAt(COMMAND_1), retry.updatedAt);
+    assert.equal(f.store.verifyReplay(retry).state, "applied");
     const refused = f.store.apply({ ...retry, entries: { ucpathPassword: { set: PRIVATE_VALUE_2 } } });
     assert.equal(refused.state, "rejected");
     if (refused.state === "rejected") assert.equal(refused.code, "command-divergent");
@@ -253,3 +249,7 @@ afterEach(_afterEachFixture0);
   });
 });
 }
+
+it.each(["before", "after"] as const)("preserves credential identity and unknown lease bytes after real SIGKILL %s publication", async boundary => {
+  await runCredentialPublicationCrashCase(boundary);
+});

@@ -1,5 +1,5 @@
 import { afterAll, describe, it, afterEach } from "vitest";
-import { createClonedProfileFixtures } from "../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../support/helpers/admission-fixture.js";
 import { createRunClaimFixtures, heldClaim } from "../../support/helpers/backend/run-claim-fixtures.js";
 import { createRunIntegrationTestWorld } from "../../support/helpers/run-integration-world.js";
 import { default as assert } from "node:assert/strict";
@@ -28,7 +28,7 @@ import { id, NOW as NOWImport2 } from "../../support/helpers/database-foundation
 
 
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 {

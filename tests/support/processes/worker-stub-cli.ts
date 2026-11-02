@@ -62,7 +62,7 @@ else {
     throw new Error("worker-stub-cli fixture storage pair mismatch");
   }
   credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot,
-    erasureJournalAdmission: machine, erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${selected.profileId}.json`) });
+     });
   selected.assertCurrent();
 }
 

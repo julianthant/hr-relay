@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { it } from "vitest";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { createChatGptAccountService } from "../../../../src/backend/accounts/chatgpt-account-service.js";
-import { createChatGptCredentialRepository, verifyChatGptCredentialStore, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createChatGptCredentialRepository, verifyChatGptCredentialStore, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { verifyRelocationLiveReferences } from "../../../../src/backend/storage/maintenance/relocation-inventory.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -22,13 +22,13 @@ it("signed-out credential cleanup remains valid for custody and relocation", asy
   const profile = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   const service = createChatGptAccountService({ admission: profile.admission, stateRoot: profile.stateRoot, clock });
   const directories = [join(profile.stateRoot, "credentials"), join(profile.machine.stateRoot, "machine", "credential-keys"),
-    join(profile.machine.stateRoot, "machine", "erasures")];
+    join(profile.machine.stateRoot, "machine", "erasures"), join(profile.machine.stateRoot, "machine", "credential-operations")];
   const baseline = directories.map(directory => ({ directory, present: existsSync(directory),
     names: existsSync(directory) ? readdirSync(directory).sort() : [],
     files: existsSync(directory) ? readdirSync(directory).sort().map(name => ({ name, bytes: readFileSync(join(directory, name)) })) : [] }));
   try {
     assert.deepEqual(await service.signOut(), { state: "signed-out", remoteRevocation: "not-needed" });
-    assert.equal(existsSync(join(profile.stateRoot, "credentials", "chatgpt-account.json")), false);
+    assert.equal(createChatGptCredentialRepository({ admission: profile.admission, stateRoot: profile.stateRoot }).read(), undefined);
     for (const entry of baseline) {
       assert.equal(existsSync(entry.directory), entry.present);
       assert.deepEqual(existsSync(entry.directory) ? readdirSync(entry.directory).sort() : [], entry.names);
@@ -105,7 +105,7 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
 for (const owner of ["missing", "foreign"] as const) it(`refuses ${owner} protected inventory owner before changing current profile bytes`, async () => {
   const profile = await createBoundProfileFixture(), foreign = await createBoundProfileFixture();
   const paths = [profile.path, join(profile.stateRoot, "credentials"),
-    join(profile.machine.stateRoot, "machine", "credential-keys"), join(profile.machine.stateRoot, "machine", "erasures")];
+    join(profile.machine.stateRoot, "machine", "credential-keys"), join(profile.machine.stateRoot, "machine", "erasures"), join(profile.machine.stateRoot, "machine", "credential-operations")];
   const before = paths.map(path => path === profile.path ? { kind: "file" as const, path, bytes: readFileSync(path) }
     : { kind: "directory" as const, path, present: existsSync(path), names: existsSync(path) ? readdirSync(path).sort() : [],
       files: existsSync(path) ? readdirSync(path).sort().map(name => ({ name, bytes: readFileSync(join(path, name)) })) : [] });

@@ -1,3 +1,4 @@
+import { RunClaimTokenSchema, type RunClaimToken } from "../../../models/run/worker.js";
 import { DryRunSampleSchema, type DryRunStep, type DryRunBinding } from "../../../models/workflow/dry-run.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
@@ -53,7 +54,6 @@ import { planStepOmissions } from "../../../models/workflow/step-omission.js";
 import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { jsonLeafPaths } from "../../runs/provenance/task-provenance.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import { RunClaimTokenSchema, type RunClaimToken } from "../../storage/sqlite/run-store-contracts.js";
 import { WriteIntentParkCodeSchema, type WriteIntentParkCode } from "../../storage/sqlite/write-commit-contracts.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import { createProviderClient, type ProviderAdapterRegistry, type ProviderClientDependencies, type ProviderRequestIdFactory } from "../../processing/providers/provider-client.js";

@@ -10,7 +10,7 @@ import { SubmittedExtractionSchema } from "../../../models/ocr/extraction.js";
 import { OCR_EXTRACTION_REQUEST_HASH, OCR_EXTRACTION_RESPONSE_HASH, OcrExtractionRequestSchema } from "../../../models/processing/ocr/extract-form-page.js";
 import { ProviderAdapterOutcomeSchema } from "../../../models/providers/providers.js";
 import { ChatGptAccountError, ChatGptResourceClosureUnprovedError, type ChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
-import { ChatGptCredentialError } from "../../storage/configuration/credential-store.js";
+import { ChatGptCredentialError } from "../../storage/configuration/chatgpt-credential-repository.js";
 
 export const CHATGPT_OCR_PROVIDER_ID = "chatgpt-subscription";
 export const CHATGPT_OCR_MODEL = "gpt-6.1-sol";

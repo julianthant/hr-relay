@@ -1,5 +1,5 @@
 import { afterAll, afterEach, it } from "vitest";
-import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../../src/models/failures/error-catalog.js";
@@ -13,7 +13,7 @@ import { syntheticSettingsAuthority } from "../../../../support/helpers/dashboar
 import { FIXTURE_STORAGE_RELOCATION } from "../../../../parity/helpers/fixture-settings.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../../../src/models/dashboard/settings-editor.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const cleanups: (() => void | Promise<void>)[] = [];

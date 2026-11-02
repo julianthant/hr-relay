@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import assert from "node:assert/strict";
 import { it } from "vitest";
@@ -54,7 +54,7 @@ it("keeps canonical claims fenced until the native pool reservation is audited",
 
 {
 
-const profiles = createClonedProfileFixtures();
+const profiles = createProfileFixtureSet();
 const heldProfiles: BoundProfileStorageFixture[] = [];
 afterAll(() => profiles.close());
 async function databasePath(): Promise<string> {

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, it, vi } from "vitest";
-import { createClonedProfileFixtures } from "../../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { createOperatorRunDetail } from "../../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { buildRunDetail, buildRunSection } from "../../../../../src/backend/runs/queries/run-detail.js";
@@ -19,7 +19,7 @@ import { separationsModule } from "../../../../../src/backend/app/registries/wor
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { FailureRecordSchema } from "../../../../../src/models/trust/failure.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const worlds: Awaited<ReturnType<typeof trustWorld>>[] = [];

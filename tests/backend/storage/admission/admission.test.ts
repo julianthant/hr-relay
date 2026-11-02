@@ -5,12 +5,12 @@ import { randomUUID } from "node:crypto";
 import { createBoundProfileFixture, initializeAdmissionFixture, fixtureAdmission, releaseAdmissionFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync,mkdtempSync,readdirSync,symlinkSync,realpathSync,rmSync } from "node:fs";
+import { mkdtempSync,readdirSync,realpathSync,rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { it } from "vitest";
-import { RuntimeAdmission,acquireExclusiveRuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
+import { acquireExclusiveRuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { pendingDiagnosticArtifacts,reclaimDiagnosticStages } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 
@@ -76,26 +76,4 @@ it("delegates stopped-stage installation context only while its exclusive parent
     parent.release();
     assert.throws(() => staged.readInstallationContext(), /missing or released admission/u);
   } finally { staged.release(); await profile.close(); }
-});
-
-
-it("admits exact external profile erasure paths and rejects foreign, unsafe and released capabilities", () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "profile-erasure-admission-")));
-  const id = "11111111-1111-4111-8111-111111111111";
-  const profileRoot = join(root, "profiles", id);
-  const machine = RuntimeAdmission.syntheticRoots(root, root);
-  const profile = RuntimeAdmission.syntheticRoots(profileRoot, join(profileRoot, "artifacts"));
-  const journal = join(root, "machine", "erasures", `${id}.json`);
-  try {
-    machine.assertProfileErasureJournal(profile, journal);
-    assert.throws(() => machine.assertProfileErasureJournal(profile, join(root, "wrong.json")));
-    assert.throws(() => machine.assertProfileErasureJournal(machine, journal));
-    assert.throws(() => machine.assertProfileErasureJournal(profile, join(root, "machine", "erasures") + "/../erasures/" + id + ".json"));
-    mkdirSync(join(root, "machine"), { mode: 0o700 });
-    mkdirSync(join(root, "inside"), { mode: 0o700 });
-    symlinkSync(join(root, "inside"), join(root, "machine", "erasures"));
-    assert.throws(() => machine.assertProfileErasureJournal(profile, journal), /unsafe profile erasure path/);
-    profile.release(); assert.throws(() => machine.assertProfileErasureJournal(profile, journal), /released/);
-    machine.release(); assert.throws(() => machine.assertProfileErasureJournal(profile, journal), /released/);
-  } finally { machine.release(); profile.release(); rmSync(root, { recursive: true, force: true }); }
 });

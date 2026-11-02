@@ -1,8 +1,9 @@
+import { CanonicalCrashRecoveryRequestSchema } from "../run/worker.js";
+import { WorkerPoolMemberSchema } from "../run/worker-slot.js";
 import { z } from "zod";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { KualiTimekeeperNameSchema } from "../ui/kuali-document-identity.js";
-import { DuoContinuityRowSchema, DuoEnrollmentScopeSchema } from "../config/duo-credential-store.js";
-import { CredentialEraseInputSchema } from "../config/credential-store.js";
+import { DuoEnrollmentScopeSchema } from "../config/duo-credential-store.js";
 
 const NameSchema = z.string().min(1).max(64).refine((value) => value === value.trim(), "profile name may not be whitespace-padded");
 
@@ -94,50 +95,14 @@ export function deriveProfileNames(firstName: string, lastName: string): {
   return { firstName: first.data, lastName: last.data, initials, timekeeperName: initials };
 }
 
-export const FastDuoStorageSchema = z.literal("session");
-export const FastDuoSetupActionSchema = z.enum(["ARM", "ENROLL", "CONFIRM", "export"]);
-
-export const FastDuoSetupRequestSchema = z.strictObject({
-  profileId: ProfileIdSchema,
-  tabId: z.string().min(1),
-  rpId: z.literal("duosecurity.com"),
-  action: FastDuoSetupActionSchema,
-  storage: FastDuoStorageSchema,
-});
-
-export const RelayDuoProvisionSchema = z.strictObject({
-  profileId: ProfileIdSchema,
-  storage: FastDuoStorageSchema,
-});
-
-export function refusePersistentDuoStorage(storage: string): void {
-  if (storage !== "session") throw new Error("fast-duo-persistent-copy-refused");
-}
-
-export function nextDuoSignCount(stored: number, nowSec: number): number {
-  if (!Number.isSafeInteger(stored) || stored < 0 || !Number.isSafeInteger(nowSec) || nowSec < 0) {
-    throw new Error("duo counter is not a safe nonnegative integer");
-  }
-  return Math.max(stored + 1, nowSec);
-}
-
-
 export const ProfileDatabaseBindingSchema = z.strictObject({ installationId: z.uuid(), profileId: ProfileIdSchema });
 export type ProfileDatabaseBinding = z.infer<typeof ProfileDatabaseBindingSchema>;
 
 
-const CredentialInitializationSourceSchema = z.strictObject({ schemaVersion: z.union([z.literal(2), z.literal(3)]),
-  revision: z.number().int().safe().positive().max(Number.MAX_SAFE_INTEGER - 1),
-  device: z.number().int().nonnegative(), inode: z.number().int().nonnegative(), digest: z.string().regex(/^[0-9a-f]{64}$/u) });
-const CredentialKeyPublicationFields = {
-  keyDocumentDigest: z.string().regex(/^[0-9a-f]{64}$/u).optional(),
-  keyFile: z.strictObject({ device: z.number().int().nonnegative(), inode: z.number().int().nonnegative(), digest: z.string().regex(/^[0-9a-f]{64}$/u) }).optional(),
-};
-export const CredentialInitializationSchema = z.discriminatedUnion("mode", [
-  z.strictObject({ mode: z.literal("initial"), keyId: z.uuid(), ...CredentialKeyPublicationFields, phase: z.enum(["admitted", "key-published", "document-published"]) }),
-  z.strictObject({ mode: z.literal("proven-v2"), keyId: z.uuid(), ...CredentialKeyPublicationFields, phase: z.enum(["admitted", "key-published", "document-published"]), source: CredentialInitializationSourceSchema.extend({ schemaVersion: z.literal(2) }) }),
-  z.strictObject({ mode: z.literal("replace-v3"), keyId: z.uuid(), ...CredentialKeyPublicationFields, phase: z.enum(["admitted", "key-published", "document-published"]), source: CredentialInitializationSourceSchema.extend({ schemaVersion: z.literal(3) }) }),
-]);
+export const CanonicalCredentialCreationSchema = z.strictObject({
+  operationId: z.uuid(), keyId: z.uuid(), generation: z.number().int().safe().positive(),
+  phase: z.enum(["planned", "ready"]), protectedRevision: z.number().int().safe().positive().optional(),
+});
 
 export const SignUpDuoAttemptSchema = z.strictObject({
   attemptId: z.uuid(), generation: z.number().int().safe().positive(), method: z.enum(["key", "touch"]),
@@ -154,14 +119,13 @@ export const SignUpOnboardingSchema = z.strictObject({
   accountId: z.uuid(),
   generation: z.number().int().safe().positive(),
   attempts: z.array(SignUpDuoAttemptSchema),
-  duo: DuoContinuityRowSchema,
   finish: z.strictObject({ finishId: z.uuid(), finishedAt: IsoInstantSchema }).optional(),
-  abort: CredentialEraseInputSchema.optional(),
+  abort: z.strictObject({ operationId: z.uuid(), generation: z.number().int().safe().positive() }).optional(),
 });
 export type SignUpDuoAttempt = z.infer<typeof SignUpDuoAttemptSchema>;
 
 export const SignUpOperationSchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   kind: z.literal("sign-up"),
   operationId: z.uuid(),
   profileId: z.uuid(),
@@ -173,28 +137,39 @@ export const SignUpOperationSchema = z.strictObject({
   createdAt: IsoInstantSchema,
   commandFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
   expectedRevision: z.number().int().safe().positive().optional(),
-  credentialInitialization: CredentialInitializationSchema.optional(),
+  credentials: CanonicalCredentialCreationSchema,
   onboarding: SignUpOnboardingSchema.optional(),
   phase: z.enum(["applying", "publishing"]),
 });
 
+const LogoutFingerprintSchema = z.string().regex(/^[a-f0-9]{64}$/u);
+export const LogoutSettlementSchema = z.strictObject({
+  phase: z.enum(["prepared", "commit-intent", "done"]),
+  stoppedAt: IsoInstantSchema,
+  processId: z.number().int().positive(),
+  before: LogoutFingerprintSchema,
+  after: LogoutFingerprintSchema.optional(),
+  requests: z.array(CanonicalCrashRecoveryRequestSchema).max(100_000),
+  workers: z.array(z.strictObject({ member: WorkerPoolMemberSchema, processId: z.number().int().positive(), leaseGeneration: z.number().int().positive() })).max(64),
+}).refine(value => value.phase === "prepared" ? value.after === undefined : value.after !== undefined, "logout settlement fingerprint prefix invalid");
+
 export const LogoutOperationSchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   kind: z.literal("logout"),
   operationId: z.uuid(),
   profileId: z.uuid(),
+  sessionGeneration: z.number().int().safe().nonnegative(),
+  source: z.strictObject({ database: z.strictObject({ device: z.number().int().nonnegative(), inode: z.number().int().nonnegative() }) }),
+  settlement: LogoutSettlementSchema.optional(),
   at: IsoInstantSchema,
-  phase: z.enum(["admitted", "cancelling", "erasing", "incomplete", "complete"]),
-  commandId: z.uuid().optional(),
-  writeId: z.uuid().optional(),
-  expectedRevision: z.number().int().positive().optional(),
+  phase: z.enum(["admitted", "cancelling", "incomplete", "complete"]),
 });
 
 export type SignUpOperation = z.infer<typeof SignUpOperationSchema>;
 
 export function assertFinishedProfileOnboarding(operation: SignUpOperation): void {
   const draft = operation.onboarding;
-  if (draft === undefined || draft.duo.state !== "registered" || draft.finish === undefined || draft.abort !== undefined) throw new Error("profile-onboarding-incomplete");
+  if (draft === undefined || draft.finish === undefined || draft.abort !== undefined) throw new Error("profile-onboarding-incomplete");
   for (const method of ["key", "touch"] as const) {
     const attempt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
     if (attempt?.state !== "complete" || attempt.scope?.accountId !== draft.accountId || attempt.providerClosedAt === undefined

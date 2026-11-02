@@ -39,9 +39,9 @@ writeFixtureDescriptorWithMovedKey,
 writeFixtureQueuedRun,
 writeFixtureSaveDescriptorAfterUnrelatedEdit,
 } from "../../../support/fixtures/write-sequencer-fixtures.js";
-import { openBoundDatabaseFixture, createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { openBoundDatabaseFixture, createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 const COMMIT_TASK_ID = "ucpath/submit-write-fixture";

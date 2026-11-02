@@ -1,4 +1,4 @@
-import { createClonedProfileFixtures } from "../../../support/helpers/admission-fixture.js";
+import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -20,7 +20,7 @@ import { uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { foldTrustGate, trustWorld } from "../../../support/helpers/backend/trust-authority-fixture.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
-const profileFixtures = createClonedProfileFixtures();
+const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
 
 {

@@ -30,7 +30,7 @@ export async function runtimeFixture(capabilities: readonly RuntimeCapability[],
   const profile = await (profileFixture ?? createBoundProfileFixture)();
   const root = profile.workspace, stateRoot = profile.stateRoot, artifactRoot = profile.admission.artifactRoot;
   const clock = manualClock(new Date("2026-09-19T12:00:00.000Z"));
-  const duo = createDuoCredentialStore(profile.admission, profile.machine, clock);
+  const duo = createDuoCredentialStore(profile.admission, clock);
   const databasePath = join(stateRoot, "state.db");
   const database = AuthorityDatabase.open({ path: databasePath, busyTimeoutMs: 100, migrationOwner: "setup-corpus" }, clock);
   database.close();

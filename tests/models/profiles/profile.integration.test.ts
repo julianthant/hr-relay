@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
-import { deriveProfileNames, refusePersistentDuoStorage, ProfileAuthoritySnapshotSchema } from "../../../src/models/profiles/profile.js";
+import { deriveProfileNames, ProfileAuthoritySnapshotSchema } from "../../../src/models/profiles/profile.js";
 
 describe("profile names", () => {
   it("derives a timekeeper name and refuses padding", () => {
@@ -14,9 +14,6 @@ describe("profile names", () => {
     assert.throws(() => deriveProfileNames(" Alex", "Rivera"));
   });
 
-  it("refuses a fast Duo key copied into extension-local storage", () => {
-    assert.throws(() => refusePersistentDuoStorage("local"));
-  });
 });
 
 

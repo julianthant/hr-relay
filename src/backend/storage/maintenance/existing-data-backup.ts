@@ -1,10 +1,9 @@
 import { writePrivateStage, fsyncPath } from "../private-path.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { assertStoppedBackupClosure, type StoppedBackupClosure } from "./profile-inventory.js";
-import { SourceRecordSchema, StorageBackupSchema, hash, file, inventory, verifyCopies, retainedStorageBackup, existingDataFileLabel } from "./existing-data-backup-files.js";
+import { SourceRecordSchema, StorageBackupSchema, hash, file, inventory, verifyCopies, retainedStorageBackup, existingDataFileLabel, profileAuthorityFileWitnesses } from "./existing-data-backup-files.js";
 import { decodeStoredArtifact } from "../artifacts/content-addressed-artifact-writer.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { profileAuthorityFileWitnesses } from "../configuration/credential-store.js";
 import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { RuntimeAdmission } from "../admission/admission.js";
@@ -50,7 +49,6 @@ async function writeCoupledBackup(closure: StoppedBackupClosure, machine: Runtim
   const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
   const { backupStoppedAuthority } = await import("./upgrade.js");
   const { verifyStoppedBackupManifestAtPath } = await import("../sqlite/backup-service.js");
-  const { profileAuthorityFileWitnesses } = await import("../configuration/credential-store.js");
   const { assertCredentialCopyResourcesClosed } = await import("./profile-inventory.js");
   const context = admission.readInstallationContext();
   if (context === undefined) throw new Error("existing-data-backup-installation-required");

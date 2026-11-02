@@ -5,13 +5,13 @@ import { ProtectedSettingsCommandRequestSchema, deriveSettingsCommandFingerprint
 import { ResolvedConfigSchema, type ResolvedConfig } from "../../app/config/resolve.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { ProtectedSettingsApplyInputSchema, protectedSettingsReadback } from "../../../models/config/protected-settings.js";
-import { SETTINGS_SCHEMA_HASH, SettingsApplyRefusalSchema, deriveRawSettingsPatchFingerprint, derivePersistedSettingsFingerprint, mergeSettingsPatch, containsRetiredTestRoutePatch, type SettingsFileRecord } from "../../../models/config/settings.js";
+import { SETTINGS_SCHEMA_HASH, SettingsApplyRefusalSchema, deriveRawSettingsPatchFingerprint, derivePersistedSettingsFingerprint, mergeSettingsPatch, containsRetiredSettingsPatch, type SettingsFileRecord } from "../../../models/config/settings.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { z } from "zod";
 import { OrdinaryPathValidationError, validateOrdinaryPathChanges } from "./ordinary-path-validator.js";
 
-const VALIDATED_PATHS = new Set(["paths.browserProfileRoot", "paths.duoCredential", "paths.duoExtensionDir"]);
+const VALIDATED_PATHS = new Set(["paths.browserProfileRoot", "paths.duoExtensionDir"]);
 
 function protectedInput(command: SettingsCommand) {
   const request = ProtectedSettingsCommandRequestSchema.parse(command);
@@ -30,8 +30,8 @@ function ordinaryRequestRefusal(command: Extract<SettingsCommand, { type: "apply
   if (command.payload.assistantPermission !== undefined && command.payload.assistantPermission.mode !== "every-action") {
     return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "invalid-value", message: "assistant confirmation is required for every action" });
   }
-  if (containsRetiredTestRoutePatch(command.payload.patch)) {
-    return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "not-editable", message: "retired test routes cannot be edited" });
+  if (containsRetiredSettingsPatch(command.payload.patch)) {
+    return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "not-editable", message: "retired settings cannot be edited" });
   }
   if (command.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) {
     return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "schema-mismatch", message: "settings schema-mismatch" });

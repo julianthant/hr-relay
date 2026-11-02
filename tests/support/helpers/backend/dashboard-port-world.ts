@@ -53,8 +53,8 @@ export function createDashboardPortTestWorld(resetMocks: () => void, releaseAdmi
       if (active.state !== "active") throw new Error("fixture-profile-sign-in-required");
       const admission = machine.admitProfile(active.profileId);
       storage.admission = admission;
-      const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot, erasureJournalAdmission: machine,
-        erasureJournalPath: join(machine.stateRoot, "machine", "erasures", `${active.profileId}.json`) });
+      const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot,
+        });
       return { machine, runtime, token: active.token, admission, credentials, close };
     }
     let selected = selectProfile();
