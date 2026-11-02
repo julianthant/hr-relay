@@ -19,7 +19,7 @@ import { testRunService, testWorkerLifetime } from "../../support/fixtures/run-l
 import { ReadOnboardingDatesOutputSchema } from "../../../src/models/systems/crm/read-onboarding-dates.js";
 import { searchPersonOrgWithPagePort, assignmentDetailsToCells, type PersonOrgDetail } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { searchPersonMatchWithPort } from "../../../src/backend/systems/ucpath/driver/person-match-operation.js";
-import { PersonLookupResultSchema } from "../../../src/workflows/person-lookup/workflow.js";
+import { PersonLookupResultSchema } from "../../../src/models/workflows/person-lookup/result.js";
 import { PersonLookupInput, PersonLookupMatchInputError, parsePersonLookupRequest } from "../../../src/models/workflows/person-lookup/input.js";
 import { SearchPersonOrgOutputSchema, UcpathCandidateSchema } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { SearchPersonMatchOutputSchema } from "../../../src/models/systems/ucpath/search-person-match.js";

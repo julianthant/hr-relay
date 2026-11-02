@@ -41,6 +41,7 @@ describe("OCR immutable source manifest", () => {
     assert.notEqual(ocrExtractionId(inputs[0]), ocrExtractionId(inputs[1]));
     assert.notEqual(ocrExtractionId(inputs[0]), ocrExtractionId(ocrPageInputs(manifest, "00000000-0000-4000-8000-000000000999")[0]));
     assert.notEqual(ocrExtractionId(inputs[0]), ocrExtractionId({ ...inputs[0], image: inputs[1].image }));
-    assert.equal(OcrPageInputSchema.safeParse({ ...inputs[0], formType: "oath" }).success, false);
+    assert.equal(OcrPageInputSchema.safeParse({ ...inputs[0], formType: "unrecognized" }).success, false);
+    assert.notEqual(ocrExtractionId(inputs[0]), ocrExtractionId({ ...inputs[0], formType: "oath" }));
   });
 });

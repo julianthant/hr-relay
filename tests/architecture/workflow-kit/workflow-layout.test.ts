@@ -1,3 +1,4 @@
+import { UNREGISTERED_OCR_MODULES } from "../../support/fixtures/ocr/unregistered-workflows.js";
 
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -396,7 +397,7 @@ function writeFixtureTree(files: Record<string, string>): string {
 }
 
 function registeredLayoutModules(): readonly WorkflowLayoutModule[] {
-  return [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES].map((module) => ({
+  return [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES, ...UNREGISTERED_OCR_MODULES].map((module) => ({
     id: String(module.descriptor.id),
     role: module.role,
     timelineDeclared: module.descriptor.timelineDeclared,

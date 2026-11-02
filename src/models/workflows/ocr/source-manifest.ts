@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ArtifactRefSchema, type ArtifactRef } from "../../artifacts/artifacts.js";
 import { ExtractPdfPagesOutputSchema } from "../../processing/extraction/extract-pdf-pages.js";
+import { OcrFormTypeSchema, type OcrFormType } from "../../ocr/form-registry.js";
 import { FingerprintSchema, ItemIdSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
@@ -39,7 +40,7 @@ export function buildOcrSourceManifest(document: ArtifactRef, rendered: z.infer<
 }
 
 export const OcrPageInputSchema = z.strictObject({
-  formType: z.literal("emergency-contact"),
+  formType: OcrFormTypeSchema,
   manifestFingerprint: FingerprintSchema,
   document: PdfSchema,
   sourcePage: z.number().int().positive(),
@@ -49,9 +50,9 @@ export const OcrPageInputSchema = z.strictObject({
 export type OcrPageInput = z.infer<typeof OcrPageInputSchema>;
 
 /** Reuse readingId for a replay; a deliberate rereading requires a new readingId. */
-export function ocrPageInputs(manifest: OcrSourceManifest, readingId: z.input<typeof ItemIdSchema>): OcrPageInput[] {
+export function ocrPageInputs(manifest: OcrSourceManifest, readingId: z.input<typeof ItemIdSchema>, formType: OcrFormType = "emergency-contact"): OcrPageInput[] {
   const source = OcrSourceManifestSchema.parse(manifest);
-  return source.pages.map(page => OcrPageInputSchema.parse({ ...page, formType: "emergency-contact",
+  return source.pages.map(page => OcrPageInputSchema.parse({ ...page, formType,
     manifestFingerprint: source.fingerprint, document: source.document, readingId }));
 }
 
