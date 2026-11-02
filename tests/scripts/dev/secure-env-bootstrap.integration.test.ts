@@ -128,7 +128,7 @@ describe("secure environment bootstrap", () => {
   });
 
   it.each([
-    ["storage", "doctor"], ["storage", "backup"], ["storage", "upgrade"],
+    ["storage", "doctor"], ["storage", "upgrade"],
 
     ["test-data", "check"], ["test-data", "migrate"],
   ])("isolates %s %s from provider environment admission", async (command, operation) => {
@@ -144,8 +144,7 @@ describe("secure environment bootstrap", () => {
   });
 
   it.each([
-    // Stopped-authority backups require exclusive custody.
-    ["backup", "exclusive"], ["doctor", "shared"], ["transactions", "shared"],
+    ["doctor", "shared"], ["transactions", "shared"],
     ["help", "shared"], ["--help", "shared"], ["-h", "shared"],
     ["upgrade", "exclusive"], ["repair-span-root", "exclusive"],
   ] as const)("holds %s admission in %s mode for the full CLI lifetime", async (operation, expectedMode) => {

@@ -670,14 +670,10 @@ then uses current registry readers and sign-up creates a fresh private profile. 
 artifact-root identity and the empty fixed process-lock directory stay in place. Ordinary document
 and report roots outside the erased state are preserved.
 
-`npm run cli -- storage backup [--json]` still backs up a selected READY profile through its
-registered child, or a stopped native6 flat source through its finite backup admission. The command
-neither signs in nor creates a profile. Its owner holds the same root-issued offline operation through
-an explicit native browser closure step, then captures source bytes and runs the backup. The real
-probe can update browser state; source capture follows that probe and backup IO never launches a browser.
-A private in-memory closure observation binds the exact operation, admitted source, browser census
-and directory identities. Backup revalidates that observation and read-only OS closure at its IO
-boundaries; copied, foreign, expired or changed observations refuse. Unproved closure retains owners.
+Backups are automatic. After clean application resource closure, the held lifetime obtains stopped exclusive custody and verifies a SQLite backup for each READY saved person. Shutdown backups use the `.shutdown.sqlite` filename class. Retention verifies those manifests and copies again, keeps the newest three, and removes only older verified shutdown pairs. Pre-upgrade backups and the pre-erase flat archive stay protected. Retirement first durably renames the obsolete manifest to `.retiring`. Startup and shutdown finish that exact same-person record before full backup inventory: three newer verified shutdown backups must remain, changed bytes refuse, and an already removed copy is an accepted prefix. The record disappears only after copy deletion and directory sync.
+
+The actual native browser closure step precedes source capture. A private in-memory closure observation binds the exact operation, admitted source, browser census and directory identities. Backup revalidates that observation and read-only OS closure at IO boundaries; copied, foreign, expired or changed observations refuse. Unproved closure retains actual owners and the lifetime listener. Manual backup, restore and recovery commands do not exist. Settings displays only a read-only notice for the current person's latest automatic repair, including its backup time; reading it performs no backup or repair.
+
 The flat archive copies the original SQLite database and every present sidecar unchanged, along
 with recognized HR-managed files. Its schema2 source intent records files, directories and absent
 database companions, source modes, sizes and SHA-256 digests. Entire recognized Chromium profile,
@@ -691,7 +687,7 @@ remain transient same-operation checks. Receipt authority is exact operation/sou
 bytes, with independent copy readback and fresh physical closure before completion; it persists no
 inode authority. Empty source directories are metadata only; physical copy directories are exactly
 file ancestors. The schema2 receipt is an immutable archive, never a person restore manifest.
-A fresh command probes again; changed post-probe source refuses with STORAGE_BACKUP_SOURCE_CHANGED
+A fresh automatic archive acquisition probes again; changed post-probe source refuses with STORAGE_BACKUP_SOURCE_CHANGED
 and preserves the first verified archive and source.json. It never overwrites that receipt or
 creates a versioned substitute. An exact interrupted copy prefix may resume; missing, extra or
 corrupt completed copies and old schema1 receipts refuse.

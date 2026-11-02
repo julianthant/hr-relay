@@ -1,4 +1,8 @@
-import { AuthoritySourceClosureUnprovedError } from "../../../../src/backend/storage/source-closure.js";
+import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
+import { prepareStoppedBackupClosure } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
+import { backupStoppedAuthority } from "../../../../src/backend/storage/maintenance/upgrade.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../../../../src/backend/storage/source-closure.js";
 import assert from "node:assert/strict";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -8,7 +12,7 @@ import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/
 
 import { AuthorityBackupService, verifyBackupBytesAtPath, verifyBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { boundProfileCredentials, createBoundProfileFixture } from "../admission-fixture.js";
+import { boundProfileCredentials, createBoundProfileFixture, withOfflineMaintenance } from "../admission-fixture.js";
 
 import type { Clock } from "../../../../src/rules/time/clock.js";
 
@@ -86,4 +90,22 @@ export async function inspectUnboundBackupFixture(admission: RuntimeAdmission, m
     }
   } finally { copy.release(); }
   return { manifestPath, backupPath, manifest };
+}
+
+export async function takeStoppedProfileBackupFixture(admission: RuntimeAdmission, clock: Clock) {
+  const context = admission.readInstallationContext(); assert.ok(context);
+  return withOfflineMaintenance(admission, async operation => {
+    operation.consume();
+    const stopped = admission.forStoppedMaintenance(operation);
+    let retain = false;
+    try {
+      const processLockRoot = join(context.workspace, rebuildRuntimeIsolation.processLockRoot);
+      const closure = await prepareStoppedBackupClosure(profileBrowserClosure, stopped, operation, clock, processLockRoot);
+      return await backupStoppedAuthority(closure, stopped, stopped.stateRoot, clock, processLockRoot, operation);
+    } catch (error) {
+      retain = hasUnprovedSourceClosure(error);
+      if (retain) retainUnprovedSourceOwners(error, { admission: stopped, restore: operation });
+      throw error;
+    } finally { if (!retain && stopped !== admission) stopped.release(); }
+  });
 }

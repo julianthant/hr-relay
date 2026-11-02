@@ -41,7 +41,7 @@ function requireStopped(admission:RuntimeAdmission,input:StorageUpgradeInput,_cl
   admission.assertOfflineMaintenance(operation);
   assertOfflineMaintenanceForProcessRoot(operation, input.processLockRoot);
 }
-export async function backupStoppedAuthority(closure: StoppedBackupClosure, admission:RuntimeAdmission,stateRoot:string,clock:Clock,processLockRoot:string,restore:OfflineMaintenanceOperation, trigger: "operator" | "schema-migration" = "operator") {
+export async function backupStoppedAuthority(closure: StoppedBackupClosure, admission:RuntimeAdmission,stateRoot:string,clock:Clock,processLockRoot:string,restore:OfflineMaintenanceOperation, trigger: "operator" | "schema-migration" | "graceful-drain" = "operator") {
   const stopped = requireRuntimeAdmission(admission).forStoppedMaintenance(restore);
   const input={stateRoot,processLockRoot,plan:false};
   const verifyHeld=()=>{ admission.assertOfflineMaintenance(restore); assertOfflineMaintenanceForProcessRoot(restore,processLockRoot); assertStoppedBackupClosure(closure,admission,restore); };
@@ -55,7 +55,7 @@ export async function backupStoppedAuthority(closure: StoppedBackupClosure, admi
     const source=openAuthorityBackupSourceReadOnly(stopped,join(stateRoot,"state.db"),250,schemaVersion);
     let report: Awaited<ReturnType<AuthorityBackupService["request"]>> | undefined;
     let primary: { error: unknown } | undefined;
-    try {report=await new AuthorityBackupService(stopped,source,{directory:join(stateRoot,"backups","authority")},clock)
+    try {report=await new AuthorityBackupService(stopped,source,{directory:join(stateRoot,"backups","authority"), ...(trigger === "graceful-drain" ? { purpose: "clean-shutdown" } : {})},clock)
       .request({trigger,requiredGeneration:source.getMeta().authorityGeneration});verifyHeld();requireStopped(stopped,input,clock,true);
     }catch(error){primary={error};}
     const failures: unknown[] = [];

@@ -126,7 +126,7 @@ The repository holds only the current version. No compatibility readers, old mig
   explicit go. Sync `main` back into `staging` afterward. Push feature branches only through this
   pull-request flow; push nothing else without explicit instruction.
   Required check names are in [repository governance](docs/repository-governance.md).
-- A `staging` with a store migration is previewed only after a verified `storage backup`.
+- Startup previews a `staging` with a person-store migration only after its automatic pre-upgrade backup verifies.
 - Verify base, path and ownership before editing. Stage exact paths and commit by logical category.
   Never switch, reset or repurpose another checkout.
 - Briefs, receipts and evidence live in the main checkout's gitignored `.work/` folder; worktrees
