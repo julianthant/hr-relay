@@ -9,7 +9,7 @@ import { HOST_PRIMARY_DISPLAY_ENV } from "../../../../src/models/config/host-dis
 
 vi.mock("../../../../src/backend/app/composition/storage-compose.js", { spy: true });
 vi.mock("../../../../src/backend/app/host/primary-display.js", { spy: true });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 it("plans layout with the published dashboard host display and a canonical source workspace", async () => {
   vi.stubEnv(HOST_PRIMARY_DISPLAY_ENV, undefined);

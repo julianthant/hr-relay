@@ -393,7 +393,7 @@ describe("bootstrap storage summary", () => {
 
       const wire = buildBootstrap(depsOf(world, { authorityReachable: false, backup: "stale" }));
       assert.deepEqual(
-        { authority: wire.storage.authority, backup: wire.storage.backup },
+        { authority: wire.storage.authority, automaticRepair: wire.storage.automaticRepair, backup: wire.storage.backup },
         { authority: "unavailable", automaticRepair: { state: "none" }, backup: "stale" },
       );
     } finally {
