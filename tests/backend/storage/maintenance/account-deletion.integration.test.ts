@@ -4,7 +4,7 @@ import { composeDashboardApplication } from "../../../../src/backend/app/composi
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
 import assert from "node:assert/strict";
-import nativeFs, { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import nativeFs, { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -100,6 +100,7 @@ it("serves confirmed account deletion through the guarded dashboard route and si
   let application: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
     await f.runtime.close();
+    for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
     application = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation,
       repoRoot: f.workspace, backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${application.port}`;
