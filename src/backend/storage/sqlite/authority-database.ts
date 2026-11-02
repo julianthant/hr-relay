@@ -1345,6 +1345,13 @@ function readAuthorityUpgradeRecords(database: DatabaseSync) {
     .map(row => AuthorityUpgradeRecordSchema.parse(nativeOrdinaryRecordFromRow("database_upgrades", row)));
 }
 
+const startupLogoutConversionBrand: unique symbol = Symbol("startup-logout-conversion");
+export type StartupLogoutConversion = Readonly<{ [startupLogoutConversionBrand]: true }>;
+const startupLogoutConversions = new WeakMap<StartupLogoutConversion, {
+  admission: RuntimeAdmission; operation: LogoutOperation; next: LogoutOperation;
+  verifyBackup: (admission: RuntimeAdmission, path: string) => VerifiedBackup;
+}>();
+
 function convertedLogoutOperation(operation: LogoutOperation, sourceFingerprint: string, currentFingerprint: string): LogoutOperation {
   const settlement = operation.settlement;
   if (settlement === undefined) throw new Error("profile-startup-logout-settlement-required");
@@ -2241,6 +2248,24 @@ export class AuthorityDatabase implements Disposable {
       if (hasUnprovedSourceClosure(error)) { machine.retainSourceClosure(error); throw retainAuthoritySourceClosure([error], { admission: machine }); }
       throw error;
     }
+  }
+
+  static async prepareStartupLogoutConversion(admission: RuntimeAdmission, operation: LogoutOperation): Promise<StartupLogoutConversion | undefined> {
+    const { verifyStoppedBackupManifestAtPath } = await import("./backup-service.js");
+    const next = AuthorityDatabase.convertStartupUpgradeLogout(admission, operation, verifyStoppedBackupManifestAtPath);
+    if (next === undefined) return undefined;
+    const conversion: StartupLogoutConversion = Object.freeze({ [startupLogoutConversionBrand]: true });
+    startupLogoutConversions.set(conversion, { admission, operation, next, verifyBackup: verifyStoppedBackupManifestAtPath });
+    return conversion;
+  }
+
+  static consumeStartupLogoutConversion(conversion: StartupLogoutConversion, lease: InstallationLease) {
+    const source = startupLogoutConversions.get(conversion);
+    if (source === undefined) throw new Error("profile-startup-logout-conversion-unissued");
+    source.admission.assertStartupUpgradeLease(lease);
+    if (canonicalJsonStringify(AuthorityDatabase.convertStartupUpgradeLogout(source.admission, source.operation, source.verifyBackup)) !== canonicalJsonStringify(source.next)) throw new Error("profile-startup-logout-source-changed");
+    startupLogoutConversions.delete(conversion);
+    return { expected: source.operation, next: source.next };
   }
 
   static convertStartupUpgradeLogout(admission: RuntimeAdmission, operation: LogoutOperation, verifyBackup: (admission: RuntimeAdmission, path: string) => VerifiedBackup): LogoutOperation | undefined {

@@ -18,7 +18,7 @@ import { FlatStartCleanIntentSchema,assertFlatStartCleanCredentials,assertFlatSt
 import { assertStoppedBackupClosure,type StoppedBackupClosure } from "../maintenance/profile-inventory.js";
 import { fsyncPath,privatePathRejects,replacePrivateFile,writePrivateStage } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError,assertSourceClosuresProved,hasUnprovedSourceClosure,rememberUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
-import { AuthorityDatabase } from "../sqlite/authority-database.js";
+import { AuthorityDatabase,type StartupLogoutConversion } from "../sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
 import { AuthorityBackupService,verifyBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { assertCanonicalProfileBinding,assertProfileRestoreDatabaseBinding,readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
@@ -205,7 +205,7 @@ export type InstallationLease = Readonly<{ retainSourceClosure(error: unknown): 
   readStartupProfileIds(): readonly string[];
   captureStoppedProfileUpgrade(profileId: string, purpose: "manual" | "startup" | "layout"): Readonly<{
     assertHeld(): void; logout?: z.infer<typeof LogoutOperationSchema>;
-    settleLogout(next: z.infer<typeof LogoutOperationSchema>, verify: () => void): void;
+    settleLogout(conversion: StartupLogoutConversion): void;
   }>;
   publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, profile: RuntimeAdmission): void;
   publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument): void;
@@ -1829,10 +1829,14 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       const guard = () => {
         if (read() !== original) fail("profile-stopped-upgrade-authority-changed");
       };
-      return Object.freeze({ assertHeld: guard, ...(logout === undefined ? {} : { logout }), settleLogout(next: z.infer<typeof LogoutOperationSchema>, verify: () => void) {
+      const owner = this;
+      return Object.freeze({ assertHeld: guard, ...(logout === undefined ? {} : { logout }), settleLogout(conversion: StartupLogoutConversion) {
         if (purpose !== "startup" || logout === undefined) fail("profile-startup-logout-required");
         mutate(held => {
-          guard(); verify(); held.assertHeld();
+          guard(); held.assertHeld();
+          const { expected, next } = AuthorityDatabase.consumeStartupLogoutConversion(conversion, owner);
+          if (canonicalJsonStringify(expected) !== canonicalJsonStringify(logout)
+            || canonicalJsonStringify(readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${logout.operationId}.json`), LogoutOperationSchema)) !== canonicalJsonStringify(expected)) fail("profile-startup-logout-source-changed");
           const { settlement: _before, ...beforeIdentity } = logout, { settlement: _after, ...afterIdentity } = next;
           if (canonicalJsonStringify(beforeIdentity) !== canonicalJsonStringify(afterIdentity)) fail("profile-startup-logout-identity-changed");
           const document = readMachineRegistry(control, locator, false), prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);

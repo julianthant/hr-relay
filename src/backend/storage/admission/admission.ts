@@ -366,16 +366,17 @@ export class RuntimeAdmission {
     this.assertLive();
     return this.#readyUpgrade !== undefined && this.#readyUpgrade.purpose !== "manual" && this.#readyUpgrade.copyPath === undefined ? this.#readyUpgrade.capture.logout : undefined;
   }
+  assertStartupUpgradeLease(lease: InstallationLease): void {
+    this.assertLive();
+    if (this.#readyUpgrade?.purpose !== "startup" || this.#readyUpgrade.copyPath !== undefined
+      || this.#profileParent === undefined || this.#profileParent.#authority !== lease) throw new Error("profile-startup-upgrade-lease-required");
+  }
   async completeStartupUpgradeLogout(): Promise<void> {
     const operation = this.stoppedUpgradeLogout(), upgrade = this.#readyUpgrade;
     if (operation?.settlement === undefined || upgrade?.purpose !== "startup") return;
     const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
-    const { verifyStoppedBackupManifestAtPath } = await import("../sqlite/backup-service.js");
-    const next = AuthorityDatabase.convertStartupUpgradeLogout(this, operation, verifyStoppedBackupManifestAtPath);
-    if (next === undefined) return;
-    upgrade.capture.settleLogout(next, () => {
-      if (canonicalJsonStringify(AuthorityDatabase.convertStartupUpgradeLogout(this, operation, verifyStoppedBackupManifestAtPath)) !== canonicalJsonStringify(next)) throw new Error("profile-startup-logout-source-changed");
-    });
+    const conversion = await AuthorityDatabase.prepareStartupLogoutConversion(this, operation);
+    if (conversion !== undefined) upgrade.capture.settleLogout(conversion);
   }
   assertProfileMigration(path: string, sourceVersion: number, sourceFingerprint?: string): "ready" | "setup" {
     if (this.#readyUpgrade !== undefined) {

@@ -49,3 +49,9 @@ it.each([false, true])("checks every registered ready person before any upgrade 
     }
   } finally { upgrade.mockRestore(); inspect.mockRestore(); acquire.mockRestore(); await lifetime.close(); rmSync(workspace, { recursive: true }); }
 });
+
+
+it("refuses a fabricated logout conversion before any publication", () => {
+  // @ts-expect-error An unissued conversion has neither the native proof nor its installation lease.
+  assert.throws(() => AuthorityDatabase.consumeStartupLogoutConversion(Object.freeze({}), undefined), /conversion-unissued/u);
+});
