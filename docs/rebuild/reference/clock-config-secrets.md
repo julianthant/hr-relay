@@ -591,6 +591,11 @@ no successor admission or automatic retry is permitted while closure remains unc
 
 Fresh machine bootstrap owns the registry, verifier and installation-control evidence without a root database or selected profile. A supported pre-profile flat store starts clean through the verified startup migration below; unsupported unbound state remains refused. Normal boot never assigns a default profile. Canonical bound database metadata binds immutable installation and profile UUIDs before writable configuration or repository construction. A control-authenticated pending sign-up issues exact database-only setup; ready storage claims require canonical binding. Normal registry publication cannot add profiles: the credential owner captures exact canonical committed replay in an opaque value-free witness, and installation control revalidates its bounded document/journal/anchor evidence when publishing the ready row.
 
+Password verification reuses scrypt derivations for identical password/salt bytes only within one
+operation proof. Every call compares the current verifier bytes; changed passwords or salts derive
+separately. Profile salts and scrypt parameters remain unchanged. Operation cleanup clears and
+zeroes its derived buffers; another operation or a call without a proof derives afresh.
+
 Admission identity has one owner in `storage/admission/admission-identity.ts`; only the token-protected `RuntimeAdmission` constructor registers identities. Profile children depend on genuine installation custody and actual captured person/session epoch. Ordinary mutation transactions admit current selection and session epoch before BEGIN and revalidate that same owner before COMMIT. Open-database liveness checks retain cleanup and inspection custody after revocation; they do not refresh stale effect authority. Setup remains bound to its exact current Signup2 operation. Publishing Finish permits only its existing exact publication-read callback, not ordinary setup credential access. Flat runtime callers remain refused.
 
 Fresh machine initialization creates the fixed private process-lock directory before publishing its installation locator. The dashboard validates that directory before profile composition. An existing installation with a missing, symlinked, wrongly owned or non-private directory refuses without recreation or permission changes.
