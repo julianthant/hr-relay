@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach,describe,it,vi } from "vitest";
 import { createNativePathPicker } from "../../../../src/backend/transports/http/native-path-picker.js";
+import { authorizeNativePickerDriver } from "../../../support/helpers/native-path-picker-driver.js";
 import type { NativePathPickerRequest } from "../../../../src/models/dashboard/native-path-picker.js";
 
 const launched = vi.hoisted(() => [] as Array<{ child: ChildProcess; closed: Promise<void> }>);
@@ -39,6 +40,9 @@ async function exercise(request: NativePathPickerRequest, action: "select" | "ca
   let driver: ChildProcessWithoutNullStreams | undefined;
   let driverClosed: Promise<void> | undefined;
   let ready = false;
+  let bound = false;
+  let requestPending = true;
+  let authorizationRefused = false;
   let stdout = "";
   let stderr = "";
   let deadlineReached = false;
@@ -48,7 +52,7 @@ async function exercise(request: NativePathPickerRequest, action: "select" | "ca
     for (const { child } of launched) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
   };
   const timer = setTimeout(() => { deadlineReached = true; stopOwnedProcesses(); }, 20_000);
-  const pending = createNativePathPicker().pick(request, controller.signal);
+  const pending = createNativePathPicker().pick(request, controller.signal).finally(() => { requestPending = false; });
   try {
     assert.equal(launched.length, 1, "Windows picker must launch the native helper");
     const owned = launched[0];
@@ -64,7 +68,12 @@ async function exercise(request: NativePathPickerRequest, action: "select" | "ca
     driving.stdout.on("data", (chunk: string) => {
       stdout += chunk;
       if (stdout.length > 8192) { controller.abort(); driving.kill("SIGKILL"); }
-      if (!ready && stdout.replace(/\r\n/gu, "\n").startsWith("READY\n")) {
+      const protocol = stdout.replace(/\r\n/gu, "\n");
+      if (!bound && protocol.startsWith("BOUND\n")) {
+        bound = true;
+        authorizationRefused = !authorizeNativePickerDriver(child, driving.stdin, controller.signal, requestPending);
+      }
+      if (!ready && protocol.startsWith("BOUND\nREADY\n")) {
         ready = true;
         if (action === "abort") controller.abort();
       }
@@ -77,19 +86,22 @@ async function exercise(request: NativePathPickerRequest, action: "select" | "ca
       let driverError: Error | undefined;
       driving.once("error", error => { driverError = error; });
       driving.once("close", code => {
-        if (driverError !== undefined) reject(driverError);
+        if (authorizationRefused) reject(new Error("NATIVE_PICKER_ORIGINAL_NOT_AUTHORIZABLE_AT_BINDING"));
+        else if (driverError !== undefined) reject(driverError);
         else if (code === 0) resolve();
         else reject(new Error(`Native picker UI driver failed (${String(code)}): ${stderr.slice(0, 8192)}`));
       });
     });
     driving.stdin.on("error", () => { controller.abort(); driving.kill("SIGKILL"); });
-    driving.stdin.end(`${JSON.stringify({ pid, executable: child.spawnfile,
+    driving.stdin.write(`${JSON.stringify({ pid, executable: child.spawnfile,
       kind: request.field === "paths.i9CheckTrackerPath" ? "file" : "folder", action, path })}\n`);
     const [result] = await Promise.all([pending, driverClosed]);
     assert.equal(deadlineReached, false, "native picker UI proof exceeded its bounded condition wait");
+    assert.equal(bound, true, "the driver must bind a process handle before UI enumeration");
+    assert.equal(authorizationRefused, false);
     assert.equal(ready, true, "the exact owned dialog and controls must be ready before acting");
     assert.equal(controller.signal.aborted, action === "abort");
-    assert.equal(stdout.replace(/\r\n/gu, "\n"), "READY\nDONE\n");
+    assert.equal(stdout.replace(/\r\n/gu, "\n"), "BOUND\nREADY\nDONE\n");
     assert.ok(child.exitCode !== null || child.signalCode !== null, "helper must exit before picker settles");
     assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
     return result;

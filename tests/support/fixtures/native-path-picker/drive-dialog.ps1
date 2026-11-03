@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$authorized = $false
+$window = $null
 try {
   Add-Type -AssemblyName UIAutomationClient
   Add-Type -AssemblyName UIAutomationTypes
@@ -15,6 +17,11 @@ try {
   if (-not [String]::Equals($target.MainModule.FileName, $request.executable, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'NATIVE_PICKER_OWNER_MISMATCH'
   }
+  [Console]::WriteLine('BOUND')
+  [Console]::Out.Flush()
+  if ([Console]::ReadLine() -cne 'AUTHORIZE') { throw 'NATIVE_PICKER_BINDING_NOT_AUTHORIZED' }
+  $authorized = $true
+  if ($target.HasExited) { throw 'NATIVE_PICKER_EXITED_BEFORE_AUTHORIZED_ENUMERATION' }
   $watch = [Diagnostics.Stopwatch]::StartNew()
   $scope = [System.Windows.Automation.TreeScope]::Descendants
   $pidCondition = New-Object System.Windows.Automation.PropertyCondition(
@@ -73,6 +80,7 @@ try {
   [Console]::WriteLine('READY')
   [Console]::Out.Flush()
   if ($request.action -eq 'select') {
+    if ($target.HasExited) { throw 'NATIVE_PICKER_EXITED_BEFORE_ACTION' }
     if ($request.kind -eq 'file') {
       $fileValue.SetValue([string]$request.path)
       if ($fileValue.Current.Value -cne $request.path) { throw 'NATIVE_PICKER_FILENAME_VALUE_MISMATCH' }
@@ -89,7 +97,39 @@ try {
   }
   [Console]::WriteLine('DONE')
 } catch {
-  [Console]::Error.WriteLine($_.Exception.Message)
+  $failure = $_.Exception.Message
+  if ($authorized) {
+    try {
+      if ($target.HasExited -or $null -eq $window) {
+        [Console]::Error.WriteLine('NATIVE_PICKER_OWNED_DIALOG_UNAVAILABLE')
+      } elseif ($window.Current.ProcessId -eq $targetPid) {
+        $nodes = $window.FindAll([System.Windows.Automation.TreeScope]::Subtree,
+          [System.Windows.Automation.Condition]::TrueCondition)
+        $budget = 4096
+        for ($index = 0; $index -lt [Math]::Min($nodes.Count, 24); $index++) {
+          if ($target.HasExited) { break }
+          $node = $nodes.Item($index)
+          if ($node.Current.ProcessId -ne $targetPid) { continue }
+          $class = [string]$node.Current.ClassName
+          $type = [string]$node.Current.ControlType.ProgrammaticName
+          $id = [string]$node.Current.AutomationId
+          $patterns = @($node.GetSupportedPatterns() | Select-Object -First 4 | ForEach-Object { $_.ProgrammaticName })
+          $record = [ordered]@{
+            class = $class.Substring(0, [Math]::Min($class.Length, 64))
+            type = $type.Substring(0, [Math]::Min($type.Length, 64))
+            id = $id.Substring(0, [Math]::Min($id.Length, 64))
+            enabled = $node.Current.IsEnabled
+            patterns = $patterns
+          } | ConvertTo-Json -Compress
+          $bytes = [Text.Encoding]::UTF8.GetByteCount($record) + 2
+          if ($bytes -gt $budget) { break }
+          [Console]::Error.WriteLine($record)
+          $budget -= $bytes
+        }
+      }
+    } catch { [Console]::Error.WriteLine('NATIVE_PICKER_OWNED_DIAGNOSTICS_UNAVAILABLE') }
+  }
+  [Console]::Error.WriteLine($failure)
   exit 1
 } finally {
   if ($null -ne $target) { $target.Dispose() }
